@@ -89,6 +89,68 @@ describe('OpenCodeTurnCoordinator', () => {
     );
   });
 
+  it('routes /goal through the official registered OpenCode command endpoint', async () => {
+    const sendAsync = vi.fn(async () => undefined);
+    const sendCommandAsync = vi.fn(async () => undefined);
+    const sessions = {
+      sessionForChat: vi.fn(async () => ({
+        sessionId: 'session-goal',
+        runtimeGeneration: 'generation',
+        client: { createSession: vi.fn(), abort: vi.fn(), sendAsync, sendCommandAsync },
+      })),
+    } as unknown as OpenCodeSessionPool;
+    const coordinator = new OpenCodeTurnCoordinator(sessions);
+    const result = await coordinator.dispatch({
+      scope: { accountId: 'account', projectId: 'project' },
+      chatId: 'chat',
+      text: '/goal Finish all focused tests with fresh proof',
+      settings: { effort: 'high', fastMode: 'on', performance: 'quality', rlmEnabled: true },
+      selection: {
+        connectionId: 'openai-codex',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        metadata,
+      },
+      policy: { mode: 'agent', access: 'full', approveAllForRun: false, projectRoot: 'C:/project' },
+    });
+
+    expect(result).toMatchObject({ kind: 'dispatched', sessionId: 'session-goal' });
+    expect(sendCommandAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'session-goal',
+        command: 'goal',
+        arguments: 'Finish all focused tests with fresh proof',
+        controls: expect.objectContaining({ modelId: 'gpt-5.6-sol', variant: 'high-fast' }),
+      }),
+    );
+    expect(sendAsync).not.toHaveBeenCalled();
+  });
+
+  it('fails closed for a bare /goal instead of sending it as an ordinary prompt', async () => {
+    const sessions = { sessionForChat: vi.fn() } as unknown as OpenCodeSessionPool;
+    const coordinator = new OpenCodeTurnCoordinator(sessions);
+    const result = await coordinator.dispatch({
+      scope: { accountId: 'account', projectId: 'project' },
+      chatId: 'chat',
+      text: '/goal',
+      selection: {
+        connectionId: 'openai-codex',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        metadata,
+      },
+      policy: {
+        mode: 'agent',
+        access: 'full',
+        approveAllForRun: false,
+        projectRoot: 'C:/project',
+      },
+    });
+
+    expect(result).toMatchObject({ kind: 'rejected', code: 'HARNESS_INCOMPATIBLE' });
+    expect(sessions.sessionForChat).not.toHaveBeenCalled();
+  });
+
   it('sends Codex Spark even when leftover max effort is unsupported', async () => {
     const sendAsync = vi.fn(async () => undefined);
     const sessions = {

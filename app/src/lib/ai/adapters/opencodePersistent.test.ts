@@ -14,6 +14,7 @@ import {
   openCodePersistentAdapter,
   parseOpenCodeLiveModels,
   parseConnectedOpenCodeProviderIds,
+  persistentOpenCodeSessionErrorMessage,
   requireAuthoritativeOpenCodeModel,
   shouldReportPersistentTurnFailure,
   shouldReconcileOpenCodeSessionCompletion,
@@ -50,6 +51,23 @@ const liveModels = parseOpenCodeLiveModels({
 });
 
 describe('persistent OpenCode live authority', () => {
+  it('surfaces the sanitized provider reason for registered-command failures', () => {
+    expect(
+      persistentOpenCodeSessionErrorMessage(
+        {
+          type: 'session.error',
+          properties: {
+            sessionID: 'session-goal',
+            error: {
+              message: 'AI_APICallError: temporarily rate-limited upstream; api_key=private-value',
+            },
+          },
+        },
+        'session-goal',
+      ),
+    ).toBe('AI_APICallError: temporarily rate-limited upstream; api_key=[REDACTED]');
+  });
+
   it('classifies only a completed exact-root read as sanitized inventory evidence', () => {
     const request = {
       explicitReadRoot: true,

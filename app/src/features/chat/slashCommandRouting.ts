@@ -37,6 +37,7 @@ const ROUTES = {
   permissions: { owner: 'vibespace-ui', execution: 'local' },
   ask: { owner: 'opencode-agent', execution: 'agent-request' },
   plan: { owner: 'opencode-agent', execution: 'agent-request' },
+  goal: { owner: 'opencode-agent', execution: 'agent-request' },
   agent: { owner: 'vibespace-ui', execution: 'local' },
   multitask: { owner: 'opencode-agent', execution: 'agent-request' },
   subagents: { owner: 'opencode-agent', execution: 'agent-request' },

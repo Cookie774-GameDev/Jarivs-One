@@ -119,6 +119,24 @@ describe('orderSlashCommandsForDisplay', () => {
     });
   });
 
+  it('keeps picker-selected /usage executable instead of converting it to a decorative chip', () => {
+    expect(findSlashCommandDef('usage')).toMatchObject({
+      cmd: 'usage',
+      category: 'utility',
+      takesArg: true,
+      argPlaceholder: '[refresh|session|all]',
+    });
+  });
+
+  it('registers the actual OpenCode /goal command as a free-text agent request', () => {
+    expect(findSlashCommandDef('goal')).toMatchObject({
+      cmd: 'goal',
+      category: 'chat',
+      takesArg: true,
+      argPlaceholder: '<objective>',
+    });
+  });
+
   it('marks /file as a project-file attach picker command', () => {
     expect(findSlashCommandDef('file')?.hasOptions).toBe(true);
     expect(isChatAttachSlashCmd('file')).toBe(true);

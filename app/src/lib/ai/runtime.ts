@@ -4386,6 +4386,7 @@ export function startRuntimeListener(
       typeof projectId === 'string' &&
       projectId.trim().length > 0
     ) {
+      const rlmStartedAt = Date.now();
       try {
         const identity = resolveAccountIdentity(authState);
         if (identity) {
@@ -4420,14 +4421,30 @@ export function startRuntimeListener(
             channel: 'ai',
             level: 'info',
             message: `VibeSpace Context route → ${rlm.route}`,
+            durationMs: Date.now() - rlmStartedAt,
             detail: {
               chatId,
               projectId,
               route: rlm.route,
+              candidateCount: rlm.candidateCount,
+              hydratedCount: rlm.hydratedCount,
               evidenceCount: rlm.evidenceCount,
               childCalls: rlm.childCalls,
               maxDepth: rlm.maxDepth,
               truncated: rlm.truncated,
+              trace: rlm.trace?.map((event, index) => ({
+                sequence: index + 1,
+                type: event.type,
+                detail: event.detail,
+              })),
+              evidenceSources: rlm.evidence?.map((item) => ({
+                handle: item.handle,
+                sourceId: item.sourceId,
+                sourceRevision: item.sourceRevision,
+                contentHash: item.contentHash,
+                byteStart: item.byteStart,
+                byteEnd: item.byteEnd,
+              })),
             },
           });
         }
@@ -4438,6 +4455,7 @@ export function startRuntimeListener(
           channel: 'ai',
           level: 'warn',
           message: 'Adaptive VibeSpace Context/RLM retrieval failed safely',
+          durationMs: Date.now() - rlmStartedAt,
           detail: { error: err instanceof Error ? err.message : String(err) },
         });
       }

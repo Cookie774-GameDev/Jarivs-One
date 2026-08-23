@@ -207,6 +207,11 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
       requestJson(this.handle.generation, this.handle.scope, '/config/providers', {}, 15_000),
   };
 
+  readonly command = {
+    list: async (): Promise<unknown> =>
+      requestJson(this.handle.generation, this.handle.scope, '/command', {}, 30_000),
+  };
+
   readonly session = {
     create: async (input: { body: { title?: string } }): Promise<unknown> =>
       requestJson(
@@ -227,8 +232,7 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
     update: async (input: {
       path: { id: string };
       body: {
-        title?: string;
-        permission?: readonly import('@/lib/harness/OpenCodeSdkSessionClient').OpenCodePermissionRule[];
+        permission: readonly import('@/lib/harness/OpenCodeSdkSessionClient').OpenCodePermissionRule[];
       };
     }): Promise<unknown> =>
       requestJson(
@@ -254,6 +258,22 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
         this.handle.generation,
         this.handle.scope,
         `/session/${encodeURIComponent(input.path.id)}/prompt_async`,
+        { method: 'POST', body: JSON.stringify(input.body) },
+        30_000,
+      ),
+    command: async (input: {
+      path: { id: string };
+      body: {
+        command: string;
+        arguments: string;
+        model?: string;
+        variant?: string;
+      };
+    }): Promise<unknown> =>
+      requestJson(
+        this.handle.generation,
+        this.handle.scope,
+        `/session/${encodeURIComponent(input.path.id)}/command`,
         { method: 'POST', body: JSON.stringify(input.body) },
         30_000,
       ),
@@ -677,6 +697,16 @@ function eventSessionId(event: OpenCodeRawEvent): string | undefined {
       info?.sessionID ??
       info?.sessionId,
   );
+}
+
+export function persistentOpenCodeSessionErrorMessage(
+  event: OpenCodeRawEvent,
+  sessionId: string,
+): string {
+  const normalized = normalizeOpenCodeEvent(event, sessionId).find((item) => item.type === 'error');
+  return normalized?.type === 'error'
+    ? normalized.message
+    : 'OpenCode reported a provider session error.';
 }
 
 export function classifyExplicitRootInventoryScope(
@@ -1409,7 +1439,8 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       const eventScope = eventSessionId(event);
       if (eventScope && eventScope !== dispatch.sessionId) continue;
 
-      for (const normalized of normalizeOpenCodeEvent(event, dispatch.sessionId)) {
+      const normalizedEvents = normalizeOpenCodeEvent(event, dispatch.sessionId);
+      for (const normalized of normalizedEvents) {
         if (normalized.type !== 'approval.requested') continue;
         const active = activeApprovalSessions.get(dispatch.sessionId);
         if (!active || active.requestId !== request.requestId) {
@@ -1473,7 +1504,10 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       if (usage) yield { type: 'usage', usage };
       if (event.type === 'session.error') {
         reportPersistentTurnFailure('provider_reported');
-        yield { type: 'error', message: 'OpenCode reported a provider session error.' };
+        yield {
+          type: 'error',
+          message: persistentOpenCodeSessionErrorMessage(event, dispatch.sessionId),
+        };
         return;
       }
       if (event.type === 'session.idle') done = true;

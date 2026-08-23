@@ -2368,6 +2368,19 @@ export function Composer({
       setText('');
       return true;
     }
+    if (cmd === 'goal') {
+      if (!rest) {
+        await addSystem(
+          'Use /goal <objective>. VibeSpace runs the actual registered OpenCode goal command.',
+        );
+        return true;
+      }
+      applyInteractionMode('agent');
+      // Preserve the canonical slash payload. The persistent OpenCode adapter
+      // validates the live command catalog and invokes session.command; it must
+      // never be flattened into an ordinary provider prompt.
+      return `/goal ${rest}`;
+    }
     if (cmd === 'schedule' && rest) {
       return buildVibeSpaceReferenceRequest('schedule', rest);
     }

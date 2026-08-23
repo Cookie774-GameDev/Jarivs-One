@@ -42,6 +42,13 @@ export interface PersistentOpenCodeTurnClient extends OpenCodeSessionClient {
     tools?: Readonly<Record<string, boolean>>;
     permissions?: EffectivePermissionProfile['openCode'];
   }): Promise<void>;
+  sendCommandAsync?(input: {
+    sessionId: string;
+    controls: OpenCodeRequestControls;
+    command: string;
+    arguments: string;
+    permissions?: EffectivePermissionProfile['openCode'];
+  }): Promise<void>;
 }
 
 export interface TurnPolicyInput {
@@ -93,6 +100,12 @@ function isPersistentTurnClient(
   return typeof (client as Partial<PersistentOpenCodeTurnClient>).sendAsync === 'function';
 }
 
+function registeredOpenCodeCommand(text: string): { command: 'goal'; arguments: string } | null {
+  const match = text.match(/^\/goal(?:\s+([\s\S]+))?$/iu);
+  if (!match) return null;
+  return { command: 'goal', arguments: (match[1] ?? '').trim() };
+}
+
 /**
  * Central production seam for one VibeSpace Chat turn. Commands are consumed by
  * VibeSpace, exact controls are validated before send, permission authority is
@@ -123,6 +136,17 @@ export class OpenCodeTurnCoordinator {
         kind: 'command',
         commandResult,
         settings: commandResult.settings,
+      };
+    }
+
+    const officialCommand = registeredOpenCodeCommand(text);
+    if (officialCommand && !officialCommand.arguments) {
+      return {
+        kind: 'rejected',
+        code: 'HARNESS_INCOMPATIBLE',
+        message:
+          'Use /goal <objective>. The registered OpenCode goal command requires an objective.',
+        settings,
       };
     }
 
@@ -175,15 +199,32 @@ export class OpenCodeTurnCoordinator {
       rlmEnabled: settings.rlmEnabled,
     });
 
-    await session.client.sendAsync({
-      sessionId: session.sessionId,
-      controls,
-      text,
-      ...(input.system?.trim() ? { system: input.system } : {}),
-      ...(input.agent?.trim() ? { agent: input.agent } : {}),
-      ...(input.tools ? { tools: input.tools } : {}),
-      permissions: permissions.openCode,
-    });
+    if (officialCommand) {
+      if (!session.client.sendCommandAsync) {
+        return {
+          kind: 'rejected',
+          code: 'HARNESS_INCOMPATIBLE',
+          message: 'The active OpenCode client cannot execute registered session commands.',
+          settings,
+        };
+      }
+      await session.client.sendCommandAsync({
+        sessionId: session.sessionId,
+        controls,
+        ...officialCommand,
+        permissions: permissions.openCode,
+      });
+    } else {
+      await session.client.sendAsync({
+        sessionId: session.sessionId,
+        controls,
+        text,
+        ...(input.system?.trim() ? { system: input.system } : {}),
+        ...(input.agent?.trim() ? { agent: input.agent } : {}),
+        ...(input.tools ? { tools: input.tools } : {}),
+        permissions: permissions.openCode,
+      });
+    }
 
     return {
       kind: 'dispatched',

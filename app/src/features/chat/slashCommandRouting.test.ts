@@ -10,6 +10,7 @@ const expected = {
   permissions: ['vibespace-ui', 'local'],
   ask: ['opencode-agent', 'agent-request'],
   plan: ['opencode-agent', 'agent-request'],
+  goal: ['opencode-agent', 'agent-request'],
   agent: ['vibespace-ui', 'local'],
   multitask: ['opencode-agent', 'agent-request'],
   subagents: ['opencode-agent', 'agent-request'],

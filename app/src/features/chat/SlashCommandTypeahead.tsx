@@ -135,6 +135,14 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     argPlaceholder: '<goal>',
   },
   {
+    cmd: 'goal',
+    description: 'Run the registered OpenCode long-duration goal command',
+    icon: ClipboardList,
+    category: 'chat',
+    takesArg: true,
+    argPlaceholder: '<objective>',
+  },
+  {
     cmd: 'agent',
     description: 'Open a live multitask/subagent thread for this chat',
     icon: Bot,
@@ -345,6 +353,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     description: 'Show truthful current-chat usage and quota availability',
     icon: BarChart3,
     category: 'utility',
+    takesArg: true,
     argPlaceholder: '[refresh|session|all]',
   },
   {

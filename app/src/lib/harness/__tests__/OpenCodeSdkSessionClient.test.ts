@@ -21,68 +21,22 @@ function fakeClient(events: readonly OpenCodeRawEvent[] = []) {
   return {
     global: { health: vi.fn(async () => ({ data: { healthy: true, version: '1.2.3' } })) },
     config: { providers: vi.fn(async () => ({ data: { providers: [] } })) },
+    command: {
+      list: vi.fn(async () => ({ data: [{ name: 'goal', source: 'command' }] })),
+    },
     session: {
       create: vi.fn(async () => ({ data: { id: 'session-1' } })),
-      get: vi.fn(
-        async (): Promise<{ data: { id: string; title?: string } }> => ({
-          data: { id: 'session-1' },
-        }),
-      ),
-      update: vi.fn(
-        async (_input: {
-          path: { id: string };
-          body: { title?: string; permission?: readonly unknown[] };
-        }) => ({ data: true }),
-      ),
+      get: vi.fn(async () => ({ data: { id: 'session-1' } })),
+      update: vi.fn(async () => ({ data: true })),
       abort: vi.fn(async () => ({ data: true })),
       promptAsync: vi.fn(async () => ({ data: undefined })),
+      command: vi.fn(async () => ({ data: { info: { id: 'message-1' }, parts: [] } })),
     },
     event: { subscribe: vi.fn(async () => ({ stream: asyncEvents(events) })) },
   };
 }
 
 describe('OpenCodeSdkSessionClient', () => {
-  it('persists and verifies the deterministic app title before returning a new session', async () => {
-    const client = fakeClient();
-    let persistedTitle = 'New session - 2026-08-23T12:00:00.000Z';
-    client.session.update.mockImplementation(async (input) => {
-      if ('title' in input.body && typeof input.body.title === 'string') {
-        persistedTitle = input.body.title;
-      }
-      return { data: true };
-    });
-    client.session.get.mockImplementation(async () => ({
-      data: { id: 'session-1', title: persistedTitle },
-    }));
-    const sdk = new OpenCodeSdkSessionClient(client);
-
-    await expect(
-      sdk.createSession({ scope: { accountId: 'account-1' }, title: 'Jarvis' }),
-    ).resolves.toEqual({ id: 'session-1' });
-    expect(client.session.update).toHaveBeenCalledWith({
-      path: { id: 'session-1' },
-      body: { title: 'Jarvis' },
-    });
-    expect(client.session.create.mock.invocationCallOrder[0]).toBeLessThan(
-      client.session.update.mock.invocationCallOrder[0]!,
-    );
-    expect(client.session.update.mock.invocationCallOrder[0]).toBeLessThan(
-      client.session.get.mock.invocationCallOrder[0]!,
-    );
-  });
-
-  it('fails closed when OpenCode does not persist the deterministic app title', async () => {
-    const client = fakeClient();
-    client.session.get.mockResolvedValueOnce({
-      data: { id: 'session-1', title: 'New session - 2026-08-23T12:00:00.000Z' },
-    });
-    const sdk = new OpenCodeSdkSessionClient(client);
-
-    await expect(
-      sdk.createSession({ scope: { accountId: 'account-1' }, title: 'Jarvis' }),
-    ).rejects.toThrow(/SESSION_TITLE_MISMATCH/u);
-  });
-
   it('applies the exact request-scoped permission profile before prompting', async () => {
     const client = fakeClient();
     const sdk = new OpenCodeSdkSessionClient(client);
@@ -224,6 +178,60 @@ describe('OpenCodeSdkSessionClient', () => {
         parts: [{ type: 'text', text: 'hello' }],
       },
     });
+  });
+
+  it('executes only the actual registered OpenCode goal command with exact model controls', async () => {
+    const client = fakeClient();
+    const adapter: ModelControlPromptAdapter = {
+      toPromptFields: () => ({ variant: 'max-fast' }),
+    };
+    const sdk = new OpenCodeSdkSessionClient(client, adapter);
+    await sdk.sendCommandAsync({
+      sessionId: 'session-1',
+      controls: {
+        connectionId: 'openai-chatgpt-pro',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        variant: 'max-fast',
+        performance: 'quality',
+        rlmEnabled: true,
+      },
+      command: 'goal',
+      arguments: 'Finish the focused native verification',
+    });
+
+    expect(client.command.list).toHaveBeenCalledOnce();
+    expect(client.session.command).toHaveBeenCalledWith({
+      path: { id: 'session-1' },
+      body: {
+        command: 'goal',
+        arguments: 'Finish the focused native verification',
+        model: 'openai/gpt-5.6-sol',
+        variant: 'max-fast',
+      },
+    });
+    expect(client.session.promptAsync).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when goal is not in the live OpenCode command catalog', async () => {
+    const client = fakeClient();
+    client.command.list.mockResolvedValueOnce({ data: [{ name: 'review', source: 'command' }] });
+    const sdk = new OpenCodeSdkSessionClient(client);
+    await expect(
+      sdk.sendCommandAsync({
+        sessionId: 'session-1',
+        controls: {
+          connectionId: 'opencode-cli',
+          providerId: 'openai',
+          modelId: 'gpt-5.6-sol',
+          performance: 'quality',
+          rlmEnabled: true,
+        },
+        command: 'goal',
+        arguments: 'Do the work',
+      }),
+    ).rejects.toThrow(/not registered/u);
+    expect(client.session.command).not.toHaveBeenCalled();
   });
 
   it('maps exact live effort/Fast metadata to a named OpenCode variant', async () => {

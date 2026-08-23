@@ -593,6 +593,9 @@ fn scoped_provider_config(
     root.insert(
         "agent".to_string(),
         json!({
+            "title": {
+                "disable": true
+            },
             "vibespace": {
                 "description": "Minimal provider shell for VibeSpace protected prompts.",
                 "mode": "primary",
@@ -2388,6 +2391,10 @@ mod tests {
             .get("options")
             .is_none());
         assert_eq!(config["agent"]["vibespace"]["mode"], "primary");
+        assert_eq!(
+            config["agent"]["title"]["disable"], true,
+            "the managed server must not launch an unrelated title model"
+        );
         assert_eq!(
             config["agent"]["vibespace"]["permission"]["vibespace_context"],
             "allow"

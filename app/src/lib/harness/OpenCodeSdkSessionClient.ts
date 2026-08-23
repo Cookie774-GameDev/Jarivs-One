@@ -19,20 +19,29 @@ export interface OpenCodeSdkClientLike {
   config: {
     providers(): Promise<unknown>;
   };
+  command: {
+    list(): Promise<unknown>;
+  };
   session: {
     create(input: { body: { title?: string } }): Promise<unknown>;
     get?: (input: { path: { id: string } }) => Promise<unknown>;
     update?: (input: {
       path: { id: string };
-      body: {
-        title?: string;
-        permission?: readonly OpenCodePermissionRule[];
-      };
+      body: { permission: readonly OpenCodePermissionRule[] };
     }) => Promise<unknown>;
     abort(input: { path: { id: string } }): Promise<unknown>;
     promptAsync?: (input: {
       path: { id: string };
       body: Readonly<Record<string, unknown>>;
+    }) => Promise<unknown>;
+    command?: (input: {
+      path: { id: string };
+      body: {
+        command: string;
+        arguments: string;
+        model?: string;
+        variant?: string;
+      };
     }) => Promise<unknown>;
   };
   event: {
@@ -209,30 +218,10 @@ export class OpenCodeSdkSessionClient implements OpenCodeSessionClient {
   }
 
   async createSession(input: { scope: HarnessScope; title?: string }): Promise<{ id: string }> {
-    const title = input.title?.trim();
     const response = await this.client.session.create({
-      body: { ...(title ? { title } : {}) },
+      body: { ...(input.title?.trim() ? { title: input.title.trim() } : {}) },
     });
-    const id = requiredId(unwrapData(response), 'OpenCode session.create');
-    if (title) {
-      if (!this.client.session.update || !this.client.session.get) {
-        throw new Error(
-          'HARNESS_INCOMPATIBLE: installed OpenCode SDK/server cannot persist and verify session titles.',
-        );
-      }
-      await this.client.session.update({ path: { id }, body: { title } });
-      const persisted = unwrapData<{ id?: unknown; title?: unknown }>(
-        await this.client.session.get({ path: { id } }),
-      );
-      if (
-        requiredId(persisted, 'OpenCode session.get') !== id ||
-        typeof persisted.title !== 'string' ||
-        persisted.title.trim() !== title
-      ) {
-        throw new Error('SESSION_TITLE_MISMATCH: OpenCode did not persist the VibeSpace title.');
-      }
-    }
-    return { id };
+    return { id: requiredId(unwrapData(response), 'OpenCode session.create') };
   }
 
   async getSession(sessionId: string): Promise<{ id: string } | null> {
@@ -295,6 +284,57 @@ export class OpenCodeSdkSessionClient implements OpenCodeSessionClient {
         ...(input.system?.trim() ? { system: input.system } : {}),
         ...(input.tools ? { tools: toProviderSafeOpenCodeTools(input.tools) } : {}),
         parts: [{ type: 'text', text }],
+      },
+    });
+  }
+
+  async sendCommandAsync(input: {
+    sessionId: string;
+    controls: OpenCodeRequestControls;
+    command: string;
+    arguments: string;
+    permissions?: EffectivePermissionProfile['openCode'];
+  }): Promise<void> {
+    if (!this.client.session.command) {
+      throw new Error('HARNESS_INCOMPATIBLE: installed OpenCode SDK/server lacks session.command.');
+    }
+    const sessionId = input.sessionId.trim();
+    const command = input.command.trim().toLowerCase();
+    const args = input.arguments.trim();
+    if (!sessionId || !command || !args) {
+      throw new Error('A session id, registered command, and non-empty arguments are required.');
+    }
+    const listed = unwrapData<unknown>(await this.client.command.list());
+    const commands = Array.isArray(listed) ? listed : [];
+    const registered = commands.some(
+      (entry) =>
+        entry && typeof entry === 'object' && (entry as { name?: unknown }).name === command,
+    );
+    if (!registered) {
+      throw new Error(
+        `OpenCode command /${command} is not registered in the live command catalog.`,
+      );
+    }
+    const controlFields = this.modelControls.toPromptFields(input.controls);
+    const variant = typeof controlFields.variant === 'string' ? controlFields.variant : undefined;
+    if (input.permissions) {
+      if (!this.client.session.update) {
+        throw new Error(
+          'HARNESS_INCOMPATIBLE: installed OpenCode SDK/server lacks request-scoped session permissions.',
+        );
+      }
+      await this.client.session.update({
+        path: { id: sessionId },
+        body: { permission: toOpenCodePermissionRules(input.permissions) },
+      });
+    }
+    await this.client.session.command({
+      path: { id: sessionId },
+      body: {
+        command,
+        arguments: args,
+        model: `${input.controls.providerId}/${input.controls.modelId}`,
+        ...(variant ? { variant } : {}),
       },
     });
   }
