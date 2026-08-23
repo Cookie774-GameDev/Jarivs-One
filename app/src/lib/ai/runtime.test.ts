@@ -750,8 +750,10 @@ describe('startRuntimeListener agent routing', () => {
       { maxWords: 750, minimumWords: 675, targetMinWords: 675, targetMaxWords: 690 },
       ['redacted credential-store names', 'risks and operational concerns'],
     ).join(' ');
-    expect(guidance).toContain('Rewrite it once to 710-725 actual whitespace-delimited words');
-    expect(guidance).toContain('Add at least 281 actual substantive words');
+    expect(guidance).toContain(
+      'Return the complete revised answer at 675-690 actual whitespace-delimited words',
+    );
+    expect(guidance).toContain('Add between 246 and 261 substantive words—no fewer and no more');
     expect(guidance).toContain('Use exactly seven headings');
     expect(guidance).toContain('no separate title or preamble');
     expect(guidance).toContain('6 risk sentences');
@@ -760,18 +762,49 @@ describe('startRuntimeListener agent routing', () => {
     expect(guidance).not.toContain('approximate 680-word allocation');
   });
 
-  it('does not add a long-answer drafting margin to narrow broad-root contracts', () => {
+  it('uses the exact measured correction interval for narrow broad-root contracts', () => {
     const guidance = buildBroadRootAuditCorrectionGuidance(
       { ok: false, code: 'word_limit_below_target', wordCount: 120 },
       { maxWords: 200, minimumWords: 180, targetMinWords: 180, targetMaxWords: 184 },
       ['folders and contents'],
     ).join(' ');
-    expect(guidance).toContain('Rewrite it once to 180-184 actual whitespace-delimited words');
-    expect(guidance).toContain('Add at least 60 actual substantive words');
-    expect(guidance).not.toContain('710-725');
+    expect(guidance).toContain(
+      'Return the complete revised answer at 180-184 actual whitespace-delimited words',
+    );
+    expect(guidance).toContain('Add between 60 and 64 substantive words—no fewer and no more');
   });
 
   it('rejects unlabeled inference and private configuration details from broad audits', () => {
+    expect(
+      explicitRootAuditQualityIssues(
+        [
+          'Observed top-level folders and contents.',
+          'Observed configurations and settings.',
+          'Verified repositories and Git worktrees.',
+          'Disk capacity and usage were not verified.',
+          'Running apps and OS process inventory are unavailable.',
+          '**Risks and operational concerns**',
+          '',
+          'Observed: several operational controls exist.',
+        ].join('\n\n'),
+      ),
+    ).toEqual([]);
+    expect(
+      explicitRootAuditQualityIssues(
+        [
+          'Observed top-level folders and contents.',
+          'Observed configurations and settings.',
+          'Verified repositories and Git worktrees.',
+          'Disk capacity and usage were not verified.',
+          'Running apps and OS process inventory are unavailable.',
+          '## Risks and operational concerns',
+          '',
+          'General discussion without grounding.',
+          '',
+          'Observed: an unrelated later paragraph.',
+        ].join('\n\n'),
+      ),
+    ).toContain('risks and operational concerns');
     expect(
       explicitRootAuditQualityIssues(
         [

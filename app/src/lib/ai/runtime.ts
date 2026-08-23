@@ -692,10 +692,15 @@ function isBroadExplicitRootAuditRequest(text: string): boolean {
 }
 
 export function missingExplicitRootAuditCategories(text: string): readonly string[] {
-  const segments = text
+  const blocks = text
     .split(/\r?\n\s*\r?\n/u)
     .map((segment) => segment.trim())
     .filter(Boolean);
+  const segments = blocks.flatMap((block, index) =>
+    /^(?:#{1,6}\s+|\*\*[^*\r\n]+\*\*\s*$)/u.test(block) && blocks[index + 1]
+      ? [block, `${block}\n${blocks[index + 1]}`]
+      : [block],
+  );
   return EXPLICIT_ROOT_AUDIT_CATEGORIES.filter(
     (category) =>
       !segments.some(
@@ -809,21 +814,14 @@ export function buildBroadRootAuditCorrectionGuidance(
   qualityIssues: readonly string[],
 ): readonly string[] {
   const wordCount = assessment?.wordCount ?? 0;
-  const useLongAuditMargin = contract.minimumWords >= 600 && contract.maxWords >= 700;
-  const draftingMinWords = useLongAuditMargin
-    ? Math.min(contract.maxWords - 40, contract.targetMinWords + 35)
-    : contract.targetMinWords;
-  const draftingMaxWords = useLongAuditMargin
-    ? Math.min(contract.maxWords - 25, contract.targetMaxWords + 35)
-    : contract.targetMaxWords;
   const lengthDirection =
-    wordCount < draftingMinWords
-      ? `Add at least ${draftingMinWords - wordCount} actual substantive words.`
-      : wordCount > draftingMaxWords
-        ? `Remove at least ${wordCount - draftingMaxWords} words.`
+    wordCount < contract.targetMinWords
+      ? `Add between ${contract.targetMinWords - wordCount} and ${contract.targetMaxWords - wordCount} substantive words—no fewer and no more.`
+      : wordCount > contract.targetMaxWords
+        ? `Remove between ${wordCount - contract.targetMaxWords} and ${wordCount - contract.targetMinWords} words—no fewer and no more.`
         : 'Preserve the valid length.';
   return Object.freeze([
-    `The previous draft measured ${wordCount} whitespace-delimited words. Rewrite it once to ${draftingMinWords}-${draftingMaxWords} actual whitespace-delimited words and never exceed ${contract.maxWords}. ${lengthDirection}`,
+    `The previous draft measured ${wordCount} whitespace-delimited words. Return the complete revised answer at ${contract.targetMinWords}-${contract.targetMaxWords} actual whitespace-delimited words and never exceed ${contract.maxWords}. ${lengthDirection}`,
     'Use exactly seven headings and no separate title or preamble: Overview; Folders and contents; Configurations; Repositories and Git worktrees; Disk capacity and usage; Running apps and OS processes; Risks and operational concerns.',
     'Write at least 2 substantive overview sentences, 8 folder sentences, 5 configuration sentences, 5 repository/worktree sentences, 3 disk sentences, 3 process sentences, and 6 risk sentences. Do not print planning counts or parenthetical word budgets.',
     `Fix exactly these requirements: ${qualityIssues.join('; ') || 'response length and grounded completeness'}.`,
