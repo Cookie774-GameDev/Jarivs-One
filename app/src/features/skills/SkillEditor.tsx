@@ -15,6 +15,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/toast';
+import { playUiSound } from '@/lib/sfx';
 import { EmojiMark } from '@/features/emoji/EmojiMark';
 import { EmojiPicker } from '@/features/emoji/EmojiPicker';
 import {
@@ -315,6 +316,7 @@ export function SkillEditor({ manifest, onSaved, onDeleted }: SkillEditorProps) 
         confirmLabel="Move to Recycle Bin"
         onConfirm={async () => {
           await recycleBinService.moveSkillToRecycleBin(id);
+          playUiSound('trash_delete');
           toast.success('Moved to Recycle Bin', `${manifest.title} can be restored for 90 days.`);
           onDeleted?.();
         }}

@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Check, AlertTriangle, Info, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appearance/themeMotion';
+import { playUiSound } from '@/lib/sfx';
 
 const LEGACY_TOAST_TRANSITION = Object.freeze({
   type: 'spring',
@@ -51,8 +52,11 @@ const useToastStore = create<ToastStore>((set) => ({
 }));
 
 function makeToast(variant: ToastVariant) {
-  return (title: string, description?: string, duration = 4000) =>
-    useToastStore.getState().push({ title, description, variant, duration });
+  return (title: string, description?: string, duration = 4000) => {
+    if (variant === 'destructive') playUiSound('system_critical');
+    else if (variant === 'warning') playUiSound('system_attention');
+    return useToastStore.getState().push({ title, description, variant, duration });
+  };
 }
 
 export const toast = {

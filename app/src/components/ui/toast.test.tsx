@@ -1,11 +1,16 @@
 import { act, cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const playUiSound = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/sfx', () => ({ playUiSound }));
+
 import { Toaster, toast } from './toast';
 
 describe('Toaster announcements', () => {
   afterEach(() => {
     act(() => toast.clear());
     cleanup();
+    playUiSound.mockReset();
   });
 
   it('announces a non-destructive notification as an atomic polite status', () => {
@@ -32,6 +37,7 @@ describe('Toaster announcements', () => {
     expect(announcement.getAttribute('aria-live')).toBe('assertive');
     expect(announcement.getAttribute('aria-atomic')).toBe('true');
     expect(announcement.textContent).toContain('Save failed');
+    expect(playUiSound).toHaveBeenCalledWith('system_critical');
   });
 
   it('retains the ordinary elevation while opting MonoChrome out of large shadows and motion', () => {

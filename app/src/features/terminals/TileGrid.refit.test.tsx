@@ -1,8 +1,11 @@
 import * as React from 'react';
-import { act, fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { requestTerminalLeafClose, TileGrid } from './TileGrid';
 import { fromLeaves, newLeaf, type PaneNode } from './paneTree';
+
+const playUiSound = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/sfx', () => ({ playUiSound }));
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
@@ -22,10 +25,21 @@ vi.mock('./ConnectedFilesButton', () => ({
 
 vi.mock('./PaneToolbar', () => ({
   nextFontSize: (current: number) => current + 1,
-  PaneToolbar: ({ onFullscreenToggle }: { onFullscreenToggle: () => void }) => (
-    <button type="button" onClick={onFullscreenToggle}>
-      fullscreen
-    </button>
+  PaneToolbar: ({
+    onFullscreenToggle,
+    onClose,
+  }: {
+    onFullscreenToggle: () => void;
+    onClose: () => void;
+  }) => (
+    <>
+      <button type="button" onClick={onFullscreenToggle}>
+        fullscreen
+      </button>
+      <button type="button" onClick={onClose}>
+        close terminal
+      </button>
+    </>
   ),
 }));
 
@@ -45,6 +59,7 @@ describe('TileGrid terminal refit scheduling', () => {
   let originalMatchMedia: typeof window.matchMedia;
 
   beforeEach(() => {
+    playUiSound.mockReset();
     rafQueue = [];
     originalRequestAnimationFrame = window.requestAnimationFrame;
     originalCancelAnimationFrame = window.cancelAnimationFrame;
@@ -124,6 +139,15 @@ describe('TileGrid terminal refit scheduling', () => {
 
     expect(pane?.className).toContain('shadow-soft');
     expect(pane?.className).toContain('[html[data-theme=monochrome]_&]:shadow-none');
+  });
+
+  it('plays the delete cue only after a terminal pane closes', async () => {
+    const onChange = vi.fn();
+    const { getByRole } = render(<TileGrid tree={newLeaf()} onChange={onChange} />);
+
+    fireEvent.click(getByRole('button', { name: 'close terminal' }));
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    expect(playUiSound).toHaveBeenCalledWith('trash_delete');
   });
 
   it('uses immediate focus scrolling and non-animated focus chrome for reduced motion', () => {

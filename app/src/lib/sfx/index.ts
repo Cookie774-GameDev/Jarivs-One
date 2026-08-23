@@ -13,3 +13,4 @@ export {
   resetUiSoundPlaybackState,
   shouldPlayComposerKey,
 } from './playUiSound';
+export { GlobalUiSoundHost, resolveGlobalSoundTarget } from './GlobalUiSoundHost';

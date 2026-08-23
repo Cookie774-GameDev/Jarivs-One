@@ -43,6 +43,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/components/ui/toast';
+import { playUiSound } from '@/lib/sfx';
 import { cn } from '@/lib/utils';
 import { newAgentId } from '@/lib/ids';
 import { agentRepo } from '@/lib/db';
@@ -1817,6 +1818,7 @@ export function AgentManager() {
           if (!deleteCandidate) return;
           const name = deleteCandidate.name;
           await recycleBinService.moveAgentToRecycleBin(deleteCandidate);
+          playUiSound('trash_delete');
           toast.info('Moved to Recycle Bin', `"${name}" can be restored for 90 days.`);
         }}
       />

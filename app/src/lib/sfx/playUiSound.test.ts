@@ -20,9 +20,9 @@ describe('VibeSpace SFX', () => {
     resetUiSoundPlaybackState();
   });
 
-  it('maps every registry id to a public wav path', () => {
+  it('maps every registry id to a public audio path', () => {
     for (const [id, spec] of Object.entries(VIBESPACE_SOUNDS)) {
-      expect(spec.src).toMatch(new RegExp(`^/audio/ui/.+\\.wav$`));
+      expect(spec.src).toMatch(new RegExp(`^/audio/ui/.+\\.(wav|mp3)$`));
       expect(spec.volume).toBeGreaterThan(0);
       expect(id.length).toBeGreaterThan(0);
     }

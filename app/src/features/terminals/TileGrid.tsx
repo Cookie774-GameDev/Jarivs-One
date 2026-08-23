@@ -75,7 +75,9 @@ import {
   terminalCancellationDisposition,
   useTerminalExecutionStore,
 } from './terminalExecutionStore';
+import { TerminalCompletionIndicator } from './TerminalCompletionIndicator';
 import { cn } from '@/lib/utils';
+import { playUiSound } from '@/lib/sfx';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 
@@ -320,6 +322,7 @@ export function TileGrid({
       const status = executionId ? terminalExecutions[executionId]?.status : undefined;
       if (!status || !['complete', 'failed', 'cancelled'].includes(status)) continue;
       pendingCanonicalClosePaneIds.current.delete(paneId);
+      playUiSound('trash_delete');
       onChange((currentTree) => closePane(currentTree, paneId));
     }
   }, [allLeaves, onChange, terminalExecutions]);
@@ -528,6 +531,7 @@ export function TileGrid({
       .then((outcome) => {
         if (outcome === 'manual_closed' || outcome === 'canonical_terminal') {
           pendingCanonicalClosePaneIds.current.delete(paneId);
+          playUiSound('trash_delete');
           onChange((currentTree) => closePane(currentTree, paneId));
           return;
         }
@@ -1274,6 +1278,7 @@ function Tile({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
+          <TerminalCompletionIndicator executionId={leaf.executionId} />
           <ConnectedFilesButton
             files={leaf.connectedFiles ?? []}
             onChange={onConnectedFilesChange}

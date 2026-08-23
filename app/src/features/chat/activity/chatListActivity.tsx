@@ -194,13 +194,21 @@ export function ChatListActivityIndicator({
             data-state={resolved.state}
             style={style}
           >
-            {Array.from({ length: 16 }, (_, index) => (
+            {resolved.state === 'complete' ? (
               <i
-                key={index}
-                data-chat-activity-cell
-                style={{ '--chat-activity-index': index } as React.CSSProperties}
+                aria-hidden="true"
+                className="chat-activity-completion-dot"
+                data-chat-activity-completion-dot
               />
-            ))}
+            ) : (
+              Array.from({ length: 16 }, (_, index) => (
+                <i
+                  key={index}
+                  data-chat-activity-cell
+                  style={{ '--chat-activity-index': index } as React.CSSProperties}
+                />
+              ))
+            )}
           </span>
         )}
       </span>

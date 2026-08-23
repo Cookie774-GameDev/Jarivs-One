@@ -12,6 +12,9 @@ import { AgentManager } from './AgentManager';
 const recycleBinMocks = vi.hoisted(() => ({
   moveAgentToRecycleBin: vi.fn(),
 }));
+const playUiSound = vi.hoisted(() => vi.fn());
+
+vi.mock('@/lib/sfx', () => ({ playUiSound }));
 
 vi.mock('@/features/recycle-bin/recycleBinService', () => ({
   recycleBinService: recycleBinMocks,
@@ -221,6 +224,7 @@ describe('AgentManager save lifecycle', () => {
     await waitFor(() =>
       expect(recycleBinMocks.moveAgentToRecycleBin).toHaveBeenCalledWith(baseAgent),
     );
+    expect(playUiSound).toHaveBeenCalledWith('trash_delete');
   });
 
   it('limits persona options to jarvis and friday and offers recommended max tokens', async () => {

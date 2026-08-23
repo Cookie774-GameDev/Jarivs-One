@@ -15,6 +15,7 @@ import { TabStrip } from './TabStrip';
 import { CouncilActivityStrip } from './ActivityStrip';
 import { isWorkbenchDetachedSearch } from '@/features/workbench/window';
 import { NightlySecondBrainHost } from '@/features/context/NightlySecondBrainHost';
+import { GlobalUiSoundHost } from '@/lib/sfx';
 import './sakura-shell.css';
 
 interface AppShellProps {
@@ -81,6 +82,7 @@ export function AppShell({ children }: AppShellProps) {
             data-workbench-fullscreen="true"
             data-workbench-detached={workbenchDetached ? 'true' : 'false'}
           >
+            <GlobalUiSoundHost />
             {isTauri && !workbenchDetached && <BrowserChatSurfaceGuard />}
             <NightlySecondBrainHost />
             {sakuraActive && <SakuraBackdrop route={route} />}
@@ -122,6 +124,7 @@ export function AppShell({ children }: AppShellProps) {
           data-focus-mode={focusActive ? 'true' : undefined}
           data-focus-mode-route={focusActive ? route : undefined}
         >
+          <GlobalUiSoundHost />
           {isTauri && route === 'chat' && <BrowserChatBindingHost />}
           {isTauri && <BrowserChatSurfaceGuard />}
           <NightlySecondBrainHost />

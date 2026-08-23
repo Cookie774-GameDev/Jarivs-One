@@ -1,0 +1,50 @@
+.terminal-completion-indicator {
+  --terminal-completion-blue: hsl(var(--accent-cyan));
+  --terminal-completion-glow: hsl(var(--accent-cyan) / 0.42);
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+}
+
+.terminal-completion-indicator [data-terminal-completion-dot] {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--terminal-completion-blue);
+  box-shadow: 0 0 0 0 var(--terminal-completion-glow);
+  animation: terminal-completion-pulse 2.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+@keyframes terminal-completion-pulse {
+  0%,
+  56%,
+  100% {
+    opacity: 0.3;
+    box-shadow: 0 0 0 0 var(--terminal-completion-glow);
+    transform: scale(0.76);
+  }
+  15% {
+    opacity: 1;
+    box-shadow: 0 0 0 5px var(--terminal-completion-glow);
+    transform: scale(1.12);
+  }
+  30% {
+    opacity: 0.64;
+    box-shadow: 0 0 0 2px var(--terminal-completion-glow);
+    transform: scale(0.92);
+  }
+}
+
+html[data-app-visibility='hidden'] .terminal-completion-indicator [data-terminal-completion-dot] {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-completion-indicator [data-terminal-completion-dot] {
+    animation: none;
+    opacity: 1;
+  }
+}

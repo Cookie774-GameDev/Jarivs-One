@@ -122,4 +122,16 @@ describe('ChatListActivityIndicator', () => {
     expect(slot.querySelectorAll('[data-chat-activity-cell]')).toHaveLength(16);
     expect(slot.querySelector('video')).toBeNull();
   });
+
+  it('replaces a finished response matrix with one completion dot in the same slot', () => {
+    const completed = render(
+      <ChatListActivityIndicator runs={[run('completed')]} events={[]} now={() => NOW} />,
+    );
+    const slot = completed.getByTestId('chat-activity-slot');
+    const indicator = slot.querySelector('[data-chat-activity-indicator]');
+
+    expect(indicator?.getAttribute('data-state')).toBe('complete');
+    expect(slot.querySelector('[data-chat-activity-completion-dot]')).not.toBeNull();
+    expect(slot.querySelectorAll('[data-chat-activity-cell]')).toHaveLength(0);
+  });
 });

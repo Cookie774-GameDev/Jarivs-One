@@ -6,6 +6,9 @@ import { SkillEditor } from './SkillEditor';
 const recycleBinMocks = vi.hoisted(() => ({
   moveSkillToRecycleBin: vi.fn(),
 }));
+const playUiSound = vi.hoisted(() => vi.fn());
+
+vi.mock('@/lib/sfx', () => ({ playUiSound }));
 
 vi.mock('@/features/recycle-bin/recycleBinService', () => ({
   recycleBinService: recycleBinMocks,
@@ -43,6 +46,7 @@ describe('SkillEditor Recycle Bin deletion', () => {
     await waitFor(() =>
       expect(recycleBinMocks.moveSkillToRecycleBin).toHaveBeenCalledWith('custom_skill'),
     );
+    expect(playUiSound).toHaveBeenCalledWith('trash_delete');
     expect(onDeleted).toHaveBeenCalledOnce();
   });
 

@@ -32,8 +32,8 @@
   border-radius: 1px;
   background: currentColor;
   opacity: 0.14;
-  animation: chat-activity-matrix var(--chat-activity-cycle, 1100ms)
-    cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  animation: chat-activity-matrix var(--chat-activity-cycle, 1100ms) cubic-bezier(0.65, 0, 0.35, 1)
+    infinite;
   animation-delay: calc(var(--chat-activity-index) * -0.035s);
 }
 
@@ -51,6 +51,15 @@
 
 .chat-activity-indicator[data-state='complete'] {
   opacity: 0.72;
+}
+
+.chat-activity-completion-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 0 var(--chat-activity-glow);
+  animation: chat-activity-completion-dot 2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
 .chat-activity-indicator[data-state='error'] {
@@ -102,12 +111,34 @@ html[data-theme='origami'] .chat-activity-slot {
   }
 }
 
-html[data-app-visibility='hidden'] .chat-activity-indicator i {
+@keyframes chat-activity-completion-dot {
+  0%,
+  56%,
+  100% {
+    opacity: 0.28;
+    box-shadow: 0 0 0 0 var(--chat-activity-glow);
+    transform: scale(0.76);
+  }
+  15% {
+    opacity: 1;
+    box-shadow: 0 0 0 5px var(--chat-activity-glow);
+    transform: scale(1.12);
+  }
+  30% {
+    opacity: 0.62;
+    box-shadow: 0 0 0 2px var(--chat-activity-glow);
+    transform: scale(0.92);
+  }
+}
+
+html[data-app-visibility='hidden'] .chat-activity-indicator i,
+html[data-app-visibility='hidden'] .chat-activity-completion-dot {
   animation-play-state: paused;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-activity-indicator i {
+  .chat-activity-indicator i,
+  .chat-activity-completion-dot {
     animation: none !important;
   }
 }
