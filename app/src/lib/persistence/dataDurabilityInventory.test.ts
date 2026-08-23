@@ -20,7 +20,9 @@ describe('data durability inventory', () => {
       expect(record.normalUpdatePreserved).toBe(true);
       expect(record.resetVulnerable).toBe(true);
       expect(record.backupCoverage).toMatch(/^doctor-origin-/);
-      expect(record.portableRestoreAvailable).toBe(false);
+      expect(record.portableRestoreAvailable).toBe(
+        record.backupCoverage === 'doctor-origin-and-workspace-export',
+      );
     }
   });
 
@@ -75,8 +77,27 @@ describe('data durability inventory', () => {
     expect(protectedFamilies.every((record) => !record.portableRestoreAvailable)).toBe(true);
   });
 
-  it('truthfully identifies the current portable restore gap', () => {
-    expect(DATA_DURABILITY_INVENTORY.some((record) => record.portableRestoreAvailable)).toBe(false);
+  it('limits portable restore to the typed workspace and canvas collections', () => {
+    expect(
+      DATA_DURABILITY_INVENTORY.filter((record) => record.portableRestoreAvailable).map(
+        (record) => record.id,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        'indexeddb:workspaces',
+        'indexeddb:projects',
+        'indexeddb:chats',
+        'indexeddb:messages',
+        'indexeddb:canvas_documents',
+        'indexeddb:canvas_pages',
+        'indexeddb:canvas_objects',
+        'indexeddb:canvas_spatial',
+        'indexeddb:canvas_cameras',
+      ]),
+    );
+    expect(
+      DATA_DURABILITY_INVENTORY.filter((record) => record.portableRestoreAvailable),
+    ).toHaveLength(9);
     expect(INDEXED_DB_DURABILITY_INVENTORY.canvas_documents.backupCoverage).toBe(
       'doctor-origin-and-workspace-export',
     );

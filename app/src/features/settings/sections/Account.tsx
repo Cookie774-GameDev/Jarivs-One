@@ -11,6 +11,8 @@ import {
   ImageIcon,
   CloudDownload,
   ShieldCheck,
+  Download,
+  Upload,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { getPlan } from '@/lib/entitlements';
@@ -28,6 +30,15 @@ import { Separator } from '@/components/ui/separator';
 import { Avatar } from '@/components/ui/avatar';
 import { toast } from '@/components/ui/toast';
 import { SignInDialog } from '@/features/auth/SignInDialog';
+import { backupCurrentAccountWorkspace } from '@/features/access/workspaceBackup';
+import {
+  previewWorkspaceRestore,
+  readPortableBackupHistory,
+  recordPortableBackupHistory,
+  restoreWorkspaceBackup,
+  type PortableBackupHistory,
+  type WorkspaceRestorePreview,
+} from '@/features/access/workspaceRestore';
 
 const MAX_DISPLAY_NAME = 80;
 
@@ -128,11 +139,20 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
   >('idle');
   const [recoveryConfirmed, setRecoveryConfirmed] = useState(false);
   const [recoveryMessage, setRecoveryMessage] = useState('');
+  const [portablePreview, setPortablePreview] = useState<WorkspaceRestorePreview | null>(null);
+  const [portableState, setPortableState] = useState<
+    'idle' | 'exporting' | 'previewing' | 'ready' | 'restoring' | 'restored' | 'error'
+  >('idle');
+  const [portableConfirmed, setPortableConfirmed] = useState(false);
+  const [portableMessage, setPortableMessage] = useState('');
+  const [portableHistory, setPortableHistory] = useState<PortableBackupHistory>({});
+  const portableFileInput = useRef<HTMLInputElement | null>(null);
   const signOutOperation = useRef<symbol | null>(null);
   const mounted = useRef(true);
 
   const cloudEmail = cloudSession?.email;
   const cloudUserId = cloudSession?.user_id?.trim() || null;
+  const portableAccountId = cloudUserId || localUserId || null;
 
   useEffect(
     () => () => {
@@ -156,7 +176,12 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
     setRecoveryState('idle');
     setRecoveryConfirmed(false);
     setRecoveryMessage('');
-  }, [cloudUserId]);
+    setPortablePreview(null);
+    setPortableState('idle');
+    setPortableConfirmed(false);
+    setPortableMessage('');
+    setPortableHistory(portableAccountId ? readPortableBackupHistory(portableAccountId) : {});
+  }, [cloudUserId, portableAccountId]);
 
   // Hydrate display name from Supabase when signed in.
   useEffect(() => {
@@ -338,6 +363,85 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
       const message = error instanceof Error ? error.message : 'Cloud recovery could not finish.';
       setRecoveryMessage(message);
       toast.error('Cloud recovery failed', message);
+    }
+  }
+
+  function recordPortableFailure(error: unknown) {
+    const message = error instanceof Error ? error.message : 'Portable backup operation failed.';
+    setPortableState('error');
+    setPortableMessage(message);
+    if (portableAccountId) {
+      try {
+        setPortableHistory(recordPortableBackupHistory(portableAccountId, { error: message }));
+      } catch {
+        /* history is best-effort and never hides the primary error */
+      }
+    }
+    toast.error('Portable backup failed', message);
+  }
+
+  function recordPortableSuccess(accountId: string, action: 'export' | 'restore') {
+    try {
+      setPortableHistory(recordPortableBackupHistory(accountId, action));
+    } catch {
+      // The artifact/restore already succeeded. History failure must not turn a
+      // completed data operation into a false failure report.
+    }
+  }
+
+  async function exportPortableBackup() {
+    if (!portableAccountId || portableState === 'exporting' || portableState === 'restoring')
+      return;
+    setPortableState('exporting');
+    setPortableMessage('Flushing pending changes and creating your backup…');
+    try {
+      const result = await backupCurrentAccountWorkspace();
+      recordPortableSuccess(portableAccountId, 'export');
+      setPortableState('idle');
+      setPortableMessage(
+        `Saved ${result.counts.workspaces} workspace${result.counts.workspaces === 1 ? '' : 's'}, ${result.counts.chats} chat${result.counts.chats === 1 ? '' : 's'}, and ${result.counts.canvasDocuments} canvas${result.counts.canvasDocuments === 1 ? '' : 'es'}.`,
+      );
+      toast.success('Portable backup created', result.filename);
+    } catch (error) {
+      recordPortableFailure(error);
+    }
+  }
+
+  async function previewPortableRestore(file: File) {
+    if (!portableAccountId || portableState === 'exporting' || portableState === 'restoring')
+      return;
+    setPortableState('previewing');
+    setPortablePreview(null);
+    setPortableConfirmed(false);
+    setPortableMessage('Checking backup ownership and contents…');
+    try {
+      const preview = await previewWorkspaceRestore(await file.text());
+      setPortablePreview(preview);
+      setPortableState('ready');
+      setPortableMessage(
+        `${preview.restorable} missing local record${preview.restorable === 1 ? '' : 's'} can be restored. ${preview.preservedLocal} existing local record${preview.preservedLocal === 1 ? '' : 's'} will be preserved.`,
+      );
+    } catch (error) {
+      recordPortableFailure(error);
+    } finally {
+      if (portableFileInput.current) portableFileInput.current.value = '';
+    }
+  }
+
+  async function applyPortableRestore() {
+    if (!portablePreview || !portableConfirmed || portableState !== 'ready') return;
+    setPortableState('restoring');
+    setPortableMessage('Restoring missing records…');
+    try {
+      const result = await restoreWorkspaceBackup(portablePreview);
+      recordPortableSuccess(portablePreview.accountId, 'restore');
+      setPortableState('restored');
+      setPortableMessage(
+        `${result.restored} record${result.restored === 1 ? '' : 's'} restored. ${result.preservedLocal} existing local record${result.preservedLocal === 1 ? '' : 's'} preserved.`,
+      );
+      toast.success('Portable restore complete', 'Existing local records were not replaced.');
+    } catch (error) {
+      recordPortableFailure(error);
     }
   }
 
@@ -612,6 +716,157 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
             ) : null}
           </div>
         ) : null}
+      </section>
+
+      <Separator />
+
+      <section className="flex flex-col gap-3" data-testid="account-portable-backup">
+        <div className="flex items-start justify-between max-w-xl gap-3">
+          <div>
+            <Label className="inline-flex items-center gap-2">
+              <Download className="h-4 w-4 text-accent-copper" />
+              Portable local backup
+            </Label>
+            <p className="mt-1 text-metadata text-muted-foreground">
+              Export your workspaces, chats, messages, and Canvas data, or preview a backup before
+              restoring its missing records.
+            </p>
+          </div>
+          <Badge variant={portableAccountId ? 'success' : 'outline'}>
+            {portableAccountId ? 'Local & private' : 'Account required'}
+          </Badge>
+        </div>
+
+        <div className="max-w-xl rounded-lg border border-border/70 bg-muted/30 p-3">
+          <p className="inline-flex items-start gap-2 text-metadata text-muted-foreground">
+            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+            Restore is additive only: it never deletes or overwrites local records. Credentials,
+            provider state, terminal transcripts, local file bytes, and private file paths are not
+            included.
+          </p>
+        </div>
+
+        <input
+          ref={portableFileInput}
+          type="file"
+          accept="application/json,.json"
+          className="sr-only"
+          aria-label="Choose VibeSpace backup file"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void previewPortableRestore(file);
+          }}
+          data-testid="portable-backup-file"
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={
+              !portableAccountId || portableState === 'exporting' || portableState === 'restoring'
+            }
+            onClick={() => void exportPortableBackup()}
+            aria-busy={portableState === 'exporting'}
+            data-testid="portable-backup-export"
+          >
+            {portableState === 'exporting' ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            {portableState === 'exporting' ? 'Creating…' : 'Export backup'}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={
+              !portableAccountId || portableState === 'exporting' || portableState === 'restoring'
+            }
+            onClick={() => portableFileInput.current?.click()}
+            data-testid="portable-backup-choose"
+          >
+            <Upload className="mr-1.5 h-3.5 w-3.5" />
+            Preview restore
+          </Button>
+          <span
+            className="text-metadata text-muted-foreground"
+            role="status"
+            aria-live="polite"
+            data-testid="portable-backup-status"
+          >
+            {portableMessage || 'Nothing changes until you preview and confirm.'}
+          </span>
+        </div>
+
+        {portablePreview && portableState !== 'restored' ? (
+          <div
+            className="max-w-xl rounded-lg border border-border bg-panel/50 p-3"
+            data-testid="portable-backup-preview"
+          >
+            <div className="grid grid-cols-2 gap-2 text-metadata sm:grid-cols-4">
+              <span>
+                <strong className="block text-foreground">{portablePreview.restorable}</strong>
+                Missing locally
+              </span>
+              <span>
+                <strong className="block text-foreground">{portablePreview.preservedLocal}</strong>
+                Local preserved
+              </span>
+              <span>
+                <strong className="block text-foreground">{portablePreview.counts.chats}</strong>
+                Chats in file
+              </span>
+              <span>
+                <strong className="block text-foreground">
+                  {portablePreview.counts.canvasDocuments}
+                </strong>
+                Canvases in file
+              </span>
+            </div>
+            {portablePreview.restorable > 0 ? (
+              <>
+                <label className="mt-3 flex items-start gap-2 text-metadata text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={portableConfirmed}
+                    onChange={(event) => setPortableConfirmed(event.target.checked)}
+                    data-testid="portable-backup-confirm"
+                  />
+                  Restore only records that are missing on this device. Keep every existing local
+                  record unchanged.
+                </label>
+                <Button
+                  type="button"
+                  variant="accent"
+                  size="sm"
+                  className="mt-3"
+                  disabled={!portableConfirmed || portableState !== 'ready'}
+                  onClick={() => void applyPortableRestore()}
+                  data-testid="portable-backup-apply"
+                >
+                  Restore missing records
+                </Button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+
+        <p className="text-metadata text-muted-foreground" data-testid="portable-backup-history">
+          Last export:{' '}
+          {portableHistory.lastExportAt
+            ? new Date(portableHistory.lastExportAt).toLocaleString()
+            : 'Never'}
+          {' · '}Last restore:{' '}
+          {portableHistory.lastRestoreAt
+            ? new Date(portableHistory.lastRestoreAt).toLocaleString()
+            : 'Never'}
+          {portableHistory.lastErrorAt && portableHistory.lastError
+            ? ` · Last error: ${portableHistory.lastError}`
+            : ''}
+        </p>
       </section>
     </>
   );

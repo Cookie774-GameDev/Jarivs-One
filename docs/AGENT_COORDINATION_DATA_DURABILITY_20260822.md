@@ -44,3 +44,19 @@
 - Fresh verification: inventory + V1→V12 migration + cloud-recovery matrix PASS, 3 files / 26 tests; exact Prettier and diff checks PASS; staged Gitleaks scanned 15.56 KB with zero leaks.
 - Full TypeScript reports only the same four separately owned SiYuan diagnostics at `siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`; this slice introduced no diagnostics.
 - Exact source/test/queue scope is released. The inventory now exposes portable restore as the next unclosed durability gap.
+
+## 2026-08-22 — portable workspace restore lane claimed
+
+- Agent: `VS-CODEX-PORTABLE-RESTORE-20260822`
+- Branch/base: `integration/UnifiedChungus-final` at `35c8a14a`.
+- Exact scope: new workspace-restore domain/test; Account portable backup/restore surface and focused test; durability inventory/test; this ledger; `qeue.md`; agent-scoped lock.
+- Intent: close the existing one-way workspace/canvas export gap with strict version/account validation, preview-first additive restore, explicit confirmation, and local last-success/error history.
+- Safety boundary: restore never deletes or overwrites local rows, never imports provider connection state or credentials, and never touches terminal transcripts or project-file bytes. Existing backup export, schema, sync, production services, and other agents' files remain unchanged.
+
+## 2026-08-22 — portable workspace restore implementation checkpoint
+
+- Added strict parsing for the existing versioned workspace artifact: 32 MiB/100,000-row limits, exact format/version/account ownership, unique keys, complete parent-child relationships, and Canvas account checks run before any write.
+- Restore is transactionally additive. Preview reports missing versus preserved local rows; Apply rechecks the active identity and every key inside one transaction, inserts missing rows in dependency order, preserves every existing row, and rolls back on account changes or malformed writes.
+- Account now exposes Export backup and Preview restore without requiring a cloud plan, requires explicit confirmation before Apply, and shows account-scoped last export/restore/error history. No production service or user data was exercised.
+- Initial focused verification: workspace restore + Account portable/cloud/profile matrix PASS, 4 files / 20 tests.
+- Expanded verification: backup/export + restore + Account + inventory + migration + cloud-recovery matrix PASS, 8 files / 54 tests; direct Vite production bundle PASS in 58.15 seconds with existing bundler warnings only. Full TypeScript reports only the four separately owned SiYuan diagnostics and no diagnostic in this scope.

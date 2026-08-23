@@ -168,7 +168,7 @@ function indexedDbPolicy(store: StoreName): IndexedDbPolicy {
       ? 'doctor-origin-and-workspace-export'
       : 'doctor-origin-snapshot-only',
     cloud,
-    portableRestoreAvailable: false,
+    portableRestoreAvailable: WORKSPACE_EXPORT_STORES.has(store),
     notes:
       cloud === 'core-sync-and-explicit-recovery'
         ? 'Account-scoped RLS sync plus explicit, non-destructive cloud recovery.'
