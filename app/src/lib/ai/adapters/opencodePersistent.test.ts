@@ -4,6 +4,7 @@ import {
   assertAuthoritativeOpenCodeIdentity,
   assertAuthoritativeOpenCodeRuntimeControls,
   canonicalOpenCodeTextSuffix,
+  classifyExplicitRootInventoryScope,
   combineSystemPrompt,
   contextSystemAddendum,
   createGenerationSafeAsyncCache,
@@ -49,6 +50,43 @@ const liveModels = parseOpenCodeLiveModels({
 });
 
 describe('persistent OpenCode live authority', () => {
+  it('classifies only a completed exact-root read as sanitized inventory evidence', () => {
+    const request = {
+      explicitReadRoot: true,
+      workingDirectory: 'C:\\Users\\viper',
+    } as const;
+    expect(
+      classifyExplicitRootInventoryScope(
+        { name: 'read', status: 'completed', input: { filePath: 'c:/Users/VIPER/' } },
+        request,
+      ),
+    ).toBe('explicit_root_inventory');
+    expect(
+      classifyExplicitRootInventoryScope(
+        { name: 'read', status: 'completed', input: { filePath: 'C:\\Users\\viper\\child' } },
+        request,
+      ),
+    ).toBeUndefined();
+    expect(
+      classifyExplicitRootInventoryScope(
+        { name: 'read', status: 'completed', input: { filePath: 'C:\\Users\\viper\\file.md' } },
+        request,
+      ),
+    ).toBeUndefined();
+    expect(
+      classifyExplicitRootInventoryScope(
+        { name: 'read', status: 'started', input: { filePath: 'C:\\Users\\viper' } },
+        request,
+      ),
+    ).toBeUndefined();
+    expect(
+      classifyExplicitRootInventoryScope(
+        { name: 'read', status: 'completed', input: { filePath: 'C:\\Users\\viper' } },
+        { ...request, explicitReadRoot: false },
+      ),
+    ).toBeUndefined();
+  });
+
   it('emits only provider-safe tool names while keeping Context enabled', () => {
     const tools = toolsForPolicy({
       mode: 'agent',

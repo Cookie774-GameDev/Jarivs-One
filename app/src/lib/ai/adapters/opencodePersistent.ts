@@ -57,6 +57,7 @@ import type { AccessLevel, InteractionMode } from '@/lib/permissions/OpenCodePer
 import { decideContextRoute } from '@/features/context/rlm/routeDecision';
 import { harnessRuntimeManager, type HarnessRuntimeManager } from '@/lib/harness/runtimeManager';
 import { nativeOpenCodeEvents, nativeOpenCodeRequest } from '@/lib/harness/openCodeNativeTransport';
+import { normalizePortableAbsolutePath } from '@/lib/actions/filePolicy';
 
 const SESSION_REGISTRY_KEY = 'vibespace.opencode-session-registry.v1';
 const AUTH_CACHE_TTL_MS = 60_000;
@@ -664,7 +665,33 @@ function eventSessionId(event: OpenCodeRawEvent): string | undefined {
   );
 }
 
-function normalizeToolEvent(event: OpenCodeRawEvent): ProviderEvent | undefined {
+export function classifyExplicitRootInventoryScope(
+  tool: Readonly<{
+    name: string;
+    status: 'started' | 'completed' | 'failed';
+    input?: unknown;
+  }>,
+  request: Pick<ProviderRequest, 'explicitReadRoot' | 'workingDirectory'>,
+): Extract<ProviderEvent, { type: 'tool' }>['scope'] | undefined {
+  if (tool.name !== 'read' || tool.status !== 'completed' || request.explicitReadRoot !== true) {
+    return undefined;
+  }
+  const root = normalizePortableAbsolutePath(request.workingDirectory?.trim() ?? '');
+  const input = recordOf(tool.input);
+  const rawTarget = cleanIdentifier(input?.filePath ?? input?.path, 4_096);
+  const target = rawTarget ? normalizePortableAbsolutePath(rawTarget) : null;
+  if (!root || !target) return undefined;
+  const windowsPath = /^(?:[A-Za-z]:\\|\\\\)/u.test(root);
+  const matches = windowsPath
+    ? root.toLocaleLowerCase('en-US') === target.toLocaleLowerCase('en-US')
+    : root === target;
+  return matches ? 'explicit_root_inventory' : undefined;
+}
+
+function normalizeToolEvent(
+  event: OpenCodeRawEvent,
+  request: Pick<ProviderRequest, 'explicitReadRoot' | 'workingDirectory'>,
+): ProviderEvent | undefined {
   if (event.type !== 'message.part.updated') return undefined;
   const part = recordOf(event.properties?.part);
   if (!part) return undefined;
@@ -680,6 +707,7 @@ function normalizeToolEvent(event: OpenCodeRawEvent): ProviderEvent | undefined 
         : 'started';
   const name = cleanIdentifier(part.tool ?? part.name, 256);
   if (!name) return undefined;
+  const scope = classifyExplicitRootInventoryScope({ name, status, input: state?.input }, request);
   return {
     type: 'tool',
     name,
@@ -688,6 +716,7 @@ function normalizeToolEvent(event: OpenCodeRawEvent): ProviderEvent | undefined 
       ? { callId: cleanIdentifier(part.callID ?? part.callId ?? part.id) }
       : {}),
     ...(status === 'completed' && state && 'output' in state ? { result: state.output } : {}),
+    ...(scope ? { scope } : {}),
   };
 }
 
@@ -1410,7 +1439,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
           yield { type: 'reasoning', delta: emission.text };
         }
       }
-      const tool = normalizeToolEvent(event);
+      const tool = normalizeToolEvent(event, request);
       if (tool) {
         if (tool.type === 'tool' && tool.status === 'started') {
           request.onActionDispatch?.({ observedAt: Date.now() });

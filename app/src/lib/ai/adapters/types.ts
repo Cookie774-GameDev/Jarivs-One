@@ -66,6 +66,8 @@ export type ProviderEvent =
       status: 'started' | 'completed' | 'failed';
       callId?: string;
       result?: unknown;
+      /** Sanitized request-local scope classification; never carries a path or reusable authority. */
+      scope?: 'explicit_root_inventory';
     }
   | { type: 'model'; modelId: string }
   | { type: 'usage'; usage: UsageSnapshot }

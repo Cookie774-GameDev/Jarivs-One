@@ -508,7 +508,13 @@ async function executePersistentOpenCode(
             READ_ONLY_FILESYSTEM_TOOL_NAMES.has(event.name)
           ) {
             completedReadOnlyFilesystem = true;
-            if (event.name === 'list' || event.name === 'glob') rootInventoryObserved = true;
+            if (
+              event.name === 'list' ||
+              event.name === 'glob' ||
+              (event.name === 'read' && event.scope === 'explicit_root_inventory')
+            ) {
+              rootInventoryObserved = true;
+            }
             if (event.name === 'glob' || event.name === 'grep') boundedSearchObserved = true;
             if (event.name === 'read' && event.callId) representativeReads.add(event.callId);
           }

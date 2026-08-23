@@ -291,6 +291,47 @@ describe('canonical OpenCode AI routing', () => {
     });
   });
 
+  it('accepts only the adapter-sanitized exact-root read classification as inventory', async () => {
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield {
+          type: 'tool',
+          name: 'read',
+          status: 'completed',
+          callId: 'read-root',
+          scope: 'explicit_root_inventory',
+        } as const;
+        yield { type: 'tool', name: 'grep', status: 'completed', callId: 'grep-1' } as const;
+        yield { type: 'tool', name: 'read', status: 'completed', callId: 'read-child-1' } as const;
+        yield { type: 'tool', name: 'read', status: 'completed', callId: 'read-child-2' } as const;
+        yield { type: 'done', finishReason: 'stop' } as const;
+      })(),
+    );
+    const classified = await runAgent({
+      agent: openaiAgent,
+      messages: [{ role: 'user', content: 'inventory the approved root' }],
+      explicitReadRoot: true,
+    });
+    expect(classified.tool_evidence).toMatchObject({
+      rootInventoryObserved: true,
+      boundedSearchObserved: true,
+      representativeReadCount: 3,
+    });
+
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield { type: 'tool', name: 'read', status: 'completed', callId: 'read-child' } as const;
+        yield { type: 'done', finishReason: 'stop' } as const;
+      })(),
+    );
+    const unclassified = await runAgent({
+      agent: openaiAgent,
+      messages: [{ role: 'user', content: 'inspect a child file' }],
+      explicitReadRoot: true,
+    });
+    expect(unclassified.tool_evidence).toMatchObject({ rootInventoryObserved: false });
+  });
+
   it('applies explicit reasoning effort to canonical runtime controls', async () => {
     await runAgent({
       agent: openaiAgent,
