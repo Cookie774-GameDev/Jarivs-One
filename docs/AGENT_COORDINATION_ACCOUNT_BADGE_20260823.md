@@ -10,3 +10,8 @@
 - TDD reproduced the wrap: 1 focused failure because the badge lacked `whitespace-nowrap`; implementation adds only `shrink-0 whitespace-nowrap` to that status badge.
 - Focused portable-backup suite passes 5/5 after the correction.
 - Playwright Local on the live Account page measured the badge as `white-space: nowrap`, `flex-shrink: 0`, 109 × 27 px with the exact `Local & private` text.
+
+## Release checkpoint
+
+- Product commit: `b90fb630` (`fix(account): stabilize local backup badge`).
+- Exact scope released at `2026-08-23T15:06:00-05:00`.

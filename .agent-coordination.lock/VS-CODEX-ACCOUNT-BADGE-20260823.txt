@@ -1,7 +1,7 @@
 agent_id: VS-CODEX-ACCOUNT-BADGE-20260823
 task_id: PR31-ACCOUNT-LOCAL-PRIVATE-BADGE
 controller: /root
-status: active
+status: released
 worktree: C:\Users\viper\VibeSpace-UnifiedChungus-Final
 branch: integration/UnifiedChungus-final
 base_head: 6c67256c
@@ -10,3 +10,6 @@ claimed_at: 2026-08-23T15:05:00-05:00
 exclusive_scope: app/src/features/settings/sections/Account.tsx; app/src/features/settings/sections/Account.portableBackup.test.tsx; docs/AGENT_COORDINATION_ACCOUNT_BADGE_20260823.md; this lock file.
 excluded_scope: account data, authentication, backup/restore behavior, cloud services, billing, calls, security contracts, every unrelated dirty file and active scope.
 intent: Prevent the Account portable-backup Local & private status badge from wrapping into a vertical or detached shape without changing its meaning or behavior.
+released_at: 2026-08-23T15:06:00-05:00
+result_commit: b90fb630
+final_result: Focused portable-backup tests pass 5/5 and Playwright measured a stable one-line 109 x 27 px badge with no shrink.
