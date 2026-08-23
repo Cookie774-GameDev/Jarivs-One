@@ -46,3 +46,20 @@ Append-only coordination record for `PR31-JARVIS-PHONE-MESSAGING-VOICE-PRODUCTIO
 - Fresh focused verification PASS: two Node test files, 9 tests, 0 failures. The Node module-type warning is pre-existing repository configuration noise; no Deno/network/live database execution occurred.
 - Truth boundary: schema SQL has static contract proof only because no disposable local Supabase/PostgreSQL runtime is configured. No migration is applied, no webhook registered, no bot/phone credential used, and no remote channel is represented as live.
 - Next action: commit the exact messaging-core slice, then claim provider-specific webhook/runtime files beginning with Twilio SMS + WhatsApp signature verification and replay-safe reply behavior.
+
+## 2026-08-22 20:53 CDT — Twilio SMS + WhatsApp adapter claim
+
+- Remote messaging core commit: `ea5af10b` (`feat(messaging): add secure remote Jarvis core`).
+- Exact additional ownership: migration `0047` and its contract test, the shared remote runtime and test, and the existing Twilio inbound webhook plus a new focused test.
+- Intent: retain Twilio signature, STOP, and HELP behavior; add one-time pairing redemption for SMS/WhatsApp; authorize the exact active identity; and use authoritative app access, request rate limits, atomic message budget, provider settlement, and event audit before replying.
+- Next action: build the shared metered runtime with RED tests, then replace the minimal record-only webhook behind pure signature/payload tests.
+
+## 2026-08-22 21:01 CDT — Twilio SMS + WhatsApp implementation checkpoint
+
+- TDD RED: the remote runtime test failed because its module did not exist; migration `0047` failed because its SQL did not exist; the Twilio webhook test failed on the old static Deno URL import before a pure handler was available.
+- Added a service-role-only access RPC so signed remote webhooks must pass the same authoritative `app_access_compute` decision as desktop hosted messages.
+- Added metered remote completion with fail-closed access, provider configuration, app-admin lookup, rate limiting, atomic message-budget reservation, provider settlement, safe response parsing, and sanitized usage audit. Raw provider bodies/errors are never returned to the channel.
+- Replaced the record-only inbound Twilio handler with a pure tested SMS + WhatsApp handler and guarded Deno wiring. It verifies the exact Twilio signature first, normalizes SMS versus WhatsApp identity, preserves STOP/HELP, revokes identity on opt-out, redeems one-time pairing, deduplicates provider retries, loads bounded history, meters both inference and outbound segments, escapes TwiML, and returns at most one reply.
+- Fresh focused verification PASS: five Node test files, 19 tests, 0 failures. Exact diff check PASS. No Deno executable or disposable Supabase/PostgreSQL runtime is installed, so Edge type-check, migration execution, Twilio signature with a real request, provider timing, actual carrier delivery, and budget settlement against live tables remain `BLOCKED`/unclaimed.
+- Activation inputs still required: deployed Supabase project URL/anon/service configuration, `DEEPSEEK_API_KEY`, `TWILIO_AUTH_TOKEN`, public `APP_BASE_URL`, Twilio SMS/WhatsApp sender setup, webhook registration, and explicit deployment approval. No secret was read or changed.
+- Next action: commit this exact Twilio/runtime slice, then implement Telegram webhook signature-secret/pairing/reply behavior and Discord signed interaction behavior in separate owned slices.
