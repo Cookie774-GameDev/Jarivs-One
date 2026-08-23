@@ -83,6 +83,8 @@ export type TrainingRuntimeInvoke = (
 interface TrainingRuntimeOptions {
   native?: boolean;
   invoke?: TrainingRuntimeInvoke;
+  includeQlora?: boolean;
+  storageRoot?: string;
 }
 
 const WEIGHT_METHODS = new Set<WeightTrainingMethod>(['lora', 'qlora', 'full']);
@@ -145,7 +147,10 @@ export async function installLocalTrainingWorker(
   if (!native) return { ...WEB_STATUS };
   const invoke = await nativeInvoke(options);
   return normalizeStatus(
-    (await invoke('model_foundry_install_training_worker')) as NativeTrainingWorkerStatus,
+    (await invoke('model_foundry_install_training_worker', {
+      includeQlora: options.includeQlora === true,
+      ...(options.storageRoot?.trim() ? { storageRoot: options.storageRoot.trim() } : {}),
+    })) as NativeTrainingWorkerStatus,
   );
 }
 
@@ -246,7 +251,12 @@ async function runTrainingModelCommand(
     throw new Error('Training model installation is available only in the VibeSpace desktop app.');
   }
   const invoke = await nativeInvoke(options);
-  return normalizeVerifiedTrainingModel(await invoke(command, { modelId }));
+  return normalizeVerifiedTrainingModel(
+    await invoke(command, {
+      modelId,
+      ...(options.storageRoot?.trim() ? { storageRoot: options.storageRoot.trim() } : {}),
+    }),
+  );
 }
 
 export async function downloadVerifiedTrainingModel(

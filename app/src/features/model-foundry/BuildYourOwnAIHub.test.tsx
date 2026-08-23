@@ -5,7 +5,14 @@ import { saveJobs, TRAINABLE_MODELS } from './modelHub';
 import type { VerifiedTrainingModel } from './trainingRuntime';
 
 const tauriInvoke = vi.hoisted(() => vi.fn());
+const getTrainingWorkerStatus = vi.hoisted(() => vi.fn());
+const installTrainingWorker = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({ invoke: tauriInvoke }));
+vi.mock('./trainingRuntime', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./trainingRuntime')>()),
+  getLocalTrainingWorkerStatus: getTrainingWorkerStatus,
+  installLocalTrainingWorker: installTrainingWorker,
+}));
 
 const verifiedModel: VerifiedTrainingModel = {
   id: 'smollm2-135m-instruct',
@@ -35,6 +42,89 @@ describe('BuildYourOwnAIHub', () => {
   beforeEach(() => {
     window.localStorage.clear();
     tauriInvoke.mockReset();
+    tauriInvoke.mockImplementation(async (command: string) => {
+      if (command === 'model_foundry_detect_hardware') {
+        return {
+          cpu: 'Test CPU',
+          gpu: 'Test GPU',
+          ramGb: 32,
+          vramGb: 12,
+          freeStorageGb: 100,
+          os: 'Test OS',
+          accelerators: ['CUDA'],
+        };
+      }
+      if (command === 'model_foundry_list_jobs') return [];
+      if (command === 'faster_whisper_status') return { ready: false };
+      throw new Error(`Unexpected command: ${command}`);
+    });
+    getTrainingWorkerStatus.mockReset();
+    installTrainingWorker.mockReset();
+    getTrainingWorkerStatus.mockResolvedValue({
+      installed: false,
+      attested: false,
+      localOnly: true,
+      protocol: 1,
+      sourceSha256: '',
+      python: null,
+      methods: [],
+      modalities: [],
+      precisions: [],
+      reason: 'The verified local training worker is not installed.',
+    });
+  });
+
+  it('offers one truthful setup path for all verified weight-training methods', async () => {
+    installTrainingWorker.mockResolvedValue({
+      installed: true,
+      attested: true,
+      localOnly: true,
+      protocol: 1,
+      sourceSha256: 'a'.repeat(64),
+      python: 'python',
+      methods: ['lora', 'qlora', 'full'],
+      modalities: ['text'],
+      precisions: ['bf16', 'int4'],
+      reason: null,
+    });
+    render(
+      <BuildYourOwnAIHub open onOpenChange={vi.fn()} verifiedTrainingModels={[verifiedModel]} />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /Set up LoRA, QLoRA, and Full/i }));
+
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: /^QLoRA fine-tuning/i }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    expect(installTrainingWorker).toHaveBeenCalledWith({ includeQlora: true });
+  });
+
+  it('resolves the same verified worker when a caller omits the capability prop', async () => {
+    getTrainingWorkerStatus.mockResolvedValue({
+      installed: true,
+      attested: true,
+      localOnly: true,
+      protocol: 1,
+      sourceSha256: 'a'.repeat(64),
+      python: 'python',
+      methods: ['lora', 'qlora', 'full'],
+      modalities: ['text'],
+      precisions: ['bf16'],
+      reason: null,
+    });
+
+    render(
+      <BuildYourOwnAIHub open onOpenChange={vi.fn()} verifiedTrainingModels={[verifiedModel]} />,
+    );
+
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: /^LoRA fine-tuning/i }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    expect(getTrainingWorkerStatus).toHaveBeenCalledTimes(1);
   });
 
   it('disables training methods without an installed verified worker', async () => {
@@ -188,9 +278,20 @@ describe('BuildYourOwnAIHub', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
 
+    expect(screen.getByRole('button', { name: /^Low memory/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Balanced/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Faster/i })).toBeTruthy();
+    expect(screen.getByText(/Estimated training time:/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Low memory/i }));
+    fireEvent.click(screen.getByText(/Advanced reproducible settings/i));
     expect((screen.getByLabelText('Seed') as HTMLInputElement).value).toBe('7');
     expect((screen.getByLabelText('Learning rate') as HTMLInputElement).value).toBe('0.0002');
     expect((screen.getByLabelText('LoRA rank') as HTMLInputElement).value).toBe('16');
+    expect((screen.getByLabelText('Batch size') as HTMLInputElement).value).toBe('1');
+    expect((screen.getByLabelText('Gradient accumulation') as HTMLInputElement).value).toBe('8');
+    expect((screen.getByLabelText('Maximum sequence length') as HTMLInputElement).value).toBe(
+      '1024',
+    );
     fireEvent.change(screen.getByLabelText('Learning rate'), { target: { value: '' } });
     expect(screen.getByText(/Learning rate must be/)).toBeTruthy();
   });

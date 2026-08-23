@@ -30,6 +30,44 @@ export interface FoundryTrainingConfiguration {
   loraDropout: number;
 }
 
+export type TrainingComputePresetId = 'low-memory' | 'balanced' | 'faster';
+
+export interface TrainingComputePreset {
+  id: TrainingComputePresetId;
+  label: string;
+  summary: string;
+  batchSize: number;
+  gradientAccumulation: number;
+  maxSequenceLength: number;
+}
+
+export const TRAINING_COMPUTE_PRESETS: readonly TrainingComputePreset[] = [
+  {
+    id: 'low-memory',
+    label: 'Low memory',
+    summary: 'Small batches and shorter context. Uses less peak memory and usually takes longer.',
+    batchSize: 1,
+    gradientAccumulation: 8,
+    maxSequenceLength: 1_024,
+  },
+  {
+    id: 'balanced',
+    label: 'Balanced',
+    summary: 'A conservative everyday profile for supported local GPUs.',
+    batchSize: 1,
+    gradientAccumulation: 4,
+    maxSequenceLength: 2_048,
+  },
+  {
+    id: 'faster',
+    label: 'Faster',
+    summary: 'Larger batches for machines with verified memory headroom.',
+    batchSize: 2,
+    gradientAccumulation: 2,
+    maxSequenceLength: 2_048,
+  },
+] as const;
+
 export function defaultFoundryTrainingConfiguration(
   method: Exclude<TrainingMethod, 'knowledge'>,
 ): FoundryTrainingConfiguration {
@@ -47,23 +85,93 @@ export function defaultFoundryTrainingConfiguration(
   };
 }
 
+export function applyTrainingComputePreset(
+  method: Exclude<TrainingMethod, 'knowledge'>,
+  presetId: TrainingComputePresetId,
+  current: FoundryTrainingConfiguration = defaultFoundryTrainingConfiguration(method),
+): FoundryTrainingConfiguration {
+  const preset = TRAINING_COMPUTE_PRESETS.find((candidate) => candidate.id === presetId);
+  if (!preset) return { ...current, method };
+  return {
+    ...current,
+    method,
+    batchSize: preset.batchSize,
+    gradientAccumulation: preset.gradientAccumulation,
+    maxSequenceLength: preset.maxSequenceLength,
+  };
+}
+
+export interface FoundryTrainingDurationEstimate {
+  minimumHours: number;
+  maximumHours: number;
+  optimizationSteps: number;
+  basis: string;
+  disclaimer: string;
+}
+
+function roundedHours(seconds: number): number {
+  return Math.max(0.1, Math.round((seconds / 3_600) * 10) / 10);
+}
+
+export function estimateFoundryTrainingDuration(input: {
+  method: Exclude<TrainingMethod, 'knowledge'>;
+  parametersB: number;
+  configuration: FoundryTrainingConfiguration;
+  hardware: HardwareProfile;
+  usableSourceCount: number;
+}): FoundryTrainingDurationEstimate {
+  const sourceCount = Math.max(1, Math.floor(input.usableSourceCount || 1));
+  const estimatedExamples = Math.max(64, sourceCount * 250);
+  const effectiveBatch = Math.max(
+    1,
+    input.configuration.batchSize * input.configuration.gradientAccumulation,
+  );
+  const epochSteps = Math.ceil((estimatedExamples * input.configuration.epochs) / effectiveBatch);
+  const optimizationSteps = Math.max(
+    1,
+    Math.min(input.configuration.maxSteps ?? epochSteps, epochSteps),
+  );
+  const processedTokens =
+    optimizationSteps *
+    input.configuration.gradientAccumulation *
+    input.configuration.batchSize *
+    input.configuration.maxSequenceLength *
+    0.65;
+  const parametersB = Math.max(0.1, input.parametersB);
+  const methodCost = input.method === 'full' ? 3.5 : input.method === 'qlora' ? 1.15 : 1;
+  const acceleratorCapacity =
+    input.hardware.vramGb > 0 ? Math.max(1, input.hardware.vramGb / 4) : 0;
+  const tokenRate =
+    acceleratorCapacity > 0
+      ? (1_250 * acceleratorCapacity) / (parametersB * methodCost)
+      : (45 * Math.max(1, input.hardware.ramGb / 8)) / (parametersB * methodCost);
+  const centralSeconds = processedTokens / Math.max(1, tokenRate);
+  return {
+    minimumHours: roundedHours(centralSeconds * 0.75),
+    maximumHours: Math.max(
+      roundedHours(centralSeconds * 0.75) + 0.1,
+      roundedHours(centralSeconds * 1.8),
+    ),
+    optimizationSteps,
+    basis: `${sourceCount} source${sourceCount === 1 ? '' : 's'}, ${optimizationSteps.toLocaleString()} planned optimization steps, and the detected ${acceleratorCapacity > 0 ? 'GPU' : 'CPU'}.`,
+    disclaimer:
+      'Planning estimate only. Actual time changes with prepared example count, token lengths, cooling, and other computer activity.',
+  };
+}
+
 export function validateFoundryTrainingConfiguration(
   configuration: FoundryTrainingConfiguration,
 ): string | null {
-  const integerBounds: ReadonlyArray<[
-    keyof FoundryTrainingConfiguration,
-    string,
-    number,
-    number,
-  ]> = [
-    ['seed', 'Seed', 0, 0xffff_ffff],
-    ['epochs', 'Epochs', 1, 20],
-    ['batchSize', 'Batch size', 1, 128],
-    ['gradientAccumulation', 'Gradient accumulation', 1, 1_024],
-    ['maxSequenceLength', 'Sequence length', 64, 131_072],
-    ['loraRank', 'LoRA rank', 1, 1_024],
-    ['loraAlpha', 'LoRA alpha', 1, 8_192],
-  ];
+  const integerBounds: ReadonlyArray<[keyof FoundryTrainingConfiguration, string, number, number]> =
+    [
+      ['seed', 'Seed', 0, 0xffff_ffff],
+      ['epochs', 'Epochs', 1, 20],
+      ['batchSize', 'Batch size', 1, 128],
+      ['gradientAccumulation', 'Gradient accumulation', 1, 1_024],
+      ['maxSequenceLength', 'Sequence length', 64, 131_072],
+      ['loraRank', 'LoRA rank', 1, 1_024],
+      ['loraAlpha', 'LoRA alpha', 1, 8_192],
+    ];
   for (const [key, label, minimum, maximum] of integerBounds) {
     const value = configuration[key];
     if (!Number.isInteger(value) || Number(value) < minimum || Number(value) > maximum) {
@@ -118,6 +226,12 @@ export interface LocalTrainingPlan {
 
 function roundedRequirement(value: number): number {
   return Math.max(1, Math.ceil(value));
+}
+
+const MEMORY_REPORTING_TOLERANCE_GB = 0.01;
+
+function reportedMemoryMeets(availableGb: number, requiredGb: number): boolean {
+  return availableGb + MEMORY_REPORTING_TOLERANCE_GB >= requiredGb;
 }
 
 export function planLocalTrainingMethod(input: {
@@ -195,8 +309,17 @@ export function planLocalTrainingMethod(input: {
     };
   }
 
+  if (input.method === 'qlora' && !reportedMemoryMeets(input.hardware.vramGb, requiredVramGb)) {
+    return {
+      ...base,
+      available: false,
+      reason: `QLoRA requires about ${requiredVramGb} GB verified CUDA VRAM; ${Math.max(0, input.hardware.vramGb).toFixed(1)} GB is available.`,
+    };
+  }
+
   const memoryFits =
-    input.hardware.vramGb >= requiredVramGb || input.hardware.ramGb >= requiredRamGb;
+    reportedMemoryMeets(input.hardware.vramGb, requiredVramGb) ||
+    reportedMemoryMeets(input.hardware.ramGb, requiredRamGb);
   if (!memoryFits) {
     return {
       ...base,

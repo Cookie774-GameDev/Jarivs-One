@@ -37,7 +37,7 @@ vi.mock('./trainingRuntime', () => ({
       precisions: [],
       reason: 'The verified local training worker has not been installed.',
     }),
-  installLocalTrainingWorker: () => installWorker(),
+  installLocalTrainingWorker: (options: unknown) => installWorker(options),
 }));
 
 describe('BuildYourOwnAIPage', () => {
@@ -124,5 +124,28 @@ describe('BuildYourOwnAIPage', () => {
     expect(await screen.findByRole('heading', { name: 'Training runtime' })).toBeTruthy();
     expect(screen.getByText(/verified local training worker has not been installed/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Set up local worker' })).toBeTruthy();
+  });
+
+  it('requests verified QLoRA support during local runtime setup', async () => {
+    installWorker.mockResolvedValue({
+      installed: true,
+      attested: true,
+      localOnly: true,
+      protocol: 1,
+      sourceSha256: 'a'.repeat(64),
+      python: 'python',
+      methods: ['lora', 'qlora', 'full'],
+      modalities: ['text'],
+      precisions: ['bf16', 'int4'],
+      reason: null,
+    });
+    render(<BuildYourOwnAIPage />);
+    expect(
+      await screen.findByText(/verified local training worker has not been installed/i),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set up local worker' }));
+
+    expect(installWorker).toHaveBeenCalledWith({ includeQlora: true });
   });
 });

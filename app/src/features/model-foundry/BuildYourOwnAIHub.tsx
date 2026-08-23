@@ -9,7 +9,9 @@ import { cn } from '@/lib/utils';
 import {
   classifySource,
   compatibleModels,
+  applyTrainingComputePreset,
   defaultFoundryTrainingConfiguration,
+  estimateFoundryTrainingDuration,
   formatFoundryStorageBytes,
   foundryModelOptions,
   isModelInstalled,
@@ -19,6 +21,7 @@ import {
   newlyCompletedJobId,
   planLocalTrainingMethod,
   saveJobs,
+  TRAINING_COMPUTE_PRESETS,
   TRAINABLE_MODELS,
   validateFoundryTrainingConfiguration,
   type ClassifiedSource,
@@ -26,11 +29,14 @@ import {
   type FoundryJob,
   type HardwareProfile,
   type TrainingMethod,
+  type TrainingComputePresetId,
   type TrainingWorkerCapability,
 } from './modelHub';
 import {
   cancelVerifiedTrainingModelDownload,
   downloadVerifiedTrainingModel,
+  getLocalTrainingWorkerStatus,
+  installLocalTrainingWorker,
   listVerifiedTrainingModels,
   repairVerifiedTrainingModel,
   removeVerifiedTrainingModel,
@@ -90,13 +96,16 @@ export function BuildYourOwnAIHub({
   open,
   onOpenChange,
   onActivateArtifact,
-  trainingWorker = null,
+  trainingWorker,
   verifiedTrainingModels,
 }: Props) {
   const [step, setStep] = React.useState(0);
   const [method, setMethod] = React.useState<TrainingMethod>('knowledge');
   const [trainingConfig, setTrainingConfig] = React.useState<FoundryTrainingConfiguration>(() =>
     defaultFoundryTrainingConfiguration('lora'),
+  );
+  const [computePresetId, setComputePresetId] = React.useState<TrainingComputePresetId | null>(
+    'balanced',
   );
   const [purpose, setPurpose] = React.useState('');
   const [name, setName] = React.useState('');
@@ -123,6 +132,11 @@ export function BuildYourOwnAIHub({
   const [trainingCatalog, setTrainingCatalog] = React.useState<VerifiedTrainingModel[]>(
     () => verifiedTrainingModels?.slice() ?? [],
   );
+  const [resolvedTrainingWorker, setResolvedTrainingWorker] =
+    React.useState<LocalTrainingWorkerStatus | null>(null);
+  const [trainingSetupBusy, setTrainingSetupBusy] = React.useState(false);
+  const [trainingSetupError, setTrainingSetupError] = React.useState<string | null>(null);
+  const [requestedStorageRoot, setRequestedStorageRoot] = React.useState<string | null>(null);
   const [confirmRemoveModelId, setConfirmRemoveModelId] = React.useState<string | null>(null);
   const [busyJobId, setBusyJobId] = React.useState<string | null>(null);
   const [confirmDeleteJobId, setConfirmDeleteJobId] = React.useState<string | null>(null);
@@ -135,9 +149,7 @@ export function BuildYourOwnAIHub({
     let cancelled = false;
     void detectHardware().then(setHardware);
     void import('@tauri-apps/api/core')
-      .then(({ invoke }) =>
-        invoke<{ ready: boolean }>('faster_whisper_status', { model: 'base' }),
-      )
+      .then(({ invoke }) => invoke<{ ready: boolean }>('faster_whisper_status', { model: 'base' }))
       .then((status) => {
         if (!cancelled) setTranscriptionReady(status.ready === true);
       })
@@ -210,19 +222,40 @@ export function BuildYourOwnAIHub({
     };
   }, [open]);
 
+  React.useEffect(() => {
+    if (!open) return;
+    if (trainingWorker !== undefined) {
+      setResolvedTrainingWorker(trainingWorker);
+      return;
+    }
+    let cancelled = false;
+    void getLocalTrainingWorkerStatus()
+      .then((status) => {
+        if (!cancelled) setResolvedTrainingWorker(status);
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedTrainingWorker(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, trainingWorker]);
+
+  const effectiveTrainingWorker = resolvedTrainingWorker;
+
   const trainingWorkerCapability = React.useMemo<TrainingWorkerCapability | null>(
     () =>
-      trainingWorker
+      effectiveTrainingWorker
         ? {
-            installed: trainingWorker.installed,
-            attested: trainingWorker.attested,
-            version: String(trainingWorker.protocol),
-            methods: trainingWorker.methods,
-            modalities: trainingWorker.modalities,
-            precisions: trainingWorker.precisions,
+            installed: effectiveTrainingWorker.installed,
+            attested: effectiveTrainingWorker.attested,
+            version: String(effectiveTrainingWorker.protocol),
+            methods: effectiveTrainingWorker.methods,
+            modalities: effectiveTrainingWorker.modalities,
+            precisions: effectiveTrainingWorker.precisions,
           }
         : null,
-    [trainingWorker],
+    [effectiveTrainingWorker],
   );
   const availableModels = React.useMemo(
     () =>
@@ -287,6 +320,72 @@ export function BuildYourOwnAIHub({
       ? `Download and verify ${selectedModel.label} before local processing.`
       : null) ??
     (method === 'knowledge' ? null : validateFoundryTrainingConfiguration(trainingConfig));
+  const usableSourceCount = sources.filter((source) => source.use !== 'unsupported').length;
+  const durationEstimate = React.useMemo(
+    () =>
+      method === 'knowledge'
+        ? null
+        : estimateFoundryTrainingDuration({
+            method,
+            parametersB: selectedModel.parametersB,
+            configuration: trainingConfig,
+            hardware,
+            usableSourceCount,
+          }),
+    [hardware, method, selectedModel.parametersB, trainingConfig, usableSourceCount],
+  );
+
+  const selectComputePreset = (presetId: TrainingComputePresetId) => {
+    if (method === 'knowledge') return;
+    setComputePresetId(presetId);
+    setTrainingConfig((current) => applyTrainingComputePreset(method, presetId, current));
+  };
+
+  const updateAdvancedTrainingConfig = (update: Partial<FoundryTrainingConfiguration>) => {
+    setComputePresetId(null);
+    setTrainingConfig((current) => ({ ...current, ...update }));
+  };
+
+  const setupWeightTraining = async () => {
+    setTrainingSetupBusy(true);
+    setTrainingSetupError(null);
+    try {
+      setResolvedTrainingWorker(
+        await installLocalTrainingWorker({
+          includeQlora: true,
+          ...(requestedStorageRoot ? { storageRoot: requestedStorageRoot } : {}),
+        }),
+      );
+      setHardware(await detectHardware());
+      setRequestedStorageRoot(null);
+    } catch (caught) {
+      setTrainingSetupError(caught instanceof Error ? caught.message : String(caught));
+      try {
+        setResolvedTrainingWorker(await getLocalTrainingWorkerStatus());
+      } catch {
+        // Keep the original setup error if the follow-up inspection is unavailable.
+      }
+    } finally {
+      setTrainingSetupBusy(false);
+    }
+  };
+
+  const chooseStorageRoot = async () => {
+    setTrainingSetupError(null);
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const picked = await open({
+        directory: true,
+        multiple: false,
+        title: 'Choose a drive or folder for Model Foundry',
+      });
+      if (typeof picked === 'string' && picked.trim()) {
+        setRequestedStorageRoot(picked.trim());
+      }
+    } catch {
+      setTrainingSetupError('The native storage picker is unavailable. Nothing was changed.');
+    }
+  };
 
   const addSources = (files: FileList | null) => {
     if (!files) return;
@@ -337,9 +436,7 @@ export function BuildYourOwnAIHub({
           instructions: instructions.trim() || null,
           baseModelId: selectedModel.id,
           method,
-          ...(method === 'knowledge'
-            ? {}
-            : { trainingConfig: { ...trainingConfig, method } }),
+          ...(method === 'knowledge' ? {} : { trainingConfig: { ...trainingConfig, method } }),
           sourcePaths: sources
             .filter((source) => source.use !== 'unsupported')
             .map((source) => source.path)
@@ -383,8 +480,12 @@ export function BuildYourOwnAIHub({
         });
         const updated =
           selectedVerifiedModel.status === 'repair-required'
-            ? await repairVerifiedTrainingModel(selectedVerifiedModel.id)
-            : await downloadVerifiedTrainingModel(selectedVerifiedModel.id);
+            ? await repairVerifiedTrainingModel(selectedVerifiedModel.id, {
+                ...(requestedStorageRoot ? { storageRoot: requestedStorageRoot } : {}),
+              })
+            : await downloadVerifiedTrainingModel(selectedVerifiedModel.id, {
+                ...(requestedStorageRoot ? { storageRoot: requestedStorageRoot } : {}),
+              });
         setTrainingCatalog((current) =>
           current.map((model) => (model.id === updated.id ? updated : model)),
         );
@@ -452,7 +553,9 @@ export function BuildYourOwnAIHub({
     setError('');
     setDownloadProgress(0);
     try {
-      const updated = await repairVerifiedTrainingModel(selectedVerifiedModel.id);
+      const updated = await repairVerifiedTrainingModel(selectedVerifiedModel.id, {
+        ...(requestedStorageRoot ? { storageRoot: requestedStorageRoot } : {}),
+      });
       setTrainingCatalog((current) =>
         current.map((model) => (model.id === updated.id ? updated : model)),
       );
@@ -589,6 +692,43 @@ export function BuildYourOwnAIHub({
         <div className="space-y-5 p-6">
           {step === 0 && (
             <>
+              <details
+                className="rounded-lg border border-accent-cyan/30 bg-accent-cyan/5 p-4"
+                open
+              >
+                <summary className="cursor-pointer font-semibold">How this works</summary>
+                <ol className="mt-3 grid gap-2 text-secondary text-muted-foreground sm:grid-cols-2">
+                  <li>
+                    <strong className="text-foreground">1. Choose a method.</strong> Knowledge
+                    searches your files; LoRA, QLoRA, and Full change model weights.
+                  </li>
+                  <li>
+                    <strong className="text-foreground">2. Choose a base.</strong> VibeSpace shows
+                    only verified checkpoints that fit the selected path.
+                  </li>
+                  <li>
+                    <strong className="text-foreground">3. Pick a compute profile.</strong> Trade
+                    memory use for speed, then review the estimate.
+                  </li>
+                  <li>
+                    <strong className="text-foreground">4. Add sources.</strong> Documents and
+                    transcripts are prepared locally and reviewed before use.
+                  </li>
+                  <li>
+                    <strong className="text-foreground">5. Train and evaluate.</strong> The exact
+                    settings, hashes, and results stay with the artifact.
+                  </li>
+                  <li>
+                    <strong className="text-foreground">6. Promote it.</strong> Only a verified
+                    completed model becomes available for use.
+                  </li>
+                </ol>
+                <p className="mt-3 text-metadata text-muted-foreground">
+                  MP3 and MP4 can supply local transcript knowledge when the speech processor is
+                  installed. The current weight-training bases are text models; video frames and
+                  native audio/video generation are not claimed.
+                </p>
+              </details>
               <div>
                 <h3 className="text-section-title">What are you building?</h3>
                 <p className="text-secondary text-muted-foreground">
@@ -635,6 +775,7 @@ export function BuildYourOwnAIHub({
                       onClick={() => {
                         setMethod(id);
                         if (id !== 'knowledge') {
+                          setComputePresetId('balanced');
                           setTrainingConfig(defaultFoundryTrainingConfiguration(id));
                         }
                       }}
@@ -651,6 +792,83 @@ export function BuildYourOwnAIHub({
                   );
                 })}
               </div>
+              <section className="rounded-lg border border-border p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h4 className="font-semibold">Model storage</h4>
+                    <p className="mt-1 text-secondary text-muted-foreground">
+                      Choose C:, D:, or another local drive folder. Your computer still performs the
+                      training; only the managed files move.
+                    </p>
+                  </div>
+                  <Button type="button" variant="outline" onClick={() => void chooseStorageRoot()}>
+                    Choose drive or folder
+                  </Button>
+                </div>
+                <dl className="mt-3 space-y-1 text-secondary">
+                  <div>
+                    <dt className="inline text-muted-foreground">Current: </dt>
+                    <dd className="inline font-mono">{hardware.storageRoot ?? 'Measuring…'}</dd>
+                  </div>
+                  {requestedStorageRoot && (
+                    <div>
+                      <dt className="inline text-muted-foreground">Selected: </dt>
+                      <dd className="inline font-mono">{requestedStorageRoot}</dd>
+                    </div>
+                  )}
+                </dl>
+                {hardware.recommendedStorageRoot && !requestedStorageRoot && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="mt-2"
+                    onClick={() => setRequestedStorageRoot(hardware.recommendedStorageRoot ?? null)}
+                  >
+                    Use recommended: {hardware.recommendedStorageRoot}
+                  </Button>
+                )}
+                <p className="mt-2 text-metadata text-muted-foreground">
+                  Applying a new location copies and verifies existing Foundry data before
+                  switching. The old copy is retained for recovery. Knowledge models managed by
+                  Ollama remain under Ollama’s own local storage.
+                </p>
+                {requestedStorageRoot && effectiveTrainingWorker?.attested && (
+                  <Button
+                    type="button"
+                    variant="accent"
+                    className="mt-3"
+                    disabled={trainingSetupBusy}
+                    onClick={() => void setupWeightTraining()}
+                  >
+                    {trainingSetupBusy
+                      ? 'Verifying and switching…'
+                      : 'Apply storage and verify runtime'}
+                  </Button>
+                )}
+              </section>
+              {!effectiveTrainingWorker?.attested && (
+                <section className="rounded-lg border border-border p-4">
+                  <h4 className="font-semibold">Unlock verified weight training</h4>
+                  <p className="mt-1 text-secondary text-muted-foreground">
+                    Install the private, hash-checked worker and test this computer for LoRA, QLoRA,
+                    and Full support. Unsupported methods stay disabled with their reason.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-3"
+                    disabled={trainingSetupBusy}
+                    onClick={() => void setupWeightTraining()}
+                  >
+                    {trainingSetupBusy
+                      ? 'Setting up verified training…'
+                      : 'Set up LoRA, QLoRA, and Full'}
+                  </Button>
+                  {trainingSetupError && (
+                    <p className="mt-2 text-secondary text-amber-300">{trainingSetupError}</p>
+                  )}
+                </section>
+              )}
             </>
           )}
 
@@ -891,197 +1109,233 @@ export function BuildYourOwnAIHub({
                 />
               </div>
               {method !== 'knowledge' && (
-                <details className="rounded-lg border border-border p-4" open>
-                  <summary className="cursor-pointer font-semibold">
-                    Reproducible training settings
-                  </summary>
-                  <p className="mt-2 text-secondary text-muted-foreground">
-                    These exact requested values are validated locally and recorded with the final
-                    artifact. Blank maximum steps means the epoch limit controls the run.
-                  </p>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <div>
-                      <Label htmlFor="foundry-seed">Seed</Label>
-                      <Input
-                        id="foundry-seed"
-                        type="number"
-                        min={0}
-                        step={1}
-                        value={numericInputValue(trainingConfig.seed)}
-                        onChange={(event) =>
-                          setTrainingConfig((current) => ({
-                            ...current,
-                            seed: event.currentTarget.valueAsNumber,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="foundry-epochs">Epochs</Label>
-                      <Input
-                        id="foundry-epochs"
-                        type="number"
-                        min={1}
-                        max={20}
-                        step={1}
-                        value={numericInputValue(trainingConfig.epochs)}
-                        onChange={(event) =>
-                          setTrainingConfig((current) => ({
-                            ...current,
-                            epochs: event.currentTarget.valueAsNumber,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="foundry-max-steps">Maximum steps (optional)</Label>
-                      <Input
-                        id="foundry-max-steps"
-                        type="number"
-                        min={1}
-                        max={1_000_000}
-                        step={1}
-                        value={trainingConfig.maxSteps ?? ''}
-                        onChange={(event) =>
-                          setTrainingConfig((current) => ({
-                            ...current,
-                            maxSteps: event.currentTarget.value
-                              ? event.currentTarget.valueAsNumber
-                              : undefined,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="foundry-learning-rate">Learning rate</Label>
-                      <Input
-                        id="foundry-learning-rate"
-                        type="number"
-                        min={0.000_000_01}
-                        max={1}
-                        step="any"
-                        value={numericInputValue(trainingConfig.learningRate)}
-                        onChange={(event) =>
-                          setTrainingConfig((current) => ({
-                            ...current,
-                            learningRate: event.currentTarget.valueAsNumber,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="foundry-batch-size">Batch size</Label>
-                      <Input
-                        id="foundry-batch-size"
-                        type="number"
-                        min={1}
-                        max={128}
-                        step={1}
-                        value={numericInputValue(trainingConfig.batchSize)}
-                        onChange={(event) =>
-                          setTrainingConfig((current) => ({
-                            ...current,
-                            batchSize: event.currentTarget.valueAsNumber,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="foundry-gradient-accumulation">Gradient accumulation</Label>
-                      <Input
-                        id="foundry-gradient-accumulation"
-                        type="number"
-                        min={1}
-                        max={1_024}
-                        step={1}
-                        value={numericInputValue(trainingConfig.gradientAccumulation)}
-                        onChange={(event) =>
-                          setTrainingConfig((current) => ({
-                            ...current,
-                            gradientAccumulation: event.currentTarget.valueAsNumber,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="foundry-sequence-length">Maximum sequence length</Label>
-                      <Input
-                        id="foundry-sequence-length"
-                        type="number"
-                        min={64}
-                        max={131_072}
-                        step={1}
-                        value={numericInputValue(trainingConfig.maxSequenceLength)}
-                        onChange={(event) =>
-                          setTrainingConfig((current) => ({
-                            ...current,
-                            maxSequenceLength: event.currentTarget.valueAsNumber,
-                          }))
-                        }
-                      />
-                    </div>
-                    {method !== 'full' && (
-                      <>
-                        <div>
-                          <Label htmlFor="foundry-lora-rank">LoRA rank</Label>
-                          <Input
-                            id="foundry-lora-rank"
-                            type="number"
-                            min={1}
-                            max={1_024}
-                            step={1}
-                            value={numericInputValue(trainingConfig.loraRank)}
-                            onChange={(event) =>
-                              setTrainingConfig((current) => ({
-                                ...current,
-                                loraRank: event.currentTarget.valueAsNumber,
-                              }))
-                            }
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="foundry-lora-alpha">LoRA alpha</Label>
-                          <Input
-                            id="foundry-lora-alpha"
-                            type="number"
-                            min={1}
-                            max={8_192}
-                            step={1}
-                            value={numericInputValue(trainingConfig.loraAlpha)}
-                            onChange={(event) =>
-                              setTrainingConfig((current) => ({
-                                ...current,
-                                loraAlpha: event.currentTarget.valueAsNumber,
-                              }))
-                            }
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="foundry-lora-dropout">LoRA dropout</Label>
-                          <Input
-                            id="foundry-lora-dropout"
-                            type="number"
-                            min={0}
-                            max={0.999}
-                            step="any"
-                            value={numericInputValue(trainingConfig.loraDropout)}
-                            onChange={(event) =>
-                              setTrainingConfig((current) => ({
-                                ...current,
-                                loraDropout: event.currentTarget.valueAsNumber,
-                              }))
-                            }
-                          />
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  {validateFoundryTrainingConfiguration(trainingConfig) && (
-                    <p className="mt-3 text-secondary text-amber-300">
-                      {validateFoundryTrainingConfiguration(trainingConfig)}
+                <div className="space-y-4">
+                  <section
+                    className="rounded-lg border border-border p-4"
+                    aria-labelledby="foundry-compute-profile"
+                  >
+                    <h4 id="foundry-compute-profile" className="font-semibold">
+                      Choose speed and memory use
+                    </h4>
+                    <p className="mt-1 text-secondary text-muted-foreground">
+                      Start with a profile, then use Advanced settings only if you want exact
+                      control.
                     </p>
-                  )}
-                </details>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      {TRAINING_COMPUTE_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          aria-pressed={computePresetId === preset.id}
+                          onClick={() => selectComputePreset(preset.id)}
+                          className={cn(
+                            'rounded-lg border p-3 text-left transition-colors',
+                            computePresetId === preset.id
+                              ? 'border-accent-cyan bg-accent-cyan/10'
+                              : 'border-border hover:bg-muted',
+                          )}
+                        >
+                          <strong className="block">{preset.label}</strong>
+                          <span className="mt-1 block text-metadata text-muted-foreground">
+                            {preset.summary}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    {durationEstimate && (
+                      <div className="mt-3 rounded-md bg-muted/60 p-3" aria-live="polite">
+                        <p className="font-medium">
+                          Estimated training time: {durationEstimate.minimumHours}–
+                          {durationEstimate.maximumHours} hours
+                        </p>
+                        <p className="mt-1 text-metadata text-muted-foreground">
+                          {durationEstimate.basis} {durationEstimate.disclaimer}
+                        </p>
+                      </div>
+                    )}
+                  </section>
+                  <details className="rounded-lg border border-border p-4">
+                    <summary className="cursor-pointer font-semibold">
+                      Advanced reproducible settings{computePresetId === null ? ' · Custom' : ''}
+                    </summary>
+                    <p className="mt-2 text-secondary text-muted-foreground">
+                      These exact requested values are validated locally and recorded with the final
+                      artifact. Blank maximum steps means the epoch limit controls the run.
+                    </p>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <div>
+                        <Label htmlFor="foundry-seed">Seed</Label>
+                        <Input
+                          id="foundry-seed"
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={numericInputValue(trainingConfig.seed)}
+                          onChange={(event) =>
+                            updateAdvancedTrainingConfig({
+                              seed: event.currentTarget.valueAsNumber,
+                            })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="foundry-epochs">Epochs</Label>
+                        <Input
+                          id="foundry-epochs"
+                          type="number"
+                          min={1}
+                          max={20}
+                          step={1}
+                          value={numericInputValue(trainingConfig.epochs)}
+                          onChange={(event) =>
+                            updateAdvancedTrainingConfig({
+                              epochs: event.currentTarget.valueAsNumber,
+                            })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="foundry-max-steps">Maximum steps (optional)</Label>
+                        <Input
+                          id="foundry-max-steps"
+                          type="number"
+                          min={1}
+                          max={1_000_000}
+                          step={1}
+                          value={trainingConfig.maxSteps ?? ''}
+                          onChange={(event) =>
+                            updateAdvancedTrainingConfig({
+                              maxSteps: event.currentTarget.value
+                                ? event.currentTarget.valueAsNumber
+                                : undefined,
+                            })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="foundry-learning-rate">Learning rate</Label>
+                        <Input
+                          id="foundry-learning-rate"
+                          type="number"
+                          min={0.000_000_01}
+                          max={1}
+                          step="any"
+                          value={numericInputValue(trainingConfig.learningRate)}
+                          onChange={(event) =>
+                            updateAdvancedTrainingConfig({
+                              learningRate: event.currentTarget.valueAsNumber,
+                            })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="foundry-batch-size">Batch size</Label>
+                        <Input
+                          id="foundry-batch-size"
+                          type="number"
+                          min={1}
+                          max={128}
+                          step={1}
+                          value={numericInputValue(trainingConfig.batchSize)}
+                          onChange={(event) =>
+                            updateAdvancedTrainingConfig({
+                              batchSize: event.currentTarget.valueAsNumber,
+                            })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="foundry-gradient-accumulation">Gradient accumulation</Label>
+                        <Input
+                          id="foundry-gradient-accumulation"
+                          type="number"
+                          min={1}
+                          max={1_024}
+                          step={1}
+                          value={numericInputValue(trainingConfig.gradientAccumulation)}
+                          onChange={(event) =>
+                            updateAdvancedTrainingConfig({
+                              gradientAccumulation: event.currentTarget.valueAsNumber,
+                            })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="foundry-sequence-length">Maximum sequence length</Label>
+                        <Input
+                          id="foundry-sequence-length"
+                          type="number"
+                          min={64}
+                          max={131_072}
+                          step={1}
+                          value={numericInputValue(trainingConfig.maxSequenceLength)}
+                          onChange={(event) =>
+                            updateAdvancedTrainingConfig({
+                              maxSequenceLength: event.currentTarget.valueAsNumber,
+                            })
+                          }
+                        />
+                      </div>
+                      {method !== 'full' && (
+                        <>
+                          <div>
+                            <Label htmlFor="foundry-lora-rank">LoRA rank</Label>
+                            <Input
+                              id="foundry-lora-rank"
+                              type="number"
+                              min={1}
+                              max={1_024}
+                              step={1}
+                              value={numericInputValue(trainingConfig.loraRank)}
+                              onChange={(event) =>
+                                updateAdvancedTrainingConfig({
+                                  loraRank: event.currentTarget.valueAsNumber,
+                                })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="foundry-lora-alpha">LoRA alpha</Label>
+                            <Input
+                              id="foundry-lora-alpha"
+                              type="number"
+                              min={1}
+                              max={8_192}
+                              step={1}
+                              value={numericInputValue(trainingConfig.loraAlpha)}
+                              onChange={(event) =>
+                                updateAdvancedTrainingConfig({
+                                  loraAlpha: event.currentTarget.valueAsNumber,
+                                })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="foundry-lora-dropout">LoRA dropout</Label>
+                            <Input
+                              id="foundry-lora-dropout"
+                              type="number"
+                              min={0}
+                              max={0.999}
+                              step="any"
+                              value={numericInputValue(trainingConfig.loraDropout)}
+                              onChange={(event) =>
+                                updateAdvancedTrainingConfig({
+                                  loraDropout: event.currentTarget.valueAsNumber,
+                                })
+                              }
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    {validateFoundryTrainingConfiguration(trainingConfig) && (
+                      <p className="mt-3 text-secondary text-amber-300">
+                        {validateFoundryTrainingConfiguration(trainingConfig)}
+                      </p>
+                    )}
+                  </details>
+                </div>
               )}
             </div>
           )}
@@ -1131,6 +1385,12 @@ export function BuildYourOwnAIHub({
                 {sources.filter((source) => source.use === 'unsupported').length} ignored with
                 explanations.
               </p>
+              {durationEstimate && (
+                <p>
+                  Planning estimate: {durationEstimate.minimumHours}–{durationEstimate.maximumHours}{' '}
+                  hours · {durationEstimate.optimizationSteps.toLocaleString()} optimization steps.
+                </p>
+              )}
               {startError && <p className="text-amber-300">{startError}</p>}
             </div>
           )}

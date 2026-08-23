@@ -1,10 +1,10 @@
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::{Cursor, Read};
-use std::path::{Path, PathBuf};
+use std::io::{BufReader, Cursor, Read};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use tauri::{Emitter, Manager};
@@ -17,6 +17,11 @@ use std::os::windows::process::CommandExt;
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 const MAX_SOURCE_BYTES: u64 = 64 * 1024 * 1024;
+const FOUNDRY_STORAGE_DIRECTORY: &str = "VibeSpace-Model-Foundry";
+const FOUNDRY_STORAGE_CONFIG: &str = "model-foundry-storage.json";
+const FOUNDRY_STORAGE_MIGRATION_MARKER: &str = ".vibespace-storage-migration-v1";
+const MAX_STORAGE_CONFIG_BYTES: u64 = 4 * 1024;
+const MAX_STORAGE_MIGRATION_FILES: usize = 100_000;
 const ALLOWED_MODELS: &[&str] = &[
     "qwen2.5:1.5b-instruct-q4_K_M",
     "qwen2.5:7b-instruct-q4_K_M",
@@ -259,19 +264,22 @@ fn validate_weight_hardware(
     hardware: &FoundryHardwareProfile,
     requirements: WeightTrainingRequirements,
 ) -> Result<(), String> {
+    const MEMORY_REPORTING_TOLERANCE_GB: f64 = 0.01;
+    let vram_fits = hardware.vram_gb + MEMORY_REPORTING_TOLERANCE_GB >= requirements.vram_gb;
+    let ram_fits = hardware.ram_gb + MEMORY_REPORTING_TOLERANCE_GB >= requirements.ram_gb;
     if hardware.free_storage_gb < requirements.storage_gb {
         return Err(format!(
             "{method} training requires about {} GB free managed storage; {:.1} GB is available at {}.",
             requirements.storage_gb, hardware.free_storage_gb, hardware.storage_root
         ));
     }
-    if method == "qlora" && hardware.vram_gb < requirements.vram_gb {
+    if method == "qlora" && !vram_fits {
         return Err(format!(
             "QLoRA requires about {} GB verified CUDA VRAM; {:.1} GB is available.",
             requirements.vram_gb, hardware.vram_gb
         ));
     }
-    if hardware.vram_gb < requirements.vram_gb && hardware.ram_gb < requirements.ram_gb {
+    if !vram_fits && !ram_fits {
         return Err(format!(
             "{method} training requires about {} GB VRAM or {} GB system RAM; this machine reports {:.1} GB VRAM and {:.1} GB RAM.",
             requirements.vram_gb, requirements.ram_gb, hardware.vram_gb, hardware.ram_gb
@@ -320,11 +328,307 @@ fn default_version() -> u32 {
     1
 }
 
-fn foundry_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct FoundryStorageConfiguration {
+    schema_version: u8,
+    root: String,
+}
+
+fn default_foundry_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     app.path()
         .app_data_dir()
         .map(|path| path.join("model-foundry"))
         .map_err(|error| format!("Model Foundry app-data directory unavailable: {error}"))
+}
+
+fn storage_config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map(|path| path.join(FOUNDRY_STORAGE_CONFIG))
+        .map_err(|error| format!("Model Foundry app-data directory unavailable: {error}"))
+}
+
+fn normalize_requested_storage_root(requested: &Path) -> Result<PathBuf, String> {
+    if !requested.is_absolute()
+        || requested
+            .components()
+            .any(|component| matches!(component, Component::ParentDir | Component::CurDir))
+    {
+        return Err("Choose an absolute local drive or folder for Model Foundry storage.".into());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::path::Prefix;
+        let is_drive = matches!(
+            requested.components().next(),
+            Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::Disk(_))
+        );
+        if !is_drive {
+            return Err("Model Foundry storage must use a local drive such as C: or D:.".into());
+        }
+    }
+    Ok(
+        if requested
+            .file_name()
+            .is_some_and(|name| name == FOUNDRY_STORAGE_DIRECTORY)
+        {
+            requested.to_path_buf()
+        } else {
+            requested.join(FOUNDRY_STORAGE_DIRECTORY)
+        },
+    )
+}
+
+fn storage_paths_equal(left: &Path, right: &Path) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let left = left.to_string_lossy();
+        let right = right.to_string_lossy();
+        return left
+            .trim_end_matches(&['\\', '/'][..])
+            .eq_ignore_ascii_case(right.trim_end_matches(&['\\', '/'][..]));
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        left == right
+    }
+}
+
+fn reject_linked_path(path: &Path) -> Result<(), String> {
+    for ancestor in path.ancestors() {
+        if !ancestor.exists() {
+            continue;
+        }
+        let metadata = fs::symlink_metadata(ancestor)
+            .map_err(|error| format!("Could not inspect the selected storage path: {error}"))?;
+        if metadata.file_type().is_symlink() {
+            return Err("Model Foundry storage cannot use a symbolic link.".into());
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::fs::MetadataExt;
+            const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+            if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+                return Err("Model Foundry storage cannot use a junction or reparse point.".into());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn sha256_file(path: &Path) -> Result<(u64, String), String> {
+    let file = fs::File::open(path)
+        .map_err(|error| format!("Could not verify migrated Model Foundry data: {error}"))?;
+    let mut reader = BufReader::new(file);
+    let mut digest = Sha256::new();
+    let mut bytes = 0_u64;
+    let mut buffer = [0_u8; 1024 * 1024];
+    loop {
+        let count = reader
+            .read(&mut buffer)
+            .map_err(|error| format!("Could not verify migrated Model Foundry data: {error}"))?;
+        if count == 0 {
+            break;
+        }
+        bytes = bytes.saturating_add(count as u64);
+        digest.update(&buffer[..count]);
+    }
+    Ok((bytes, format!("{:x}", digest.finalize())))
+}
+
+fn collect_storage_files(
+    root: &Path,
+    prefix: &Path,
+    output: &mut BTreeMap<PathBuf, (u64, String)>,
+) -> Result<(), String> {
+    if !root.exists() {
+        return Ok(());
+    }
+    reject_linked_path(root)?;
+    let mut pending = vec![(root.to_path_buf(), prefix.to_path_buf())];
+    while let Some((directory, relative)) = pending.pop() {
+        for entry in fs::read_dir(&directory)
+            .map_err(|error| format!("Could not inspect existing Model Foundry data: {error}"))?
+        {
+            let entry = entry.map_err(|error| {
+                format!("Could not inspect existing Model Foundry data: {error}")
+            })?;
+            let metadata = entry.metadata().map_err(|error| {
+                format!("Could not inspect existing Model Foundry data: {error}")
+            })?;
+            if entry
+                .file_type()
+                .map(|kind| kind.is_symlink())
+                .unwrap_or(true)
+            {
+                return Err("Existing Model Foundry storage contains an unsafe link.".into());
+            }
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::fs::MetadataExt;
+                if metadata.file_attributes() & 0x400 != 0 {
+                    return Err("Existing Model Foundry storage contains a reparse point.".into());
+                }
+            }
+            let child_relative = relative.join(entry.file_name());
+            if metadata.is_dir() {
+                pending.push((entry.path(), child_relative));
+            } else if metadata.is_file() {
+                if output.len() >= MAX_STORAGE_MIGRATION_FILES {
+                    return Err(
+                        "Model Foundry storage contains too many files to migrate safely.".into(),
+                    );
+                }
+                output.insert(child_relative, sha256_file(&entry.path())?);
+            } else {
+                return Err("Existing Model Foundry storage contains an unsupported entry.".into());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn copy_storage_files(source: &Path, prefix: &Path, target: &Path) -> Result<(), String> {
+    let mut files = BTreeMap::new();
+    collect_storage_files(source, prefix, &mut files)?;
+    for (relative, expected) in files {
+        let from = source.join(relative.strip_prefix(prefix).unwrap_or(&relative));
+        let destination = target.join(&relative);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).map_err(|error| {
+                format!("Could not prepare selected Model Foundry storage: {error}")
+            })?;
+        }
+        fs::copy(&from, &destination)
+            .map_err(|error| format!("Could not copy Model Foundry data: {error}"))?;
+        if sha256_file(&destination)? != expected {
+            return Err("Copied Model Foundry data failed integrity verification.".into());
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn configured_foundry_root(app: &tauri::AppHandle) -> Result<Option<PathBuf>, String> {
+    let config_path = storage_config_path(app)?;
+    if !config_path.exists() {
+        return Ok(None);
+    }
+    let metadata = fs::symlink_metadata(&config_path)
+        .map_err(|error| format!("Could not inspect Model Foundry storage settings: {error}"))?;
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.len() > MAX_STORAGE_CONFIG_BYTES
+    {
+        return Err("Model Foundry storage settings are unsafe or corrupt.".into());
+    }
+    let config: FoundryStorageConfiguration = serde_json::from_slice(
+        &fs::read(&config_path)
+            .map_err(|error| format!("Could not read Model Foundry storage settings: {error}"))?,
+    )
+    .map_err(|_| "Model Foundry storage settings are corrupt.".to_string())?;
+    if config.schema_version != 1 {
+        return Err("Model Foundry storage settings use an unsupported version.".into());
+    }
+    let root = PathBuf::from(config.root);
+    reject_linked_path(&root)?;
+    if !root.is_dir() {
+        return Err("The selected Model Foundry storage drive is unavailable.".into());
+    }
+    Ok(Some(root))
+}
+
+pub(crate) fn configure_foundry_storage(
+    app: &tauri::AppHandle,
+    requested: &str,
+) -> Result<PathBuf, String> {
+    if active_jobs()
+        .lock()
+        .map_err(|_| "Model Foundry job registry is unavailable.".to_string())?
+        .is_empty()
+        && !crate::model_foundry_training::foundry_storage_busy()?
+    {
+        // Safe to continue below.
+    } else {
+        return Err("Stop active Model Foundry jobs and downloads before changing storage.".into());
+    }
+    let target = normalize_requested_storage_root(Path::new(requested.trim()))?;
+    if configured_foundry_root(app)?
+        .as_deref()
+        .is_some_and(|configured| storage_paths_equal(configured, &target))
+    {
+        return Ok(target);
+    }
+    let current_root = configured_foundry_root(app)?.unwrap_or(default_foundry_root(app)?);
+    if target.starts_with(&current_root) || current_root.starts_with(&target) {
+        return Err("Choose a storage folder outside the current Model Foundry directory.".into());
+    }
+    let parent = target
+        .parent()
+        .ok_or_else(|| "The selected storage folder has no safe parent.".to_string())?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("Could not prepare the selected storage folder: {error}"))?;
+    reject_linked_path(parent)?;
+    if target.exists() {
+        reject_linked_path(&target)?;
+        if !target.is_dir() {
+            return Err("The selected Model Foundry storage path is not a folder.".into());
+        }
+        let marker = target.join(FOUNDRY_STORAGE_MIGRATION_MARKER);
+        let has_content = fs::read_dir(&target)
+            .map_err(|error| format!("Could not inspect selected storage: {error}"))?
+            .next()
+            .is_some();
+        if has_content && !marker.is_file() {
+            return Err(
+                "The selected Model Foundry folder is not empty. Choose a new or empty folder."
+                    .into(),
+            );
+        }
+    } else {
+        fs::create_dir(&target)
+            .map_err(|error| format!("Could not create selected Model Foundry storage: {error}"))?;
+    }
+    let marker = target.join(FOUNDRY_STORAGE_MIGRATION_MARKER);
+    fs::write(&marker, b"VibeSpace Model Foundry storage migration v1")
+        .map_err(|error| format!("Could not prepare safe Model Foundry migration: {error}"))?;
+    let mut existing_files = BTreeMap::new();
+    collect_storage_files(&current_root, Path::new(""), &mut existing_files)?;
+    let required_bytes = existing_files
+        .values()
+        .try_fold(0_u64, |total, (bytes, _)| total.checked_add(*bytes))
+        .ok_or_else(|| "Model Foundry storage size overflowed.".to_string())?;
+    let available_bytes = fs4::available_space(&target)
+        .map_err(|error| format!("Could not measure selected Model Foundry storage: {error}"))?;
+    if available_bytes < required_bytes.saturating_add(512 * 1024 * 1024) {
+        return Err(
+            "The selected drive does not have enough free space for a verified copy.".into(),
+        );
+    }
+    if !storage_paths_equal(&current_root, &target) && current_root.exists() {
+        copy_storage_files(&current_root, Path::new(""), &target)?;
+    }
+    let config_path = storage_config_path(app)?;
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not prepare Model Foundry settings: {error}"))?;
+    }
+    let config = FoundryStorageConfiguration {
+        schema_version: 1,
+        root: target.to_string_lossy().into_owned(),
+    };
+    write_atomic(
+        &config_path,
+        &serde_json::to_vec_pretty(&config)
+            .map_err(|error| format!("Could not encode Model Foundry storage settings: {error}"))?,
+    )?;
+    fs::remove_file(&marker)
+        .map_err(|error| format!("Could not finish Model Foundry storage migration: {error}"))?;
+    Ok(target)
+}
+
+fn foundry_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    configured_foundry_root(app)?.map_or_else(|| default_foundry_root(app), Ok)
 }
 
 fn write_job(path: &Path, job: &FoundryJob) -> Result<(), String> {
@@ -1930,6 +2234,51 @@ pub fn model_foundry_export_artifact(
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn storage_selection_accepts_local_drives_and_rejects_network_roots() {
+        assert_eq!(
+            normalize_requested_storage_root(Path::new(r"D:\")).unwrap(),
+            PathBuf::from(r"D:\VibeSpace-Model-Foundry")
+        );
+        assert_eq!(
+            normalize_requested_storage_root(Path::new(r"D:\AI Models")).unwrap(),
+            PathBuf::from(r"D:\AI Models\VibeSpace-Model-Foundry")
+        );
+        assert!(normalize_requested_storage_root(Path::new(r"\\server\models")).is_err());
+        assert!(normalize_requested_storage_root(Path::new(r"relative\models")).is_err());
+        assert!(storage_paths_equal(
+            Path::new(r"D:\VibeSpace-Model-Foundry"),
+            Path::new(r"d:\vibespace-model-foundry\")
+        ));
+    }
+
+    #[test]
+    fn storage_copy_preserves_nested_bytes_and_hashes() {
+        let root = std::env::temp_dir().join(format!(
+            "vibespace-foundry-storage-copy-{}",
+            nanoid::nanoid!()
+        ));
+        let source = root.join("source");
+        let target = root.join("target");
+        fs::create_dir_all(source.join("nested")).unwrap();
+        fs::create_dir_all(&target).unwrap();
+        fs::write(source.join("model.bin"), b"verified-model").unwrap();
+        fs::write(source.join("nested").join("job.json"), b"verified-job").unwrap();
+
+        copy_storage_files(&source, Path::new(""), &target).unwrap();
+
+        assert_eq!(
+            fs::read(target.join("model.bin")).unwrap(),
+            b"verified-model"
+        );
+        assert_eq!(
+            fs::read(target.join("nested").join("job.json")).unwrap(),
+            b"verified-job"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
     #[test]
     fn parses_nvidia_smi_memory_without_trusting_wmi_adapter_ram() {
         let parsed = parse_nvidia_smi_csv("NVIDIA GeForce RTX 4050 Laptop GPU, 6141\r\n")
@@ -1959,7 +2308,7 @@ mod tests {
         assert!(validate_weight_hardware("qlora", &hardware, qlora)
             .unwrap_err()
             .contains("CUDA VRAM"));
-        hardware.vram_gb = 6.0;
+        hardware.vram_gb = 5.997;
         hardware.free_storage_gb = 11.9;
         assert!(validate_weight_hardware("qlora", &hardware, qlora)
             .unwrap_err()

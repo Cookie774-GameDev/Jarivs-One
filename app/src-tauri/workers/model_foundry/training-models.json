@@ -292,6 +292,171 @@
           "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
         }
       ]
+    },
+    {
+      "id": "qwen2.5-coder-0.5b-instruct",
+      "label": "Qwen 2.5 Coder 0.5B Instruct",
+      "sourceId": "Qwen/Qwen2.5-Coder-0.5B-Instruct",
+      "revision": "ea3f2471cf1b1f0db85067f1ef93848e38e88c25",
+      "license": "apache-2.0",
+      "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+      "gated": false,
+      "parametersB": 0.5,
+      "downloadBytes": 999586348,
+      "expectedRamGb": 8,
+      "expectedVramGb": 4,
+      "contextTokens": 32768,
+      "precision": "BF16 safetensors · code specialist",
+      "speed": "fast",
+      "quality": "balanced",
+      "cpuPractical": true,
+      "files": [
+        {
+          "path": "config.json",
+          "bytes": 659,
+          "sha256": "b1e58593cd31852f7da5c2fc31ddf6135b9c066c0fd9177a4bbe95717083adff"
+        },
+        {
+          "path": "generation_config.json",
+          "bytes": 243,
+          "sha256": "fdaccbcb02f3e1e7914ccb0f69ebe899071ffd27cf825166d823163e156870f2"
+        },
+        {
+          "path": "merges.txt",
+          "bytes": 1671839,
+          "sha256": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3"
+        },
+        {
+          "path": "model.safetensors",
+          "bytes": 988097824,
+          "sha256": "f9523886352217ded3aeeef552b381af79d568c6d49a4b9e423288cea56b0a44"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 7305,
+          "sha256": "959e7f1d9a1b7641a6d6ce05ca97b75c7894fcb66cbe5a040406458fb1128ee4"
+        },
+        {
+          "path": "tokenizer.json",
+          "bytes": 7031645,
+          "sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539"
+        },
+        {
+          "path": "vocab.json",
+          "bytes": 2776833,
+          "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+        }
+      ]
+    },
+    {
+      "id": "qwen2.5-coder-1.5b-instruct",
+      "label": "Qwen 2.5 Coder 1.5B Instruct",
+      "sourceId": "Qwen/Qwen2.5-Coder-1.5B-Instruct",
+      "revision": "2e1fd397ee46e1388853d2af2c993145b0f1098a",
+      "license": "apache-2.0",
+      "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+      "gated": false,
+      "parametersB": 1.5,
+      "downloadBytes": 3098955668,
+      "expectedRamGb": 12,
+      "expectedVramGb": 8,
+      "contextTokens": 32768,
+      "precision": "BF16 safetensors · code specialist",
+      "speed": "medium",
+      "quality": "high",
+      "cpuPractical": false,
+      "files": [
+        {
+          "path": "config.json",
+          "bytes": 660,
+          "sha256": "88f9a17863c05fb313515d2ff74b1098e0c35579f99068e32beda00618508ae0"
+        },
+        {
+          "path": "generation_config.json",
+          "bytes": 242,
+          "sha256": "1a628a5775bc69cde01c6749a531150ca4d3189652c618a174f7077923acf3b1"
+        },
+        {
+          "path": "merges.txt",
+          "bytes": 1671839,
+          "sha256": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3"
+        },
+        {
+          "path": "model.safetensors",
+          "bytes": 3087467144,
+          "sha256": "c1b9b30e907950516ba3c646bdf570d8084c25a6410a0cdca80cf04b11bc13a8"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 7305,
+          "sha256": "959e7f1d9a1b7641a6d6ce05ca97b75c7894fcb66cbe5a040406458fb1128ee4"
+        },
+        {
+          "path": "tokenizer.json",
+          "bytes": 7031645,
+          "sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539"
+        },
+        {
+          "path": "vocab.json",
+          "bytes": 2776833,
+          "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+        }
+      ]
+    },
+    {
+      "id": "qwen2.5-math-1.5b-instruct",
+      "label": "Qwen 2.5 Math 1.5B Instruct",
+      "sourceId": "Qwen/Qwen2.5-Math-1.5B-Instruct",
+      "revision": "aafeb0fc6f22cbf0eaeed126eff8be45b0360a35",
+      "license": "apache-2.0",
+      "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+      "gated": false,
+      "parametersB": 1.5,
+      "downloadBytes": 3098955592,
+      "expectedRamGb": 12,
+      "expectedVramGb": 8,
+      "contextTokens": 32768,
+      "precision": "BF16 safetensors · math specialist",
+      "speed": "medium",
+      "quality": "high",
+      "cpuPractical": false,
+      "files": [
+        {
+          "path": "config.json",
+          "bytes": 656,
+          "sha256": "a48e6ab280ad87a25f06da604d486aa819b9c1bc467dae7c25fe5d05c57f5511"
+        },
+        {
+          "path": "generation_config.json",
+          "bytes": 160,
+          "sha256": "6cdbb935125f725b568855b396e182b00c9c736fdfab1ef3970087f4ee5cac3f"
+        },
+        {
+          "path": "merges.txt",
+          "bytes": 1671839,
+          "sha256": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3"
+        },
+        {
+          "path": "model.safetensors",
+          "bytes": 3087467144,
+          "sha256": "08faf1e950173bb44c11d26df28c55da7237dc55c77dbc1cbae4a5d7584540d9"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 7315,
+          "sha256": "d743761ff02297cc5cdf38a612b0f78d5cdf5ceb3f251ab1d25ad353d24b1887"
+        },
+        {
+          "path": "tokenizer.json",
+          "bytes": 7031645,
+          "sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539"
+        },
+        {
+          "path": "vocab.json",
+          "bytes": 2776833,
+          "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"
+        }
+      ]
     }
   ]
 }

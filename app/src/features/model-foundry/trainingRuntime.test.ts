@@ -50,7 +50,7 @@ describe('trainingRuntime', () => {
     expect(status.localOnly).toBe(true);
   });
 
-  it('installs only through the explicit native worker command', async () => {
+  it('requests the optional verified QLoRA runtime explicitly', async () => {
     const invoke = vi.fn<TrainingRuntimeInvoke>().mockResolvedValue({
       installed: true,
       attested: true,
@@ -63,15 +63,23 @@ describe('trainingRuntime', () => {
       reason: 'Verified local training libraries are incomplete.',
     });
 
-    const status = await installLocalTrainingWorker({ native: true, invoke });
+    const status = await installLocalTrainingWorker({
+      native: true,
+      invoke,
+      includeQlora: true,
+      storageRoot: 'D:\\AI Models',
+    });
 
-    expect(invoke).toHaveBeenCalledWith('model_foundry_install_training_worker');
+    expect(invoke).toHaveBeenCalledWith('model_foundry_install_training_worker', {
+      includeQlora: true,
+      storageRoot: 'D:\\AI Models',
+    });
     expect(status.installed).toBe(true);
     expect(status.attested).toBe(true);
     expect(status.reason).toMatch(/libraries are incomplete/i);
   });
 
-  it('loads the five pinned trainable models from native authority', async () => {
+  it('loads pinned trainable models from native authority', async () => {
     const invoke = vi.fn().mockResolvedValue([
       {
         id: 'smollm2-135m-instruct',
@@ -146,13 +154,20 @@ describe('trainingRuntime', () => {
       })
       .mockResolvedValueOnce(true);
 
-    await downloadVerifiedTrainingModel(model.id, { native: true, invoke });
+    await downloadVerifiedTrainingModel(model.id, {
+      native: true,
+      invoke,
+      storageRoot: 'D:\\AI Models',
+    });
     await repairVerifiedTrainingModel(model.id, { native: true, invoke });
     await removeVerifiedTrainingModel(model.id, { native: true, invoke });
     await cancelVerifiedTrainingModelDownload({ native: true, invoke });
 
     expect(invoke.mock.calls).toEqual([
-      ['model_foundry_download_training_model', { modelId: model.id }],
+      [
+        'model_foundry_download_training_model',
+        { modelId: model.id, storageRoot: 'D:\\AI Models' },
+      ],
       ['model_foundry_repair_training_model', { modelId: model.id }],
       ['model_foundry_remove_training_model', { modelId: model.id }],
       ['model_foundry_cancel_training_model_download'],

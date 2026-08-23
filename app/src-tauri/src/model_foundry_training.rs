@@ -40,6 +40,17 @@ static ACTIVE_MODEL_DOWNLOAD: LazyLock<Mutex<Option<String>>> = LazyLock::new(||
 static MODEL_STORAGE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static MODEL_DOWNLOAD_CANCELLED: AtomicBool = AtomicBool::new(false);
 
+pub(crate) fn foundry_storage_busy() -> Result<bool, String> {
+    Ok(!ACTIVE_TRAINING
+        .lock()
+        .map_err(|_| "Model Foundry training registry is unavailable.".to_string())?
+        .is_empty()
+        || ACTIVE_MODEL_DOWNLOAD
+            .lock()
+            .map_err(|_| "Training model download registry is unavailable.".to_string())?
+            .is_some())
+}
+
 struct TrainingRegistryGuard(String);
 
 impl Drop for TrainingRegistryGuard {
@@ -607,10 +618,15 @@ fn expected_source_sha256() -> String {
 }
 
 fn training_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    app.path()
-        .app_data_dir()
-        .map(|path| path.join("model-foundry").join("training-runtime"))
-        .map_err(|error| format!("Model Foundry training directory unavailable: {error}"))
+    crate::model_foundry::configured_foundry_root(app)?.map_or_else(
+        || {
+            app.path()
+                .app_data_dir()
+                .map(|path| path.join("model-foundry").join("training-runtime"))
+                .map_err(|error| format!("Model Foundry training directory unavailable: {error}"))
+        },
+        |root| Ok(root.join("training-runtime")),
+    )
 }
 
 fn worker_path(root: &Path) -> PathBuf {
@@ -1430,20 +1446,32 @@ pub fn model_foundry_training_catalog(
 pub async fn model_foundry_download_training_model(
     app: tauri::AppHandle,
     model_id: String,
+    storage_root: Option<String>,
 ) -> Result<TrainingCatalogEntry, String> {
-    tauri::async_runtime::spawn_blocking(move || install_training_model(&app, &model_id, false))
-        .await
-        .map_err(|error| format!("Training model download worker failed: {error}"))?
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(storage_root) = storage_root.as_deref() {
+            crate::model_foundry::configure_foundry_storage(&app, storage_root)?;
+        }
+        install_training_model(&app, &model_id, false)
+    })
+    .await
+    .map_err(|error| format!("Training model download worker failed: {error}"))?
 }
 
 #[tauri::command]
 pub async fn model_foundry_repair_training_model(
     app: tauri::AppHandle,
     model_id: String,
+    storage_root: Option<String>,
 ) -> Result<TrainingCatalogEntry, String> {
-    tauri::async_runtime::spawn_blocking(move || install_training_model(&app, &model_id, true))
-        .await
-        .map_err(|error| format!("Training model repair worker failed: {error}"))?
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(storage_root) = storage_root.as_deref() {
+            crate::model_foundry::configure_foundry_storage(&app, storage_root)?;
+        }
+        install_training_model(&app, &model_id, true)
+    })
+    .await
+    .map_err(|error| format!("Training model repair worker failed: {error}"))?
 }
 
 #[tauri::command]
@@ -1530,8 +1558,12 @@ fn install_training_runtime(
 pub async fn model_foundry_install_training_worker(
     app: tauri::AppHandle,
     include_qlora: Option<bool>,
+    storage_root: Option<String>,
 ) -> Result<TrainingWorkerStatus, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        if let Some(storage_root) = storage_root.as_deref() {
+            crate::model_foundry::configure_foundry_storage(&app, storage_root)?;
+        }
         install_training_runtime(&app, include_qlora.unwrap_or(false))
     })
     .await
@@ -2216,7 +2248,7 @@ mod tests {
         assert_eq!(value["examples"], 1);
         assert_eq!(value["method"], "lora");
         assert_eq!(value["localOnly"], true);
-        assert_eq!(value["maxSteps"], 2);
+        assert_eq!(value["trainingConfig"]["maxSteps"], 2);
 
         let request_without_step_cap = serde_json::json!({
             "protocol": WORKER_PROTOCOL,
@@ -2240,7 +2272,7 @@ mod tests {
             .unwrap();
         assert!(epoch_governed.status.success());
         let value: serde_json::Value = serde_json::from_slice(&epoch_governed.stdout).unwrap();
-        assert_eq!(value["maxSteps"], serde_json::Value::Null);
+        assert_eq!(value["trainingConfig"]["maxSteps"], serde_json::Value::Null);
 
         let _ = fs::remove_dir_all(root);
     }
@@ -2345,7 +2377,9 @@ mod tests {
         fs::write(worker_path(&root), WORKER_SOURCE.as_bytes()).unwrap();
         fs::write(model.join("config.json"), br#"{"model_type":"qwen2"}"#).unwrap();
         let dataset = root.join("examples.jsonl");
-        fs::write(&dataset, b"{\"text\":\"A local training example.\"}\n").unwrap();
+        // Fail deterministically during bounded request validation, before any
+        // optional ML runtime can allocate GPU/CPU resources on the test host.
+        fs::write(&dataset, b"{}\n").unwrap();
         let request_path = root.join("request.json");
         fs::write(
             &request_path,
@@ -2431,7 +2465,13 @@ mod tests {
     #[test]
     fn training_catalog_is_pinned_public_and_hash_complete() {
         let catalog = training_catalog().unwrap();
-        assert_eq!(catalog.len(), 5);
+        assert_eq!(catalog.len(), 8);
+        assert!(catalog
+            .iter()
+            .any(|model| model.id == "qwen2.5-coder-0.5b-instruct"));
+        assert!(catalog
+            .iter()
+            .any(|model| model.id == "qwen2.5-math-1.5b-instruct"));
         for model in catalog {
             assert_eq!(model.license, "apache-2.0");
             assert!(!model.gated);

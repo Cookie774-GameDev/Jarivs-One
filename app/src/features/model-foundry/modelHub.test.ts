@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   classifySource,
   compatibleModels,
+  applyTrainingComputePreset,
   defaultFoundryTrainingConfiguration,
+  estimateFoundryTrainingDuration,
+  TRAINING_COMPUTE_PRESETS,
   validateFoundryTrainingConfiguration,
   formatFoundryStorageBytes,
   foundryModelOptions,
@@ -50,6 +53,55 @@ describe('model foundry domain', () => {
         learningRate: Number.NaN,
       }),
     ).toMatch(/Learning rate/);
+  });
+
+  it('applies real low-memory, balanced, and faster compute profiles', () => {
+    expect(TRAINING_COMPUTE_PRESETS.map((preset) => preset.id)).toEqual([
+      'low-memory',
+      'balanced',
+      'faster',
+    ]);
+    expect(applyTrainingComputePreset('lora', 'low-memory')).toMatchObject({
+      method: 'lora',
+      batchSize: 1,
+      gradientAccumulation: 8,
+      maxSequenceLength: 1024,
+    });
+    expect(applyTrainingComputePreset('qlora', 'balanced')).toMatchObject({
+      method: 'qlora',
+      batchSize: 1,
+      gradientAccumulation: 4,
+      maxSequenceLength: 2048,
+    });
+    expect(applyTrainingComputePreset('full', 'faster')).toMatchObject({
+      method: 'full',
+      batchSize: 2,
+      gradientAccumulation: 2,
+      maxSequenceLength: 2048,
+      learningRate: 0.00002,
+    });
+  });
+
+  it('returns an honest duration range and makes low-memory slower than faster', () => {
+    const lowMemory = estimateFoundryTrainingDuration({
+      method: 'qlora',
+      parametersB: 1.5,
+      configuration: applyTrainingComputePreset('qlora', 'low-memory'),
+      hardware: { ...workstation, vramGb: 6 },
+      usableSourceCount: 4,
+    });
+    const faster = estimateFoundryTrainingDuration({
+      method: 'qlora',
+      parametersB: 1.5,
+      configuration: applyTrainingComputePreset('qlora', 'faster'),
+      hardware: workstation,
+      usableSourceCount: 4,
+    });
+
+    expect(lowMemory.minimumHours).toBeGreaterThan(0);
+    expect(lowMemory.maximumHours).toBeGreaterThan(lowMemory.minimumHours);
+    expect(lowMemory.maximumHours).toBeGreaterThan(faster.maximumHours);
+    expect(lowMemory.disclaimer).toMatch(/estimate/i);
   });
 
   it('recommends the strongest model that genuinely fits', () => {
@@ -176,6 +228,24 @@ describe('model foundry domain', () => {
         worker,
       }),
     ).toMatchObject({ method: 'qlora', available: true, localOnly: true });
+
+    expect(
+      planLocalTrainingMethod({
+        method: 'qlora',
+        parametersB: 1.5,
+        hardware: { ...workstation, vramGb: 5.997, ramGb: 16 },
+        worker,
+      }),
+    ).toMatchObject({ method: 'qlora', available: true, localOnly: true });
+
+    expect(
+      planLocalTrainingMethod({
+        method: 'qlora',
+        parametersB: 1.5,
+        hardware: { ...workstation, vramGb: 5.8, ramGb: 64 },
+        worker,
+      }),
+    ).toMatchObject({ method: 'qlora', available: false, localOnly: true });
   });
 
   it('keeps full-weight visible with a measured reason when hardware does not fit', () => {

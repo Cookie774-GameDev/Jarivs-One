@@ -460,11 +460,16 @@ export function BuildYourOwnAIPage() {
     setTrainingWorkerBusy(true);
     setTrainingWorkerError(null);
     try {
-      setTrainingWorker(await installLocalTrainingWorker());
+      setTrainingWorker(await installLocalTrainingWorker({ includeQlora: true }));
     } catch (error) {
       setTrainingWorkerError(
         error instanceof Error ? error.message : 'Could not set up the local training worker.',
       );
+      try {
+        setTrainingWorker(await getLocalTrainingWorkerStatus());
+      } catch {
+        // Preserve the original setup failure when the follow-up inspection is unavailable.
+      }
     } finally {
       setTrainingWorkerBusy(false);
     }
