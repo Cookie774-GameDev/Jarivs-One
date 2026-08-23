@@ -174,6 +174,8 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
     const dropdownTransition = useThemeMotionTransition(LEGACY_DROPDOWN_TRANSITION);
     const dropdownMotion = resolveDropdownMotion(reducedMotion, dropdownTransition);
     const panelScale = compact ? getLivePanelUiScale() : 1;
+    const [pendingRoutes, setPendingRoutes] = useState<ModelPickerOption | null>(null);
+    const [routeIndex, setRouteIndex] = useState(0);
     const [pendingOption, setPendingOption] = useState<ModelPickerOption | null>(null);
     const [effortIndex, setEffortIndex] = useState(0);
     const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
@@ -280,6 +282,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
 
     const beginSelection = (option: ModelPickerOption) => {
       if (option.available === false) return;
+      setPendingRoutes(null);
       setPendingOption(option);
       const supported = listEffortOptions(
         (option.variants ?? []).map((id) => ({ id })),
@@ -287,6 +290,21 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
       ).filter((candidate) => candidate.available);
       const savedIndex = supported.findIndex((candidate) => candidate.label === initialEffort);
       setEffortIndex(savedIndex >= 0 ? savedIndex : 0);
+    };
+
+    const beginLogicalSelection = (option: ModelPickerOption) => {
+      const routes = option.alternativeRoutes ?? [];
+      if (routes.length <= 1) {
+        beginSelection(routes[0] ?? option);
+        return;
+      }
+      const selectedIndex = routes.findIndex(
+        (route) => route.id === selectedId && route.available !== false,
+      );
+      const firstAvailable = routes.findIndex((route) => route.available !== false);
+      setRouteIndex(selectedIndex >= 0 ? selectedIndex : Math.max(firstAvailable, 0));
+      setPendingRoutes(option);
+      setPendingOption(null);
     };
 
     const commitEffort = (effort: EffortLabel) => {
@@ -302,11 +320,25 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
         return;
       }
       const option = exactOptions.find((item) => item.id === id);
-      if (option) beginSelection(option);
+      const logicalOption = flatOptions.find((item) => item.id === id);
+      if (logicalOption) beginLogicalSelection(logicalOption);
+      else if (option) beginSelection(option);
     };
 
     useImperativeHandle(ref, () => ({
       moveUp: () => {
+        if (pendingRoutes) {
+          const routes = pendingRoutes.alternativeRoutes ?? [];
+          if (routes.length === 0) return;
+          setRouteIndex((current) => {
+            for (let offset = 1; offset <= routes.length; offset += 1) {
+              const next = (current - offset + routes.length) % routes.length;
+              if (routes[next]?.available !== false) return next;
+            }
+            return current;
+          });
+          return;
+        }
         if (pendingOption) {
           setEffortIndex((current) =>
             effortOptions.length === 0
@@ -321,6 +353,18 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
         onHoverId?.(next);
       },
       moveDown: () => {
+        if (pendingRoutes) {
+          const routes = pendingRoutes.alternativeRoutes ?? [];
+          if (routes.length === 0) return;
+          setRouteIndex((current) => {
+            for (let offset = 1; offset <= routes.length; offset += 1) {
+              const next = (current + offset) % routes.length;
+              if (routes[next]?.available !== false) return next;
+            }
+            return current;
+          });
+          return;
+        }
         if (pendingOption) {
           setEffortIndex((current) =>
             effortOptions.length === 0 ? 0 : (current + 1) % effortOptions.length,
@@ -333,6 +377,11 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
         onHoverId?.(next);
       },
       selectCurrent: () => {
+        if (pendingRoutes) {
+          const route = pendingRoutes.alternativeRoutes?.[routeIndex];
+          if (route) beginSelection(route);
+          return;
+        }
         if (pendingOption) {
           const effort = effortOptions[effortIndex]?.label;
           if (effort) commitEffort(effort);
@@ -345,6 +394,8 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
         if (id) selectId(id);
       },
       cancelPending: () => {
+        setPendingRoutes(null);
+        setRouteIndex(0);
         setPendingOption(null);
         setEffortIndex(0);
       },
@@ -399,7 +450,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                   compact ? 'text-[13px] leading-4' : 'text-[17px] leading-5',
                 )}
               >
-                {pendingOption ? 'Choose effort' : 'AI model'}
+                {pendingOption ? 'Choose effort' : pendingRoutes ? 'Choose route' : 'AI model'}
               </div>
               <div
                 className={cn(
@@ -407,7 +458,11 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                   compact ? 'text-[10px] leading-3' : 'text-[12px] leading-4',
                 )}
               >
-                {pendingOption ? pendingOption.label : 'Choose provider and model'}
+                {pendingOption
+                  ? pendingOption.label
+                  : pendingRoutes
+                    ? pendingRoutes.label
+                    : 'Choose provider and model'}
               </div>
             </div>
           </div>
@@ -469,6 +524,47 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                 })(),
               )}
             </div>
+          ) : pendingRoutes ? (
+            <div role="group" aria-label={`${pendingRoutes.label} routes`} className="py-1">
+              {(pendingRoutes.alternativeRoutes ?? []).map((route, index) => {
+                const selected = index === routeIndex;
+                return (
+                  <button
+                    key={route.id}
+                    type="button"
+                    data-value={route.id}
+                    aria-label={`${route.label} · ${route.modelId}`}
+                    aria-pressed={selected}
+                    disabled={route.available === false}
+                    onMouseEnter={() => route.available !== false && setRouteIndex(index)}
+                    onClick={() => beginSelection(route)}
+                    className={cn(
+                      'mx-2 flex w-[calc(100%-1rem)] items-center gap-3 rounded-[12px] border px-3 py-2.5 text-left transition-all duration-150',
+                      route.available === false && 'cursor-not-allowed opacity-55',
+                      selected ? CATALOG_ROW_SELECTED_STATE : CATALOG_ROW_IDLE_STATE,
+                    )}
+                  >
+                    <Sparkles
+                      aria-hidden="true"
+                      className={cn(
+                        'h-4 w-4 shrink-0',
+                        selected ? 'text-accent-copper' : 'text-muted-foreground/70',
+                      )}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] font-medium text-foreground">
+                        {route.label}
+                      </span>
+                      <span className="block truncate text-[11px] text-muted-foreground">
+                        {route.modeLabel ? `${route.modeLabel} · ` : ''}
+                        {route.modelId}
+                        {route.authLabel ? ` · ${route.authLabel}` : ''}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           ) : onSelectHive &&
             searchTerms.every((term) => `hive ensemble balanced`.includes(term)) ? (
             <div className="mb-1">
@@ -511,7 +607,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
               })()}
             </div>
           ) : null}
-          {!pendingOption && groups.length === 0 ? (
+          {!pendingOption && !pendingRoutes && groups.length === 0 ? (
             onSelectHive ? null : (
               <div className="px-4 py-6 text-center">
                 <p className="text-[13px] text-muted-foreground">No models available yet.</p>
@@ -521,11 +617,11 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                 </p>
               </div>
             )
-          ) : !pendingOption && filteredGroups.length === 0 ? (
+          ) : !pendingOption && !pendingRoutes && filteredGroups.length === 0 ? (
             <div className="px-4 py-6 text-center text-[13px] text-muted-foreground">
               No matching models.
             </div>
-          ) : !pendingOption ? (
+          ) : !pendingOption && !pendingRoutes ? (
             filteredGroups.map((group, groupIndex) => {
               const GroupIcon = PROVIDER_ICONS[group.provider] ?? Sparkles;
               const groupId = group.id ?? `${group.provider}:${group.label}`;
@@ -576,7 +672,9 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                                       ? SIK_CONTROL.modelTransportCli
                                       : undefined
                                 }
-                                onClick={() => option.available !== false && beginSelection(option)}
+                                onClick={() =>
+                                  option.available !== false && beginLogicalSelection(option)
+                                }
                                 onMouseEnter={() =>
                                   option.available !== false && onHoverId?.(option.id)
                                 }
@@ -643,7 +741,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
           ) : null}
         </div>
 
-        {!pendingOption ? (
+        {!pendingOption && !pendingRoutes ? (
           <div
             role="search"
             className={cn(

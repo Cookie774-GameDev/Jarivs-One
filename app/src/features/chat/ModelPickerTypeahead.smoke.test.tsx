@@ -1,5 +1,5 @@
 import { createRef } from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ProviderConnection } from '@/lib/ai/adapters/types';
@@ -134,7 +134,7 @@ describe('ModelPickerTypeahead smoke transports', () => {
     expect(onSelect).toHaveBeenCalledWith('vibespace-kernel-smoke', 'kernel-smoke-v1', cli, 'auto');
   });
 
-  it('renders one logical model row and keeps alternative routes internal', () => {
+  it('renders one logical row but lets the exact Fast route and Max effort be selected', () => {
     const openCode = {
       ...connection('opencode-cli', 'external-cli'),
       adapterId: 'opencode-cli',
@@ -161,17 +161,20 @@ describe('ModelPickerTypeahead smoke transports', () => {
                     id: 'opencode-cli:qwen/qwen3.7-plus',
                     provider: 'opencode' as never,
                     modelId: 'qwen/qwen3.7-plus',
-                    label: 'Qwen 3.7 Plus · OpenCode Bridge · Qwen',
+                    label: 'Qwen 3.7 Plus',
                     connection: openCode,
+                    modeLabel: 'OpenCode Bridge',
                     available: true,
                   },
                   {
                     id: 'opencode-cli:qwen/qwen3.7-plus-fast',
                     provider: 'opencode' as never,
                     modelId: 'qwen/qwen3.7-plus-fast',
-                    label: 'Qwen 3.7 Plus Fast',
+                    label: 'Qwen 3.7 Plus',
                     connection: openCode,
+                    modeLabel: 'OpenCode Bridge',
                     available: true,
+                    variants: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
                   },
                 ],
               },
@@ -188,8 +191,11 @@ describe('ModelPickerTypeahead smoke transports', () => {
     expect(screen.queryByRole('button', { name: /Codex \/ ChatGPT subscription/i })).toBeNull();
     fireEvent.click(screen.getByText('Qwen 3.7 Plus'));
     expect(onSelect).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: /auto/i }));
-    expect(onSelect).toHaveBeenCalledWith('opencode', 'qwen/qwen3.7-plus', openCode, 'auto');
+    const routes = screen.getByRole('group', { name: 'Qwen 3.7 Plus routes' });
+    expect(within(routes).getByText(/qwen\/qwen3\.7-plus-fast/i)).not.toBeNull();
+    fireEvent.click(within(routes).getByRole('button', { name: /qwen\/qwen3\.7-plus-fast/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'max' }));
+    expect(onSelect).toHaveBeenCalledWith('opencode', 'qwen/qwen3.7-plus-fast', openCode, 'max');
   });
 
   it('preserves an exact selected alias when keyboard activation repeats the current row', () => {
@@ -253,6 +259,110 @@ describe('ModelPickerTypeahead smoke transports', () => {
       openCode,
       'auto',
     );
+  });
+
+  it('keeps an unavailable exact route disabled and supports keyboard route selection', () => {
+    const openCode = connection('opencode-cli', 'external-cli');
+    const ref = createRef<ModelPickerTypeaheadRef>();
+    const onSelect = vi.fn();
+    const { rerender } = render(
+      <ModelPickerTypeahead
+        ref={ref}
+        groups={[
+          {
+            provider: 'opencode' as never,
+            label: 'OpenCode Models',
+            options: [
+              {
+                id: 'opencode-cli:openai/gpt-5.6-luna',
+                provider: 'opencode' as never,
+                modelId: 'openai/gpt-5.6-luna',
+                label: 'GPT-5.6 Luna',
+                connection: openCode,
+                available: true,
+                alternativeRoutes: [
+                  {
+                    id: 'opencode-cli:openai/gpt-5.6-luna',
+                    provider: 'opencode' as never,
+                    modelId: 'openai/gpt-5.6-luna',
+                    label: 'GPT-5.6 Luna',
+                    connection: openCode,
+                    available: true,
+                  },
+                  {
+                    id: 'opencode-cli:openai/gpt-5.6-luna-fast',
+                    provider: 'opencode' as never,
+                    modelId: 'openai/gpt-5.6-luna-fast',
+                    label: 'GPT-5.6 Luna',
+                    connection: openCode,
+                    available: false,
+                    variants: ['max'],
+                  },
+                ],
+              },
+            ],
+          },
+        ]}
+        selectedId="opencode-cli:openai/gpt-5.6-luna"
+        onSelect={onSelect}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('GPT-5.6 Luna'));
+    const unavailable = screen.getByRole('button', { name: /gpt-5\.6-luna-fast/i });
+    expect(unavailable.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(unavailable);
+    expect(screen.queryByText('Choose effort')).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+    act(() => ref.current?.cancelPending());
+
+    rerender(
+      <ModelPickerTypeahead
+        ref={ref}
+        groups={[
+          {
+            provider: 'opencode' as never,
+            label: 'OpenCode Models',
+            options: [
+              {
+                id: 'opencode-cli:openai/gpt-5.6-luna',
+                provider: 'opencode' as never,
+                modelId: 'openai/gpt-5.6-luna',
+                label: 'GPT-5.6 Luna',
+                connection: openCode,
+                available: true,
+                alternativeRoutes: [
+                  {
+                    id: 'opencode-cli:openai/gpt-5.6-luna',
+                    provider: 'opencode' as never,
+                    modelId: 'openai/gpt-5.6-luna',
+                    label: 'GPT-5.6 Luna',
+                    connection: openCode,
+                    available: true,
+                  },
+                  {
+                    id: 'opencode-cli:openai/gpt-5.6-luna-fast',
+                    provider: 'opencode' as never,
+                    modelId: 'openai/gpt-5.6-luna-fast',
+                    label: 'GPT-5.6 Luna',
+                    connection: openCode,
+                    available: true,
+                    variants: ['max'],
+                  },
+                ],
+              },
+            ],
+          },
+        ]}
+        selectedId="opencode-cli:openai/gpt-5.6-luna"
+        onSelect={onSelect}
+      />,
+    );
+    fireEvent.click(screen.getByText('GPT-5.6 Luna'));
+    act(() => ref.current?.moveDown());
+    act(() => ref.current?.selectCurrent());
+    fireEvent.click(screen.getByRole('button', { name: 'max' }));
+    expect(onSelect).toHaveBeenCalledWith('opencode', 'openai/gpt-5.6-luna-fast', openCode, 'max');
   });
 
   it('commits the exact route and only a genuinely supported effort on the second Enter', () => {

@@ -316,6 +316,8 @@ test('source can only attach to owned CDP and cannot launch, navigate, or close 
   assert.match(source, /rejected_effort_mutated_state/u);
   assert.match(source, /rejected_effort_still_visible/u);
   assert.match(source, /\.jarvis-slash-dropdown/u);
+  assert.match(source, /aria-label\$=" routes"/u);
+  assert.match(source, /exact_model_route_ambiguous/u);
   assert.match(source, /group\.elementHandles\(\)/u);
   assert.match(source, /section\[aria-label="Chats"\]/u);
   assert.match(source, /runtime_control_\$\{field\}_not_applied/u);

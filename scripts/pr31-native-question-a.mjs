@@ -595,10 +595,28 @@ async function configureExactModelViaUi(page, expected) {
   if ((await search.count()) !== 1) fail('model_search_unavailable');
   await search.fill(expected.expectedModel);
   const exactOptionId = `${expected.expectedConnection}:${expected.expectedModel}`;
-  const exactOption = dropdown.locator(`[data-value="${exactOptionId}"]`);
-  await exactOption.waitFor({ state: 'visible', timeout: 15_000 });
-  if ((await exactOption.count()) !== 1) fail('exact_model_option_ambiguous');
-  await exactOption.click();
+  let exactOption = dropdown.locator(`[data-value="${exactOptionId}"]:visible`);
+  if ((await exactOption.count()) === 0) {
+    const logicalMatches = dropdown.locator('[data-value]:visible');
+    if ((await logicalMatches.count()) !== 1) fail('exact_model_option_ambiguous');
+    await logicalMatches.click();
+    const routeGroup = dropdown.locator('[role="group"][aria-label$=" routes"]:visible');
+    await routeGroup.waitFor({ state: 'visible', timeout: 5_000 });
+    exactOption = routeGroup.locator(`[data-value="${exactOptionId}"]:visible`);
+  } else {
+    if ((await exactOption.count()) !== 1) fail('exact_model_option_ambiguous');
+    await exactOption.click();
+    const routeGroup = dropdown.locator('[role="group"][aria-label$=" routes"]:visible');
+    if ((await routeGroup.count()) === 1) {
+      exactOption = routeGroup.locator(`[data-value="${exactOptionId}"]:visible`);
+    } else {
+      exactOption = dropdown.locator('[data-effort-level]:visible').first();
+    }
+  }
+  if ((await exactOption.count()) !== 1) fail('exact_model_route_ambiguous');
+  if ((await dropdown.locator('[data-effort-level]:visible').count()) === 0) {
+    await exactOption.click();
+  }
   const effort = dropdown.locator(`[data-effort-level="${expected.expectedEffort}"]`);
   await effort.waitFor({ state: 'visible', timeout: 5_000 });
   if ((await effort.count()) !== 1) fail('expected_effort_option_ambiguous');
