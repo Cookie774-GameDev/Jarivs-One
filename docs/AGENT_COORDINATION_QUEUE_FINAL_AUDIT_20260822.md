@@ -12,5 +12,6 @@
 
 ## Native-only boundary
 
+- Fresh non-native bridge/safety matrix: Pet Tauri bridge/lifecycle/overlay recovery/native panel; composer STT and global dictation session/Deepgram/failure/overlay; storage Doctor and `/doctor` — PASS, 11 files / 57 tests.
 - Pet topmost/focus behavior, real microphone capture, and VibeSpace Doctor durable recovery require native Windows/Tauri capabilities. The user's current instruction forbids live VibeSpace app testing, while the repository forbids browser/Vite evidence as product acceptance. These three remain honestly unverified.
 - No broad desktop control, browser product QA, native launch, microphone access, overlay manipulation, Doctor repair, or real user-data operation occurred in this audit.

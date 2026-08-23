@@ -20,9 +20,9 @@ Updated: 2026-08-22 by `/root`. A checked item means fresh evidence exists; impl
 
 ## P2 — Remaining native product verification
 
-- [ ] Repair and prove the Pet overlay floats above other Windows applications without focus theft.
-- [ ] Prove real microphone speech produces transcription through the selected dictation route; do not silently fall back.
-- [ ] Prove VibeSpace Doctor's backup-first durable IndexedDB recovery only in a disposable profile.
+- [ ] Repair and prove the Pet overlay floats above other Windows applications without focus theft. Fresh bridge/lifecycle/overlay-recovery/native-panel contracts pass within the combined 11-file / 57-test native-boundary matrix; Windows topmost/focus acceptance still requires the native app.
+- [ ] Prove real microphone speech produces transcription through the selected dictation route; do not silently fall back. Fresh composer STT and global dictation session/Deepgram/failure/overlay contracts pass within the combined 11-file / 57-test matrix; real microphone capture still requires native hardware/app acceptance.
+- [ ] Prove VibeSpace Doctor's backup-first durable IndexedDB recovery only in a disposable profile. Fresh storage Doctor and `/doctor` contracts pass within the combined 11-file / 57-test matrix; restart-safe repair still requires a disposable native profile and explicit confirmation.
 
 ## P3 — Lightweight tools and durable user state
 
