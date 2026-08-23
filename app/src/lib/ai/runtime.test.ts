@@ -203,6 +203,7 @@ import {
   liveVariantLookupForChatSelection,
   openCodeToolsForInteractionMode,
   prepareOpenCodeMessagesForInteractionMode,
+  resolveRuntimeReasoningPolicy,
   startRuntimeListener as startKernelAwareRuntimeListener,
 } from './runtime';
 import { TOOL_GATEWAY_CATALOG } from '@/lib/harness/toolGatewayProtocol';
@@ -384,6 +385,45 @@ describe('startRuntimeListener agent routing', () => {
       modelId: 'deepseek-v4-flash-vision-exp',
     });
     expect(captured.modelId).toBe('opencode-go/deepseek-v4-flash-vision-exp');
+  });
+
+  it.each([
+    ['missing provider cache', []],
+    [
+      'cached model without variants',
+      [
+        {
+          id: 'opencode-go',
+          name: 'OpenCode Go',
+          connected: true,
+          models: [
+            {
+              id: 'deepseek-v4-flash-vision-exp',
+              name: 'DeepSeek V4 FLASH Vision Exp',
+              variants: [],
+            },
+          ],
+        },
+      ],
+    ],
+  ] as const)('defers explicit OpenCode effort to live authority with %s', (_label, providers) => {
+    rememberLiveOpenCodeProviders(providers);
+    const selection = {
+      providerId: 'opencode',
+      connectionId: 'opencode-cli',
+      modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+    };
+    expect(
+      resolveRuntimeReasoningPolicy(selection, {
+        mode: 'normal',
+        effortOverride: 'medium',
+      }),
+    ).toMatchObject({
+      selection,
+      requestedEffort: 'medium',
+      resolvedEffort: 'medium',
+      providerOptions: {},
+    });
   });
 
   it('preserves an explicit-root request verbatim when the Context tool is disabled', () => {
@@ -1988,7 +2028,12 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
           chatId,
           text: userText,
           reasoningPreference: { mode: 'normal', effortOverride: 'medium' },
-          runtimeSettings: { effort: 'medium' },
+          runtimeSettings: {
+            effort: 'medium',
+            performance: 'quality',
+            fastMode: 'off',
+            rlmEnabled: true,
+          },
         },
       }),
     );
@@ -2009,7 +2054,12 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     // This OpenCode route carries its verified effort through runtimeSettings.
     // Do not invent a provider-specific wire field for the OpenCode Go namespace.
     expect(providerInput.provider_options).toEqual({});
-    expect(providerInput.runtimeSettings).toMatchObject({ effort: 'medium' });
+    expect(providerInput.runtimeSettings).toEqual({
+      effort: 'medium',
+      performance: 'quality',
+      fastMode: 'off',
+      rlmEnabled: true,
+    });
     expect(mocks.devLog).toHaveBeenCalledWith(
       expect.objectContaining({
         channel: 'ai',

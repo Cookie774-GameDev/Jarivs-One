@@ -324,6 +324,32 @@ export function liveVariantLookupForChatSelection(selection: {
   });
 }
 
+export function resolveRuntimeReasoningPolicy(
+  selection: Readonly<{ providerId: string; modelId: string; connectionId?: string }>,
+  preference: Readonly<ReasoningPreference>,
+): ReturnType<typeof resolveReasoningPolicy> {
+  const lookup = liveVariantLookupForChatSelection(selection);
+  const liveVariants = liveVariantsForSelection(getLiveOpenCodeProviders(), lookup);
+  const deferExplicitOpenCodeEffort =
+    selection.connectionId === 'opencode-cli' &&
+    Boolean(lookup.runtimeProviderId) &&
+    preference.effortOverride !== null &&
+    (liveVariants === undefined || liveVariants.length === 0);
+  if (deferExplicitOpenCodeEffort) {
+    const base = resolveReasoningPolicy({
+      selection,
+      preference: { ...preference, effortOverride: null },
+    });
+    return {
+      ...base,
+      requestedEffort: preference.effortOverride,
+      resolvedEffort: preference.effortOverride,
+      providerOptions: {},
+    };
+  }
+  return resolveReasoningPolicy({ selection, preference, liveVariants });
+}
+
 /** @internal Re-reads canonical provider results without exposing the result store. */
 export interface CanonicalProviderArtifactEvidenceReadPort {
   readCanonicalProviderEvidence(
@@ -4093,20 +4119,16 @@ export function startRuntimeListener(
     try {
       reasoningPolicy =
         stackStepsEarly.length === 0 && chatModelSelection.mode === 'single'
-          ? resolveReasoningPolicy({
-              selection: {
+          ? resolveRuntimeReasoningPolicy(
+              {
                 providerId: chatModelSelection.providerId,
                 modelId: chatModelSelection.modelId,
                 ...(chatModelSelection.connectionId
                   ? { connectionId: chatModelSelection.connectionId }
                   : {}),
               },
-              preference: effectiveReasoningPreference,
-              liveVariants: liveVariantsForSelection(
-                getLiveOpenCodeProviders(),
-                liveVariantLookupForChatSelection(chatModelSelection),
-              ),
-            })
+              effectiveReasoningPreference,
+            )
           : null;
     } catch (error) {
       failEarlySetup('model', error);
@@ -5112,9 +5134,7 @@ export function startRuntimeListener(
             provider: response.provider,
             model: response.model,
             connectionId:
-              chatModelSelection.mode === 'single'
-                ? chatModelSelection.connectionId
-                : undefined,
+              chatModelSelection.mode === 'single' ? chatModelSelection.connectionId : undefined,
           },
         });
       }
