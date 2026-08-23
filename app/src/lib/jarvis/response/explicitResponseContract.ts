@@ -115,7 +115,7 @@ export function parseExplicitResponseContract(userText: string): ExplicitRespons
     maxWords,
     minimumWords,
     targetMinWords: Math.max(1, minimumWords || Math.floor(maxWords * 0.8)),
-    targetMaxWords: Math.max(1, Math.floor(maxWords * 0.96)),
+    targetMaxWords: Math.max(1, Math.max(minimumWords, Math.floor(maxWords * 0.92))),
   });
 }
 
@@ -128,12 +128,13 @@ export function explicitResponseContractFallback(contract: ExplicitResponseContr
 export function formatExplicitResponseContract(contract: ExplicitResponseContract): string {
   const targetInstruction =
     contract.minimumWords > 0
-      ? `Aim for ${contract.targetMinWords}-${contract.targetMaxWords} words and do not return fewer than ${contract.minimumWords} words.`
+      ? `Use ${contract.targetMaxWords} words as the drafting ceiling and submit ${contract.targetMinWords}-${contract.targetMaxWords} words; do not return fewer than ${contract.minimumWords} words.`
       : `Keep the answer concise and within the ${contract.maxWords}-word maximum.`;
   return [
     '## Explicit response contract',
     `The final answer must never exceed ${contract.maxWords} words. ${targetInstruction}`,
     'The response will be discarded if it falls outside the required bounds, so budget sections before writing and omit appendices once the target is met.',
+    'Before returning, count whitespace-delimited words in the complete answer. If the draft is outside the target range, rewrite it internally before submitting; never rely on truncation.',
     'Count the complete final answer, including headings and list items. Finish cleanly; never truncate a sentence.',
     'Do not emit internal placeholders, output-location notices, hidden scaffolding, or duplicated sections.',
     'For factual requests, prefer concrete evidence and clearly distinguish observed facts, inference, and unavailable evidence.',

@@ -72,7 +72,10 @@ describe('persistent OpenCode live authority', () => {
       } as never,
       { rlmEnabled: false, performance: 'quality' } as never,
     );
-    expect(addendum).toContain('read, glob, grep, or list');
+    expect(addendum).toContain('inventory the root itself with list or read');
+    expect(addendum).toContain('bounded glob or grep');
+    expect(addendum).toContain('read several representative high-signal entries');
+    expect(addendum).toContain('do not treat one child file as a complete audit');
     expect(addendum).toContain('approved working directory');
     expect(addendum).toContain('Do not use Context, RLM, web, shell, or recursive retrieval');
     expect(addendum).not.toContain('Use only the current approved prompt/context');

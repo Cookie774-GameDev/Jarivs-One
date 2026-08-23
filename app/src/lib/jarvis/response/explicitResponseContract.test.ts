@@ -15,13 +15,31 @@ describe('explicitResponseContract', () => {
       maxWords: 750,
       minimumWords: 675,
       targetMinWords: 675,
-      targetMaxWords: 720,
+      targetMaxWords: 690,
     });
     expect(formatExplicitResponseContract(contract!)).toContain('never exceed 750 words');
-    expect(formatExplicitResponseContract(contract!)).toContain('Aim for 675-720 words');
+    expect(formatExplicitResponseContract(contract!)).toContain(
+      'Use 690 words as the drafting ceiling and submit 675-690 words',
+    );
+    expect(formatExplicitResponseContract(contract!)).toContain('count whitespace-delimited words');
     expect(formatExplicitResponseContract(contract!)).toContain(
       'The response will be discarded if it falls outside the required bounds',
     );
+    const words = (count: number) =>
+      Array.from({ length: count }, (_, index) => `word${index}`).join(' ');
+    expect(assessExplicitResponseContract(words(674), contract!)).toMatchObject({ ok: false });
+    expect(assessExplicitResponseContract(words(675), contract!)).toEqual({
+      ok: true,
+      wordCount: 675,
+    });
+    expect(assessExplicitResponseContract(words(690), contract!)).toEqual({
+      ok: true,
+      wordCount: 690,
+    });
+    expect(assessExplicitResponseContract(words(750), contract!)).toEqual({
+      ok: true,
+      wordCount: 750,
+    });
   });
 
   it('uses the strictest explicit limit and ignores incidental or unreasonable numbers', () => {

@@ -1001,9 +1001,10 @@ export function contextSystemAddendum(
   if (request.explicitReadRoot) {
     return [
       'VibeSpace Context route: DIRECT FILESYSTEM EVIDENCE.',
-      'Before drafting or making factual claims, complete at least one read, glob, grep, or list operation inside the approved working directory.',
+      'Before drafting or making factual claims, use this bounded evidence sequence inside the approved working directory: inventory the root itself with list or read; use bounded glob or grep for immediate repository and configuration markers; then read several representative high-signal entries.',
       'Do not use Context, RLM, web, shell, or recursive retrieval for this explicit-root turn.',
-      'If no read-only filesystem operation completes, report that evidence is unavailable instead of answering from memory or unrelated context.',
+      'Separate observed facts from inference, state unavailable categories plainly, and do not treat one child file as a complete audit of a directory.',
+      'If the bounded read-only sequence cannot complete, report that evidence is unavailable instead of answering from memory or unrelated context.',
     ].join(' ');
   }
   const question = request.prompt.trim();
