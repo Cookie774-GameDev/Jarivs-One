@@ -62,6 +62,8 @@ Set as Fly.io secrets via `fly secrets set KEY=value`:
 | `CARTESIA_API_KEY`                  | play.cartesia.ai                      | Path A premium TTS              |
 | `GROQ_API_KEY`                      | console.groq.com (free)               | Path C default LLM/STT          |
 | `BRIDGE_TOKEN_PEPPER`               | random 64-char hex (you generate)     | bridge auth                     |
+| `PHONE_JARVIS_ENABLED`              | `true` only after setup is complete   | public service kill switch      |
+| `PHONE_JARVIS_PUBLIC_BASE_URL`      | deployed phone service HTTPS origin   | secure callbacks + bridge URLs  |
 | `MCP_PUBLIC_URL`                    | public HTTPS URL ending in `/mcp`     | official ChatGPT MCP resource   |
 
 Per-user keys (Groq, Anthropic, etc.) are stored encrypted in Supabase
@@ -72,6 +74,13 @@ listed in `.env.example`. They drive measured-cost-to-credit settlement and
 must match the operator's current contracts.
 `CALL_ANYONE_MAX_CREDITS_PER_MINUTE` is the conservative server-side
 reservation ceiling; the desktop cannot supply or override it.
+
+Keep `PHONE_JARVIS_ENABLED=false` until the public base URL uses HTTPS and
+`BRIDGE_TOKEN_PEPPER` is a generated 64-character hexadecimal secret. The
+service refuses to start enabled with an insecure URL or placeholder pepper.
+The desktop build must set `VITE_PHONE_JARVIS_CLOUD_URL` to the same deployed
+HTTPS origin; this is a public endpoint, not a secret. Never place
+`SUPABASE_SERVICE_ROLE_KEY` or provider secret keys in a `VITE_` variable.
 
 ## Browser Chat MCP
 

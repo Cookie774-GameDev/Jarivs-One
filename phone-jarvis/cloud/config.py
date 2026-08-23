@@ -6,9 +6,9 @@ Pydantic settings give us validation + helpful error messages on missing keys.
 """
 
 from functools import lru_cache
-from typing import Optional
+import re
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     BRIDGE_TOKEN_PEPPER: str = Field(default="dev_pepper_replace_in_production")
     MCP_PUBLIC_URL: str = Field(default="")
 
+    # --- Public service boundary (fail closed until explicitly enabled) ---
+    PHONE_JARVIS_ENABLED: bool = Field(default=False)
+    PHONE_JARVIS_PUBLIC_BASE_URL: str = Field(default="")
+
     # --- Behavior ---
     AUDIT_RETENTION_DAYS: int = Field(default=30)
     COST_CAP_PER_CALL: float = Field(default=5.00)
@@ -74,9 +78,34 @@ class Settings(BaseSettings):
     PORT: int = Field(default=8080)
     LOG_LEVEL: str = Field(default="INFO")
 
+    @model_validator(mode="after")
+    def validate_phone_service_boundary(self) -> "Settings":
+        self.PHONE_JARVIS_PUBLIC_BASE_URL = self.PHONE_JARVIS_PUBLIC_BASE_URL.rstrip(
+            "/"
+        )
+        if not self.PHONE_JARVIS_ENABLED:
+            return self
+        if not self.PHONE_JARVIS_PUBLIC_BASE_URL.startswith("https://"):
+            raise ValueError(
+                "PHONE_JARVIS_PUBLIC_BASE_URL must be a public HTTPS URL when PHONE_JARVIS_ENABLED is true"
+            )
+        if re.fullmatch(r"[0-9a-fA-F]{64}", self.BRIDGE_TOKEN_PEPPER) is None:
+            raise ValueError(
+                "BRIDGE_TOKEN_PEPPER must be a generated 64-character hexadecimal secret when PHONE_JARVIS_ENABLED is true"
+            )
+        return self
+
+    @property
+    def token_secret(self) -> str:
+        return self.BRIDGE_TOKEN_PEPPER
+
     @property
     def has_twilio(self) -> bool:
-        return bool(self.TWILIO_ACCOUNT_SID and self.TWILIO_AUTH_TOKEN and self.TWILIO_PHONE_NUMBER)
+        return bool(
+            self.TWILIO_ACCOUNT_SID
+            and self.TWILIO_AUTH_TOKEN
+            and self.TWILIO_PHONE_NUMBER
+        )
 
     @property
     def has_telnyx(self) -> bool:
@@ -101,7 +130,9 @@ class Settings(BaseSettings):
 
     @property
     def has_livekit(self) -> bool:
-        return bool(self.LIVEKIT_API_KEY and self.LIVEKIT_API_SECRET and self.LIVEKIT_URL)
+        return bool(
+            self.LIVEKIT_API_KEY and self.LIVEKIT_API_SECRET and self.LIVEKIT_URL
+        )
 
     @property
     def has_supabase(self) -> bool:

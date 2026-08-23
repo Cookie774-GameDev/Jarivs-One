@@ -63,3 +63,21 @@ Append-only coordination record for `PR31-JARVIS-PHONE-MESSAGING-VOICE-PRODUCTIO
 - Fresh focused verification PASS: five Node test files, 19 tests, 0 failures. Exact diff check PASS. No Deno executable or disposable Supabase/PostgreSQL runtime is installed, so Edge type-check, migration execution, Twilio signature with a real request, provider timing, actual carrier delivery, and budget settlement against live tables remain `BLOCKED`/unclaimed.
 - Activation inputs still required: deployed Supabase project URL/anon/service configuration, `DEEPSEEK_API_KEY`, `TWILIO_AUTH_TOKEN`, public `APP_BASE_URL`, Twilio SMS/WhatsApp sender setup, webhook registration, and explicit deployment approval. No secret was read or changed.
 - Next action: commit this exact Twilio/runtime slice, then implement Telegram webhook signature-secret/pairing/reply behavior and Discord signed interaction behavior in separate owned slices.
+
+## 2026-08-22 21:18 CDT — phone cloud configuration defect claim
+
+- Twilio/runtime commit: `6064901e` (`feat(messaging): wire remote Jarvis to Twilio`).
+- Root-cause reproduction from `phone-jarvis/cloud`: constructing `Settings()` reports all three security dependencies absent: `PHONE_JARVIS_ENABLED=False`, `PHONE_JARVIS_PUBLIC_BASE_URL=False`, and `token_secret=False` via `hasattr`. `security.py` reads each attribute, so kill-switch routing, canonical webhook URL construction, and default one-time-token mint/verify can raise `AttributeError` regardless of supplied environment values because unknown settings are ignored.
+- Exact additional ownership: `phone-jarvis/cloud/config.py`, a new focused configuration/security contract test, `.env.example`, and the cloud README.
+- Hypothesis: defining fail-closed enablement, HTTPS public base URL, and a derived non-empty token-secret property at the settings boundary will make the existing security consumers deterministic without weakening their checks.
+- Next action: prove the missing-field contract RED, implement the smallest settings fix, then run the focused phone-cloud security/config matrix.
+
+## 2026-08-22 21:08 CDT — phone cloud configuration verification checkpoint
+
+- Shared branch advanced independently while this owned slice was in progress; observed current HEAD `35c8a14a7414957dbb0358480fa529b07e145945` on `integration/UnifiedChungus-final`, upstream `origin/UnifiedChungus`. No unrelated file was changed, staged, reset, or rewritten.
+- RED evidence: the new four-test settings contract initially failed all four rows because `PHONE_JARVIS_ENABLED`, `PHONE_JARVIS_PUBLIC_BASE_URL`, and `token_secret` were absent and enabled-mode validation did not exist.
+- Implemented fail-closed `PHONE_JARVIS_ENABLED=false`, canonical HTTPS `PHONE_JARVIS_PUBLIC_BASE_URL`, a `token_secret` bridge to the configured pepper, and enabled-mode rejection of non-HTTPS origins or anything other than a generated 64-character hexadecimal pepper.
+- Operator documentation now distinguishes server-only secrets from the public desktop build variable `VITE_PHONE_JARVIS_CLOUD_URL`; `.env.example` contains placeholders only. No credential was read, printed into the ledger, changed, or deployed.
+- Focused GREEN verification: `python -m pytest test_config_security_contract.py test_bridge_security.py test_browser_chat_mcp.py test_telnyx_gateway.py -q` -> 24 passed; `python -m compileall -q config.py security.py` -> passed; `python -m ruff format` and `python -m ruff check --no-cache` on the owned Python files -> passed.
+- Provider setup facts were checked against current official documentation: Twilio webhook request validation, Telegram Bot API webhook secret headers, and Discord interaction Ed25519 verification/three-second acknowledgement requirements. Live carrier/provider validation remains unclaimed until credentials, deployment approval, and provider-side webhook registration exist.
+- Next action: exact-diff/security scan and commit this configuration slice only, then claim separate Telegram and Discord adapter files.
