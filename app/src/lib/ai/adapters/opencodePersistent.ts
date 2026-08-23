@@ -362,6 +362,7 @@ export function createPersistentOpenCodeRuntimeSupervisor(
   runtime: HarnessRuntimeManager = harnessRuntimeManager,
 ): OpenCodeRuntimeSupervisor {
   return {
+    currentGeneration: () => runtime.getConnection()?.generation,
     async start(scope: HarnessScope): Promise<OpenCodeRuntimeHandle> {
       await runtime.refresh();
       const connection = runtime.getConnection();

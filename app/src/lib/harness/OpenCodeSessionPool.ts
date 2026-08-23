@@ -12,6 +12,8 @@ export interface OpenCodeRuntimeHandle {
 }
 
 export interface OpenCodeRuntimeSupervisor {
+  /** Current app-scoped runtime generation, when the supervisor can observe it synchronously. */
+  currentGeneration?(): string | undefined;
   start(scope: HarnessScope): Promise<OpenCodeRuntimeHandle>;
 }
 
@@ -134,8 +136,15 @@ export class OpenCodeSessionPool {
     const key = openCodeScopeKey(scope);
     const existing = this.entries.get(key);
     if (existing && !existing.disposed) {
-      existing.lastUsedAt = this.now();
-      return existing;
+      const currentGeneration = this.supervisor.currentGeneration?.();
+      if (
+        !this.supervisor.currentGeneration ||
+        currentGeneration === existing.handle.generation
+      ) {
+        existing.lastUsedAt = this.now();
+        return existing;
+      }
+      await this.disposeEntry(key, existing);
     }
     const activeStart = this.starting.get(key);
     if (activeStart) return activeStart;
@@ -240,7 +249,11 @@ export class OpenCodeSessionPool {
     return { client: entry.client, runtimeGeneration: entry.handle.generation };
   }
 
-  async sessionForChat(scope: HarnessScope, chatId: string, title?: string): Promise<{
+  async sessionForChat(
+    scope: HarnessScope,
+    chatId: string,
+    title?: string,
+  ): Promise<{
     client: OpenCodeSessionClient;
     sessionId: string;
     runtimeGeneration: string;
@@ -257,8 +270,9 @@ export class OpenCodeSessionPool {
         if (!sessionId) {
           let creating = entry.sessionStarting.get(cleanChatId);
           if (!creating) {
-            creating = this.createOrRestoreSession(key, entry, cleanChatId, title)
-              .finally(() => entry.sessionStarting.delete(cleanChatId));
+            creating = this.createOrRestoreSession(key, entry, cleanChatId, title).finally(() =>
+              entry.sessionStarting.delete(cleanChatId),
+            );
             entry.sessionStarting.set(cleanChatId, creating);
           }
           sessionId = await creating;
