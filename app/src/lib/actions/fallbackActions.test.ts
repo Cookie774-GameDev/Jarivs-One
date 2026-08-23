@@ -482,6 +482,45 @@ describe('inferFallbackActionProposals', () => {
     });
   });
 
+  it('does not treat an embedded prose slash as an absolute file path', () => {
+    const proposals = inferFallbackActionProposals(
+      [
+        'First inspect the project context and confirm its current contents.',
+        'Then create index.html, styles.css, and game.js with start/restart behavior.',
+        'Use real project file tools and validate the result.',
+      ].join(' '),
+      'Completed the requested project files and validation.',
+    );
+
+    expect(proposals).toEqual([]);
+  });
+
+  it.each(['/restart behavior', '(/restart behavior)'])(
+    'does not treat a slash command-like prose token as a path: %s',
+    (restartPhrase) => {
+      const proposals = inferFallbackActionProposals(
+        `Create index.html and game.js with ${restartPhrase}; inspect project contents.`,
+        'Completed the requested project files.',
+      );
+
+      expect(proposals).toEqual([]);
+    },
+  );
+
+  it.each([
+    ['/tmp/source.txt — read this file directly.', '/tmp/source.txt'],
+    ['Read /tmp/source.txt directly.', '/tmp/source.txt'],
+    ['Read "/restart" directly.', '/restart'],
+    ['Read "/tmp/source.txt" directly.', '/tmp/source.txt'],
+    ['Read \\\\server\\share\\source.txt directly.', '\\\\server\\share\\source.txt'],
+    ['Read "\\\\server\\share\\source.txt" directly.', '\\\\server\\share\\source.txt'],
+  ])('preserves an intentional absolute file read: %s', (request, expectedPath) => {
+    expect(inferFallbackActionProposals(request, 'I will read it.')[0]).toMatchObject({
+      action_id: 'files.read',
+      params: { path: expectedPath },
+    });
+  });
+
   it('treats a read-only file review as a real file-read request', () => {
     const proposals = inferFallbackActionProposals(
       'Review C:\\Users\\viper\\VibeSpace-RLM-UAT\\build-corpus.mjs for one real functional bug. Read only.',

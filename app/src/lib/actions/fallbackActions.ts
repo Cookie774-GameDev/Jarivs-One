@@ -816,6 +816,19 @@ export function inferFallbackActionProposals(
   return proposals.slice(0, 3);
 }
 
+function matchAbsolutePath(raw: string): RegExpMatchArray | null {
+  const quoted = raw.match(/["'“”]((?:[A-Za-z]:[\\/][^"'“”]+|\\\\[^"'“”]+|\/[^"'“”]+))["'“”]/);
+  if (quoted) return quoted;
+  const unquoted = raw.match(
+    /(?:^|[\s([{])((?:[A-Za-z]:[\\/][^\s"'“”]+|\\\\[^\s"'“”]+|\/[^\s"'“”]+))/,
+  );
+  const path = unquoted?.[1];
+  if (path?.startsWith('/') && !path.slice(1).includes('/') && !/\.[a-z0-9]{1,12}$/i.test(path)) {
+    return null;
+  }
+  return unquoted;
+}
+
 export function extractFileEditRequest(userText: string): { path: string; content: string } | null {
   const raw = userText.trim();
   if (
@@ -824,9 +837,7 @@ export function extractFileEditRequest(userText: string): { path: string; conten
   ) {
     return null;
   }
-  const pathMatch =
-    raw.match(/["'“”]((?:[A-Za-z]:[\\/][^"'“”]+|\\\\[^"'“”]+|\/[^"'“”]+))["'“”]/) ||
-    raw.match(/\b((?:[A-Za-z]:[\\/][^\s"'“”]+|\\\\[^\s"'“”]+|\/[^\s"'“”]+))/);
+  const pathMatch = matchAbsolutePath(raw);
   const path = pathMatch?.[1]?.replace(/[.,;:]+$/, '').trim();
   if (!path || path.length > 32_768) return null;
   const contentMatch = raw.match(
@@ -839,9 +850,7 @@ export function extractFileEditRequest(userText: string): { path: string; conten
 
 export function extractFileReadRequest(userText: string): { path: string } | null {
   const raw = userText.trim();
-  const pathMatch =
-    raw.match(/["'“”]((?:[A-Za-z]:[\\/][^"'“”]+|\\\\[^"'“”]+|\/[^"'“”]+))["'“”]/) ||
-    raw.match(/\b((?:[A-Za-z]:[\\/][^\s"'“”]+|\\\\[^\s"'“”]+|\/[^\s"'“”]+))/);
+  const pathMatch = matchAbsolutePath(raw);
   const intentText = pathMatch ? raw.replace(pathMatch[0], ' ') : raw;
   if (!/\b(read|inspect|review|audit|open|show|load|check)\b/i.test(intentText)) return null;
   if (!/\b(file|path|contents?|directly)\b/i.test(intentText) && !/\.[a-z0-9]{1,12}\b/i.test(raw)) {
@@ -878,9 +887,15 @@ export function extractFileWriteRequest(
 ): { path: string; content: string } | null {
   const raw = userText.trim();
   if (!raw) return null;
-  const pathMatch =
-    raw.match(/["'“”]((?:[A-Za-z]:[\\/][^"'“”]+|\\\\[^"'“”]+|\/[^"'“”]+))["'“”]/) ||
-    raw.match(/\b((?:[A-Za-z]:[\\/][^\s"'“”]+|\\\\[^\s"'“”]+|\/[^\s"'“”]+))/);
+  const pathMatch = matchAbsolutePath(raw);
+  const mentionedFilenames = new Set(
+    [...raw.matchAll(/\b[A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9]{1,12}\b/g)].map((match) =>
+      match[0].toLowerCase(),
+    ),
+  );
+  // A prose request for a multi-file project is agent work, not authority to
+  // invent one unrelated default-file write after the provider finishes.
+  if (!pathMatch && mentionedFilenames.size > 1) return null;
   // A path is data, not intent. In particular, read targets such as
   // native-write-proof.txt must not manufacture a second files.create action.
   const intentText = pathMatch ? raw.replace(pathMatch[0], ' ') : raw;
