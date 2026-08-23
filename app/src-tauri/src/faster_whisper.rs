@@ -524,14 +524,43 @@ pub fn faster_whisper_transcribe(model: String, audio_base64: String) -> Result<
     let wav_path = temp_dir.0.join("dictation.wav");
     fs::write(&wav_path, &bytes).map_err(|e| e.to_string())?;
 
+    transcribe_local_file(id, &wav_path)
+}
+
+pub(crate) fn faster_whisper_transcribe_file(
+    model: &str,
+    source_path: &Path,
+) -> Result<String, String> {
+    let id = ModelId::from_str(model).ok_or_else(|| format!("unknown model: {model}"))?;
+    if !model_installed(id) {
+        return Err(format!(
+            "faster-whisper model '{}' is not downloaded. Open Settings → Speech to Text to download it.",
+            id.dir_name()
+        ));
+    }
+    transcribe_local_file(id, source_path)
+}
+
+fn transcribe_local_file(id: ModelId, source_path: &Path) -> Result<String, String> {
+    let source_path = source_path
+        .canonicalize()
+        .map_err(|error| format!("Could not open local transcription source: {error}"))?;
+    if !source_path.is_file() {
+        return Err("Local transcription source is not a regular file.".into());
+    }
+
     let python = ensure_python_venv()?;
-    let script_path = temp_dir.0.join("transcribe.py");
+    let script_root =
+        std::env::temp_dir().join(format!("vibespace-stt-script-{}", nanoid::nanoid!(8)));
+    fs::create_dir_all(&script_root).map_err(|e| e.to_string())?;
+    let script_dir = TranscriptionTempDir(script_root);
+    let script_path = script_dir.0.join("transcribe.py");
     fs::write(&script_path, TRANSCRIBE_SCRIPT).map_err(|e| e.to_string())?;
 
     let output = hidden_command(python.to_str().unwrap_or("python"))
         .arg(&script_path)
         .arg(model_dir(id))
-        .arg(&wav_path)
+        .arg(&source_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -547,4 +576,19 @@ pub fn faster_whisper_transcribe(model: String, audio_base64: String) -> Result<
 
     let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
     Ok(text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn local_file_transcription_rejects_missing_sources_before_process_launch() {
+        let missing = std::env::temp_dir().join(format!(
+            "vibespace-missing-transcription-source-{}.wav",
+            nanoid::nanoid!(8)
+        ));
+        let error = transcribe_local_file(ModelId::Base, &missing).unwrap_err();
+        assert!(error.contains("Could not open local transcription source"));
+    }
 }

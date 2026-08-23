@@ -91,3 +91,16 @@
 
 - Product commit: `3df01186498cb4d5b0a58aa75602ee6db864a1b5` (`feat(foundry): add packaged local PDF extraction`), containing exactly the seven claimed tracked manifest, native Foundry, renderer, focused-test, and ledger files. Exact staging, staged diff check, and staged Gitleaks passed with no findings; no unrelated dirty file was staged.
 - Agent-scoped PDF ownership is released after this receipt. OCR for scanned/image-only PDFs, verified image/video-frame preparation, native audio/video model training or generation, persistent live OpenCode serving/catalog confirmation, and user-deferred native manual acceptance remain explicitly incomplete.
+
+## 2026-08-22T21:13:00-05:00 — Large-media path preparation claim
+
+- Agent/task: `VS-CODEX-ROOT-FOUNDRY-MEDIA-STREAM-20260822` / `PR31-FOUNDRY-LARGE-MEDIA-PATH-PREPARATION` at `5660510dd4ab471d47837c30a22b15f87e34b168`.
+- Exact clean scope: `faster_whisper.rs`, `model_foundry.rs`, their inline focused tests, this ledger, and the matching agent lock. The existing dictation command API must remain compatible; `lib.rs`, renderer UI, OpenCode/catalog/router, image/video-frame/OCR work, native multimodal trainers, and every unrelated agent path remain excluded.
+- Root cause: the Foundry media route currently reads each whole MP3/MP4 into Rust memory, base64-expands it, decodes it into another allocation, and writes a temporary copy before faster-whisper can process it. It also applies the text/document 64 MB ceiling to media. This slice will pass a canonical picker-authorized file path only to the existing local runtime, stream its provenance hash, enforce a separate bounded media ceiling, and retain transcript-only truth.
+
+## 2026-08-22T21:50:42-05:00 — Large-media path preparation verified
+
+- Model Foundry now preserves the existing base64 dictation command contract while its internal knowledge-preparation route passes the canonical picker-authorized media path directly to the already installed local faster-whisper runtime. MP3/MP4 and the existing supported audio/video containers use a separate 2 GB per-source ceiling; documents remain bounded at 64 MB.
+- Media provenance SHA-256 is streamed in 64 KiB blocks before transcription. The worker rechecks the limit and source metadata at execution time and fails closed if size or modification time changes during transcription. No media bytes are base64-expanded or copied into a second request buffer by the Foundry route.
+- Verification: the new missing-path speech-bridge test passed `1/1`; the complete native Foundry filter passed `47/47`; `cargo check --locked` passed. The first C: test build was blocked by OS error 112 with only 0.62 GB free, so generated verification output was moved—without deleting anything—to `D:\VibeSpace-Testing\codex-build-targets\foundry-media-stream`, where D: had 248.61 GB free. Existing unrelated dead-code warnings remain. Formatting and scoped diff check passed.
+- Shared HEAD advanced independently from `5660510d` to `b8bcb77d`; no intervening commit touched the exact claimed files. Native/manual app control remains deferred by user instruction, and this slice does not claim video frames, image understanding, OCR, native audio/video weight training, or audio/video generation.

@@ -1,4 +1,3 @@
-use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -16,7 +15,8 @@ use std::os::windows::process::CommandExt;
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-const MAX_SOURCE_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_DOCUMENT_SOURCE_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_MEDIA_SOURCE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const FOUNDRY_STORAGE_DIRECTORY: &str = "VibeSpace-Model-Foundry";
 const FOUNDRY_STORAGE_CONFIG: &str = "model-foundry-storage.json";
 const FOUNDRY_STORAGE_MIGRATION_MARKER: &str = ".vibespace-storage-migration-v1";
@@ -910,14 +910,6 @@ fn validated_sources(paths: &[String]) -> Result<Vec<PathBuf>, String> {
             if !canonical.is_file() {
                 return Err(format!("Source is not a regular file: {value}"));
             }
-            let metadata = fs::metadata(&canonical)
-                .map_err(|error| format!("Could not inspect source {value}: {error}"))?;
-            if metadata.len() > MAX_SOURCE_BYTES {
-                return Err(format!(
-                    "{} exceeds the 64 MB per-source safety limit.",
-                    canonical.display()
-                ));
-            }
             let extension = canonical
                 .extension()
                 .and_then(|value| value.to_str())
@@ -952,9 +944,42 @@ fn validated_sources(paths: &[String]) -> Result<Vec<PathBuf>, String> {
                     canonical.display()
                 ));
             }
+            let metadata = fs::metadata(&canonical)
+                .map_err(|error| format!("Could not inspect source {value}: {error}"))?;
+            validate_source_size(&canonical, &extension, metadata.len())?;
             Ok(canonical)
         })
         .collect()
+}
+
+fn is_media_extension(extension: &str) -> bool {
+    matches!(
+        extension,
+        "wav" | "mp3" | "m4a" | "flac" | "mp4" | "mov" | "webm" | "mkv"
+    )
+}
+
+fn source_size_limit(extension: &str) -> u64 {
+    if is_media_extension(extension) {
+        MAX_MEDIA_SOURCE_BYTES
+    } else {
+        MAX_DOCUMENT_SOURCE_BYTES
+    }
+}
+
+fn validate_source_size(source: &Path, extension: &str, source_bytes: u64) -> Result<(), String> {
+    if source_bytes <= source_size_limit(extension) {
+        return Ok(());
+    }
+    let limit = if is_media_extension(extension) {
+        "2 GB media"
+    } else {
+        "64 MB document"
+    };
+    Err(format!(
+        "{} exceeds the {limit} per-source safety limit.",
+        source.display()
+    ))
 }
 
 struct PreparedKnowledge {
@@ -1131,40 +1156,6 @@ fn prepare_source_text(source: &Path, bytes: &[u8]) -> Result<(String, String), 
         }
         return Ok((prepared, extension));
     }
-    if matches!(
-        extension.as_str(),
-        "wav" | "mp3" | "m4a" | "flac" | "mp4" | "mov" | "webm" | "mkv"
-    ) {
-        let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
-        let transcript = crate::faster_whisper::faster_whisper_transcribe("base".into(), encoded)
-            .map_err(|error| {
-            format!(
-                "{} requires the installed verified local speech model: {error}",
-                source.display()
-            )
-        })?;
-        if transcript.trim().is_empty() {
-            return Err(format!(
-                "{} produced no reviewable local transcript.",
-                source.display()
-            ));
-        }
-        if contains_high_confidence_secret(&transcript) {
-            return Err(format!(
-                "{} produced a transcript containing a high-confidence credential or private-key pattern. Redact and review it before training.",
-                source.display()
-            ));
-        }
-        let media_label = if matches!(extension.as_str(), "mp4" | "mov" | "webm" | "mkv") {
-            "Video audio-track transcript"
-        } else {
-            "Audio transcript"
-        };
-        return Ok((
-            format!("{media_label}\n\n{}", transcript.trim()),
-            format!("{extension}-transcript"),
-        ));
-    }
     let decoded = std::str::from_utf8(bytes)
         .map_err(|_| format!("{} is not valid UTF-8 text.", source.display()))?
         .trim_start_matches('\u{feff}');
@@ -1222,14 +1213,91 @@ fn prepare_source_text(source: &Path, bytes: &[u8]) -> Result<(String, String), 
     Ok((prepared, extension))
 }
 
+fn prepare_media_source(source: &Path, extension: &str) -> Result<(String, String), String> {
+    let transcript = crate::faster_whisper::faster_whisper_transcribe_file("base", source)
+        .map_err(|error| {
+            format!(
+                "{} requires the installed verified local speech model: {error}",
+                source.display()
+            )
+        })?;
+    if transcript.trim().is_empty() {
+        return Err(format!(
+            "{} produced no reviewable local transcript.",
+            source.display()
+        ));
+    }
+    if contains_high_confidence_secret(&transcript) {
+        return Err(format!(
+            "{} produced a transcript containing a high-confidence credential or private-key pattern. Redact and review it before training.",
+            source.display()
+        ));
+    }
+    let media_label = if matches!(extension, "mp4" | "mov" | "webm" | "mkv") {
+        "Video audio-track transcript"
+    } else {
+        "Audio transcript"
+    };
+    Ok((
+        format!("{media_label}\n\n{}", transcript.trim()),
+        format!("{extension}-transcript"),
+    ))
+}
+
+fn stream_file_sha256(source: &Path) -> Result<String, String> {
+    let file = fs::File::open(source)
+        .map_err(|error| format!("Could not read {}: {error}", source.display()))?;
+    let mut reader = BufReader::new(file);
+    let mut digest = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|error| format!("Could not read {}: {error}", source.display()))?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", digest.finalize()))
+}
+
+fn prepare_source(source: &Path) -> Result<(String, String, u64, String), String> {
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let before = fs::metadata(source)
+        .map_err(|error| format!("Could not inspect {}: {error}", source.display()))?;
+    let source_bytes = before.len();
+    validate_source_size(source, &extension, source_bytes)?;
+    if is_media_extension(&extension) {
+        let source_sha256 = stream_file_sha256(source)?;
+        let (text, format) = prepare_media_source(source, &extension)?;
+        let after = fs::metadata(source)
+            .map_err(|error| format!("Could not recheck {}: {error}", source.display()))?;
+        if after.len() != source_bytes || after.modified().ok() != before.modified().ok() {
+            return Err(format!(
+                "{} changed during local transcription. Review the source and try again.",
+                source.display()
+            ));
+        }
+        return Ok((text, format, source_bytes, source_sha256));
+    }
+    let bytes = fs::read(source)
+        .map_err(|error| format!("Could not read {}: {error}", source.display()))?;
+    let source_sha256 = format!("{:x}", Sha256::digest(&bytes));
+    let (text, format) = prepare_source_text(source, &bytes)?;
+    Ok((text, format, source_bytes, source_sha256))
+}
+
 fn clean_chunks(sources: &[PathBuf]) -> Result<PreparedKnowledge, String> {
     let mut seen = BTreeSet::new();
     let mut chunks = Vec::new();
     let mut source_manifests = Vec::new();
     for source in sources {
-        let bytes = fs::read(source)
-            .map_err(|error| format!("Could not read {}: {error}", source.display()))?;
-        let (text, format) = prepare_source_text(source, &bytes)?;
+        let (text, format, source_bytes, source_sha256) = prepare_source(source)?;
         let source_name = source
             .file_name()
             .and_then(|value| value.to_str())
@@ -1263,8 +1331,8 @@ fn clean_chunks(sources: &[PathBuf]) -> Result<PreparedKnowledge, String> {
             source_manifests.push(SourceManifestEntry {
                 source_name,
                 format,
-                source_bytes: bytes.len() as u64,
-                source_sha256: format!("{:x}", Sha256::digest(&bytes)),
+                source_bytes,
+                source_sha256,
                 prepared_sha256: format!("{:x}", Sha256::digest(text.as_bytes())),
                 chunk_count,
             });
@@ -2315,6 +2383,39 @@ mod tests {
         assert!(prepare_source_text(Path::new("secret.pdf"), &secret)
             .unwrap_err()
             .contains("credential"));
+    }
+
+    #[test]
+    fn media_uses_a_distinct_bounded_large_source_limit() {
+        assert_eq!(source_size_limit("txt"), 64 * 1024 * 1024);
+        assert_eq!(source_size_limit("pdf"), 64 * 1024 * 1024);
+        assert_eq!(source_size_limit("mp3"), 2 * 1024 * 1024 * 1024);
+        assert_eq!(source_size_limit("mp4"), 2 * 1024 * 1024 * 1024);
+        assert!(!is_media_extension("png"));
+        assert!(validate_source_size(
+            Path::new("oversized.mp4"),
+            "mp4",
+            MAX_MEDIA_SOURCE_BYTES + 1
+        )
+        .unwrap_err()
+        .contains("2 GB media"));
+    }
+
+    #[test]
+    fn streams_source_hash_without_loading_the_whole_file() {
+        let root = std::env::temp_dir().join(format!(
+            "vibespace-foundry-stream-hash-{}",
+            nanoid::nanoid!()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("recording.mp4");
+        let bytes = b"bounded local media provenance".repeat(8_192);
+        fs::write(&path, &bytes).unwrap();
+        assert_eq!(
+            stream_file_sha256(&path).unwrap(),
+            format!("{:x}", Sha256::digest(&bytes))
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(target_os = "windows")]
