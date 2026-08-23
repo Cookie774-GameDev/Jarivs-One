@@ -10,6 +10,13 @@ import { runStorageDoctor, type StorageDoctorResult } from '@/lib/doctor/storage
 import { getAllCatalogSkills } from '@/features/skills';
 import { browserTokenOptimizationPreferences } from '@/features/token-optimizer';
 import { useAgentStore } from '@/stores/agents';
+import { useAuthStore } from '@/stores/auth';
+import { refreshExternalConnectionAutoDetection } from '@/lib/ai/adapters/autoDetectConnections';
+import type { ConnectionMetadataRecord } from '@/lib/ai/connectionState';
+import { installToolGatewayRlmContextPort } from '@/lib/harness/toolGatewayProduction';
+import { productionRlmContextTool } from '@/features/context/contextRlmProduction';
+import { getProductionSiyuanRlmPort } from '@/features/context/siyuanRlmProduction';
+import { useDevConsoleStore, type DevLogEntry } from '@/features/dev-console/store';
 
 const OPENCODE_SETTLE_TIMEOUT_MS = 20_000;
 
@@ -28,12 +35,66 @@ export interface VibeSpaceDoctorDependencies {
   readonly nativeRuntime: boolean;
   readonly runStorage: () => Promise<StorageDoctorResult>;
   readonly refreshOpenCode: () => Promise<void>;
-  readonly repairOpenCode: () => Promise<void>;
   readonly getOpenCodeState: () => HarnessRuntimeState;
   readonly getOpenCodeConnection: () => OpenCodeServerConnection | undefined;
   readonly waitForOpenCodeSettled: () => Promise<void>;
+  readonly refreshOpenCodeProvider: () => Promise<VibeSpaceDoctorSubsystemCheck>;
+  readonly refreshContextBindings: () => Promise<readonly VibeSpaceDoctorSubsystemCheck[]>;
+  readonly readRecentHealthSignals: () => readonly VibeSpaceDoctorSubsystemCheck[];
+  readonly captureProtectedRouteState: () => string;
   readonly runAdditionalChecks: () => Promise<readonly VibeSpaceDoctorSubsystemCheck[]>;
   readonly now: () => number;
+}
+
+const RECENT_HEALTH_WINDOW_MS = 15 * 60 * 1000;
+
+export function collectRecentDoctorHealthSignals(
+  entries: readonly DevLogEntry[],
+  now: number,
+): readonly VibeSpaceDoctorSubsystemCheck[] {
+  const signals = new Map<string, VibeSpaceDoctorSubsystemCheck>();
+  const record = (label: string, code: string, detail: string) => {
+    if (!signals.has(code)) signals.set(code, { label, ok: false, detail: `${detail} · ${code}` });
+  };
+  for (const entry of entries) {
+    if (
+      entry.channel !== 'ai' ||
+      (entry.level !== 'warn' && entry.level !== 'error') ||
+      entry.ts < now - RECENT_HEALTH_WINDOW_MS ||
+      entry.ts > now + 60_000
+    ) {
+      continue;
+    }
+    const message = entry.message.toLowerCase();
+    if (/rate.?limit|too many requests|\b429\b/u.test(message)) {
+      record(
+        'Recent OpenCode provider evidence',
+        'opencode_upstream_rate_limited',
+        'Recent upstream rate limit remains unverified',
+      );
+      continue;
+    }
+    if (/\b(?:context|rlm)\b/u.test(message) && /fail|error|unavailable|reject/u.test(message)) {
+      record('Recent RLM evidence', 'rlm_recent_failure', 'Recent RLM failure remains unverified');
+      continue;
+    }
+    if (/siyuan/u.test(message) && /fail|error|unavailable|reject/u.test(message)) {
+      record(
+        'Recent SiYuan evidence',
+        'siyuan_recent_failure',
+        'Recent SiYuan failure remains unverified',
+      );
+      continue;
+    }
+    if (/unauthori[sz]ed|authentication|token refresh|\b401\b/u.test(message)) {
+      record(
+        'Recent OpenCode provider evidence',
+        'opencode_provider_auth_required',
+        'Recent authentication failure remains unverified',
+      );
+    }
+  }
+  return [...signals.values()];
 }
 
 async function safeSubsystemCheck(
@@ -124,20 +185,160 @@ function openCodeSummary(
   if (state.kind === 'ready' && connection) {
     return { ok: true, text: `Ready · ${connection.source} ${connection.version}` };
   }
-  if (state.kind === 'failed') return { ok: false, text: `Needs attention · ${state.message}` };
+  if (state.kind === 'failed') {
+    return { ok: false, text: 'Needs attention · opencode_runtime_failed' };
+  }
   if (state.kind === 'incompatible') {
-    return { ok: false, text: `Needs attention · ${state.reason}` };
+    return { ok: false, text: 'Needs attention · opencode_runtime_incompatible' };
   }
   if (state.kind === 'download_required' || state.kind === 'missing') {
-    return { ok: false, text: 'A compatible runtime could not be installed' };
+    return {
+      ok: false,
+      text: 'Not available; no install was attempted · opencode_runtime_missing',
+    };
   }
   return { ok: false, text: `Did not become ready · ${state.kind}` };
+}
+
+export function summarizeOpenCodeProviderRecord(
+  record: ConnectionMetadataRecord | undefined,
+): VibeSpaceDoctorSubsystemCheck {
+  if (!record) {
+    return {
+      label: 'OpenCode provider',
+      ok: false,
+      detail: 'Connection was not inspected · opencode_provider_unverified',
+    };
+  }
+  if (record.disabled) {
+    return {
+      label: 'OpenCode provider',
+      ok: false,
+      detail: 'Disabled by user; no setting was changed · opencode_provider_disabled',
+    };
+  }
+  if (record.installation !== 'installed') {
+    return {
+      label: 'OpenCode provider',
+      ok: false,
+      detail: 'Connection is not installed · opencode_provider_not_installed',
+    };
+  }
+  if (record.auth === 'authenticated') {
+    return { label: 'OpenCode provider', ok: true, detail: 'Authenticated' };
+  }
+  if (record.auth === 'unauthenticated') {
+    return {
+      label: 'OpenCode provider',
+      ok: false,
+      detail: 'Authentication required · opencode_provider_auth_required',
+    };
+  }
+  return {
+    label: 'OpenCode provider',
+    ok: false,
+    detail: 'Authentication was not verified · opencode_provider_auth_unverified',
+  };
+}
+
+async function refreshDefaultOpenCodeProvider(): Promise<VibeSpaceDoctorSubsystemCheck> {
+  const metadata = await refreshExternalConnectionAutoDetection();
+  return summarizeOpenCodeProviderRecord(metadata['opencode-cli']);
+}
+
+interface DoctorSiyuanPort {
+  stopActive(): Promise<void>;
+  searchBlocks(projectId: string, query: string, limit: number): Promise<unknown>;
+}
+
+export interface DoctorContextBindingDependencies {
+  installRlm(): void;
+  getSiyuanPort(): DoctorSiyuanPort;
+  projectId(): string | null;
+  createProbeId(): string;
+}
+
+export async function refreshDoctorContextBindings(
+  dependencies: DoctorContextBindingDependencies,
+): Promise<readonly VibeSpaceDoctorSubsystemCheck[]> {
+  const checks: VibeSpaceDoctorSubsystemCheck[] = [];
+  try {
+    dependencies.installRlm();
+    checks.push({ label: 'RLM', ok: true, detail: 'Tool binding refreshed' });
+  } catch {
+    checks.push({ label: 'RLM', ok: false, detail: 'Rebind failed safely · rlm_rebind_failed' });
+  }
+
+  try {
+    const port = dependencies.getSiyuanPort();
+    await port.stopActive();
+    const projectId = dependencies.projectId();
+    if (!projectId) {
+      checks.push({
+        label: 'SiYuan',
+        ok: true,
+        detail: 'Binding refreshed; read-only probe deferred until a project is active',
+      });
+    } else {
+      await port.searchBlocks(projectId, `vibespace-doctor-${dependencies.createProbeId()}`, 1);
+      checks.push({ label: 'SiYuan', ok: true, detail: 'Read-only transport probe passed' });
+    }
+  } catch {
+    checks.push({
+      label: 'SiYuan',
+      ok: false,
+      detail: 'Read-only transport probe failed safely · siyuan_transport_unavailable',
+    });
+  }
+  return checks;
+}
+
+async function refreshDefaultContextBindings(): Promise<readonly VibeSpaceDoctorSubsystemCheck[]> {
+  return refreshDoctorContextBindings({
+    // The production host uses this same typed binding. Reinstalling the exact
+    // singleton repairs a missing process-local port without changing RLM settings.
+    installRlm: () => {
+      installToolGatewayRlmContextPort(productionRlmContextTool);
+    },
+    getSiyuanPort: getProductionSiyuanRlmPort,
+    projectId: () => {
+      const projectId = useAuthStore.getState().projectId;
+      return projectId ? String(projectId) : null;
+    },
+    createProbeId: () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`,
+  });
+}
+
+const PROTECTED_ROUTE_STORAGE_KEYS = Object.freeze([
+  'vibespace.chat-runtime-settings.v1',
+  'vibespace.chat-reasoning.v1',
+]);
+
+function captureDefaultProtectedRouteState(): string {
+  if (typeof localStorage === 'undefined') throw new Error('route_storage_unavailable');
+  const stored = PROTECTED_ROUTE_STORAGE_KEYS.map((key) => {
+    try {
+      return [key, localStorage.getItem(key)] as const;
+    } catch {
+      throw new Error('route_storage_unavailable');
+    }
+  });
+  return JSON.stringify({
+    modelSelection: useAuthStore.getState().chatModelSelection,
+    runtimeControls: stored,
+  });
 }
 
 export async function runVibeSpaceDoctorWithDependencies(
   dependencies: VibeSpaceDoctorDependencies,
 ): Promise<VibeSpaceDoctorReport> {
   const startedAt = dependencies.now();
+  let protectedRouteBefore: string | undefined;
+  try {
+    protectedRouteBefore = dependencies.captureProtectedRouteState();
+  } catch {
+    protectedRouteBefore = undefined;
+  }
   let storage: { ok: boolean; text: string };
   try {
     storage = storageSummary(await dependencies.runStorage());
@@ -146,23 +347,43 @@ export async function runVibeSpaceDoctorWithDependencies(
   }
 
   let openCode: { ok: boolean; text: string };
+  const runtimeChecks: VibeSpaceDoctorSubsystemCheck[] = [];
   if (!dependencies.nativeRuntime) {
     openCode = { ok: false, text: 'Native check unavailable in browser preview' };
+    runtimeChecks.push({
+      label: 'RLM / SiYuan',
+      ok: false,
+      detail: 'Native check unavailable in browser preview',
+    });
   } else {
     try {
       await dependencies.refreshOpenCode();
       await dependencies.waitForOpenCodeSettled();
-      let state = dependencies.getOpenCodeState();
-      let connection = dependencies.getOpenCodeConnection();
-      if (state.kind !== 'ready' || !connection) {
-        await dependencies.repairOpenCode();
-        await dependencies.waitForOpenCodeSettled();
-        state = dependencies.getOpenCodeState();
-        connection = dependencies.getOpenCodeConnection();
-      }
+      const state = dependencies.getOpenCodeState();
+      const connection = dependencies.getOpenCodeConnection();
       openCode = openCodeSummary(state, connection);
+      if (openCode.ok) {
+        try {
+          runtimeChecks.push(await dependencies.refreshOpenCodeProvider());
+        } catch {
+          runtimeChecks.push({
+            label: 'OpenCode provider',
+            ok: false,
+            detail: 'Check failed safely · opencode_provider_unavailable',
+          });
+        }
+      }
     } catch {
       openCode = { ok: false, text: 'Check failed safely · opencode_runtime_unavailable' };
+    }
+    try {
+      runtimeChecks.push(...(await dependencies.refreshContextBindings()));
+    } catch {
+      runtimeChecks.push({
+        label: 'RLM / SiYuan',
+        ok: false,
+        detail: 'Check failed safely · context_runtime_unavailable',
+      });
     }
   }
 
@@ -179,7 +400,46 @@ export async function runVibeSpaceDoctorWithDependencies(
     ];
   }
 
-  const ok = storage.ok && openCode.ok && additionalChecks.every((check) => check.ok);
+  let recentSignals: readonly VibeSpaceDoctorSubsystemCheck[];
+  try {
+    recentSignals = dependencies.readRecentHealthSignals();
+  } catch {
+    recentSignals = [
+      {
+        label: 'Recent runtime evidence',
+        ok: false,
+        detail: 'Check failed safely · doctor_log_evidence_unavailable',
+      },
+    ];
+  }
+
+  let routePreservation: VibeSpaceDoctorSubsystemCheck;
+  try {
+    const protectedRouteAfter = dependencies.captureProtectedRouteState();
+    routePreservation =
+      protectedRouteBefore === undefined
+        ? {
+            label: 'Route controls',
+            ok: false,
+            detail: 'Could not verify preservation · doctor_route_identity_unavailable',
+          }
+        : protectedRouteBefore === protectedRouteAfter
+          ? { label: 'Route controls', ok: true, detail: 'Unchanged' }
+          : {
+              label: 'Route controls',
+              ok: false,
+              detail: 'Unexpected change detected · doctor_route_identity_changed',
+            };
+  } catch {
+    routePreservation = {
+      label: 'Route controls',
+      ok: false,
+      detail: 'Could not verify preservation · doctor_route_identity_unavailable',
+    };
+  }
+
+  const allChecks = [...runtimeChecks, ...recentSignals, ...additionalChecks, routePreservation];
+  const ok = storage.ok && openCode.ok && allChecks.every((check) => check.ok);
   const elapsedMs = Math.max(0, Math.round(dependencies.now() - startedAt));
   return {
     ok,
@@ -187,12 +447,10 @@ export async function runVibeSpaceDoctorWithDependencies(
       `VibeSpace Doctor — ${ok ? 'All supported checks passed' : 'Attention needed'}`,
       `${storage.ok ? '✓' : '•'} Local chat storage — ${storage.text}`,
       `${openCode.ok ? '✓' : '•'} OpenCode — ${openCode.text}`,
-      ...additionalChecks.map(
-        (check) => `${check.ok ? '✓' : '•'} ${check.label} — ${check.detail}`,
-      ),
+      ...allChecks.map((check) => `${check.ok ? '✓' : '•'} ${check.label} — ${check.detail}`),
       `Completed in ${elapsedMs} ms.`,
       ok
-        ? 'No data was changed beyond safe recovery actions.'
+        ? 'No credentials, user content, or route controls were changed; only supported runtime refresh/rebind and non-destructive storage recovery ran.'
         : 'No destructive cleanup was attempted. Persistent storage repair still requires explicit confirmation; unknown errors are reported rather than guessed.',
     ].join('\n'),
   };
@@ -203,10 +461,14 @@ export function runVibeSpaceDoctor(): Promise<VibeSpaceDoctorReport> {
     nativeRuntime: isTauri,
     runStorage: () => runStorageDoctor({ force: true }),
     refreshOpenCode: () => harnessRuntimeManager.refresh(),
-    repairOpenCode: () => harnessRuntimeManager.download(),
     getOpenCodeState: () => harnessRuntimeManager.getSnapshot(),
     getOpenCodeConnection: () => harnessRuntimeManager.getConnection(),
     waitForOpenCodeSettled: () => waitForOpenCodeSettled(harnessRuntimeManager),
+    refreshOpenCodeProvider: refreshDefaultOpenCodeProvider,
+    refreshContextBindings: refreshDefaultContextBindings,
+    readRecentHealthSignals: () =>
+      collectRecentDoctorHealthSignals(useDevConsoleStore.getState().entries, Date.now()),
+    captureProtectedRouteState: captureDefaultProtectedRouteState,
     runAdditionalChecks: runDefaultAdditionalChecks,
     now: () => performance.now(),
   });

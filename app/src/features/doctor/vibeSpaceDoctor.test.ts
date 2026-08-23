@@ -1,68 +1,251 @@
 import { describe, expect, it, vi } from 'vitest';
-import { runVibeSpaceDoctorWithDependencies } from './vibeSpaceDoctor';
+import type { DevLogEntry } from '@/features/dev-console';
+import {
+  collectRecentDoctorHealthSignals,
+  refreshDoctorContextBindings,
+  runVibeSpaceDoctorWithDependencies,
+  summarizeOpenCodeProviderRecord,
+  type VibeSpaceDoctorDependencies,
+} from './vibeSpaceDoctor';
+
+function dependencies(
+  overrides: Partial<VibeSpaceDoctorDependencies> = {},
+): VibeSpaceDoctorDependencies {
+  return {
+    nativeRuntime: true,
+    runStorage: vi.fn().mockResolvedValue({ code: 'healthy', attempts: 1 }),
+    refreshOpenCode: vi.fn().mockResolvedValue(undefined),
+    getOpenCodeState: vi
+      .fn()
+      .mockReturnValue({ kind: 'ready', source: 'system', version: '1.18.21' }),
+    getOpenCodeConnection: vi.fn().mockReturnValue({
+      source: 'system',
+      version: '1.18.21',
+      generation: 'opencode-server-test',
+    }),
+    waitForOpenCodeSettled: vi.fn().mockResolvedValue(undefined),
+    refreshOpenCodeProvider: vi
+      .fn()
+      .mockResolvedValue({ label: 'OpenCode provider', ok: true, detail: 'Authenticated' }),
+    refreshContextBindings: vi.fn().mockResolvedValue([
+      { label: 'RLM', ok: true, detail: 'Tool binding refreshed' },
+      { label: 'SiYuan', ok: true, detail: 'Read-only transport probe passed' },
+    ]),
+    readRecentHealthSignals: vi.fn().mockReturnValue([]),
+    captureProtectedRouteState: vi.fn().mockReturnValue('exact-route-state'),
+    runAdditionalChecks: vi.fn().mockResolvedValue([]),
+    now: vi.fn().mockReturnValue(0),
+    ...overrides,
+  };
+}
 
 describe('VibeSpace slash Doctor', () => {
-  it('repairs supported storage and OpenCode failures and returns chat-ready output', async () => {
+  it('refreshes OpenCode and rebinds RLM/SiYuan without changing exact route controls', async () => {
     const refreshOpenCode = vi.fn().mockResolvedValue(undefined);
-    const repairOpenCode = vi.fn().mockResolvedValue(undefined);
-    const report = await runVibeSpaceDoctorWithDependencies({
-      nativeRuntime: true,
-      runStorage: vi.fn().mockResolvedValue({ code: 'recovered_after_retry', attempts: 2 }),
-      refreshOpenCode,
-      repairOpenCode,
-      getOpenCodeState: vi
-        .fn()
-        .mockReturnValueOnce({ kind: 'failed', recoverable: true, message: 'not ready' })
-        .mockReturnValue({ kind: 'ready', source: 'system', version: '1.18.21' }),
-      getOpenCodeConnection: vi.fn().mockReturnValue({
-        source: 'system',
-        version: '1.18.21',
-        generation: 'opencode-server-test',
+    const refreshOpenCodeProvider = vi
+      .fn()
+      .mockResolvedValue({ label: 'OpenCode provider', ok: true, detail: 'Authenticated' });
+    const refreshContextBindings = vi.fn().mockResolvedValue([
+      { label: 'RLM', ok: true, detail: 'Tool binding refreshed' },
+      { label: 'SiYuan', ok: true, detail: 'Read-only transport probe passed' },
+    ]);
+    const captureProtectedRouteState = vi
+      .fn()
+      .mockReturnValueOnce('opencode-cli/model/high/quality/fast-off')
+      .mockReturnValue('opencode-cli/model/high/quality/fast-off');
+    const report = await runVibeSpaceDoctorWithDependencies(
+      dependencies({
+        runStorage: vi.fn().mockResolvedValue({ code: 'recovered_after_retry', attempts: 2 }),
+        refreshOpenCode,
+        refreshOpenCodeProvider,
+        refreshContextBindings,
+        captureProtectedRouteState,
+        runAdditionalChecks: vi.fn().mockResolvedValue([
+          { label: 'Agents', ok: true, detail: 'Ready · 4 loaded' },
+          { label: 'Settings', ok: true, detail: 'Readable' },
+        ]),
+        now: vi.fn().mockReturnValueOnce(100).mockReturnValue(450),
       }),
-      waitForOpenCodeSettled: vi.fn().mockResolvedValue(undefined),
-      runAdditionalChecks: vi.fn().mockResolvedValue([
-        { label: 'Agents', ok: true, detail: 'Ready · 4 loaded' },
-        { label: 'Skills', ok: true, detail: 'Ready · 12 available' },
-        { label: 'Terminals', ok: true, detail: 'Ready · 1 saved session' },
-        { label: 'Optimization', ok: true, detail: 'Ready · balanced' },
-        { label: 'Settings', ok: true, detail: 'Readable' },
-      ]),
-      now: vi.fn().mockReturnValueOnce(100).mockReturnValue(450),
-    });
+    );
 
-    expect(refreshOpenCode).toHaveBeenCalledTimes(1);
-    expect(repairOpenCode).toHaveBeenCalledTimes(1);
+    expect(refreshOpenCode).toHaveBeenCalledOnce();
+    expect(refreshOpenCodeProvider).toHaveBeenCalledOnce();
+    expect(refreshContextBindings).toHaveBeenCalledOnce();
+    expect(captureProtectedRouteState).toHaveBeenCalledTimes(2);
     expect(report.ok).toBe(true);
     expect(report.text).toContain('Local chat storage — Recovered safely after 2 attempts');
     expect(report.text).toContain('OpenCode — Ready · system 1.18.21');
-    expect(report.text).toContain('Agents — Ready · 4 loaded');
-    expect(report.text).toContain('Skills — Ready · 12 available');
-    expect(report.text).toContain('Terminals — Ready · 1 saved session');
-    expect(report.text).toContain('Optimization — Ready · balanced');
-    expect(report.text).toContain('Settings — Readable');
+    expect(report.text).toContain('OpenCode provider — Authenticated');
+    expect(report.text).toContain('RLM — Tool binding refreshed');
+    expect(report.text).toContain('SiYuan — Read-only transport probe passed');
+    expect(report.text).toContain('Route controls — Unchanged');
     expect(report.text).toContain('Completed in 350 ms');
   });
 
-  it('fails unknown categories safely without claiming a universal repair', async () => {
-    const report = await runVibeSpaceDoctorWithDependencies({
-      nativeRuntime: true,
-      runStorage: vi.fn().mockResolvedValue({
-        code: 'unexpected_failure',
-        attempts: 1,
-        diagnosticCode: 'storage_unrecognized_failure',
+  it('reports provider auth failure without downloading, changing credentials, or claiming repair', async () => {
+    const captureProtectedRouteState = vi.fn().mockReturnValue('same-route');
+    const report = await runVibeSpaceDoctorWithDependencies(
+      dependencies({
+        refreshOpenCodeProvider: vi.fn().mockResolvedValue({
+          label: 'OpenCode provider',
+          ok: false,
+          detail: 'Authentication required · opencode_provider_auth_required',
+        }),
+        captureProtectedRouteState,
       }),
-      refreshOpenCode: vi.fn().mockRejectedValue(new Error('private details')),
-      repairOpenCode: vi.fn(),
-      getOpenCodeState: vi
-        .fn()
-        .mockReturnValue({ kind: 'failed', recoverable: true, message: 'OpenCode unavailable' }),
-      getOpenCodeConnection: vi.fn(),
-      waitForOpenCodeSettled: vi.fn().mockResolvedValue(undefined),
-      runAdditionalChecks: vi
-        .fn()
-        .mockResolvedValue([{ label: 'Agents', ok: false, detail: 'Check failed safely' }]),
-      now: vi.fn().mockReturnValue(0),
+    );
+
+    expect(report.ok).toBe(false);
+    expect(report.text).toContain('opencode_provider_auth_required');
+    expect(report.text).toContain('No destructive cleanup was attempted');
+    expect(captureProtectedRouteState).toHaveBeenCalledTimes(2);
+    expect(report.text).not.toMatch(/downloaded|credential refreshed|repaired successfully/iu);
+  });
+
+  it('does not expose raw runtime failure details or probe provider auth when the server is down', async () => {
+    const refreshOpenCodeProvider = vi.fn();
+    const report = await runVibeSpaceDoctorWithDependencies(
+      dependencies({
+        getOpenCodeState: vi.fn().mockReturnValue({
+          kind: 'failed',
+          recoverable: true,
+          message: 'C:\\Users\\private\\token=never-export',
+        }),
+        getOpenCodeConnection: vi.fn(),
+        refreshOpenCodeProvider,
+      }),
+    );
+
+    expect(refreshOpenCodeProvider).not.toHaveBeenCalled();
+    expect(report.ok).toBe(false);
+    expect(report.text).toContain('OpenCode — Needs attention · opencode_runtime_failed');
+    expect(report.text).not.toMatch(/private|never-export|token=/iu);
+  });
+
+  it('derives OpenCode provider health only from refreshed connection metadata', () => {
+    expect(
+      summarizeOpenCodeProviderRecord({
+        installation: 'installed',
+        auth: 'authenticated',
+      }),
+    ).toMatchObject({ ok: true, detail: 'Authenticated' });
+    expect(
+      summarizeOpenCodeProviderRecord({
+        installation: 'installed',
+        auth: 'authenticated',
+        disabled: true,
+      }),
+    ).toMatchObject({ ok: false, detail: expect.stringContaining('opencode_provider_disabled') });
+    expect(summarizeOpenCodeProviderRecord(undefined)).toMatchObject({
+      ok: false,
+      detail: expect.stringContaining('opencode_provider_unverified'),
     });
+  });
+
+  it('rebinds RLM and cycles SiYuan with only a bounded read-only probe', async () => {
+    const installRlm = vi.fn();
+    const stopActive = vi.fn().mockResolvedValue(undefined);
+    const searchBlocks = vi.fn().mockResolvedValue([]);
+    const checks = await refreshDoctorContextBindings({
+      installRlm,
+      getSiyuanPort: () => ({ stopActive, searchBlocks }),
+      projectId: () => 'project-safe',
+      createProbeId: () => 'probe-safe',
+    });
+
+    expect(installRlm).toHaveBeenCalledOnce();
+    expect(stopActive).toHaveBeenCalledOnce();
+    expect(searchBlocks).toHaveBeenCalledWith('project-safe', 'vibespace-doctor-probe-safe', 1);
+    expect(checks).toEqual([
+      { label: 'RLM', ok: true, detail: 'Tool binding refreshed' },
+      { label: 'SiYuan', ok: true, detail: 'Read-only transport probe passed' },
+    ]);
+  });
+
+  it('fails closed if any exact provider/model/connection/effort/Fast state changes', async () => {
+    const captureProtectedRouteState = vi
+      .fn()
+      .mockReturnValueOnce('opencode-cli/model/high/quality/fast-off')
+      .mockReturnValue('opencode-cli/model/max/quality/fast-on');
+    const report = await runVibeSpaceDoctorWithDependencies(
+      dependencies({ captureProtectedRouteState }),
+    );
+
+    expect(report.ok).toBe(false);
+    expect(report.text).toContain(
+      'Route controls — Unexpected change detected · doctor_route_identity_changed',
+    );
+    expect(report.text).not.toContain('opencode-cli/model/max');
+  });
+
+  it('fails closed when exact route controls cannot be read before refresh', async () => {
+    const captureProtectedRouteState = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error('blocked');
+      })
+      .mockReturnValue('route-after');
+    const report = await runVibeSpaceDoctorWithDependencies(
+      dependencies({ captureProtectedRouteState }),
+    );
+
+    expect(report.ok).toBe(false);
+    expect(report.text).toContain(
+      'Route controls — Could not verify preservation · doctor_route_identity_unavailable',
+    );
+    expect(report.text).not.toContain('route-after');
+  });
+
+  it('classifies only recent redacted OpenCode/RLM/SiYuan health codes without copying content', () => {
+    const now = 1_000_000;
+    const entry = (
+      id: number,
+      message: string,
+      overrides: Partial<DevLogEntry> = {},
+    ): DevLogEntry => ({
+      id,
+      ts: now - 100,
+      channel: 'ai',
+      level: 'error',
+      message,
+      detail: { prompt: 'private prompt', body: 'private body' },
+      ...overrides,
+    });
+    const signals = collectRecentDoctorHealthSignals(
+      [
+        entry(1, 'AI error @jarvis: upstream rate limit exceeded apiKey=private-value'),
+        entry(2, 'Adaptive VibeSpace Context/RLM retrieval failed safely'),
+        entry(3, 'SiYuan transport unavailable'),
+        entry(4, 'AI error @jarvis: Unauthorized token refresh 401'),
+        entry(5, 'old provider failure', { ts: now - 60 * 60 * 1000 }),
+      ],
+      now,
+    );
+
+    expect(signals.map((signal) => signal.detail)).toEqual([
+      'Recent upstream rate limit remains unverified · opencode_upstream_rate_limited',
+      'Recent RLM failure remains unverified · rlm_recent_failure',
+      'Recent SiYuan failure remains unverified · siyuan_recent_failure',
+      'Recent authentication failure remains unverified · opencode_provider_auth_required',
+    ]);
+    expect(JSON.stringify(signals)).not.toMatch(/private-value|private prompt|private body/iu);
+  });
+
+  it('fails unknown categories safely without claiming a universal repair', async () => {
+    const report = await runVibeSpaceDoctorWithDependencies(
+      dependencies({
+        runStorage: vi.fn().mockResolvedValue({
+          code: 'unexpected_failure',
+          attempts: 1,
+          diagnosticCode: 'storage_unrecognized_failure',
+        }),
+        refreshOpenCode: vi.fn().mockRejectedValue(new Error('private details')),
+        refreshOpenCodeProvider: vi.fn(),
+        runAdditionalChecks: vi
+          .fn()
+          .mockResolvedValue([{ label: 'Agents', ok: false, detail: 'Check failed safely' }]),
+      }),
+    );
 
     expect(report.ok).toBe(false);
     expect(report.text).toContain('No destructive cleanup was attempted');
@@ -70,21 +253,16 @@ describe('VibeSpace slash Doctor', () => {
     expect(report.text).not.toContain('private details');
   });
 
-  it('reports that native OpenCode repair needs the desktop app in browser mode', async () => {
-    const repairOpenCode = vi.fn();
-    const report = await runVibeSpaceDoctorWithDependencies({
-      nativeRuntime: false,
-      runStorage: vi.fn().mockResolvedValue({ code: 'healthy', attempts: 1 }),
-      refreshOpenCode: vi.fn(),
-      repairOpenCode,
-      getOpenCodeState: vi.fn().mockReturnValue({ kind: 'checking' }),
-      getOpenCodeConnection: vi.fn(),
-      waitForOpenCodeSettled: vi.fn(),
-      runAdditionalChecks: vi.fn().mockResolvedValue([]),
-      now: vi.fn().mockReturnValue(0),
-    });
+  it('reports that native checks need the desktop app in browser mode', async () => {
+    const refreshOpenCodeProvider = vi.fn();
+    const refreshContextBindings = vi.fn();
+    const report = await runVibeSpaceDoctorWithDependencies(
+      dependencies({ nativeRuntime: false, refreshOpenCodeProvider, refreshContextBindings }),
+    );
 
-    expect(repairOpenCode).not.toHaveBeenCalled();
+    expect(refreshOpenCodeProvider).not.toHaveBeenCalled();
+    expect(refreshContextBindings).not.toHaveBeenCalled();
     expect(report.text).toContain('OpenCode — Native check unavailable in browser preview');
+    expect(report.text).toContain('RLM / SiYuan — Native check unavailable in browser preview');
   });
 });
