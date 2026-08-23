@@ -681,7 +681,7 @@ const EXPLICIT_ROOT_AUDIT_CATEGORIES = Object.freeze([
   { label: 'risks and operational concerns', pattern: /\b(?:concern|risk|warning|hazard)\w*\b/iu },
 ]);
 const EXPLICIT_ROOT_EVIDENCE_QUALIFIER =
-  /\b(?:could not|evidence|inference|not observed|not verified|observed|unavailable|verified)\b/iu;
+  /\b(?:could not|evidence|infer(?:ence|red)|not observed|not verified|observed|unavailable|verified)\b/iu;
 const EXPLICIT_ROOT_UNAVAILABLE_QUALIFIER =
   /\b(?:can(?:not|'t)|could(?: not|n't)|not accessible|not available|not observed|not verified|unavailable|was not|were not)\b/iu;
 

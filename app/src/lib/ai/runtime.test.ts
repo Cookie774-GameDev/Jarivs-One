@@ -664,6 +664,11 @@ describe('startRuntimeListener agent routing', () => {
     ).not.toEqual(
       expect.arrayContaining(['disk capacity and usage', 'running apps and OS processes']),
     );
+    expect(
+      missingExplicitRootAuditCategories(
+        'Inferred concerns (not observed): dated worktree claims may drift from current state.',
+      ),
+    ).not.toContain('risks and operational concerns');
   });
 
   it('gives the single correction an exact direction for short and over-limit drafts', () => {
