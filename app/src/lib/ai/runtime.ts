@@ -660,6 +660,50 @@ function mergeExplicitRootEvidence(
   };
 }
 
+const EXPLICIT_ROOT_AUDIT_CATEGORIES = Object.freeze([
+  { label: 'top-level folders and contents', pattern: /\b(?:folder|directory|top-level|root)\b/iu },
+  { label: 'configuration files and settings', pattern: /\b(?:config|configuration|settings?)\b/iu },
+  { label: 'repositories and Git worktrees', pattern: /\b(?:git|repositor|worktree)\w*\b/iu },
+  {
+    label: 'disk capacity and usage',
+    pattern: /\b(?:capacity|disk|free space|storage|usage)\b/iu,
+    requiresUnavailable: true,
+  },
+  {
+    label: 'running apps and OS processes',
+    pattern: /\b(?:running app|live process|os process|process inventory)\w*\b/iu,
+    requiresUnavailable: true,
+  },
+  { label: 'risks and operational concerns', pattern: /\b(?:concern|risk|warning|hazard)\w*\b/iu },
+]);
+const EXPLICIT_ROOT_EVIDENCE_QUALIFIER =
+  /\b(?:could not|evidence|inference|not observed|not verified|observed|unavailable|verified)\b/iu;
+const EXPLICIT_ROOT_UNAVAILABLE_QUALIFIER =
+  /\b(?:can(?:not|'t)|could(?: not|n't)|not accessible|not available|not observed|not verified|unavailable|was not|were not)\b/iu;
+
+function isBroadExplicitRootAuditRequest(text: string): boolean {
+  return /\b(?:audit|entire|in total|read your context|summary of it|summari[sz]e (?:the )?(?:directory|folder|root))\b/iu.test(
+    text,
+  );
+}
+
+export function missingExplicitRootAuditCategories(text: string): readonly string[] {
+  const segments = text
+    .split(/(?:\r?\n)+|(?<=[.!?;])\s+/u)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  return EXPLICIT_ROOT_AUDIT_CATEGORIES.filter(
+    (category) =>
+      !segments.some(
+        (segment) =>
+          category.pattern.test(segment) &&
+          (category.requiresUnavailable
+            ? EXPLICIT_ROOT_UNAVAILABLE_QUALIFIER.test(segment)
+            : EXPLICIT_ROOT_EVIDENCE_QUALIFIER.test(segment)),
+      ),
+  ).map((category) => category.label);
+}
+
 export async function runExplicitRootEvidenceSynthesis(
   request: Readonly<RunAgentRequest>,
   contract: ExplicitResponseContract | null,
@@ -677,6 +721,7 @@ export async function runExplicitRootEvidenceSynthesis(
   const originalUserText = llmContentToText(
     [...request.messages].reverse().find((message) => message.role === 'user')?.content ?? '',
   ).slice(0, 8_192);
+  const broadRootAudit = isBroadExplicitRootAuditRequest(originalUserText);
   let authoritativeSessionId: string | undefined;
   const bindPhase =
     (publish: boolean) =>
@@ -775,6 +820,21 @@ export async function runExplicitRootEvidenceSynthesis(
     chatId: phaseChatId,
     explicitReadSynthesis: true,
     expectedSessionId: authoritativeSessionId,
+    messages: broadRootAudit
+      ? [
+          ...request.messages,
+          {
+            role: 'user',
+            content: [
+              'Internal VibeSpace grounded home-root audit synthesis.',
+              'Answer the original request using only evidence already collected in this exact session; do not summarize VibeSpace product documentation as a substitute for the requested root.',
+              'Cover each category in a compact labeled section: top-level folders and contents; configuration files and settings; repositories and Git worktrees; disk capacity and usage; running apps and OS processes; risks and operational concerns.',
+              'For every category, explicitly say what was observed or verified. If the available read-only filesystem evidence cannot establish it, explicitly say unavailable or not verified; never infer live disk or process state.',
+              'Distinguish observed facts from inference and avoid claims that documentation alone proves current runtime state.',
+            ].join(' '),
+          },
+        ]
+      : request.messages,
     onChunk: undefined,
     onHarnessSessionBound: bindPhase(false),
   });
@@ -809,7 +869,12 @@ export async function runExplicitRootEvidenceSynthesis(
     }),
   };
   const assessment = contract ? assessExplicitResponseContract(synthesis.text, contract) : null;
-  if (!contract || !assessment || assessment.ok) return groundedSynthesis;
+  const missingAuditCategories = broadRootAudit
+    ? missingExplicitRootAuditCategories(synthesis.text)
+    : [];
+  if ((!contract || !assessment || assessment.ok) && missingAuditCategories.length === 0) {
+    return groundedSynthesis;
+  }
 
   const correction = await dispatch({
     ...request,
@@ -822,7 +887,17 @@ export async function runExplicitRootEvidenceSynthesis(
         content: [
           'Internal VibeSpace correction phase.',
           'Rewrite your immediately previous answer using only the evidence already present in this exact session.',
-          `Submit ${contract.targetMinWords}-${contract.targetMaxWords} whitespace-delimited words and never exceed ${contract.maxWords}.`,
+          ...(contract
+            ? [
+                `Submit ${contract.targetMinWords}-${contract.targetMaxWords} whitespace-delimited words and never exceed ${contract.maxWords}.`,
+              ]
+            : []),
+          ...(missingAuditCategories.length > 0
+            ? [
+                `Add evidence-qualified findings or explicit unavailable/not-verified statements for: ${missingAuditCategories.join('; ')}.`,
+                'Do not substitute product documentation for the requested filesystem/root audit or invent disk/process state.',
+              ]
+            : []),
           'Do not add facts, call tools, mention this correction, or truncate a sentence.',
         ].join(' '),
       },
@@ -845,6 +920,22 @@ export async function runExplicitRootEvidenceSynthesis(
       tool_evidence: Object.freeze({
         completedReadOnlyFilesystem: false,
         anyToolObserved: correction.tool_evidence?.anyToolObserved === true,
+        rootInventoryObserved: groundedReceipt.rootInventoryObserved,
+        boundedSearchObserved: groundedReceipt.boundedSearchObserved,
+        representativeReadCount: groundedReceipt.representativeReadCount,
+      }),
+    };
+  }
+  if (
+    broadRootAudit &&
+    missingExplicitRootAuditCategories(correction.text).length > 0
+  ) {
+    return {
+      ...correction,
+      usage: addResponseUsage(groundedEvidence, synthesis, correction),
+      tool_evidence: Object.freeze({
+        completedReadOnlyFilesystem: false,
+        anyToolObserved: groundedReceipt.anyToolObserved,
         rootInventoryObserved: groundedReceipt.rootInventoryObserved,
         boundedSearchObserved: groundedReceipt.boundedSearchObserved,
         representativeReadCount: groundedReceipt.representativeReadCount,

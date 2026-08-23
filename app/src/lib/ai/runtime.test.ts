@@ -204,6 +204,7 @@ import {
   openCodeToolsForInteractionMode,
   prepareOpenCodeMessagesForInteractionMode,
   resolveRuntimeReasoningPolicy,
+  missingExplicitRootAuditCategories,
   runExplicitRootEvidenceSynthesis,
   shouldSuppressProviderPreview,
   startRuntimeListener as startKernelAwareRuntimeListener,
@@ -627,6 +628,45 @@ describe('startRuntimeListener agent routing', () => {
     expect(valid.text).toBe(correctedDraft);
   });
 
+  it('requires evidence-qualified coverage for every broad root-audit category', () => {
+    expect(
+      missingExplicitRootAuditCategories([
+        'Observed top-level folders and directory contents.',
+        'Verified configuration files and settings.',
+        'Observed Git repositories and worktrees.',
+        'Disk capacity and storage usage were not verified.',
+        'Running apps and OS process inventory are unavailable from filesystem evidence.',
+        'Observed risks and operational concerns are listed below.',
+      ].join('\n')),
+    ).toEqual([]);
+    expect(missingExplicitRootAuditCategories('Observed several project files.')).toEqual(
+      expect.arrayContaining([
+        'configuration files and settings',
+        'repositories and Git worktrees',
+        'disk capacity and usage',
+        'running apps and OS processes',
+        'risks and operational concerns',
+      ]),
+    );
+    expect(
+      missingExplicitRootAuditCategories(
+        'Observed disk capacity and storage usage. Verified running apps and OS process inventory.',
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        'disk capacity and usage',
+        'running apps and OS processes',
+      ]),
+    );
+    expect(
+      missingExplicitRootAuditCategories(
+        'Disk capacity and storage usage cannot be verified from filesystem evidence. Running apps and OS process inventory were not available.',
+      ),
+    ).not.toEqual(
+      expect.arrayContaining(['disk capacity and usage', 'running apps and OS processes']),
+    );
+  });
+
   it('never synthesizes without evidence and rejects a changed session', async () => {
     const noEvidenceDispatch = vi.fn(async (input) => {
       await input.onHarnessSessionBound?.({ sessionId: 'session_a' });
@@ -649,7 +689,7 @@ describe('startRuntimeListener agent routing', () => {
       chatId: 'chat_exact_missing',
       requestId: 'request_exact_missing',
       connectionId: 'opencode-cli',
-      messages: [{ role: 'user' as const, content: 'C:\\Users\\viper audit this.' }],
+      messages: [{ role: 'user' as const, content: 'C:\\Users\\viper inspect selected files.' }],
       explicitReadRoot: true,
     };
     const missing = await runExplicitRootEvidenceSynthesis(base, null, noEvidenceDispatch as never);
@@ -2740,6 +2780,21 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     updateMessage.mockClear();
     mocks.devLog.mockClear();
     const verifiedDraft = Array.from({ length: 700 }, (_, index) => `fact${index}`).join(' ');
+    const auditCoverage = [
+      'Observed top-level folders and directory contents.',
+      'Verified configuration files and settings.',
+      'Observed Git repositories and worktrees.',
+      'Disk capacity and storage usage were not verified.',
+      'Running apps and OS process inventory are unavailable from filesystem evidence.',
+      'Observed risks and operational concerns are listed.',
+    ].join(' ');
+    const verifiedAuditDraft = [
+      auditCoverage,
+      Array.from(
+        { length: 680 - auditCoverage.trim().split(/\s+/u).length },
+        (_, index) => `audit${index}`,
+      ).join(' '),
+    ].join(' ');
     mocks.runAgent.mockImplementationOnce(async (providerInput) => {
       await providerInput.onHarnessSessionBound?.({ sessionId: 'session_explicit_root' });
       return {
@@ -2772,6 +2827,22 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
         },
       };
     });
+    mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      await providerInput.onHarnessSessionBound?.({ sessionId: 'session_explicit_root' });
+      return {
+        text: verifiedAuditDraft,
+        usage: { input_tokens: 100, output_tokens: 680, cost_usd: 0 },
+        provider: 'opencode',
+        model: 'opencode-go/deepseek-v4-flash-vision-exp',
+        tool_evidence: {
+          completedReadOnlyFilesystem: false,
+          anyToolObserved: false,
+          rootInventoryObserved: false,
+          boundedSearchObserved: false,
+          representativeReadCount: 0,
+        },
+      };
+    });
     window.dispatchEvent(
       new CustomEvent('jarvis:send', {
         detail: {
@@ -2783,8 +2854,8 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
         },
       }),
     );
-    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(3));
-    const verifiedProviderInput = mocks.runAgent.mock.calls[2]![0];
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(4));
+    const verifiedProviderInput = mocks.runAgent.mock.calls[3]![0];
     expect(verifiedProviderInput.agent.model).toEqual({
       provider: 'opencode',
       model: 'opencode-go/deepseek-v4-flash-vision-exp',
@@ -2799,7 +2870,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     await vi.waitFor(() =>
       expect(updateMessage).toHaveBeenCalledWith(
         'msg_explicit_read_root_assistant',
-        expect.objectContaining({ parts: [{ kind: 'text', text: verifiedDraft }] }),
+        expect.objectContaining({ parts: [{ kind: 'text', text: verifiedAuditDraft }] }),
       ),
     );
     expect(mocks.devLog).not.toHaveBeenCalledWith(

@@ -12,8 +12,9 @@ const UNVERIFIED_OUTPUT_LOCATION_NOTICE = '[unverified output location omitted]'
 const OUTPUT_NOUN =
   /\b(?:artifact|download|export|file|image|output|report|result|video|audio|document|archive)\b/i;
 const OUTPUT_ASSERTION =
-  /\b(?:available|copied|created|downloaded|exported|find it|generated|here it is|left|located|location is|moved|opened|placed|produced|published|put|ready|rendered|saved|stored|uploaded|written)\b/i;
+  /\b(?:available|copied|created|downloaded|exported|find it|generated|here it is|left|located|location is|moved|opened|placed|published|put|ready|rendered|saved|stored|uploaded|written)\b/i;
 const OUTPUT_ACCESS = /\b(?:access|download|find|open|view)\b/i;
+const DIRECT_PRODUCED_LOCATION = /\bproduced\s+(?:at|in|to)\s+[`\"'(]*$/i;
 const SAFE_SOURCE_URI_PROTOCOLS = new Set([
   'app:',
   'asset:',
@@ -118,6 +119,7 @@ function statementAround(text: string, start: number, end: number): string {
 function isOutputLocationClaim(text: string, start: number, end: number): boolean {
   const statement = statementAround(text, start, end);
   return (
+    DIRECT_PRODUCED_LOCATION.test(text.slice(Math.max(0, start - 96), start)) ||
     OUTPUT_ASSERTION.test(statement) ||
     (OUTPUT_NOUN.test(statement) && OUTPUT_ACCESS.test(statement))
   );

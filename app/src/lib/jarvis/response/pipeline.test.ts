@@ -419,6 +419,26 @@ describe('processJarvisResponse', () => {
     expect(repair.repair).not.toHaveBeenCalled();
   });
 
+  it('does not treat a descriptive existing source path as a produced output location', async () => {
+    const providerText =
+      'The project has produced a broad feature surface: shared docs/Canvas.md content and connectors.';
+    const result = await processJarvisResponse(raw(providerText), request(), { repair: vi.fn() });
+
+    expect(result.displayText).toBe(providerText);
+    expect(result.enforcement.violations).not.toContain('unverified_output_location:0');
+  });
+
+  it('still omits a directly asserted unverified produced output location', async () => {
+    const result = await processJarvisResponse(
+      raw('The report was produced at `./reports/out.md`.'),
+      request(),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).toContain('[unverified output location omitted]');
+    expect(result.enforcement.violations).toContain('unverified_output_location:0');
+  });
+
   it('preserves source-backed output references and structured examples byte-for-byte', async () => {
     const verifiedPath = 'C:\\workspace\\reports\\verified report.md';
     const verifiedUrl = 'https://docs.example.test/reports/verified?download=1';
