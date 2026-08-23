@@ -1,0 +1,14 @@
+agent_id: VS-CODEX-AUG23-QUALITY-QUEUE-20260823
+task_id: PR31-AUG23-PET-VOICE-DATA-UX-REPAIR-QUEUE
+controller: /root
+status: released
+worktree: C:\Users\viper\VibeSpace-UnifiedChungus-Final
+branch: integration/UnifiedChungus-final
+base_head: 6dd8837ac605732ca6db043f3bf2d5d37958ba43
+upstream: origin/UnifiedChungus
+claimed_at: 2026-08-23 America/Chicago
+exclusive_scope: qeue.md; docs/AGENT_COORDINATION_AUG23_QUALITY_QUEUE.md; this lock file.
+excluded_scope: all product and test files until each exact clean, non-overlapping slice is separately claimed; app/src/features/voice/VoiceModal.tsx and active VS-CODEX-JARVIS-COMMS-VOICE files; app/src/components/layout/Inspector.tsx and all inherited dirty files; app/src-tauri/src/lib.rs and active owner scopes; production Cloudflare/Supabase/Stripe/billing/data/credentials; every other agent lock and process.
+intent: Convert the user's August 23 Pet, Benchmarks, News, Inspector, Account, Skills, theme-switcher, and Jarvis Voice defects into an evidence-based implementation and acceptance queue, preserve every concurrent change, then claim only exact free implementation slices.
+checkpoint: Read repository AGENTS.md, active owner/agent locks, relevant coordination history, branch/HEAD/upstream/status, existing qeue.md, supplied screenshots, and path-specific Git history. The repository hard gate requires official native Tauri evidence; standalone localhost remains useful only for non-acceptance inspection.
+final_checkpoint: Added the complete August 23 Pet, benchmark/News, Inspector/accounting, Account/security/calls/usage/billing/support, Skills/theme-shell, and Jarvis Voice acceptance queue. Fresh Prettier and scoped git diff checks passed. No product/test file or production service was changed; exact queue scope released for an isolated documentation commit.

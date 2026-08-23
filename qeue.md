@@ -2,6 +2,62 @@
 
 Updated: 2026-08-22 by `/root`. A checked item means fresh evidence exists; implementation alone is not enough.
 
+## P0 — August 23 stability and polish intake
+
+These items come from direct user observation on August 23. They remain unchecked until the current code, focused automation, and the required official native VibeSpace workflow all agree. Standalone localhost inspection is not native acceptance.
+
+### Pet desktop reliability — highest priority
+
+- [ ] Audit the full Pet commit chain and reproduce why the Pet is visible in web mode but absent from the official Tauri app; capture the exact renderer/native lifecycle boundary before changing behavior.
+- [ ] Keep the selected Axolotl or Glitch Pet visible across Chat, Benchmarks, News, Account, Settings, and other route changes without freezes, remount loops, or unexpected disappearance.
+- [ ] Keep the Pet and its native mini panel above other applications without focus theft, while preserving the existing Pet art, animations, character system, and interaction design.
+- [ ] Enforce one presentation surface at a time: opening the mini panel closes/hides the Pet overlay, and “Show pet now” closes/hides the mini panel. Reduced-motion mode must follow the same rule.
+- [ ] Make right-click Close an intentional persistent hide action; a recovery/watchdog loop must not immediately reopen the Pet after the user closes it.
+- [ ] Verify lock position, drag, edge snapping, reopen, close, reduced motion, and every Pet setting in the official native app for both Axolotl and Glitch.
+- [ ] Reduce Pet renderer/native coordination overhead and animation jank without replacing or degrading the existing assets, animation timing, Pixi playback, or character UI.
+
+### Benchmark and News truth
+
+- [ ] Explain and correct the repeated top-chart display rows (for example multiple “Claude Opus 5 (Adaptive Reasoning…)” rows) without deleting genuine distinct upstream benchmark identities. The UI must disambiguate legitimate variants or logically deduplicate only exact duplicates, while preserving the full authoritative dataset.
+- [ ] Reproduce the empty “today” News state against the current Worker response; retain the last verified feed, show truthful reconnecting/partial-source status, and prove current items appear when the hourly backend has them.
+- [ ] Verify the hourly backend result after a natural refresh window without triggering an unnecessary deployment or mutating Cloudflare credentials/data.
+
+### Inspector and live accounting
+
+- [ ] Show built-in/preloaded tools and custom tools together in Inspector → Open Tools, with truthful origin and availability labels.
+- [ ] Make Active Chats, foreground/background work, runs, milestones, token usage, estimated usage, elapsed time, and file-change totals derive from real execution evidence rather than placeholders or double-counted events.
+- [ ] Add focused calculation tests for retries, concurrent chats, background runs, cancellations, and missing usage receipts before accepting the Inspector numbers.
+
+### Account, security, calls, usage, billing, and support
+
+- [ ] Refine Account information hierarchy: larger readable section headings and icons, calmer spacing, and a correctly sized “Local & private” badge that never wraps vertically or looks detached from its content.
+- [ ] Explain the local user ID in plain language as an offline data-ownership namespace—not a password or recovery secret—or remove it from the primary UI if it has no user action.
+- [ ] Expand Account Security only with capabilities the current authentication/database contract genuinely supports (for example password change, active identity/session details, recovery/support routes); never invent controls or weaken authentication.
+- [ ] Add a Jarvis calling schedule surface showing who/what/when, status, and safe cancellation using the existing phone/schedule authority; do not expose secrets or claim an unavailable channel.
+- [ ] Make Usage show real account/route evidence with honest unavailable/stale states.
+- [ ] Redesign Billing plan comparison and included benefits with premium, readable presentation backed by current Stripe/entitlement truth; do not hard-code fictitious prices or mutate billing.
+- [ ] Verify Support content and actions are current and purposeful.
+
+### Skills, shell, and theme polish
+
+- [ ] Replace generic Skill emoji presentation with a coherent VibeSpace-themed icon/emoji system while preserving custom skill identities, accessibility names, and the existing editor/registry contract.
+- [ ] Remove the top-bar Jarvis One / Default / Monochrome / Warm quick theme picker from the visible shell only; preserve saved theme state and Settings-based theme functionality.
+
+### Jarvis Voice module
+
+- [ ] Redesign the compact and expanded Voice UI so error/status text cannot collapse into a narrow word-by-word column; use concise status treatment and keep full actionable detail accessible.
+- [ ] Use the connected chat-model catalog/picker identity in Voice with the same VibeSpace styling and exact provider/model/connection truth.
+- [ ] Show chronological `You` and `Jarvis` transcript turns like a compact conversation, including interim user speech without merging roles.
+- [ ] Make live microphone energy drive the listening waveform, use a bounded speaking animation when output PCM is unavailable, and clean up tracks/nodes/timers on every terminal path.
+- [ ] Polish the Warm theme, narrow widths, keyboard focus, forced colors, and reduced motion without changing voice-session, chat-binding, or Command Center authority.
+- [ ] Prove selected speech input and model changes persist, unavailable models remain disabled, and real microphone transcription works without silent fallback.
+
+### Evidence and integration rules
+
+- [ ] For each repair: reproduce first, add a focused failing test, implement one root-cause fix, rerun focused and adjacent checks, inspect the exact diff, then commit only the owned coherent slice.
+- [ ] Use Playwright against the official running Tauri WebView for product acceptance and record its owning `jarvis.exe`/profile. Browser-only localhost evidence may supplement responsive/layout diagnosis but cannot accept native capabilities.
+- [ ] Preserve every active lock and inherited dirty file. If an overlapping owner is active, record the exact file/owner blocker and continue with a free slice rather than overwriting it.
+
 ## P0 — Chat responses and catalog responsiveness
 
 - [x] **TOP PRIORITY:** fix the reproduced OpenCode canonical-completion failure after dispatch/live-evidence success; preserve exact route/model/effort, Context Gateway, tools, UI, history, and provider truth — commit `0e065022`.
