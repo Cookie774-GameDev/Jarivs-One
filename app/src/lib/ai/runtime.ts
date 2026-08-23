@@ -718,7 +718,10 @@ const EXPLICIT_ROOT_INFERENCE_LABEL = /\binference\s*:/iu;
 const EXPLICIT_ROOT_DISCLOSED_URL = /\bhttps?:\/\/[^\s<>`"']+/iu;
 const EXPLICIT_ROOT_DISCLOSED_EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu;
 const EXPLICIT_ROOT_DISCLOSED_CREDENTIAL_STORE =
-  /(?:`[^`\r\n]*(?:credential|secret|\.aws\b|\.azure\b|\.ssh\b|\.supabase\b)[^`\r\n]*`|\b[A-Z0-9._-]*(?:credential|secret)[A-Z0-9._-]*\.(?:json|toml|ya?ml)\b|(?:^|[^\w])\.(?:aws|azure|ssh|supabase)\b)/iu;
+  /(?:\b[A-Z0-9._-]*(?:credential|secret)[A-Z0-9._-]*\.(?:json|toml|ya?ml)\b|(?:^|[^\w])\.(?:aws|azure|ssh|supabase)\b)/iu;
+const EXPLICIT_ROOT_INLINE_CODE = /`([^`\r\n]+)`/gu;
+const EXPLICIT_ROOT_SENSITIVE_INLINE_CODE =
+  /(?:credential|secret|\.aws\b|\.azure\b|\.ssh\b|\.supabase\b)/iu;
 const EXPLICIT_ROOT_CREDENTIAL_ASSIGNMENT =
   /\b(?:api[-_ ]?key|access[-_ ]?token|credential|password|private[-_ ]?key|secret|token)\b["'`]?\s*(?::|=|\bis\b)\s*(`[^`\r\n]{4,}`|"[^"\r\n]{4,}"|'[^'\r\n]{4,}'|[^\s,;}]{4,})/giu;
 const EXPLICIT_ROOT_CREDENTIAL_MARKDOWN_VALUE =
@@ -741,6 +744,15 @@ function hasDisclosedExplicitRootCredentialValue(text: string): boolean {
   );
 }
 
+function hasDisclosedExplicitRootCredentialStore(text: string): boolean {
+  return (
+    EXPLICIT_ROOT_DISCLOSED_CREDENTIAL_STORE.test(text) ||
+    Array.from(text.matchAll(EXPLICIT_ROOT_INLINE_CODE)).some((match) =>
+      EXPLICIT_ROOT_SENSITIVE_INLINE_CODE.test(match[1] ?? ''),
+    )
+  );
+}
+
 export function explicitRootAuditQualityIssues(text: string): readonly string[] {
   const issues = [...missingExplicitRootAuditCategories(text)];
   const segments = text
@@ -758,7 +770,7 @@ export function explicitRootAuditQualityIssues(text: string): readonly string[] 
   }
   if (EXPLICIT_ROOT_DISCLOSED_URL.test(text)) issues.push('redacted configuration URLs');
   if (EXPLICIT_ROOT_DISCLOSED_EMAIL.test(text)) issues.push('redacted identity/contact values');
-  if (EXPLICIT_ROOT_DISCLOSED_CREDENTIAL_STORE.test(text)) {
+  if (hasDisclosedExplicitRootCredentialStore(text)) {
     issues.push('redacted credential-store names');
   }
   if (hasDisclosedExplicitRootCredentialValue(text)) {

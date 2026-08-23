@@ -793,6 +793,30 @@ describe('startRuntimeListener agent routing', () => {
       explicitRootAuditQualityIssues(
         [
           'Observed top-level folders and contents.',
+          'Observed configurations in `opencode.json` include a credential field whose value is redacted; an `opencode.json.bak` file also exists.',
+          'Verified repositories and Git worktrees.',
+          'Disk capacity and usage were not verified.',
+          'Running apps and OS process inventory are unavailable.',
+          'Observed risks and operational concerns.',
+        ].join('\n'),
+      ),
+    ).toEqual([]);
+    expect(
+      explicitRootAuditQualityIssues(
+        [
+          'Observed top-level folders and contents.',
+          'Observed configurations include `provider-credential-store`.',
+          'Verified repositories and Git worktrees.',
+          'Disk capacity and usage were not verified.',
+          'Running apps and OS process inventory are unavailable.',
+          'Observed risks and operational concerns.',
+        ].join('\n'),
+      ),
+    ).toContain('redacted credential-store names');
+    expect(
+      explicitRootAuditQualityIssues(
+        [
+          'Observed top-level folders and contents.',
           'Observed configurations and settings.',
           'Verified repositories and Git worktrees.',
           'Disk capacity and usage were not verified.',
