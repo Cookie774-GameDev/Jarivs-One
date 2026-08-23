@@ -41,6 +41,7 @@ export {
   getActivePersistedContextTree,
   loadPersistedContextMaps,
   reloadPersistedContextMaps,
+  restorePersistedContextMap,
   savePersistedContextTree,
   selectPersistedContextFile,
   selectPersistedContextMap,

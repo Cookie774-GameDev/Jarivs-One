@@ -4,22 +4,35 @@ import {
   buildOpenCodeSystemTimeline,
   OPENCODE_SYSTEM_LOG_CAPACITY,
   OPENCODE_SYSTEM_LOG_OPEN_EVENT,
+  OPENCODE_SYSTEM_LOG_REQUEST_EVENT,
   OPENCODE_SYSTEM_LOG_STORAGE_KEY,
+  OPENCODE_SYSTEM_LOG_UPDATE_EVENT,
   OPENCODE_SYSTEM_LOG_WINDOW_LABEL,
   translateOpenCodeSystemEntry,
   type OpenCodeSystemStep,
+  type OpenCodeSystemLogPayload,
 } from './opencodeSystemLog';
 
-const LOG_PATH = '/opencode-system-log.html';
+const LOG_PATH = '/?view=opencode-system-log';
 
-function persistTimeline(timeline: readonly OpenCodeSystemStep[]): void {
+function payloadFor(timeline: readonly OpenCodeSystemStep[]): OpenCodeSystemLogPayload {
+  return { version: 1, updatedAt: Date.now(), steps: [...timeline] };
+}
+
+function publishTimeline(timeline: readonly OpenCodeSystemStep[]): void {
+  const payload = payloadFor(timeline);
   try {
-    window.localStorage.setItem(
-      OPENCODE_SYSTEM_LOG_STORAGE_KEY,
-      JSON.stringify({ version: 1, updatedAt: Date.now(), steps: timeline }),
-    );
+    window.localStorage.setItem(OPENCODE_SYSTEM_LOG_STORAGE_KEY, JSON.stringify(payload));
   } catch {
     // The human timeline is observational and must never affect a chat run.
+  }
+  window.dispatchEvent(new CustomEvent(OPENCODE_SYSTEM_LOG_UPDATE_EVENT, { detail: payload }));
+  if ('__TAURI_INTERNALS__' in window) {
+    void import('@tauri-apps/api/event')
+      .then(({ emitTo }) =>
+        emitTo(OPENCODE_SYSTEM_LOG_WINDOW_LABEL, OPENCODE_SYSTEM_LOG_UPDATE_EVENT, payload),
+      )
+      .catch(() => undefined);
   }
 }
 
@@ -99,7 +112,18 @@ export function OpenCodeSystemLogHost(): null {
   React.useEffect(() => {
     let timeline = buildOpenCodeSystemTimeline(useDevConsoleStore.getState().entries);
     let lastSeenId = useDevConsoleStore.getState().entries.at(-1)?.id ?? 0;
-    persistTimeline(timeline);
+    publishTimeline(timeline);
+    let stopNativeRequestListener: () => void = () => undefined;
+    if ('__TAURI_INTERNALS__' in window) {
+      void import('@tauri-apps/api/event')
+        .then(({ listen }) =>
+          listen(OPENCODE_SYSTEM_LOG_REQUEST_EVENT, () => publishTimeline(timeline)),
+        )
+        .then((unlisten) => {
+          stopNativeRequestListener = unlisten;
+        })
+        .catch(() => undefined);
+    }
 
     const unsubscribe = useDevConsoleStore.subscribe((state) => {
       const unseen = state.entries.filter((entry) => entry.id > lastSeenId);
@@ -112,7 +136,7 @@ export function OpenCodeSystemLogHost(): null {
         timeline = appendStep(timeline, translated);
         changed = true;
       }
-      if (changed) persistTimeline(timeline);
+      if (changed) publishTimeline(timeline);
     });
 
     const open = () => {
@@ -128,6 +152,7 @@ export function OpenCodeSystemLogHost(): null {
     window.addEventListener(OPENCODE_SYSTEM_LOG_OPEN_EVENT, open);
     return () => {
       unsubscribe();
+      stopNativeRequestListener();
       window.removeEventListener(OPENCODE_SYSTEM_LOG_OPEN_EVENT, open);
     };
   }, []);

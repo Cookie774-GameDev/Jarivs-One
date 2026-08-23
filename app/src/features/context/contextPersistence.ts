@@ -48,6 +48,11 @@ export interface ContextPersistenceService {
     projectId: string | null,
     mapId: string,
   ): Promise<ContextPersistenceState>;
+  restoreMap(
+    accountId: string,
+    projectId: string | null,
+    mapId: string,
+  ): Promise<ContextPersistenceState>;
   selectFile(
     accountId: string,
     projectId: string | null,
@@ -488,6 +493,26 @@ export function createContextPersistenceService(
       return load(accountId, projectId);
     },
 
+    async restoreMap(accountId, projectId, mapId) {
+      const snapshot = await repository.getSnapshot(accountId, mapId);
+      if (!snapshot || snapshot.map.projectId !== projectId || snapshot.map.status !== 'deleted') {
+        fail('map_missing');
+      }
+      const state = await load(accountId, projectId);
+      if (state.maps.filter((map) => map.status === 'active').length >= MAX_ACTIVE_MAPS) {
+        fail('active_limit');
+      }
+      const next = structuredClone(snapshot) as ContextGraphSnapshotV2;
+      next.map.status = 'active';
+      next.map.updatedAt = Math.max(Date.now(), next.map.updatedAt);
+      next.map.knowledgeRevision += 1;
+      await repository.putSnapshot(accountId, next, {
+        expectedKnowledgeRevision: snapshot.map.knowledgeRevision,
+      });
+      await writeSelection(accountId, projectId, mapId);
+      return load(accountId, projectId);
+    },
+
     async selectFile(accountId, projectId, path) {
       const state = await load(accountId, projectId);
       const clean = path.trim();
@@ -759,6 +784,19 @@ export async function deletePersistedContextMap(
   await queuePersistedMapMetadataSafely(initialized.accountId, mapId);
   assertActiveIdentity(initialized.accountId);
   return deleted;
+}
+
+export async function restorePersistedContextMap(
+  projectId: string | null,
+  mapId: string,
+): Promise<ContextPersistenceState> {
+  const initialized = await ensureContextPersistence(projectId);
+  assertActiveIdentity(initialized.accountId);
+  const restored = await getProductionService().restoreMap(initialized.accountId, projectId, mapId);
+  assertActiveIdentity(initialized.accountId);
+  await queuePersistedMapMetadataSafely(initialized.accountId, mapId);
+  assertActiveIdentity(initialized.accountId);
+  return restored;
 }
 
 export async function selectPersistedContextFile(

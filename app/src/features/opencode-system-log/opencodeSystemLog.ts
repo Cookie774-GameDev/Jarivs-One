@@ -3,7 +3,9 @@ import type { DevLogEntry } from '@/features/dev-console';
 export const OPENCODE_SYSTEM_LOG_STORAGE_KEY = 'vibespace.opencode-system-log.v1';
 export const OPENCODE_SYSTEM_LOG_WINDOW_LABEL = 'opencode-system-log';
 export const OPENCODE_SYSTEM_LOG_OPEN_EVENT = 'vibespace:open-opencode-system-log';
-export const OPENCODE_SYSTEM_LOG_CAPACITY = 500;
+export const OPENCODE_SYSTEM_LOG_UPDATE_EVENT = 'opencode-system-log://update';
+export const OPENCODE_SYSTEM_LOG_REQUEST_EVENT = 'opencode-system-log://request';
+export const OPENCODE_SYSTEM_LOG_CAPACITY = 5_000;
 
 export type OpenCodeSystemStepKind = 'request' | 'context' | 'siyuan' | 'model' | 'warning';
 export type OpenCodeSystemStepStatus = 'working' | 'success' | 'warning' | 'error';
@@ -17,6 +19,38 @@ export interface OpenCodeSystemStep {
   status: OpenCodeSystemStepStatus;
   durationMs?: number;
   repeatCount?: number;
+}
+
+export interface OpenCodeSystemLogPayload {
+  version: 1;
+  updatedAt: number;
+  steps: OpenCodeSystemStep[];
+}
+
+export function readOpenCodeSystemLogPayload(storage: Storage): OpenCodeSystemLogPayload {
+  try {
+    const value = JSON.parse(
+      storage.getItem(OPENCODE_SYSTEM_LOG_STORAGE_KEY) ?? '{}',
+    ) as Partial<OpenCodeSystemLogPayload>;
+    return {
+      version: 1,
+      updatedAt: typeof value.updatedAt === 'number' ? value.updatedAt : 0,
+      steps: Array.isArray(value.steps)
+        ? value.steps
+            .filter(
+              (item): item is OpenCodeSystemStep =>
+                Boolean(item) &&
+                typeof item.id === 'number' &&
+                typeof item.ts === 'number' &&
+                typeof item.title === 'string' &&
+                typeof item.summary === 'string',
+            )
+            .slice(-OPENCODE_SYSTEM_LOG_CAPACITY)
+        : [],
+    };
+  } catch {
+    return { version: 1, updatedAt: 0, steps: [] };
+  }
 }
 
 function detailRecord(entry: DevLogEntry): Record<string, unknown> {

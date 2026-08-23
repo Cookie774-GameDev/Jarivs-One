@@ -37,11 +37,13 @@ import { startRendererHeartbeat } from './rendererHeartbeat';
 import { startResourcePressureMonitor } from './stability/resourcePressure';
 import { preloadFrequentUiSounds } from './lib/sfx';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { OpenCodeSystemLogWindow } from './features/opencode-system-log/OpenCodeSystemLogWindow';
 
 export function mountApp(rootEl: HTMLElement): void {
   const devSurface = import.meta.env.DEV ? resolveDevelopmentSurface(window.location.search) : null;
   const viewParam = new URLSearchParams(window.location.search).get('view');
   const taskbarUsageView = viewParam === 'taskbar-usage';
+  const openCodeSystemLogView = viewParam === 'opencode-system-log';
 
   const DevelopmentEntry =
     import.meta.env.DEV && devSurface !== null
@@ -62,7 +64,9 @@ export function mountApp(rootEl: HTMLElement): void {
 
   ReactDOM.createRoot(rootEl).render(
     <React.StrictMode>
-      {taskbarUsageView ? (
+      {openCodeSystemLogView ? (
+        <OpenCodeSystemLogWindow />
+      ) : taskbarUsageView ? (
         <TaskbarUsageWindow />
       ) : DevelopmentEntry && devSurface ? (
         <React.Suspense fallback={null}>
@@ -77,7 +81,7 @@ export function mountApp(rootEl: HTMLElement): void {
   );
 
   const stopRendererHeartbeat = startRendererHeartbeat();
-  const regularWindow = !taskbarUsageView;
+  const regularWindow = !taskbarUsageView && !openCodeSystemLogView;
   if (regularWindow) {
     const preload = () => preloadFrequentUiSounds();
     if (typeof window.requestIdleCallback === 'function') {
@@ -89,7 +93,9 @@ export function mountApp(rootEl: HTMLElement): void {
   const stopResourcePressureMonitor = regularWindow
     ? startResourcePressureMonitor()
     : () => undefined;
-  const stopTaskbarUsageController = regularWindow ? startTaskbarUsageController() : () => undefined;
+  const stopTaskbarUsageController = regularWindow
+    ? startTaskbarUsageController()
+    : () => undefined;
   let rendererLifecycleStopped = false;
   const stopRendererLifecycle = () => {
     if (rendererLifecycleStopped) return;

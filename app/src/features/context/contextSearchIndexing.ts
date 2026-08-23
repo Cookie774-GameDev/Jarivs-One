@@ -25,6 +25,7 @@ export interface ContextSearchIndexNode {
   title: string;
   path?: string;
   modifiedAt?: number;
+  contentIndexEligible?: boolean;
   children?: readonly ContextSearchIndexNode[];
 }
 
@@ -85,6 +86,10 @@ function fail(code: string): never {
   throw new Error(`context_search_index_${code}`);
 }
 
+function failSource(candidate: Candidate, reason: string): never {
+  throw new Error(`context_search_index_source_invalid:${candidate.relativePath}:${reason}`);
+}
+
 function abortIfNeeded(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
 }
@@ -134,7 +139,7 @@ function candidatesFor(map: ContextSearchIndexMap): Candidate[] {
   };
   for (const node of map.tree.nodes) visit(node);
   const candidates = flattened
-    .filter((node) => node.kind === 'file')
+    .filter((node) => node.kind === 'file' && node.contentIndexEligible !== false)
     .map((node): Candidate => {
       if (
         !SAFE_ID.test(node.id) ||
@@ -194,11 +199,13 @@ async function documentFor(
     (before.size ?? 0) > MAX_FILE_BYTES ||
     !rawHash(before)
   ) {
-    return fail('source_invalid');
+    return failSource(candidate, !before.ok ? before.error.code : 'metadata');
   }
   const read = await dependencies.read(candidate.absolutePath, MAX_FILE_BYTES + 1, access);
   abortIfNeeded(signal);
-  if (!read.ok || read.content.includes('\uFFFD')) return fail('source_invalid');
+  if (!read.ok || read.content.includes('\uFFFD')) {
+    return failSource(candidate, !read.ok ? read.error.code : 'undecodable');
+  }
   const bytes = new TextEncoder().encode(read.content).byteLength;
   if (bytes > MAX_FILE_BYTES || bytes !== before.size) return fail('source_changed');
   const decision = classifyJarvisSource({

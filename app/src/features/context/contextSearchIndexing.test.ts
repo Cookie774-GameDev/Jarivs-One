@@ -148,6 +148,37 @@ describe('bounded Context search index population', () => {
     ).toBe(true);
   });
 
+  it('keeps metadata-only graph nodes out of full-text mutation without weakening admitted files', async () => {
+    const deps = dependencies({ 'C:\\repo\\small.txt': 'small' });
+    const population = createContextSearchIndexPopulationPort(deps);
+    const receipt = await population.populateCreatedMap(
+      'account-1',
+      map([
+        {
+          id: 'small',
+          kind: 'file',
+          title: 'small.txt',
+          path: 'small.txt',
+          contentIndexEligible: true,
+        },
+        {
+          id: 'large',
+          kind: 'file',
+          title: 'large.pile',
+          path: 'large.pile',
+          contentIndexEligible: false,
+        },
+      ]),
+    );
+    expect(receipt.documentCount).toBe(1);
+    expect(deps.stat).not.toHaveBeenCalledWith(
+      'C:\\repo\\large.pile',
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(vi.mocked(deps.port.replaceDocuments).mock.calls[0]?.[2]).toHaveLength(1);
+  });
+
   it.each([
     ['traversal', '../escape.txt'],
     ['ADS', 'safe.txt:secret'],

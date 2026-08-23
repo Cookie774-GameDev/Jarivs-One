@@ -67,6 +67,11 @@ describe('generateProjectContextTree file safeguards', () => {
     expect(tree.fileCount).toBe(2);
     expect(JSON.stringify(tree.nodes)).toContain('clip.mp4');
     expect(JSON.stringify(tree.nodes)).toContain('large.ts');
+    const indexedFlags = tree.nodes.flatMap((node) =>
+      (node.children ?? []).map((child) => [child.path, child.contentIndexEligible]),
+    );
+    expect(indexedFlags).toContainEqual(['assets/clip.mp4', false]);
+    expect(indexedFlags).toContainEqual(['src/large.ts', false]);
     expect(fsMocks.readTextFileSample).toHaveBeenCalledTimes(2);
     expect(fsMocks.readTextFileSample).toHaveBeenCalledWith('C:\\proj\\assets\\clip.mp4', 1, {
       root: 'C:\\proj',
@@ -115,6 +120,87 @@ describe('generateProjectContextTree file safeguards', () => {
     expect(tree.fileCount).toBe(20);
     expect(filePaths).toHaveLength(20);
     expect(filePaths).toEqual(entries.map((entry) => entry.name));
+  });
+
+  it('preserves every recursive subfolder level instead of flattening files into the first folder', async () => {
+    fsMocks.listDirectory.mockImplementation(async (path: string) => {
+      const entriesByPath: Record<string, Array<Record<string, unknown>>> = {
+        'C:\\proj': [{ name: 'one', path: 'C:\\proj\\one', isDir: true }],
+        'C:\\proj\\one': [{ name: 'two', path: 'C:\\proj\\one\\two', isDir: true }],
+        'C:\\proj\\one\\two': [{ name: 'three', path: 'C:\\proj\\one\\two\\three', isDir: true }],
+        'C:\\proj\\one\\two\\three': [
+          {
+            name: 'deep.md',
+            path: 'C:\\proj\\one\\two\\three\\deep.md',
+            isDir: false,
+            size: 32,
+          },
+        ],
+      };
+      return { ok: true, path, entries: entriesByPath[path] ?? [] };
+    });
+    fsMocks.readTextFileSample.mockResolvedValue({ ok: true, path: '', content: '# deep' });
+
+    const tree = await generateProjectContextTree({
+      projectId: null,
+      rootDir: 'C:\\proj',
+      provider: 'local',
+    });
+
+    const one = tree.nodes.find((node) => node.path === 'one');
+    const two = one?.children?.find((node) => node.path === 'one/two');
+    const three = two?.children?.find((node) => node.path === 'one/two/three');
+    const file = three?.children?.find((node) => node.path === 'one/two/three/deep.md');
+    expect(one).toMatchObject({ kind: 'area', title: 'one' });
+    expect(two).toMatchObject({ kind: 'area', title: 'two' });
+    expect(three).toMatchObject({ kind: 'area', title: 'three' });
+    expect(file).toMatchObject({ kind: 'file', title: 'deep.md' });
+  });
+
+  it('keeps an undecodable file as SiYuan graph metadata without admitting it to RLM full text', async () => {
+    fsMocks.listDirectory.mockResolvedValue({
+      ok: true,
+      path: 'C:\\proj',
+      entries: [{ name: 'cache.pile', path: 'C:\\proj\\cache.pile', isDir: false, size: 100 }],
+    });
+    fsMocks.readTextFileSample.mockResolvedValue({
+      ok: true,
+      path: 'C:\\proj\\cache.pile',
+      content: 'binary\uFFFDbytes',
+    });
+    const tree = await generateProjectContextTree({
+      projectId: null,
+      rootDir: 'C:\\proj',
+      provider: 'local',
+    });
+    const node = tree.nodes[0]?.children?.[0];
+    expect(node?.path).toBe('cache.pile');
+    expect(node?.contentIndexEligible).toBe(false);
+    expect(node?.summary).not.toContain('\uFFFD');
+  });
+
+  it('keeps control-character text as metadata without sending an invalid body to RLM', async () => {
+    fsMocks.listDirectory.mockResolvedValue({
+      ok: true,
+      path: 'C:\\proj',
+      entries: [{ name: 'trace.log', path: 'C:\\proj\\trace.log', isDir: false, size: 20 }],
+    });
+    fsMocks.readTextFileSample.mockResolvedValue({
+      ok: true,
+      path: 'C:\\proj\\trace.log',
+      content: 'prefix\u0000suffix',
+    });
+
+    const tree = await generateProjectContextTree({
+      projectId: null,
+      rootDir: 'C:\\proj',
+      provider: 'local',
+    });
+
+    const node = tree.nodes[0]?.children?.[0];
+    expect(node?.path).toBe('trace.log');
+    expect(node?.contentIndexEligible).toBe(false);
+    expect(node?.summary).not.toContain('\u0000');
   });
 
   it('continues indexing file identities after the summary sample budget is exhausted', async () => {

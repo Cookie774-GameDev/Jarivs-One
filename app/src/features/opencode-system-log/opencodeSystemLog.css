@@ -1,0 +1,163 @@
+html:has(.opencode-system-log),
+body:has(.opencode-system-log),
+#root:has(.opencode-system-log) {
+  min-height: 100%;
+  margin: 0;
+  background: #f4e9d8;
+}
+body:has(.opencode-system-log) {
+  background:
+    radial-gradient(circle at 12% 4%, rgba(255, 255, 255, 0.88), transparent 34%),
+    radial-gradient(circle at 92% 96%, rgba(197, 138, 91, 0.18), transparent 36%),
+    linear-gradient(145deg, #fbf3e7, #f1e1cb);
+}
+.opencode-system-log {
+  width: min(900px, calc(100% - 36px));
+  margin: 0 auto;
+  padding: 36px 0 64px;
+  color: #44352d;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+.opencode-system-log > header {
+  position: sticky;
+  top: 16px;
+  z-index: 2;
+  padding: 22px 24px;
+  margin-bottom: 18px;
+  border: 1px solid rgba(132, 91, 61, 0.2);
+  border-radius: 22px;
+  background: rgba(255, 248, 237, 0.78);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 45px rgba(95, 61, 38, 0.09);
+}
+.opencode-system-log .eyebrow {
+  color: #b45f3f;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.opencode-system-log h1 {
+  margin: 7px 0 4px;
+  font-family: Fraunces, Georgia, serif;
+  font-size: clamp(28px, 5vw, 42px);
+  line-height: 1.08;
+}
+.opencode-system-log header p {
+  margin: 0;
+  max-width: 690px;
+  color: #766157;
+  line-height: 1.55;
+}
+.opencode-system-log .statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  align-items: center;
+  margin-top: 16px;
+}
+.opencode-system-log .pill {
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: rgba(124, 154, 110, 0.13);
+  color: #526d47;
+  font-size: 12px;
+  font-weight: 700;
+}
+.opencode-system-log button {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 13px;
+  cursor: pointer;
+  color: #735546;
+  background: rgba(185, 113, 75, 0.12);
+  font-weight: 700;
+}
+.opencode-system-log .timeline {
+  display: grid;
+  gap: 12px;
+}
+.opencode-system-log .step {
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  gap: 14px;
+  padding: 17px 18px;
+  border: 1px solid rgba(132, 91, 61, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 249, 239, 0.68);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 24px rgba(91, 58, 36, 0.055);
+}
+.opencode-system-log .icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: rgba(190, 111, 71, 0.12);
+  font-size: 19px;
+}
+.opencode-system-log .step[data-kind='context'] .icon,
+.opencode-system-log .step[data-kind='siyuan'] .icon {
+  background: rgba(113, 148, 98, 0.14);
+}
+.opencode-system-log .step[data-status='error'] {
+  border-color: rgba(170, 62, 45, 0.34);
+}
+.opencode-system-log .step h2 {
+  margin: 1px 0 4px;
+  font-size: 15px;
+}
+.opencode-system-log .step p {
+  margin: 0;
+  color: #78645a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.opencode-system-log .when {
+  color: #957b6d;
+  font:
+    11px/1.4 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  white-space: nowrap;
+  text-align: right;
+}
+.opencode-system-log .duration {
+  display: block;
+  margin-top: 4px;
+  color: #b15f42;
+  font-weight: 700;
+}
+.opencode-system-log .empty {
+  padding: 54px 24px;
+  text-align: center;
+  border: 1px dashed rgba(132, 91, 61, 0.25);
+  border-radius: 20px;
+  color: #806d62;
+  background: rgba(255, 249, 239, 0.4);
+}
+.opencode-system-log .empty strong {
+  display: block;
+  margin-bottom: 7px;
+  color: #4e3c33;
+  font-family: Fraunces, Georgia, serif;
+  font-size: 20px;
+}
+@media (max-width: 640px) {
+  .opencode-system-log {
+    width: min(100% - 20px, 900px);
+    padding-top: 10px;
+  }
+  .opencode-system-log > header {
+    top: 8px;
+  }
+  .opencode-system-log .step {
+    grid-template-columns: 38px 1fr;
+  }
+  .opencode-system-log .when {
+    grid-column: 2;
+    text-align: left;
+  }
+}

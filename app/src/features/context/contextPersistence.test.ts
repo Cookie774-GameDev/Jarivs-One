@@ -304,6 +304,36 @@ describe('production Context persistence service', () => {
     );
     await expect(database.context_entities.where('mapId').equals(mapId).count()).resolves.toBe(2);
     await expect(database.context_provenance.where('mapId').equals(mapId).count()).resolves.toBe(3);
+
+    const restored = await service.restoreMap('account-1', 'project-1', mapId);
+    expect(restored).toMatchObject({
+      selectedMapId: mapId,
+      maps: [{ id: mapId, status: 'active' }],
+    });
+    await expect(database.context_entities.where('mapId').equals(mapId).count()).resolves.toBe(2);
+    await expect(database.context_provenance.where('mapId').equals(mapId).count()).resolves.toBe(3);
+  });
+
+  it('fails closed when restoring a map across scope or beyond the active-map limit', async () => {
+    const service = createContextPersistenceService(database, localStorage);
+    await service.initialize('account-1', 'project-1');
+    const saved = await service.saveTree('account-1', treeFixture());
+    const deletedId = saved.selectedMapId!;
+    await service.deleteMap('account-1', 'project-1', deletedId);
+    await expect(service.restoreMap('account-1', 'project-2', deletedId)).rejects.toThrow(
+      /map_missing/u,
+    );
+
+    for (let index = 0; index < 5; index += 1) {
+      await service.saveTree('account-1', {
+        ...treeFixture(),
+        rootDir: `C:\\Projects\\Active-${index}`,
+        generatedAt: 2_000 + index,
+      });
+    }
+    await expect(service.restoreMap('account-1', 'project-1', deletedId)).rejects.toThrow(
+      /active_limit/u,
+    );
   });
 
   it('fails closed across account/project boundaries', async () => {

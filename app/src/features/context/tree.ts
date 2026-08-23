@@ -48,6 +48,7 @@ export interface ContextTreeNode {
   tags?: string[];
   importance?: number;
   sizeBytes?: number;
+  contentIndexEligible?: boolean;
   createdAt?: number;
   modifiedAt?: number;
   children?: ContextTreeNode[];
@@ -147,6 +148,7 @@ interface ScannedContextFile {
   modifiedMs?: number;
   content: string;
   truncated: boolean;
+  contentIndexEligible: boolean;
 }
 
 const MAX_SCAN_FILES = 120;
@@ -195,7 +197,10 @@ const IGNORED_DIRS = new Set([
   '.turbo',
   '.vite',
   '.cache',
+  '.bun',
   '.parcel-cache',
+  'advisory-db',
+  'caches',
   'out',
   'release',
   'releases',
@@ -934,12 +939,14 @@ async function scanProjectFiles(
   const files: ScannedContextFile[] = [];
   let totalChars = 0;
   const seenDirs = new Set<string>();
+  const pendingDirectories: Array<{ dir: string; depth: number }> = [{ dir: rootDir, depth: 0 }];
 
-  const walk = async (dir: string, depth: number): Promise<void> => {
+  while (pendingDirectories.length > 0 && files.length < MAX_SCAN_FILES) {
+    const nextDirectory = pendingDirectories.shift()!;
+    const { dir, depth } = nextDirectory;
     assertGenerationActive(signal);
-    if (files.length >= MAX_SCAN_FILES) return;
     if (depth > MAX_SCAN_DEPTH || seenDirs.has(dir) || seenDirs.size >= MAX_SCAN_DIRECTORIES) {
-      return;
+      continue;
     }
     const directoryDecision = classifyJarvisSource({
       path: dir,
@@ -949,7 +956,7 @@ async function scanProjectFiles(
     });
     if (!directoryDecision.allowed) {
       if (depth === 0) throw new Error(directoryDecision.safeSummary);
-      return;
+      continue;
     }
     seenDirs.add(dir);
 
@@ -965,7 +972,7 @@ async function scanProjectFiles(
       if (dir === rootDir) {
         throw new Error(describeContextRootError(rootDir, listed.error));
       }
-      return;
+      continue;
     }
 
     const entries = prioritizeEntries(listed.entries.slice(0, MAX_DIRECTORY_ENTRIES));
@@ -978,7 +985,9 @@ async function scanProjectFiles(
       }
       if (files.length >= MAX_SCAN_FILES) break;
       if (entry.isDir) {
-        if (!IGNORED_DIRS.has(entry.name.toLowerCase())) await walk(entry.path, depth + 1);
+        if (!IGNORED_DIRS.has(entry.name.toLowerCase())) {
+          pendingDirectories.push({ dir: entry.path, depth: depth + 1 });
+        }
         continue;
       }
       if (!isContextCandidate(entry)) continue;
@@ -1013,6 +1022,7 @@ async function scanProjectFiles(
           modifiedMs: entry.modifiedMs,
           content,
           truncated: false,
+          contentIndexEligible: false,
         });
         continue;
       }
@@ -1023,18 +1033,32 @@ async function scanProjectFiles(
       });
       assertGenerationActive(signal);
       if (!result.ok) continue;
+      const indexBodyUnsafe =
+        result.content.includes('\uFFFD') ||
+        /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u2028\u2029]/u.test(result.content);
+      const safeSample = indexBodyUnsafe
+        ? [
+            'File metadata only (binary-like content).',
+            `Relative path: ${relativePath(rootDir, entry.path)}`,
+            `Extension: ${extension(entry.path) || 'unknown'}`,
+            typeof entry.size === 'number' ? `Size: ${entry.size} bytes` : '',
+            'Undecodable bytes were not added to the Context prompt or full-text index.',
+          ]
+            .filter(Boolean)
+            .join('\n')
+        : result.content;
       const contentDecision = classifyJarvisSource({
         path: entry.path,
         root: rootDir,
         sizeBytes: entry.size,
         channel: 'automatic_scan',
         kind: 'text',
-        contentSample: result.content,
+        contentSample: safeSample,
       });
       if (!contentDecision.allowed) continue;
       const remaining = Math.max(0, MAX_TOTAL_SAMPLE_CHARS - totalChars);
       const chunkLimit = Math.min(MAX_FILE_SAMPLE_CHARS, remaining);
-      const content = result.content.slice(0, chunkLimit);
+      const content = safeSample.slice(0, chunkLimit);
       totalChars += content.length;
       files.push({
         path: entry.path,
@@ -1045,16 +1069,16 @@ async function scanProjectFiles(
         modifiedMs: entry.modifiedMs,
         content,
         truncated:
-          result.content.length > content.length ||
+          safeSample.length > content.length ||
           Boolean(entry.size && entry.size > MAX_FILE_SAMPLE_BYTES),
+        contentIndexEligible:
+          !indexBodyUnsafe && (entry.size ?? result.content.length) <= 1024 * 1024,
       });
       if (files.length % 20 === 0) onProgress?.(`Scanned ${files.length} project files...`);
       await yieldControl();
       assertGenerationActive(signal);
     }
-  };
-
-  await walk(rootDir, 0);
+  }
   return files;
 }
 
@@ -1357,42 +1381,106 @@ function buildFallbackTree(
   files: ScannedContextFile[],
   model: string,
 ): ProjectContextTree {
-  const groups = new Map<string, ScannedContextFile[]>();
-  for (const file of files) {
-    const parts = file.relativePath.split('/').filter(Boolean);
-    const group = parts.length > 1 ? parts[0]! : 'Project root';
-    const list = groups.get(group) ?? [];
-    list.push(file);
-    groups.set(group, list);
+  interface DirectoryGroup {
+    name: string;
+    path: string;
+    directFiles: ScannedContextFile[];
+    allFiles: ScannedContextFile[];
+    children: Map<string, DirectoryGroup>;
   }
 
-  const nodes: ContextTreeNode[] = [...groups.entries()]
-    .sort((a, b) => b[1].length - a[1].length)
-    .slice(0, 18)
-    .map(([group, groupFiles], index) => ({
-      id: stableId(`area-${group}-${index}`),
-      title: group,
-      kind: 'area',
-      path: group === 'Project root' ? undefined : group,
-      summary: summarizeGroup(group, groupFiles),
-      tags: topExtensions(groupFiles),
-      importance: Math.max(1, Math.min(5, Math.ceil(groupFiles.length / 8))),
-      sizeBytes: groupFiles.reduce((sum, file) => sum + file.size, 0),
-      createdAt: earliestTimestamp(groupFiles.map((file) => file.createdMs)),
-      modifiedAt: latestTimestamp(groupFiles.map((file) => file.modifiedMs)),
-      children: groupFiles.map((file, fileIndex) => ({
-        id: stableId(`file-${file.relativePath}-${fileIndex}`),
-        title: basename(file.relativePath),
-        kind: 'file' as const,
-        path: file.relativePath,
-        summary: summarizeFile(file),
-        tags: [file.extension].filter(Boolean),
-        importance: fileImportance(file),
-        sizeBytes: file.size,
-        createdAt: file.createdMs,
-        modifiedAt: file.modifiedMs,
-      })),
-    }));
+  const directories = new Map<string, DirectoryGroup>();
+  const rootFiles: ScannedContextFile[] = [];
+  for (const file of files) {
+    const parts = file.relativePath.split('/').filter(Boolean);
+    const directoryParts = parts.slice(0, -1);
+    if (directoryParts.length === 0) {
+      rootFiles.push(file);
+      continue;
+    }
+    let siblings = directories;
+    let group: DirectoryGroup | undefined;
+    for (let index = 0; index < directoryParts.length; index += 1) {
+      const name = directoryParts[index]!;
+      const path = directoryParts.slice(0, index + 1).join('/');
+      group = siblings.get(name);
+      if (!group) {
+        group = { name, path, directFiles: [], allFiles: [], children: new Map() };
+        siblings.set(name, group);
+      }
+      group.allFiles.push(file);
+      siblings = group.children;
+    }
+    group!.directFiles.push(file);
+  }
+
+  const fileNode = (file: ScannedContextFile): ContextTreeNode => ({
+    id: stableId(`file-${file.relativePath}`),
+    title: basename(file.relativePath),
+    kind: 'file',
+    path: file.relativePath,
+    summary: summarizeFile(file),
+    tags: [file.extension].filter(Boolean),
+    importance: fileImportance(file),
+    sizeBytes: file.size,
+    createdAt: file.createdMs,
+    modifiedAt: file.modifiedMs,
+    contentIndexEligible: file.contentIndexEligible,
+  });
+  const directoryNode = (group: DirectoryGroup): ContextTreeNode => ({
+    id: stableId(`area-${group.path}`),
+    title: group.name,
+    kind: 'area',
+    path: group.path,
+    summary: summarizeGroup(group.path, group.allFiles),
+    tags: topExtensions(group.allFiles),
+    importance: Math.max(1, Math.min(5, Math.ceil(group.allFiles.length / 8))),
+    sizeBytes: group.allFiles.reduce((sum, file) => sum + file.size, 0),
+    createdAt: earliestTimestamp(group.allFiles.map((file) => file.createdMs)),
+    modifiedAt: latestTimestamp(group.allFiles.map((file) => file.modifiedMs)),
+    children: [
+      ...[...group.children.values()]
+        .sort((left, right) =>
+          right.allFiles.length === left.allFiles.length
+            ? left.name.localeCompare(right.name)
+            : right.allFiles.length - left.allFiles.length,
+        )
+        .map(directoryNode),
+      ...group.directFiles
+        .slice()
+        .sort((left, right) => left.relativePath.localeCompare(right.relativePath))
+        .map(fileNode),
+    ],
+  });
+
+  const nodes: ContextTreeNode[] = [
+    ...[...directories.values()]
+      .sort((left, right) =>
+        right.allFiles.length === left.allFiles.length
+          ? left.name.localeCompare(right.name)
+          : right.allFiles.length - left.allFiles.length,
+      )
+      .map(directoryNode),
+    ...(rootFiles.length
+      ? [
+          {
+            id: stableId('area-project-root'),
+            title: 'Project root',
+            kind: 'area' as const,
+            summary: summarizeGroup('Project root', rootFiles),
+            tags: topExtensions(rootFiles),
+            importance: Math.max(1, Math.min(5, Math.ceil(rootFiles.length / 8))),
+            sizeBytes: rootFiles.reduce((sum, file) => sum + file.size, 0),
+            createdAt: earliestTimestamp(rootFiles.map((file) => file.createdMs)),
+            modifiedAt: latestTimestamp(rootFiles.map((file) => file.modifiedMs)),
+            children: rootFiles
+              .slice()
+              .sort((left, right) => left.relativePath.localeCompare(right.relativePath))
+              .map(fileNode),
+          },
+        ]
+      : []),
+  ];
 
   return {
     version: 1,
@@ -1552,6 +1640,7 @@ function normalizeNode(
       timestampField(record.createdAt) ?? timestampField(record.created) ?? meta?.createdMs,
     modifiedAt:
       timestampField(record.modifiedAt) ?? timestampField(record.modified) ?? meta?.modifiedMs,
+    contentIndexEligible: meta?.contentIndexEligible,
     children: children.length > 0 ? children : undefined,
   };
 }

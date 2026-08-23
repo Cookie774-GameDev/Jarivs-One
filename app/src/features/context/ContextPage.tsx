@@ -35,6 +35,7 @@ import { cn } from '@/lib/utils';
 import { formatUserDateTime } from '@/lib/timeFormat';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { notifyDone } from '@/lib/notifications';
+import { devConsole } from '@/features/dev-console';
 import { basename, chooseProjectFolder, chooseProjectFiles } from '@/features/files/projectFiles';
 import { startRightClickDrag } from '@/lib/rightClickDrag';
 import {
@@ -67,6 +68,7 @@ import {
   deletePersistedContextMap,
   ensureContextPersistence,
   getActiveContextPersistenceState,
+  restorePersistedContextMap,
   savePersistedContextTree,
   selectPersistedContextFile,
   selectPersistedContextMap,
@@ -132,6 +134,7 @@ export function ContextPage() {
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [generating, setGenerating] = React.useState(false);
   const [structuralPreview, setStructuralPreview] = React.useState<ProjectContextTree | null>(null);
+  const [siyuanTree, setSiyuanTree] = React.useState<ProjectContextTree | null>(null);
   const [mapFlash, setMapFlash] = React.useState(false);
   const [status, setStatus] = React.useState('Ready.');
   const [workspaceSection, setWorkspaceSection] = React.useState<ContextWorkspaceSectionId>('maps');
@@ -139,7 +142,6 @@ export function ContextPage() {
   const [inspectorTab, setInspectorTab] = React.useState<ContextInspectorTabId>('details');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [focusedMap, setFocusedMap] = React.useState(false);
-  const [vaultOpen, setVaultOpen] = React.useState(false);
   const [githubPickerOpen, setGithubPickerOpen] = React.useState(false);
   const [githubInstallationId, setGithubInstallationId] = React.useState('');
   const [githubRepositories, setGithubRepositories] = React.useState<
@@ -186,7 +188,7 @@ export function ContextPage() {
     setSelectedId(null);
     setGenerating(false);
     setStructuralPreview(null);
-    setVaultOpen(false);
+    setSiyuanTree(null);
     setJarvisUi(buildJarvisContextUi(null));
     lastAppliedFileRef.current = '';
     if (!accountId) return;
@@ -236,7 +238,34 @@ export function ContextPage() {
       null,
     [maps, selectedMapId],
   );
-  const tree = structuralPreview ?? selectedMap?.tree ?? null;
+  const tree =
+    structuralPreview ?? (SIYUAN_CONTEXT_VAULT_ENABLED ? siyuanTree : (selectedMap?.tree ?? null));
+
+  React.useEffect(() => {
+    if (!SIYUAN_CONTEXT_VAULT_ENABLED || !projectId || !selectedMap || generating) return;
+    let active = true;
+    setSiyuanTree(null);
+    setStatus('Reading this Context Map from SiYuan...');
+    void productionSiyuanContextMaps
+      .read(projectId, selectedMap)
+      .then((snapshot) => snapshot ?? productionSiyuanContextMaps.sync(projectId, selectedMap))
+      .then((snapshot) => {
+        if (!active) return;
+        setSiyuanTree(snapshot.tree);
+        setStatus('SiYuan Context Map ready.');
+      })
+      .catch((error) => {
+        if (!active) return;
+        setStatus('SiYuan could not read this Context Map.');
+        toast.error(
+          'SiYuan Context Map unavailable',
+          error instanceof Error ? error.message : 'Unknown local vault error',
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [generating, projectId, selectedMap]);
   const activeMapCount = React.useMemo(
     () => maps.filter((map) => map.status === 'active').length,
     [maps],
@@ -441,20 +470,21 @@ export function ContextPage() {
       if (!(await selectMap(mapId))) return;
       const record = maps.find((map) => map.id === mapId && map.status === 'active');
       if (SIYUAN_CONTEXT_VAULT_ENABLED && projectId && record) {
-        setStatus('Opening this map in the SiYuan Context Vault...');
-        setFocusedMap(false);
-        setVaultOpen(true);
-        void productionSiyuanContextMaps
-          .sync(projectId, record)
-          .then(() => setStatus('SiYuan Context Map ready.'))
-          .catch((error) => {
-            setStatus('The saved map is safe, but SiYuan needs a retry.');
-            toast.error(
-              'SiYuan Context Map could not open',
-              error instanceof Error ? error.message : 'Unknown local vault error',
-            );
-          });
-        return;
+        setStatus('Opening this SiYuan Context Map...');
+        try {
+          const snapshot =
+            (await productionSiyuanContextMaps.read(projectId, record)) ??
+            (await productionSiyuanContextMaps.sync(projectId, record));
+          setSiyuanTree(snapshot.tree);
+          setStatus('SiYuan Context Map ready.');
+        } catch (error) {
+          setStatus('SiYuan could not read this Context Map.');
+          toast.error(
+            'SiYuan Context Map could not open',
+            error instanceof Error ? error.message : 'Unknown local vault error',
+          );
+          return;
+        }
       }
       setCenterMode('graph');
       setFocusedMap(true);
@@ -462,32 +492,57 @@ export function ContextPage() {
     [maps, projectId, selectMap],
   );
 
+  const closeFocusedMap = React.useCallback(() => {
+    setFocusedMap(false);
+  }, []);
+
   React.useEffect(() => {
     if (!focusedMap) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setFocusedMap(false);
+      if (event.key === 'Escape') closeFocusedMap();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [focusedMap]);
+  }, [closeFocusedMap, focusedMap]);
 
   const deleteMap = React.useCallback(
     async (mapId: string) => {
       const record = maps.find((map) => map.id === mapId);
       if (!record || record.status === 'deleted') return;
-      const confirmed = window.confirm(
-        `Do you confirm to delete the context map '${record.name}'?`,
-      );
+      const confirmed = window.confirm(`Move the Context Map '${record.name}' to Recycling Bin?`);
       if (!confirmed) return;
       try {
         const state = await deletePersistedContextMap(projectId, mapId);
         if (!applyPersistenceState(state)) return;
         setSelectedId(state.selectedMapId ? PROJECT_ROOT_NODE_ID : null);
-        toast.info('Context map tagged Deleted', record.name);
+        toast.info('Context Map moved to Recycling Bin', record.name);
       } catch (error) {
         toast.error(
           'Could not delete Context map',
           error instanceof Error ? error.message : 'Unknown persistence error',
+        );
+      }
+    },
+    [applyPersistenceState, maps, projectId],
+  );
+
+  const restoreMap = React.useCallback(
+    async (mapId: string) => {
+      const record = maps.find((map) => map.id === mapId && map.status === 'deleted');
+      if (!record) return;
+      try {
+        const state = await restorePersistedContextMap(projectId, mapId);
+        if (!applyPersistenceState(state)) return;
+        setSelectedId(PROJECT_ROOT_NODE_ID);
+        toast.success('Context Map restored', record.name);
+      } catch (error) {
+        toast.error(
+          'Could not restore Context Map',
+          error instanceof Error && error.message.includes('active_limit')
+            ? `You can keep up to ${MAX_ACTIVE_CONTEXT_MAPS} active Context Maps. Move one to Recycling Bin first.`
+            : error instanceof Error
+              ? error.message
+              : 'Unknown persistence error',
         );
       }
     },
@@ -606,12 +661,8 @@ export function ContextPage() {
           (map) => map.id === persisted.selectedMapId && map.status === 'active',
         );
         if (projectId && persistedMap) {
-          void productionSiyuanContextMaps.sync(projectId, persistedMap).catch((error) => {
-            toast.warning(
-              'GitHub map saved; SiYuan needs a retry',
-              error instanceof Error ? error.message : 'Unknown local vault error',
-            );
-          });
+          const snapshot = await productionSiyuanContextMaps.sync(projectId, persistedMap);
+          setSiyuanTree(snapshot.tree);
         }
         if (!applyPersistenceState(persisted)) return;
         setSelectedId(PROJECT_ROOT_NODE_ID);
@@ -698,11 +749,17 @@ export function ContextPage() {
         (map) => map.id === persisted.selectedMapId && map.status === 'active',
       );
       if (!persistedMap) throw new Error('context_search_index_snapshot_invalid');
+      // The v2 graph persistence projection intentionally stores portable
+      // entity metadata, but it does not retain local ingestion eligibility.
+      // Keep the persisted map identity while using this freshly scanned tree
+      // so oversized, media, and binary-like files remain metadata-only for
+      // both RLM indexing and the SiYuan canonical snapshot.
+      const generatedMap = { ...persistedMap, tree: generated };
       setStatus(`Indexing ${generated.fileCount} Context files...`);
       try {
         await contextSearchIndexPopulation.populateCreatedMap(
           persisted.accountId,
-          persistedMap,
+          generatedMap,
           controller.signal,
         );
       } catch (indexError) {
@@ -711,15 +768,9 @@ export function ContextPage() {
       }
       if (projectId && SIYUAN_CONTEXT_VAULT_ENABLED) {
         setStatus('Adding this map to the SiYuan Context Vault...');
-        void productionSiyuanContextMaps
-          .sync(projectId, persistedMap)
-          .then(() => setStatus('SiYuan Context Map ready.'))
-          .catch((error) => {
-            toast.warning(
-              'Context map saved; SiYuan needs a retry',
-              error instanceof Error ? error.message : 'Unknown local vault error',
-            );
-          });
+        const snapshot = await productionSiyuanContextMaps.sync(projectId, generatedMap);
+        setSiyuanTree(snapshot.tree);
+        setStatus('SiYuan Context Map ready.');
       }
       const indexedAuth = useAuthStore.getState();
       if (
@@ -758,10 +809,15 @@ export function ContextPage() {
       ) {
         return;
       }
-      toast.error(
-        'Context map creation failed',
-        err instanceof Error ? err.message : 'Unknown error',
-      );
+      const errorMessage =
+        err instanceof Error ? err.message : typeof err === 'string' ? err : 'unknown_error';
+      devConsole.log({
+        channel: 'ai',
+        level: 'error',
+        message: 'SiYuan Context Map creation failed',
+        detail: { error: errorMessage },
+      });
+      toast.error('Context map creation failed', errorMessage);
       setStatus('Generation failed.');
     } finally {
       const auth = useAuthStore.getState();
@@ -810,6 +866,20 @@ export function ContextPage() {
     [openFolderPicker],
   );
 
+  if (focusedMap && SIYUAN_CONTEXT_VAULT_ENABLED && projectId && selectedMap?.status === 'active') {
+    return (
+      <div
+        data-monochrome-route="context"
+        data-sakura-route="context"
+        data-context-siyuan-map-page
+        data-context-map-id={selectedMap.id}
+        className="relative h-full min-h-0 w-full overflow-hidden bg-background"
+      >
+        <SiyuanVaultSurface projectId={projectId} onClose={closeFocusedMap} />
+      </div>
+    );
+  }
+
   if (focusedMap && tree && rootNode && selected) {
     return (
       <div
@@ -836,7 +906,7 @@ export function ContextPage() {
           githubBadge={githubBadge}
           jarvisUi={jarvisUi}
           focused
-          onExitFocus={() => setFocusedMap(false)}
+          onExitFocus={closeFocusedMap}
         />
       </div>
     );
@@ -857,7 +927,7 @@ export function ContextPage() {
       <aside
         data-monochrome-surface="context-tree"
         data-sakura-surface="context-tree"
-        className="relative z-10 flex w-[340px] shrink-0 flex-col border-r border-border bg-panel/85 backdrop-blur xl:w-[400px] [html[data-theme=monochrome]_&]:w-[304px] [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:backdrop-blur-none"
+        className="relative z-10 flex w-[340px] shrink-0 flex-col border-r border-border bg-panel/85 shadow-soft backdrop-blur xl:w-[400px] [html[data-theme=monochrome]_&]:w-[304px] [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none"
       >
         <div className="space-y-3 border-b border-border p-4">
           <div className="flex items-start justify-between gap-3">
@@ -872,24 +942,12 @@ export function ContextPage() {
                 Create a cozy draggable map for every AI chat and terminal.
               </p>
             </div>
-            {SIYUAN_CONTEXT_VAULT_ENABLED && projectId ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setVaultOpen(true)}
-                aria-label="Open SiYuan Context Vault"
-                className="gap-1.5"
-              >
-                <NotebookPen className="h-4 w-4" />
-                Open vault
-              </Button>
-            ) : null}
             <Button
               variant="accent"
               size="sm"
               onClick={() => setWorkspaceSection('sources')}
               aria-label="Create Context map"
-              className="gap-1.5"
+              className="gap-1.5 shadow-soft [html[data-theme=monochrome]_&]:shadow-none"
             >
               <Sparkles className="h-4 w-4" />
               Create map
@@ -990,6 +1048,7 @@ export function ContextPage() {
             activeMapCount={activeMapCount}
             onSelect={openFocusedMap}
             onDelete={deleteMap}
+            onRestore={restoreMap}
           />
           <NightlySecondBrainPanel />
           <p className="min-h-4 text-metadata text-muted-foreground">{status}</p>
@@ -1055,9 +1114,6 @@ export function ContextPage() {
           />
         )}
       </main>
-      {vaultOpen && SIYUAN_CONTEXT_VAULT_ENABLED && projectId ? (
-        <SiyuanVaultSurface projectId={projectId} onClose={() => setVaultOpen(false)} />
-      ) : null}
     </div>
   );
 }
@@ -1346,14 +1402,84 @@ function ContextMapList({
   activeMapCount,
   onSelect,
   onDelete,
+  onRestore,
 }: {
   maps: ContextMapRecord[];
   selectedMapId: string | null;
   activeMapCount: number;
   onSelect: (mapId: string) => void;
   onDelete: (mapId: string) => void;
+  onRestore: (mapId: string) => void;
 }) {
   if (maps.length === 0) return null;
+  const activeMaps = maps.filter((map) => map.status === 'active');
+  const recycledMaps = maps.filter((map) => map.status === 'deleted');
+  const mapRow = (map: ContextMapRecord) => {
+    const selected = map.id === selectedMapId;
+    const deleted = map.status === 'deleted';
+    const mapFilePath = map.filePath ?? contextMapFilePath(map.rootDir);
+    return (
+      <div
+        key={map.id}
+        draggable={!deleted}
+        onDragStart={(event) => {
+          if (deleted) return;
+          event.dataTransfer.effectAllowed = 'copy';
+          event.dataTransfer.setData('application/x-jarvis-file', mapFilePath);
+          event.dataTransfer.setData('text/plain', mapFilePath);
+        }}
+        onMouseDown={(event) => {
+          if (event.button === 2 && !deleted) {
+            event.stopPropagation();
+            startRightClickDrag(event, 'file', { path: mapFilePath });
+          }
+        }}
+        className={cn(
+          'group flex w-full items-center gap-1 rounded-lg border transition-all',
+          selected
+            ? 'border-accent-copper/45 bg-accent-copper/10 shadow-soft'
+            : 'border-transparent hover:border-border hover:bg-paper',
+          deleted && 'opacity-70',
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => (deleted ? onRestore(map.id) : onSelect(map.id))}
+          className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left focus-visible:outline-none"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-secondary font-medium text-foreground">
+              {map.name}
+            </span>
+            <span className="block truncate font-mono text-metadata text-muted-foreground">
+              {map.tree.fileCount} files - {mapFilePath}
+            </span>
+          </span>
+          <span
+            className={cn(
+              'rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+              deleted
+                ? 'border-muted-foreground/25 bg-muted text-muted-foreground'
+                : 'border-accent-copper/35 bg-accent-copper/10 text-accent-copper',
+            )}
+          >
+            {deleted ? 'Restore' : 'Active'}
+          </span>
+        </button>
+        {!deleted ? (
+          <button
+            type="button"
+            onClick={() => onDelete(map.id)}
+            className="mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-ring"
+            aria-label={`Move ${map.name} to Recycling Bin`}
+            title="Move this Context Map to Recycling Bin"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+      </div>
+    );
+  };
   return (
     <section className="rounded-xl border border-border bg-paper-soft p-2.5 shadow-soft">
       <div className="mb-2 flex items-center justify-between gap-2">
@@ -1364,74 +1490,18 @@ function ContextMapList({
           {activeMapCount}/{MAX_ACTIVE_CONTEXT_MAPS} active
         </span>
       </div>
-      <div className="space-y-1">
-        {maps.slice(0, 8).map((map) => {
-          const selected = map.id === selectedMapId;
-          const deleted = map.status === 'deleted';
-          const mapFilePath = map.filePath ?? contextMapFilePath(map.rootDir);
-          return (
-            <div
-              key={map.id}
-              draggable={!deleted}
-              onDragStart={(event) => {
-                if (deleted) return;
-                event.dataTransfer.effectAllowed = 'copy';
-                event.dataTransfer.setData('application/x-jarvis-file', mapFilePath);
-                event.dataTransfer.setData('text/plain', mapFilePath);
-              }}
-              onMouseDown={(event) => {
-                if (event.button === 2 && !deleted) {
-                  event.stopPropagation();
-                  startRightClickDrag(event, 'file', { path: mapFilePath });
-                }
-              }}
-              className={cn(
-                'group flex w-full items-center gap-1 rounded-lg border transition-all',
-                selected
-                  ? 'border-accent-copper/45 bg-accent-copper/10 shadow-soft'
-                  : 'border-transparent hover:border-border hover:bg-paper',
-                deleted && 'opacity-70',
-              )}
-            >
-              <button
-                type="button"
-                onClick={() => onSelect(map.id)}
-                className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left focus-visible:outline-none"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-secondary font-medium text-foreground">
-                    {map.name}
-                  </span>
-                  <span className="block truncate font-mono text-metadata text-muted-foreground">
-                    {map.tree.fileCount} files - {mapFilePath}
-                  </span>
-                </span>
-                <span
-                  className={cn(
-                    'rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-                    deleted
-                      ? 'border-muted-foreground/25 bg-muted text-muted-foreground'
-                      : 'border-accent-copper/35 bg-accent-copper/10 text-accent-copper',
-                  )}
-                >
-                  {deleted ? 'Deleted' : 'Active'}
-                </span>
-              </button>
-              {!deleted ? (
-                <button
-                  type="button"
-                  onClick={() => onDelete(map.id)}
-                  className="mr-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-ring"
-                  aria-label={`Delete ${map.name}`}
-                  title="Tag this Context map as Deleted"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
+      <div className="space-y-1">{activeMaps.slice(0, MAX_ACTIVE_CONTEXT_MAPS).map(mapRow)}</div>
+      {recycledMaps.length ? (
+        <details className="mt-2 border-t border-border pt-2">
+          <summary className="cursor-pointer text-metadata font-semibold text-muted-foreground">
+            Recycling Bin ({recycledMaps.length})
+          </summary>
+          <p className="py-1 text-metadata text-muted-foreground">
+            Source files stay untouched. Select a map below to restore it.
+          </p>
+          <div className="space-y-1">{recycledMaps.slice(0, 20).map(mapRow)}</div>
+        </details>
+      ) : null}
     </section>
   );
 }
@@ -1544,7 +1614,7 @@ function FirstContextMapTutorial() {
     {
       title: 'Create the map',
       detail:
-        'Press Create Context Map. VibeSpace indexes it locally and opens it through SiYuan; existing files are not changed.',
+        'Press Create Context Map. VibeSpace indexes it locally and opens it through SiYuan. Existing files are not changed.',
     },
   ] as const;
 

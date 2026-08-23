@@ -13,13 +13,20 @@ describe('ContextPage SiYuan creation contract', () => {
 
   it('prewarms SiYuan and projects every created local or GitHub map', () => {
     expect(source).toContain('productionSiyuanContextMaps.prewarm(projectId)');
-    expect(
-      source.match(/\.sync\(\s*projectId,\s*persistedMap\s*\)/g),
-    ).toHaveLength(2);
+    expect(source).toContain('productionSiyuanContextMaps.sync(projectId, persistedMap)');
+    expect(source).toContain('productionSiyuanContextMaps.sync(projectId, generatedMap)');
   });
 
-  it('opens a selected map through the official SiYuan vault surface', () => {
-    expect(source).toMatch(/openFocusedMap[\s\S]*setVaultOpen\(true\)/);
+  it('preserves fresh local ingestion eligibility through RLM and SiYuan creation', () => {
+    expect(source).toContain('const generatedMap = { ...persistedMap, tree: generated }');
+    expect(source).toContain('persisted.accountId,\n          generatedMap,');
+  });
+
+  it('opens an exact map as a dedicated official SiYuan page inside the Context route', () => {
+    expect(source).toContain("import { SiyuanVaultSurface } from './siyuan/SiyuanVaultSurface'");
+    expect(source).toContain('data-context-siyuan-map-page');
     expect(source).toContain('<SiyuanVaultSurface projectId={projectId}');
+    expect(source).toContain('onExitFocus={closeFocusedMap}');
+    expect(source).not.toContain('Open vault');
   });
 });
