@@ -1,0 +1,12 @@
+agent_id: VS-CODEX-QUEUE-CHECKPOINT-20260823
+task_id: PR31-AUG23-QUEUE-EVIDENCE-CHECKPOINT
+controller: /root
+status: active
+worktree: C:\Users\viper\VibeSpace-UnifiedChungus-Final
+branch: integration/UnifiedChungus-final
+base_head: 5daaa7cb
+upstream: origin/UnifiedChungus
+claimed_at: 2026-08-23T15:08:00-05:00
+exclusive_scope: qeue.md; this lock file.
+excluded_scope: all product/test files, active locks, services, credentials, and unrelated dirty work.
+intent: Replace stale Pet blocker text and record only the August 23 UI slices with fresh commit/test/Playwright evidence.

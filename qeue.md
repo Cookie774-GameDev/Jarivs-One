@@ -11,8 +11,8 @@ These items come from direct user observation on August 23. They remain unchecke
 - [ ] Audit the full Pet commit chain and reproduce why the Pet is visible in web mode but absent from the official Tauri app; capture the exact renderer/native lifecycle boundary before changing behavior.
 - [ ] Keep the selected Axolotl or Glitch Pet visible across Chat, Benchmarks, News, Account, Settings, and other route changes without freezes, remount loops, or unexpected disappearance.
 - [ ] Keep the Pet and its native mini panel above other applications without focus theft, while preserving the existing Pet art, animations, character system, and interaction design.
-- [ ] Enforce one presentation surface at a time: opening the mini panel closes/hides the Pet overlay, and “Show pet now” closes/hides the mini panel. Reduced-motion mode must follow the same rule.
-- [ ] Make right-click Close an intentional persistent hide action; a recovery/watchdog loop must not immediately reopen the Pet after the user closes it.
+- [x] Enforce one presentation surface at a time: opening the mini panel closes/hides the Pet overlay, and “Show pet now” closes/hides the mini panel. Reduced-motion follows the same state path — commit `f189f946`; focused Pet boundary 44/44; Playwright Pet/panel counts proved `1/0 → 0/1 → 1/0`.
+- [x] Make right-click Close an intentional persistent hide action; the recovery/watchdog loop no longer immediately reopens the Pet — commit `f189f946`; Playwright retained Pet/panel `0/0` and `overlayVisible=false` after 2.2 seconds.
 - [ ] Verify lock position, drag, edge snapping, reopen, close, reduced motion, and every Pet setting in the official native app for both Axolotl and Glitch.
 - [ ] Reduce Pet renderer/native coordination overhead and animation jank without replacing or degrading the existing assets, animation timing, Pixi playback, or character UI.
 
@@ -31,6 +31,7 @@ These items come from direct user observation on August 23. They remain unchecke
 ### Account, security, calls, usage, billing, and support
 
 - [ ] Refine Account information hierarchy: larger readable section headings and icons, calmer spacing, and a correctly sized “Local & private” badge that never wraps vertically or looks detached from its content.
+- [x] Stabilize the Account `Local & private` badge independently of the broader hierarchy redesign — commit `b90fb630`; focused portable-backup 5/5; Playwright measured one-line `nowrap`, no shrink, 109 × 27 px.
 - [ ] Explain the local user ID in plain language as an offline data-ownership namespace—not a password or recovery secret—or remove it from the primary UI if it has no user action.
 - [ ] Expand Account Security only with capabilities the current authentication/database contract genuinely supports (for example password change, active identity/session details, recovery/support routes); never invent controls or weaken authentication.
 - [ ] Add a Jarvis calling schedule surface showing who/what/when, status, and safe cancellation using the existing phone/schedule authority; do not expose secrets or claim an unavailable channel.
@@ -41,7 +42,7 @@ These items come from direct user observation on August 23. They remain unchecke
 ### Skills, shell, and theme polish
 
 - [ ] Replace generic Skill emoji presentation with a coherent VibeSpace-themed icon/emoji system while preserving custom skill identities, accessibility names, and the existing editor/registry contract.
-- [ ] Remove the top-bar Jarvis One / Default / Monochrome / Warm quick theme picker from the visible shell only; preserve saved theme state and Settings-based theme functionality.
+- [x] Remove the top-bar Jarvis One / Default / Monochrome / Warm quick theme picker from the visible shell only; preserve saved theme state and Settings-based theme functionality — commit `77f80b6d`; focused TopBar 8/8; Playwright confirmed zero header appearance groups and all four Settings themes with the prior selection intact.
 
 ### Jarvis Voice module
 
@@ -101,6 +102,6 @@ These items come from direct user observation on August 23. They remain unchecke
 
 ## Verified blockers
 
-- Pet native acceptance still fails: the rebuilt official app returns `visibility_check_failed` and retains a stale overlay label; the Pet-only attempt was removed instead of being committed. The remaining repair crosses the actively owned global window-close policy in `app/src-tauri/src/lib.rs`.
+- Pet presentation repair is committed in `f189f946`: stale-handle recovery, typed failure truth, persistent Close, and panel/Pet mutual exclusion pass focused renderer/native tests. Final detached native always-on-top/show-panel-close acceptance remains unclaimed because the concurrently owned shared Tauri command dispatcher stalled during the app-only Playwright sequence; the process/configuration was preserved rather than killed or overwritten.
 - The final Jarvis selected-provider instruction runtime proof is blocked by a fresh pre-dispatch test failure in actively owned `app/src/lib/ai/runtime.ts` / `runtime.test.ts`; identity/compiler/composer and the exact OpenCode route proof remain green.
 - Real microphone transcription, Pet topmost/focus behavior, and Doctor durable recovery cannot be accepted in browser/Vite mode. They remain native-only while the user's current no-live-app instruction is active.
