@@ -15,6 +15,7 @@ export const CONTEXT_STORAGE_PREFIX = 'jarvis-context-tree-v1';
 export const CONTEXT_MAP_COLLECTION_PREFIX = 'jarvis-context-maps-v1';
 export const CONTEXT_SELECTED_FILE_PREFIX = 'jarvis-context-selected-file-v1';
 export const MAX_ACTIVE_CONTEXT_MAPS = 5;
+export const CONTEXT_SCAN_FILE_LIMIT = 120;
 
 export type ContextGenerationProvider = 'local' | 'google' | 'groq' | 'openai' | 'anthropic';
 
@@ -65,6 +66,18 @@ export interface ProjectContextTree {
   summary: string;
   nodes: ContextTreeNode[];
   recommendedEntryPoints?: string[];
+  coverage?: {
+    complete: boolean;
+    limitations: Array<'file_limit' | 'directory_limit' | 'depth_limit' | 'entry_limit'>;
+  };
+}
+
+export function isContextTreeCoverageBounded(tree: ProjectContextTree): boolean {
+  if (tree.coverage) return !tree.coverage.complete;
+  // Maps generated before coverage metadata existed cannot prove that an
+  // exact-cap result represented the whole source. Keep their evidence, but
+  // label them conservatively until the user refreshes the map.
+  return tree.fileCount >= CONTEXT_SCAN_FILE_LIMIT;
 }
 
 export type ContextMapStatus = 'active' | 'deleted';
@@ -151,7 +164,7 @@ interface ScannedContextFile {
   contentIndexEligible: boolean;
 }
 
-const MAX_SCAN_FILES = 120;
+const MAX_SCAN_FILES = CONTEXT_SCAN_FILE_LIMIT;
 const MAX_SCAN_DEPTH = 6;
 const MAX_SCAN_DIRECTORIES = 500;
 const MAX_DIRECTORY_ENTRIES = 10_000;
@@ -837,12 +850,20 @@ export async function generateProjectContextTree(
   if (!rootDir) throw new Error('Choose a project folder first.');
   const yieldControl = options.yieldControl ?? defaultYieldControl;
   options.onProgress?.('Scanning project files...');
-  const files = await scanProjectFiles(rootDir, options.onProgress, options.signal, yieldControl);
+  const { files, coverage } = await scanProjectFiles(
+    rootDir,
+    options.onProgress,
+    options.signal,
+    yieldControl,
+  );
   assertGenerationActive(options.signal);
   if (files.length === 0) throw new Error('No readable text files found in this project folder.');
 
   const provider = options.provider ?? (options.apiKey ? 'google' : 'local');
-  const structuralTree = buildFallbackTree(options.projectId, rootDir, files, 'local-structural');
+  const structuralTree = applyScanCoverage(
+    buildFallbackTree(options.projectId, rootDir, files, 'local-structural'),
+    coverage,
+  );
   options.onProgress?.('Initial project structure ready.');
   await options.onStructuralMap?.(structuralTree);
   await yieldControl();
@@ -882,6 +903,7 @@ export async function generateProjectContextTree(
         ? { ...structuralTree, model: 'local-fallback' }
         : buildFallbackTree(options.projectId, rootDir, files, `local-fallback-after-${provider}`);
   }
+  tree = applyScanCoverage(tree, coverage);
   assertGenerationActive(options.signal);
   const mapPath = contextMapFilePath(rootDir);
   const fileWrite = await writeTextFile(
@@ -935,17 +957,33 @@ async function scanProjectFiles(
   onProgress?: (message: string) => void,
   signal?: AbortSignal,
   yieldControl: () => Promise<void> = defaultYieldControl,
-): Promise<ScannedContextFile[]> {
+): Promise<{
+  files: ScannedContextFile[];
+  coverage: NonNullable<ProjectContextTree['coverage']>;
+}> {
   const files: ScannedContextFile[] = [];
+  const limitations = new Set<NonNullable<ProjectContextTree['coverage']>['limitations'][number]>();
   let totalChars = 0;
   const seenDirs = new Set<string>();
   const pendingDirectories: Array<{ dir: string; depth: number }> = [{ dir: rootDir, depth: 0 }];
 
-  while (pendingDirectories.length > 0 && files.length < MAX_SCAN_FILES) {
+  while (pendingDirectories.length > 0) {
+    if (files.length >= MAX_SCAN_FILES) {
+      limitations.add('file_limit');
+      break;
+    }
     const nextDirectory = pendingDirectories.shift()!;
     const { dir, depth } = nextDirectory;
     assertGenerationActive(signal);
-    if (depth > MAX_SCAN_DEPTH || seenDirs.has(dir) || seenDirs.size >= MAX_SCAN_DIRECTORIES) {
+    if (depth > MAX_SCAN_DEPTH) {
+      limitations.add('depth_limit');
+      continue;
+    }
+    if (seenDirs.has(dir)) {
+      continue;
+    }
+    if (seenDirs.size >= MAX_SCAN_DIRECTORIES) {
+      limitations.add('directory_limit');
       continue;
     }
     const directoryDecision = classifyJarvisSource({
@@ -975,6 +1013,7 @@ async function scanProjectFiles(
       continue;
     }
 
+    if (listed.entries.length > MAX_DIRECTORY_ENTRIES) limitations.add('entry_limit');
     const entries = prioritizeEntries(listed.entries.slice(0, MAX_DIRECTORY_ENTRIES));
     for (let entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
       const entry = entries[entryIndex]!;
@@ -983,7 +1022,10 @@ async function scanProjectFiles(
         await yieldControl();
         assertGenerationActive(signal);
       }
-      if (files.length >= MAX_SCAN_FILES) break;
+      if (files.length >= MAX_SCAN_FILES) {
+        limitations.add('file_limit');
+        break;
+      }
       if (entry.isDir) {
         if (!IGNORED_DIRS.has(entry.name.toLowerCase())) {
           pendingDirectories.push({ dir: entry.path, depth: depth + 1 });
@@ -1079,7 +1121,15 @@ async function scanProjectFiles(
       assertGenerationActive(signal);
     }
   }
-  return files;
+  const limitationOrder = ['file_limit', 'directory_limit', 'depth_limit', 'entry_limit'] as const;
+  const orderedLimitations = limitationOrder.filter((limitation) => limitations.has(limitation));
+  return {
+    files,
+    coverage: {
+      complete: orderedLimitations.length === 0,
+      limitations: [...orderedLimitations],
+    },
+  };
 }
 
 function prioritizeEntries(entries: FsEntry[]): FsEntry[] {
@@ -1493,6 +1543,34 @@ function buildFallbackTree(
     summary: summarizeFiles(files),
     recommendedEntryPoints: files.slice(0, 10).map((file) => file.relativePath),
     nodes,
+  };
+}
+
+function applyScanCoverage(
+  tree: ProjectContextTree,
+  coverage: NonNullable<ProjectContextTree['coverage']>,
+): ProjectContextTree {
+  const limitationLabels: Record<
+    NonNullable<ProjectContextTree['coverage']>['limitations'][number],
+    string
+  > = {
+    file_limit: 'file safety limit reached',
+    directory_limit: 'directory safety limit reached',
+    depth_limit: 'folder-depth safety limit reached',
+    entry_limit: 'per-folder entry safety limit reached',
+  };
+  const boundedNote = coverage.complete
+    ? ''
+    : ` This is a bounded preview; ${coverage.limitations
+        .map((limitation) => limitationLabels[limitation])
+        .join(', ')}.`;
+  return {
+    ...tree,
+    coverage,
+    summary:
+      boundedNote && !tree.summary.toLowerCase().includes('bounded preview')
+        ? `${tree.summary}${boundedNote}`
+        : tree.summary,
   };
 }
 

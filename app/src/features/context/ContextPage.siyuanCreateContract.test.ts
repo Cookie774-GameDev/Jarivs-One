@@ -22,10 +22,20 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(source).toContain('persisted.accountId,\n          generatedMap,');
   });
 
+  it('labels a bounded source preview honestly instead of claiming every source file was mapped', () => {
+    expect(source).toContain(
+      'const treeCoverageBounded = tree ? isContextTreeCoverageBounded(tree) : false',
+    );
+    expect(source).toContain('treeCoverageBounded');
+    expect(source).toContain('Bounded preview');
+  });
+
   it('opens an exact map as a dedicated official SiYuan page inside the Context route', () => {
     expect(source).toContain("import { SiyuanVaultSurface } from './siyuan/SiyuanVaultSurface'");
     expect(source).toContain('data-context-siyuan-map-page');
     expect(source).toContain('<SiyuanVaultSurface projectId={projectId}');
+    expect(source).toContain('Back to Context Maps');
+    expect(source).toContain('Official SiYuan map · source files stay read-only');
     expect(source).toContain('onExitFocus={closeFocusedMap}');
     expect(source).not.toContain('Open vault');
   });

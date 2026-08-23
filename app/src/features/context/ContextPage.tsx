@@ -58,6 +58,7 @@ import {
   flattenContextNodes,
   formatContextAttachmentForTerminal,
   generateProjectContextTree,
+  isContextTreeCoverageBounded,
   nodeToAttachment,
   serializeContextAttachment,
   type ContextMapRecord,
@@ -240,6 +241,7 @@ export function ContextPage() {
   );
   const tree =
     structuralPreview ?? (SIYUAN_CONTEXT_VAULT_ENABLED ? siyuanTree : (selectedMap?.tree ?? null));
+  const treeCoverageBounded = tree ? isContextTreeCoverageBounded(tree) : false;
 
   React.useEffect(() => {
     if (!SIYUAN_CONTEXT_VAULT_ENABLED || !projectId || !selectedMap || generating) return;
@@ -873,9 +875,24 @@ export function ContextPage() {
         data-sakura-route="context"
         data-context-siyuan-map-page
         data-context-map-id={selectedMap.id}
-        className="relative h-full min-h-0 w-full overflow-hidden bg-background"
+        className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background"
       >
-        <SiyuanVaultSurface projectId={projectId} onClose={closeFocusedMap} />
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-panel/90 px-4 backdrop-blur">
+          <Button type="button" size="sm" variant="ghost" onClick={closeFocusedMap}>
+            <ArrowLeft className="h-4 w-4" /> Back to Context Maps
+          </Button>
+          <div className="min-w-0">
+            <h1 className="truncate font-display text-xl font-semibold text-foreground">
+              {selectedMap.name}
+            </h1>
+            <p className="truncate text-metadata text-muted-foreground">
+              Official SiYuan map · source files stay read-only
+            </p>
+          </div>
+        </header>
+        <div className="relative min-h-0 flex-1">
+          <SiyuanVaultSurface projectId={projectId} onClose={closeFocusedMap} />
+        </div>
       </div>
     );
   }
@@ -1038,10 +1055,22 @@ export function ContextPage() {
           )}
 
           <div className="grid grid-cols-3 gap-2">
-            <Stat label="Files" value={tree ? String(tree.fileCount) : '-'} />
+            <Stat
+              label="Files"
+              value={
+                tree ? (treeCoverageBounded ? `${tree.fileCount}+` : String(tree.fileCount)) : '-'
+              }
+            />
             <Stat label="Nodes" value={tree ? String(flatNodes.length + 1) : '-'} />
             <Stat label="Model" value={tree ? shortModel(tree.model) : 'SiYuan local'} />
           </div>
+          {tree && treeCoverageBounded ? (
+            <div className="rounded-xl border border-amber-700/20 bg-amber-100/25 px-3 py-2 text-metadata text-muted-foreground">
+              <span className="font-semibold text-foreground">Bounded preview.</span> The saved map
+              includes every file shown, but the source contains more entries beyond the current
+              safe scan limits.
+            </div>
+          ) : null}
           <ContextMapList
             maps={maps}
             selectedMapId={selectedMap?.id ?? null}

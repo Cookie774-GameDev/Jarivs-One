@@ -15,6 +15,7 @@ vi.mock('@/lib/fs', () => ({
 import {
   describeContextRootError,
   generateProjectContextTree,
+  isContextTreeCoverageBounded,
   MAX_CONTEXT_FILE_BYTES,
   contextMapCollectionKey,
   contextMapSlashOptions,
@@ -22,7 +23,27 @@ import {
   loadStoredContextMaps,
   resolveContextMapRecord,
   type ContextMapRecord,
+  type ProjectContextTree,
 } from './tree';
+
+describe('Context map scan coverage', () => {
+  it('conservatively marks an exact-cap legacy map as bounded without rewriting it', () => {
+    const legacyTree = {
+      version: 1,
+      projectId: null,
+      rootDir: 'C:\\proj',
+      generatedAt: 1,
+      model: 'local-fallback',
+      fileCount: 120,
+      totalBytes: 0,
+      summary: 'Legacy map',
+      nodes: [],
+    } satisfies ProjectContextTree;
+
+    expect(isContextTreeCoverageBounded(legacyTree)).toBe(true);
+    expect(legacyTree).not.toHaveProperty('coverage');
+  });
+});
 
 describe('generateProjectContextTree file safeguards', () => {
   beforeEach(() => {
@@ -120,6 +141,27 @@ describe('generateProjectContextTree file safeguards', () => {
     expect(tree.fileCount).toBe(20);
     expect(filePaths).toHaveLength(20);
     expect(filePaths).toEqual(entries.map((entry) => entry.name));
+  });
+
+  it('marks a bounded scan as incomplete instead of presenting the sample as the whole vault', async () => {
+    const entries = Array.from({ length: 121 }, (_, index) => ({
+      name: `file-${index}.txt`,
+      path: `C:\\proj\\file-${index}.txt`,
+      isDir: false,
+      size: 8,
+    }));
+    fsMocks.listDirectory.mockResolvedValue({ ok: true, path: 'C:\\proj', entries });
+    fsMocks.readTextFileSample.mockResolvedValue({ ok: true, path: '', content: 'sample' });
+
+    const tree = await generateProjectContextTree({
+      projectId: null,
+      rootDir: 'C:\\proj',
+      provider: 'local',
+    });
+
+    expect(tree.fileCount).toBe(120);
+    expect(tree.coverage).toEqual({ complete: false, limitations: ['file_limit'] });
+    expect(tree.summary).toContain('bounded preview');
   });
 
   it('preserves every recursive subfolder level instead of flattening files into the first folder', async () => {

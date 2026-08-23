@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenCodeSystemLogWindow } from './OpenCodeSystemLogWindow';
+import { revealExistingOpenCodeSystemLogWindow } from './OpenCodeSystemLogHost';
 import {
   OPENCODE_SYSTEM_LOG_STORAGE_KEY,
   OPENCODE_SYSTEM_LOG_UPDATE_EVENT,
@@ -41,5 +42,36 @@ describe('OpenCodeSystemLogWindow', () => {
     render(<OpenCodeSystemLogWindow />);
     fireEvent.click(screen.getByRole('button', { name: /clear this view/i }));
     expect(window.localStorage.getItem(OPENCODE_SYSTEM_LOG_STORAGE_KEY)).toBeNull();
+  });
+});
+
+describe('OpenCode System Log native window recovery', () => {
+  it('reuses a healthy native window', async () => {
+    const existing = {
+      isVisible: vi.fn().mockResolvedValue(false),
+      show: vi.fn().mockResolvedValue(undefined),
+      unminimize: vi.fn().mockResolvedValue(undefined),
+      setFocus: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await expect(revealExistingOpenCodeSystemLogWindow(existing)).resolves.toBe(true);
+    expect(existing.show).toHaveBeenCalledOnce();
+    expect(existing.setFocus).toHaveBeenCalledOnce();
+    expect(existing.destroy).not.toHaveBeenCalled();
+  });
+
+  it('removes a stale label so the caller can create a fresh live window', async () => {
+    const existing = {
+      isVisible: vi.fn().mockRejectedValue(new Error('window not found')),
+      show: vi.fn(),
+      unminimize: vi.fn(),
+      setFocus: vi.fn(),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await expect(revealExistingOpenCodeSystemLogWindow(existing)).resolves.toBe(false);
+    expect(existing.destroy).toHaveBeenCalledOnce();
+    expect(existing.show).not.toHaveBeenCalled();
   });
 });

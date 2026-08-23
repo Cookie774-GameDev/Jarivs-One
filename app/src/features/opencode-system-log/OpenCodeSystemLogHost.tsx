@@ -15,6 +15,31 @@ import {
 
 const LOG_PATH = '/?view=opencode-system-log';
 
+interface OpenCodeSystemLogWindowHandle {
+  isVisible(): Promise<boolean>;
+  show(): Promise<void>;
+  unminimize(): Promise<void>;
+  setFocus(): Promise<void>;
+  destroy(): Promise<void>;
+}
+
+export async function revealExistingOpenCodeSystemLogWindow(
+  existing: OpenCodeSystemLogWindowHandle,
+): Promise<boolean> {
+  try {
+    await existing.isVisible();
+    await existing.show();
+    await existing.unminimize();
+    await existing.setFocus();
+    return true;
+  } catch {
+    // Tauri can retain a label briefly after its native window has gone away.
+    // Remove only that stale log handle so a fresh live view can be created.
+    await existing.destroy().catch(() => undefined);
+    return false;
+  }
+}
+
 function payloadFor(timeline: readonly OpenCodeSystemStep[]): OpenCodeSystemLogPayload {
   return { version: 1, updatedAt: Date.now(), steps: [...timeline] };
 }
@@ -71,12 +96,7 @@ export async function openOpenCodeSystemLog(): Promise<void> {
 
   const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
   const existing = await WebviewWindow.getByLabel(OPENCODE_SYSTEM_LOG_WINDOW_LABEL);
-  if (existing) {
-    await existing.show().catch(() => undefined);
-    await existing.unminimize().catch(() => undefined);
-    await existing.setFocus().catch(() => undefined);
-    return;
-  }
+  if (existing && (await revealExistingOpenCodeSystemLogWindow(existing))) return;
 
   const child = new WebviewWindow(OPENCODE_SYSTEM_LOG_WINDOW_LABEL, {
     url: LOG_PATH,
