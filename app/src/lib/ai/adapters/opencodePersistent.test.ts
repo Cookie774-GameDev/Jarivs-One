@@ -111,6 +111,39 @@ describe('persistent OpenCode live authority', () => {
       task: false,
       vibespace_context: false,
     });
+    expect(
+      Object.entries(tools)
+        .filter(([, enabled]) => enabled)
+        .map(([name]) => name)
+        .sort(),
+    ).toEqual(['glob', 'grep', 'list', 'read']);
+
+    const synthesisAddendum = contextSystemAddendum(
+      {
+        prompt: 'Synthesize the grounded result.',
+        explicitReadRoot: true,
+        explicitReadSynthesis: true,
+      } as never,
+      { rlmEnabled: false, performance: 'quality' } as never,
+    );
+    expect(synthesisAddendum).toContain('GROUNDED SYNTHESIS');
+    expect(synthesisAddendum).toContain('evidence already collected in this exact session');
+    const synthesisTools = toolsForPolicy({
+      mode: 'agent',
+      access: 'full',
+      rlmEnabled: true,
+      explicitReadRoot: true,
+      explicitReadSynthesis: true,
+      requested: { vibespace_context: true, 'terminal.list': true },
+    });
+    expect(Object.values(synthesisTools).every((enabled) => enabled === false)).toBe(true);
+    expect(synthesisTools).toMatchObject({
+      question: false,
+      skill: false,
+      todowrite: false,
+      vibespace_context: false,
+      'terminal.list': false,
+    });
   });
 
   it.each([

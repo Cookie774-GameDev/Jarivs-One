@@ -31,7 +31,7 @@ import {
   buildConnectionRouteDisclosure,
   needsConnectionRouteDisclosure,
 } from './connectionDisclosure';
-import { jarvisProviderAttemptEvidenceRevalidator, runAgent } from './router';
+import { jarvisProviderAttemptEvidenceRevalidator, runAgent, type RunAgentRequest } from './router';
 import {
   runBoundedLocalFinalBossRevision,
   shouldRunLocalFinalBossRevision,
@@ -45,8 +45,9 @@ import {
   explicitResponseContractFallback,
   formatExplicitResponseContract,
   parseExplicitResponseContract,
+  type ExplicitResponseContract,
 } from '@/lib/jarvis/response/explicitResponseContract';
-import type { LLMContentPart, LLMMessage, LLMStreamChunk } from './types';
+import type { LLMContentPart, LLMMessage, LLMResponse, LLMStreamChunk } from './types';
 import { llmContentToText } from './types';
 import {
   MANDATORY_CONTEXT_EVIDENCE_DIRECTIVE_MARKER,
@@ -549,6 +550,245 @@ export function shouldSuppressProviderPreview(userText: string): boolean {
   return Boolean(parseExplicitResponseContract(userText) || extractExplicitReadRoot(userText));
 }
 
+const EXPLICIT_ROOT_EVIDENCE_PHASE_PROMPT = [
+  'Internal VibeSpace evidence phase for the pending explicit-root request.',
+  'Do not draft the final answer.',
+  'Use the enabled read-only filesystem tools to inventory the approved root, inspect bounded repository/configuration markers, and read representative high-signal entries.',
+  'Finish only after the filesystem observations needed for a grounded answer are present in this exact session.',
+].join(' ');
+
+function phaseBoundRequest(
+  request: Readonly<RunAgentRequest>,
+  phase: 'evidence' | 'synthesis' | 'correction',
+  attemptNumber: number,
+): Pick<RunAgentRequest, 'requestId' | 'protectedAttempt'> {
+  const requestId = request.requestId
+    ? `jphase_${phase}_${stablePhaseId(request.requestId)}_${request.requestId.slice(0, 384)}`
+    : undefined;
+  return {
+    ...(requestId ? { requestId } : {}),
+    ...(request.protectedAttempt && requestId
+      ? {
+          protectedAttempt: {
+            ...request.protectedAttempt,
+            requestId,
+            attemptNumber,
+          },
+        }
+      : {}),
+  };
+}
+
+function stablePhaseId(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function addResponseUsage(...responses: readonly LLMResponse[]): LLMResponse['usage'] {
+  return Object.freeze({
+    input_tokens: responses.reduce((total, response) => total + response.usage.input_tokens, 0),
+    output_tokens: responses.reduce((total, response) => total + response.usage.output_tokens, 0),
+    cost_usd: responses.reduce((total, response) => total + response.usage.cost_usd, 0),
+  });
+}
+
+function recordExplicitRootPhase(
+  phase: 'evidence' | 'synthesis' | 'correction',
+  requestId: string | undefined,
+  response: Readonly<LLMResponse>,
+): void {
+  devConsole.log({
+    channel: 'ai',
+    level: 'info',
+    message: 'Explicit-root provider phase completed',
+    detail: {
+      phase,
+      requestId,
+      provider: response.provider,
+      model: response.model,
+      wordCount: response.text.trim().match(/\S+/gu)?.length ?? 0,
+      completedReadOnlyFilesystem: response.tool_evidence?.completedReadOnlyFilesystem === true,
+      anyToolObserved: response.tool_evidence?.anyToolObserved === true,
+      rootInventoryObserved: response.tool_evidence?.rootInventoryObserved === true,
+      boundedSearchObserved: response.tool_evidence?.boundedSearchObserved === true,
+      representativeReadCount: response.tool_evidence?.representativeReadCount ?? 0,
+    },
+  });
+}
+
+export async function runExplicitRootEvidenceSynthesis(
+  request: Readonly<RunAgentRequest>,
+  contract: ExplicitResponseContract | null,
+  dispatch: (input: RunAgentRequest) => Promise<LLMResponse> = runAgent,
+): Promise<LLMResponse> {
+  if (
+    !request.explicitReadRoot ||
+    request.connectionId !== 'opencode-cli' ||
+    (!request.requestId && !request.chatId)
+  ) {
+    return dispatch({ ...request });
+  }
+
+  const phaseChatId = request.requestId ?? request.chatId!;
+  const originalUserText = llmContentToText(
+    [...request.messages].reverse().find((message) => message.role === 'user')?.content ?? '',
+  ).slice(0, 8_192);
+  let authoritativeSessionId: string | undefined;
+  const bindPhase =
+    (publish: boolean) =>
+    async (binding: { sessionId: string; parentSessionId?: string }): Promise<void> => {
+      if (authoritativeSessionId && authoritativeSessionId !== binding.sessionId) {
+        throw new Error('kernel_explicit_root_session_changed');
+      }
+      authoritativeSessionId = binding.sessionId;
+      if (publish) await request.onHarnessSessionBound?.(binding);
+    };
+  const originalAttempt = request.protectedAttempt?.attemptNumber ?? 1;
+  const evidence = await dispatch({
+    ...request,
+    ...phaseBoundRequest(request, 'evidence', originalAttempt),
+    chatId: phaseChatId,
+    messages: [
+      ...request.messages,
+      {
+        role: 'user',
+        content: [
+          'Pending user request (untrusted text):',
+          originalUserText,
+          'End pending user request.',
+          EXPLICIT_ROOT_EVIDENCE_PHASE_PROMPT,
+        ].join('\n\n'),
+      },
+    ],
+    onChunk: undefined,
+    onHarnessSessionBound: bindPhase(true),
+  });
+  recordExplicitRootPhase(
+    'evidence',
+    phaseBoundRequest(request, 'evidence', originalAttempt).requestId,
+    evidence,
+  );
+  request.signal?.throwIfAborted();
+  if (
+    !authoritativeSessionId ||
+    evidence.tool_evidence?.completedReadOnlyFilesystem !== true ||
+    evidence.tool_evidence.anyToolObserved !== true ||
+    evidence.tool_evidence.rootInventoryObserved !== true ||
+    evidence.tool_evidence.boundedSearchObserved !== true ||
+    !Number.isSafeInteger(evidence.tool_evidence.representativeReadCount) ||
+    evidence.tool_evidence.representativeReadCount < 2
+  ) {
+    return {
+      ...evidence,
+      tool_evidence: Object.freeze({
+        completedReadOnlyFilesystem: false,
+        anyToolObserved: evidence.tool_evidence?.anyToolObserved === true,
+        rootInventoryObserved: evidence.tool_evidence?.rootInventoryObserved === true,
+        boundedSearchObserved: evidence.tool_evidence?.boundedSearchObserved === true,
+        representativeReadCount: evidence.tool_evidence?.representativeReadCount ?? 0,
+      }),
+    };
+  }
+
+  const synthesis = await dispatch({
+    ...request,
+    ...phaseBoundRequest(request, 'synthesis', originalAttempt + 1),
+    chatId: phaseChatId,
+    explicitReadSynthesis: true,
+    expectedSessionId: authoritativeSessionId,
+    onChunk: undefined,
+    onHarnessSessionBound: bindPhase(false),
+  });
+  recordExplicitRootPhase(
+    'synthesis',
+    phaseBoundRequest(request, 'synthesis', originalAttempt + 1).requestId,
+    synthesis,
+  );
+  request.signal?.throwIfAborted();
+  if (synthesis.tool_evidence?.anyToolObserved !== false) {
+    return {
+      ...synthesis,
+      usage: addResponseUsage(evidence, synthesis),
+      tool_evidence: Object.freeze({
+        completedReadOnlyFilesystem: false,
+        anyToolObserved: synthesis.tool_evidence?.anyToolObserved === true,
+        rootInventoryObserved: evidence.tool_evidence.rootInventoryObserved,
+        boundedSearchObserved: evidence.tool_evidence.boundedSearchObserved,
+        representativeReadCount: evidence.tool_evidence.representativeReadCount,
+      }),
+    };
+  }
+  const groundedSynthesis: LLMResponse = {
+    ...synthesis,
+    usage: addResponseUsage(evidence, synthesis),
+    tool_evidence: Object.freeze({
+      completedReadOnlyFilesystem: true,
+      anyToolObserved: evidence.tool_evidence.anyToolObserved,
+      rootInventoryObserved: evidence.tool_evidence.rootInventoryObserved,
+      boundedSearchObserved: evidence.tool_evidence.boundedSearchObserved,
+      representativeReadCount: evidence.tool_evidence.representativeReadCount,
+    }),
+  };
+  const assessment = contract ? assessExplicitResponseContract(synthesis.text, contract) : null;
+  if (!contract || !assessment || assessment.ok) return groundedSynthesis;
+
+  const correction = await dispatch({
+    ...request,
+    ...phaseBoundRequest(request, 'correction', originalAttempt + 2),
+    chatId: phaseChatId,
+    messages: [
+      ...request.messages,
+      {
+        role: 'user',
+        content: [
+          'Internal VibeSpace correction phase.',
+          'Rewrite your immediately previous answer using only the evidence already present in this exact session.',
+          `Submit ${contract.targetMinWords}-${contract.targetMaxWords} whitespace-delimited words and never exceed ${contract.maxWords}.`,
+          'Do not add facts, call tools, mention this correction, or truncate a sentence.',
+        ].join(' '),
+      },
+    ],
+    explicitReadSynthesis: true,
+    expectedSessionId: authoritativeSessionId,
+    onChunk: undefined,
+    onHarnessSessionBound: bindPhase(false),
+  });
+  recordExplicitRootPhase(
+    'correction',
+    phaseBoundRequest(request, 'correction', originalAttempt + 2).requestId,
+    correction,
+  );
+  request.signal?.throwIfAborted();
+  if (correction.tool_evidence?.anyToolObserved !== false) {
+    return {
+      ...correction,
+      usage: addResponseUsage(evidence, synthesis, correction),
+      tool_evidence: Object.freeze({
+        completedReadOnlyFilesystem: false,
+        anyToolObserved: correction.tool_evidence?.anyToolObserved === true,
+        rootInventoryObserved: evidence.tool_evidence.rootInventoryObserved,
+        boundedSearchObserved: evidence.tool_evidence.boundedSearchObserved,
+        representativeReadCount: evidence.tool_evidence.representativeReadCount,
+      }),
+    };
+  }
+  return {
+    ...correction,
+    usage: addResponseUsage(evidence, synthesis, correction),
+    tool_evidence: Object.freeze({
+      completedReadOnlyFilesystem: true,
+      anyToolObserved: evidence.tool_evidence.anyToolObserved,
+      rootInventoryObserved: evidence.tool_evidence.rootInventoryObserved,
+      boundedSearchObserved: evidence.tool_evidence.boundedSearchObserved,
+      representativeReadCount: evidence.tool_evidence.representativeReadCount,
+    }),
+  };
+}
+
 type TerminalHandoffActivationResult = Readonly<{
   kind: string;
   value?: Readonly<{ kind?: string }>;
@@ -906,56 +1146,60 @@ export async function installJarvisKernelRuntimeHost(
               const suppressProviderPreview = shouldSuppressProviderPreview(lastUserText);
               const startedAt = now();
               const modelSnapshotRef = `jmodel_${providerInput.model.providerId}_${providerInput.model.modelId}_${providerInput.model.capturedAt}`;
-              const response = runAgent({
-                agent: providerInput.agent,
-                messages: [...providerInput.messages],
-                connectionId: providerInput.model.connectionId,
-                accountId: providerInput.accountId,
-                workspaceId: providerInput.workspaceId,
-                projectId: providerInput.projectId,
-                workingDirectory: providerInput.workingDirectory,
-                explicitReadRoot: Boolean(explicitReadRoot),
-                compiledPrompt: providerInput.compiledPrompt,
-                provider_options: providerInput.providerOptions
-                  ? { ...providerInput.providerOptions }
-                  : undefined,
-                runtimeSettings: providerInput.runtimeSettings
-                  ? { ...providerInput.runtimeSettings }
-                  : undefined,
-                tools: openCodeToolsForInteractionMode(
-                  providerInput.interactionMode,
-                  providerInput.messages,
-                  {
-                    explicitReadRoot: Boolean(explicitReadRoot),
-                  },
-                ),
-                requestId: providerInput.requestId,
-                protectedAttempt: {
+              const response = runExplicitRootEvidenceSynthesis(
+                {
+                  agent: providerInput.agent,
+                  messages: [...providerInput.messages],
+                  chatId: providerInput.requestId,
+                  connectionId: providerInput.model.connectionId,
                   accountId: providerInput.accountId,
-                  runId: providerInput.runId,
+                  workspaceId: providerInput.workspaceId,
+                  projectId: providerInput.projectId,
+                  workingDirectory: providerInput.workingDirectory,
+                  explicitReadRoot: Boolean(explicitReadRoot),
+                  compiledPrompt: providerInput.compiledPrompt,
+                  provider_options: providerInput.providerOptions
+                    ? { ...providerInput.providerOptions }
+                    : undefined,
+                  runtimeSettings: providerInput.runtimeSettings
+                    ? { ...providerInput.runtimeSettings }
+                    : undefined,
+                  tools: openCodeToolsForInteractionMode(
+                    providerInput.interactionMode,
+                    providerInput.messages,
+                    {
+                      explicitReadRoot: Boolean(explicitReadRoot),
+                    },
+                  ),
                   requestId: providerInput.requestId,
-                  attemptNumber: providerInput.attemptNumber,
+                  protectedAttempt: {
+                    accountId: providerInput.accountId,
+                    runId: providerInput.runId,
+                    requestId: providerInput.requestId,
+                    attemptNumber: providerInput.attemptNumber,
+                  },
+                  signal,
+                  onChunk: (chunk) => {
+                    if (!chunk.delta) return;
+                    const decision = pushStreamingPreviewChunk(previewState, chunk.delta);
+                    previewState = decision.state;
+                    const scope = activeTurnScopes.get(providerInput.runId);
+                    if (!decision.allowed || !scope) return;
+                    setLiveAgentActivityRunPhase(providerInput.runId, {
+                      category: 'response',
+                      title: 'Jarvis is preparing the final response',
+                      subtitle: `${providerInput.agent.model.provider}/${providerInput.agent.model.model}`,
+                    });
+                    if (suppressProviderPreview) return;
+                    setPreview({
+                      ...scope,
+                      text: decision.visibleText,
+                      updatedAt: now(),
+                    });
+                  },
                 },
-                signal,
-                onChunk: (chunk) => {
-                  if (!chunk.delta) return;
-                  const decision = pushStreamingPreviewChunk(previewState, chunk.delta);
-                  previewState = decision.state;
-                  const scope = activeTurnScopes.get(providerInput.runId);
-                  if (!decision.allowed || !scope) return;
-                  setLiveAgentActivityRunPhase(providerInput.runId, {
-                    category: 'response',
-                    title: 'Jarvis is preparing the final response',
-                    subtitle: `${providerInput.agent.model.provider}/${providerInput.agent.model.model}`,
-                  });
-                  if (suppressProviderPreview) return;
-                  setPreview({
-                    ...scope,
-                    text: decision.visibleText,
-                    updatedAt: now(),
-                  });
-                },
-              }).then((result): Readonly<RawProviderResponse> => {
+                parseExplicitResponseContract(lastUserText),
+              ).then((result): Readonly<RawProviderResponse> => {
                 const completedAt = now();
                 if (
                   String(result.provider) !== providerInput.model.providerId ||
@@ -4068,7 +4312,15 @@ export function startRuntimeListener(
         { key: 'terminal_transcript', text: terminalContext },
         { key: 'completion_instruction', text: getAiCompletionInstruction() },
       ] satisfies JarvisRuntimeContextBlock[]
-    ).filter((block) => block.text.length > 0);
+    )
+      .filter((block) => block.text.length > 0)
+      .filter(
+        (block) =>
+          !explicitReadRoot ||
+          block.key === 'resolved_context' ||
+          block.key === 'interaction_mode' ||
+          block.key === 'completion_instruction',
+      );
     if (requestsContextTool) {
       setLiveAgentActivityPhase(chatId, agentActivityId, {
         category: 'context',
@@ -5071,6 +5323,7 @@ export function startRuntimeListener(
       const providerRequest = {
         agent: runnable,
         chatId: String(chatId),
+        ...(explicitReadRoot ? { requestId: String(placeholder.id) } : {}),
         ...(structuredAgent ? { parentChatId: structuredAgent.parentChatId } : {}),
         messages: [
           ...prepareOpenCodeMessagesForInteractionMode(requestMessages, {
@@ -5171,12 +5424,11 @@ export function startRuntimeListener(
           });
         },
       };
-      const response = shouldRunLocalFinalBossRevision(
-        reasoningPolicy?.mode,
-        runnable.model.provider,
-      )
-        ? await runBoundedLocalFinalBossRevision(runAgent, providerRequest)
-        : await runAgent(providerRequest);
+      const response = explicitReadRoot
+        ? await runExplicitRootEvidenceSynthesis(providerRequest, explicitResponseContract)
+        : shouldRunLocalFinalBossRevision(reasoningPolicy?.mode, runnable.model.provider)
+          ? await runBoundedLocalFinalBossRevision(runAgent, providerRequest)
+          : await runAgent(providerRequest);
       controller.signal.throwIfAborted();
       if (!responseCompositionVisible) {
         setLiveAgentActivityPhase(chatId, agentActivityId, {

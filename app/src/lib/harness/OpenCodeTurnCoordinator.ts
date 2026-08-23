@@ -61,6 +61,8 @@ export interface OpenCodeTurnInput {
   system?: string;
   agent?: string;
   tools?: Readonly<Record<string, boolean>>;
+  expectedSessionId?: string;
+  requireExactRuntimeControls?: boolean;
 }
 
 export type OpenCodeTurnResult =
@@ -84,7 +86,9 @@ export type OpenCodeTurnResult =
       settings: ChatRuntimeSettings;
     };
 
-function isPersistentTurnClient(client: OpenCodeSessionClient): client is PersistentOpenCodeTurnClient {
+function isPersistentTurnClient(
+  client: OpenCodeSessionClient,
+): client is PersistentOpenCodeTurnClient {
   return typeof (client as Partial<PersistentOpenCodeTurnClient>).sendAsync === 'function';
 }
 
@@ -127,7 +131,11 @@ export class OpenCodeTurnCoordinator {
     );
     // Codex Spark (and similar) only expose medium. Token Final Boss / leftover
     // /effort max must still send the selected model, not fail the Jarvis turn.
-    if (!runtimeResolution.ok && runtimeResolution.code === 'EFFORT_UNSUPPORTED') {
+    if (
+      !input.requireExactRuntimeControls &&
+      !runtimeResolution.ok &&
+      runtimeResolution.code === 'EFFORT_UNSUPPORTED'
+    ) {
       runtimeResolution = resolveRuntimeModelControls(
         { effort: 'auto', fastMode: settings.fastMode },
         input.selection.metadata,
@@ -144,6 +152,9 @@ export class OpenCodeTurnCoordinator {
 
     const permissions = buildEffectivePermissionProfile(input.policy);
     const session = await this.sessions.sessionForChat(input.scope, input.chatId, input.chatTitle);
+    if (input.expectedSessionId && session.sessionId !== input.expectedSessionId) {
+      throw new Error('kernel_explicit_root_session_changed_before_dispatch');
+    }
     if (!isPersistentTurnClient(session.client)) {
       return {
         kind: 'rejected',

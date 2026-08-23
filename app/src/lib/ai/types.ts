@@ -182,7 +182,14 @@ export interface LLMResponse {
   /** Provider-reported reason the stream ended ('stop' / 'length' / 'cancelled' / etc.) */
   finish_reason?: string;
   /** Sanitized same-request receipt; never contains tool arguments, paths, results, or content. */
-  tool_evidence?: Readonly<{ completedReadOnlyFilesystem: boolean }>;
+  tool_evidence?: Readonly<{
+    completedReadOnlyFilesystem: boolean;
+    /** True when any provider tool event was observed, without retaining arguments or results. */
+    anyToolObserved: boolean;
+    rootInventoryObserved: boolean;
+    boundedSearchObserved: boolean;
+    representativeReadCount: number;
+  }>;
 }
 
 /**

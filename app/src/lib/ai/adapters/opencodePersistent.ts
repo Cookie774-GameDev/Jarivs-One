@@ -409,6 +409,30 @@ type ActivePersistentApprovalSession = {
 };
 const activeApprovalSessions = new Map<string, ActivePersistentApprovalSession>();
 const TOOL_GATEWAY_NAMES = new Set<string>(TOOL_GATEWAY_CATALOG);
+const OPENCODE_BUILTIN_TOOL_NAMES = Object.freeze([
+  'bash',
+  'batch',
+  'codesearch',
+  'edit',
+  'glob',
+  'grep',
+  'invalid',
+  'list',
+  'lsp',
+  'multiedit',
+  'patch',
+  'question',
+  'read',
+  'shell',
+  'skill',
+  'task',
+  'todo',
+  'todoread',
+  'todowrite',
+  'webfetch',
+  'websearch',
+  'write',
+]);
 
 export async function respondToPersistentOpenCodeApproval(
   input: Readonly<HarnessApprovalResponse>,
@@ -998,6 +1022,13 @@ export function contextSystemAddendum(
   request: Readonly<ProviderRequest>,
   settings: Readonly<ChatRuntimeSettings>,
 ): string {
+  if (request.explicitReadSynthesis) {
+    return [
+      'VibeSpace Context route: GROUNDED SYNTHESIS.',
+      'Use only the filesystem evidence already collected in this exact session.',
+      'Do not call tools, add new factual claims, or substitute unavailable evidence during synthesis.',
+    ].join(' ');
+  }
   if (request.explicitReadRoot) {
     return [
       'VibeSpace Context route: DIRECT FILESYSTEM EVIDENCE.',
@@ -1051,8 +1082,24 @@ export function toolsForPolicy(input: {
   access: AccessLevel;
   rlmEnabled: boolean;
   explicitReadRoot?: boolean;
+  explicitReadSynthesis?: boolean;
   requested?: Readonly<Record<string, boolean>>;
 }): Readonly<Record<string, boolean>> {
+  if (input.explicitReadSynthesis || input.explicitReadRoot) {
+    const disabled = new Set<string>([
+      ...OPENCODE_BUILTIN_TOOL_NAMES,
+      ...TOOL_GATEWAY_CATALOG,
+      ...Object.keys(input.requested ?? {}).slice(0, 512),
+    ]);
+    const tools = Object.fromEntries([...disabled].map((name) => [name, false]));
+    if (input.explicitReadRoot && !input.explicitReadSynthesis) {
+      tools.read = true;
+      tools.glob = true;
+      tools.grep = true;
+      tools.list = true;
+    }
+    return Object.freeze(tools);
+  }
   const canWrite = !input.explicitReadRoot && input.access !== 'read-only';
   const canTerminal = !input.explicitReadRoot && input.access === 'full';
   const canSubagents = !input.explicitReadRoot && input.mode === 'agent';
@@ -1176,8 +1223,11 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         access,
         rlmEnabled: settings.rlmEnabled,
         explicitReadRoot: request.explicitReadRoot,
+        explicitReadSynthesis: request.explicitReadSynthesis,
         requested: request.tools,
       }),
+      expectedSessionId: request.expectedSessionId,
+      requireExactRuntimeControls: request.explicitReadRoot === true,
     });
     if (dispatch.kind === 'command')
       throw new Error('VibeSpace slash commands must be consumed before provider dispatch.');

@@ -165,7 +165,13 @@ describe('canonical OpenCode AI routing', () => {
       agent: openaiAgent,
       messages: [{ role: 'user', content: 'inspect' }],
     });
-    expect(ungrounded.tool_evidence).toEqual({ completedReadOnlyFilesystem: false });
+    expect(ungrounded.tool_evidence).toEqual({
+      completedReadOnlyFilesystem: false,
+      anyToolObserved: true,
+      rootInventoryObserved: false,
+      boundedSearchObserved: false,
+      representativeReadCount: 0,
+    });
 
     openCodeSend.mockImplementationOnce(() =>
       (async function* () {
@@ -177,7 +183,13 @@ describe('canonical OpenCode AI routing', () => {
       agent: openaiAgent,
       messages: [{ role: 'user', content: 'inspect' }],
     });
-    expect(grounded.tool_evidence).toEqual({ completedReadOnlyFilesystem: true });
+    expect(grounded.tool_evidence).toEqual({
+      completedReadOnlyFilesystem: true,
+      anyToolObserved: true,
+      rootInventoryObserved: true,
+      boundedSearchObserved: false,
+      representativeReadCount: 0,
+    });
 
     openCodeSend.mockImplementationOnce(() =>
       (async function* () {
@@ -187,8 +199,78 @@ describe('canonical OpenCode AI routing', () => {
     const nextRequest = await runAgent({
       agent: openaiAgent,
       messages: [{ role: 'user', content: 'inspect again' }],
+      explicitReadSynthesis: true,
     });
-    expect(nextRequest.tool_evidence).toEqual({ completedReadOnlyFilesystem: false });
+    expect(nextRequest.tool_evidence).toEqual({
+      completedReadOnlyFilesystem: false,
+      anyToolObserved: false,
+      rootInventoryObserved: false,
+      boundedSearchObserved: false,
+      representativeReadCount: 0,
+    });
+    expect(openCodeSend).toHaveBeenLastCalledWith(
+      expect.objectContaining({ explicitReadSynthesis: true }),
+    );
+  });
+
+  it('fails closed if any tool event appears during grounded synthesis', async () => {
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield { type: 'tool', name: 'unknown-future-tool', status: 'started' } as const;
+        yield { type: 'text', delta: 'must not be accepted' } as const;
+      })(),
+    );
+
+    await expect(
+      runAgent({
+        agent: openaiAgent,
+        messages: [{ role: 'user', content: 'synthesize existing evidence' }],
+        explicitReadSynthesis: true,
+      }),
+    ).rejects.toThrow('kernel_explicit_root_synthesis_tool_observed');
+  });
+
+  it('fails closed if an explicit-root evidence phase observes any other tool', async () => {
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield { type: 'tool', name: 'question', status: 'started' } as const;
+      })(),
+    );
+
+    await expect(
+      runAgent({
+        agent: openaiAgent,
+        messages: [{ role: 'user', content: 'inspect the approved root' }],
+        explicitReadRoot: true,
+      }),
+    ).rejects.toThrow('kernel_explicit_root_unapproved_tool_observed');
+  });
+
+  it('reports bounded coverage and deduplicates representative reads by call id', async () => {
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield { type: 'tool', name: 'list', status: 'completed', callId: 'list-root' } as const;
+        yield { type: 'tool', name: 'grep', status: 'completed', callId: 'search-1' } as const;
+        yield { type: 'tool', name: 'read', status: 'completed', callId: 'read-1' } as const;
+        yield { type: 'tool', name: 'read', status: 'completed', callId: 'read-1' } as const;
+        yield { type: 'tool', name: 'read', status: 'completed', callId: 'read-2' } as const;
+        yield { type: 'tool', name: 'read', status: 'completed' } as const;
+        yield { type: 'done', finishReason: 'stop' } as const;
+      })(),
+    );
+
+    const response = await runAgent({
+      agent: openaiAgent,
+      messages: [{ role: 'user', content: 'inspect the approved root' }],
+      explicitReadRoot: true,
+    });
+    expect(response.tool_evidence).toEqual({
+      completedReadOnlyFilesystem: true,
+      anyToolObserved: true,
+      rootInventoryObserved: true,
+      boundedSearchObserved: true,
+      representativeReadCount: 2,
+    });
   });
 
   it('applies explicit reasoning effort to canonical runtime controls', async () => {

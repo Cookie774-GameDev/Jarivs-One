@@ -111,6 +111,10 @@ export interface ProviderRequest {
   workingDirectory?: string;
   /** Trusted caller classification: the user supplied the working directory as this turn's read scope. */
   explicitReadRoot?: boolean;
+  /** Trusted caller classification: synthesize only from evidence already collected in this session. */
+  explicitReadSynthesis?: boolean;
+  /** Existing persistent session required before a protected follow-up may be sent. */
+  expectedSessionId?: string;
   sessionId?: string;
   /** Exact per-turn VibeSpace controls; adapters must reject unsupported values. */
   runtimeSettings?: import('@/features/chat/runtime/chatRuntimeCommandController').ChatRuntimeSettings;

@@ -261,6 +261,8 @@ export interface RunAgentRequest {
   connectionRequirements?: ConnectionRequirements;
   workingDirectory?: string;
   explicitReadRoot?: boolean;
+  explicitReadSynthesis?: boolean;
+  expectedSessionId?: string;
   compiledPrompt?: Readonly<CompiledJarvisPrompt>;
   requestId?: string;
   chatId?: string;
@@ -443,6 +445,10 @@ async function executePersistentOpenCode(
     let finishReason: string | undefined;
     let usage: Extract<ProviderEvent, { type: 'usage' }>['usage'] | undefined;
     let completedReadOnlyFilesystem = false;
+    let anyToolObserved = false;
+    let rootInventoryObserved = false;
+    let boundedSearchObserved = false;
+    const representativeReads = new Set<string>();
     diagnosticCode = 'router_request_assembly';
     const providerRequest: ProviderRequest = {
       requestId,
@@ -458,6 +464,8 @@ async function executePersistentOpenCode(
       systemPrompt: req.compiledPrompt?.systemText ?? req.agent.system_prompt,
       workingDirectory: req.workingDirectory,
       explicitReadRoot: req.explicitReadRoot === true,
+      explicitReadSynthesis: req.explicitReadSynthesis === true,
+      expectedSessionId: req.expectedSessionId,
       runtimeSettings,
       interactionMode: req.interactionMode,
       accessLevel: req.accessLevel,
@@ -487,12 +495,23 @@ async function executePersistentOpenCode(
         } else if (event.type === 'usage') {
           diagnosticCode = 'router_usage_event';
           usage = event.usage;
-        } else if (
-          event.type === 'tool' &&
-          event.status === 'completed' &&
-          READ_ONLY_FILESYSTEM_TOOL_NAMES.has(event.name)
-        ) {
-          completedReadOnlyFilesystem = true;
+        } else if (event.type === 'tool') {
+          anyToolObserved = true;
+          if (req.explicitReadSynthesis) {
+            throw new Error('kernel_explicit_root_synthesis_tool_observed');
+          }
+          if (req.explicitReadRoot && !READ_ONLY_FILESYSTEM_TOOL_NAMES.has(event.name)) {
+            throw new Error('kernel_explicit_root_unapproved_tool_observed');
+          }
+          if (
+            event.status === 'completed' &&
+            READ_ONLY_FILESYSTEM_TOOL_NAMES.has(event.name)
+          ) {
+            completedReadOnlyFilesystem = true;
+            if (event.name === 'list') rootInventoryObserved = true;
+            if (event.name === 'glob' || event.name === 'grep') boundedSearchObserved = true;
+            if (event.name === 'read' && event.callId) representativeReads.add(event.callId);
+          }
         } else if (event.type === 'error') {
           providerReportedFailure = true;
           throw new Error(event.message);
@@ -517,7 +536,13 @@ async function executePersistentOpenCode(
       provider: (selection.providerId === 'local' ? 'ollama' : selection.providerId) as ProviderId,
       model: selection.modelId,
       ...(finishReason ? { finish_reason: finishReason } : {}),
-      tool_evidence: Object.freeze({ completedReadOnlyFilesystem }),
+      tool_evidence: Object.freeze({
+        completedReadOnlyFilesystem,
+        anyToolObserved,
+        rootInventoryObserved,
+        boundedSearchObserved,
+        representativeReadCount: representativeReads.size,
+      }),
     };
   } catch (error) {
     if (!isAbortError(error) && !providerReportedFailure) {

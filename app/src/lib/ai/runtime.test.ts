@@ -204,6 +204,7 @@ import {
   openCodeToolsForInteractionMode,
   prepareOpenCodeMessagesForInteractionMode,
   resolveRuntimeReasoningPolicy,
+  runExplicitRootEvidenceSynthesis,
   shouldSuppressProviderPreview,
   startRuntimeListener as startKernelAwareRuntimeListener,
 } from './runtime';
@@ -448,6 +449,352 @@ describe('startRuntimeListener agent routing', () => {
     mocks.extractExplicitReadRoot.mockReturnValue(undefined);
     expect(shouldSuppressProviderPreview('Create a 750-word summary.')).toBe(true);
     expect(shouldSuppressProviderPreview('Hello there.')).toBe(false);
+  });
+
+  it('runs bounded same-session evidence, synthesis, and one correction with exact identity', async () => {
+    const originalOnChunk = vi.fn();
+    const publishedSession = vi.fn();
+    const contract = {
+      maxWords: 750,
+      minimumWords: 675,
+      targetMinWords: 675,
+      targetMaxWords: 690,
+    } as const;
+    const invalidDraft = Array.from({ length: 800 }, (_, index) => `draft${index}`).join(' ');
+    const correctedDraft = Array.from({ length: 690 }, (_, index) => `fact${index}`).join(' ');
+    const dispatch = vi
+      .fn()
+      .mockImplementationOnce(async (input) => {
+        await input.onHarnessSessionBound?.({ sessionId: 'session_exact' });
+        return {
+          text: 'Evidence ready.',
+          usage: { input_tokens: 10, output_tokens: 2, cost_usd: 0.01 },
+          provider: 'opencode',
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          tool_evidence: {
+            completedReadOnlyFilesystem: true,
+            anyToolObserved: true,
+            rootInventoryObserved: true,
+            boundedSearchObserved: true,
+            representativeReadCount: 2,
+          },
+        };
+      })
+      .mockImplementationOnce(async (input) => {
+        await input.onHarnessSessionBound?.({ sessionId: 'session_exact' });
+        return {
+          text: invalidDraft,
+          usage: { input_tokens: 20, output_tokens: 800, cost_usd: 0.02 },
+          provider: 'opencode',
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          tool_evidence: {
+            completedReadOnlyFilesystem: false,
+            anyToolObserved: false,
+            rootInventoryObserved: false,
+            boundedSearchObserved: false,
+            representativeReadCount: 0,
+          },
+        };
+      })
+      .mockImplementationOnce(async (input) => {
+        await input.onHarnessSessionBound?.({ sessionId: 'session_exact' });
+        return {
+          text: correctedDraft,
+          usage: { input_tokens: 30, output_tokens: 690, cost_usd: 0.03 },
+          provider: 'opencode',
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          tool_evidence: {
+            completedReadOnlyFilesystem: false,
+            anyToolObserved: false,
+            rootInventoryObserved: false,
+            boundedSearchObserved: false,
+            representativeReadCount: 0,
+          },
+        };
+      });
+
+    const result = await runExplicitRootEvidenceSynthesis(
+      {
+        agent: agent('agent_exact_sequence', 'jarvis', 'System.'),
+        chatId: 'chat_exact_sequence',
+        connectionId: 'opencode-cli',
+        provider_options: { variant: 'high' },
+        runtimeSettings: {
+          effort: 'high',
+          performance: 'quality',
+          fastMode: 'off',
+          rlmEnabled: false,
+        },
+        messages: [{ role: 'user', content: 'C:\\Users\\viper write a 750-word summary.' }],
+        workingDirectory: 'C:\\Users\\viper',
+        explicitReadRoot: true,
+        requestId: 'request_exact',
+        protectedAttempt: {
+          accountId: 'account_exact',
+          runId: 'run_exact',
+          requestId: 'request_exact',
+          attemptNumber: 1,
+        },
+        onChunk: originalOnChunk,
+        onHarnessSessionBound: publishedSession,
+      },
+      contract,
+      dispatch,
+    );
+
+    expect(dispatch).toHaveBeenCalledTimes(3);
+    const phaseRequestIds = dispatch.mock.calls.map(([input]) => String(input.requestId));
+    expect(phaseRequestIds).toHaveLength(3);
+    expect(phaseRequestIds[0]).toContain('jphase_evidence_');
+    expect(phaseRequestIds[1]).toContain('jphase_synthesis_');
+    expect(phaseRequestIds[2]).toContain('jphase_correction_');
+    expect(new Set(phaseRequestIds).size).toBe(3);
+    expect(phaseRequestIds.every((requestId) => requestId.length <= 512)).toBe(true);
+    expect(dispatch.mock.calls.map(([input]) => input.protectedAttempt?.attemptNumber)).toEqual([
+      1, 2, 3,
+    ]);
+    expect(dispatch.mock.calls[1]![0]).toMatchObject({ explicitReadSynthesis: true });
+    expect(dispatch.mock.calls[2]![0]).toMatchObject({ explicitReadSynthesis: true });
+    expect(dispatch.mock.calls[0]![0].expectedSessionId).toBeUndefined();
+    expect(dispatch.mock.calls[1]![0].expectedSessionId).toBe('session_exact');
+    expect(dispatch.mock.calls[2]![0].expectedSessionId).toBe('session_exact');
+    for (const [input] of dispatch.mock.calls) {
+      expect(input.connectionId).toBe('opencode-cli');
+      expect(input.agent.model).toEqual(dispatch.mock.calls[0]![0].agent.model);
+      expect(input.provider_options).toEqual({ variant: 'high' });
+      expect(input.runtimeSettings).toEqual({
+        effort: 'high',
+        performance: 'quality',
+        fastMode: 'off',
+        rlmEnabled: false,
+      });
+    }
+    expect(dispatch.mock.calls[0]![0].messages.at(-1)?.content).toContain(
+      'C:\\Users\\viper write a 750-word summary.',
+    );
+    expect(originalOnChunk).not.toHaveBeenCalled();
+    expect(publishedSession).toHaveBeenCalledOnce();
+    expect(result.text).toBe(correctedDraft);
+    expect(result.tool_evidence).toEqual({
+      completedReadOnlyFilesystem: true,
+      anyToolObserved: true,
+      rootInventoryObserved: true,
+      boundedSearchObserved: true,
+      representativeReadCount: 2,
+    });
+    expect(result.usage).toEqual({ input_tokens: 60, output_tokens: 1492, cost_usd: 0.06 });
+
+    const validDispatch = vi
+      .fn()
+      .mockImplementationOnce(async (input) => {
+        await input.onHarnessSessionBound?.({ sessionId: 'session_valid' });
+        return {
+          text: 'Evidence ready.',
+          usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+          provider: 'opencode',
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          tool_evidence: {
+            completedReadOnlyFilesystem: true,
+            anyToolObserved: true,
+            rootInventoryObserved: true,
+            boundedSearchObserved: true,
+            representativeReadCount: 2,
+          },
+        };
+      })
+      .mockImplementationOnce(async (input) => {
+        await input.onHarnessSessionBound?.({ sessionId: 'session_valid' });
+        return {
+          text: correctedDraft,
+          usage: { input_tokens: 1, output_tokens: 690, cost_usd: 0 },
+          provider: 'opencode',
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          tool_evidence: {
+            completedReadOnlyFilesystem: false,
+            anyToolObserved: false,
+            rootInventoryObserved: false,
+            boundedSearchObserved: false,
+            representativeReadCount: 0,
+          },
+        };
+      });
+    const valid = await runExplicitRootEvidenceSynthesis(
+      { ...dispatch.mock.calls[0]![0], onHarnessSessionBound: undefined },
+      contract,
+      validDispatch as never,
+    );
+    expect(validDispatch).toHaveBeenCalledTimes(2);
+    expect(valid.text).toBe(correctedDraft);
+  });
+
+  it('never synthesizes without evidence and rejects a changed session', async () => {
+    const noEvidenceDispatch = vi.fn(async (input) => {
+      await input.onHarnessSessionBound?.({ sessionId: 'session_a' });
+      return {
+        text: 'No evidence.',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'opencode' as const,
+        model: 'opencode-go/deepseek-v4-flash-vision-exp',
+        tool_evidence: {
+          completedReadOnlyFilesystem: false,
+          anyToolObserved: false,
+          rootInventoryObserved: false,
+          boundedSearchObserved: false,
+          representativeReadCount: 0,
+        },
+      };
+    });
+    const base = {
+      agent: agent('agent_exact_missing', 'jarvis', 'System.'),
+      chatId: 'chat_exact_missing',
+      connectionId: 'opencode-cli',
+      messages: [{ role: 'user' as const, content: 'C:\\Users\\viper audit this.' }],
+      explicitReadRoot: true,
+    };
+    const missing = await runExplicitRootEvidenceSynthesis(base, null, noEvidenceDispatch as never);
+    expect(noEvidenceDispatch).toHaveBeenCalledOnce();
+    expect(missing.tool_evidence).toEqual({
+      completedReadOnlyFilesystem: false,
+      anyToolObserved: false,
+      rootInventoryObserved: false,
+      boundedSearchObserved: false,
+      representativeReadCount: 0,
+    });
+
+    for (const incompleteEvidence of [
+      { rootInventoryObserved: false, boundedSearchObserved: true, representativeReadCount: 2 },
+      { rootInventoryObserved: true, boundedSearchObserved: false, representativeReadCount: 2 },
+      { rootInventoryObserved: true, boundedSearchObserved: true, representativeReadCount: 1 },
+      { rootInventoryObserved: true, boundedSearchObserved: true, representativeReadCount: NaN },
+      {
+        rootInventoryObserved: true,
+        boundedSearchObserved: true,
+        representativeReadCount: Infinity,
+      },
+    ]) {
+      const incompleteDispatch = vi.fn(async (input) => {
+        await input.onHarnessSessionBound?.({ sessionId: 'session_incomplete' });
+        return {
+          text: 'Incomplete evidence.',
+          usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+          provider: 'opencode' as const,
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          tool_evidence: {
+            completedReadOnlyFilesystem: true,
+            anyToolObserved: true,
+            ...incompleteEvidence,
+          },
+        };
+      });
+      const incomplete = await runExplicitRootEvidenceSynthesis(
+        base,
+        null,
+        incompleteDispatch as never,
+      );
+      expect(incompleteDispatch).toHaveBeenCalledOnce();
+      expect(incomplete.tool_evidence?.completedReadOnlyFilesystem).toBe(false);
+    }
+
+    const unboundEvidenceDispatch = vi.fn(async () => ({
+      text: 'Unbound evidence must not authorize synthesis.',
+      usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+      provider: 'opencode' as const,
+      model: 'opencode-go/deepseek-v4-flash-vision-exp',
+      tool_evidence: {
+        completedReadOnlyFilesystem: true,
+        anyToolObserved: true,
+        rootInventoryObserved: true,
+        boundedSearchObserved: true,
+        representativeReadCount: 2,
+      },
+    }));
+    const unbound = await runExplicitRootEvidenceSynthesis(
+      base,
+      null,
+      unboundEvidenceDispatch as never,
+    );
+    expect(unboundEvidenceDispatch).toHaveBeenCalledOnce();
+    expect(unbound.tool_evidence).toEqual({
+      completedReadOnlyFilesystem: false,
+      anyToolObserved: true,
+      rootInventoryObserved: true,
+      boundedSearchObserved: true,
+      representativeReadCount: 2,
+    });
+
+    const synthesisToolDispatch = vi
+      .fn()
+      .mockImplementationOnce(async (input) => {
+        await input.onHarnessSessionBound?.({ sessionId: 'session_tools' });
+        return {
+          text: 'Evidence ready.',
+          usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+          provider: 'opencode',
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          tool_evidence: {
+            completedReadOnlyFilesystem: true,
+            anyToolObserved: true,
+            rootInventoryObserved: true,
+            boundedSearchObserved: true,
+            representativeReadCount: 2,
+          },
+        };
+      })
+      .mockImplementationOnce(async (input) => {
+        await input.onHarnessSessionBound?.({ sessionId: 'session_tools' });
+        return {
+          text: 'Unsafe synthesis.',
+          usage: { input_tokens: 1, output_tokens: 2, cost_usd: 0 },
+          provider: 'opencode',
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          tool_evidence: {
+            completedReadOnlyFilesystem: false,
+            anyToolObserved: true,
+            rootInventoryObserved: false,
+            boundedSearchObserved: false,
+            representativeReadCount: 0,
+          },
+        };
+      });
+    const synthesisTool = await runExplicitRootEvidenceSynthesis(
+      base,
+      null,
+      synthesisToolDispatch as never,
+    );
+    expect(synthesisToolDispatch).toHaveBeenCalledTimes(2);
+    expect(synthesisTool.tool_evidence).toEqual({
+      completedReadOnlyFilesystem: false,
+      anyToolObserved: true,
+      rootInventoryObserved: true,
+      boundedSearchObserved: true,
+      representativeReadCount: 2,
+    });
+
+    const changedSessionDispatch = vi
+      .fn()
+      .mockImplementationOnce(async (input) => {
+        await input.onHarnessSessionBound?.({ sessionId: 'session_a' });
+        return {
+          text: 'Evidence ready.',
+          usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+          provider: 'opencode',
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          tool_evidence: {
+            completedReadOnlyFilesystem: true,
+            anyToolObserved: true,
+            rootInventoryObserved: true,
+            boundedSearchObserved: true,
+            representativeReadCount: 2,
+          },
+        };
+      })
+      .mockImplementationOnce(async (input) => {
+        await input.onHarnessSessionBound?.({ sessionId: 'session_b' });
+        throw new Error('unreachable');
+      });
+    await expect(
+      runExplicitRootEvidenceSynthesis(base, null, changedSessionDispatch as never),
+    ).rejects.toThrow('kernel_explicit_root_session_changed');
   });
 
   beforeEach(() => {
@@ -2122,6 +2469,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     setStoredProjectRoot('project_unrelated', 'C:\\UnrelatedProject');
     useAuthStore.setState({
       projectId: 'project_unrelated' as never,
+      displayName: 'UNRELATED_USER_IDENTITY',
       chatModelSelection: selectionFromOption(
         openCodeConnection.providerId as ProviderId,
         'opencode-go/deepseek-v4-flash-vision-exp',
@@ -2132,6 +2480,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     const chatId = 'chat_explicit_read_root' as ChatId;
     const userText =
       'C:\\Users\\viper Hi, please read your context and make me a 750-word summary of it in total.';
+    useAllAboutMeStore.setState({ markdown: '# AllAboutMe.md\n\nUNRELATED_PERSONAL_MEMORY' });
     mocks.extractExplicitReadRoot.mockReturnValue('C:\\Users\\viper');
     mocks.getProjectContextBlock.mockResolvedValue('UNRELATED_PROJECT_CONTEXT');
     mocks.getProjectContextTreeBlock.mockReturnValue('UNRELATED_CONTEXT_TREE');
@@ -2237,7 +2586,8 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       rlmEnabled: false,
     });
     expect(Object.values(providerInput.tools).every((enabled) => enabled === false)).toBe(true);
-    expect(providerInput.messages.at(-1)?.content).toBe(userText);
+    expect(providerInput.messages.at(-2)?.content).toBe(userText);
+    expect(providerInput.messages.at(-1)?.content).toContain('Internal VibeSpace evidence phase');
     expect(providerInput.agent.system_prompt).toContain(
       'The leading path is the authoritative read scope for this turn.',
     );
@@ -2274,6 +2624,8 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       'UNRELATED_TERMINAL_OPERATING',
       'UNRELATED_MODEL_SKILL_INVENTORY',
       'UNRELATED_TERMINAL_TRANSCRIPT',
+      'UNRELATED_USER_IDENTITY',
+      'UNRELATED_PERSONAL_MEMORY',
     ]) {
       expect(providerInput.agent.system_prompt).not.toContain(sentinel);
     }
@@ -2323,14 +2675,35 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     mocks.devLog.mockClear();
     const verifiedDraft = Array.from({ length: 700 }, (_, index) => `fact${index}`).join(' ');
     mocks.runAgent.mockImplementationOnce(async (providerInput) => {
-      providerInput.onChunk?.({ delta: verifiedDraft, done: false });
-      providerInput.onChunk?.({ delta: '', done: true });
+      await providerInput.onHarnessSessionBound?.({ sessionId: 'session_explicit_root' });
+      return {
+        text: 'Evidence ready.',
+        usage: { input_tokens: 10, output_tokens: 2, cost_usd: 0 },
+        provider: 'opencode',
+        model: 'opencode-go/deepseek-v4-flash-vision-exp',
+        tool_evidence: {
+          completedReadOnlyFilesystem: true,
+          anyToolObserved: true,
+          rootInventoryObserved: true,
+          boundedSearchObserved: true,
+          representativeReadCount: 2,
+        },
+      };
+    });
+    mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      await providerInput.onHarnessSessionBound?.({ sessionId: 'session_explicit_root' });
       return {
         text: verifiedDraft,
         usage: { input_tokens: 100, output_tokens: 700, cost_usd: 0 },
         provider: 'opencode',
         model: 'opencode-go/deepseek-v4-flash-vision-exp',
-        tool_evidence: { completedReadOnlyFilesystem: true },
+        tool_evidence: {
+          completedReadOnlyFilesystem: false,
+          anyToolObserved: false,
+          rootInventoryObserved: false,
+          boundedSearchObserved: false,
+          representativeReadCount: 0,
+        },
       };
     });
     window.dispatchEvent(
@@ -2344,8 +2717,8 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
         },
       }),
     );
-    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(2));
-    const verifiedProviderInput = mocks.runAgent.mock.calls[1]![0];
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(3));
+    const verifiedProviderInput = mocks.runAgent.mock.calls[2]![0];
     expect(verifiedProviderInput.agent.model).toEqual({
       provider: 'opencode',
       model: 'opencode-go/deepseek-v4-flash-vision-exp',
@@ -2356,6 +2729,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       performance: 'quality',
     });
     expect(verifiedProviderInput.explicitReadRoot).toBe(true);
+    expect(verifiedProviderInput.explicitReadSynthesis).toBe(true);
     await vi.waitFor(() =>
       expect(updateMessage).toHaveBeenCalledWith(
         'msg_explicit_read_root_assistant',
