@@ -810,7 +810,10 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
               restoring its missing records.
             </p>
           </div>
-          <Badge variant={portableAccountId ? 'success' : 'outline'}>
+          <Badge
+            variant={portableAccountId ? 'success' : 'outline'}
+            className="shrink-0 whitespace-nowrap"
+          >
             {portableAccountId ? 'Local & private' : 'Account required'}
           </Badge>
         </div>

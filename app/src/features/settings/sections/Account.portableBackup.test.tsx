@@ -44,6 +44,14 @@ vi.mock('@/components/ui/toast', () => ({
 }));
 
 describe('Account portable backup', () => {
+  it('keeps the Local & private badge on one stable line', () => {
+    render(<Account profileOnly />);
+
+    const badge = screen.getByText('Local & private');
+    expect(badge.className).toContain('whitespace-nowrap');
+    expect(badge.className).toContain('shrink-0');
+  });
+
   beforeEach(() => {
     Object.values(mocks).forEach((mock) => mock.mockReset());
     mocks.readHistory.mockReturnValue({});
