@@ -273,6 +273,24 @@ describe('canonical OpenCode AI routing', () => {
     });
   });
 
+  it('treats an approved bounded glob as inventory-capable evidence', async () => {
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield { type: 'tool', name: 'glob', status: 'completed', callId: 'glob-root' } as const;
+        yield { type: 'done', finishReason: 'stop' } as const;
+      })(),
+    );
+    const response = await runAgent({
+      agent: openaiAgent,
+      messages: [{ role: 'user', content: 'inventory the approved root' }],
+      explicitReadRoot: true,
+    });
+    expect(response.tool_evidence).toMatchObject({
+      rootInventoryObserved: true,
+      boundedSearchObserved: true,
+    });
+  });
+
   it('applies explicit reasoning effort to canonical runtime controls', async () => {
     await runAgent({
       agent: openaiAgent,
