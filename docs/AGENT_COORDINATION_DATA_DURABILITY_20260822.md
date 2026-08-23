@@ -37,3 +37,10 @@
 - Truth retained: only ten core tables have explicit safe cloud recovery; five legacy tables are outbound-only; Context remains locally authoritative with separately reviewed derived-document sync; credentials, auth sessions, terminal scrollback, Doctor snapshots, and private project files are never cloud-backup eligible.
 - The inventory imports schema metadata only and never opens IndexedDB or reads user records. An exact-key test makes every future Dexie store addition fail until the new store is classified.
 - Initial focused verification: `npm run test -- src/lib/persistence/dataDurabilityInventory.test.ts --reporter=dot` — PASS, 1 file / 6 tests.
+
+## 2026-08-22 — executable durability inventory committed and released
+
+- Product/test/docs commit: `4a69fa141bc895396ed680b5df7dc0c555af5d87` (`test(storage): inventory durable user data`).
+- Fresh verification: inventory + V1→V12 migration + cloud-recovery matrix PASS, 3 files / 26 tests; exact Prettier and diff checks PASS; staged Gitleaks scanned 15.56 KB with zero leaks.
+- Full TypeScript reports only the same four separately owned SiYuan diagnostics at `siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`; this slice introduced no diagnostics.
+- Exact source/test/queue scope is released. The inventory now exposes portable restore as the next unclosed durability gap.
