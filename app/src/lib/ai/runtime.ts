@@ -809,18 +809,25 @@ export function buildBroadRootAuditCorrectionGuidance(
   qualityIssues: readonly string[],
 ): readonly string[] {
   const wordCount = assessment?.wordCount ?? 0;
+  const useLongAuditMargin = contract.minimumWords >= 600 && contract.maxWords >= 700;
+  const draftingMinWords = useLongAuditMargin
+    ? Math.min(contract.maxWords - 40, contract.targetMinWords + 35)
+    : contract.targetMinWords;
+  const draftingMaxWords = useLongAuditMargin
+    ? Math.min(contract.maxWords - 25, contract.targetMaxWords + 35)
+    : contract.targetMaxWords;
   const lengthDirection =
-    wordCount < contract.targetMinWords
-      ? `Add at least ${contract.targetMinWords - wordCount} actual substantive words.`
-      : wordCount > contract.targetMaxWords
-        ? `Remove at least ${wordCount - contract.targetMaxWords} words.`
+    wordCount < draftingMinWords
+      ? `Add at least ${draftingMinWords - wordCount} actual substantive words.`
+      : wordCount > draftingMaxWords
+        ? `Remove at least ${wordCount - draftingMaxWords} words.`
         : 'Preserve the valid length.';
   return Object.freeze([
-    `The previous draft measured ${wordCount} whitespace-delimited words. Rewrite it once to ${contract.targetMinWords}-${contract.targetMaxWords} actual words and never exceed ${contract.maxWords}. ${lengthDirection}`,
-    'Use exactly seven headings: Overview; Folders and contents; Configurations; Repositories and Git worktrees; Disk capacity and usage; Running apps and OS processes; Risks and operational concerns.',
+    `The previous draft measured ${wordCount} whitespace-delimited words. Rewrite it once to ${draftingMinWords}-${draftingMaxWords} actual whitespace-delimited words and never exceed ${contract.maxWords}. ${lengthDirection}`,
+    'Use exactly seven headings and no separate title or preamble: Overview; Folders and contents; Configurations; Repositories and Git worktrees; Disk capacity and usage; Running apps and OS processes; Risks and operational concerns.',
     'Write at least 2 substantive overview sentences, 8 folder sentences, 5 configuration sentences, 5 repository/worktree sentences, 3 disk sentences, 3 process sentences, and 6 risk sentences. Do not print planning counts or parenthetical word budgets.',
     `Fix exactly these requirements: ${qualityIssues.join('; ') || 'response length and grounded completeness'}.`,
-    'Begin every factual paragraph with Observed:, Verified:, Inference:, Unavailable:, or Not verified:. Never reproduce URLs, credential values, emails, user IDs, or credential-store/path names; aggregate them as names redacted.',
+    'Begin every factual paragraph with Observed:, Verified:, Inference:, Unavailable:, or Not verified:. Never reproduce URLs, credential values, emails, user IDs, or credential-store/path names. Replace every credential- or secret-related dot-directory and filename everywhere, including the Folders section, with aggregate wording such as credential-related stores (names redacted); do not redact only the Risks section.',
   ]);
 }
 

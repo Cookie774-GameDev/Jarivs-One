@@ -750,11 +750,25 @@ describe('startRuntimeListener agent routing', () => {
       { maxWords: 750, minimumWords: 675, targetMinWords: 675, targetMaxWords: 690 },
       ['redacted credential-store names', 'risks and operational concerns'],
     ).join(' ');
-    expect(guidance).toContain('Add at least 246 actual substantive words');
+    expect(guidance).toContain('Rewrite it once to 710-725 actual whitespace-delimited words');
+    expect(guidance).toContain('Add at least 281 actual substantive words');
     expect(guidance).toContain('Use exactly seven headings');
+    expect(guidance).toContain('no separate title or preamble');
     expect(guidance).toContain('6 risk sentences');
     expect(guidance).toContain('redacted credential-store names');
+    expect(guidance).toContain('including the Folders section');
     expect(guidance).not.toContain('approximate 680-word allocation');
+  });
+
+  it('does not add a long-answer drafting margin to narrow broad-root contracts', () => {
+    const guidance = buildBroadRootAuditCorrectionGuidance(
+      { ok: false, code: 'word_limit_below_target', wordCount: 120 },
+      { maxWords: 200, minimumWords: 180, targetMinWords: 180, targetMaxWords: 184 },
+      ['folders and contents'],
+    ).join(' ');
+    expect(guidance).toContain('Rewrite it once to 180-184 actual whitespace-delimited words');
+    expect(guidance).toContain('Add at least 60 actual substantive words');
+    expect(guidance).not.toContain('710-725');
   });
 
   it('rejects unlabeled inference and private configuration details from broad audits', () => {
