@@ -6,6 +6,7 @@ import { useAppAdmin } from '@/lib/admin';
 import { AmbientAudioEngine } from './ambientAudio';
 import { shouldAmbientMusicPlay } from './ambientPlayback';
 import { getPlayableAmbientTrack } from './tracks';
+import { useMusicProjectStore } from './music-studio/musicProject';
 
 export function AmbientAudioHost() {
   const ambient = useUIStore((s) => s.ambient);
@@ -22,6 +23,9 @@ export function AmbientAudioHost() {
     ambientAlwaysPlay,
   );
   const admin = useAppAdmin();
+  const musicClips = useMusicProjectStore((state) => state.clips);
+  const musicLoop = useMusicProjectStore((state) => state.loop);
+  const musicProjectEnabled = useMusicProjectStore((state) => state.enabledForAmbient);
   const playableTrack = getPlayableAmbientTrack(ambientTrack, effectivePlan(plan, admin), admin);
 
   // Synchronize playing state
@@ -29,17 +33,25 @@ export function AmbientAudioHost() {
     const engine = AmbientAudioEngine.getInstance();
 
     if (shouldPlay) {
-      engine.play(playableTrack, ambientVolume);
+      if (musicProjectEnabled && musicClips.length > 0) {
+        engine.playProject(musicClips, musicLoop, ambientVolume);
+      } else {
+        engine.play(playableTrack, ambientVolume);
+      }
     } else {
       engine.stop();
     }
-  }, [shouldPlay, playableTrack, ambientVolume]);
+  }, [shouldPlay, playableTrack, ambientVolume, musicClips, musicLoop, musicProjectEnabled]);
 
   React.useEffect(() => {
     if (!shouldPlay) return;
     const unlock = () => {
       const engine = AmbientAudioEngine.getInstance();
-      engine.play(playableTrack, ambientVolume);
+      if (musicProjectEnabled && musicClips.length > 0) {
+        engine.playProject(musicClips, musicLoop, ambientVolume);
+      } else {
+        engine.play(playableTrack, ambientVolume);
+      }
       void engine.resume();
     };
 
@@ -49,7 +61,7 @@ export function AmbientAudioHost() {
       window.removeEventListener('pointerdown', unlock, { capture: true });
       window.removeEventListener('keydown', unlock, { capture: true });
     };
-  }, [shouldPlay, playableTrack, ambientVolume]);
+  }, [shouldPlay, playableTrack, ambientVolume, musicClips, musicLoop, musicProjectEnabled]);
 
   // Clean up on component unmount
   React.useEffect(() => {

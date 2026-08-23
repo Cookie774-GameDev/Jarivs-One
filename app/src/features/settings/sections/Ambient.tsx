@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Moon, Play, Pause, Music } from 'lucide-react';
+import { Moon, Play, Pause, Music, SlidersHorizontal } from 'lucide-react';
 import { useUIStore } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
 import { effectivePlan } from '@/lib/entitlements';
@@ -18,6 +18,8 @@ import {
   planAllowsAmbientTrack,
 } from '@/features/ambient/tracks';
 import { AMBIENT_IDLE_PRESETS_MIN, type ClockFormat } from '@/lib/timeFormat';
+import { MusicStudio } from '@/features/ambient/music-studio/MusicStudio';
+import { useMusicProjectStore } from '@/features/ambient/music-studio/musicProject';
 
 /**
  * Ambient settings — controls the V2 idle takeover (breathing orb, clock,
@@ -61,6 +63,9 @@ export function Ambient() {
   const [previewing, setPreviewing] = useState(false);
   const [previewingMusic, setPreviewingMusic] = useState(false);
   const [musicStatus, setMusicStatus] = useState<AmbientLoadStatus>({ state: 'idle' });
+  const [musicStudioOpen, setMusicStudioOpen] = useState(false);
+  const projectClipCount = useMusicProjectStore((state) => state.clips.length);
+  const projectEnabled = useMusicProjectStore((state) => state.enabledForAmbient);
   const previewStopRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -197,8 +202,8 @@ export function Ambient() {
         <div>
           <Label>Time format</Label>
           <p className="text-metadata text-muted-foreground mt-1">
-            Applies to clocks, schedules, notifications, history, tasks, calls, and activity.
-            Stored times are unchanged; only how they appear.
+            Applies to clocks, schedules, notifications, history, tasks, calls, and activity. Stored
+            times are unchanged; only how they appear.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -263,6 +268,24 @@ export function Ambient() {
       </section>
 
       <section className="flex flex-col gap-4 pl-4 border-l border-border/60">
+        <div className="rounded-xl border border-accent-copper/40 bg-accent-copper/5 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <Label>VibeSpace Music Studio</Label>
+              <p className="text-metadata text-muted-foreground mt-1">
+                Mix, reorder, trim, speed up, loop, and save cloud or local songs as one ambience
+                track.
+              </p>
+              <p className="mt-1 text-[11px] text-accent-copper">
+                {projectClipCount} saved clip{projectClipCount === 1 ? '' : 's'}
+                {projectEnabled ? ' · active for ambience' : ''}
+              </p>
+            </div>
+            <Button type="button" onClick={() => setMusicStudioOpen(true)}>
+              <SlidersHorizontal className="h-4 w-4" /> Open Music Studio
+            </Button>
+          </div>
+        </div>
         <div className="flex flex-col gap-2">
           <Label>Track selector</Label>
           <p className="text-metadata text-muted-foreground">
@@ -359,6 +382,8 @@ export function Ambient() {
           />
         </div>
       </section>
+
+      <MusicStudio open={musicStudioOpen} onOpenChange={setMusicStudioOpen} />
 
       <Separator />
 

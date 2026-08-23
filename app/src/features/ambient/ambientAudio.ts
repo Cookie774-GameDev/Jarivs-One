@@ -1,5 +1,6 @@
 import type { AmbientTrack } from '@/stores/ui';
 import { AMBIENT_TRACKS, getAmbientTrackIndex } from './tracks';
+import { musicClipUrl, type MusicClip } from './music-studio/musicProject';
 
 export interface AmbientLoadError {
   url: string;
@@ -11,6 +12,19 @@ export type AmbientLoadStatus =
   | { state: 'idle' }
   | { state: 'playing'; url: string }
   | { state: 'error'; url: string; message: string };
+
+export function musicProjectSignature(clips: readonly MusicClip[], loop: boolean): string {
+  return JSON.stringify({
+    loop,
+    clips: clips.map((clip) => [
+      clip.id,
+      musicClipUrl(clip),
+      clip.trimStart,
+      clip.trimEnd,
+      clip.speed,
+    ]),
+  });
+}
 
 function mediaErrorMessage(audio: HTMLAudioElement): string {
   const err = audio.error;
@@ -39,6 +53,10 @@ export class AmbientAudioEngine {
   private loadStatus: AmbientLoadStatus = { state: 'idle' };
   private listeners = new Set<() => void>();
   private statusListeners = new Set<(status: AmbientLoadStatus) => void>();
+  private projectClips: MusicClip[] | null = null;
+  private projectIndex = 0;
+  private projectLoop = true;
+  private projectSignature = '';
 
   private constructor() {}
 
@@ -103,6 +121,8 @@ export class AmbientAudioEngine {
       this.audio.preload = 'auto';
       this.audio.loop = true;
       this.audio.addEventListener('error', this.handleTrackError);
+      this.audio.addEventListener('ended', this.handleEnded);
+      this.audio.addEventListener('timeupdate', this.handleTimeUpdate);
     }
     return this.audio;
   }
@@ -146,9 +166,79 @@ export class AmbientAudioEngine {
       });
   }
 
+  private currentProjectClip(): MusicClip | null {
+    return this.projectClips?.[this.projectIndex] ?? null;
+  }
+
+  private startProjectClip(): void {
+    if (!this.isEngineRunning || !this.projectClips?.length) return;
+    let attempts = 0;
+    let clip = this.currentProjectClip();
+    let url = clip ? musicClipUrl(clip) : null;
+    while (!url && attempts < this.projectClips.length) {
+      this.projectIndex = (this.projectIndex + 1) % this.projectClips.length;
+      clip = this.currentProjectClip();
+      url = clip ? musicClipUrl(clip) : null;
+      attempts += 1;
+    }
+    if (!clip || !url) {
+      this.setLoadError('', 'Saved mix needs at least one available track');
+      this.stop();
+      return;
+    }
+    const audio = this.getAudio();
+    audio.loop = false;
+    audio.playbackRate = clip.speed;
+    audio.src = url;
+    audio.load();
+    const seek = () => {
+      try {
+        audio.currentTime = clip!.trimStart;
+      } catch {
+        // Some media engines reject seeking until metadata is fully available.
+      }
+    };
+    if (audio.readyState >= 1) seek();
+    else audio.addEventListener('loadedmetadata', seek, { once: true });
+    void audio
+      .play()
+      .then(() => this.markPlaying(url!))
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : 'Playback blocked until user gesture';
+        this.setLoadError(url!, message);
+      });
+  }
+
+  private advanceProject(): void {
+    if (!this.projectClips?.length) return;
+    const next = this.projectIndex + 1;
+    if (next >= this.projectClips.length && !this.projectLoop) {
+      this.stop();
+      return;
+    }
+    this.projectIndex = next % this.projectClips.length;
+    this.startProjectClip();
+  }
+
+  private handleEnded = (): void => {
+    if (this.projectClips) this.advanceProject();
+  };
+
+  private handleTimeUpdate = (): void => {
+    const clip = this.currentProjectClip();
+    if (
+      clip?.trimEnd !== null &&
+      clip?.trimEnd !== undefined &&
+      this.getAudio().currentTime >= clip.trimEnd
+    ) {
+      this.advanceProject();
+    }
+  };
+
   private handleTrackError = (): void => {
-    const def = this.currentTrackDef();
-    const failedUrl = def.url;
+    const failedUrl = this.projectClips
+      ? (musicClipUrl(this.currentProjectClip()!) ?? '')
+      : this.currentTrackDef().url;
     const audio = this.getAudio();
     const message = mediaErrorMessage(audio);
     this.setLoadError(failedUrl, message);
@@ -157,6 +247,8 @@ export class AmbientAudioEngine {
   };
 
   public play(track: AmbientTrack, volume: number): void {
+    this.projectClips = null;
+    this.projectSignature = '';
     const nextTrackIndex = getAmbientTrackIndex(track);
     const trackChanged = nextTrackIndex !== this.currentTrackIndex;
     this.currentTrackIndex = nextTrackIndex;
@@ -164,9 +256,34 @@ export class AmbientAudioEngine {
     this.isEngineRunning = true;
 
     const audio = this.getAudio();
+    audio.loop = true;
+    audio.playbackRate = 1;
     audio.volume = Math.max(0, Math.min(1, volume / 100));
     if (trackChanged) audio.pause();
     this.startPlayback();
+  }
+
+  public playProject(clips: readonly MusicClip[], loop: boolean, volume: number): void {
+    const available = clips.filter((clip) => Boolean(musicClipUrl(clip)));
+    if (available.length === 0) {
+      this.stop();
+      return;
+    }
+    const signature = musicProjectSignature(available, loop);
+    const changed = signature !== this.projectSignature;
+    this.projectClips = available.map((clip) => ({ ...clip }));
+    this.projectLoop = loop;
+    this.currentVolumePercent = volume;
+    this.isEngineRunning = true;
+    this.getAudio().volume = Math.max(0, Math.min(1, volume / 100));
+    if (changed) {
+      this.projectSignature = signature;
+      this.projectIndex = 0;
+      this.getAudio().pause();
+      this.startProjectClip();
+    } else if (this.getAudio().paused) {
+      void this.resume();
+    }
   }
 
   public stop(): void {
@@ -184,6 +301,8 @@ export class AmbientAudioEngine {
   }
 
   public setTrack(track: AmbientTrack): void {
+    this.projectClips = null;
+    this.projectSignature = '';
     this.currentTrackIndex = getAmbientTrackIndex(track);
     if (this.isEngineRunning) {
       this.getAudio().pause();
@@ -196,7 +315,11 @@ export class AmbientAudioEngine {
     this.getAudio().volume = Math.max(0, Math.min(1, this.currentVolumePercent / 100));
     try {
       await this.getAudio().play();
-      this.markPlaying(this.currentTrackDef().url);
+      this.markPlaying(
+        this.projectClips
+          ? (musicClipUrl(this.currentProjectClip()!) ?? '')
+          : this.currentTrackDef().url,
+      );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Playback blocked until user gesture';
       this.setLoadError(this.currentTrackDef().url, message);
@@ -212,6 +335,8 @@ export class AmbientAudioEngine {
     this.stop();
     if (!this.audio) return;
     this.audio.removeEventListener('error', this.handleTrackError);
+    this.audio.removeEventListener('ended', this.handleEnded);
+    this.audio.removeEventListener('timeupdate', this.handleTimeUpdate);
     this.audio.removeAttribute('src');
     this.audio.load();
     this.audio = null;

@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "vibespace-music-delivery",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-23",
+  "workers_dev": true,
+  "r2_buckets": [{ "binding": "MUSIC", "bucket_name": "vibespace-music-library" }],
+  "vars": {
+    "ALLOWED_ORIGINS": "https://vibespaceos.com,http://tauri.localhost,https://tauri.localhost,http://localhost:5173",
+  },
+  "observability": { "enabled": true, "head_sampling_rate": 0.05 },
+}

@@ -55,23 +55,27 @@
 | Delivery | One crack queues one phrase to exact selected refs only | PASS — exact ref payload test |
 | Whip UX | No synthetic crack button; same-page pointer whip; click/Escape exits | PASS — focused component tests |
 | Stability | Bounded time steps; overlapping sound pool; delivery survives audio failure | PASS — focused pacing/audio tests |
-| Cloud inventory | New bucket; 64 objects + manifest; exact bytes/hashes | Pending |
-| Cost guard | Standard class; seed size within current free storage allowance; no permanent-$0 claim | Pending |
-| Studio | Preview/list/order/trim/speed/import/loop/save controls | Pending |
-| Ambience | Saved project can run in ambient-only or 24/7 mode | Pending |
-| Accessibility | Keyboard operation, labels, focus, non-color selected state, reduced motion | Pending |
-| Regression | Focused suites, typecheck/build when feasible | Pending |
+| Cloud inventory | New bucket; 64 objects + manifest; exact bytes/hashes | PASS — 64/64 live HEAD size checks |
+| Cost guard | Standard class; seed size within current free storage allowance; no permanent-$0 claim | PASS — 335,678,213 bytes in Standard |
+| Studio | Preview/list/order/trim/speed/import/loop/save controls | PASS — focused component/store tests |
+| Ambience | Saved project can run in ambient-only or 24/7 mode | PASS — shared-engine host/playback tests |
+| Accessibility | Keyboard operation, labels, focus, non-color selected state, reduced motion | PASS — semantic controls and focused component coverage |
+| Regression | Focused suites, typecheck/build when feasible | PASS with unrelated typecheck blocker documented |
 
 ## Defect / Findings Queue
 
 - `RESOLVED`: `TileGrid` exposes the exact leaf ID as `data-terminal-drop-pane-id`; `TerminalsPage` builds each target `TerminalRef` from that same leaf ID, so real-pane selection maps one-to-one without a second chooser.
-- `OPEN`: validate browser media range behavior against the delivery Worker.
-- `OPEN`: duplicate input filename exists for “Play No Games”; manifest keys must remain unique and deterministic.
+- `RESOLVED`: deployed Worker returned a real `206`, exact `Content-Range: bytes 0-1023/5830053`, 1,024-byte body, Tauri CORS, and immutable cache policy.
+- `RESOLVED`: the two “Play No Games” files are byte-identical, but sequence-plus-hash IDs and distinct object keys preserve both deterministic catalog rows without collision.
 - `EXPECTED LIMITATION`: imported local files cannot survive an app restart unless the user reselects them; the saved project retains a clearly marked missing-local placeholder rather than uploading private audio.
 
 ## Checkpoints / Commits
 
 - 2026-08-23 preflight: scope claimed at `fcc9e6d6`; no exact active-lock overlap; 37.3 GB C: free; 64 MP3 / 335,678,213-byte source inventory; source edits not yet started.
 - 2026-08-23 Faster Agents slice: replaced the duplicate large modal/card chooser with direct real-pane selection and a compact instruction strip; kept the OpenWhip canvas over the existing terminal grid; removed `Crack now`; added click/Escape dismissal, bounded frame catch-up, and three independent audio voices per crack sound. Focused 7-file / 13-test matrix PASS after formatting. Final full typecheck contains no owned diagnostic and stops only on five pre-existing, actively owned SiYuan diagnostics (`siyuanContextMapIntegration.ts`, `siyuanRlmProduction.test.ts`, and `siyuanRlmRepository.test.ts`).
-- Implementation commits: pending.
+- 2026-08-23 Faster Agents commit: `e999edec4b04ad11fa45c497407066e611ac2887` (`fix(terminals): keep OpenWhip on selected panes`). Staged Gitleaks and diff checks PASS.
+- 2026-08-23 cloud activation: created private Standard bucket `vibespace-music-library`; uploaded 64 MP3 objects plus `catalog/manifest.json`; live 64/64 HEAD responses matched each expected byte size. Deployed `vibespace-music-delivery` at <https://vibespace-music-delivery.vibespace-viper.workers.dev>, exact final Worker version `bc7f34ba-a1fa-4a54-8f66-fcd56dd6d0ad`. Live range/CORS/cache verification PASS.
+- 2026-08-23 Music Studio implementation: searchable 64-song library, click preview, add local audio, ordered continuous sequence, up/down reorder, trim start/end, 0.5x–2x speed, remove/clear, loop, save, and ambient/24-7 activation use the existing single `AmbientAudioEngine`. Persisted local rows intentionally restore as missing-local placeholders and are never silently uploaded.
+- Final fresh verification: combined Whip + music app matrix 14 files / 29 tests PASS; cloud scripts 4/4 PASS; Worker 3/3 plus typecheck and dry-run PASS; live cloud 64/64 exact-size HEAD checks and range row PASS; frontend Vite production build PASS (4,957 modules, 49.61s). Full repository TypeScript check has no owned diagnostic and remains blocked by four active SiYuan test diagnostics outside scope. No native/manual/browser app control was used per the user's QA constraint.
+- Music implementation commit: pending.
 - Final verification and released-lock entry: pending.
