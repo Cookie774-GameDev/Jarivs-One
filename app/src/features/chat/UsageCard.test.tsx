@@ -50,4 +50,26 @@ describe('UsageCard', () => {
     expect(screen.getByText(/No approved quota surface/)).toBeTruthy();
     expect(screen.queryByText('0%')).toBeNull();
   });
+
+  it('shows one honest compact sentence when the selected provider exposes no usage', () => {
+    render(
+      <UsageCard
+        scope="connection"
+        snapshots={[
+          {
+            ...snapshot,
+            providerName: 'OpenCode Go',
+            modelId: 'deepseek/deepseek-v3.2',
+            availability: 'unavailable',
+            accountUsageState: 'unavailable',
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('Usage unavailable for provider.')).toBeTruthy();
+    expect(screen.getByText(/OpenCode Go · deepseek\/deepseek-v3.2/)).toBeTruthy();
+    expect(screen.queryByText('Input tokens')).toBeNull();
+    expect(screen.queryByText('Subscription quota')).toBeNull();
+  });
 });

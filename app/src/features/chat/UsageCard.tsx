@@ -31,6 +31,31 @@ export function UsageCard({
   snapshots: UsageSnapshot[];
   scope: 'connection' | 'all';
 }) {
+  const unavailableSnapshot =
+    scope === 'connection' &&
+    snapshots.length === 1 &&
+    (snapshots[0]?.availability === 'unavailable' || snapshots[0]?.availability === 'error')
+      ? snapshots[0]
+      : null;
+
+  if (unavailableSnapshot) {
+    return (
+      <section
+        className="flex items-start gap-2 rounded-xl border border-border bg-panel/70 p-3"
+        aria-label="Provider usage"
+      >
+        <BarChart3 className="mt-0.5 h-4 w-4 shrink-0 text-accent-copper" />
+        <div>
+          <p className="text-sm font-medium text-foreground">Usage unavailable for provider.</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {unavailableSnapshot.providerName}
+            {unavailableSnapshot.modelId ? ` · ${unavailableSnapshot.modelId}` : ''}
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section
       className="space-y-3 rounded-xl border border-border bg-panel/70 p-3"

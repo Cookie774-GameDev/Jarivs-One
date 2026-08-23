@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "opencode-system-log",
+  "description": "Least-privilege capability for the local, read-only human OpenCode/RLM/SiYuan timeline. It receives no filesystem, network, credential, provider, shell, billing, or mutation authority.",
+  "windows": ["opencode-system-log"],
+  "permissions": ["core:window:default", "core:webview:default"]
+}

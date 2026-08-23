@@ -28,6 +28,8 @@ import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
 import { AgenticConsole, AgenticConsoleErrorBoundary } from './agentic-console';
 import { CONSOLE_PREFERENCE_EVENT, loadConsolePreferences } from './agentic-console/preferences';
+import { useAuthStore } from '@/stores/auth';
+import type { ChatModelSelection } from '@/lib/ai/modelSelection';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -35,6 +37,15 @@ const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
 });
 
 const MAX_STREAM_SIZE_PART = 8000;
+
+export function selectedModelPreview(
+  selection: ChatModelSelection,
+  previousRunModel?: string,
+): string | undefined {
+  if (selection.mode === 'single') return selection.modelId;
+  if (selection.mode === 'hive') return 'Hive Balanced';
+  return previousRunModel;
+}
 
 export interface ChatThreadProps {
   chatId: ChatId | string;
@@ -143,6 +154,7 @@ export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThr
     Object.values(state.runs).some((run) => run.canonical && run.chatId === String(chatId)),
   );
   const currentCanonicalRun = useCurrentCanonicalRun(commandCenterBinding, String(chatId));
+  const chatModelSelection = useAuthStore((state) => state.chatModelSelection);
   const hasCanonicalRun = hasProjectedCanonicalRun || Boolean(currentCanonicalRun);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickyRef = useRef(true);
@@ -179,13 +191,13 @@ export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThr
     return {
       status,
       currentOperation: status.replaceAll('_', ' '),
-      model: currentCanonicalRun.model?.modelId,
+      model: selectedModelPreview(chatModelSelection, currentCanonicalRun.model?.modelId),
       startedAt: currentCanonicalRun.createdAt,
       endedAt: /done|complete|success|failed|error|cancelled/i.test(status)
         ? currentCanonicalRun.updatedAt
         : undefined,
     };
-  }, [currentCanonicalRun]);
+  }, [chatModelSelection, currentCanonicalRun]);
   const agenticActions = useMemo(() => {
     const run = currentCanonicalRun;
     const binding = commandCenterBinding;

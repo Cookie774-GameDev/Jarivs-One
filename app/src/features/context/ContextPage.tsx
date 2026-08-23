@@ -35,7 +35,6 @@ import { cn } from '@/lib/utils';
 import { formatUserDateTime } from '@/lib/timeFormat';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { notifyDone } from '@/lib/notifications';
-import type { ProviderId } from '@/types';
 import { basename, chooseProjectFolder, chooseProjectFiles } from '@/features/files/projectFiles';
 import { startRightClickDrag } from '@/lib/rightClickDrag';
 import {
@@ -51,7 +50,6 @@ import {
 import {
   CONTEXT_MIME,
   MAX_ACTIVE_CONTEXT_MAPS,
-  CONTEXT_PROVIDER_OPTIONS,
   contextMapFilePath,
   contextNodeFilePath,
   findContextFileNodeByPath,
@@ -62,7 +60,6 @@ import {
   nodeToAttachment,
   serializeContextAttachment,
   type ContextMapRecord,
-  type ContextGenerationProvider,
   type ContextTreeNode,
   type ProjectContextTree,
 } from './tree';
@@ -105,16 +102,10 @@ import { buildGitHubProjectContextTree } from './githubContextTree';
 import { getStoredContextSourceRoot, setStoredContextSourceRoot } from './contextSourceRoot';
 import { SIYUAN_CONTEXT_VAULT_ENABLED } from './siyuan/siyuanContracts';
 import { SiyuanVaultSurface } from './siyuan/SiyuanVaultSurface';
+import { productionSiyuanContextMaps } from './siyuanContextMapIntegration';
 import './sakura-context.css';
 
 const PROJECT_ROOT_NODE_ID = '__jarvis-context-root__';
-const CLOUD_CONTEXT_PROVIDERS: Array<Exclude<ContextGenerationProvider, 'local'>> = [
-  'google',
-  'groq',
-  'openai',
-  'anthropic',
-];
-
 const MAP_WIDTH = 6400;
 const MAP_HEIGHT = 4400;
 const MAP_CENTER = { x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 };
@@ -128,13 +119,9 @@ const WARM_CONTEXT_SOURCE_ART: Record<ContextSourceCard['kind'], string> = {
 };
 const contextSearchIndexPopulation = createContextSearchIndexPopulationPort();
 
-type ProviderKeys = Partial<Record<ProviderId, string>>;
-
 export function ContextPage() {
   const projectId = useAuthStore((s) => s.projectId);
   const accountId = useAuthStore((s) => resolveAccountIdentity(s)?.accountId ?? null);
-  const apiKeys = useAuthStore((s) => s.apiKeys);
-  const defaultProvider = useAuthStore((s) => s.defaultProvider);
   const setRoute = useUIStore((s) => s.setRoute);
   const [rootDraft, setRootDraft] = React.useState(() =>
     getStoredContextSourceRoot(accountId, projectId),
@@ -143,7 +130,6 @@ export function ContextPage() {
   const [recovery, setRecovery] = React.useState<ContextRecoverySummary | null>(null);
   const [selectedMapId, setSelectedMapId] = React.useState<string | null>(null);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
-  const [provider, setProvider] = React.useState<ContextGenerationProvider>('local');
   const [generating, setGenerating] = React.useState(false);
   const [structuralPreview, setStructuralPreview] = React.useState<ProjectContextTree | null>(null);
   const [mapFlash, setMapFlash] = React.useState(false);
@@ -183,15 +169,12 @@ export function ContextPage() {
     [],
   );
 
-  const providerChoices = React.useMemo(() => getProviderChoices(apiKeys), [apiKeys]);
-  const providerChoiceKey = providerChoices.join('|');
-
   React.useEffect(() => {
-    setProvider((current) => {
-      if (providerChoices.includes(current)) return current;
-      return pickDefaultProvider(providerChoices, defaultProvider);
-    });
-  }, [defaultProvider, providerChoiceKey, providerChoices]);
+    if (!projectId || !SIYUAN_CONTEXT_VAULT_ENABLED) return;
+    // Start the project-scoped local vault in the background while the user chooses a source.
+    // Creation never waits on this prewarm and the shared production port deduplicates startup.
+    void productionSiyuanContextMaps.prewarm(projectId);
+  }, [projectId]);
 
   React.useEffect(() => {
     generationAbortRef.current?.abort('context_scope_changed');
@@ -435,11 +418,6 @@ export function ContextPage() {
     });
   }, [tree]);
 
-  const selectedProvider = providerChoices.includes(provider)
-    ? provider
-    : (providerChoices[0] ?? 'local');
-  const selectedProviderMeta = CONTEXT_PROVIDER_OPTIONS[selectedProvider];
-
   const selectMap = React.useCallback(
     async (mapId: string) => {
       try {
@@ -461,10 +439,27 @@ export function ContextPage() {
   const openFocusedMap = React.useCallback(
     async (mapId: string) => {
       if (!(await selectMap(mapId))) return;
+      const record = maps.find((map) => map.id === mapId && map.status === 'active');
+      if (SIYUAN_CONTEXT_VAULT_ENABLED && projectId && record) {
+        setStatus('Opening this map in the SiYuan Context Vault...');
+        setFocusedMap(false);
+        setVaultOpen(true);
+        void productionSiyuanContextMaps
+          .sync(projectId, record)
+          .then(() => setStatus('SiYuan Context Map ready.'))
+          .catch((error) => {
+            setStatus('The saved map is safe, but SiYuan needs a retry.');
+            toast.error(
+              'SiYuan Context Map could not open',
+              error instanceof Error ? error.message : 'Unknown local vault error',
+            );
+          });
+        return;
+      }
       setCenterMode('graph');
       setFocusedMap(true);
     },
-    [selectMap],
+    [maps, projectId, selectMap],
   );
 
   React.useEffect(() => {
@@ -607,6 +602,17 @@ export function ContextPage() {
             },
           },
         });
+        const persistedMap = persisted.maps.find(
+          (map) => map.id === persisted.selectedMapId && map.status === 'active',
+        );
+        if (projectId && persistedMap) {
+          void productionSiyuanContextMaps.sync(projectId, persistedMap).catch((error) => {
+            toast.warning(
+              'GitHub map saved; SiYuan needs a retry',
+              error instanceof Error ? error.message : 'Unknown local vault error',
+            );
+          });
+        }
         if (!applyPersistenceState(persisted)) return;
         setSelectedId(PROJECT_ROOT_NODE_ID);
         setCenterMode('graph');
@@ -650,18 +656,6 @@ export function ContextPage() {
       return;
     }
 
-    const activeProvider = providerChoices.includes(provider)
-      ? provider
-      : (providerChoices[0] ?? 'local');
-    const apiKey = activeProvider === 'local' ? undefined : apiKeys[activeProvider]?.trim();
-    if (activeProvider !== 'local' && !apiKey) {
-      toast.warning(
-        'Provider key missing',
-        `Add a ${CONTEXT_PROVIDER_OPTIONS[activeProvider].label} key first.`,
-      );
-      return;
-    }
-
     generationAbortRef.current?.abort('superseded');
     const controller = new AbortController();
     generationAbortRef.current = controller;
@@ -673,8 +667,7 @@ export function ContextPage() {
       const generated = await generateProjectContextTree({
         projectId,
         rootDir,
-        provider: activeProvider,
-        apiKey,
+        provider: 'local',
         onProgress: setStatus,
         signal: controller.signal,
         onStructuralMap: (preview) => {
@@ -715,6 +708,18 @@ export function ContextPage() {
       } catch (indexError) {
         await deletePersistedContextMap(projectId, persistedMap.id).catch(() => undefined);
         throw indexError;
+      }
+      if (projectId && SIYUAN_CONTEXT_VAULT_ENABLED) {
+        setStatus('Adding this map to the SiYuan Context Vault...');
+        void productionSiyuanContextMaps
+          .sync(projectId, persistedMap)
+          .then(() => setStatus('SiYuan Context Map ready.'))
+          .catch((error) => {
+            toast.warning(
+              'Context map saved; SiYuan needs a retry',
+              error instanceof Error ? error.message : 'Unknown local vault error',
+            );
+          });
       }
       const indexedAuth = useAuthStore.getState();
       if (
@@ -769,16 +774,7 @@ export function ContextPage() {
         setGenerating(false);
       }
     }
-  }, [
-    activeMapCount,
-    accountId,
-    apiKeys,
-    applyPersistenceState,
-    projectId,
-    provider,
-    providerChoices,
-    rootDraft,
-  ]);
+  }, [activeMapCount, accountId, applyPersistenceState, projectId, rootDraft]);
 
   React.useEffect(() => {
     const onCreateMap = () => void makeSkillTree();
@@ -946,23 +942,12 @@ export function ContextPage() {
                   Choose
                 </Button>
               </div>
-              <label className="block space-y-1">
-                <span className="text-metadata uppercase tracking-wide text-muted-foreground">
-                  Map model provider
+              <div className="flex items-center gap-2 rounded-lg border border-accent-sage/30 bg-accent-sage/10 px-3 py-2 text-metadata text-foreground">
+                <ShieldCheck className="h-4 w-4 text-accent-sage" />
+                <span>
+                  SiYuan Context Map · local, project-scoped, and no provider credential required
                 </span>
-                <select
-                  value={selectedProvider}
-                  onChange={(e) => setProvider(e.target.value as ContextGenerationProvider)}
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 font-mono text-metadata text-foreground shadow-soft outline-none transition-colors focus:border-accent-copper focus:ring-1 focus:ring-ring [html[data-theme=monochrome]_&]:shadow-none"
-                >
-                  {providerChoices.map((choice) => (
-                    <option key={choice} value={choice}>
-                      {CONTEXT_PROVIDER_OPTIONS[choice].label} -{' '}
-                      {CONTEXT_PROVIDER_OPTIONS[choice].model}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              </div>
               <div className="flex gap-1.5">
                 <Button
                   size="sm"
@@ -988,9 +973,8 @@ export function ContextPage() {
                 </Button>
               </div>
               <p className="text-metadata text-muted-foreground">
-                {selectedProvider === 'local'
-                  ? 'Local fallback is available. Saved cloud keys appear here automatically.'
-                  : `${selectedProviderMeta.label} key detected. Jarvis will send sampled project files to ${selectedProviderMeta.shortLabel}.`}
+                Create Map builds the local structure, saves it, indexes it for RLM, and adds it to
+                the official SiYuan vault.
               </p>
             </div>
           )}
@@ -998,10 +982,7 @@ export function ContextPage() {
           <div className="grid grid-cols-3 gap-2">
             <Stat label="Files" value={tree ? String(tree.fileCount) : '-'} />
             <Stat label="Nodes" value={tree ? String(flatNodes.length + 1) : '-'} />
-            <Stat
-              label="Model"
-              value={tree ? shortModel(tree.model) : selectedProviderMeta.shortLabel}
-            />
+            <Stat label="Model" value={tree ? shortModel(tree.model) : 'SiYuan local'} />
           </div>
           <ContextMapList
             maps={maps}
@@ -1494,9 +1475,8 @@ function NoContextHero({
             </h2>
           </div>
           <p className="text-body text-muted-foreground [html[data-theme=warm]_&]:mx-auto [html[data-theme=warm]_&]:max-w-xl">
-            Jarvis scans the project, uses your selected saved provider key when available, and
-            builds a warm string map that every AI prompt can use before deciding which files
-            matter.
+            Jarvis scans the project locally, projects the saved map into SiYuan, and builds a warm
+            string map that every AI prompt can use before deciding which files matter.
           </p>
           <FirstContextMapTutorial />
           <div className="grid gap-3 sm:grid-cols-3">
@@ -1519,7 +1499,7 @@ function NoContextHero({
                 </span>
                 <span className="mt-1 block text-metadata text-muted-foreground">
                   {card.kind === 'local_folder'
-                    ? 'Choose a folder, select the local model, then create a map.'
+                    ? 'Choose a folder, then create its local SiYuan Context Map.'
                     : card.kind === 'local_file'
                       ? 'Choose a file here, then create a map from its containing folder.'
                       : 'Check the read-only GitHub App here, then choose an accessible repository.'}
@@ -1564,7 +1544,7 @@ function FirstContextMapTutorial() {
     {
       title: 'Create the map',
       detail:
-        'Choose your saved model and press Create Context Map. Existing files are not changed.',
+        'Press Create Context Map. VibeSpace indexes it locally and opens it through SiYuan; existing files are not changed.',
     },
   ] as const;
 
@@ -3960,21 +3940,6 @@ function makeProjectRootNode(tree: ProjectContextTree): ContextTreeNode {
     modifiedAt: tree.generatedAt,
     children: tree.nodes,
   };
-}
-
-function getProviderChoices(apiKeys: ProviderKeys): ContextGenerationProvider[] {
-  const configured = CLOUD_CONTEXT_PROVIDERS.filter((id) => Boolean(apiKeys[id]?.trim()));
-  return ['local', ...configured];
-}
-
-function pickDefaultProvider(
-  choices: ContextGenerationProvider[],
-  defaultProvider: ProviderId,
-): ContextGenerationProvider {
-  if (choices.includes(defaultProvider as ContextGenerationProvider))
-    return defaultProvider as ContextGenerationProvider;
-  const firstCloud = choices.find((choice) => choice !== 'local');
-  return firstCloud ?? 'local';
 }
 
 function centeredView(width: number, height: number): MapView {
