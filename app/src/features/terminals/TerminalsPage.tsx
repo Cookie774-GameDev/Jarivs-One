@@ -69,6 +69,7 @@ import { useUIStore } from '@/stores/ui';
 import { captureLiveTree, getLiveTree } from './terminalLiveCache';
 import { useTerminalTranscriptStore } from './transcriptStore';
 import type { JarvisCancellationRequestResult } from '@/lib/jarvis/contracts/execution';
+import { FasterAgentsOverlay } from './faster-agents/FasterAgentsOverlay';
 import './sakura-terminal.css';
 
 export function summarizeTerminalResetCancellations(
@@ -672,6 +673,22 @@ export function TerminalsPage({ routeVisible = true }: { routeVisible?: boolean 
           />
         ) : null}
       </div>
+      <FasterAgentsOverlay
+        terminals={flattenLeaves(tree).map((leaf, index) => ({
+          ref: {
+            paneId: leaf.id,
+            sessionId: leaf.sessionId ?? undefined,
+            projectId: treeProjectId,
+            label: leaf.name || leaf.agentSlug || leaf.command || `Terminal ${index + 1}`,
+            command: leaf.command,
+            agentSlug: leaf.agentSlug ?? null,
+          },
+          label: leaf.name || leaf.agentSlug || leaf.command || `Terminal ${index + 1}`,
+          detail: [leaf.agentSlug, leaf.command, leaf.sessionId ? 'live' : 'starting']
+            .filter(Boolean)
+            .join(' · '),
+        }))}
+      />
     </div>
   );
 }

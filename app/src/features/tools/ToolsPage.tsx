@@ -55,6 +55,7 @@ import type { ActionDef, ActionParam } from '@/lib/actions';
 import { OpenInTerminalDialog } from './open-in-terminal/OpenInTerminalDialog';
 import { CommandCenterToolCard } from './command-center/CommandCenterToolCard';
 import { EmpireFreezerToolCard } from '@/features/wellness';
+import { FasterAgentsToolCard } from './faster-agents/FasterAgentsToolCard';
 
 /* --------------------------------------------------------------------------
  * Quick-start templates
@@ -754,6 +755,7 @@ export function ToolsPage() {
             </button>
             <CommandCenterToolCard />
             <EmpireFreezerToolCard />
+            <FasterAgentsToolCard />
           </div>
         </section>
 
