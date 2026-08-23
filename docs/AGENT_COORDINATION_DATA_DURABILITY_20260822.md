@@ -60,3 +60,10 @@
 - Account now exposes Export backup and Preview restore without requiring a cloud plan, requires explicit confirmation before Apply, and shows account-scoped last export/restore/error history. No production service or user data was exercised.
 - Initial focused verification: workspace restore + Account portable/cloud/profile matrix PASS, 4 files / 20 tests.
 - Expanded verification: backup/export + restore + Account + inventory + migration + cloud-recovery matrix PASS, 8 files / 54 tests; direct Vite production bundle PASS in 58.15 seconds with existing bundler warnings only. Full TypeScript reports only the four separately owned SiYuan diagnostics and no diagnostic in this scope.
+
+## 2026-08-22 — portable workspace restore committed and released
+
+- Product/test/docs commit: `3dfcbfdad417def9f16d53c66a762870ee0f4577` (`feat(account): add safe portable restore`).
+- Commit gate: exact formatting and diff checks PASS; staged Gitleaks scanned 39.51 KB with zero leaks. The 8-file / 54-test matrix and direct production bundle remained the fresh behavioral/build evidence for the committed source.
+- No live restore, production cloud mutation, secret access, terminal transcript access, or project-file write occurred. Official native Account visual acceptance remains deferred under the user's no-live-app instruction.
+- Exact source/test/UI/queue scope is released.
