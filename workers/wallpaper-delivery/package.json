@@ -1,0 +1,19 @@
+{
+  "name": "@vibespace/wallpaper-delivery-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run test && npm run typecheck && wrangler deploy --dry-run --config wrangler.jsonc"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vitest": "4.1.10",
+    "wrangler": "4.125.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

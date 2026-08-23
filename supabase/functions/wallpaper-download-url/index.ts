@@ -3,11 +3,11 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.46.2';
 import { json, preflight } from '../_shared/voice.ts';
+import { createWallpaperDeliveryUrl } from '../_shared/wallpaperR2.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const BUCKET = Deno.env.get('WALLPAPER_STORAGE_BUCKET') ?? 'vibespace-wallpapers';
 const SIGNED_TTL_SECONDS = 120;
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -54,12 +54,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const storagePath = String(grant.storage_path ?? '');
   if (!storagePath) return json({ ok: false, reason: 'missing_storage_path' }, 200, origin);
 
-  const { data: signed, error: signErr } = await service.storage
-    .from(BUCKET)
-    .createSignedUrl(storagePath, SIGNED_TTL_SECONDS);
-
-  if (signErr || !signed?.signedUrl) {
-    return json({ ok: false, reason: 'sign_failed' }, 200, origin);
+  const deliveryBaseUrl = Deno.env.get('WALLPAPER_DELIVERY_BASE_URL') ?? '';
+  const signingSecret = Deno.env.get('WALLPAPER_DELIVERY_SIGNING_SECRET') ?? '';
+  let signed: { downloadUrl: string; expiresInSeconds: number };
+  try {
+    signed = await createWallpaperDeliveryUrl({
+      baseUrl: deliveryBaseUrl,
+      signingSecret,
+      wallpaperId: String(grant.wallpaper_id ?? ''),
+      slug: String(grant.slug ?? ''),
+      storagePath,
+      sha256: String(grant.sha256 ?? ''),
+      ttlSeconds: SIGNED_TTL_SECONDS,
+    });
+  } catch {
+    return json({ ok: false, reason: 'delivery_unavailable' }, 200, origin);
   }
 
   return json(
@@ -70,9 +79,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       sha256: grant.sha256,
       size_bytes: grant.size_bytes,
       entitlement_source: grant.entitlement_source,
-      expires_in_seconds: SIGNED_TTL_SECONDS,
+      expires_in_seconds: signed.expiresInSeconds,
       // Short-lived only — never a permanent public URL.
-      download_url: signed.signedUrl,
+      download_url: signed.downloadUrl,
     },
     200,
     origin,

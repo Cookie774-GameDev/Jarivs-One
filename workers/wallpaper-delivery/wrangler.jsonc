@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "vibespace-wallpaper-delivery",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-23",
+  "workers_dev": true,
+  "r2_buckets": [
+    {
+      "binding": "WALLPAPERS",
+      "bucket_name": "vibespace-wallpapers-free",
+    },
+  ],
+  "vars": {
+    "ALLOWED_ORIGINS": "https://vibespaceos.com,http://tauri.localhost,https://tauri.localhost,http://localhost:5173",
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1,
+  },
+}

@@ -41,6 +41,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     p_wallpaper_id: wallpaperId,
   });
 
-  if (error) return json({ ok: false, reason: 'rpc_error', detail: error.message }, 200, origin);
+  // Keep database/provider details server-side; clients only need a stable safe reason.
+  if (error) return json({ ok: false, reason: 'rpc_error' }, 200, origin);
   return json(data ?? { ok: false, reason: 'unknown' }, 200, origin);
 });

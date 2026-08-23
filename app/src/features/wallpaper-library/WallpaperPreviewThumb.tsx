@@ -22,7 +22,8 @@ export function WallpaperPreviewThumb({ wallpaper, locked }: WallpaperPreviewThu
     setFailed(false);
   }, [preview]);
 
-  // Hard-cap playback to ~1s even if a longer asset is served.
+  // Hard-cap playback to ~1s even if a longer asset is served. Catalog grids can
+  // contain dozens of videos, so only the tile under the pointer may decode/play.
   React.useEffect(() => {
     const el = videoRef.current;
     if (!el || failed) return;
@@ -34,12 +35,29 @@ export function WallpaperPreviewThumb({ wallpaper, locked }: WallpaperPreviewThu
       }
     };
     el.addEventListener('timeupdate', onTimeUpdate);
-    void el.play().catch(() => undefined);
     return () => el.removeEventListener('timeupdate', onTimeUpdate);
   }, [preview, failed]);
 
+  const playPreview = () => {
+    const el = videoRef.current;
+    if (!el || failed || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    void el.play().catch(() => undefined);
+  };
+
+  const stopPreview = () => {
+    const el = videoRef.current;
+    if (!el) return;
+    el.pause();
+    el.currentTime = 0;
+  };
+
   return (
-    <div className="wallpaper-library-thumb" aria-hidden="true">
+    <div
+      className="wallpaper-library-thumb"
+      aria-hidden="true"
+      onPointerEnter={playPreview}
+      onPointerLeave={stopPreview}
+    >
       {!failed ? (
         <video
           ref={videoRef}
@@ -48,7 +66,6 @@ export function WallpaperPreviewThumb({ wallpaper, locked }: WallpaperPreviewThu
           poster={poster}
           muted
           playsInline
-          autoPlay
           loop
           preload="metadata"
           onError={() => setFailed(true)}
