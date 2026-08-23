@@ -25,3 +25,8 @@
 - Playwright Local renderer evidence on `http://localhost:5173/?route=account`: initial Pet `1` / panel `0`; click Pet produced Pet `0` / visible panel `1`; `jarvis:pet:show` produced Pet `1` / visible panel `0`; context-menu Close remained Pet `0` / panel `0` after 2.2 seconds with persisted `overlayVisible=false`; the requested visible state was restored afterward.
 - Whole-app typecheck has no diagnostic in this Pet scope. It remains non-green on the four known SiYuan test nullability diagnostics plus an actively owned OpenCode System Log missing export in `OpenCodeSystemLogWindow.tsx`.
 - Native caveat: the current shared native app was rebuilt successfully after the separate runtime-profile capability repair, but its Tauri command dispatcher stalled during the app-only Playwright Pet sequence. The app process remained responsive and the renderer stayed live, but even a later read-only `pet_is_overlay_visible` invoke timed out. Because another active native configuration/QA scope owns that shared process and configuration, this slice does not claim a completed native always-on-top/show-panel-close acceptance pass and does not kill or overwrite that process.
+
+## Release checkpoint
+
+- Product commit: `f189f946` (`fix(pets): stabilize overlay and panel presentation`).
+- Exact scope released at `2026-08-23T14:44:00-05:00`; all unrelated dirty files, active locks, services, and processes remain preserved.
