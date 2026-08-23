@@ -103,3 +103,10 @@
 - Download verifies the authenticated account and strict envelope metadata, decrypts locally, clears the passphrase, and feeds plaintext only into the existing additive restore preview. It never applies a restore automatically. Wrong passphrases or damaged/cross-account envelopes fail closed.
 - Authority is rechecked after artifact creation, before upload, after download, and after decryption. No passphrase is stored in React state after an operation, localStorage, the OS keychain, logs, or the cloud payload.
 - Fresh domain/UI/portable/cloud matrix PASS, 6 files / 26 tests with no React warnings. Direct Vite production bundle PASS in 59.75 seconds with existing bundler warnings only. Full TypeScript reports only the same four separately owned SiYuan test diagnostics; the initial WebCrypto buffer/literal diagnostics were corrected and are absent on rerun.
+
+## 2026-08-22 — explicit encrypted cloud-backup committed and released
+
+- Product/test/docs commit: `db9f35c7da3d7ddc0f2b79666610046b5896a658` (`feat(account): add encrypted cloud backup`).
+- Commit gate: exact formatting/diff checks PASS; staged Gitleaks scanned 29.59 KB with zero leaks after the non-secret KDF metadata field was renamed to avoid a generic scanner false positive.
+- No live upload/download, production Supabase mutation/deployment, credential access, or user-data restore occurred. Official native Account visual acceptance remains deferred under the user's no-live-app instruction.
+- Exact source/test/UI/queue scope is released.
