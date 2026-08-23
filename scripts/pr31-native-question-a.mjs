@@ -323,6 +323,7 @@ function assertPreflightRoute(inspection, expected) {
     performance: inspection.runtime.performance,
     fastMode: inspection.runtime.fastMode,
     rlmEnabled: inspection.runtime.rlmEnabled,
+    approveAllForRun: inspection.runtime.approveAllForRun,
   };
   assertExactRoute(receipt, expected);
 }
@@ -612,6 +613,24 @@ async function configureExactModelViaUi(page, expected) {
   if ((await search.count()) !== 1) fail('model_search_unavailable');
   await search.fill(expected.expectedModel);
   const exactOptionId = `${expected.expectedConnection}:${expected.expectedModel}`;
+  await page.waitForFunction(
+    ({ modelId, routeId }) => {
+      const dropdown = [...document.querySelectorAll('.jarvis-slash-dropdown')].find(
+        (node) => node instanceof HTMLElement && node.offsetParent !== null,
+      );
+      if (!(dropdown instanceof HTMLElement)) return false;
+      const input = dropdown.querySelector('input[aria-label="Search providers and models"]');
+      if (!(input instanceof HTMLInputElement) || input.value !== modelId) return false;
+      const options = [...dropdown.querySelectorAll('[data-value]')].filter(
+        (node) => node instanceof HTMLElement && node.offsetParent !== null,
+      );
+      return (
+        options.some((node) => node.getAttribute('data-value') === routeId) || options.length === 1
+      );
+    },
+    { modelId: expected.expectedModel, routeId: exactOptionId },
+    { timeout: 5_000 },
+  );
   let exactOption = dropdown.locator(`[data-value="${exactOptionId}"]:visible`);
   if ((await exactOption.count()) === 0) {
     const logicalMatches = dropdown.locator('[data-value]:visible');
