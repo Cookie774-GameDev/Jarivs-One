@@ -4,6 +4,7 @@ import {
   assertAuthoritativeOpenCodeIdentity,
   assertAuthoritativeOpenCodeRuntimeControls,
   canonicalOpenCodeTextSuffix,
+  combineSystemPrompt,
   contextSystemAddendum,
   createGenerationSafeAsyncCache,
   createPersistentOpenCodeRuntimeSupervisor,
@@ -62,7 +63,7 @@ describe('persistent OpenCode live authority', () => {
     expect(tools).not.toHaveProperty('vibespace_context.query');
   });
 
-  it('keeps explicit-root evidence filesystem-only and last in the context contract', () => {
+  it('keeps explicit-root evidence filesystem-only and before the final response contract', () => {
     const addendum = contextSystemAddendum(
       {
         prompt: 'C:\\Users\\viper audit this directory',
@@ -75,6 +76,15 @@ describe('persistent OpenCode live authority', () => {
     expect(addendum).toContain('approved working directory');
     expect(addendum).toContain('Do not use Context, RLM, web, shell, or recursive retrieval');
     expect(addendum).not.toContain('Use only the current approved prompt/context');
+    const systemPrompt = combineSystemPrompt(
+      '## Explicit response contract\nThe final answer must never exceed 750 words.',
+      addendum,
+      true,
+    );
+    expect(systemPrompt.indexOf('DIRECT FILESYSTEM EVIDENCE')).toBeLessThan(
+      systemPrompt.indexOf('## Explicit response contract'),
+    );
+    expect(systemPrompt.trimEnd()).toMatch(/must never exceed 750 words\.$/u);
 
     const tools = toolsForPolicy({
       mode: 'agent',

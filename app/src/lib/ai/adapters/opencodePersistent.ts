@@ -1035,8 +1035,13 @@ export function contextSystemAddendum(
   ].join(' ');
 }
 
-function combineSystemPrompt(base: string | undefined, addendum: string): string {
+export function combineSystemPrompt(
+  base: string | undefined,
+  addendum: string,
+  addendumFirst = false,
+): string {
   const clean = base?.trim();
+  if (clean && addendumFirst) return `${addendum}\n\n${clean}`;
   return clean ? `${clean}\n\n${addendum}` : addendum;
 }
 
@@ -1144,6 +1149,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     const systemPrompt = combineSystemPrompt(
       request.systemPrompt,
       contextSystemAddendum(request, settings),
+      request.explicitReadRoot === true,
     );
     failureStage = 'prompt_dispatch';
     const dispatch = await coordinator.dispatch({
