@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BuildYourOwnAIHub } from './BuildYourOwnAIHub';
 import { saveJobs, TRAINABLE_MODELS } from './modelHub';
@@ -85,6 +85,57 @@ describe('BuildYourOwnAIHub', () => {
     expect(
       screen.getByText(/produce text answers; image, audio, and video generation are not claimed/i),
     ).toBeTruthy();
+  });
+
+  it('does not overlap slow native job refreshes', async () => {
+    let resolveJobs!: (jobs: unknown[]) => void;
+    const pendingJobs = new Promise<unknown[]>((resolve) => {
+      resolveJobs = resolve;
+    });
+    tauriInvoke.mockImplementation(async (command: string) => {
+      if (command === 'model_foundry_detect_hardware') {
+        return {
+          cpu: 'Test CPU',
+          gpu: 'Test GPU',
+          ramGb: 32,
+          vramGb: 12,
+          freeStorageGb: 100,
+          os: 'Test OS',
+          accelerators: ['CUDA'],
+        };
+      }
+      if (command === 'model_foundry_list_jobs') return pendingJobs;
+      if (command === 'faster_whisper_status') return { ready: false };
+      throw new Error(`Unexpected command: ${command}`);
+    });
+
+    const view = render(
+      <BuildYourOwnAIHub
+        open
+        onOpenChange={vi.fn()}
+        trainingWorker={null}
+        verifiedTrainingModels={[verifiedModel]}
+      />,
+    );
+
+    try {
+      await waitFor(
+        () =>
+          expect(
+            tauriInvoke.mock.calls.filter(([command]) => command === 'model_foundry_list_jobs'),
+          ).toHaveLength(1),
+        { timeout: 5_000 },
+      );
+      await act(async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 2_200));
+      });
+      expect(
+        tauriInvoke.mock.calls.filter(([command]) => command === 'model_foundry_list_jobs'),
+      ).toHaveLength(1);
+    } finally {
+      view.unmount();
+      resolveJobs([]);
+    }
   });
 
   it('presents a responsive source drop target with clear active feedback', () => {

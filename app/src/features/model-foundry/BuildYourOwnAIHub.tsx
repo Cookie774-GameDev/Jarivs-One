@@ -170,7 +170,9 @@ export function BuildYourOwnAIHub({
   React.useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    void detectHardware().then(setHardware);
+    void detectHardware().then((profile) => {
+      if (!cancelled) setHardware(profile);
+    });
     void import('@tauri-apps/api/core')
       .then(({ invoke }) => invoke<{ ready: boolean }>('faster_whisper_status', { model: 'base' }))
       .then((status) => {
@@ -183,13 +185,17 @@ export function BuildYourOwnAIHub({
       setTrainingCatalog(verifiedTrainingModels.slice());
     } else {
       void listVerifiedTrainingModels()
-        .then(setTrainingCatalog)
+        .then((models) => {
+          if (!cancelled) setTrainingCatalog(models);
+        })
         .catch((caught: unknown) => {
-          setError(
-            caught instanceof Error
-              ? caught.message
-              : 'Could not inspect the verified training model catalog.',
-          );
+          if (!cancelled) {
+            setError(
+              caught instanceof Error
+                ? caught.message
+                : 'Could not inspect the verified training model catalog.',
+            );
+          }
         });
     }
     void import('@/lib/ai/ollamaBootstrap')
@@ -214,11 +220,14 @@ export function BuildYourOwnAIHub({
 
   React.useEffect(() => {
     if (!open) return;
-    void import('@/lib/ai/models').then(({ syncFoundryModelOptions }) =>
-      syncFoundryModelOptions(foundryModelOptions(jobs)),
-    );
     let cancelled = false;
+    let refreshing = false;
+    void import('@/lib/ai/models').then(({ syncFoundryModelOptions }) => {
+      if (!cancelled) syncFoundryModelOptions(foundryModelOptions(jobs));
+    });
     const refresh = async () => {
+      if (refreshing || cancelled) return;
+      refreshing = true;
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const nativeJobs = await invoke<FoundryJob[]>('model_foundry_list_jobs');
@@ -231,10 +240,12 @@ export function BuildYourOwnAIHub({
           setJobs(nativeJobs);
           saveJobs(window.localStorage, nativeJobs);
           const { syncFoundryModelOptions } = await import('@/lib/ai/models');
-          syncFoundryModelOptions(foundryModelOptions(nativeJobs));
+          if (!cancelled) syncFoundryModelOptions(foundryModelOptions(nativeJobs));
         }
       } catch {
         // Browser preview and unavailable native runtimes retain the last durable UI snapshot.
+      } finally {
+        refreshing = false;
       }
     };
     void refresh();
