@@ -81,3 +81,17 @@ Append-only coordination record for `PR31-JARVIS-PHONE-MESSAGING-VOICE-PRODUCTIO
 - Focused GREEN verification: `python -m pytest test_config_security_contract.py test_bridge_security.py test_browser_chat_mcp.py test_telnyx_gateway.py -q` -> 24 passed; `python -m compileall -q config.py security.py` -> passed; `python -m ruff format` and `python -m ruff check --no-cache` on the owned Python files -> passed.
 - Provider setup facts were checked against current official documentation: Twilio webhook request validation, Telegram Bot API webhook secret headers, and Discord interaction Ed25519 verification/three-second acknowledgement requirements. Live carrier/provider validation remains unclaimed until credentials, deployment approval, and provider-side webhook registration exist.
 - Next action: exact-diff/security scan and commit this configuration slice only, then claim separate Telegram and Discord adapter files.
+
+## 2026-08-22 21:10 CDT — shared remote-provider adapter claim
+
+- Phone cloud configuration committed as `0d22eb79` (`fix(phone): restore fail-closed cloud security config`).
+- Exact ownership: new `_shared/remoteJarvisSupabaseAdapter.ts` and focused test plus the existing Twilio message webhook and its focused test. No active lock overlap was found for these files.
+- Intent: extract Twilio's durable Supabase identity/event/history/completion runtime behind a provider-neutral adapter before adding Telegram or Discord. This prevents each provider from inventing a separate access, replay, conversation-memory, or usage-accounting path.
+- Acceptance: existing Twilio focused tests remain green; new adapter tests cover durable identity claim, replay, bounded history, turn persistence, and safe failure contracts; no secret, provider registration, or production state is changed.
+
+## 2026-08-22 21:25 CDT — operator account and credential guide claim
+
+- User requested one safe file explaining every account, credential, URL, expected funding amount, and activation step for the Jarvis phone and messaging system.
+- Exact new ownership: `docs/operations/PR31_JARVIS_PHONE_SYSTEM_ACCOUNT_AND_CREDENTIAL_SETUP_GUIDE.md`.
+- Current pricing/setup facts will be linked to official Supabase, Fly.io, Twilio, Meta/WhatsApp-through-Twilio, Telnyx, Deepgram, DeepSeek, Telegram, Discord, and LiveKit documentation. Dollar amounts are timestamped planning estimates; provider dashboards remain authoritative at purchase time.
+- The guide must contain placeholders only and explicitly prohibit saving service-role/provider secrets in Git, chat, screenshots, logs, or `VITE_` variables.
