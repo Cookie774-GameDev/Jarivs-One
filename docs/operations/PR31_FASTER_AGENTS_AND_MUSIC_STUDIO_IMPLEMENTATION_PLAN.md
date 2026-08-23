@@ -48,19 +48,19 @@
 
 ## Acceptance Matrix
 
-| Area | Required proof | Result |
-| --- | --- | --- |
-| Whip routing | Run lands on existing terminal page; no duplicate terminal page/modal | PASS — focused component/route contracts |
-| Selection | Actual panes select; max 10; only selected panes undim | PASS — focused DOM + store tests |
-| Delivery | One crack queues one phrase to exact selected refs only | PASS — exact ref payload test |
-| Whip UX | No synthetic crack button; same-page pointer whip; click/Escape exits | PASS — focused component tests |
-| Stability | Bounded time steps; overlapping sound pool; delivery survives audio failure | PASS — focused pacing/audio tests |
-| Cloud inventory | New bucket; 64 objects + manifest; exact bytes/hashes | PASS — 64/64 live HEAD size checks |
-| Cost guard | Standard class; seed size within current free storage allowance; no permanent-$0 claim | PASS — 335,678,213 bytes in Standard |
-| Studio | Preview/list/order/trim/speed/import/loop/save controls | PASS — focused component/store tests |
-| Ambience | Saved project can run in ambient-only or 24/7 mode | PASS — shared-engine host/playback tests |
-| Accessibility | Keyboard operation, labels, focus, non-color selected state, reduced motion | PASS — semantic controls and focused component coverage |
-| Regression | Focused suites, typecheck/build when feasible | PASS with unrelated typecheck blocker documented |
+| Area            | Required proof                                                                         | Result                                                  |
+| --------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Whip routing    | Run lands on existing terminal page; no duplicate terminal page/modal                  | PASS — focused component/route contracts                |
+| Selection       | Actual panes select; max 10; only selected panes undim                                 | PASS — focused DOM + store tests                        |
+| Delivery        | One crack queues one phrase to exact selected refs only                                | PASS — exact ref payload test                           |
+| Whip UX         | No synthetic crack button; same-page pointer whip; click/Escape exits                  | PASS — focused component tests                          |
+| Stability       | Bounded time steps; overlapping sound pool; delivery survives audio failure            | PASS — focused pacing/audio tests                       |
+| Cloud inventory | New bucket; 64 objects + manifest; exact bytes/hashes                                  | PASS — 64/64 live HEAD size checks                      |
+| Cost guard      | Standard class; seed size within current free storage allowance; no permanent-$0 claim | PASS — 335,678,213 bytes in Standard                    |
+| Studio          | Preview/list/order/trim/speed/import/loop/save controls                                | PASS — focused component/store tests                    |
+| Ambience        | Saved project can run in ambient-only or 24/7 mode                                     | PASS — shared-engine host/playback tests                |
+| Accessibility   | Keyboard operation, labels, focus, non-color selected state, reduced motion            | PASS — semantic controls and focused component coverage |
+| Regression      | Focused suites, typecheck/build when feasible                                          | PASS with unrelated typecheck blocker documented        |
 
 ## Defect / Findings Queue
 
@@ -77,5 +77,6 @@
 - 2026-08-23 cloud activation: created private Standard bucket `vibespace-music-library`; uploaded 64 MP3 objects plus `catalog/manifest.json`; live 64/64 HEAD responses matched each expected byte size. Deployed `vibespace-music-delivery` at <https://vibespace-music-delivery.vibespace-viper.workers.dev>, exact final Worker version `bc7f34ba-a1fa-4a54-8f66-fcd56dd6d0ad`. Live range/CORS/cache verification PASS.
 - 2026-08-23 Music Studio implementation: searchable 64-song library, click preview, add local audio, ordered continuous sequence, up/down reorder, trim start/end, 0.5x–2x speed, remove/clear, loop, save, and ambient/24-7 activation use the existing single `AmbientAudioEngine`. Persisted local rows intentionally restore as missing-local placeholders and are never silently uploaded.
 - Final fresh verification: combined Whip + music app matrix 14 files / 29 tests PASS; cloud scripts 4/4 PASS; Worker 3/3 plus typecheck and dry-run PASS; live cloud 64/64 exact-size HEAD checks and range row PASS; frontend Vite production build PASS (4,957 modules, 49.61s). Full repository TypeScript check has no owned diagnostic and remains blocked by four active SiYuan test diagnostics outside scope. No native/manual/browser app control was used per the user's QA constraint.
-- Music implementation commit: pending.
+- Music implementation commit: `7ec0569a7665647d0929074034f0668c2a408ef2` (`feat(ambient): add cloud music studio`). Exact 24-file scope passed staged diff checks and Gitleaks before commit.
+- Remaining truthful limits: native/manual visual and audible QA was not run by user instruction. Local imported audio stays available for the current app session; after restart the saved slot is visibly marked for re-selection because VibeSpace does not silently upload personal files. Cloudflare's current free allocation covers this 0.336 GB seed library, but traffic, future uploads, or pricing changes can create charges after free allowances.
 - Final verification and released-lock entry: pending.
