@@ -1474,6 +1474,10 @@ fn clean_chunks(sources: &[PathBuf]) -> Result<PreparedKnowledge, String> {
     })
 }
 
+fn verified_source_count(prepared: &PreparedKnowledge) -> usize {
+    prepared.sources.len()
+}
+
 fn process_knowledge(
     app: tauri::AppHandle,
     request: StartRequest,
@@ -1522,7 +1526,7 @@ fn process_knowledge(
                 default_behavior: request.instructions,
                 base_model_id: request.base_model_id,
                 processing: "local-rag-knowledge".into(),
-                source_count: sources.len(),
+                source_count: verified_source_count(&prepared),
                 sources: prepared.sources,
                 chunks: prepared.chunks,
             };
@@ -2754,6 +2758,28 @@ mod tests {
         let prepared = clean_chunks(&[path]).unwrap();
         assert_eq!(prepared.chunks.len(), 1);
         assert_eq!(prepared.sources.len(), 1);
+        assert_eq!(verified_source_count(&prepared), 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn packaging_counts_only_sources_that_contribute_verified_chunks() {
+        let root = std::env::temp_dir().join(format!(
+            "vibespace-foundry-provenance-{}",
+            nanoid::nanoid!()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let first = root.join("first.md");
+        let duplicate = root.join("duplicate.md");
+        let content =
+            "A sufficiently long reviewed paragraph that should become one verified chunk.";
+        fs::write(&first, content).unwrap();
+        fs::write(&duplicate, content).unwrap();
+
+        let prepared = clean_chunks(&[first, duplicate]).unwrap();
+        assert_eq!(prepared.chunks.len(), 1);
+        assert_eq!(prepared.sources.len(), 1);
+        assert_eq!(verified_source_count(&prepared), 1);
         let _ = fs::remove_dir_all(root);
     }
 

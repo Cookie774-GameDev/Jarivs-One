@@ -237,10 +237,24 @@ describe('model foundry domain', () => {
         model,
         method: 'lora',
         hardware: workstation,
-        sources: [classifySource('examples.jsonl', 'lora', ['text'])],
+        sources: [
+          classifySource('examples.jsonl', 'lora', ['text'], 'C:\\training\\examples.jsonl'),
+        ],
         worker,
       }),
     ).toBeNull();
+  });
+
+  it('requires picker-authorized filesystem paths instead of accepting pathless browser rows', () => {
+    expect(
+      mayStartTraining({
+        name: 'Private specialist',
+        model: TRAINABLE_MODELS[0],
+        method: 'knowledge',
+        hardware: workstation,
+        sources: [classifySource('notes.md', 'knowledge', ['text'])],
+      }),
+    ).toMatch(/native picker|drop/i);
   });
 
   it('plans attested local LoRA and QLoRA without silently changing the selected method', () => {

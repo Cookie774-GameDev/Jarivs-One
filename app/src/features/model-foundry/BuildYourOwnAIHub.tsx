@@ -1,11 +1,23 @@
 import * as React from 'react';
-import { Cpu, Database, FlaskConical, HardDrive, Sparkles, Upload } from 'lucide-react';
+import {
+  AlertTriangle,
+  Check,
+  Cpu,
+  Database,
+  FileText,
+  FlaskConical,
+  HardDrive,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { cn } from '@/lib/utils';
+import { cn, isTauri } from '@/lib/utils';
 import { readTextFile } from '@/lib/fs';
 import {
   classifySource,
@@ -48,6 +60,11 @@ import {
   type LocalTrainingWorkerStatus,
   type VerifiedTrainingModel,
 } from './trainingRuntime';
+import {
+  createNativeFoundryFileDropHandler,
+  distinctFoundryPaths,
+  type NativeFoundryFileDropEvent,
+} from './nativeFoundryFileDrop';
 
 interface Props {
   open: boolean;
@@ -147,6 +164,8 @@ export function BuildYourOwnAIHub({
   const [renameJobId, setRenameJobId] = React.useState<string | null>(null);
   const [renameDraft, setRenameDraft] = React.useState('');
   const [revealJobId, setRevealJobId] = React.useState<string | null>(null);
+  const [sourceDropActive, setSourceDropActive] = React.useState(false);
+  const sourceDropZoneRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
@@ -427,36 +446,10 @@ export function BuildYourOwnAIHub({
     }
   };
 
-  const addSources = async (files: FileList | null) => {
-    if (!files) return;
-    const classified = await Promise.all(
-      Array.from(files).map(async (file) => {
-        const source = classifySource(file.name, method, availableTrainingModalities, undefined, {
-          transcriptionReady,
-        });
-        if (method !== 'knowledge' && file.name.toLowerCase().endsWith('.jsonl')) {
-          source.measuredJsonl = measureTrainingJsonl(await file.text());
-        } else if (
-          method !== 'knowledge' &&
-          /\.(txt|md|json|csv|ts|tsx|js|jsx|py|rs)$/iu.test(file.name)
-        ) {
-          source.measuredJsonl = measureTrainingText(await file.text());
-        }
-        return source;
-      }),
-    );
-    setSources((current) => [...current, ...classified]);
-  };
-
-  const pickLocalSources = async () => {
-    try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
-      const picked = await open({
-        multiple: true,
-        directory: false,
-        title: 'Choose local Model Foundry sources',
-      });
-      const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
+  const addSourcePaths = React.useCallback(
+    async (candidatePaths: readonly string[]) => {
+      const paths = distinctFoundryPaths(candidatePaths);
+      if (paths.length === 0) return;
       const classified = await Promise.all(
         paths.map(async (path) => {
           const source = classifySource(
@@ -479,11 +472,84 @@ export function BuildYourOwnAIHub({
           return source;
         }),
       );
-      setSources((current) => [...current, ...classified]);
+      setSources((current) => {
+        const existing = new Set(
+          current
+            .map((source) => source.path?.replaceAll('/', '\\').toLocaleLowerCase())
+            .filter(Boolean),
+        );
+        return [
+          ...current,
+          ...classified.filter((source) => {
+            const identity = source.path?.replaceAll('/', '\\').toLocaleLowerCase();
+            return !identity || !existing.has(identity);
+          }),
+        ];
+      });
+      setError('');
+    },
+    [availableTrainingModalities, method, transcriptionReady],
+  );
+
+  const addSources = async (files: FileList | null) => {
+    if (!files) return;
+    const paths = Array.from(files)
+      .map((file) => (file as File & { path?: string }).path)
+      .filter((path): path is string => Boolean(path?.trim()));
+    if (paths.length !== files.length) {
+      setError(
+        "VibeSpace needs each file's private local path. Use Browse local files or drop files into this area in the desktop app.",
+      );
+      return;
+    }
+    await addSourcePaths(paths);
+  };
+
+  const pickLocalSources = async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const picked = await open({
+        multiple: true,
+        directory: false,
+        title: 'Choose local Model Foundry sources',
+      });
+      const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
+      await addSourcePaths(paths);
     } catch {
       setError('The native file picker is unavailable. No private file was accessed.');
     }
   };
+
+  React.useEffect(() => {
+    if (!open || step !== 3 || !isTauri) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    const handler = createNativeFoundryFileDropHandler({
+      devicePixelRatio: window.devicePixelRatio,
+      hitTest: (clientX, clientY) => {
+        const target = document.elementFromPoint(clientX, clientY);
+        return Boolean(target && sourceDropZoneRef.current?.contains(target));
+      },
+      onHoverChange: setSourceDropActive,
+      onDropPaths: (paths) => void addSourcePaths(paths),
+    });
+    void import('@tauri-apps/api/webview')
+      .then(({ getCurrentWebview }) =>
+        getCurrentWebview().onDragDropEvent((event) =>
+          handler(event.payload as NativeFoundryFileDropEvent),
+        ),
+      )
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      })
+      .catch(() => setSourceDropActive(false));
+    return () => {
+      disposed = true;
+      setSourceDropActive(false);
+      unlisten?.();
+    };
+  }, [addSourcePaths, open, step]);
 
   const start = async () => {
     if (startError) {
@@ -737,45 +803,65 @@ export function BuildYourOwnAIHub({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] max-w-5xl overflow-y-auto p-0">
-        <div className="border-b border-border bg-background/70 px-6 py-5">
-          <div className="flex items-center gap-3">
-            <span className="rounded-xl border border-accent-cyan/30 bg-accent-cyan/10 p-2 text-accent-cyan">
-              <FlaskConical className="h-5 w-5" />
-            </span>
-            <div>
-              <DialogTitle>Build Your Own AI</DialogTitle>
-              <DialogDescription>
-                Create real retrieval knowledge or supported adapter weights—not a prompt disguised
-                as a model.
-              </DialogDescription>
+      <DialogContent className="max-h-[94vh] max-w-6xl overflow-y-auto border-border/70 bg-background p-0 shadow-2xl">
+        <div className="sticky top-0 z-20 border-b border-border/70 bg-background/95 px-5 py-5 backdrop-blur-xl sm:px-7">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="rounded-2xl border border-accent-cyan/30 bg-gradient-to-br from-accent-cyan/20 to-emerald-500/10 p-2.5 text-accent-cyan shadow-sm">
+                <FlaskConical className="h-5 w-5" />
+              </span>
+              <div>
+                <DialogTitle className="text-xl">Build Your Own AI</DialogTitle>
+                <DialogDescription className="mt-1 max-w-2xl">
+                  Create verified retrieval knowledge or supported adapter weights, processed on
+                  your machine with traceable sources.
+                </DialogDescription>
+              </div>
             </div>
-          </div>
-          <div className="mt-4 flex justify-end">
-            <Button type="button" variant="ghost" onClick={() => setStep(5)}>
+            <Button type="button" variant="ghost" className="shrink-0" onClick={() => setStep(5)}>
               View model library
             </Button>
           </div>
-          <ol className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6" aria-label="Model build steps">
+          <div className="mt-5 flex items-center justify-between text-metadata text-muted-foreground">
+            <span>
+              Step {step + 1} of {steps.length}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" /> Local & private
+            </span>
+          </div>
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-accent-cyan to-emerald-400 transition-[width] duration-300 motion-reduce:transition-none"
+              style={{ width: `${((step + 1) / steps.length) * 100}%` }}
+            />
+          </div>
+          <ol className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6" aria-label="Model build steps">
             {steps.map((label, index) => (
-              <li
-                key={label}
-                className={cn(
-                  'rounded-md border px-2 py-2 text-center text-metadata',
-                  index === step
-                    ? 'border-accent-cyan/60 bg-accent-cyan/10 text-foreground'
-                    : index < step
-                      ? 'border-emerald-500/30 text-emerald-300'
-                      : 'border-border text-muted-foreground',
-                )}
-              >
-                {index + 1}. {label}
+              <li key={label}>
+                <button
+                  type="button"
+                  disabled={index > step}
+                  onClick={() => setStep(index)}
+                  aria-current={index === step ? 'step' : undefined}
+                  className={cn(
+                    'flex w-full items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-metadata transition-colors',
+                    index === step
+                      ? 'border-accent-cyan/60 bg-accent-cyan/10 font-semibold text-foreground'
+                      : index < step
+                        ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-300 hover:bg-emerald-500/10'
+                        : 'cursor-not-allowed border-border/70 text-muted-foreground/70',
+                  )}
+                >
+                  {index < step ? <Check className="h-3.5 w-3.5" /> : <span>{index + 1}.</span>}
+                  {label}
+                </button>
               </li>
             ))}
           </ol>
         </div>
 
-        <div className="space-y-5 p-6">
+        <div className="space-y-5 bg-gradient-to-b from-muted/10 to-transparent p-5 sm:p-7">
           {step === 0 && (
             <>
               <details
@@ -1453,14 +1539,69 @@ export function BuildYourOwnAIHub({
 
           {step === 3 && (
             <>
-              <button
-                type="button"
-                onClick={() => void pickLocalSources()}
-                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-accent-cyan/50 p-8"
+              <div
+                ref={sourceDropZoneRef}
+                data-testid="foundry-source-drop-zone"
+                data-foundry-drop-zone="true"
+                onDragEnter={(event) => {
+                  event.preventDefault();
+                  setSourceDropActive(true);
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'copy';
+                  setSourceDropActive(true);
+                }}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    setSourceDropActive(false);
+                  }
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setSourceDropActive(false);
+                  void addSources(event.dataTransfer.files);
+                }}
+                className={cn(
+                  'relative overflow-hidden rounded-2xl border-2 border-dashed p-7 text-center transition-colors sm:p-10',
+                  sourceDropActive
+                    ? 'border-accent-cyan bg-accent-cyan/10 shadow-[0_0_40px_-20px_hsl(var(--accent-cyan)/0.65)]'
+                    : 'border-border bg-muted/20 hover:border-accent-cyan/50 hover:bg-accent-cyan/5',
+                )}
               >
-                <Upload className="h-5 w-5" /> Add documents, code, datasets, images, audio, or
-                video
-              </button>
+                <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-accent-cyan/30 bg-accent-cyan/10 text-accent-cyan">
+                  <Upload className="h-5 w-5" />
+                </span>
+                <h3 className="mt-4 text-section-title">
+                  {sourceDropActive
+                    ? 'Release to attach your local files'
+                    : 'Drop training references here'}
+                </h3>
+                <p className="mx-auto mt-2 max-w-xl text-secondary text-muted-foreground">
+                  Add documents, code, datasets, images, audio, or video. VibeSpace validates every
+                  format and explains exactly how it will be used.
+                </p>
+                <Button
+                  type="button"
+                  variant="accent"
+                  className="mt-5"
+                  onClick={() => void pickLocalSources()}
+                >
+                  Browse local files
+                </Button>
+                <div className="mt-5 flex flex-wrap justify-center gap-2 text-metadata text-muted-foreground">
+                  {['TXT / MD / PDF', 'JSONL / CODE', 'IMAGE', 'MP3 / AUDIO', 'MP4 / VIDEO'].map(
+                    (format) => (
+                      <span
+                        key={format}
+                        className="rounded-full border border-border bg-background/60 px-2.5 py-1"
+                      >
+                        {format}
+                      </span>
+                    ),
+                  )}
+                </div>
+              </div>
               <label className="sr-only">
                 Browser fallback source picker
                 <input
@@ -1469,19 +1610,56 @@ export function BuildYourOwnAIHub({
                   onChange={(event) => void addSources(event.target.files)}
                 />
               </label>
-              <p className="text-secondary text-muted-foreground">
-                Files stay local. Nothing is uploaded without a separate explicit permission flow.
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2.5 text-secondary text-muted-foreground">
+                <span className="flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4 text-emerald-400" /> Files stay local. Nothing is
+                  uploaded without separate permission.
+                </span>
+                <span>{sources.length} attached</span>
+              </div>
               {sources.map((source, index) => (
                 <div
                   key={`${source.name}-${index}`}
-                  className="rounded-md border border-border p-3"
+                  className={cn(
+                    'rounded-xl border p-4 shadow-sm',
+                    source.use === 'unsupported'
+                      ? 'border-amber-500/30 bg-amber-500/5'
+                      : 'border-border bg-background/60',
+                  )}
                 >
-                  <strong>{source.name}</strong>
-                  <span className="ml-2 text-metadata uppercase text-accent-cyan">
-                    {source.use.replace('_', ' ')}
-                  </span>
-                  <p className="text-secondary text-muted-foreground">{source.explanation}</p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 shrink-0 text-accent-cyan" />
+                        <strong className="truncate">{source.name}</strong>
+                        <span className="rounded-full border border-accent-cyan/20 bg-accent-cyan/5 px-2 py-0.5 text-metadata uppercase text-accent-cyan">
+                          {source.use.replace('_', ' ')}
+                        </span>
+                      </div>
+                      {source.path && (
+                        <p
+                          className="mt-1 truncate font-mono text-metadata text-muted-foreground"
+                          title={source.path}
+                        >
+                          {source.path}
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Remove ${source.name}`}
+                      onClick={() =>
+                        setSources((current) =>
+                          current.filter((_, sourceIndex) => sourceIndex !== index),
+                        )
+                      }
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="mt-2 text-secondary text-muted-foreground">{source.explanation}</p>
                   {method !== 'knowledge' &&
                     source.use !== 'unsupported' &&
                     (source.kind === 'image' || source.kind === 'video') && (
@@ -1603,10 +1781,12 @@ export function BuildYourOwnAIHub({
                   <div
                     key={job.id}
                     className={cn(
-                      'rounded-lg border p-4',
+                      'rounded-xl border bg-background/60 p-4 shadow-sm',
                       revealJobId === job.id
                         ? 'animate-scale-in border-accent-cyan bg-accent-cyan/5'
-                        : 'border-border',
+                        : job.status === 'failed'
+                          ? 'border-destructive/40 bg-destructive/5'
+                          : 'border-border',
                     )}
                   >
                     {revealJobId === job.id && (
@@ -1614,18 +1794,37 @@ export function BuildYourOwnAIHub({
                         Your verified local model is ready
                       </p>
                     )}
-                    <div className="flex justify-between">
-                      <strong>{job.name}</strong>
-                      <span>{job.status}</span>
+                    <div className="flex items-center justify-between gap-3">
+                      <strong className="truncate">{job.name}</strong>
+                      <span
+                        className={cn(
+                          'rounded-full border px-2.5 py-1 text-metadata font-semibold uppercase tracking-wide',
+                          job.status === 'failed'
+                            ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                            : job.status === 'completed'
+                              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                              : 'border-accent-cyan/30 bg-accent-cyan/10 text-accent-cyan',
+                        )}
+                      >
+                        {job.status}
+                      </span>
                     </div>
                     <div className="mt-3 h-2 overflow-hidden rounded bg-muted">
                       <div
-                        className="h-full bg-accent-cyan"
+                        className={cn(
+                          'h-full transition-[width] motion-reduce:transition-none',
+                          job.status === 'failed' ? 'bg-destructive' : 'bg-accent-cyan',
+                        )}
                         style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }}
                       />
                     </div>
                     <p className="mt-2 text-secondary text-muted-foreground">
-                      v{job.version ?? 1} · {job.progress}% · {job.sourceCount ?? 0} sources ·{' '}
+                      v{job.version ?? 1} · {job.progress}% ·{' '}
+                      {job.status === 'failed' &&
+                      job.error?.toLocaleLowerCase().includes('source provenance')
+                        ? 'Source verification incomplete'
+                        : `${job.sourceCount ?? 0} verified sources`}{' '}
+                      ·{' '}
                       {job.artifactVerified && job.artifactPath
                         ? `Verified artifact: ${job.artifactPath}`
                         : 'Artifact not yet verified'}
@@ -1788,6 +1987,21 @@ export function BuildYourOwnAIHub({
                         </Button>
                       </div>
                     )}
+                    {job.status === 'failed' &&
+                      job.error?.toLocaleLowerCase().includes('source provenance') && (
+                        <div className="mt-3 flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-secondary">
+                          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                          <div>
+                            <strong className="text-foreground">Retry this job</strong>
+                            <p className="mt-1 text-muted-foreground">
+                              The earlier packager counted selected files instead of the sources
+                              that contributed verified content. Retry revalidates the local files,
+                              excludes empty or duplicate content, and records the exact provenance
+                              count before creating the artifact.
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     {job.error && (
                       <p className="mt-2 text-secondary text-destructive">{job.error}</p>
                     )}
@@ -1800,13 +2014,14 @@ export function BuildYourOwnAIHub({
           {error && (
             <div
               role="alert"
-              className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-secondary text-destructive"
+              className="flex gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-secondary text-destructive"
             >
-              {error}
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{error}</span>
             </div>
           )}
 
-          <div className="flex justify-between border-t border-border pt-4">
+          <div className="sticky bottom-0 z-10 -mx-5 -mb-5 flex items-center justify-between border-t border-border/70 bg-background/95 px-5 py-4 backdrop-blur-xl sm:-mx-7 sm:-mb-7 sm:px-7">
             <Button
               variant="ghost"
               disabled={step === 0}
@@ -1814,6 +2029,9 @@ export function BuildYourOwnAIHub({
             >
               Back
             </Button>
+            <span className="hidden text-metadata text-muted-foreground sm:block">
+              {steps[step]}
+            </span>
             {step < 4 ? (
               <Button
                 variant="accent"

@@ -87,6 +87,59 @@ describe('BuildYourOwnAIHub', () => {
     ).toBeTruthy();
   });
 
+  it('presents a responsive source drop target with clear active feedback', () => {
+    render(<BuildYourOwnAIHub open onOpenChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    const dropZone = screen.getByTestId('foundry-source-drop-zone');
+    fireEvent.dragEnter(dropZone);
+
+    expect(screen.getByText(/Release to attach your local files/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Browse local files/i })).toBeTruthy();
+  });
+
+  it('does not pretend a browser-only drop has a native training path', async () => {
+    render(<BuildYourOwnAIHub open onOpenChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    fireEvent.drop(screen.getByTestId('foundry-source-drop-zone'), {
+      dataTransfer: { files: [new File(['private notes'], 'notes.md', { type: 'text/markdown' })] },
+    });
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(
+      /needs each file's private local path/i,
+    );
+    expect(screen.getByText('0 attached')).toBeTruthy();
+  });
+
+  it('explains how to recover legacy provenance failures', () => {
+    saveJobs(window.localStorage, [
+      {
+        id: 'job_provenance',
+        name: 'Debater',
+        baseModelId: TRAINABLE_MODELS[0].id,
+        method: 'knowledge',
+        status: 'failed',
+        progress: 80,
+        sourceCount: 0,
+        error:
+          'Artifact packaging failed: Artifact source provenance is incomplete or unsupported.',
+        createdAt: '1',
+        updatedAt: '2',
+      },
+    ]);
+
+    render(<BuildYourOwnAIHub open onOpenChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'View model library' }));
+
+    expect(screen.getByText(/Retry this job/i)).toBeTruthy();
+    expect(screen.getByText(/Source verification incomplete/i)).toBeTruthy();
+  });
+
   it('offers one truthful setup path for all verified weight-training methods', async () => {
     installTrainingWorker.mockResolvedValue({
       installed: true,

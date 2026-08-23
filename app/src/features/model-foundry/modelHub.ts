@@ -761,6 +761,11 @@ export function mayStartTraining(input: {
     return compatibility?.warning ?? 'The selected model is not compatible.';
   if (!input.sources.some((source) => source.use !== 'unsupported'))
     return 'Attach at least one supported source or dataset.';
+  const pathlessSource = input.sources.find(
+    (source) => source.use !== 'unsupported' && !source.path?.trim(),
+  );
+  if (pathlessSource)
+    return `Add ${pathlessSource.name} again with the native picker or drop it into the source area so VibeSpace receives its private local path.`;
   const incompleteMedia = input.sources.find(
     (source) =>
       source.use !== 'unsupported' &&
