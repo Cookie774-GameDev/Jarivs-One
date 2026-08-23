@@ -30,3 +30,19 @@ Append-only coordination record for `PR31-JARVIS-PHONE-MESSAGING-VOICE-PRODUCTIO
 - Full TypeScript check is not green: it reports four active SiYuan test nullability diagnostics plus one `cloudRecovery.test.ts` object-shape diagnostic, all outside this owned manifest. No owned TypeScript diagnostic was reported.
 - Native status: the Jarvis High ONNX/config files remain hash-verified and the official native executable is running, but microphone/provider/output playback acceptance is `BLOCKED` because the user prohibited computer control and no VibeSpace-only native interaction connector is available. No native PASS is claimed.
 - Next action: commit this exact voice source/test/spec/ledger slice, then claim separate clean Supabase migration/webhook files for remote SMS/WhatsApp/Telegram/Discord source readiness. Production deployment, secrets, billing, and live provider registration remain excluded.
+
+## 2026-08-22 20:47 CDT — remote messaging core claim
+
+- Voice implementation commit: `326f08ed` (`fix(voice): honor selected Jarvis speech input`).
+- Exact additional ownership: `supabase/migrations/0046_remote_jarvis_messaging.sql`, its static security-contract test, `supabase/functions/_shared/remoteJarvisMessaging.ts`, and its focused test.
+- Intent: establish durable owner-approved channel identity, replay-safe inbound event, bounded chat history, and a dependency-injected chat-only coordinator before provider webhooks are allowed to call Jarvis. Remote messages receive no tool, call, purchase, credential, deployment, or device-control authority.
+- Next action: start with RED coordinator tests for unknown identity, duplicate delivery, bounded history, safe error delivery, and exact one-reply behavior; then add the migration and pure implementation.
+
+## 2026-08-22 20:52 CDT — remote messaging core implementation checkpoint
+
+- TDD RED: the coordinator test failed with `ERR_MODULE_NOT_FOUND`; the migration contract failed with `ENOENT` before their implementations existed.
+- Added a provider-neutral coordinator that accepts only a signature-verified normalized message, claims its provider event once, requires the exact active identity with `chat` scope, loads at most 12 recent turns, invokes completion with an explicit empty capability set, delivers exactly one reply, and emits only safe retry text on failure.
+- Added migration `0046` with owner-scoped identities/events/turns, hashed short-lived pairing codes, service-only pairing redemption, a five-attempt/ten-minute redemption window, event uniqueness by platform/workspace/provider event, and RLS/revokes preventing external clients from writing usage/event state.
+- Fresh focused verification PASS: two Node test files, 9 tests, 0 failures. The Node module-type warning is pre-existing repository configuration noise; no Deno/network/live database execution occurred.
+- Truth boundary: schema SQL has static contract proof only because no disposable local Supabase/PostgreSQL runtime is configured. No migration is applied, no webhook registered, no bot/phone credential used, and no remote channel is represented as live.
+- Next action: commit the exact messaging-core slice, then claim provider-specific webhook/runtime files beginning with Twilio SMS + WhatsApp signature verification and replay-safe reply behavior.
