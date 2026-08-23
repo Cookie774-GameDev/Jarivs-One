@@ -35,8 +35,11 @@ export interface ExternalConnectionDetectionDependencies {
   readMetadataRevision: (connectionId: string) => number;
   writeMetadata: (metadata: ConnectionMetadata) => ConnectionMetadata;
   markSessionChecked: (connectionIds: readonly string[]) => void;
+  inspectionTimeoutMs?: number;
   now: () => number;
 }
+
+const DEFAULT_INSPECTION_TIMEOUT_MS = 20_000;
 
 const DEFAULT_DEPENDENCIES: ExternalConnectionDetectionDependencies = Object.freeze({
   connections: PROVIDER_CONNECTIONS,
@@ -45,6 +48,7 @@ const DEFAULT_DEPENDENCIES: ExternalConnectionDetectionDependencies = Object.fre
   readMetadataRevision: readConnectionMetadataRevision,
   writeMetadata: writeConnectionMetadata,
   markSessionChecked: markConnectionSessionChecked,
+  inspectionTimeoutMs: DEFAULT_INSPECTION_TIMEOUT_MS,
   now: Date.now,
 });
 
@@ -110,6 +114,41 @@ async function inspectConnection(
   };
 }
 
+interface CompletedConnectionInspection {
+  readonly completed: true;
+  readonly record: ConnectionMetadataRecord;
+}
+
+interface TimedOutConnectionInspection {
+  readonly completed: false;
+}
+
+type ConnectionInspection = CompletedConnectionInspection | TimedOutConnectionInspection;
+
+async function inspectConnectionWithinDeadline(
+  connection: Readonly<ProviderConnection>,
+  adapter: ProviderAdapter,
+  detectionPromise: Promise<DetectionResult>,
+  now: number,
+  timeoutMs: number,
+  disabled?: boolean,
+): Promise<ConnectionInspection> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<TimedOutConnectionInspection>((resolve) => {
+    timeoutId = setTimeout(() => resolve(Object.freeze({ completed: false })), timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      inspectConnection(connection, adapter, detectionPromise, now, disabled).then((record) =>
+        Object.freeze({ completed: true as const, record }),
+      ),
+      timeout,
+    ]);
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+}
+
 export async function detectExternalConnectionStates(
   dependencies: ExternalConnectionDetectionDependencies = DEFAULT_DEPENDENCIES,
 ): Promise<ConnectionMetadata> {
@@ -134,20 +173,23 @@ export async function detectExternalConnectionStates(
         detection = (async () => adapter.detect!())();
         detectionsByAdapter.set(adapter.id, detection);
       }
-      const record = await inspectConnection(
+      const inspection = await inspectConnectionWithinDeadline(
         connection,
         adapter,
         detection,
         dependencies.now(),
+        dependencies.inspectionTimeoutMs ?? DEFAULT_INSPECTION_TIMEOUT_MS,
         existing?.disabled,
       );
-      return [connection.id, record, true] as const;
+      if (!inspection.completed) return [connection.id, existing, false] as const;
+      return [connection.id, inspection.record, true] as const;
     }),
   );
   const latest = dependencies.readMetadata();
   const merged: ConnectionMetadata = { ...latest };
   const appliedConnectionIds: string[] = [];
-  for (const [id, record] of inspected) {
+  for (const [id, record, completed] of inspected) {
+    if (!completed || !record) continue;
     const latestRecord = latest[id];
     if (
       dependencies.readMetadataRevision(id) !== baselineRevisions.get(id) ||

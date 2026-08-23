@@ -94,3 +94,23 @@ Each test receives a monotonically increasing ID. Entries record UTC/local time,
 - Broad evidence: app TypeScript typecheck passed; exact four-file Prettier check passed after formatting
 - Official-native evidence: `PR31-NATIVE-005` created an ACTIVE 102-file map from an arbitrary selected folder while `No projects yet` was visible
 - Remaining acceptance: verify source persistence after native app reopen; no claim yet for unrelated Context Gateway, Terminal, or Test A behavior
+
+### PR31-CODE-003 — canonical OpenCode completion and Context tool wire repair green
+
+- Recorded: 2026-08-22T22:18:53-05:00
+- Branch/base: `integration/UnifiedChungus-final` at `3cf698b53fc86a403415cd8ef6cc0180d5a95255`
+- Native root causes: OpenCode Go rejected the historical dotted Context tool key, and append-only reconciliation appended an entire divergent canonical completion after the streamed answer
+- Repair: use the registered provider-safe `vibespace_context` function with operations as arguments; canonical reconciliation emits only a strict suffix and leaves divergent text to the authoritative final replacement
+- RED evidence: equal, prefix-extension, and divergent canonical cases failed 3/3 before the reconciler existed
+- GREEN evidence: adapter matrix passed 18/18; combined OpenCode SDK, Tool Gateway protocol/runtime, detector, and adapter matrix passed 154/154; app typecheck and exact formatting/diff checks passed
+- Remaining acceptance: rerun official-native Question A on exact `opencode` / `opencode-cli` / `opencode-go/deepseek-v4-flash-vision-exp`; code evidence alone is not a native pass or a 90+ score
+
+### PR31-CODE-004 — bounded external CLI inspection green
+
+- Recorded: 2026-08-22T22:18:53-05:00
+- Branch/base: `integration/UnifiedChungus-final` at `3cf698b53fc86a403415cd8ef6cc0180d5a95255`
+- Root cause: global external-connection detection awaited every CLI inspection in one `Promise.all`; one unbounded unrelated native/CLI probe prevented completed authenticated OpenCode metadata from publishing
+- Repair: each whole inspection now has a 20-second upper bound; timed-out metadata is preserved and not marked session-checked, while completed routes publish through the existing compare-and-swap authority
+- RED evidence: the authenticated OpenCode route remained unpublished when another detector never settled
+- GREEN evidence: detector matrix passed 11/11, combined adjacent matrix passed 154/154, app typecheck and exact formatting/diff checks passed
+- Remaining acceptance: observe forced detection in the official native app and confirm the exact registered route becomes actionable without substitution
