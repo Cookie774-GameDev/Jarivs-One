@@ -13,6 +13,8 @@ import {
   ShieldCheck,
   Download,
   Upload,
+  CloudUpload,
+  LockKeyhole,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { getPlan } from '@/lib/entitlements';
@@ -39,6 +41,10 @@ import {
   type PortableBackupHistory,
   type WorkspaceRestorePreview,
 } from '@/features/access/workspaceRestore';
+import {
+  downloadEncryptedCloudBackup,
+  uploadEncryptedCloudBackup,
+} from '@/lib/encryptedCloudBackup';
 
 const MAX_DISPLAY_NAME = 80;
 
@@ -146,6 +152,12 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
   const [portableConfirmed, setPortableConfirmed] = useState(false);
   const [portableMessage, setPortableMessage] = useState('');
   const [portableHistory, setPortableHistory] = useState<PortableBackupHistory>({});
+  const [encryptedPassphrase, setEncryptedPassphrase] = useState('');
+  const [encryptedConsent, setEncryptedConsent] = useState(false);
+  const [encryptedState, setEncryptedState] = useState<
+    'idle' | 'uploading' | 'downloading' | 'complete' | 'error'
+  >('idle');
+  const [encryptedMessage, setEncryptedMessage] = useState('');
   const portableFileInput = useRef<HTMLInputElement | null>(null);
   const signOutOperation = useRef<symbol | null>(null);
   const mounted = useRef(true);
@@ -181,6 +193,10 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
     setPortableConfirmed(false);
     setPortableMessage('');
     setPortableHistory(portableAccountId ? readPortableBackupHistory(portableAccountId) : {});
+    setEncryptedPassphrase('');
+    setEncryptedConsent(false);
+    setEncryptedState('idle');
+    setEncryptedMessage('');
   }, [cloudUserId, portableAccountId]);
 
   // Hydrate display name from Supabase when signed in.
@@ -442,6 +458,68 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
       toast.success('Portable restore complete', 'Existing local records were not replaced.');
     } catch (error) {
       recordPortableFailure(error);
+    }
+  }
+
+  async function uploadEncryptedBackup() {
+    if (
+      !cloudRecoveryAvailable ||
+      !encryptedConsent ||
+      encryptedState === 'uploading' ||
+      encryptedState === 'downloading'
+    ) {
+      return;
+    }
+    const passphrase = encryptedPassphrase;
+    setEncryptedState('uploading');
+    setEncryptedMessage('Creating and encrypting locally before upload…');
+    try {
+      const result = await uploadEncryptedCloudBackup(passphrase);
+      setEncryptedState('complete');
+      setEncryptedMessage(
+        `Encrypted cloud backup saved ${new Date(result.createdAt).toLocaleString()}. Keep your passphrase safe; VibeSpace cannot recover it.`,
+      );
+      setEncryptedConsent(false);
+      toast.success('Encrypted cloud backup saved', 'Only ciphertext was uploaded.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Encrypted cloud backup failed.';
+      setEncryptedState('error');
+      setEncryptedMessage(message);
+      toast.error('Encrypted cloud backup failed', message);
+    } finally {
+      setEncryptedPassphrase('');
+    }
+  }
+
+  async function previewEncryptedCloudRestore() {
+    if (
+      !cloudRecoveryAvailable ||
+      encryptedState === 'uploading' ||
+      encryptedState === 'downloading'
+    ) {
+      return;
+    }
+    const passphrase = encryptedPassphrase;
+    setEncryptedState('downloading');
+    setEncryptedMessage('Downloading ciphertext and decrypting locally…');
+    setPortablePreview(null);
+    setPortableConfirmed(false);
+    try {
+      const plaintext = await downloadEncryptedCloudBackup(passphrase);
+      const preview = await previewWorkspaceRestore(plaintext);
+      setPortablePreview(preview);
+      setPortableState('ready');
+      setEncryptedState('complete');
+      setEncryptedMessage(
+        `Decrypted locally. ${preview.restorable} missing record${preview.restorable === 1 ? '' : 's'} can be restored below.`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Encrypted cloud recovery failed.';
+      setEncryptedState('error');
+      setEncryptedMessage(message);
+      toast.error('Encrypted cloud recovery failed', message);
+    } finally {
+      setEncryptedPassphrase('');
     }
   }
 
@@ -867,6 +945,105 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
             ? ` · Last error: ${portableHistory.lastError}`
             : ''}
         </p>
+
+        <div
+          className="max-w-xl rounded-lg border border-border/70 bg-panel/40 p-3"
+          data-testid="encrypted-cloud-backup"
+        >
+          <Label htmlFor="encrypted-backup-passphrase" className="inline-flex items-center gap-2">
+            <LockKeyhole className="h-3.5 w-3.5 text-accent-copper" />
+            Optional encrypted cloud copy
+          </Label>
+          <p className="mt-1 text-metadata text-muted-foreground">
+            Available with cloud sync. Encryption and decryption happen on this device. Your
+            passphrase is never saved or sent, and there is no passphrase recovery.
+          </p>
+          <Input
+            id="encrypted-backup-passphrase"
+            type="password"
+            value={encryptedPassphrase}
+            minLength={12}
+            maxLength={256}
+            autoComplete="new-password"
+            placeholder="12–256 character passphrase"
+            disabled={
+              !cloudRecoveryAvailable ||
+              encryptedState === 'uploading' ||
+              encryptedState === 'downloading'
+            }
+            onChange={(event) => setEncryptedPassphrase(event.target.value)}
+            className="mt-3 max-w-md"
+            data-testid="encrypted-backup-passphrase"
+          />
+          <label className="mt-2 flex items-start gap-2 text-metadata text-muted-foreground">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={encryptedConsent}
+              disabled={!cloudRecoveryAvailable}
+              onChange={(event) => setEncryptedConsent(event.target.checked)}
+              data-testid="encrypted-backup-consent"
+            />
+            I understand this uploads only an encrypted portable backup and losing the passphrase
+            makes it unrecoverable.
+          </label>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={
+                !cloudRecoveryAvailable ||
+                !encryptedConsent ||
+                encryptedPassphrase.length < 12 ||
+                encryptedState === 'uploading' ||
+                encryptedState === 'downloading'
+              }
+              onClick={() => void uploadEncryptedBackup()}
+              data-testid="encrypted-backup-upload"
+            >
+              {encryptedState === 'uploading' ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CloudUpload className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              {encryptedState === 'uploading' ? 'Encrypting…' : 'Encrypt & upload'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={
+                !cloudRecoveryAvailable ||
+                encryptedPassphrase.length < 12 ||
+                encryptedState === 'uploading' ||
+                encryptedState === 'downloading'
+              }
+              onClick={() => void previewEncryptedCloudRestore()}
+              data-testid="encrypted-backup-download"
+            >
+              {encryptedState === 'downloading' ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CloudDownload className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              {encryptedState === 'downloading' ? 'Decrypting…' : 'Decrypt & preview'}
+            </Button>
+          </div>
+          <p
+            className="mt-2 text-metadata text-muted-foreground"
+            role="status"
+            aria-live="polite"
+            data-testid="encrypted-backup-status"
+          >
+            {encryptedMessage ||
+              (cloudRecoveryAvailable
+                ? 'Enter your passphrase to upload or preview your latest encrypted copy.'
+                : cloudUserId
+                  ? 'Encrypted cloud backup is included with a cloud-sync plan.'
+                  : 'Sign in to use encrypted cloud backup.')}
+          </p>
+        </div>
       </section>
     </>
   );

@@ -88,3 +88,18 @@
 - Contract/test/docs commit: `6f958a91e78445d885a3301dbf32f4c74f6a2886` (`test(storage): freeze update durability contract`).
 - Commit gate: exact formatting/diff checks PASS; staged Gitleaks scanned 4.63 KB with zero leaks. No product storage or updater behavior changed.
 - Exact contract/queue/ledger scope is released.
+
+## 2026-08-22 — explicit encrypted cloud-backup lane claimed
+
+- Agent: `VS-CODEX-ENCRYPTED-CLOUD-BACKUP-20260822`
+- Branch/base: `integration/UnifiedChungus-final` at `718fbed3`.
+- Exact scope: new encrypted-cloud domain/test; Account opt-in surface and focused test; this ledger; `qeue.md`; agent-scoped lock.
+- Intent: create the existing portable workspace artifact locally, encrypt it with a user-held passphrase before any upload, store only the ciphertext envelope in the existing account-RLS `app_sync_records` authority, and require download/decrypt/restore preview before any local write.
+- Safety boundary: passphrases are never persisted or transmitted; credentials, sessions, terminals, provider state, file bytes, and private paths remain excluded by the underlying portable artifact. No Supabase migration, function, deployment, credential, or live user record is touched during implementation or tests.
+
+## 2026-08-22 — explicit encrypted cloud-backup implementation checkpoint
+
+- Account now requires a 12–256-character passphrase plus an explicit acknowledgement before upload. The existing typed portable artifact is created and flushed locally, encrypted with a random 16-byte salt, PBKDF2-SHA-256 at 310,000 iterations, AES-256-GCM, and a random 12-byte IV, then only the ciphertext envelope is written to the existing account-RLS generic record.
+- Download verifies the authenticated account and strict envelope metadata, decrypts locally, clears the passphrase, and feeds plaintext only into the existing additive restore preview. It never applies a restore automatically. Wrong passphrases or damaged/cross-account envelopes fail closed.
+- Authority is rechecked after artifact creation, before upload, after download, and after decryption. No passphrase is stored in React state after an operation, localStorage, the OS keychain, logs, or the cloud payload.
+- Fresh domain/UI/portable/cloud matrix PASS, 6 files / 26 tests with no React warnings. Direct Vite production bundle PASS in 59.75 seconds with existing bundler warnings only. Full TypeScript reports only the same four separately owned SiYuan test diagnostics; the initial WebCrypto buffer/literal diagnostics were corrected and are absent on rerun.
