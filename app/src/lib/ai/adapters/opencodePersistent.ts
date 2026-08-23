@@ -55,10 +55,7 @@ import type {
 import { resolveRuntimeModelControls } from '@/features/chat/runtime/runtimeModelControls';
 import type { AccessLevel, InteractionMode } from '@/lib/permissions/OpenCodePermissionProfile';
 import { decideContextRoute } from '@/features/context/rlm/routeDecision';
-import {
-  harnessRuntimeManager,
-  type HarnessRuntimeManager,
-} from '@/lib/harness/runtimeManager';
+import { harnessRuntimeManager, type HarnessRuntimeManager } from '@/lib/harness/runtimeManager';
 import { nativeOpenCodeEvents, nativeOpenCodeRequest } from '@/lib/harness/openCodeNativeTransport';
 
 const SESSION_REGISTRY_KEY = 'vibespace.opencode-session-registry.v1';
@@ -119,7 +116,7 @@ interface OpenCodeMessageRecord {
 
 function recordOf(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : undefined;
 }
 
@@ -167,18 +164,24 @@ async function requestJson(
   const abort = () => controller.abort(upstreamSignal?.reason);
   if (upstreamSignal?.aborted) abort();
   else upstreamSignal?.addEventListener('abort', abort, { once: true });
-  const timeout = timeoutMs > 0
-    ? setTimeout(() => controller.abort(new Error('OpenCode request timed out.')), timeoutMs)
-    : undefined;
+  const timeout =
+    timeoutMs > 0
+      ? setTimeout(() => controller.abort(new Error('OpenCode request timed out.')), timeoutMs)
+      : undefined;
   try {
-    const response = await nativeOpenCodeRequest(generation, withDirectory(path, scope), {
-      ...init,
-      signal: controller.signal,
-    }, timeoutMs);
+    const response = await nativeOpenCodeRequest(
+      generation,
+      withDirectory(path, scope),
+      {
+        ...init,
+        signal: controller.signal,
+      },
+      timeoutMs,
+    );
     if (!response.ok) throw await responseError(response);
     if (response.status === 204) return undefined;
     const text = await response.text();
-    return text.trim() ? JSON.parse(text) as unknown : undefined;
+    return text.trim() ? (JSON.parse(text) as unknown) : undefined;
   } finally {
     if (timeout !== undefined) clearTimeout(timeout);
     upstreamSignal?.removeEventListener('abort', abort);
@@ -191,72 +194,65 @@ function unwrapData(value: unknown): unknown {
 }
 
 class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
-  constructor(
-    readonly handle: OpenCodeServerHandle,
-  ) {}
+  constructor(readonly handle: OpenCodeServerHandle) {}
 
   readonly global = {
-    health: async (): Promise<unknown> => requestJson(
-      this.handle.generation,
-      this.handle.scope,
-      '/global/health',
-      {},
-      5_000,
-    ),
+    health: async (): Promise<unknown> =>
+      requestJson(this.handle.generation, this.handle.scope, '/global/health', {}, 5_000),
   };
 
   readonly config = {
-    providers: async (): Promise<unknown> => requestJson(
-      this.handle.generation,
-      this.handle.scope,
-      '/config/providers',
-      {},
-      15_000,
-    ),
+    providers: async (): Promise<unknown> =>
+      requestJson(this.handle.generation, this.handle.scope, '/config/providers', {}, 15_000),
   };
 
   readonly session = {
-    create: async (input: { body: { title?: string } }): Promise<unknown> => requestJson(
-      this.handle.generation,
-      this.handle.scope,
-      '/session',
-      { method: 'POST', body: JSON.stringify(input.body) },
-      30_000,
-    ),
-    get: async (input: { path: { id: string } }): Promise<unknown> => requestJson(
-      this.handle.generation,
-      this.handle.scope,
-      `/session/${encodeURIComponent(input.path.id)}`,
-      {},
-      30_000,
-    ),
-    abort: async (input: { path: { id: string } }): Promise<unknown> => requestJson(
-      this.handle.generation,
-      this.handle.scope,
-      `/session/${encodeURIComponent(input.path.id)}/abort`,
-      { method: 'POST', body: '{}' },
-      30_000,
-    ),
+    create: async (input: { body: { title?: string } }): Promise<unknown> =>
+      requestJson(
+        this.handle.generation,
+        this.handle.scope,
+        '/session',
+        { method: 'POST', body: JSON.stringify(input.body) },
+        30_000,
+      ),
+    get: async (input: { path: { id: string } }): Promise<unknown> =>
+      requestJson(
+        this.handle.generation,
+        this.handle.scope,
+        `/session/${encodeURIComponent(input.path.id)}`,
+        {},
+        30_000,
+      ),
+    abort: async (input: { path: { id: string } }): Promise<unknown> =>
+      requestJson(
+        this.handle.generation,
+        this.handle.scope,
+        `/session/${encodeURIComponent(input.path.id)}/abort`,
+        { method: 'POST', body: '{}' },
+        30_000,
+      ),
     promptAsync: async (input: {
       path: { id: string };
       body: Readonly<Record<string, unknown>>;
-    }): Promise<unknown> => requestJson(
-      this.handle.generation,
-      this.handle.scope,
-      `/session/${encodeURIComponent(input.path.id)}/prompt_async`,
-      { method: 'POST', body: JSON.stringify(input.body) },
-      30_000,
-    ),
+    }): Promise<unknown> =>
+      requestJson(
+        this.handle.generation,
+        this.handle.scope,
+        `/session/${encodeURIComponent(input.path.id)}/prompt_async`,
+        { method: 'POST', body: JSON.stringify(input.body) },
+        30_000,
+      ),
     replyPermission: async (input: {
       path: { id: string; permissionId: string };
       body: { response: HarnessApprovalResponse['response'] };
-    }): Promise<unknown> => requestJson(
-      this.handle.generation,
-      this.handle.scope,
-      `/session/${encodeURIComponent(input.path.id)}/permissions/${encodeURIComponent(input.path.permissionId)}`,
-      { method: 'POST', body: JSON.stringify(input.body) },
-      30_000,
-    ),
+    }): Promise<unknown> =>
+      requestJson(
+        this.handle.generation,
+        this.handle.scope,
+        `/session/${encodeURIComponent(input.path.id)}/permissions/${encodeURIComponent(input.path.permissionId)}`,
+        { method: 'POST', body: JSON.stringify(input.body) },
+        30_000,
+      ),
   };
 
   readonly event = {
@@ -285,26 +281,22 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
   }
 
   async messages(sessionId: string): Promise<readonly OpenCodeMessageRecord[]> {
-    const value = unwrapData(await requestJson(
-      this.handle.generation,
-      this.handle.scope,
-      `/session/${encodeURIComponent(sessionId)}/message?limit=100`,
-      {},
-      30_000,
-    ));
+    const value = unwrapData(
+      await requestJson(
+        this.handle.generation,
+        this.handle.scope,
+        `/session/${encodeURIComponent(sessionId)}/message?limit=100`,
+        {},
+        30_000,
+      ),
+    );
     return Array.isArray(value)
       ? value.map((entry) => recordOf(entry) as OpenCodeMessageRecord).filter(Boolean)
       : [];
   }
 
   async providerState(): Promise<unknown> {
-    return requestJson(
-      this.handle.generation,
-      this.handle.scope,
-      '/provider',
-      {},
-      15_000,
-    );
+    return requestJson(this.handle.generation, this.handle.scope, '/provider', {}, 15_000);
   }
 }
 
@@ -319,15 +311,26 @@ class LocalStorageSessionRegistry implements OpenCodeSessionRegistry {
     if (typeof localStorage === 'undefined') return {};
     try {
       const value = JSON.parse(localStorage.getItem(SESSION_REGISTRY_KEY) ?? '{}') as unknown;
-      return recordOf(value) as Record<string, Record<string, { sessionId: string; runtimeGeneration: string }>> ?? {};
+      return (
+        (recordOf(value) as Record<
+          string,
+          Record<string, { sessionId: string; runtimeGeneration: string }>
+        >) ?? {}
+      );
     } catch {
       return {};
     }
   }
 
-  private write(value: Record<string, Record<string, { sessionId: string; runtimeGeneration: string }>>): void {
+  private write(
+    value: Record<string, Record<string, { sessionId: string; runtimeGeneration: string }>>,
+  ): void {
     if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem(SESSION_REGISTRY_KEY, JSON.stringify(value)); } catch { /* best effort */ }
+    try {
+      localStorage.setItem(SESSION_REGISTRY_KEY, JSON.stringify(value));
+    } catch {
+      /* best effort */
+    }
   }
 
   async load(scopeKey: string, chatId: string) {
@@ -337,7 +340,11 @@ class LocalStorageSessionRegistry implements OpenCodeSessionRegistry {
       : null;
   }
 
-  async save(scopeKey: string, chatId: string, mapping: { sessionId: string; runtimeGeneration: string }) {
+  async save(
+    scopeKey: string,
+    chatId: string,
+    mapping: { sessionId: string; runtimeGeneration: string },
+  ) {
     const all = this.read();
     const scope = { ...(all[scopeKey] ?? {}), [chatId]: mapping };
     all[scopeKey] = Object.fromEntries(Object.entries(scope).slice(-2_000));
@@ -359,7 +366,9 @@ export function createPersistentOpenCodeRuntimeSupervisor(
       await runtime.refresh();
       const connection = runtime.getConnection();
       if (!connection) {
-        throw new Error('The managed OpenCode runtime did not provide a private server connection.');
+        throw new Error(
+          'The managed OpenCode runtime did not provide a private server connection.',
+        );
       }
       const handle: OpenCodeServerHandle = {
         generation: connection.generation,
@@ -435,8 +444,9 @@ function variantFrom(value: unknown, fallbackId?: string): LiveModelVariant | un
   const id = cleanIdentifier(record?.id ?? fallbackId, 256);
   if (!id) return undefined;
   const normalized = id.toLocaleLowerCase('en-US');
-  const effort = cleanIdentifier(record?.reasoningEffort ?? record?.reasoning_effort, 32)
-    ?? (['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(normalized)
+  const effort =
+    cleanIdentifier(record?.reasoningEffort ?? record?.reasoning_effort, 32) ??
+    (['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(normalized)
       ? normalized
       : undefined);
   const fast = record?.fast === true || normalized === 'fast' || normalized.includes('fast');
@@ -445,7 +455,13 @@ function variantFrom(value: unknown, fallbackId?: string): LiveModelVariant | un
     ...(cleanIdentifier(record?.label, 256) ? { label: cleanIdentifier(record?.label, 256) } : {}),
     ...(effort ? { reasoningEffort: effort as LiveModelVariant['reasoningEffort'] } : {}),
     ...(fast ? { fast: true } : {}),
-    ...(fast && effort ? { kind: 'combined' as const } : fast ? { kind: 'latency' as const } : effort ? { kind: 'reasoning' as const } : {}),
+    ...(fast && effort
+      ? { kind: 'combined' as const }
+      : fast
+        ? { kind: 'latency' as const }
+        : effort
+          ? { kind: 'reasoning' as const }
+          : {}),
   };
 }
 
@@ -464,7 +480,11 @@ function variantsFrom(model: Record<string, unknown>): readonly LiveModelVariant
       if (variant) variants.push(variant);
     }
   }
-  return [...new Map(variants.map((variant) => [variant.id.toLocaleLowerCase('en-US'), variant])).values()];
+  return [
+    ...new Map(
+      variants.map((variant) => [variant.id.toLocaleLowerCase('en-US'), variant]),
+    ).values(),
+  ];
 }
 
 /** Normalize the live `/config/providers` response without assuming one OpenCode minor-version shape. */
@@ -477,11 +497,17 @@ export function parseOpenCodeLiveModels(value: unknown): readonly OpenCodeLiveMo
       : [];
   const result: OpenCodeLiveModel[] = [];
   for (const provider of providers) {
-    const providerId = cleanIdentifier(provider.id ?? provider.providerID ?? provider.providerId, 128);
+    const providerId = cleanIdentifier(
+      provider.id ?? provider.providerID ?? provider.providerId,
+      128,
+    );
     if (!providerId) continue;
     const rawModels = provider.models;
     const entries: Array<[string, Record<string, unknown>]> = Array.isArray(rawModels)
-      ? arrayOfRecords(rawModels).map((model) => [cleanIdentifier(model.id ?? model.modelID ?? model.modelId) ?? '', model])
+      ? arrayOfRecords(rawModels).map((model) => [
+          cleanIdentifier(model.id ?? model.modelID ?? model.modelId) ?? '',
+          model,
+        ])
       : Object.entries(recordOf(rawModels) ?? {}).map(([id, model]) => [id, recordOf(model) ?? {}]);
     for (const [rawId, model] of entries) {
       const modelLocalId = cleanIdentifier(model.id ?? model.modelID ?? model.modelId ?? rawId);
@@ -506,8 +532,9 @@ export function parseOpenCodeLiveModels(value: unknown): readonly OpenCodeLiveMo
       });
     }
   }
-  return [...new Map(result.map((model) => [model.id.toLocaleLowerCase('en-US'), model])).values()]
-    .sort((left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id));
+  return [
+    ...new Map(result.map((model) => [model.id.toLocaleLowerCase('en-US'), model])).values(),
+  ].sort((left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id));
 }
 
 export function toOpenCodeDiscoveredModels(
@@ -556,10 +583,7 @@ export function managedOpenCodeAuthResult(value: unknown): AuthProbeResult {
       };
 }
 
-function modelMetadata(
-  model: OpenCodeLiveModel,
-  connectionId: string,
-): LiveModelRuntimeMetadata {
+function modelMetadata(model: OpenCodeLiveModel, connectionId: string): LiveModelRuntimeMetadata {
   return {
     connectionId,
     modelId: model.id,
@@ -582,7 +606,9 @@ export function requireAuthoritativeOpenCodeModel(
 ): OpenCodeLiveModel {
   const requested = requestedModelId.trim();
   if (!requested.includes('/')) {
-    throw new Error('OpenCode requires a provider-qualified model from the live authenticated catalog.');
+    throw new Error(
+      'OpenCode requires a provider-qualified model from the live authenticated catalog.',
+    );
   }
   const model = models.find((candidate) => sameLiveModelId(candidate.id, requested));
   if (!model) {
@@ -604,8 +630,12 @@ function eventSessionId(event: OpenCodeRawEvent): string | undefined {
   const part = recordOf(properties?.part);
   const info = recordOf(properties?.info ?? properties?.message);
   return cleanIdentifier(
-    properties?.sessionID ?? properties?.sessionId ?? part?.sessionID ?? part?.sessionId
-      ?? info?.sessionID ?? info?.sessionId,
+    properties?.sessionID ??
+      properties?.sessionId ??
+      part?.sessionID ??
+      part?.sessionId ??
+      info?.sessionID ??
+      info?.sessionId,
   );
 }
 
@@ -617,14 +647,21 @@ function normalizeToolEvent(event: OpenCodeRawEvent): ProviderEvent | undefined 
   if (partType !== 'tool' && partType !== 'tool_use') return undefined;
   const state = recordOf(part.state);
   const rawStatus = cleanIdentifier(state?.status ?? part.status, 64)?.toLocaleLowerCase('en-US');
-  const status = rawStatus === 'completed' ? 'completed' : rawStatus === 'error' || rawStatus === 'failed' ? 'failed' : 'started';
+  const status =
+    rawStatus === 'completed'
+      ? 'completed'
+      : rawStatus === 'error' || rawStatus === 'failed'
+        ? 'failed'
+        : 'started';
   const name = cleanIdentifier(part.tool ?? part.name, 256);
   if (!name) return undefined;
   return {
     type: 'tool',
     name,
     status,
-    ...(cleanIdentifier(part.callID ?? part.callId ?? part.id) ? { callId: cleanIdentifier(part.callID ?? part.callId ?? part.id) } : {}),
+    ...(cleanIdentifier(part.callID ?? part.callId ?? part.id)
+      ? { callId: cleanIdentifier(part.callID ?? part.callId ?? part.id) }
+      : {}),
     ...(status === 'completed' && state && 'output' in state ? { result: state.output } : {}),
   };
 }
@@ -634,15 +671,22 @@ function normalizeUsage(event: OpenCodeRawEvent): UsageSnapshot | undefined {
   const info = recordOf(event.properties?.info ?? event.properties?.message);
   const tokens = recordOf(info?.tokens ?? info?.usage);
   if (!tokens && typeof info?.cost !== 'number') return undefined;
-  const number = (value: unknown): number | undefined => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+  const number = (value: unknown): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
   const input = number(tokens?.input ?? tokens?.inputTokens ?? tokens?.input_tokens);
   const output = number(tokens?.output ?? tokens?.outputTokens ?? tokens?.output_tokens);
   const cost = number(info?.cost ?? tokens?.cost);
   return {
     capturedAt: Date.now(),
-    ...(input === undefined ? {} : { inputTokens: { value: input, provenance: 'provider-reported' as const } }),
-    ...(output === undefined ? {} : { outputTokens: { value: output, provenance: 'provider-reported' as const } }),
-    ...(cost === undefined ? {} : { costUsd: { value: cost, provenance: 'provider-reported' as const } }),
+    ...(input === undefined
+      ? {}
+      : { inputTokens: { value: input, provenance: 'provider-reported' as const } }),
+    ...(output === undefined
+      ? {}
+      : { outputTokens: { value: output, provenance: 'provider-reported' as const } }),
+    ...(cost === undefined
+      ? {}
+      : { costUsd: { value: cost, provenance: 'provider-reported' as const } }),
   };
 }
 
@@ -658,11 +702,17 @@ function identityFromInfo(
   part?: Record<string, unknown>,
 ): OpenCodeObservedIdentity {
   return {
-    providerId: cleanIdentifier(info?.providerID ?? info?.providerId ?? part?.providerID ?? part?.providerId),
+    providerId: cleanIdentifier(
+      info?.providerID ?? info?.providerId ?? part?.providerID ?? part?.providerId,
+    ),
     modelId: cleanIdentifier(info?.modelID ?? info?.modelId ?? part?.modelID ?? part?.modelId),
     variant: cleanIdentifier(
-      info?.variant ?? info?.reasoningEffort ?? info?.reasoning_effort
-        ?? part?.variant ?? part?.reasoningEffort ?? part?.reasoning_effort,
+      info?.variant ??
+        info?.reasoningEffort ??
+        info?.reasoning_effort ??
+        part?.variant ??
+        part?.reasoningEffort ??
+        part?.reasoning_effort,
     ),
     serviceTier: cleanIdentifier(
       info?.serviceTier ?? info?.service_tier ?? part?.serviceTier ?? part?.service_tier,
@@ -745,9 +795,9 @@ export function shouldReconcileOpenCodeSessionCompletion(input: {
   if (input.status === 'idle') return true;
   return Boolean(
     input.statusLookupSucceeded &&
-      input.status === undefined &&
-      input.streamedText.trim() &&
-      input.hasPersistedAssistantIdentity,
+    input.status === undefined &&
+    input.streamedText.trim() &&
+    input.hasPersistedAssistantIdentity,
   );
 }
 
@@ -757,14 +807,29 @@ function assistantTextFromMessages(messages: readonly OpenCodeMessageRecord[]): 
     const role = cleanIdentifier(record.info?.role, 32)?.toLocaleLowerCase('en-US');
     if (role !== 'assistant') continue;
     return (record.parts ?? [])
-      .filter((part) => ['text', 'agent_message'].includes(String(part.type).toLocaleLowerCase('en-US')))
-      .map((part) => typeof part.text === 'string' ? part.text : '')
+      .filter((part) =>
+        ['text', 'agent_message'].includes(String(part.type).toLocaleLowerCase('en-US')),
+      )
+      .map((part) => (typeof part.text === 'string' ? part.text : ''))
       .join('');
   }
   return '';
 }
 
-export function createGenerationSafeAsyncCache<Key, Value>(ttlMs: number): Readonly<{
+/**
+ * The ProviderEvent transport is append-only. A canonical completion can add a
+ * strict suffix, but a divergent canonical message must be left for the final
+ * authoritative response replacement instead of being appended as a second
+ * answer.
+ */
+export function canonicalOpenCodeTextSuffix(streamed: string, canonical: string): string {
+  if (canonical === streamed || !canonical.startsWith(streamed)) return '';
+  return canonical.slice(streamed.length);
+}
+
+export function createGenerationSafeAsyncCache<Key, Value>(
+  ttlMs: number,
+): Readonly<{
   get: (key: Key, loader: () => Promise<Value>, force?: boolean) => Promise<Value>;
   peek: (key: Key) => Value | undefined;
   invalidate: () => void;
@@ -775,7 +840,8 @@ export function createGenerationSafeAsyncCache<Key, Value>(ttlMs: number): Reado
   return Object.freeze({
     get(key, loader, force = false): Promise<Value> {
       const cached = cache.get(key);
-      if (!force && cached && Date.now() - cached.loadedAt < ttlMs) return Promise.resolve(cached.value);
+      if (!force && cached && Date.now() - cached.loadedAt < ttlMs)
+        return Promise.resolve(cached.value);
       const active = loads.get(key);
       if (!force && active?.generation === generation) return active.promise;
       const loadGeneration = generation;
@@ -808,7 +874,10 @@ const modelCatalogs = createGenerationSafeAsyncCache<string, readonly OpenCodeLi
   MODEL_CACHE_TTL_MS,
 );
 
-async function liveModels(scope: HarnessScope, force = false): Promise<readonly OpenCodeLiveModel[]> {
+async function liveModels(
+  scope: HarnessScope,
+  force = false,
+): Promise<readonly OpenCodeLiveModel[]> {
   const scopeKey = openCodeScopeKey(scope);
   return modelCatalogs.get(
     scopeKey,
@@ -827,7 +896,9 @@ async function liveModels(scope: HarnessScope, force = false): Promise<readonly 
 }
 
 const authProbes = createGenerationSafeAsyncCache<string, AuthProbeResult>(AUTH_CACHE_TTL_MS);
-async function cachedAuthProbe(connection: ProviderRequest['connection']): Promise<AuthProbeResult> {
+async function cachedAuthProbe(
+  connection: ProviderRequest['connection'],
+): Promise<AuthProbeResult> {
   return authProbes.get(connection.id, async (): Promise<AuthProbeResult> => {
     const cached = authProbes.peek(connection.id);
     try {
@@ -847,7 +918,10 @@ async function cachedAuthProbe(connection: ProviderRequest['connection']): Promi
       return result;
     } catch (error) {
       if (cached) return cached;
-      return { status: 'unknown' as const, detail: error instanceof Error ? error.message : String(error) };
+      return {
+        status: 'unknown' as const,
+        detail: error instanceof Error ? error.message : String(error),
+      };
     }
   });
 }
@@ -863,7 +937,9 @@ function requestScope(request: ProviderRequest): HarnessScope {
     workspaceId,
     ...(cleanIdentifier(request.projectId, 512) ? { projectId: request.projectId!.trim() } : {}),
     ...(cleanIdentifier(request.worktreeId, 512) ? { worktreeId: request.worktreeId!.trim() } : {}),
-    ...(request.workingDirectory?.trim() ? { workingDirectory: request.workingDirectory.trim() } : {}),
+    ...(request.workingDirectory?.trim()
+      ? { workingDirectory: request.workingDirectory.trim() }
+      : {}),
   };
 }
 
@@ -895,12 +971,14 @@ function captureRequestGatewayAuthority(
 }
 
 function defaultRuntimeSettings(request: ProviderRequest): ChatRuntimeSettings {
-  return request.runtimeSettings ?? {
-    effort: 'auto',
-    fastMode: 'auto',
-    performance: 'quality',
-    rlmEnabled: true,
-  };
+  return (
+    request.runtimeSettings ?? {
+      effort: 'auto',
+      fastMode: 'auto',
+      performance: 'quality',
+      rlmEnabled: true,
+    }
+  );
 }
 
 export function assertAuthoritativeOpenCodeRuntimeControls(
@@ -920,8 +998,12 @@ function contextSystemAddendum(
   settings: Readonly<ChatRuntimeSettings>,
 ): string {
   const question = request.prompt.trim();
-  const historical = /\b(previous|history|old|earlier|decision|archive|look up|find in)\b/iu.test(question);
-  const broad = /\b(entire|whole|everything|every file|every chat|across all|root cause)\b/iu.test(question);
+  const historical = /\b(previous|history|old|earlier|decision|archive|look up|find in)\b/iu.test(
+    question,
+  );
+  const broad = /\b(entire|whole|everything|every file|every chat|across all|root cause)\b/iu.test(
+    question,
+  );
   const route = decideContextRoute({
     rlmEnabled: settings.rlmEnabled,
     question,
@@ -938,7 +1020,7 @@ function contextSystemAddendum(
   }
   return [
     `VibeSpace Context route: ${route.route.toUpperCase()}.`,
-    'Before asserting historical or cross-source facts, use the high-level VibeSpace tool `vibespace_context.query`.',
+    'Before asserting historical or cross-source facts, use the high-level VibeSpace tool `vibespace_context` with an explicit operation such as `search`.',
     'Treat returned pointers/provenance as opaque and fail closed: never forge, combine, clamp, or retarget pointers.',
     'If the tool is unavailable or returns no evidence, say so instead of inventing support.',
   ].join(' ');
@@ -949,7 +1031,7 @@ function combineSystemPrompt(base: string | undefined, addendum: string): string
   return clean ? `${clean}\n\n${addendum}` : addendum;
 }
 
-function toolsForPolicy(input: {
+export function toolsForPolicy(input: {
   mode: InteractionMode;
   access: AccessLevel;
   rlmEnabled: boolean;
@@ -971,7 +1053,7 @@ function toolsForPolicy(input: {
     bash: canTerminal,
     shell: canTerminal,
     task: canSubagents,
-    'vibespace_context.query': input.rlmEnabled,
+    vibespace_context: input.rlmEnabled,
   };
   if (!input.requested) return Object.freeze(baseline);
 
@@ -987,8 +1069,7 @@ function toolsForPolicy(input: {
       (!terminalLike || canTerminal) &&
       (!subagentLike || canSubagents);
   }
-  bounded['vibespace_context.query'] =
-    input.rlmEnabled && input.requested.vibespace_context === true;
+  bounded.vibespace_context = input.rlmEnabled && input.requested.vibespace_context === true;
   return Object.freeze(bounded);
 }
 
@@ -1042,12 +1123,17 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     const authoritativeModelId = liveModel.id;
     const providerId = upstreamProviderId(liveModel.id);
     const mode = request.interactionMode ?? 'agent';
-    const access = request.accessLevel ?? (mode === 'ask' ? 'read-only' : mode === 'plan' ? 'read-only' : 'full');
+    const access =
+      request.accessLevel ??
+      (mode === 'ask' ? 'read-only' : mode === 'plan' ? 'read-only' : 'full');
     const eventIterator = client.http.events(abortEvents.signal)[Symbol.asyncIterator]();
     const settings = defaultRuntimeSettings(request);
     failureStage = 'runtime_controls';
     assertAuthoritativeOpenCodeRuntimeControls(settings, liveModel, request.connection.id);
-    const systemPrompt = combineSystemPrompt(request.systemPrompt, contextSystemAddendum(request, settings));
+    const systemPrompt = combineSystemPrompt(
+      request.systemPrompt,
+      contextSystemAddendum(request, settings),
+    );
     failureStage = 'prompt_dispatch';
     const dispatch = await coordinator.dispatch({
       scope,
@@ -1074,7 +1160,8 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         requested: request.tools,
       }),
     });
-    if (dispatch.kind === 'command') throw new Error('VibeSpace slash commands must be consumed before provider dispatch.');
+    if (dispatch.kind === 'command')
+      throw new Error('VibeSpace slash commands must be consumed before provider dispatch.');
     if (dispatch.kind === 'rejected') throw new Error(dispatch.message);
     const requestedVariant = dispatch.controls.variant ?? dispatch.controls.effort;
     const observeAuthoritativeIdentity = (
@@ -1110,7 +1197,10 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     };
     boundSessionId = dispatch.sessionId;
     failureStage = 'session_authority';
-    if (gatewayAuthority && !bindToolGatewaySessionAuthority(dispatch.sessionId, gatewayAuthority)) {
+    if (
+      gatewayAuthority &&
+      !bindToolGatewaySessionAuthority(dispatch.sessionId, gatewayAuthority)
+    ) {
       await client.abort(dispatch.sessionId).catch(() => undefined);
       throw new Error('Tool Gateway session authority changed before dispatch.');
     }
@@ -1133,8 +1223,10 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     let pendingEvent = eventIterator.next();
 
     while (!done) {
-      if (!turnGate.isCurrent(turn)) throw new DOMException('The OpenCode turn was superseded.', 'AbortError');
-      if (request.signal?.aborted) throw new DOMException('The OpenCode turn was aborted.', 'AbortError');
+      if (!turnGate.isCurrent(turn))
+        throw new DOMException('The OpenCode turn was superseded.', 'AbortError');
+      if (request.signal?.aborted)
+        throw new DOMException('The OpenCode turn was aborted.', 'AbortError');
       if (Date.now() - startedAt > TURN_MAX_WALL_MS) {
         await client.abort(dispatch.sessionId).catch(() => undefined);
         throw new Error('OpenCode turn exceeded the maximum wall time.');
@@ -1142,7 +1234,9 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
 
       const next = await Promise.race([
         pendingEvent.then((value) => ({ kind: 'event' as const, value })),
-        new Promise<{ kind: 'poll' }>((resolve) => setTimeout(() => resolve({ kind: 'poll' }), TURN_IDLE_POLL_MS)),
+        new Promise<{ kind: 'poll' }>((resolve) =>
+          setTimeout(() => resolve({ kind: 'poll' }), TURN_IDLE_POLL_MS),
+        ),
       ]);
       if (next.kind === 'poll') {
         const statusLookup = await client.http
@@ -1150,7 +1244,10 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
           .then((value) => ({ succeeded: true as const, value }))
           .catch(() => ({ succeeded: false as const, value: undefined }));
         const status = statusType(statusLookup.value);
-        if (status === 'idle' || (statusLookup.succeeded && status === undefined && emittedText.trim())) {
+        if (
+          status === 'idle' ||
+          (statusLookup.succeeded && status === undefined && emittedText.trim())
+        ) {
           const messages = await client.http.messages(dispatch.sessionId).catch(() => []);
           const canonical = assistantTextFromMessages(messages);
           const messageIdentity = observedAssistantIdentity(messages);
@@ -1158,9 +1255,13 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
             observedModelId = observeAuthoritativeIdentity(messageIdentity) ?? observedModelId;
           }
           if (canonical && canonical !== emittedText) {
-            const delta = canonical.startsWith(emittedText) ? canonical.slice(emittedText.length) : canonical;
+            const delta = canonicalOpenCodeTextSuffix(emittedText, canonical);
             if (delta) {
-              request.onResponseObservation?.({ kind: 'bytes', byteLength: new TextEncoder().encode(delta).byteLength, observedAt: Date.now() });
+              request.onResponseObservation?.({
+                kind: 'bytes',
+                byteLength: new TextEncoder().encode(delta).byteLength,
+                observedAt: Date.now(),
+              });
               yield { type: 'text', delta };
               emittedText = canonical;
             }
@@ -1221,7 +1322,11 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         const emission = accumulator.ingest(update);
         if (emission.kind === 'delta' && emission.channel === 'text' && emission.text) {
           emittedText = accumulator.fullText('text');
-          request.onResponseObservation?.({ kind: 'bytes', byteLength: new TextEncoder().encode(emission.text).byteLength, observedAt: Date.now() });
+          request.onResponseObservation?.({
+            kind: 'bytes',
+            byteLength: new TextEncoder().encode(emission.text).byteLength,
+            observedAt: Date.now(),
+          });
           yield { type: 'text', delta: emission.text };
         } else if (emission.kind === 'replace' && emission.channel === 'text') {
           // The legacy ProviderEvent surface is append-only. Emit only a safe suffix when possible;
@@ -1278,7 +1383,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       canonicalText: canonical,
     });
     if (canonical && canonical !== emittedText) {
-      const delta = canonical.startsWith(emittedText) ? canonical.slice(emittedText.length) : canonical;
+      const delta = canonicalOpenCodeTextSuffix(emittedText, canonical);
       if (delta) yield { type: 'text', delta };
     }
     yield { type: 'done', finishReason };
@@ -1301,7 +1406,8 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
 }
 
 async function detectPersistent(): Promise<DetectionResult> {
-  if (!isTauri) return { status: 'unavailable', detail: 'OpenCode is available in the VibeSpace desktop app.' };
+  if (!isTauri)
+    return { status: 'unavailable', detail: 'OpenCode is available in the VibeSpace desktop app.' };
   try {
     await harnessRuntimeManager.refresh();
     const connection = harnessRuntimeManager.getConnection();
@@ -1313,7 +1419,10 @@ async function detectPersistent(): Promise<DetectionResult> {
     }
     return { status: 'available', version: connection.version };
   } catch (error) {
-    return { status: 'unavailable', detail: error instanceof Error ? error.message : String(error) };
+    return {
+      status: 'unavailable',
+      detail: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 

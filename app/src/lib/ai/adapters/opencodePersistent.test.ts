@@ -3,6 +3,7 @@ import {
   assertAuthoritativeOpenCodeCompletion,
   assertAuthoritativeOpenCodeIdentity,
   assertAuthoritativeOpenCodeRuntimeControls,
+  canonicalOpenCodeTextSuffix,
   createGenerationSafeAsyncCache,
   createPersistentOpenCodeRuntimeSupervisor,
   filterOpenCodeModelsToConnectedProviders,
@@ -13,6 +14,7 @@ import {
   requireAuthoritativeOpenCodeModel,
   shouldReportPersistentTurnFailure,
   shouldReconcileOpenCodeSessionCompletion,
+  toolsForPolicy,
   toOpenCodeDiscoveredModels,
 } from './opencodePersistent';
 import type { HarnessRuntimeManager } from '@/lib/harness/runtimeManager';
@@ -45,6 +47,35 @@ const liveModels = parseOpenCodeLiveModels({
 });
 
 describe('persistent OpenCode live authority', () => {
+  it('emits only provider-safe tool names while keeping Context enabled', () => {
+    const tools = toolsForPolicy({
+      mode: 'agent',
+      access: 'full',
+      rlmEnabled: true,
+      requested: { vibespace_context: true },
+    });
+
+    expect(tools.vibespace_context).toBe(true);
+    expect(Object.keys(tools)).toEqual(expect.arrayContaining(['vibespace_context']));
+    expect(Object.keys(tools).every((name) => /^[a-zA-Z0-9_-]+$/u.test(name))).toBe(true);
+    expect(tools).not.toHaveProperty('vibespace_context.query');
+  });
+
+  it.each([
+    { streamed: 'complete', canonical: 'complete', expected: '' },
+    { streamed: 'first', canonical: 'first second', expected: ' second' },
+    {
+      streamed: 'first',
+      canonical: 'corrected first [unverified output location omitted]',
+      expected: '',
+    },
+  ])(
+    'reconciles canonical completion without appending a divergent full answer',
+    ({ streamed, canonical, expected }) => {
+      expect(canonicalOpenCodeTextSuffix(streamed, canonical)).toBe(expected);
+    },
+  );
+
   it('keeps closed diagnostics free of request and prompt material', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const events = openCodePersistentAdapter.send!({
