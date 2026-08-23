@@ -831,6 +831,11 @@ export async function runExplicitRootEvidenceSynthesis(
               'Cover each category in a compact labeled section: top-level folders and contents; configuration files and settings; repositories and Git worktrees; disk capacity and usage; running apps and OS processes; risks and operational concerns.',
               'For every category, explicitly say what was observed or verified. If the available read-only filesystem evidence cannot establish it, explicitly say unavailable or not verified; never infer live disk or process state.',
               'Distinguish observed facts from inference and avoid claims that documentation alone proves current runtime state.',
+              ...(contract
+                ? [
+                    `The complete answer must contain ${contract.targetMinWords}-${contract.targetMaxWords} whitespace-delimited words; budget all six sections before drafting.`,
+                  ]
+                : []),
             ].join(' '),
           },
         ]
@@ -889,6 +894,7 @@ export async function runExplicitRootEvidenceSynthesis(
           'Rewrite your immediately previous answer using only the evidence already present in this exact session.',
           ...(contract
             ? [
+                `Your immediately previous answer measured ${assessment?.wordCount ?? 0} words; expand it materially rather than merely rephrasing it.`,
                 `Submit ${contract.targetMinWords}-${contract.targetMaxWords} whitespace-delimited words and never exceed ${contract.maxWords}.`,
               ]
             : []),

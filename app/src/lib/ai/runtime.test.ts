@@ -2855,6 +2855,9 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       }),
     );
     await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(4));
+    expect(mocks.runAgent.mock.calls[2]![0].messages.at(-1)?.content).toContain(
+      '675-690 whitespace-delimited words',
+    );
     const verifiedProviderInput = mocks.runAgent.mock.calls[3]![0];
     expect(verifiedProviderInput.agent.model).toEqual({
       provider: 'opencode',
@@ -2867,6 +2870,9 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     });
     expect(verifiedProviderInput.explicitReadRoot).toBe(true);
     expect(verifiedProviderInput.explicitReadSynthesis).toBe(true);
+    expect(verifiedProviderInput.messages.at(-1)?.content).toContain(
+      'Your immediately previous answer measured 700 words',
+    );
     await vi.waitFor(() =>
       expect(updateMessage).toHaveBeenCalledWith(
         'msg_explicit_read_root_assistant',
