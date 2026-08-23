@@ -4454,6 +4454,7 @@ export function startRuntimeListener(
           let canonicalModelId: string;
           let canonicalResponseParts: readonly Part[] = [];
           let canonicalVoiceCancelled = false;
+          let canonicalResponseContractFailed = false;
           if (stackSteps.length > 0) {
             dispatchKernelSmokeRuntimeStage('hive_turn');
             if (detail.speakReply === true) throw new Error('kernel_hive_voice_surface_forbidden');
@@ -4691,6 +4692,9 @@ export function startRuntimeListener(
             canonicalProviderId = response.provider.providerId;
             canonicalModelId = response.provider.modelId;
             canonicalResponseParts = response.parts;
+            canonicalResponseContractFailed = response.enforcement.violations.includes(
+              'explicit_response_contract_failed_closed',
+            );
           }
           controller.signal.throwIfAborted();
           if (canonicalVoiceCancelled) {
@@ -4704,6 +4708,23 @@ export function startRuntimeListener(
             });
             dispatchRunState(chatId, 'cancelled');
             updateStructuredAgentStatus(detail.structuredContext, 'cancelled', 'Cancelled');
+            return;
+          }
+          if (canonicalResponseContractFailed) {
+            useAgentStore.getState().setRunState(agent.id, 'error');
+            useAgentStore.getState().setVerb(agent.id, undefined);
+            useChatActivityStore.getState().update(chatId, agentActivityId, {
+              status: 'error',
+              title: `@${agent.slug} could not satisfy the response format`,
+              subtitle: `${canonicalProviderId}/${canonicalModelId}`,
+              ts: Date.now(),
+            });
+            dispatchRunState(chatId, 'error', 'kernel_response_contract_failed_closed');
+            updateStructuredAgentStatus(
+              detail.structuredContext,
+              'failed',
+              'Response contract failed',
+            );
             return;
           }
           try {

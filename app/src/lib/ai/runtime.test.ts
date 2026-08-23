@@ -3948,6 +3948,11 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     trackListener(
       startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
     );
+    const runStates: Array<{ status?: string; errorCode?: string }> = [];
+    const onRunState = (event: Event) => {
+      runStates.push((event as CustomEvent<{ status?: string; errorCode?: string }>).detail);
+    };
+    window.addEventListener('jarvis:run-state', onRunState);
 
     try {
       window.dispatchEvent(
@@ -3996,7 +4001,16 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
           }),
         }),
       );
+      await vi.waitFor(() =>
+        expect(useAgentStore.getState().runStates[protectedJarvis.id]).toBe('error'),
+      );
+      expect(runStates.at(-1)).toEqual({
+        chatId: harness.chatId,
+        status: 'error',
+        errorCode: 'kernel_response_contract_failed_closed',
+      });
     } finally {
+      window.removeEventListener('jarvis:run-state', onRunState);
       disposeHost();
       database.close();
       await database.delete();
