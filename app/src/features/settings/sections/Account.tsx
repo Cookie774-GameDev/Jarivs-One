@@ -9,9 +9,17 @@ import {
   UserPlus,
   Loader2,
   ImageIcon,
+  CloudDownload,
+  ShieldCheck,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
+import { getPlan } from '@/lib/entitlements';
 import { getSupabaseClient } from '@/lib/supabase';
+import {
+  previewCloudRecovery,
+  restoreCloudRecovery,
+  type CloudRecoveryPreview,
+} from '@/lib/cloudRecovery';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -104,6 +112,7 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
   const setDisplayName = useAuthStore((s) => s.setDisplayName);
   const localUserId = useAuthStore((s) => s.localUserId);
   const cloudSession = useAuthStore((s) => s.cloudSession);
+  const plan = useAuthStore((s) => s.plan);
 
   const [draftName, setDraftName] = useState(displayName);
   const [saveState, setSaveState] = useState<ProfileSaveState>('idle');
@@ -113,6 +122,12 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
   const [copied, setCopied] = useState(false);
   const [cloudHydrating, setCloudHydrating] = useState(false);
   const [signOutPending, setSignOutPending] = useState(false);
+  const [recoveryPreview, setRecoveryPreview] = useState<CloudRecoveryPreview | null>(null);
+  const [recoveryState, setRecoveryState] = useState<
+    'idle' | 'scanning' | 'ready' | 'restoring' | 'restored' | 'error'
+  >('idle');
+  const [recoveryConfirmed, setRecoveryConfirmed] = useState(false);
+  const [recoveryMessage, setRecoveryMessage] = useState('');
   const signOutOperation = useRef<symbol | null>(null);
   const mounted = useRef(true);
 
@@ -137,6 +152,10 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
   useEffect(() => {
     setSaveState('idle');
     setSaveError(null);
+    setRecoveryPreview(null);
+    setRecoveryState('idle');
+    setRecoveryConfirmed(false);
+    setRecoveryMessage('');
   }, [cloudUserId]);
 
   // Hydrate display name from Supabase when signed in.
@@ -276,6 +295,51 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
         return cloudHydrating ? 'Loading cloud profile…' : 'Up to date';
     }
   })();
+
+  const cloudRecoveryAvailable = Boolean(cloudUserId && getPlan(plan).cloudSync);
+
+  async function scanCloudRecovery() {
+    if (!cloudUserId || recoveryState === 'scanning' || recoveryState === 'restoring') return;
+    setRecoveryState('scanning');
+    setRecoveryPreview(null);
+    setRecoveryConfirmed(false);
+    setRecoveryMessage('');
+    try {
+      const preview = await previewCloudRecovery(cloudUserId);
+      if (useAuthStore.getState().cloudSession?.user_id.trim() !== cloudUserId) return;
+      setRecoveryPreview(preview);
+      setRecoveryState('ready');
+      setRecoveryMessage(
+        preview.recoverable + preview.cloudNewer > 0
+          ? `${preview.recoverable + preview.cloudNewer} cloud record${preview.recoverable + preview.cloudNewer === 1 ? '' : 's'} can be safely recovered.`
+          : 'Your recoverable cloud data is already present on this device.',
+      );
+    } catch (error) {
+      setRecoveryState('error');
+      setRecoveryMessage(
+        error instanceof Error ? error.message : 'Could not scan cloud recovery data.',
+      );
+    }
+  }
+
+  async function applyCloudRecovery() {
+    if (!recoveryPreview || !recoveryConfirmed || recoveryState !== 'ready') return;
+    setRecoveryState('restoring');
+    setRecoveryMessage('Recovering your cloud data…');
+    try {
+      const result = await restoreCloudRecovery(recoveryPreview);
+      setRecoveryState('restored');
+      setRecoveryMessage(
+        `${result.restored} record${result.restored === 1 ? '' : 's'} recovered. ${result.preservedLocal} newer or matching local record${result.preservedLocal === 1 ? '' : 's'} preserved.`,
+      );
+      toast.success('Cloud recovery complete', 'Your newer local data was preserved.');
+    } catch (error) {
+      setRecoveryState('error');
+      const message = error instanceof Error ? error.message : 'Cloud recovery could not finish.';
+      setRecoveryMessage(message);
+      toast.error('Cloud recovery failed', message);
+    }
+  }
 
   const profileBody = (
     <>
@@ -431,6 +495,123 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
             </>
           )}
         </div>
+      </section>
+
+      <Separator />
+
+      <section className="flex flex-col gap-3" data-testid="account-cloud-recovery">
+        <div className="flex items-start justify-between max-w-xl gap-3">
+          <div>
+            <Label className="inline-flex items-center gap-2">
+              <CloudDownload className="h-4 w-4 text-accent-copper" />
+              Cloud recovery
+            </Label>
+            <p className="mt-1 text-metadata text-muted-foreground">
+              Preview and safely merge core data already synced to this account after a reset or on
+              a new device.
+            </p>
+          </div>
+          <Badge variant={cloudRecoveryAvailable ? 'success' : 'outline'}>
+            {cloudRecoveryAvailable ? 'Available' : cloudUserId ? 'Plan required' : 'Sign in'}
+          </Badge>
+        </div>
+
+        <div className="max-w-xl rounded-lg border border-border/70 bg-muted/30 p-3">
+          <p className="inline-flex items-start gap-2 text-metadata text-muted-foreground">
+            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+            Recovery never deletes local records and preserves newer local copies. API keys,
+            credentials, settings blobs, terminal transcripts, project files, provider state, and
+            local-only Context data are excluded.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={
+              !cloudRecoveryAvailable ||
+              recoveryState === 'scanning' ||
+              recoveryState === 'restoring'
+            }
+            onClick={() => void scanCloudRecovery()}
+            aria-busy={recoveryState === 'scanning'}
+            data-testid="cloud-recovery-scan"
+          >
+            {recoveryState === 'scanning' ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <CloudDownload className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            {recoveryState === 'scanning' ? 'Scanning…' : 'Preview cloud recovery'}
+          </Button>
+          <span
+            className="text-metadata text-muted-foreground"
+            role="status"
+            aria-live="polite"
+            data-testid="cloud-recovery-status"
+          >
+            {recoveryMessage ||
+              (cloudRecoveryAvailable
+                ? 'Nothing changes until you preview and confirm.'
+                : cloudUserId
+                  ? 'Cloud recovery is included with a cloud-sync plan.'
+                  : 'Sign in to check for recoverable cloud data.')}
+          </span>
+        </div>
+
+        {recoveryPreview && recoveryState !== 'restored' ? (
+          <div
+            className="max-w-xl rounded-lg border border-border bg-panel/50 p-3"
+            data-testid="cloud-recovery-preview"
+          >
+            <div className="grid grid-cols-2 gap-2 text-metadata sm:grid-cols-4">
+              <span>
+                <strong className="block text-foreground">{recoveryPreview.recoverable}</strong>
+                Missing locally
+              </span>
+              <span>
+                <strong className="block text-foreground">{recoveryPreview.cloudNewer}</strong>Newer
+                in cloud
+              </span>
+              <span>
+                <strong className="block text-foreground">{recoveryPreview.preservedLocal}</strong>
+                Local preserved
+              </span>
+              <span>
+                <strong className="block text-foreground">{recoveryPreview.skippedDeleted}</strong>
+                Deletes skipped
+              </span>
+            </div>
+            {recoveryPreview.recoverable + recoveryPreview.cloudNewer > 0 ? (
+              <>
+                <label className="mt-3 flex items-start gap-2 text-metadata text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={recoveryConfirmed}
+                    onChange={(event) => setRecoveryConfirmed(event.target.checked)}
+                    data-testid="cloud-recovery-confirm"
+                  />
+                  Merge these records into this device. Existing newer or matching local data will
+                  not be replaced.
+                </label>
+                <Button
+                  type="button"
+                  variant="accent"
+                  size="sm"
+                  className="mt-3"
+                  disabled={!recoveryConfirmed || recoveryState !== 'ready'}
+                  onClick={() => void applyCloudRecovery()}
+                  data-testid="cloud-recovery-apply"
+                >
+                  Recover to this device
+                </Button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
       </section>
     </>
   );

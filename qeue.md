@@ -30,7 +30,8 @@ Updated: 2026-08-22 by `/root`. A checked item means fresh evidence exists; impl
 - [ ] Inventory every user-owned local data store and classify update-safe, reset-vulnerable, backup-covered, and cloud-synced data without exposing user content.
 - [ ] Make normal app updates preserve all local user information and settings; add migration/restore regression coverage before changing storage formats.
 - [ ] Design and implement explicit-consent, account-scoped encrypted cloud backup/sync for eligible local information. Never upload secrets, credentials, terminal transcripts, or private files implicitly; Supabase production mutation/deployment requires separate exact authorization.
-- [ ] Add user-visible backup/export, restore preview, conflict handling, and last-success/error truth so a hard reset can recover opted-in information without silently overwriting newer local data.
+- [x] Add Account → Cloud Recovery preview and explicit-confirmation safe merge for core records already protected by account RLS. It preserves newer/equal/ambiguous local rows, skips cloud deletion tombstones, rejects cross-account/malformed/unsupported rows, and excludes settings blobs, secrets, credentials, terminals, files, provider state, and local-only Context data. Focused Account/cloud/migration matrix: 4 files / 32 tests.
+- [ ] Add a portable local backup/export with restore preview and last-success/error history for data that is intentionally outside existing cloud sync.
 
 ## Completed with evidence
 
