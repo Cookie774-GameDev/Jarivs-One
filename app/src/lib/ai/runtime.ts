@@ -559,7 +559,7 @@ const EXPLICIT_ROOT_EVIDENCE_PHASE_PROMPT = [
 
 function phaseBoundRequest(
   request: Readonly<RunAgentRequest>,
-  phase: 'evidence' | 'synthesis' | 'correction',
+  phase: 'evidence' | 'evidence_repair' | 'synthesis' | 'correction',
   attemptNumber: number,
 ): Pick<RunAgentRequest, 'requestId' | 'protectedAttempt'> {
   const requestId = request.requestId
@@ -597,7 +597,7 @@ function addResponseUsage(...responses: readonly LLMResponse[]): LLMResponse['us
 }
 
 function recordExplicitRootPhase(
-  phase: 'evidence' | 'synthesis' | 'correction',
+  phase: 'evidence' | 'evidence_repair' | 'synthesis' | 'correction',
   requestId: string | undefined,
   response: Readonly<LLMResponse>,
 ): void {
@@ -618,6 +618,46 @@ function recordExplicitRootPhase(
       representativeReadCount: response.tool_evidence?.representativeReadCount ?? 0,
     },
   });
+}
+
+function hasCompleteExplicitRootEvidence(response: Readonly<LLMResponse>): boolean {
+  const receipt = response.tool_evidence;
+  return Boolean(
+    receipt?.completedReadOnlyFilesystem === true &&
+      receipt.anyToolObserved === true &&
+      receipt.rootInventoryObserved === true &&
+      receipt.boundedSearchObserved === true &&
+      Number.isSafeInteger(receipt.representativeReadCount) &&
+      receipt.representativeReadCount >= 2,
+  );
+}
+
+function mergeExplicitRootEvidence(
+  first: Readonly<LLMResponse>,
+  second: Readonly<LLMResponse>,
+): LLMResponse {
+  return {
+    ...second,
+    usage: addResponseUsage(first, second),
+    tool_evidence: Object.freeze({
+      completedReadOnlyFilesystem:
+        first.tool_evidence?.completedReadOnlyFilesystem === true ||
+        second.tool_evidence?.completedReadOnlyFilesystem === true,
+      anyToolObserved:
+        first.tool_evidence?.anyToolObserved === true ||
+        second.tool_evidence?.anyToolObserved === true,
+      rootInventoryObserved:
+        first.tool_evidence?.rootInventoryObserved === true ||
+        second.tool_evidence?.rootInventoryObserved === true,
+      boundedSearchObserved:
+        first.tool_evidence?.boundedSearchObserved === true ||
+        second.tool_evidence?.boundedSearchObserved === true,
+      representativeReadCount: Math.max(
+        first.tool_evidence?.representativeReadCount ?? 0,
+        second.tool_evidence?.representativeReadCount ?? 0,
+      ),
+    }),
+  };
 }
 
 export async function runExplicitRootEvidenceSynthesis(
@@ -673,30 +713,65 @@ export async function runExplicitRootEvidenceSynthesis(
     evidence,
   );
   request.signal?.throwIfAborted();
-  if (
-    !authoritativeSessionId ||
-    evidence.tool_evidence?.completedReadOnlyFilesystem !== true ||
-    evidence.tool_evidence.anyToolObserved !== true ||
-    evidence.tool_evidence.rootInventoryObserved !== true ||
-    evidence.tool_evidence.boundedSearchObserved !== true ||
-    !Number.isSafeInteger(evidence.tool_evidence.representativeReadCount) ||
-    evidence.tool_evidence.representativeReadCount < 2
-  ) {
+  let groundedEvidence = evidence;
+  let nextAttempt = originalAttempt + 1;
+  if (authoritativeSessionId && !hasCompleteExplicitRootEvidence(groundedEvidence)) {
+    const repair = await dispatch({
+      ...request,
+      ...phaseBoundRequest(request, 'evidence_repair', nextAttempt),
+      chatId: phaseChatId,
+      expectedSessionId: authoritativeSessionId,
+      messages: [
+        ...request.messages,
+        {
+          role: 'user',
+          content: [
+            'Internal VibeSpace evidence repair phase for the same pending request.',
+            'Do not draft the final answer or repeat evidence already collected.',
+            groundedEvidence.tool_evidence?.rootInventoryObserved === true
+              ? ''
+              : 'Complete one approved bounded list or glob inventory under the authoritative root.',
+            groundedEvidence.tool_evidence?.boundedSearchObserved === true
+              ? ''
+              : 'Complete one approved bounded glob or grep search under the authoritative root.',
+            (groundedEvidence.tool_evidence?.representativeReadCount ?? 0) >= 2
+              ? ''
+              : 'Complete at least two distinct approved read calls for representative high-signal entries.',
+            'Finish only after every requested missing filesystem observation is complete in this exact session.',
+          ]
+            .filter(Boolean)
+            .join(' '),
+        },
+      ],
+      onChunk: undefined,
+      onHarnessSessionBound: bindPhase(false),
+    });
+    recordExplicitRootPhase(
+      'evidence_repair',
+      phaseBoundRequest(request, 'evidence_repair', nextAttempt).requestId,
+      repair,
+    );
+    request.signal?.throwIfAborted();
+    groundedEvidence = mergeExplicitRootEvidence(evidence, repair);
+    nextAttempt += 1;
+  }
+  if (!authoritativeSessionId || !hasCompleteExplicitRootEvidence(groundedEvidence)) {
     return {
-      ...evidence,
+      ...groundedEvidence,
       tool_evidence: Object.freeze({
         completedReadOnlyFilesystem: false,
-        anyToolObserved: evidence.tool_evidence?.anyToolObserved === true,
-        rootInventoryObserved: evidence.tool_evidence?.rootInventoryObserved === true,
-        boundedSearchObserved: evidence.tool_evidence?.boundedSearchObserved === true,
-        representativeReadCount: evidence.tool_evidence?.representativeReadCount ?? 0,
+        anyToolObserved: groundedEvidence.tool_evidence?.anyToolObserved === true,
+        rootInventoryObserved: groundedEvidence.tool_evidence?.rootInventoryObserved === true,
+        boundedSearchObserved: groundedEvidence.tool_evidence?.boundedSearchObserved === true,
+        representativeReadCount: groundedEvidence.tool_evidence?.representativeReadCount ?? 0,
       }),
     };
   }
+  const groundedReceipt = groundedEvidence.tool_evidence!;
 
   const synthesis = await dispatch({
     ...request,
-    ...phaseBoundRequest(request, 'synthesis', originalAttempt + 1),
+    ...phaseBoundRequest(request, 'synthesis', nextAttempt),
     chatId: phaseChatId,
     explicitReadSynthesis: true,
     expectedSessionId: authoritativeSessionId,
@@ -705,32 +780,32 @@ export async function runExplicitRootEvidenceSynthesis(
   });
   recordExplicitRootPhase(
     'synthesis',
-    phaseBoundRequest(request, 'synthesis', originalAttempt + 1).requestId,
+    phaseBoundRequest(request, 'synthesis', nextAttempt).requestId,
     synthesis,
   );
   request.signal?.throwIfAborted();
   if (synthesis.tool_evidence?.anyToolObserved !== false) {
     return {
       ...synthesis,
-      usage: addResponseUsage(evidence, synthesis),
+      usage: addResponseUsage(groundedEvidence, synthesis),
       tool_evidence: Object.freeze({
         completedReadOnlyFilesystem: false,
         anyToolObserved: synthesis.tool_evidence?.anyToolObserved === true,
-        rootInventoryObserved: evidence.tool_evidence.rootInventoryObserved,
-        boundedSearchObserved: evidence.tool_evidence.boundedSearchObserved,
-        representativeReadCount: evidence.tool_evidence.representativeReadCount,
+        rootInventoryObserved: groundedReceipt.rootInventoryObserved,
+        boundedSearchObserved: groundedReceipt.boundedSearchObserved,
+        representativeReadCount: groundedReceipt.representativeReadCount,
       }),
     };
   }
   const groundedSynthesis: LLMResponse = {
     ...synthesis,
-    usage: addResponseUsage(evidence, synthesis),
+    usage: addResponseUsage(groundedEvidence, synthesis),
     tool_evidence: Object.freeze({
       completedReadOnlyFilesystem: true,
-      anyToolObserved: evidence.tool_evidence.anyToolObserved,
-      rootInventoryObserved: evidence.tool_evidence.rootInventoryObserved,
-      boundedSearchObserved: evidence.tool_evidence.boundedSearchObserved,
-      representativeReadCount: evidence.tool_evidence.representativeReadCount,
+      anyToolObserved: groundedReceipt.anyToolObserved,
+      rootInventoryObserved: groundedReceipt.rootInventoryObserved,
+      boundedSearchObserved: groundedReceipt.boundedSearchObserved,
+      representativeReadCount: groundedReceipt.representativeReadCount,
     }),
   };
   const assessment = contract ? assessExplicitResponseContract(synthesis.text, contract) : null;
@@ -738,7 +813,7 @@ export async function runExplicitRootEvidenceSynthesis(
 
   const correction = await dispatch({
     ...request,
-    ...phaseBoundRequest(request, 'correction', originalAttempt + 2),
+    ...phaseBoundRequest(request, 'correction', nextAttempt + 1),
     chatId: phaseChatId,
     messages: [
       ...request.messages,
@@ -759,32 +834,32 @@ export async function runExplicitRootEvidenceSynthesis(
   });
   recordExplicitRootPhase(
     'correction',
-    phaseBoundRequest(request, 'correction', originalAttempt + 2).requestId,
+    phaseBoundRequest(request, 'correction', nextAttempt + 1).requestId,
     correction,
   );
   request.signal?.throwIfAborted();
   if (correction.tool_evidence?.anyToolObserved !== false) {
     return {
       ...correction,
-      usage: addResponseUsage(evidence, synthesis, correction),
+      usage: addResponseUsage(groundedEvidence, synthesis, correction),
       tool_evidence: Object.freeze({
         completedReadOnlyFilesystem: false,
         anyToolObserved: correction.tool_evidence?.anyToolObserved === true,
-        rootInventoryObserved: evidence.tool_evidence.rootInventoryObserved,
-        boundedSearchObserved: evidence.tool_evidence.boundedSearchObserved,
-        representativeReadCount: evidence.tool_evidence.representativeReadCount,
+        rootInventoryObserved: groundedReceipt.rootInventoryObserved,
+        boundedSearchObserved: groundedReceipt.boundedSearchObserved,
+        representativeReadCount: groundedReceipt.representativeReadCount,
       }),
     };
   }
   return {
     ...correction,
-    usage: addResponseUsage(evidence, synthesis, correction),
+    usage: addResponseUsage(groundedEvidence, synthesis, correction),
     tool_evidence: Object.freeze({
       completedReadOnlyFilesystem: true,
-      anyToolObserved: evidence.tool_evidence.anyToolObserved,
-      rootInventoryObserved: evidence.tool_evidence.rootInventoryObserved,
-      boundedSearchObserved: evidence.tool_evidence.boundedSearchObserved,
-      representativeReadCount: evidence.tool_evidence.representativeReadCount,
+      anyToolObserved: groundedReceipt.anyToolObserved,
+      rootInventoryObserved: groundedReceipt.rootInventoryObserved,
+      boundedSearchObserved: groundedReceipt.boundedSearchObserved,
+      representativeReadCount: groundedReceipt.representativeReadCount,
     }),
   };
 }

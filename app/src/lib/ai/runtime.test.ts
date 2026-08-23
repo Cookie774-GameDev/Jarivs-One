@@ -647,12 +647,13 @@ describe('startRuntimeListener agent routing', () => {
     const base = {
       agent: agent('agent_exact_missing', 'jarvis', 'System.'),
       chatId: 'chat_exact_missing',
+      requestId: 'request_exact_missing',
       connectionId: 'opencode-cli',
       messages: [{ role: 'user' as const, content: 'C:\\Users\\viper audit this.' }],
       explicitReadRoot: true,
     };
     const missing = await runExplicitRootEvidenceSynthesis(base, null, noEvidenceDispatch as never);
-    expect(noEvidenceDispatch).toHaveBeenCalledOnce();
+    expect(noEvidenceDispatch).toHaveBeenCalledTimes(2);
     expect(missing.tool_evidence).toEqual({
       completedReadOnlyFilesystem: false,
       anyToolObserved: false,
@@ -691,9 +692,74 @@ describe('startRuntimeListener agent routing', () => {
         null,
         incompleteDispatch as never,
       );
-      expect(incompleteDispatch).toHaveBeenCalledOnce();
+      expect(incompleteDispatch).toHaveBeenCalledTimes(2);
       expect(incomplete.tool_evidence?.completedReadOnlyFilesystem).toBe(false);
     }
+
+    const repairDispatch = vi
+      .fn()
+      .mockImplementationOnce(async (input) => {
+        await input.onHarnessSessionBound?.({ sessionId: 'session_repair' });
+        return {
+          text: 'Reads collected.',
+          usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+          provider: 'opencode',
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          tool_evidence: {
+            completedReadOnlyFilesystem: true,
+            anyToolObserved: true,
+            rootInventoryObserved: false,
+            boundedSearchObserved: false,
+            representativeReadCount: 4,
+          },
+        };
+      })
+      .mockImplementationOnce(async (input) => {
+        await input.onHarnessSessionBound?.({ sessionId: 'session_repair' });
+        return {
+          text: 'Inventory collected.',
+          usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+          provider: 'opencode',
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          tool_evidence: {
+            completedReadOnlyFilesystem: true,
+            anyToolObserved: true,
+            rootInventoryObserved: true,
+            boundedSearchObserved: true,
+            representativeReadCount: 0,
+          },
+        };
+      })
+      .mockImplementationOnce(async (input) => {
+        await input.onHarnessSessionBound?.({ sessionId: 'session_repair' });
+        return {
+          text: 'Grounded synthesis.',
+          usage: { input_tokens: 1, output_tokens: 2, cost_usd: 0 },
+          provider: 'opencode',
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          tool_evidence: {
+            completedReadOnlyFilesystem: false,
+            anyToolObserved: false,
+            rootInventoryObserved: false,
+            boundedSearchObserved: false,
+            representativeReadCount: 0,
+          },
+        };
+      });
+    const repaired = await runExplicitRootEvidenceSynthesis(base, null, repairDispatch as never);
+    expect(repairDispatch).toHaveBeenCalledTimes(3);
+    expect(repairDispatch.mock.calls[1]![0].requestId).toContain('jphase_evidence_repair_');
+    expect(repairDispatch.mock.calls[1]![0].expectedSessionId).toBe('session_repair');
+    expect(repairDispatch.mock.calls[2]![0]).toMatchObject({
+      explicitReadSynthesis: true,
+      expectedSessionId: 'session_repair',
+    });
+    expect(repaired.tool_evidence).toMatchObject({
+      completedReadOnlyFilesystem: true,
+      rootInventoryObserved: true,
+      boundedSearchObserved: true,
+      representativeReadCount: 4,
+    });
 
     const unboundEvidenceDispatch = vi.fn(async () => ({
       text: 'Unbound evidence must not authorize synthesis.',
