@@ -120,6 +120,8 @@ type OpenCodeDispatchDiagnosticCode =
   | 'router_done_event'
   | 'router_completion';
 
+const READ_ONLY_FILESYSTEM_TOOL_NAMES = new Set(['read', 'glob', 'grep', 'list']);
+
 function reportOpenCodeDispatchFailure(diagnosticCode: OpenCodeDispatchDiagnosticCode): void {
   // Never pass the caught value here. Native/provider errors can contain
   // request or credential material; the closed stage is sufficient for the
@@ -258,6 +260,7 @@ export interface RunAgentRequest {
   connectionId?: string;
   connectionRequirements?: ConnectionRequirements;
   workingDirectory?: string;
+  explicitReadRoot?: boolean;
   compiledPrompt?: Readonly<CompiledJarvisPrompt>;
   requestId?: string;
   chatId?: string;
@@ -439,6 +442,7 @@ async function executePersistentOpenCode(
     let first = true;
     let finishReason: string | undefined;
     let usage: Extract<ProviderEvent, { type: 'usage' }>['usage'] | undefined;
+    let completedReadOnlyFilesystem = false;
     diagnosticCode = 'router_request_assembly';
     const providerRequest: ProviderRequest = {
       requestId,
@@ -453,6 +457,7 @@ async function executePersistentOpenCode(
       reasoningEffort: variant,
       systemPrompt: req.compiledPrompt?.systemText ?? req.agent.system_prompt,
       workingDirectory: req.workingDirectory,
+      explicitReadRoot: req.explicitReadRoot === true,
       runtimeSettings,
       interactionMode: req.interactionMode,
       accessLevel: req.accessLevel,
@@ -482,6 +487,12 @@ async function executePersistentOpenCode(
         } else if (event.type === 'usage') {
           diagnosticCode = 'router_usage_event';
           usage = event.usage;
+        } else if (
+          event.type === 'tool' &&
+          event.status === 'completed' &&
+          READ_ONLY_FILESYSTEM_TOOL_NAMES.has(event.name)
+        ) {
+          completedReadOnlyFilesystem = true;
         } else if (event.type === 'error') {
           providerReportedFailure = true;
           throw new Error(event.message);
@@ -506,6 +517,7 @@ async function executePersistentOpenCode(
       provider: (selection.providerId === 'local' ? 'ollama' : selection.providerId) as ProviderId,
       model: selection.modelId,
       ...(finishReason ? { finish_reason: finishReason } : {}),
+      tool_evidence: Object.freeze({ completedReadOnlyFilesystem }),
     };
   } catch (error) {
     if (!isAbortError(error) && !providerReportedFailure) {

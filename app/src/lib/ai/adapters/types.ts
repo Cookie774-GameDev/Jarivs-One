@@ -109,6 +109,8 @@ export interface ProviderRequest {
   reasoningEffort?: string;
   systemPrompt?: string;
   workingDirectory?: string;
+  /** Trusted caller classification: the user supplied the working directory as this turn's read scope. */
+  explicitReadRoot?: boolean;
   sessionId?: string;
   /** Exact per-turn VibeSpace controls; adapters must reject unsupported values. */
   runtimeSettings?: import('@/features/chat/runtime/chatRuntimeCommandController').ChatRuntimeSettings;

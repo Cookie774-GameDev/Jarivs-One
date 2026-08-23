@@ -152,6 +152,45 @@ describe('canonical OpenCode AI routing', () => {
     );
   });
 
+  it('reports only completed built-in filesystem tools as grounding evidence', async () => {
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield { type: 'tool', name: 'websearch', status: 'completed' } as const;
+        yield { type: 'tool', name: 'read', status: 'started' } as const;
+        yield { type: 'tool', name: 'read', status: 'failed' } as const;
+        yield { type: 'done', finishReason: 'stop' } as const;
+      })(),
+    );
+    const ungrounded = await runAgent({
+      agent: openaiAgent,
+      messages: [{ role: 'user', content: 'inspect' }],
+    });
+    expect(ungrounded.tool_evidence).toEqual({ completedReadOnlyFilesystem: false });
+
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield { type: 'tool', name: 'list', status: 'completed' } as const;
+        yield { type: 'done', finishReason: 'stop' } as const;
+      })(),
+    );
+    const grounded = await runAgent({
+      agent: openaiAgent,
+      messages: [{ role: 'user', content: 'inspect' }],
+    });
+    expect(grounded.tool_evidence).toEqual({ completedReadOnlyFilesystem: true });
+
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield { type: 'done', finishReason: 'stop' } as const;
+      })(),
+    );
+    const nextRequest = await runAgent({
+      agent: openaiAgent,
+      messages: [{ role: 'user', content: 'inspect again' }],
+    });
+    expect(nextRequest.tool_evidence).toEqual({ completedReadOnlyFilesystem: false });
+  });
+
   it('applies explicit reasoning effort to canonical runtime controls', async () => {
     await runAgent({
       agent: openaiAgent,

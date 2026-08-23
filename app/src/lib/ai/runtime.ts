@@ -545,6 +545,10 @@ function providerResponseWasTruncated(finishReason: string | undefined): boolean
   );
 }
 
+export function shouldSuppressProviderPreview(userText: string): boolean {
+  return Boolean(parseExplicitResponseContract(userText) || extractExplicitReadRoot(userText));
+}
+
 type TerminalHandoffActivationResult = Readonly<{
   kind: string;
   value?: Readonly<{ kind?: string }>;
@@ -658,6 +662,7 @@ export async function installJarvisKernelRuntimeHost(
       connectionId?: string;
       effort?: ChatRuntimeSettings['effort'];
       performance?: ChatRuntimeSettings['performance'];
+      completedReadOnlyFilesystem: boolean;
     }>
   >();
   const activeTurnScopes = new Map<
@@ -897,7 +902,8 @@ export async function installJarvisKernelRuntimeHost(
                 [...providerInput.messages].reverse().find((message) => message.role === 'user')
                   ?.content ?? '',
               );
-              const explicitResponseContract = parseExplicitResponseContract(lastUserText);
+              const explicitReadRoot = extractExplicitReadRoot(lastUserText);
+              const suppressProviderPreview = shouldSuppressProviderPreview(lastUserText);
               const startedAt = now();
               const modelSnapshotRef = `jmodel_${providerInput.model.providerId}_${providerInput.model.modelId}_${providerInput.model.capturedAt}`;
               const response = runAgent({
@@ -908,6 +914,7 @@ export async function installJarvisKernelRuntimeHost(
                 workspaceId: providerInput.workspaceId,
                 projectId: providerInput.projectId,
                 workingDirectory: providerInput.workingDirectory,
+                explicitReadRoot: Boolean(explicitReadRoot),
                 compiledPrompt: providerInput.compiledPrompt,
                 provider_options: providerInput.providerOptions
                   ? { ...providerInput.providerOptions }
@@ -919,7 +926,7 @@ export async function installJarvisKernelRuntimeHost(
                   providerInput.interactionMode,
                   providerInput.messages,
                   {
-                    explicitReadRoot: Boolean(extractExplicitReadRoot(lastUserText)),
+                    explicitReadRoot: Boolean(explicitReadRoot),
                   },
                 ),
                 requestId: providerInput.requestId,
@@ -941,7 +948,7 @@ export async function installJarvisKernelRuntimeHost(
                     title: 'Jarvis is preparing the final response',
                     subtitle: `${providerInput.agent.model.provider}/${providerInput.agent.model.model}`,
                   });
-                  if (explicitResponseContract) return;
+                  if (suppressProviderPreview) return;
                   setPreview({
                     ...scope,
                     text: decision.visibleText,
@@ -983,6 +990,8 @@ export async function installJarvisKernelRuntimeHost(
                     connectionId: providerInput.model.connectionId,
                     effort: providerInput.runtimeSettings?.effort,
                     performance: providerInput.runtimeSettings?.performance,
+                    completedReadOnlyFilesystem:
+                      result.tool_evidence?.completedReadOnlyFilesystem === true,
                   }),
                 );
                 rememberProviderEvidence(
@@ -1033,10 +1042,52 @@ export async function installJarvisKernelRuntimeHost(
           throw new Error('kernel_response_repair_provider_unavailable');
         },
       });
+      const controls = providerControlEvidence.get(raw);
+      if (
+        extractExplicitReadRoot(request.userText) &&
+        controls?.completedReadOnlyFilesystem !== true
+      ) {
+        const contract = parseExplicitResponseContract(request.userText);
+        const fallback = contract
+          ? explicitResponseContractFallback(contract)
+          : 'I could not verify the requested directory with read-only filesystem evidence. Please retry.';
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'Explicit read scope failed closed',
+          detail: {
+            runId: request.runId,
+            requestId: request.requestId,
+            provider: raw.provider.providerId,
+            model: raw.provider.modelId,
+            connectionId: controls?.connectionId ?? raw.provider.connectionId,
+            effort: controls?.effort,
+            performance: controls?.performance,
+            code: 'filesystem_evidence_missing',
+          },
+        });
+        const { spokenText: _spokenText, ...withoutSpokenText } = envelope;
+        return Object.freeze({
+          ...withoutSpokenText,
+          displayText: fallback,
+          parts: Object.freeze([{ kind: 'text' as const, text: fallback }]),
+          enforcement: Object.freeze({
+            ...envelope.enforcement,
+            violations: Array.from(
+              new Set([
+                ...envelope.enforcement.violations,
+                'explicit_read_scope_unverified',
+                'explicit_response_contract_failed_closed',
+              ]),
+            ),
+            repairSucceeded: false,
+            fallbackUsed: true,
+          }),
+        });
+      }
       if (envelope.enforcement.violations.includes('explicit_response_contract_failed_closed')) {
         const contract = parseExplicitResponseContract(request.userText);
         const assessment = contract ? assessExplicitResponseContract(raw.text, contract) : null;
-        const controls = providerControlEvidence.get(raw);
         devConsole.log({
           channel: 'ai',
           level: 'warn',
@@ -4139,7 +4190,8 @@ export function startRuntimeListener(
     }
     const bufferExactLiteralStreaming =
       (reasoningPolicy?.mode === 'token-saver' && explicitExactLiteralFromRequest(text) !== null) ||
-      explicitResponseContract !== null;
+      explicitResponseContract !== null ||
+      Boolean(explicitReadRoot);
     if (stackStepsEarly.length === 0) {
       runnable = applyChatModelSelectionToAgent(runnable, chatModelSelection);
     }
@@ -4458,6 +4510,7 @@ export function startRuntimeListener(
           let canonicalResponseParts: readonly Part[] = [];
           let canonicalVoiceCancelled = false;
           let canonicalResponseContractFailed = false;
+          let canonicalReadScopeUnverified = false;
           if (stackSteps.length > 0) {
             dispatchKernelSmokeRuntimeStage('hive_turn');
             if (detail.speakReply === true) throw new Error('kernel_hive_voice_surface_forbidden');
@@ -4695,6 +4748,9 @@ export function startRuntimeListener(
             canonicalProviderId = response.provider.providerId;
             canonicalModelId = response.provider.modelId;
             canonicalResponseParts = response.parts;
+            canonicalReadScopeUnverified = response.enforcement.violations.includes(
+              'explicit_read_scope_unverified',
+            );
             canonicalResponseContractFailed = response.enforcement.violations.includes(
               'explicit_response_contract_failed_closed',
             );
@@ -4713,20 +4769,30 @@ export function startRuntimeListener(
             updateStructuredAgentStatus(detail.structuredContext, 'cancelled', 'Cancelled');
             return;
           }
-          if (canonicalResponseContractFailed) {
+          if (canonicalReadScopeUnverified || canonicalResponseContractFailed) {
             useAgentStore.getState().setRunState(agent.id, 'error');
             useAgentStore.getState().setVerb(agent.id, undefined);
             useChatActivityStore.getState().update(chatId, agentActivityId, {
               status: 'error',
-              title: `@${agent.slug} could not satisfy the response format`,
+              title: canonicalReadScopeUnverified
+                ? `@${agent.slug} could not verify the requested directory`
+                : `@${agent.slug} could not satisfy the response format`,
               subtitle: `${canonicalProviderId}/${canonicalModelId}`,
               ts: Date.now(),
             });
-            dispatchRunState(chatId, 'error', 'kernel_response_contract_failed_closed');
+            dispatchRunState(
+              chatId,
+              'error',
+              canonicalReadScopeUnverified
+                ? 'kernel_filesystem_evidence_failed_closed'
+                : 'kernel_response_contract_failed_closed',
+            );
             updateStructuredAgentStatus(
               detail.structuredContext,
               'failed',
-              'Response contract failed',
+              canonicalReadScopeUnverified
+                ? 'Filesystem evidence missing'
+                : 'Response contract failed',
             );
             return;
           }
@@ -5039,6 +5105,7 @@ export function startRuntimeListener(
         workingDirectory:
           explicitReadRoot ??
           (projectId ? getStoredProjectRoot(projectId)?.trim() || undefined : undefined),
+        explicitReadRoot: Boolean(explicitReadRoot),
         signal: controller.signal,
         onChunk: (chunk: LLMStreamChunk) => {
           if (controller.signal.aborted) return;
@@ -5142,10 +5209,32 @@ export function startRuntimeListener(
       const responseContractAssessment = explicitResponseContract
         ? assessExplicitResponseContract(sanitizedFinalText, explicitResponseContract)
         : null;
+      const explicitReadScopeUnverified = Boolean(
+        explicitReadRoot && response.tool_evidence?.completedReadOnlyFilesystem !== true,
+      );
       const finalText =
-        responseContractAssessment && !responseContractAssessment.ok
-          ? explicitResponseContractFallback(explicitResponseContract!)
+        (responseContractAssessment && !responseContractAssessment.ok) ||
+        explicitReadScopeUnverified
+          ? explicitResponseContract
+            ? explicitResponseContractFallback(explicitResponseContract)
+            : 'I could not verify the requested directory with read-only filesystem evidence. Please retry.'
           : sanitizedFinalText;
+      if (explicitReadScopeUnverified) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'Explicit read scope failed closed',
+          detail: {
+            code: 'filesystem_evidence_missing',
+            provider: response.provider,
+            model: response.model,
+            connectionId:
+              chatModelSelection.mode === 'single' ? chatModelSelection.connectionId : undefined,
+            effort: runtimeSettings.effort,
+            performance: runtimeSettings.performance,
+          },
+        });
+      }
       if (responseContractAssessment && !responseContractAssessment.ok) {
         devConsole.log({
           channel: 'ai',
@@ -5201,7 +5290,8 @@ export function startRuntimeListener(
       }
       controller.signal.throwIfAborted();
       const responseTextParts: Part[] =
-        responseContractAssessment && !responseContractAssessment.ok
+        (responseContractAssessment && !responseContractAssessment.ok) ||
+        explicitReadScopeUnverified
           ? [{ kind: 'text', text: finalText }]
           : textToParts(finalText, text, interactionMode);
       let oversizedResponseAttachment: Awaited<
@@ -5264,6 +5354,43 @@ export function startRuntimeListener(
         },
       });
       controller.signal.throwIfAborted();
+
+      const legacyResponseFailedClosed = Boolean(
+        explicitReadScopeUnverified ||
+          (responseContractAssessment && !responseContractAssessment.ok),
+      );
+      if (legacyResponseFailedClosed) {
+        if (streamingVoice) {
+          streamingVoice.haltPlayback();
+          registerActiveStreamingVoiceSession(null);
+          streamingVoice = null;
+        }
+        useAgentStore.getState().setRunState(agent.id, 'error');
+        useAgentStore.getState().setVerb(agent.id, undefined);
+        useChatActivityStore.getState().update(chatId, agentActivityId, {
+          status: 'error',
+          title: explicitReadScopeUnverified
+            ? `@${agent.slug} could not verify the requested directory`
+            : `@${agent.slug} could not satisfy the response format`,
+          subtitle: `${response.provider}/${response.model}`,
+          ts: Date.now(),
+        });
+        dispatchRunState(
+          chatId,
+          'error',
+          explicitReadScopeUnverified
+            ? 'kernel_filesystem_evidence_failed_closed'
+            : 'kernel_response_contract_failed_closed',
+        );
+        updateStructuredAgentStatus(
+          detail.structuredContext,
+          'failed',
+          explicitReadScopeUnverified
+            ? 'Filesystem evidence missing'
+            : 'Response contract failed',
+        );
+        return;
+      }
 
       if (detail.autoApproveActions && isProtectedJarvis) {
         controller.signal.throwIfAborted();

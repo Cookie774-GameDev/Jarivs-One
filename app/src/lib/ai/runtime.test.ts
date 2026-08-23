@@ -204,6 +204,7 @@ import {
   openCodeToolsForInteractionMode,
   prepareOpenCodeMessagesForInteractionMode,
   resolveRuntimeReasoningPolicy,
+  shouldSuppressProviderPreview,
   startRuntimeListener as startKernelAwareRuntimeListener,
 } from './runtime';
 import { TOOL_GATEWAY_CATALOG } from '@/lib/harness/toolGatewayProtocol';
@@ -439,6 +440,14 @@ describe('startRuntimeListener agent routing', () => {
 
     expect(prepared).toEqual([message]);
     expect(prepared[0]).toBe(message);
+  });
+
+  it('buffers explicit-root output even when no explicit word contract is present', () => {
+    mocks.extractExplicitReadRoot.mockReturnValue('C:\\Users\\viper');
+    expect(shouldSuppressProviderPreview('C:\\Users\\viper audit this directory')).toBe(true);
+    mocks.extractExplicitReadRoot.mockReturnValue(undefined);
+    expect(shouldSuppressProviderPreview('Create a 750-word summary.')).toBe(true);
+    expect(shouldSuppressProviderPreview('Hello there.')).toBe(false);
   });
 
   beforeEach(() => {
@@ -2104,7 +2113,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
           {
             id: 'deepseek-v4-flash-vision-exp',
             name: 'DeepSeek V4 FLASH Vision Exp',
-            variants: ['medium'],
+            variants: ['high'],
           },
         ],
       },
@@ -2174,13 +2183,13 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       created_at: 1,
       updated_at: 1,
     };
-    const invalidDraft = Array.from({ length: 751 }, (_, index) => `word${index}`).join(' ');
+    const invalidDraft = Array.from({ length: 700 }, (_, index) => `word${index}`).join(' ');
     mocks.runAgent.mockImplementationOnce(async (providerInput) => {
       providerInput.onChunk?.({ delta: invalidDraft, done: false });
       providerInput.onChunk?.({ delta: '', done: true });
       return {
         text: invalidDraft,
-        usage: { input_tokens: 100, output_tokens: 751, cost_usd: 0 },
+        usage: { input_tokens: 100, output_tokens: 700, cost_usd: 0 },
         provider: 'opencode',
         model: 'opencode-go/deepseek-v4-flash-vision-exp',
       };
@@ -2208,8 +2217,8 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
           chatId,
           text: userText,
           interactionMode: 'ask',
-          reasoningPreference: { mode: 'normal', effortOverride: 'medium' },
-          runtimeSettings: { effort: 'medium' },
+          reasoningPreference: { mode: 'normal', effortOverride: 'high' },
+          runtimeSettings: { effort: 'high' },
         },
       }),
     );
@@ -2223,7 +2232,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     expect(providerInput.connectionId).toBe('opencode-cli');
     expect(providerInput.workingDirectory).toBe('C:\\Users\\viper');
     expect(providerInput.runtimeSettings).toMatchObject({
-      effort: 'medium',
+      effort: 'high',
       performance: 'quality',
       rlmEnabled: false,
     });
@@ -2276,7 +2285,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
           model: 'opencode-go/deepseek-v4-flash-vision-exp',
           connectionId: 'opencode-cli',
           reasoningMode: 'normal',
-          reasoningEffort: 'medium',
+          reasoningEffort: 'high',
           runtimePerformance: 'quality',
         }),
       }),
@@ -2296,19 +2305,65 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       ),
     );
     expect(JSON.stringify(updateMessage.mock.calls)).not.toContain('word0');
-    expect(JSON.stringify(updateMessage.mock.calls)).not.toContain('word750');
+    expect(JSON.stringify(updateMessage.mock.calls)).not.toContain('word699');
     expect(JSON.stringify(updateMessage.mock.calls)).not.toContain(invalidDraft);
     expect(mocks.devLog).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: 'Explicit response contract failed closed',
+        message: 'Explicit read scope failed closed',
         detail: expect.objectContaining({
-          code: 'word_limit_exceeded',
-          wordCount: 751,
-          maxWords: 750,
+          code: 'filesystem_evidence_missing',
           provider: 'opencode',
           model: 'opencode-go/deepseek-v4-flash-vision-exp',
         }),
       }),
+    );
+
+    await stop.whenIdle();
+    updateMessage.mockClear();
+    mocks.devLog.mockClear();
+    const verifiedDraft = Array.from({ length: 700 }, (_, index) => `fact${index}`).join(' ');
+    mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      providerInput.onChunk?.({ delta: verifiedDraft, done: false });
+      providerInput.onChunk?.({ delta: '', done: true });
+      return {
+        text: verifiedDraft,
+        usage: { input_tokens: 100, output_tokens: 700, cost_usd: 0 },
+        provider: 'opencode',
+        model: 'opencode-go/deepseek-v4-flash-vision-exp',
+        tool_evidence: { completedReadOnlyFilesystem: true },
+      };
+    });
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: userText,
+          interactionMode: 'ask',
+          reasoningPreference: { mode: 'normal', effortOverride: 'high' },
+          runtimeSettings: { effort: 'high' },
+        },
+      }),
+    );
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(2));
+    const verifiedProviderInput = mocks.runAgent.mock.calls[1]![0];
+    expect(verifiedProviderInput.agent.model).toEqual({
+      provider: 'opencode',
+      model: 'opencode-go/deepseek-v4-flash-vision-exp',
+    });
+    expect(verifiedProviderInput.connectionId).toBe('opencode-cli');
+    expect(verifiedProviderInput.runtimeSettings).toMatchObject({
+      effort: 'high',
+      performance: 'quality',
+    });
+    expect(verifiedProviderInput.explicitReadRoot).toBe(true);
+    await vi.waitFor(() =>
+      expect(updateMessage).toHaveBeenCalledWith(
+        'msg_explicit_read_root_assistant',
+        expect.objectContaining({ parts: [{ kind: 'text', text: verifiedDraft }] }),
+      ),
+    );
+    expect(mocks.devLog).not.toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Explicit read scope failed closed' }),
     );
 
     stop();

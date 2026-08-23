@@ -994,10 +994,18 @@ export function assertAuthoritativeOpenCodeRuntimeControls(
   if (!resolution.ok) throw new Error(resolution.message);
 }
 
-function contextSystemAddendum(
+export function contextSystemAddendum(
   request: Readonly<ProviderRequest>,
   settings: Readonly<ChatRuntimeSettings>,
 ): string {
+  if (request.explicitReadRoot) {
+    return [
+      'VibeSpace Context route: DIRECT FILESYSTEM EVIDENCE.',
+      'Before drafting or making factual claims, complete at least one read, glob, grep, or list operation inside the approved working directory.',
+      'Do not use Context, RLM, web, shell, or recursive retrieval for this explicit-root turn.',
+      'If no read-only filesystem operation completes, report that evidence is unavailable instead of answering from memory or unrelated context.',
+    ].join(' ');
+  }
   const question = request.prompt.trim();
   const historical = /\b(previous|history|old|earlier|decision|archive|look up|find in)\b/iu.test(
     question,
@@ -1036,25 +1044,26 @@ export function toolsForPolicy(input: {
   mode: InteractionMode;
   access: AccessLevel;
   rlmEnabled: boolean;
+  explicitReadRoot?: boolean;
   requested?: Readonly<Record<string, boolean>>;
 }): Readonly<Record<string, boolean>> {
-  const canWrite = input.access !== 'read-only';
-  const canTerminal = input.access === 'full';
-  const canSubagents = input.mode === 'agent';
+  const canWrite = !input.explicitReadRoot && input.access !== 'read-only';
+  const canTerminal = !input.explicitReadRoot && input.access === 'full';
+  const canSubagents = !input.explicitReadRoot && input.mode === 'agent';
   const baseline: Record<string, boolean> = {
     read: true,
     glob: true,
     grep: true,
     list: true,
-    webfetch: true,
-    websearch: true,
+    webfetch: !input.explicitReadRoot,
+    websearch: !input.explicitReadRoot,
     edit: canWrite,
     write: canWrite,
     patch: canWrite,
     bash: canTerminal,
     shell: canTerminal,
     task: canSubagents,
-    vibespace_context: input.rlmEnabled,
+    vibespace_context: !input.explicitReadRoot && input.rlmEnabled,
   };
   if (!input.requested) return Object.freeze(baseline);
 
@@ -1070,7 +1079,8 @@ export function toolsForPolicy(input: {
       (!terminalLike || canTerminal) &&
       (!subagentLike || canSubagents);
   }
-  bounded.vibespace_context = input.rlmEnabled && input.requested.vibespace_context === true;
+  bounded.vibespace_context =
+    !input.explicitReadRoot && input.rlmEnabled && input.requested.vibespace_context === true;
   return Object.freeze(bounded);
 }
 
@@ -1158,6 +1168,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         mode,
         access,
         rlmEnabled: settings.rlmEnabled,
+        explicitReadRoot: request.explicitReadRoot,
         requested: request.tools,
       }),
     });

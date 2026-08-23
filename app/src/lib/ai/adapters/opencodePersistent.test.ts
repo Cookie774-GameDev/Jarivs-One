@@ -4,6 +4,7 @@ import {
   assertAuthoritativeOpenCodeIdentity,
   assertAuthoritativeOpenCodeRuntimeControls,
   canonicalOpenCodeTextSuffix,
+  contextSystemAddendum,
   createGenerationSafeAsyncCache,
   createPersistentOpenCodeRuntimeSupervisor,
   filterOpenCodeModelsToConnectedProviders,
@@ -59,6 +60,44 @@ describe('persistent OpenCode live authority', () => {
     expect(Object.keys(tools)).toEqual(expect.arrayContaining(['vibespace_context']));
     expect(Object.keys(tools).every((name) => /^[a-zA-Z0-9_-]+$/u.test(name))).toBe(true);
     expect(tools).not.toHaveProperty('vibespace_context.query');
+  });
+
+  it('keeps explicit-root evidence filesystem-only and last in the context contract', () => {
+    const addendum = contextSystemAddendum(
+      {
+        prompt: 'C:\\Users\\viper audit this directory',
+        workingDirectory: 'C:\\Users\\viper',
+        explicitReadRoot: true,
+      } as never,
+      { rlmEnabled: false, performance: 'quality' } as never,
+    );
+    expect(addendum).toContain('read, glob, grep, or list');
+    expect(addendum).toContain('approved working directory');
+    expect(addendum).toContain('Do not use Context, RLM, web, shell, or recursive retrieval');
+    expect(addendum).not.toContain('Use only the current approved prompt/context');
+
+    const tools = toolsForPolicy({
+      mode: 'agent',
+      access: 'full',
+      rlmEnabled: true,
+      explicitReadRoot: true,
+      requested: { vibespace_context: true },
+    });
+    expect(tools).toMatchObject({
+      read: true,
+      glob: true,
+      grep: true,
+      list: true,
+      webfetch: false,
+      websearch: false,
+      edit: false,
+      write: false,
+      patch: false,
+      bash: false,
+      shell: false,
+      task: false,
+      vibespace_context: false,
+    });
   });
 
   it.each([

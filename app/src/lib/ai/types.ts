@@ -181,6 +181,8 @@ export interface LLMResponse {
   model: string;
   /** Provider-reported reason the stream ended ('stop' / 'length' / 'cancelled' / etc.) */
   finish_reason?: string;
+  /** Sanitized same-request receipt; never contains tool arguments, paths, results, or content. */
+  tool_evidence?: Readonly<{ completedReadOnlyFilesystem: boolean }>;
 }
 
 /**
