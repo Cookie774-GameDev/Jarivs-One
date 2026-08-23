@@ -5,6 +5,7 @@ import {
   Check,
   Clock3,
   FolderPlus,
+  GripVertical,
   Music2,
   Pause,
   Play,
@@ -29,6 +30,7 @@ import { useUIStore } from '@/stores/ui';
 import { AmbientAudioEngine } from '../ambientAudio';
 import { shouldAmbientMusicPlay } from '../ambientPlayback';
 import { MUSIC_LIBRARY, MUSIC_LIBRARY_TOTAL_BYTES, type MusicLibraryTrack } from './catalog';
+import { TrackArtwork } from './TrackArtwork';
 import {
   MUSIC_SPEEDS,
   musicClipUrl,
@@ -77,8 +79,14 @@ export function MusicStudio({
   const savedAt = useMusicProjectStore((state) => state.savedAt);
   const [query, setQuery] = React.useState('');
   const [previewingId, setPreviewingId] = React.useState<string | null>(null);
+  const [selectedClipId, setSelectedClipId] = React.useState<string | null>(
+    () => clips[0]?.id ?? null,
+  );
+  const [draggedClipId, setDraggedClipId] = React.useState<string | null>(null);
   const previewTimer = React.useRef<number | null>(null);
   const fileInput = React.useRef<HTMLInputElement>(null);
+  const selectedClip = clips.find((clip) => clip.id === selectedClipId) ?? clips[0] ?? null;
+  const selectedIndex = selectedClip ? clips.findIndex((clip) => clip.id === selectedClip.id) : -1;
 
   const stopPreview = React.useCallback(() => {
     if (previewTimer.current !== null) window.clearTimeout(previewTimer.current);
@@ -94,6 +102,14 @@ export function MusicStudio({
     },
     [],
   );
+
+  React.useEffect(() => {
+    if (clips.length === 0) {
+      setSelectedClipId(null);
+      return;
+    }
+    if (!clips.some((clip) => clip.id === selectedClipId)) setSelectedClipId(clips[0]!.id);
+  }, [clips, selectedClipId]);
 
   const preview = (track: MusicLibraryTrack) => {
     if (previewingId === track.id) {
@@ -112,6 +128,21 @@ export function MusicStudio({
     };
     if (!previewClip(clip)) return;
     setPreviewingId(track.id);
+    previewTimer.current = window.setTimeout(stopPreview, PREVIEW_MS);
+  };
+
+  const selectAndPreviewClip = (clip: MusicClip) => {
+    setSelectedClipId(clip.id);
+    if (previewingId === clip.id) {
+      stopPreview();
+      return;
+    }
+    if (previewTimer.current !== null) window.clearTimeout(previewTimer.current);
+    if (!previewClip(clip)) {
+      setPreviewingId(null);
+      return;
+    }
+    setPreviewingId(clip.id);
     previewTimer.current = window.setTimeout(stopPreview, PREVIEW_MS);
   };
 
@@ -221,6 +252,7 @@ export function MusicStudio({
                   key={track.id}
                   className="mb-1 flex items-center gap-1 rounded-lg border border-transparent p-1 hover:border-border hover:bg-background"
                 >
+                  <TrackArtwork seed={track.id} name={track.name} className="h-10 w-10" />
                   <button
                     type="button"
                     className="min-w-0 flex-1 px-2 py-1.5 text-left"
@@ -315,112 +347,210 @@ export function MusicStudio({
                   </div>
                 </div>
               ) : (
-                <ol className="space-y-2">
-                  {clips.map((clip, index) => (
-                    <li
-                      key={clip.id}
-                      className="grid gap-3 rounded-xl border border-border bg-paper p-3 md:grid-cols-[2rem_minmax(12rem,1fr)_minmax(18rem,1fr)_auto] md:items-center"
+                <div className="space-y-4">
+                  <div className="overflow-hidden rounded-xl border border-border bg-paper-soft shadow-inner">
+                    <div className="flex h-7 min-w-max items-end gap-2 border-b border-border/70 bg-background/40 px-3 pb-1 text-[9px] text-muted-foreground">
+                      {clips.map((clip, index) => (
+                        <span key={clip.id} className="w-36 shrink-0">
+                          {index + 1}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="overflow-x-auto p-3">
+                      <ol
+                        className="flex min-w-max items-stretch gap-2"
+                        aria-label="Mix clips timeline"
+                      >
+                        {clips.map((clip, index) => {
+                          const selected = clip.id === selectedClip?.id;
+                          return (
+                            <li
+                              key={clip.id}
+                              data-testid="music-timeline-clip"
+                              draggable
+                              onDragStart={() => setDraggedClipId(clip.id)}
+                              onDragEnd={() => setDraggedClipId(null)}
+                              onDragOver={(event) => event.preventDefault()}
+                              onDrop={(event) => {
+                                event.preventDefault();
+                                if (draggedClipId)
+                                  useMusicProjectStore.getState().moveClipTo(draggedClipId, index);
+                                setDraggedClipId(null);
+                              }}
+                              className={`relative w-36 shrink-0 rounded-xl border-2 p-1.5 transition-colors ${
+                                selected
+                                  ? 'border-accent-copper bg-accent-copper/10 shadow-[inset_0_0_0_1px_hsl(var(--accent-copper))]'
+                                  : 'border-border bg-paper hover:border-accent-copper/60'
+                              }`}
+                            >
+                              <GripVertical
+                                aria-hidden="true"
+                                className="absolute left-1 top-1 z-10 h-4 w-4 text-white/80 drop-shadow"
+                              />
+                              {selected ? (
+                                <span className="absolute right-2 top-2 z-10 flex items-center gap-0.5 rounded-full bg-accent-copper px-1.5 py-0.5 text-[9px] font-bold text-black shadow">
+                                  <Check className="h-2.5 w-2.5" /> Selected
+                                </span>
+                              ) : null}
+                              <button
+                                type="button"
+                                aria-label={`Edit ${clip.name}`}
+                                aria-pressed={selected}
+                                onClick={() => selectAndPreviewClip(clip)}
+                                className="block w-full rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-accent-copper focus-visible:ring-offset-2"
+                              >
+                                <TrackArtwork
+                                  seed={clip.trackId ?? clip.id}
+                                  name={clip.name}
+                                  className="aspect-square w-full"
+                                />
+                                <span className="mt-1.5 block truncate px-0.5 text-xs font-semibold text-foreground">
+                                  {clip.name}
+                                </span>
+                                <span className="block px-0.5 text-[9px] text-muted-foreground">
+                                  {clip.speed}× · {clip.trimStart}s → {clip.trimEnd ?? 'full'}
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    </div>
+                  </div>
+
+                  {selectedClip ? (
+                    <section
+                      aria-label="Selected clip editor"
+                      className="grid gap-4 rounded-xl border border-accent-copper/50 bg-paper p-4 lg:grid-cols-[7rem_minmax(0,1fr)]"
                     >
-                      <span className="text-center text-xs font-bold text-accent-copper">
-                        {index + 1}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">{clip.name}</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {clip.source === 'cloud'
-                            ? 'VibeSpace cloud'
-                            : clip.missing
-                              ? 'Local file — re-add after restart'
-                              : 'Local device only'}
-                        </p>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        <label className="text-[10px] text-muted-foreground">
-                          Start (s)
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.5"
-                            value={clip.trimStart}
-                            onChange={(event) =>
-                              useMusicProjectStore
-                                .getState()
-                                .updateClip(clip.id, { trimStart: Number(event.target.value) })
-                            }
-                            className="mt-1 h-8 w-full rounded border border-border bg-background px-2 text-xs"
-                          />
-                        </label>
-                        <label className="text-[10px] text-muted-foreground">
-                          End (s)
-                          <input
-                            type="number"
-                            min={clip.trimStart}
-                            step="0.5"
-                            value={clip.trimEnd ?? ''}
-                            placeholder="Full"
-                            onChange={(event) =>
-                              useMusicProjectStore
-                                .getState()
-                                .updateClip(clip.id, {
+                      <TrackArtwork
+                        seed={selectedClip.trackId ?? selectedClip.id}
+                        name={selectedClip.name}
+                        className="aspect-square w-full"
+                      />
+                      <div className="min-w-0 space-y-3">
+                        <div className="flex flex-wrap items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-accent-copper">
+                              Clip {selectedIndex + 1} of {clips.length}
+                            </p>
+                            <h3 className="truncate text-base font-semibold text-foreground">
+                              {selectedClip.name}
+                            </h3>
+                            <p className="text-xs text-muted-foreground">
+                              {selectedClip.source === 'cloud'
+                                ? 'VibeSpace cloud library'
+                                : selectedClip.missing
+                                  ? 'Local file — re-add after restart'
+                                  : 'Local device only'}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => selectAndPreviewClip(selectedClip)}
+                          >
+                            {previewingId === selectedClip.id ? (
+                              <Pause className="h-4 w-4" />
+                            ) : (
+                              <Play className="h-4 w-4" />
+                            )}
+                            {previewingId === selectedClip.id
+                              ? 'Pause selected'
+                              : 'Preview selected'}
+                          </Button>
+                        </div>
+
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          <label className="text-[10px] text-muted-foreground">
+                            Selected clip start (seconds)
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              value={selectedClip.trimStart}
+                              onChange={(event) =>
+                                useMusicProjectStore.getState().updateClip(selectedClip.id, {
+                                  trimStart: Number(event.target.value),
+                                })
+                              }
+                              className="mt-1 h-9 w-full rounded border border-border bg-background px-2 text-xs"
+                            />
+                          </label>
+                          <label className="text-[10px] text-muted-foreground">
+                            Selected clip end (seconds)
+                            <input
+                              type="number"
+                              min={selectedClip.trimStart}
+                              step="0.5"
+                              value={selectedClip.trimEnd ?? ''}
+                              placeholder="Full song"
+                              onChange={(event) =>
+                                useMusicProjectStore.getState().updateClip(selectedClip.id, {
                                   trimEnd: event.target.value ? Number(event.target.value) : null,
                                 })
+                              }
+                              className="mt-1 h-9 w-full rounded border border-border bg-background px-2 text-xs"
+                            />
+                          </label>
+                          <label className="text-[10px] text-muted-foreground">
+                            Selected clip speed
+                            <select
+                              value={selectedClip.speed}
+                              onChange={(event) =>
+                                useMusicProjectStore.getState().updateClip(selectedClip.id, {
+                                  speed: Number(event.target.value),
+                                })
+                              }
+                              className="mt-1 h-9 w-full rounded border border-border bg-background px-2 text-xs"
+                            >
+                              {MUSIC_SPEEDS.map((speed) => (
+                                <option key={speed} value={speed}>
+                                  {speed}×
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={selectedIndex === 0}
+                            onClick={() =>
+                              useMusicProjectStore.getState().moveClip(selectedClip.id, -1)
                             }
-                            className="mt-1 h-8 w-full rounded border border-border bg-background px-2 text-xs"
-                          />
-                        </label>
-                        <label className="text-[10px] text-muted-foreground">
-                          Speed
-                          <select
-                            value={clip.speed}
-                            onChange={(event) =>
-                              useMusicProjectStore
-                                .getState()
-                                .updateClip(clip.id, { speed: Number(event.target.value) })
-                            }
-                            className="mt-1 h-8 w-full rounded border border-border bg-background px-1 text-xs"
                           >
-                            {MUSIC_SPEEDS.map((speed) => (
-                              <option key={speed} value={speed}>
-                                {speed}×
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                            <ArrowUp className="h-4 w-4" /> Move earlier
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={selectedIndex === clips.length - 1}
+                            onClick={() =>
+                              useMusicProjectStore.getState().moveClip(selectedClip.id, 1)
+                            }
+                          >
+                            <ArrowDown className="h-4 w-4" /> Move later
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive"
+                            onClick={() => remove(selectedClip)}
+                          >
+                            <Trash2 className="h-4 w-4" /> Remove clip
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Move ${clip.name} up`}
-                          disabled={index === 0}
-                          onClick={() => useMusicProjectStore.getState().moveClip(clip.id, -1)}
-                        >
-                          <ArrowUp className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Move ${clip.name} down`}
-                          disabled={index === clips.length - 1}
-                          onClick={() => useMusicProjectStore.getState().moveClip(clip.id, 1)}
-                        >
-                          <ArrowDown className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Remove ${clip.name}`}
-                          onClick={() => remove(clip)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
+                    </section>
+                  ) : null}
+                </div>
               )}
             </div>
           </section>

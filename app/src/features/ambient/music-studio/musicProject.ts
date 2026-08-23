@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
-import { findMusicTrack } from './catalog';
+import { findMusicTrack, MUSIC_LIBRARY } from './catalog';
 
 export const MUSIC_PROJECT_MAX_CLIPS = 100;
 export const MUSIC_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
@@ -24,6 +24,38 @@ export interface MusicProjectSnapshot {
   loop: boolean;
   enabledForAmbient: boolean;
   savedAt: number | null;
+}
+
+export function createDefaultMusicMix(): MusicClip[] {
+  return MUSIC_LIBRARY.map((track) => ({
+    id: `default-${track.id}`,
+    source: 'cloud' as const,
+    trackId: track.id,
+    name: track.name,
+    trimStart: 0,
+    trimEnd: null,
+    speed: 1,
+  }));
+}
+
+export function restoreMusicProjectSnapshot(
+  persisted: Partial<MusicProjectSnapshot> | undefined,
+  current: MusicProjectSnapshot,
+): MusicProjectSnapshot {
+  const restoredClips = Array.isArray(persisted?.clips)
+    ? persisted.clips
+        .map(normalizeMusicClip)
+        .filter((clip): clip is MusicClip => Boolean(clip))
+        .slice(0, MUSIC_PROJECT_MAX_CLIPS)
+    : current.clips;
+  const untouchedEmpty = restoredClips.length === 0 && persisted?.savedAt == null;
+  return {
+    name: typeof persisted?.name === 'string' ? persisted.name.slice(0, 120) : current.name,
+    clips: untouchedEmpty ? createDefaultMusicMix() : restoredClips,
+    loop: persisted?.loop !== false,
+    enabledForAmbient: persisted?.enabledForAmbient === true,
+    savedAt: typeof persisted?.savedAt === 'number' ? persisted.savedAt : null,
+  };
 }
 
 function id(): string {
@@ -66,6 +98,7 @@ interface MusicProjectState extends MusicProjectSnapshot {
   addLocalFile: (file: File, url: string) => boolean;
   removeClip: (clipId: string) => void;
   moveClip: (clipId: string, direction: -1 | 1) => void;
+  moveClipTo: (clipId: string, targetIndex: number) => void;
   updateClip: (
     clipId: string,
     update: Partial<Pick<MusicClip, 'trimStart' | 'trimEnd' | 'speed'>>,
@@ -80,7 +113,7 @@ export const useMusicProjectStore = create<MusicProjectState>()(
   persist(
     (set, get) => ({
       name: 'My Vibe Mix',
-      clips: [],
+      clips: createDefaultMusicMix(),
       loop: true,
       enabledForAmbient: false,
       savedAt: null,
@@ -134,6 +167,16 @@ export const useMusicProjectStore = create<MusicProjectState>()(
           [clips[index], clips[target]] = [clips[target]!, clips[index]!];
           return { clips };
         }),
+      moveClipTo: (clipId, targetIndex) =>
+        set((state) => {
+          const from = state.clips.findIndex((clip) => clip.id === clipId);
+          const boundedTarget = Math.max(0, Math.min(state.clips.length - 1, targetIndex));
+          if (from < 0 || from === boundedTarget) return state;
+          const clips = [...state.clips];
+          const [clip] = clips.splice(from, 1);
+          clips.splice(boundedTarget, 0, clip!);
+          return { clips };
+        }),
       updateClip: (clipId, update) =>
         set((state) => ({
           clips: state.clips.map((clip) => {
@@ -164,16 +207,7 @@ export const useMusicProjectStore = create<MusicProjectState>()(
         const value = persisted as Partial<MusicProjectSnapshot> | undefined;
         return {
           ...current,
-          name: typeof value?.name === 'string' ? value.name.slice(0, 120) : current.name,
-          clips: Array.isArray(value?.clips)
-            ? value.clips
-                .map(normalizeMusicClip)
-                .filter((clip): clip is MusicClip => Boolean(clip))
-                .slice(0, MUSIC_PROJECT_MAX_CLIPS)
-            : [],
-          loop: value?.loop !== false,
-          enabledForAmbient: value?.enabledForAmbient === true,
-          savedAt: typeof value?.savedAt === 'number' ? value.savedAt : null,
+          ...restoreMusicProjectSnapshot(value, current),
         };
       },
     },
