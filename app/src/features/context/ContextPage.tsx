@@ -1498,6 +1498,7 @@ function NoContextHero({
             builds a warm string map that every AI prompt can use before deciding which files
             matter.
           </p>
+          <FirstContextMapTutorial />
           <div className="grid gap-3 sm:grid-cols-3">
             <FeaturePill icon={<GitBranch className="h-4 w-4" />} text="String map" />
             <FeaturePill icon={<MousePointer2 className="h-4 w-4" />} text="Left-click inspect" />
@@ -1546,6 +1547,60 @@ function NoContextHero({
         </div>
       </div>
     </div>
+  );
+}
+
+function FirstContextMapTutorial() {
+  const steps = [
+    {
+      title: 'Create or choose a project',
+      detail:
+        'Use Projects in the left sidebar so chats, maps, and the SiYuan vault stay together.',
+    },
+    {
+      title: 'Choose what Jarvis should learn',
+      detail: 'Pick a local folder, one file, or a read-only GitHub repository below.',
+    },
+    {
+      title: 'Create the map',
+      detail:
+        'Choose your saved model and press Create Context Map. Existing files are not changed.',
+    },
+  ] as const;
+
+  return (
+    <section
+      aria-label="Create your first Context project"
+      data-warm-surface="context-first-project-tutorial"
+      className="rounded-2xl border border-accent-copper/25 bg-paper-soft/85 p-3 text-left"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="eyebrow">Your first Context project</div>
+          <p className="mt-1 text-metadata text-muted-foreground">
+            Three quick steps. The real Context Map, RLM, and SiYuan systems stay connected.
+          </p>
+        </div>
+        <span className="shrink-0 rounded-full border border-accent-sage/35 bg-accent-sage/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-accent-sage">
+          About 1 minute
+        </span>
+      </div>
+      <ol className="mt-3 grid gap-2 sm:grid-cols-3">
+        {steps.map((step, index) => (
+          <li key={step.title} className="rounded-xl border border-border/75 bg-paper/75 p-2.5">
+            <div className="flex items-center gap-2">
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-accent-copper/35 bg-accent-copper/10 text-[11px] font-semibold text-accent-copper">
+                {index + 1}
+              </span>
+              <span className="text-secondary font-semibold text-foreground">{step.title}</span>
+            </div>
+            <p className="mt-1.5 text-metadata leading-relaxed text-muted-foreground">
+              {step.detail}
+            </p>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 

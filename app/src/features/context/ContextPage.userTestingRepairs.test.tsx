@@ -56,4 +56,15 @@ describe('Context Map focused user-testing repairs', () => {
       'await deletePersistedContextMap(projectId, persistedMap.id).catch(() => undefined)',
     );
   });
+
+  it('shows a warm three-step first-project tutorial without replacing Context systems', () => {
+    const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
+
+    expect(source).toContain('aria-label="Create your first Context project"');
+    expect(source).toContain('Create or choose a project');
+    expect(source).toContain('Choose what Jarvis should learn');
+    expect(source).toContain('Create the map');
+    expect(source).toContain('The real Context Map, RLM, and SiYuan systems stay connected.');
+    expect(source).toContain('Existing files are not changed.');
+  });
 });

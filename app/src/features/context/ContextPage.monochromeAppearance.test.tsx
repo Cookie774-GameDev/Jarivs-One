@@ -118,8 +118,8 @@ describe('ContextPage MonoChrome appearance', () => {
   it('associates the visible project-folder label with the usable path input', async () => {
     render(<ContextPage />);
 
-    const input = await screen.findByRole('textbox', { name: 'Project folder' });
-    const label = screen.getByText('Project folder').closest('label');
+    const input = await screen.findByRole('textbox', { name: 'Context source folder' });
+    const label = screen.getByText('Context source folder').closest('label');
 
     expect(label?.getAttribute('for')).toBe(input.id);
     fireEvent.change(input, { target: { value: 'C:\\workspace\\vibespace' } });
