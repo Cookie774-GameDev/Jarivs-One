@@ -45,14 +45,15 @@ const chatRoutingMocks = vi.hoisted(() => ({
   ),
 }));
 
-vi.mock('./VoiceService', () => ({
-  VoiceService: {
+vi.mock('./JarvisVoiceInputService', () => ({
+  JarvisVoiceInputService: {
     isSupported: () => true,
     isListening: () => false,
     wantsListening: () => false,
     setInactivityTimeoutMs: vi.fn(),
     startListening: vi.fn(() => true),
     stopListening: vi.fn(),
+    cancelListening: vi.fn(),
     on: (event: string, fn: VoiceHandler) => {
       let set = voiceListeners.handlers.get(event);
       if (!set) {
@@ -105,8 +106,9 @@ vi.mock('./voiceRouter', () => routerMocks);
 import { VoiceModal } from './VoiceModal';
 import { messageRepo } from '@/lib/db';
 import { useVoiceStore } from './store';
-import { VoiceService } from './VoiceService';
+import { JarvisVoiceInputService as VoiceService } from './JarvisVoiceInputService';
 import { selectionFromOption } from '@/lib/ai/modelSelection';
+import { GROQ_DEFAULT_MODEL } from '@/lib/ai/providers/groq';
 import { DEFAULT_CUSTOM_STEPS } from '@/lib/ai/stacks/presets';
 import { JarvisCommandCenterProvider } from '@/features/jarvis-command-center/JarvisCommandCenter';
 import {
@@ -237,7 +239,7 @@ describe('VoiceModal hands-free turn-taking', () => {
       voiceAutoApproveActions: true,
       apiKeys: { groq: 'gsk_test' },
       stackCustomSteps: DEFAULT_CUSTOM_STEPS,
-      chatModelSelection: selectionFromOption('groq', 'llama-3.3-70b-versatile'),
+      chatModelSelection: selectionFromOption('groq', GROQ_DEFAULT_MODEL),
     });
     useAgentStore.setState({ agents: {} });
     useVoiceStore.getState().reset();
@@ -317,7 +319,7 @@ describe('VoiceModal hands-free turn-taking', () => {
       'Outputs',
       'Live Systems',
     ]);
-    expect(screen.getByTitle(/Llama.3\.3/i)).not.toBeNull();
+    expect(screen.getByTitle(/GPT.OSS.20B/i)).not.toBeNull();
     await waitFor(() =>
       expect(bindingPort.dataPort.getRunsForChat).toHaveBeenCalledWith(
         expect.objectContaining({ accountId: 'account-a', chatId: 'chat_voice' }),

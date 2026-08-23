@@ -17,7 +17,7 @@ import {
 import type { ChatId } from '@/types';
 import type { VoiceState } from './store';
 import { useVoiceStore } from './store';
-import { VoiceService } from './VoiceService';
+import { JarvisVoiceInputService as VoiceService } from './JarvisVoiceInputService';
 import {
   SPEECH_SYNTHESIS_END_EVENT,
   SPEECH_SYNTHESIS_START_EVENT,
@@ -489,7 +489,11 @@ function VoiceModalPanel() {
       return true;
     }
     window.setTimeout(() => {
-      if (!listeningArmedRef.current || VoiceService.isListening() || VoiceService.wantsListening()) {
+      if (
+        !listeningArmedRef.current ||
+        VoiceService.isListening() ||
+        VoiceService.wantsListening()
+      ) {
         return;
       }
       const retried = VoiceService.startListening();
@@ -902,6 +906,7 @@ function VoiceModalPanel() {
       clearUtteranceTimers();
       pendingUtteranceRef.current = '';
       useVoiceStore.getState().clearTranscripts();
+      VoiceService.cancelListening();
       listeningArmedRef.current = false;
       turnBusyRef.current = false;
       streamingReplyRef.current = false;
@@ -1044,9 +1049,7 @@ function VoiceModalPanel() {
         ) : null}
 
         {/* Command Center disclosure */}
-        <div
-          className="jarvis-command-disclosure relative z-[1] flex min-h-8 items-center justify-between gap-2 border-t border-border/70 px-2 [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:hover:bg-muted"
-        >
+        <div className="jarvis-command-disclosure relative z-[1] flex min-h-8 items-center justify-between gap-2 border-t border-border/70 px-2 [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:hover:bg-muted">
           <button
             ref={commandCenterDisclosureRef}
             type="button"

@@ -22,8 +22,8 @@ const routerMocks = vi.hoisted(() => ({
   stopCurrentVoiceResponse: vi.fn(),
 }));
 
-vi.mock('./VoiceService', () => ({
-  VoiceService: {
+vi.mock('./JarvisVoiceInputService', () => ({
+  JarvisVoiceInputService: {
     isSupported: () => true,
     isListening: () => voiceMockState.listening,
     wantsListening: () => false,
@@ -33,6 +33,9 @@ vi.mock('./VoiceService', () => ({
       return true;
     }),
     stopListening: vi.fn(() => {
+      voiceMockState.listening = false;
+    }),
+    cancelListening: vi.fn(() => {
       voiceMockState.listening = false;
     }),
     on: (event: string, fn: VoiceHandler) => {
@@ -88,9 +91,10 @@ vi.mock('./voiceChatRouting', () => ({
 vi.mock('./voiceRouter', () => routerMocks);
 
 import { VoiceModal } from './VoiceModal';
-import { VoiceService } from './VoiceService';
+import { JarvisVoiceInputService as VoiceService } from './JarvisVoiceInputService';
 import { useVoiceStore } from './store';
 import { selectionFromOption } from '@/lib/ai/modelSelection';
+import { GROQ_DEFAULT_MODEL } from '@/lib/ai/providers/groq';
 import { DEFAULT_CUSTOM_STEPS } from '@/lib/ai/stacks/presets';
 import { createVoiceSessionBinding } from './voiceSessionBinding';
 import type { ChatId } from '@/types/common';
@@ -109,7 +113,7 @@ function setupAuth(handsFree: boolean) {
     voiceAutoApproveActions: true,
     apiKeys: { groq: 'gsk_test' },
     stackCustomSteps: DEFAULT_CUSTOM_STEPS,
-    chatModelSelection: selectionFromOption('groq', 'llama-3.3-70b-versatile'),
+    chatModelSelection: selectionFromOption('groq', GROQ_DEFAULT_MODEL),
   });
 }
 

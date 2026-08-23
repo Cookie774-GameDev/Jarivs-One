@@ -2,6 +2,7 @@ import * as React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { selectionFromOption } from '@/lib/ai/modelSelection';
+import { GROQ_DEFAULT_MODEL } from '@/lib/ai/providers/groq';
 import { DEFAULT_CUSTOM_STEPS } from '@/lib/ai/stacks/presets';
 
 const invoke = vi.hoisted(() => vi.fn());
@@ -11,14 +12,15 @@ const voiceHandlers = vi.hoisted(() => new Map<string, Set<(payload?: unknown) =
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 vi.mock('@/lib/db', () => ({ messageRepo: { create: messageCreate } }));
 vi.mock('@/features/chat/hooks', () => ({ useChatMessages: () => [] }));
-vi.mock('./VoiceService', () => ({
-  VoiceService: {
+vi.mock('./JarvisVoiceInputService', () => ({
+  JarvisVoiceInputService: {
     isSupported: () => true,
     isListening: () => false,
     wantsListening: () => false,
     setInactivityTimeoutMs: vi.fn(),
     startListening: vi.fn(() => true),
     stopListening: vi.fn(),
+    cancelListening: vi.fn(),
     on: (event: string, handler: (payload?: unknown) => void) => {
       const handlers = voiceHandlers.get(event) ?? new Set();
       handlers.add(handler);
@@ -78,7 +80,7 @@ async function renderVoice(flag: string) {
     fasterWhisperModel: 'small',
     apiKeys: { groq: 'gsk_test' },
     stackCustomSteps: DEFAULT_CUSTOM_STEPS,
-    chatModelSelection: selectionFromOption('groq', 'llama-3.3-70b-versatile'),
+    chatModelSelection: selectionFromOption('groq', GROQ_DEFAULT_MODEL),
   });
   useVoiceStore.getState().reset();
   render(<VoiceModal />);
