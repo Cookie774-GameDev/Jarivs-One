@@ -58,6 +58,10 @@ const mocks = vi.hoisted(() => ({
   getJarvisCoordinationContextBlock: vi.fn(),
   getJarvisTerminalOperatingContextBlock: vi.fn(),
   getJarvisConnectivityInventoryBlock: vi.fn(),
+  buildAgentTerminalContext: vi.fn(),
+  extractExplicitReadRoot: vi.fn(),
+  prepareProductionRlmContext: vi.fn(),
+  rememberConversationDestination: vi.fn(),
   resolveJarvisContext: vi.fn(async () => ({
     relevantFiles: [],
     enabledCapabilities: [],
@@ -145,7 +149,7 @@ vi.mock('@/lib/jarvis/kernelRuntime', async (importOriginal) => {
 });
 
 vi.mock('@/features/terminals/agentContext', () => ({
-  buildAgentTerminalContext: () => '',
+  buildAgentTerminalContext: mocks.buildAgentTerminalContext,
 }));
 
 vi.mock('@/lib/jarvis/connectivityInventory', () => ({
@@ -162,6 +166,7 @@ vi.mock('@/features/context/retrieval', async (importOriginal) => {
 
 vi.mock('./context', () => ({
   buildJarvisContextPackForAi: mocks.buildJarvisContextPackForAi,
+  extractExplicitReadRoot: mocks.extractExplicitReadRoot,
   getProjectContextBlock: mocks.getProjectContextBlock,
   getProjectContextTreeBlock: mocks.getProjectContextTreeBlock,
   getConnectedFilesBlock: mocks.getConnectedFilesBlock,
@@ -170,10 +175,19 @@ vi.mock('./context', () => ({
   getExplicitTerminalBlock: () => '',
   getJarvisCoordinationContextBlock: mocks.getJarvisCoordinationContextBlock,
   getJarvisTerminalOperatingContextBlock: mocks.getJarvisTerminalOperatingContextBlock,
-  rememberConversationDestination: () => undefined,
+  rememberConversationDestination: mocks.rememberConversationDestination,
   resolveJarvisContext: mocks.resolveJarvisContext,
   formatResolvedJarvisContext: () => '',
 }));
+
+vi.mock('@/features/context/rlm/contextRlmProduction', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@/features/context/rlm/contextRlmProduction')>();
+  return {
+    ...actual,
+    prepareProductionRlmContext: mocks.prepareProductionRlmContext,
+  };
+});
 
 import {
   actionPartToLlmText,
@@ -185,6 +199,7 @@ import {
   executeInstalledJarvisRegisteredAction,
   handleInstalledJarvisKernelClientRequest,
   installJarvisKernelRuntimeHost,
+  liveVariantLookupForChatSelection,
   openCodeToolsForInteractionMode,
   prepareOpenCodeMessagesForInteractionMode,
   startRuntimeListener as startKernelAwareRuntimeListener,
@@ -326,8 +341,68 @@ type TrackedStopper = (() => void) & {
 const activeStoppers: TrackedStopper[] = [];
 
 describe('startRuntimeListener agent routing', () => {
+  it('uses the upstream live-provider key without changing the captured OpenCode route', () => {
+    const captured = {
+      providerId: 'opencode',
+      connectionId: 'opencode-cli',
+      modelId: 'openrouter/openai/gpt-5.6-sol',
+    };
+
+    expect(liveVariantLookupForChatSelection(captured)).toEqual({
+      providerId: 'opencode',
+      runtimeProviderId: 'openrouter',
+      modelId: 'openai/gpt-5.6-sol',
+    });
+    expect(captured).toEqual({
+      providerId: 'opencode',
+      connectionId: 'opencode-cli',
+      modelId: 'openrouter/openai/gpt-5.6-sol',
+    });
+  });
+
+  it('keeps native API catalog lookups connection-qualified and unmodified', () => {
+    expect(
+      liveVariantLookupForChatSelection({
+        providerId: 'deepseek',
+        connectionId: 'deepseek-api',
+        modelId: 'deepseek-v4-flash',
+      }),
+    ).toEqual({ providerId: 'deepseek', modelId: 'deepseek-v4-flash' });
+  });
+
+  it('looks up the required OpenCode Go DeepSeek route without rewriting its exact identity', () => {
+    const captured = {
+      providerId: 'opencode',
+      connectionId: 'opencode-cli',
+      modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+    };
+
+    expect(liveVariantLookupForChatSelection(captured)).toEqual({
+      providerId: 'opencode',
+      runtimeProviderId: 'opencode-go',
+      modelId: 'deepseek-v4-flash-vision-exp',
+    });
+    expect(captured.modelId).toBe('opencode-go/deepseek-v4-flash-vision-exp');
+  });
+
+  it('preserves an explicit-root request verbatim when the Context tool is disabled', () => {
+    const message = {
+      role: 'user' as const,
+      content:
+        'C:\\Users\\viper Hi, please read your context and make me a 750-word summary of it in total.',
+    };
+
+    const prepared = prepareOpenCodeMessagesForInteractionMode([message], {
+      contextToolEnabled: false,
+    });
+
+    expect(prepared).toEqual([message]);
+    expect(prepared[0]).toBe(message);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
+    rememberLiveOpenCodeProviders([]);
     mocks.runAgent.mockReset();
     mocks.nativeFetch.mockReset();
     mocks.buildRoutedMcpTaskContext.mockReset();
@@ -371,6 +446,20 @@ describe('startRuntimeListener agent routing', () => {
     mocks.getJarvisCoordinationContextBlock.mockResolvedValue('');
     mocks.getJarvisTerminalOperatingContextBlock.mockReturnValue('');
     mocks.getJarvisConnectivityInventoryBlock.mockReturnValue('');
+    mocks.buildAgentTerminalContext.mockReset();
+    mocks.buildAgentTerminalContext.mockReturnValue('');
+    mocks.extractExplicitReadRoot.mockReset();
+    mocks.extractExplicitReadRoot.mockReturnValue(undefined);
+    mocks.prepareProductionRlmContext.mockReset();
+    mocks.prepareProductionRlmContext.mockResolvedValue({
+      route: 'direct',
+      promptBlock: '',
+      evidenceCount: 0,
+      childCalls: 0,
+      maxDepth: 0,
+      truncated: false,
+    });
+    mocks.rememberConversationDestination.mockReset();
     mocks.retrieveApprovedLocalKnowledge.mockReset();
     mocks.retrieveApprovedLocalKnowledge.mockResolvedValue([]);
     mocks.chatGetById.mockResolvedValue(undefined);
@@ -1828,16 +1917,29 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     stop();
   });
 
-  it('dispatches a bound-project fact lookup through only the federated Context tool', async () => {
+  it('dispatches the exact OpenCode Go DeepSeek route through only the federated Context tool', async () => {
     const openCodeConnection = PROVIDER_CONNECTIONS.find(
       (connection) => connection.id === 'opencode-cli',
     )!;
-    rememberLiveOpenCodeProviders([]);
+    rememberLiveOpenCodeProviders([
+      {
+        id: 'opencode-go',
+        name: 'OpenCode Go',
+        connected: true,
+        models: [
+          {
+            id: 'deepseek-v4-flash-vision-exp',
+            name: 'DeepSeek V4 FLASH Vision Exp',
+            variants: ['medium'],
+          },
+        ],
+      },
+    ]);
     useAuthStore.setState({
       projectId: 'project_unified_chungus' as never,
       chatModelSelection: selectionFromOption(
         openCodeConnection.providerId as ProviderId,
-        'openai/gpt-5.3-codex-spark',
+        'opencode-go/deepseek-v4-flash-vision-exp',
         openCodeConnection,
       ),
     });
@@ -1900,11 +2002,30 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     const providerInput = mocks.runAgent.mock.calls[0]![0];
     expect(providerInput.agent.model).toEqual({
       provider: 'opencode',
-      model: 'openai/gpt-5.3-codex-spark',
+      model: 'opencode-go/deepseek-v4-flash-vision-exp',
     });
     expect(providerInput.connectionId).toBe('opencode-cli');
-    expect(providerInput.provider_options).toEqual({ reasoning_effort: 'medium' });
+    // This OpenCode route carries its verified effort through runtimeSettings.
+    // Do not invent a provider-specific wire field for the OpenCode Go namespace.
+    expect(providerInput.provider_options).toEqual({});
     expect(providerInput.runtimeSettings).toMatchObject({ effort: 'medium' });
+    expect(mocks.devLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'ai',
+        level: 'info',
+        message: expect.stringContaining('AI request'),
+        detail: expect.objectContaining({
+          chatId,
+          provider: 'opencode',
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          connectionId: 'opencode-cli',
+          reasoningMode: 'normal',
+          reasoningEffort: 'medium',
+          providerVariant: undefined,
+          runtimePerformance: 'quality',
+        }),
+      }),
+    );
     expect(providerInput.tools.vibespace_context).toBe(true);
     expect(
       Object.entries(providerInput.tools)
@@ -1915,6 +2036,179 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       'Call the real `vibespace_context` function now',
     );
     expect(providerInput.messages.at(-1)?.content).toContain(JSON.stringify(userText));
+
+    stop();
+  });
+
+  it('uses an explicit leading read root without injecting unrelated project knowledge', async () => {
+    const openCodeConnection = PROVIDER_CONNECTIONS.find(
+      (connection) => connection.id === 'opencode-cli',
+    )!;
+    rememberLiveOpenCodeProviders([
+      {
+        id: 'opencode-go',
+        name: 'OpenCode Go',
+        connected: true,
+        models: [
+          {
+            id: 'deepseek-v4-flash-vision-exp',
+            name: 'DeepSeek V4 FLASH Vision Exp',
+            variants: ['medium'],
+          },
+        ],
+      },
+    ]);
+    const { setStoredProjectRoot } = await import('@/features/files/projectFiles');
+    setStoredProjectRoot('project_unrelated', 'C:\\UnrelatedProject');
+    useAuthStore.setState({
+      projectId: 'project_unrelated' as never,
+      chatModelSelection: selectionFromOption(
+        openCodeConnection.providerId as ProviderId,
+        'opencode-go/deepseek-v4-flash-vision-exp',
+        openCodeConnection,
+      ),
+    });
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_explicit_read_root' as ChatId;
+    const userText =
+      'C:\\Users\\viper Hi, please read your context and make me a 750-word summary of it in total.';
+    mocks.extractExplicitReadRoot.mockReturnValue('C:\\Users\\viper');
+    mocks.getProjectContextBlock.mockResolvedValue('UNRELATED_PROJECT_CONTEXT');
+    mocks.getProjectContextTreeBlock.mockReturnValue('UNRELATED_CONTEXT_TREE');
+    mocks.prepareProductionRlmContext.mockResolvedValue({
+      route: 'bounded',
+      promptBlock: 'UNRELATED_RLM_CONTEXT',
+      evidenceCount: 1,
+      childCalls: 1,
+      maxDepth: 1,
+      truncated: false,
+    });
+    mocks.retrieveApprovedLocalKnowledge.mockResolvedValue([
+      {
+        sourceId: 'unrelated_local',
+        mapId: 'unrelated_map',
+        title: 'Unrelated',
+        relativePath: 'UNRELATED_LOCAL_KNOWLEDGE.md',
+        lineStart: 1,
+        lineEnd: 1,
+        excerpt: 'UNRELATED_LOCAL_KNOWLEDGE',
+        tags: [],
+        wikiLinks: [],
+        markdownLinks: [],
+        backlinks: [],
+        score: 1,
+        contentHash: 'c'.repeat(64),
+      },
+    ]);
+    mocks.getConnectedFilesBlock.mockResolvedValue('UNRELATED_CONNECTED_FILES');
+    mocks.getJarvisCoordinationContextBlock.mockResolvedValue('UNRELATED_COORDINATION');
+    mocks.getJarvisTerminalOperatingContextBlock.mockReturnValue('UNRELATED_TERMINAL_OPERATING');
+    mocks.getJarvisConnectivityInventoryBlock.mockReturnValue('UNRELATED_MODEL_SKILL_INVENTORY');
+    mocks.buildAgentTerminalContext.mockReturnValue('UNRELATED_TERMINAL_TRANSCRIPT');
+    mocks.chatGetById.mockResolvedValueOnce({
+      id: chatId,
+      workspace_id: 'workspace_a' as never,
+      project_id: 'project_unrelated' as never,
+      title: 'Explicit read root',
+      mode: 'chat',
+      active_agent_ids: [jarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    const userMessage: Message = {
+      id: 'msg_explicit_read_root_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: userText }],
+      created_at: 1,
+      updated_at: 1,
+    };
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (msg) => ({
+          ...msg,
+          id: 'msg_explicit_read_root_assistant' as MessageId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text: userText,
+          interactionMode: 'ask',
+          reasoningPreference: { mode: 'normal', effortOverride: 'medium' },
+          runtimeSettings: { effort: 'medium' },
+        },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+    const providerInput = mocks.runAgent.mock.calls[0]![0];
+    expect(providerInput.agent.model).toEqual({
+      provider: 'opencode',
+      model: 'opencode-go/deepseek-v4-flash-vision-exp',
+    });
+    expect(providerInput.connectionId).toBe('opencode-cli');
+    expect(providerInput.workingDirectory).toBe('C:\\Users\\viper');
+    expect(providerInput.runtimeSettings).toMatchObject({
+      effort: 'medium',
+      performance: 'quality',
+      rlmEnabled: false,
+    });
+    expect(Object.values(providerInput.tools).every((enabled) => enabled === false)).toBe(true);
+    expect(providerInput.messages.at(-1)?.content).toBe(userText);
+    expect(providerInput.agent.system_prompt).toContain(
+      'The leading path is the authoritative read scope for this turn.',
+    );
+    expect(providerInput.agent.system_prompt).toContain(
+      'Separate observed facts from inference and state unavailable evidence plainly.',
+    );
+    expect(mocks.resolveJarvisContext).not.toHaveBeenCalled();
+    expect(mocks.rememberConversationDestination).not.toHaveBeenCalled();
+    expect(mocks.getProjectContextBlock).not.toHaveBeenCalled();
+    expect(mocks.getProjectContextTreeBlock).not.toHaveBeenCalled();
+    expect(mocks.prepareProductionRlmContext).not.toHaveBeenCalled();
+    expect(mocks.retrieveApprovedLocalKnowledge).not.toHaveBeenCalled();
+    expect(mocks.getConnectedFilesBlock).not.toHaveBeenCalled();
+    expect(mocks.getJarvisCoordinationContextBlock).not.toHaveBeenCalled();
+    expect(mocks.getJarvisTerminalOperatingContextBlock).not.toHaveBeenCalled();
+    expect(mocks.getJarvisConnectivityInventoryBlock).not.toHaveBeenCalled();
+    expect(mocks.buildAgentTerminalContext).not.toHaveBeenCalled();
+    for (const sentinel of [
+      'UNRELATED_PROJECT_CONTEXT',
+      'UNRELATED_CONTEXT_TREE',
+      'UNRELATED_RLM_CONTEXT',
+      'UNRELATED_LOCAL_KNOWLEDGE',
+      'UNRELATED_CONNECTED_FILES',
+      'UNRELATED_COORDINATION',
+      'UNRELATED_TERMINAL_OPERATING',
+      'UNRELATED_MODEL_SKILL_INVENTORY',
+      'UNRELATED_TERMINAL_TRANSCRIPT',
+    ]) {
+      expect(providerInput.agent.system_prompt).not.toContain(sentinel);
+    }
+    expect(mocks.devLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: expect.objectContaining({
+          chatId,
+          provider: 'opencode',
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          connectionId: 'opencode-cli',
+          reasoningMode: 'normal',
+          reasoningEffort: 'medium',
+          runtimePerformance: 'quality',
+        }),
+      }),
+    );
 
     stop();
   });

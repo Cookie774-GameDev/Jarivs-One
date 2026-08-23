@@ -123,3 +123,15 @@ Each test receives a monotonically increasing ID. Entries record UTC/local time,
 - Exact identity: provider, connection, model ID, effort, performance, and RLM fields remain unchanged; no combined variant is invented and the UI toggle is not treated as provider proof
 - RED/GREEN evidence: three focused regressions failed before implementation; the complete SDK client matrix now passes 9/9 and exact formatting/diff checks pass
 - Remaining acceptance: Test B remains NOT RUN until the official native app exposes an authenticated GPT-5.6 Luna Max + Fast route with observed combined provider metadata; no substitute route is permitted
+
+### PR31-CODE-006 — explicit leading read-root isolation green
+
+- Recorded: 2026-08-22T22:51:33-05:00
+- Test A root cause: the leading `C:\\Users\\viper` prefix was not authoritative read scope; the active project remained the provider cwd and automatic project Context/RLM/tool overlays could replace the requested corpus
+- Repair: a bounded, traversal-safe, read-only leading-root parser now selects the exact provider cwd for both legacy and canonical-kernel paths without becoming a remembered write destination
+- Isolation: unrelated project blob/tree, Context Map/RLM, local knowledge, connected files, coordination, terminal context, capability/model inventory, and action overlays are excluded only for explicit-root Ask turns; explicit attachments/plugins/skills remain available
+- Exact route: `opencode` / `opencode-cli` / `opencode-go/deepseek-v4-flash-vision-exp`, medium effort, quality mode, and the original user message are preserved; request-local RLM and the Context tool rewrite are disabled rather than substituted
+- RED/GREEN evidence: the provider cwd regression failed with `C:\\UnrelatedProject` before implementation; focused runtime route/scope matrix passes 3/3 and parser/context matrix passes 23/23; exact formatting and diff checks pass
+- Typecheck boundary: this slice's prior kernel typing error is cleared; the broad app typecheck now reports only four concurrent errors in `siyuanRlmProduction.test.ts` and `siyuanRlmRepository.test.ts`, outside this owned scope
+- Broad evidence boundary: the full runtime file was attempted and currently has 65 broader failures across approval, voice, shadow, cancellation, and kernel fixtures outside this focused assertion set; this slice does not claim that broad matrix green or assign those failures a historical cause
+- Remaining acceptance: rerun Question A in official native VibeSpace, inspect the real answer and receipts, independently grade it, and do not claim 90+ from code evidence alone

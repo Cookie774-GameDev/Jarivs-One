@@ -226,7 +226,7 @@ function conversationDestinationKey(chatId: string): string {
 export function extractExplicitDestination(text: string): string | undefined {
   const quoted = text.match(/[`"']([A-Za-z]:\\[^`"'\r\n]+|\/[^`"'\r\n]+)[`"']/)?.[1];
   const standalone = text.match(
-    /(?:^|\r?\n)\s*([A-Za-z]:\\[^\r\n]+|\/[A-Za-z0-9._~/-]+)\s*(?:$|\r?\n)/m,
+    /(?:^|\r?\n)\s*([A-Za-z]:\\[^\s\r\n,;!?]+|\/[A-Za-z0-9._~/-]+)\s*(?:$|\r?\n)/m,
   )?.[1];
   const value = (quoted ?? standalone)?.trim().replace(/[.,;]+$/, '');
   if (!value) return undefined;
@@ -234,6 +234,40 @@ export function extractExplicitDestination(text: string): string | undefined {
   return /\.[A-Za-z0-9]{1,8}$/.test(lastSegment)
     ? value.slice(0, Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\')))
     : value;
+}
+
+const EXPLICIT_READ_INTENT =
+  /\b(?:read|audit|inspect|review|analy[sz]e|summari[sz]e|summary|inventory|list)\b/i;
+const EXPLICIT_WRITE_INTENT =
+  /\b(?:create|write|save|edit|modify|delete|remove|move|rename|export)\b/i;
+
+/**
+ * Recognize a folder the user deliberately places at the start of the current
+ * request as read-only scope. This is intentionally narrower than destination
+ * parsing: paths mentioned later in prose, inherited chat text, and requests
+ * containing mutation verbs never become filesystem authority.
+ */
+export function extractExplicitReadRoot(text: string): string | undefined {
+  if (
+    text.length === 0 ||
+    text.length > 8_192 ||
+    /[\u0000-\u001f\u007f]/u.test(text) ||
+    !EXPLICIT_READ_INTENT.test(text) ||
+    EXPLICIT_WRITE_INTENT.test(text)
+  ) {
+    return undefined;
+  }
+
+  const leading = text.match(
+    /^\s*(?:[`"']([A-Za-z]:\\[^`"'\r\n]+|\/[^`"'\r\n]+)[`"'](?=\s|$)|([A-Za-z]:\\[^\s\r\n,;!?]+|\/[A-Za-z0-9._~/-]+)(?=\s+(?:hi|hey|hello|please|read|audit|inspect|review|analy[sz]e|summari[sz]e|summary|inventory|list)\b))/i,
+  );
+  const root = (leading?.[1] ?? leading?.[2])?.trim().replace(/[.,;]+$/, '');
+  if (!root) return undefined;
+
+  const segments = root.split(/[\\/]/);
+  if (segments.some((segment) => segment === '.' || segment === '..')) return undefined;
+  const lastSegment = segments.at(-1) ?? '';
+  return /\.[A-Za-z0-9]{1,8}$/.test(lastSegment) ? undefined : root;
 }
 
 export function rememberConversationDestination(chatId: string, text: string): string | undefined {
@@ -260,28 +294,16 @@ export async function resolveJarvisContext(input: {
   const explicitDestination = extractExplicitDestination(input.currentText);
   const activeProjectPath = getStoredProjectRoot(input.projectId).trim() || undefined;
   const conversationDestination = getConversationDestination(input.chatId);
-  const defaultDestination = await getJarvisProjectsDir();
-  let projectName: string | undefined;
-  if (input.projectId) {
-    try {
-      projectName = (await projectRepo.getById(input.projectId))?.name;
-    } catch {
-      projectName = undefined;
-    }
-  }
-  const preferredDestination =
-    explicitDestination ||
-    activeProjectPath ||
-    conversationDestination ||
-    defaultDestination ||
-    undefined;
+  const authoritativeDestination =
+    explicitDestination || activeProjectPath || conversationDestination || undefined;
+  const defaultDestination = authoritativeDestination ? undefined : await getJarvisProjectsDir();
+  const preferredDestination = authoritativeDestination || defaultDestination || undefined;
   if (explicitDestination) reasons.push('current request destination');
   else if (activeProjectPath) reasons.push('active selected project');
   else if (conversationDestination) reasons.push('current conversation destination');
   else if (defaultDestination) reasons.push('configured Jarvis Projects default');
   return {
     activeProjectId: input.projectId ? String(input.projectId) : undefined,
-    activeProjectName: projectName,
     activeProjectPath,
     preferredDestination,
     currentWorkingDirectory: input.currentWorkingDirectory,

@@ -144,6 +144,7 @@ import {
 
 import {
   buildJarvisContextPackForAi,
+  extractExplicitReadRoot,
   getProjectContextBlock,
   getProjectContextTreeBlock,
   getConnectedFilesBlock,
@@ -290,6 +291,32 @@ import {
 import { getModelOptions } from './models';
 import { localIntelligenceTelemetryRuntime } from './intelligenceTelemetryRuntime';
 import { browserGoalLaunchRuntime } from '@/features/browser/browserGoalLaunchRuntime';
+
+/** Resolve only the live-catalog lookup key; never rewrite the captured dispatch identity. */
+export function liveVariantLookupForChatSelection(selection: {
+  providerId: string;
+  modelId: string;
+  connectionId?: string;
+}): Readonly<{
+  providerId: string;
+  runtimeProviderId?: string;
+  modelId: string;
+}> {
+  if (selection.connectionId !== 'opencode-cli') {
+    return Object.freeze({ providerId: selection.providerId, modelId: selection.modelId });
+  }
+  const segments = selection.modelId.split('/');
+  const runtimeProviderId = segments.shift()?.trim();
+  const runtimeModelId = segments.join('/').trim();
+  if (!runtimeProviderId || !runtimeModelId) {
+    return Object.freeze({ providerId: selection.providerId, modelId: selection.modelId });
+  }
+  return Object.freeze({
+    providerId: selection.providerId,
+    runtimeProviderId,
+    modelId: runtimeModelId,
+  });
+}
 
 /** @internal Re-reads canonical provider results without exposing the result store. */
 export interface CanonicalProviderArtifactEvidenceReadPort {
@@ -840,6 +867,17 @@ export async function installJarvisKernelRuntimeHost(
                 tools: openCodeToolsForInteractionMode(
                   providerInput.interactionMode,
                   providerInput.messages,
+                  {
+                    explicitReadRoot: Boolean(
+                      extractExplicitReadRoot(
+                        llmContentToText(
+                          [...providerInput.messages]
+                            .reverse()
+                            .find((message) => message.role === 'user')?.content ?? '',
+                        ),
+                      ),
+                    ),
+                  },
                 ),
                 requestId: providerInput.requestId,
                 protectedAttempt: {
@@ -1662,7 +1700,7 @@ function getInteractionModeOverlay(mode: JarvisInteractionMode, needsVisiblePlan
 export function openCodeToolsForInteractionMode(
   mode: JarvisInteractionMode,
   messages: readonly LLMMessage[] = [],
-  scope?: { chatId?: string; workspaceId?: string },
+  scope?: { chatId?: string; workspaceId?: string; explicitReadRoot?: boolean },
 ): Readonly<Record<string, boolean>> {
   const latestUserText = [...messages]
     .reverse()
@@ -1681,11 +1719,13 @@ export function openCodeToolsForInteractionMode(
     Object.fromEntries(
       TOOL_GATEWAY_CATALOG.map((tool) => {
         const mutating = MUTATING_TOOL_GATEWAY_TOOLS.has(tool);
-        const modeAllows = ordinaryDirectAsk
+        const modeAllows = scope?.explicitReadRoot
           ? false
-          : requestsContextMapTool
-            ? tool === 'vibespace_context'
-            : mode === 'agent' || !mutating;
+          : ordinaryDirectAsk
+            ? false
+            : requestsContextMapTool
+              ? tool === 'vibespace_context'
+              : mode === 'agent' || !mutating;
         return [tool, modeAllows && accessAllowsTool(access, tool, mutating)];
       }),
     ),
@@ -1706,7 +1746,9 @@ function boundedReadOnlyResearchQueries(userText: string): readonly string[] {
 
 export function prepareOpenCodeMessagesForInteractionMode(
   messages: readonly LLMMessage[],
+  options: { contextToolEnabled?: boolean } = {},
 ): readonly LLMMessage[] {
+  if (options.contextToolEnabled === false) return messages;
   let latestUserIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     if (messages[index]?.role === 'user') {
@@ -2677,6 +2719,7 @@ async function createRuntimeKernelTurn(input: {
   voiceSessionId?: string;
   workspaceId?: string;
   projectId?: string;
+  workingDirectory?: string;
   text: string;
   providerUserText?: string;
   userMessageId: string;
@@ -2793,9 +2836,11 @@ async function createRuntimeKernelTurn(input: {
       allowPermissionBlocks: input.interactionMode === 'agent',
       voiceDelivery: input.speakReply ? 'validated_stream' : 'none',
     },
-    ...(input.projectId && getStoredProjectRoot(input.projectId)
-      ? { workingDirectory: getStoredProjectRoot(input.projectId) ?? undefined }
-      : {}),
+    ...(input.workingDirectory
+      ? { workingDirectory: input.workingDirectory }
+      : input.projectId && getStoredProjectRoot(input.projectId)
+        ? { workingDirectory: getStoredProjectRoot(input.projectId) ?? undefined }
+        : {}),
   };
 }
 
@@ -3346,14 +3391,22 @@ export function startRuntimeListener(
           : undefined,
     });
     setLiveAgentActivityPhase(chatId, agentActivityId, initialActivityPhase);
-    const requestsContextTool = requestsReadOnlyContextTool(text);
+    const explicitReadRoot = extractExplicitReadRoot(text);
+    const requestsContextTool = !explicitReadRoot && requestsReadOnlyContextTool(text);
     let resolvedRequestContext: Awaited<ReturnType<typeof resolveJarvisContext>>;
     try {
-      rememberConversationDestination(chatId, text);
+      if (!explicitReadRoot) rememberConversationDestination(chatId, text);
       const enabledCapabilities = Array.from(
         new Set([...agent.capabilities, ...agent.tools_allowed, ...(agent.skills ?? [])]),
       ).slice(0, 32);
-      if (requestsContextTool) {
+      if (explicitReadRoot) {
+        resolvedRequestContext = {
+          currentWorkingDirectory: explicitReadRoot,
+          relevantFiles: [],
+          enabledCapabilities: [],
+          sourceReasons: ['explicit leading read root'],
+        };
+      } else if (requestsContextTool) {
         const activeProjectPath = getStoredProjectRoot(projectId).trim() || undefined;
         resolvedRequestContext = {
           activeProjectId: projectId ? String(projectId) : undefined,
@@ -3443,7 +3496,7 @@ export function startRuntimeListener(
           : (agent.persona ?? null),
       }),
     );
-    if (isProtectedJarvis) {
+    if (isProtectedJarvis && !(explicitReadRoot && interactionMode === 'ask')) {
       runnable = applyAvailableActions(runnable);
       runnable = applyJarvisChatActionOverlay(runnable);
     }
@@ -3462,7 +3515,7 @@ export function startRuntimeListener(
     // into a CLI can't hijack the chat. Empty string when there's
     // nothing worth surfacing — skip the prepend in that case to
     // keep the prompt lean.
-    const terminalContext = buildAgentTerminalContext(agent.slug);
+    const terminalContext = explicitReadRoot ? '' : buildAgentTerminalContext(agent.slug);
 
     // Project + connected-files context (Projects revamp).
     //
@@ -3485,6 +3538,7 @@ export function startRuntimeListener(
     const runtimeSettings: ChatRuntimeSettings = {
       ...DEFAULT_CHAT_RUNTIME_SETTINGS,
       ...(detail.runtimeSettings ?? {}),
+      ...(explicitReadRoot ? { rlmEnabled: false } : {}),
     };
     let connectedFilesContext = '';
     let mentionedAgentContext = '';
@@ -3501,9 +3555,22 @@ export function startRuntimeListener(
     let pluginStatusContext = '';
     let modelSkillInventoryContext = '';
     let selectedSkillsContext = '';
-    const resolvedContextBlock = formatResolvedJarvisContext(resolvedRequestContext);
+    const resolvedContextBlock = [
+      formatResolvedJarvisContext(resolvedRequestContext),
+      explicitReadRoot
+        ? [
+            '## Explicit read scope',
+            'The leading path is the authoritative read scope for this turn.',
+            'Inspect only evidence reachable under that directory; do not treat the agent system prompt, active project, model/tool inventory, or unrelated Context Map as the requested content.',
+            'Separate observed facts from inference and state unavailable evidence plainly.',
+          ].join('\n')
+        : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
     const requestIntentBlock = formatJarvisIntentPolicy(requestIntent);
     const autoRetrieveProjectKnowledge =
+      !explicitReadRoot &&
       !requestsContextTool &&
       shouldAutoRetrieveProjectKnowledge({
         text,
@@ -3514,7 +3581,7 @@ export function startRuntimeListener(
           (detail.terminalRefs?.length ?? 0) > 0 ||
           (detail.terminalSessionIds?.length ?? 0) > 0,
       });
-    if (!requestsContextTool) {
+    if (!explicitReadRoot && !requestsContextTool) {
       try {
         projectContext = await getProjectContextBlock(projectId);
       } catch (err) {
@@ -3539,6 +3606,7 @@ export function startRuntimeListener(
       }
     }
     if (
+      !explicitReadRoot &&
       !requestsContextTool &&
       typeof projectId === 'string' &&
       projectId.trim().length > 0
@@ -3621,7 +3689,7 @@ export function startRuntimeListener(
         detail: { error: err instanceof Error ? err.message : String(err) },
       });
     }
-    if (!requestsContextTool) {
+    if (!explicitReadRoot && !requestsContextTool) {
       try {
         connectedFilesContext = await getConnectedFilesBlock(agent.slug, projectId);
       } catch (err) {
@@ -3633,7 +3701,7 @@ export function startRuntimeListener(
         });
       }
     }
-    if (!requestsContextTool) {
+    if (!explicitReadRoot && !requestsContextTool) {
       try {
         const mentionedBlocks = [getMentionedAgentProfileBlock(mentionedAgents)];
         for (const mentioned of mentionedAgents) {
@@ -3727,7 +3795,7 @@ export function startRuntimeListener(
           detail: { error: err instanceof Error ? err.message : String(err) },
         });
       }
-      if (!requestsContextTool) {
+      if (!explicitReadRoot && !requestsContextTool) {
         try {
           const defaultWriteFolder = await resolveDefaultWriteDir();
           defaultWriteFolderContext = [
@@ -3748,7 +3816,7 @@ export function startRuntimeListener(
           detail: { error: err instanceof Error ? err.message : String(err) },
         });
       }
-      if (!requestsContextTool) {
+      if (!explicitReadRoot && !requestsContextTool) {
         try {
           jarvisCoordinationContext = await getJarvisCoordinationContextBlock(projectId);
         } catch (err) {
@@ -3760,31 +3828,35 @@ export function startRuntimeListener(
           });
         }
       }
-      try {
-        jarvisTerminalOperatingContext = getJarvisTerminalOperatingContextBlock(
-          Date.now(),
-          projectId ? String(projectId) : undefined,
-        );
-      } catch (err) {
-        devConsole.log({
-          channel: 'ai',
-          level: 'warn',
-          message: 'Jarvis terminal operating context build failed',
-          detail: { error: err instanceof Error ? err.message : String(err) },
-        });
+      if (!explicitReadRoot) {
+        try {
+          jarvisTerminalOperatingContext = getJarvisTerminalOperatingContextBlock(
+            Date.now(),
+            projectId ? String(projectId) : undefined,
+          );
+        } catch (err) {
+          devConsole.log({
+            channel: 'ai',
+            level: 'warn',
+            message: 'Jarvis terminal operating context build failed',
+            detail: { error: err instanceof Error ? err.message : String(err) },
+          });
+        }
       }
-      try {
-        modelSkillInventoryContext = getJarvisConnectivityInventoryBlock(
-          authState,
-          detail.skillIds,
-        );
-      } catch (err) {
-        devConsole.log({
-          channel: 'ai',
-          level: 'warn',
-          message: 'Jarvis model/skill inventory build failed',
-          detail: { error: err instanceof Error ? err.message : String(err) },
-        });
+      if (!explicitReadRoot) {
+        try {
+          modelSkillInventoryContext = getJarvisConnectivityInventoryBlock(
+            authState,
+            detail.skillIds,
+          );
+        } catch (err) {
+          devConsole.log({
+            channel: 'ai',
+            level: 'warn',
+            message: 'Jarvis model/skill inventory build failed',
+            detail: { error: err instanceof Error ? err.message : String(err) },
+          });
+        }
       }
     }
     if (requestsContextTool) {
@@ -3972,10 +4044,10 @@ export function startRuntimeListener(
                   : {}),
               },
               preference: effectiveReasoningPreference,
-              liveVariants: liveVariantsForSelection(getLiveOpenCodeProviders(), {
-                providerId: chatModelSelection.providerId,
-                modelId: chatModelSelection.modelId,
-              }),
+              liveVariants: liveVariantsForSelection(
+                getLiveOpenCodeProviders(),
+                liveVariantLookupForChatSelection(chatModelSelection),
+              ),
             })
           : null;
     } catch (error) {
@@ -4317,6 +4389,7 @@ export function startRuntimeListener(
               chatId,
               ...(chatRecord?.workspace_id ? { workspaceId: String(chatRecord.workspace_id) } : {}),
               ...(projectId ? { projectId: String(projectId) } : {}),
+              ...(explicitReadRoot ? { workingDirectory: explicitReadRoot } : {}),
               text: stackText,
               userMessageId: userMessage.id,
               messages: [...hiveHistory, { role: 'user', content: stackText }],
@@ -4425,7 +4498,9 @@ export function startRuntimeListener(
                 : { effectiveTemperature: runnable.temperature }),
               capturedAt,
             };
-            const kernelMessages = prepareOpenCodeMessagesForInteractionMode(llmMessages);
+            const kernelMessages = prepareOpenCodeMessagesForInteractionMode(llmMessages, {
+              contextToolEnabled: !explicitReadRoot,
+            });
             const kernelUserText = [...kernelMessages]
               .reverse()
               .find((message) => message.role === 'user')?.content;
@@ -4441,6 +4516,7 @@ export function startRuntimeListener(
                 : {}),
               ...(chatRecord?.workspace_id ? { workspaceId: String(chatRecord.workspace_id) } : {}),
               ...(projectId ? { projectId: String(projectId) } : {}),
+              ...(explicitReadRoot ? { workingDirectory: explicitReadRoot } : {}),
               text,
               ...(kernelUserText === undefined
                 ? {}
@@ -4777,6 +4853,17 @@ export function startRuntimeListener(
           agent: agent.slug,
           provider: runnable.model.provider,
           model: runnable.model.model,
+          connectionId:
+            chatModelSelection.mode === 'single' ? chatModelSelection.connectionId : undefined,
+          reasoningMode: reasoningPolicy?.mode,
+          reasoningEffort: reasoningPolicy?.resolvedEffort,
+          providerVariant:
+            reasoningPolicy === null
+              ? undefined
+              : Object.values(reasoningPolicy.providerOptions).find(
+                  (value): value is string => typeof value === 'string',
+                ),
+          runtimePerformance: runtimeSettings.performance,
           messageCount: requestMessages.length,
           systemPromptChars: runnable.system_prompt?.length ?? 0,
           tokenOptimizationMode,
@@ -4801,7 +4888,11 @@ export function startRuntimeListener(
         agent: runnable,
         chatId: String(chatId),
         ...(structuredAgent ? { parentChatId: structuredAgent.parentChatId } : {}),
-        messages: [...prepareOpenCodeMessagesForInteractionMode(requestMessages)],
+        messages: [
+          ...prepareOpenCodeMessagesForInteractionMode(requestMessages, {
+            contextToolEnabled: !explicitReadRoot,
+          }),
+        ],
         max_output_tokens: optimizedOutputTokenLimit,
         provider_options: reasoningPolicy?.providerOptions,
         connectionId:
@@ -4827,9 +4918,9 @@ export function startRuntimeListener(
         interactionMode,
         accessLevel: detail.accessLevel,
         approveAllForRun: detail.approveAllForRun === true,
-        workingDirectory: projectId
-          ? getStoredProjectRoot(projectId)?.trim() || undefined
-          : undefined,
+        workingDirectory:
+          explicitReadRoot ??
+          (projectId ? getStoredProjectRoot(projectId)?.trim() || undefined : undefined),
         signal: controller.signal,
         onChunk: (chunk: LLMStreamChunk) => {
           if (controller.signal.aborted) return;
@@ -4855,6 +4946,7 @@ export function startRuntimeListener(
         },
         tools: openCodeToolsForInteractionMode(interactionMode, llmMessages, {
           chatId: String(chatId),
+          explicitReadRoot: Boolean(explicitReadRoot),
         }),
         ...(structuredAgent
           ? {

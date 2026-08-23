@@ -16,6 +16,10 @@ const retrievalMocks = vi.hoisted(() => ({
   retrieveApprovedLocalKnowledge: vi.fn(),
 }));
 
+const dbMocks = vi.hoisted(() => ({
+  projectGetById: vi.fn(),
+}));
+
 vi.mock('@/lib/fs', () => ({
   readTextFileSample: fsMocks.readTextFileSample,
   listDirectory: fsMocks.listDirectory,
@@ -27,7 +31,7 @@ vi.mock('@/lib/db', () => ({
     settings: {},
     sync_queue: {},
   },
-  projectRepo: { getById: vi.fn() },
+  projectRepo: { getById: dbMocks.projectGetById },
 }));
 
 vi.mock('@/features/files/projectFiles', () => ({
@@ -61,6 +65,7 @@ import {
   getJarvisCoordinationContextBlock,
   getJarvisTerminalOperatingContextBlock,
   extractExplicitDestination,
+  extractExplicitReadRoot,
   formatJarvisTerminalOperatingContextBlock,
   formatResolvedJarvisContext,
   rememberConversationDestination,
@@ -89,6 +94,28 @@ describe('AI explicit file context safeguards', () => {
     retrievalMocks.retrieveApprovedLocalKnowledge.mockResolvedValue([]);
   });
 
+  it('does not await the native default directory when an active project path is authoritative', async () => {
+    fsMocks.getStoredProjectRoot.mockReturnValue('C:\\Users\\viper\\projects\\BoundProject');
+    fsMocks.getJarvisProjectsDir.mockImplementationOnce(() => new Promise<string>(() => undefined));
+    dbMocks.projectGetById.mockImplementationOnce(() => new Promise<never>(() => undefined));
+
+    const resolution = resolveJarvisContext({
+      projectId: 'project_bound' as never,
+      chatId: 'chat_bound',
+      currentText: 'Reply with exactly: READY',
+    });
+    await Promise.resolve();
+
+    expect(fsMocks.getJarvisProjectsDir).not.toHaveBeenCalled();
+    expect(dbMocks.projectGetById).not.toHaveBeenCalled();
+    await expect(resolution).resolves.toMatchObject({
+      activeProjectId: 'project_bound',
+      activeProjectPath: 'C:\\Users\\viper\\projects\\BoundProject',
+      preferredDestination: 'C:\\Users\\viper\\projects\\BoundProject',
+      sourceReasons: ['active selected project'],
+    });
+  });
+
   it('remembers a conversation folder and prefers a newer active project', async () => {
     rememberConversationDestination(
       'chat_1',
@@ -97,6 +124,13 @@ describe('AI explicit file context safeguards', () => {
     expect(extractExplicitDestination('Use `C:\\Users\\viper\\projects\\FarmLife`')).toBe(
       'C:\\Users\\viper\\projects\\FarmLife',
     );
+    expect(extractExplicitDestination('C:\\Users\\viper')).toBe('C:\\Users\\viper');
+    expect(extractExplicitDestination('Use `C:\\Users\\viper\\Folder with spaces`')).toBe(
+      'C:\\Users\\viper\\Folder with spaces',
+    );
+    expect(
+      extractExplicitDestination('C:\\Users\\viper Hi, please read your context and summarize it.'),
+    ).toBeUndefined();
     const remembered = await resolveJarvisContext({
       projectId: null,
       chatId: 'chat_1',
@@ -112,6 +146,25 @@ describe('AI explicit file context safeguards', () => {
     });
     expect(active.preferredDestination).toBe('C:\\Users\\viper\\projects\\NewProject');
     expect(formatResolvedJarvisContext(active)).toContain('Preferred new-file destination');
+  });
+
+  it('recognizes only an explicit leading read root without turning prose paths into authority', () => {
+    expect(
+      extractExplicitReadRoot('C:\\Users\\viper Hi, please read your context and summarize it.'),
+    ).toBe('C:\\Users\\viper');
+    expect(extractExplicitReadRoot('`C:\\Knowledge\\Folder with spaces` please audit it.')).toBe(
+      'C:\\Knowledge\\Folder with spaces',
+    );
+    expect(
+      extractExplicitReadRoot('Mention C:\\Users\\viper while explaining paths.'),
+    ).toBeUndefined();
+    expect(extractExplicitReadRoot('C:\\Users\\viper create and read report.md.')).toBeUndefined();
+    expect(extractExplicitReadRoot('C:\\Users\\..\\Windows please inspect it.')).toBeUndefined();
+    expect(
+      extractExplicitReadRoot('C:\\Knowledge\\Folder with spaces please read it.'),
+    ).toBeUndefined();
+    expect(extractExplicitReadRoot('\\\\server\\share please read it.')).toBeUndefined();
+    expect(extractExplicitReadRoot('`C:\\Knowledge\\bad\tpath` please audit it.')).toBeUndefined();
   });
 
   it('samples attached text files instead of reading them in full', async () => {
