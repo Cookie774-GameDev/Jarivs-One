@@ -1,0 +1,318 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import {
+  NativeQuestionADriverError,
+  assessVisibleResponse,
+  assertExactRoute,
+  assertLiveEffortAuthority,
+  classifyConsoleError,
+  parseArgs,
+  resolveOfficialNativeTarget,
+  safeDispatchReceipt,
+} from './pr31-native-question-a.mjs';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const EVIDENCE = 'D:\\VibeSpace-Testing\\evidence';
+const PROMPT = 'D:\\VibeSpace-Testing\\question-a.txt';
+const LOCAL = 'C:\\Users\\viper\\AppData\\Local';
+
+function processRow(name, pid, parentPid, executablePath, commandLine = '') {
+  return {
+    Name: name,
+    ProcessId: pid,
+    ParentProcessId: parentPid,
+    ExecutablePath: executablePath,
+    CommandLine: commandLine,
+  };
+}
+
+function officialProcesses(port = 9333, jarvisPid = 100) {
+  return [
+    processRow('jarvis.exe', jarvisPid, 9, 'D:\\VibeSpace\\jarvis.exe', 'jarvis.exe'),
+    processRow(
+      'msedgewebview2.exe',
+      jarvisPid + 1,
+      jarvisPid,
+      'C:\\Program Files\\WebView2\\msedgewebview2.exe',
+      `msedgewebview2.exe --user-data-dir="${LOCAL}\\ai.jarvis.desktop\\EBWebView" --remote-debugging-port=${port}`,
+    ),
+    processRow(
+      'msedgewebview2.exe',
+      jarvisPid + 2,
+      jarvisPid + 1,
+      'C:\\Program Files\\WebView2\\msedgewebview2.exe',
+      'msedgewebview2.exe --type=renderer',
+    ),
+  ];
+}
+
+function sendArgs(extra = []) {
+  return [
+    '--send',
+    '--evidence-dir',
+    EVIDENCE,
+    '--prompt-file',
+    PROMPT,
+    '--jarvis-pid',
+    '100',
+    '--expect-provider',
+    'opencode',
+    '--expect-connection',
+    'opencode-cli',
+    '--expect-model',
+    'opencode-go/deepseek-v4-flash-vision-exp',
+    '--expect-effort',
+    'medium',
+    '--expect-performance',
+    'quality',
+    '--expect-fast',
+    'off',
+    '--expect-rlm',
+    'on',
+    ...extra,
+  ];
+}
+
+test('defaults to inspection and cannot accept prompt material', () => {
+  assert.equal(parseArgs(['--evidence-dir', EVIDENCE]).mode, 'inspect');
+  assert.throws(
+    () => parseArgs(['--inspect', '--evidence-dir', EVIDENCE, '--prompt-file', PROMPT]),
+    (error) =>
+      error instanceof NativeQuestionADriverError &&
+      error.code === 'inspection_cannot_accept_prompt',
+  );
+  assert.throws(
+    () => parseArgs(['--inspect', '--send', '--evidence-dir', EVIDENCE]),
+    /invalid_arguments/u,
+  );
+});
+
+test('send mode requires explicit route authority and at most three runs', () => {
+  const parsed = parseArgs(sendArgs(['--runs', '3']));
+  assert.equal(parsed.runs, 3);
+  assert.equal(parsed.expectedProvider, 'opencode');
+  assert.equal(parsed.expectedConnection, 'opencode-cli');
+  assert.equal(parsed.expectedModel, 'opencode-go/deepseek-v4-flash-vision-exp');
+  assert.equal(parsed.expectedEffort, 'medium');
+  assert.equal(parsed.expectedPerformance, 'quality');
+  assert.equal(parsed.expectedFast, 'off');
+  assert.equal(parsed.expectedRlm, 'on');
+  assert.equal(parsed.jarvisPid, 100);
+  assert.throws(
+    () => parseArgs(['--send', '--evidence-dir', EVIDENCE]),
+    /send_authority_incomplete/u,
+  );
+  const withoutPid = sendArgs();
+  withoutPid.splice(withoutPid.indexOf('--jarvis-pid'), 2);
+  assert.throws(() => parseArgs(withoutPid), /send_authority_incomplete/u);
+  assert.throws(() => parseArgs(sendArgs(['--runs', '4'])), /invalid_run_count/u);
+  const invalidRlm = sendArgs();
+  invalidRlm[invalidRlm.indexOf('--expect-rlm') + 1] = 'invalid';
+  assert.throws(() => parseArgs(invalidRlm), /invalid_expected_rlm/u);
+  assert.throws(
+    () => parseArgs(sendArgs(['--prompt', 'PRIVATE'])),
+    (error) => error instanceof NativeQuestionADriverError && error.code === 'invalid_arguments',
+  );
+});
+
+test('proves the CDP port is owned by a jarvis descendant on the exact official profile', () => {
+  assert.deepEqual(resolveOfficialNativeTarget(officialProcesses(), { localAppData: LOCAL }), {
+    jarvisPid: 100,
+    webViewPid: 101,
+    executablePath: 'D:\\VibeSpace\\jarvis.exe',
+    profile: `${LOCAL}\\ai.jarvis.desktop\\EBWebView`,
+    cdpPort: 9333,
+    ownership: 'jarvis_descendant_exact_official_profile',
+  });
+});
+
+test('fails closed for standalone, wrong-profile, ambiguous, or mismatched-port targets', () => {
+  const standalone = officialProcesses().filter((row) => row.Name !== 'jarvis.exe');
+  assert.throws(
+    () => resolveOfficialNativeTarget(standalone, { localAppData: LOCAL }),
+    /official_native_target_not_found/u,
+  );
+  const wrongProfile = officialProcesses().map((row) =>
+    row.Name === 'msedgewebview2.exe' && row.CommandLine.includes('user-data-dir')
+      ? { ...row, CommandLine: row.CommandLine.replace('ai.jarvis.desktop', 'standalone.browser') }
+      : row,
+  );
+  assert.throws(
+    () => resolveOfficialNativeTarget(wrongProfile, { localAppData: LOCAL }),
+    /official_native_target_not_found/u,
+  );
+  assert.throws(
+    () =>
+      resolveOfficialNativeTarget(
+        [...officialProcesses(9333, 100), ...officialProcesses(9444, 200)],
+        { localAppData: LOCAL },
+      ),
+    /official_native_target_ambiguous/u,
+  );
+  assert.throws(
+    () =>
+      resolveOfficialNativeTarget(officialProcesses(), {
+        localAppData: LOCAL,
+        cdpPort: 9444,
+      }),
+    /official_native_target_not_found/u,
+  );
+});
+
+test('captures only exact dispatch identity and omits prompt, source, and credentials', () => {
+  const secret = 'sk-private-do-not-record';
+  const receipt = safeDispatchReceipt({
+    chatId: 'chat-1',
+    text: `PRIVATE PROMPT ${secret}`,
+    filePaths: ['C:\\private-source'],
+    apiKey: secret,
+    modelSelectionOverride: {
+      mode: 'single',
+      providerId: 'opencode',
+      connectionId: 'opencode-cli',
+      modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+    },
+    reasoningPreference: { effortOverride: 'medium' },
+    runtimeSettings: {
+      effort: 'medium',
+      performance: 'quality',
+      fastMode: 'off',
+      rlmEnabled: true,
+    },
+  });
+  assert.deepEqual(receipt, {
+    chatId: 'chat-1',
+    providerId: 'opencode',
+    connectionId: 'opencode-cli',
+    modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+    effort: 'medium',
+    runtimeEffort: 'medium',
+    performance: 'quality',
+    fastMode: 'off',
+    rlmEnabled: true,
+  });
+  assert.doesNotMatch(JSON.stringify(receipt), /PRIVATE|private-source|sk-private/u);
+  assert.doesNotThrow(() => assertExactRoute(receipt, parseArgs(sendArgs())));
+  assert.throws(
+    () => assertExactRoute({ ...receipt, modelId: 'substituted' }, parseArgs(sendArgs())),
+    (error) => error instanceof NativeQuestionADriverError && error.code === 'exact_route_mismatch',
+  );
+  assert.throws(
+    () => assertExactRoute({ ...receipt, rlmEnabled: false }, parseArgs(sendArgs())),
+    (error) => error instanceof NativeQuestionADriverError && error.code === 'exact_route_mismatch',
+  );
+  assert.throws(
+    () => assertExactRoute({ ...receipt, runtimeEffort: 'auto' }, parseArgs(sendArgs())),
+    (error) => error instanceof NativeQuestionADriverError && error.code === 'exact_route_mismatch',
+  );
+});
+
+test('rejects secret-bearing or malformed dispatch identity instead of recording it', () => {
+  const secret = 'PRIVATE VALUE WITH SPACES sk-secret';
+  const receipt = safeDispatchReceipt({
+    chatId: secret,
+    modelSelectionOverride: {
+      mode: 'single',
+      providerId: secret,
+      connectionId: secret,
+      modelId: secret,
+    },
+    reasoningPreference: { effortOverride: secret },
+    runtimeSettings: { effort: secret, performance: secret, fastMode: secret },
+  });
+  assert.deepEqual(receipt, {
+    chatId: '',
+    providerId: '',
+    connectionId: '',
+    modelId: '',
+    effort: '',
+    runtimeEffort: '',
+    performance: '',
+    fastMode: '',
+    rlmEnabled: false,
+  });
+  assert.doesNotMatch(JSON.stringify(receipt), /PRIVATE|sk-secret/u);
+});
+
+test('requires the exact effort to exist on the registered live model', () => {
+  const authority = {
+    registered: true,
+    modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+    variants: ['low', 'high', 'max'],
+  };
+  assert.doesNotThrow(() => assertLiveEffortAuthority(authority, 'high'));
+  assert.throws(
+    () => assertLiveEffortAuthority(authority, 'medium'),
+    (error) =>
+      error instanceof NativeQuestionADriverError &&
+      error.code === 'expected_effort_not_live_supported',
+  );
+  assert.throws(
+    () => assertLiveEffortAuthority({ ...authority, registered: false }, 'high'),
+    (error) =>
+      error instanceof NativeQuestionADriverError &&
+      error.code === 'expected_model_not_live_registered',
+  );
+});
+
+test('mechanically grades visible word bounds, internal markers, and duplicate tails', () => {
+  const clean = Array.from({ length: 700 }, (_, index) => `fact${index}`).join(' ');
+  assert.deepEqual(assessVisibleResponse(clean), {
+    wordCount: 700,
+    withinWordBounds: true,
+    duplicateTail: false,
+    internalMarker: false,
+  });
+  assert.equal(
+    assessVisibleResponse(Array.from({ length: 649 }, (_, index) => `short${index}`).join(' '))
+      .withinWordBounds,
+    false,
+  );
+  assert.equal(assessVisibleResponse(`${clean} extra `.repeat(8)).withinWordBounds, false);
+  assert.equal(
+    assessVisibleResponse('Evidence [unverified output location omitted]').internalMarker,
+    true,
+  );
+  const repeated = Array.from({ length: 60 }, (_, index) => `evidence${index}`).join(' ');
+  assert.equal(assessVisibleResponse(`${repeated} ${repeated}`).duplicateTail, true);
+});
+
+test('reduces console failures to stable non-content codes', () => {
+  assert.equal(classifyConsoleError('401 Unauthorized: secret body omitted'), 'auth_error');
+  assert.equal(
+    classifyConsoleError('net::ERR_CONNECTION_REFUSED https://private.invalid/path'),
+    'network_error',
+  );
+  assert.equal(classifyConsoleError('OpenCode protected turn failed.'), 'opencode_turn_error');
+  assert.equal(classifyConsoleError('arbitrary private message'), 'console_error');
+});
+
+test('source can only attach to owned CDP and cannot launch, navigate, or close the app', async () => {
+  const source = await readFile(path.join(HERE, 'pr31-native-question-a.mjs'), 'utf8');
+  assert.match(source, /chromium\.connectOverCDP/u);
+  assert.match(source, /ai\.jarvis\.desktop/u);
+  assert.match(source, /jarvis\.exe/u);
+  assert.match(source, /official_native_target_changed/u);
+  assert.match(source, /process_inspection_unavailable/u);
+  assert.match(source, /process_inspection_invalid/u);
+  assert.match(source, /mode: 'send_failure'/u);
+  assert.match(source, /data-vibespace-page/u);
+  assert.match(source, /data-monochrome-surface/u);
+  assert.match(source, /data-composer-effort/u);
+  assert.match(source, /locator\('\[data-composer-effort\]'\)/u);
+  assert.match(source, /Control\+Enter/u);
+  assert.match(source, /local_control_dispatched_provider/u);
+  assert.match(source, /runtime_control_\$\{field\}_not_applied/u);
+  for (const command of ['/effort ', '/performance ', '/fast ', '/rlm ']) {
+    assert.match(source, new RegExp(command.replace('/', '\\/'), 'u'));
+  }
+  assert.doesNotMatch(source, /chromium\.launch\s*\(/u);
+  assert.doesNotMatch(source, /\.goto\s*\(/u);
+  assert.doesNotMatch(source, /browser\.close\s*\(/u);
+  assert.doesNotMatch(source, /localStorage\.(?:setItem|removeItem)\s*\(/u);
+  assert.doesNotMatch(source, /detail\?\.text|detail\.text/u);
+});
