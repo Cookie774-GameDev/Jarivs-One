@@ -72,7 +72,7 @@
 - 2026-08-23 cloud checkpoint:
   - Applied Supabase migrations `wallpaper_r2_catalog_activation` and `wallpaper_rls_performance` to project `tipeobvisjqvpbzcpckh`.
   - Deployed JWT-verified `wallpaper-catalog`, `wallpaper-download-url`, and `wallpaper-redeem-orbit`; the deployed source hashes match the owned files.
-  - Deployed `vibespace-wallpaper-delivery` at `https://vibespace-wallpaper-delivery.vibespace-viper.workers.dev`; code deployment `08809a8a-54d3-4cae-9bcc-8577e5bded11`, current secret-change deployment `4cef3fc3-81ad-4a09-b26d-836fe2b90b2c`.
+  - Deployed `vibespace-wallpaper-delivery` at `https://vibespace-wallpaper-delivery.vibespace-viper.workers.dev`; code deployment `08809a8a-54d3-4cae-9bcc-8577e5bded11`. Secret-only versions advance whenever the automated verification rotates the shared HMAC key.
   - Uploaded all 23 masters to private R2 keys under `wallpapers/<slug>/wallpaper.mp4`.
   - Rotated the HMAC key into Cloudflare and Supabase secret stores without persisting it locally. Automated signed HEAD checks verified all 23 exact sizes and a signed `bytes=0-1023` request returned `206` with 1,024 bytes. Unsigned Worker request returned `403`; unauthenticated Supabase catalog/download requests returned `401`.
   - Cloudflare's bucket-management size summary still showed its older zero-object analytics snapshot immediately after upload. Direct signed R2 binding reads, not that lagging summary, are the acceptance evidence.
