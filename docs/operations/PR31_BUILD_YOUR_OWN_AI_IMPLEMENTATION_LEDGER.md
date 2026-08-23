@@ -155,3 +155,8 @@
 - Final focused renderer/domain/drop verification passes `35/35`, including the browser-only path rejection added after the implementation checkpoint. Prettier check passes for every owned TypeScript file, scoped diff check passes, and the owned native source passes `rustfmt --check`.
 - The isolated native test crate compiled successfully on D:. The fully qualified regression `model_foundry::tests::packaging_counts_only_sources_that_contribute_verified_chunks` passed `1/1` (`476` filtered out). An earlier bare exact filter selected zero tests and is explicitly not counted as evidence.
 - Full repository typecheck remains blocked by four unrelated active SiYuan test errors in `siyuanRlmProduction.test.ts` and `siyuanRlmRepository.test.ts`; it reported no Model Foundry diagnostic. Existing Radix test-harness `act(...)` warnings remain non-failing. The live native app was not controlled or visually tested by explicit user instruction, so native drag/drop visual/manual acceptance remains deferred rather than inferred.
+
+## 2026-08-23T11:02:00-05:00 — Provenance and native-drop product commit and release
+
+- Product commit: `e4d051a37af8884af2e1f48ad8819d9b53ab5319` (`fix(foundry): repair provenance and native source drop`), containing exactly the eight claimed native, renderer, domain, focused-test, helper, and ledger files. Exact staging, staged diff check, Rust formatting, and staged Gitleaks passed; no unrelated dirty file was staged.
+- Agent-scoped ownership is released after this receipt. Native/manual drag/drop and retry acceptance remains intentionally deferred by the user's instruction not to control the live app. No Supabase, Cloudflare, Stripe, production service, credential, shared model route, or unrelated agent file was changed.
