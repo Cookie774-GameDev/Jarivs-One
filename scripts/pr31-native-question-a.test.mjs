@@ -65,8 +65,10 @@ function sendArgs(extra = []) {
     'opencode-cli',
     '--expect-model',
     'opencode-go/deepseek-v4-flash-vision-exp',
-    '--expect-effort',
+    '--reject-effort',
     'medium',
+    '--expect-effort',
+    'high',
     '--expect-performance',
     'quality',
     '--expect-fast',
@@ -97,7 +99,8 @@ test('send mode requires explicit route authority and at most three runs', () =>
   assert.equal(parsed.expectedProvider, 'opencode');
   assert.equal(parsed.expectedConnection, 'opencode-cli');
   assert.equal(parsed.expectedModel, 'opencode-go/deepseek-v4-flash-vision-exp');
-  assert.equal(parsed.expectedEffort, 'medium');
+  assert.equal(parsed.rejectedEffort, 'medium');
+  assert.equal(parsed.expectedEffort, 'high');
   assert.equal(parsed.expectedPerformance, 'quality');
   assert.equal(parsed.expectedFast, 'off');
   assert.equal(parsed.expectedRlm, 'on');
@@ -113,6 +116,9 @@ test('send mode requires explicit route authority and at most three runs', () =>
   const invalidRlm = sendArgs();
   invalidRlm[invalidRlm.indexOf('--expect-rlm') + 1] = 'invalid';
   assert.throws(() => parseArgs(invalidRlm), /invalid_expected_rlm/u);
+  const invalidRejectedEffort = sendArgs();
+  invalidRejectedEffort[invalidRejectedEffort.indexOf('--reject-effort') + 1] = 'extreme';
+  assert.throws(() => parseArgs(invalidRejectedEffort), /invalid_rejected_effort/u);
   assert.throws(
     () => parseArgs(sendArgs(['--prompt', 'PRIVATE'])),
     (error) => error instanceof NativeQuestionADriverError && error.code === 'invalid_arguments',
@@ -176,9 +182,9 @@ test('captures only exact dispatch identity and omits prompt, source, and creden
       connectionId: 'opencode-cli',
       modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
     },
-    reasoningPreference: { effortOverride: 'medium' },
+    reasoningPreference: { effortOverride: 'high' },
     runtimeSettings: {
-      effort: 'medium',
+      effort: 'high',
       performance: 'quality',
       fastMode: 'off',
       rlmEnabled: true,
@@ -189,8 +195,8 @@ test('captures only exact dispatch identity and omits prompt, source, and creden
     providerId: 'opencode',
     connectionId: 'opencode-cli',
     modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
-    effort: 'medium',
-    runtimeEffort: 'medium',
+    effort: 'high',
+    runtimeEffort: 'high',
     performance: 'quality',
     fastMode: 'off',
     rlmEnabled: true,
@@ -306,6 +312,12 @@ test('source can only attach to owned CDP and cannot launch, navigate, or close 
   assert.match(source, /locator\('\[data-composer-effort\]'\)/u);
   assert.match(source, /Control\+Enter/u);
   assert.match(source, /local_control_dispatched_provider/u);
+  assert.match(source, /rejected_effort_dispatched_provider/u);
+  assert.match(source, /rejected_effort_mutated_state/u);
+  assert.match(source, /rejected_effort_still_visible/u);
+  assert.match(source, /\.jarvis-slash-dropdown/u);
+  assert.match(source, /group\.elementHandles\(\)/u);
+  assert.match(source, /section\[aria-label="Chats"\]/u);
   assert.match(source, /runtime_control_\$\{field\}_not_applied/u);
   for (const command of ['/effort ', '/performance ', '/fast ', '/rlm ']) {
     assert.match(source, new RegExp(command.replace('/', '\\/'), 'u'));

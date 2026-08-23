@@ -73,6 +73,7 @@ export function parseArgs(argv) {
     else if (name === '--expect-provider') options.expectedProvider = value;
     else if (name === '--expect-connection') options.expectedConnection = value;
     else if (name === '--expect-model') options.expectedModel = value;
+    else if (name === '--reject-effort') options.rejectedEffort = value;
     else if (name === '--expect-effort') options.expectedEffort = value;
     else if (name === '--expect-performance') options.expectedPerformance = value;
     else if (name === '--expect-fast') options.expectedFast = value;
@@ -120,6 +121,8 @@ export function parseArgs(argv) {
     fail('invalid_expected_fast');
   if (options.expectedRlm && !['on', 'off'].includes(options.expectedRlm))
     fail('invalid_expected_rlm');
+  if (options.rejectedEffort && !EFFORTS.has(options.rejectedEffort))
+    fail('invalid_rejected_effort');
   if (
     options.expectedPerformance &&
     !['responsive', 'balanced', 'quality'].includes(options.expectedPerformance)
@@ -598,11 +601,95 @@ async function configureExactRuntimeViaUi(page, expected) {
     fail('local_control_dispatched_provider');
 }
 
+async function verifyRejectedEffortViaUi(page, rejectedEffort, liveAuthority) {
+  const main = page.locator('[data-vibespace-page="chat"]:visible');
+  const composer = main.locator('textarea[data-composer-input="true"]:visible');
+  if ((await composer.count()) !== 1) fail('canonical_chat_surface_unavailable');
+  const order = ['auto', 'minimal', 'low', 'medium', 'high', 'ultra', 'max'];
+  const live = new Set((liveAuthority?.variants ?? []).filter((variant) => EFFORTS.has(variant)));
+  const expectedOptions = order.filter((effort) => effort === 'auto' || live.has(effort));
+  await applyRuntimeCommand(page, '/effort');
+  await page.waitForFunction(
+    ({ options }) => {
+      const dropdowns = [...document.querySelectorAll('.jarvis-slash-dropdown')].filter(
+        (node) => node instanceof HTMLElement && node.offsetParent !== null,
+      );
+      if (dropdowns.length !== 1) return false;
+      const [dropdown] = dropdowns;
+      if (!(dropdown instanceof HTMLElement) || dropdown.offsetParent === null) return false;
+      const actual = [...dropdown.querySelectorAll('[data-value]')]
+        .map((node) => node.getAttribute('data-value'))
+        .filter(Boolean);
+      return JSON.stringify(actual) === JSON.stringify(options);
+    },
+    { options: expectedOptions },
+    { timeout: 15_000 },
+  );
+  const optionIds = await page
+    .locator('.jarvis-slash-dropdown:visible [data-value]')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-value')).filter(Boolean));
+  if (optionIds.includes(rejectedEffort)) fail('rejected_effort_still_visible');
+  await composer.press('Escape');
+  await page.locator('.jarvis-slash-dropdown:visible').waitFor({ state: 'hidden', timeout: 5_000 });
+  await composer.fill('');
+
+  const beforeState = await inspectPageState(page);
+  const beforeProbe = await probeSnapshot(page);
+  await applyRuntimeCommand(page, `/effort ${rejectedEffort}`);
+  await page.waitForFunction(
+    ({ effort }) => {
+      const mainSurface = document.querySelector('[data-vibespace-page="chat"]');
+      return mainSurface?.innerText.includes(`Effort “${effort}” is not available`) === true;
+    },
+    { effort: rejectedEffort },
+    { timeout: 5_000 },
+  );
+  const afterState = await inspectPageState(page);
+  const afterProbe = await probeSnapshot(page);
+  if (
+    afterState.runtime.effort !== beforeState.runtime.effort ||
+    afterState.runtime.runtimeEffort !== beforeState.runtime.runtimeEffort
+  )
+    fail('rejected_effort_mutated_state');
+  if (afterProbe.sends.length !== beforeProbe.sends.length)
+    fail('rejected_effort_dispatched_provider');
+  if ((await main.locator(`[data-composer-effort="${rejectedEffort}"]`).count()) !== 0)
+    fail('rejected_effort_badge_visible');
+  return Object.freeze({
+    rejected: true,
+    optionIds,
+    stateUnchanged: true,
+    providerDispatchCount: 0,
+  });
+}
+
 async function activateChat(page, chatId) {
-  const tabs = page.getByRole('group', { name: 'Open chats' }).locator('button[aria-pressed]');
-  for (let index = 0; index < (await tabs.count()); index += 1) {
-    await tabs.nth(index).click({ timeout: 5_000 });
-    if ((await activeChatId(page)) === chatId) return;
+  const groups = [
+    page.getByRole('group', { name: 'Open chats' }).locator('button[aria-pressed]'),
+    page.locator('section[aria-label="Chats"] button'),
+  ];
+  for (const group of groups) {
+    const handles = await group.elementHandles();
+    for (const handle of handles) {
+      await handle.click({ timeout: 5_000 });
+      try {
+        await page.waitForFunction(
+          ({ key, expected }) => {
+            try {
+              const value = JSON.parse(localStorage.getItem(key) ?? 'null');
+              return String((value?.state ?? value)?.activeChatId ?? '') === expected;
+            } catch {
+              return false;
+            }
+          },
+          { key: UI_KEY, expected: chatId },
+          { timeout: 1_000 },
+        );
+        return;
+      } catch {
+        // Continue across immutable UI-button snapshots until the exact chat activates.
+      }
+    }
   }
   fail('target_chat_not_visible');
 }
@@ -817,6 +904,15 @@ export async function runDriver(options, dependencies = {}) {
     for (let index = 0; index < options.runs; index += 1) {
       stage = `run_${index + 1}_create_chat`;
       const chatId = await createChat(page);
+      let rejectedEffortProof = null;
+      if (options.rejectedEffort) {
+        stage = `run_${index + 1}_reject_unsupported_effort`;
+        rejectedEffortProof = await verifyRejectedEffortViaUi(
+          page,
+          options.rejectedEffort,
+          liveAuthority,
+        );
+      }
       stage = `run_${index + 1}_configure_runtime`;
       await configureExactRuntimeViaUi(page, options);
       stage = `run_${index + 1}_preflight`;
@@ -843,7 +939,13 @@ export async function runDriver(options, dependencies = {}) {
       const composer = main.locator('textarea[data-composer-input="true"]:visible');
       await composer.fill(prompt);
       const startedAt = Date.now();
-      const run = { index: index + 1, chatId, startedAt, visibleControl };
+      const run = {
+        index: index + 1,
+        chatId,
+        startedAt,
+        visibleControl,
+        ...(rejectedEffortProof ? { rejectedEffortProof } : {}),
+      };
       runs.push(run);
       stage = `run_${index + 1}_dispatch`;
       await main.locator('button[aria-label="Send message"]:visible').click({ timeout: 5_000 });
