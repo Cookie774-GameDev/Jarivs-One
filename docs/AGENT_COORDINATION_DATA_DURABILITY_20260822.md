@@ -82,3 +82,9 @@
 - The contract uses an isolated fake IndexedDB to prove a same-authority reopen preserves a nested settings row exactly while local preferences remain untouched. It also fails if a destructive Dexie upgrade hook or database delete enters the production database constructor.
 - No updater, schema, storage producer, app configuration, or user data was changed.
 - Fresh update/migration/portable/cloud matrix: PASS, 4 files / 28 tests. Full TypeScript reports only the same four separately owned SiYuan test diagnostics; the new contract has no diagnostic.
+
+## 2026-08-22 — normal-update durability contract committed and released
+
+- Contract/test/docs commit: `6f958a91e78445d885a3301dbf32f4c74f6a2886` (`test(storage): freeze update durability contract`).
+- Commit gate: exact formatting/diff checks PASS; staged Gitleaks scanned 4.63 KB with zero leaks. No product storage or updater behavior changed.
+- Exact contract/queue/ledger scope is released.
