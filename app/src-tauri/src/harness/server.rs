@@ -555,6 +555,9 @@ fn scoped_provider_config(
             "glob": "allow",
             "grep": "allow",
             "list": "allow",
+            "todo": "allow",
+            "todoread": "allow",
+            "todowrite": "allow",
             "edit": "deny",
             "bash": "deny",
             "task": "deny",
@@ -1259,6 +1262,9 @@ enum OpenCodeTransportRoute {
     SessionGet {
         session_id: String,
     },
+    SessionUpdate {
+        session_id: String,
+    },
     SessionDelete {
         session_id: String,
     },
@@ -1382,6 +1388,10 @@ fn transport_route_parts(
         OpenCodeTransportRoute::SessionCreate => (reqwest::Method::POST, "/session".to_string()),
         OpenCodeTransportRoute::SessionGet { session_id } => (
             reqwest::Method::GET,
+            format!("/session/{}", encoded_route_identifier(session_id)?),
+        ),
+        OpenCodeTransportRoute::SessionUpdate { session_id } => (
+            reqwest::Method::PATCH,
             format!("/session/{}", encoded_route_identifier(session_id)?),
         ),
         OpenCodeTransportRoute::SessionDelete { session_id } => (
@@ -1531,6 +1541,51 @@ fn validate_transport_body(
             only_keys(&["title", "parentID"])
                 && bounded_string("title", false)
                 && bounded_string("parentID", false)
+        }
+        OpenCodeTransportRoute::SessionUpdate { .. } => {
+            only_keys(&["permission"])
+                && object.len() == 1
+                && object.get("permission").is_some_and(|permissions| {
+                    permissions.as_array().is_some_and(|rules| {
+                        !rules.is_empty()
+                            && rules.len() <= 64
+                            && rules.iter().all(|rule| {
+                                let Some(rule) = rule.as_object() else {
+                                    return false;
+                                };
+                                rule.len() == 3
+                                    && rule.keys().all(|key| {
+                                        matches!(key.as_str(), "permission" | "pattern" | "action")
+                                    })
+                                    && rule.get("permission").and_then(Value::as_str).is_some_and(
+                                        |permission| {
+                                            matches!(
+                                                permission,
+                                                "read"
+                                                    | "edit"
+                                                    | "bash"
+                                                    | "task"
+                                                    | "skill"
+                                                    | "webfetch"
+                                                    | "websearch"
+                                                    | "external_directory"
+                                                    | "doom_loop"
+                                            )
+                                        },
+                                    )
+                                    && rule.get("pattern").and_then(Value::as_str).is_some_and(
+                                        |pattern| {
+                                            !pattern.is_empty()
+                                                && pattern.len() <= 4_096
+                                                && !pattern.chars().any(char::is_control)
+                                        },
+                                    )
+                                    && rule.get("action").and_then(Value::as_str).is_some_and(
+                                        |action| matches!(action, "allow" | "ask" | "deny"),
+                                    )
+                            })
+                    })
+                })
         }
         OpenCodeTransportRoute::SessionPromptAsync { .. } => !object.is_empty(),
         OpenCodeTransportRoute::SessionAbort { .. } => object.is_empty(),
@@ -2362,6 +2417,9 @@ mod tests {
         assert_eq!(config["permission"]["edit"], "deny");
         assert_eq!(config["permission"]["bash"], "deny");
         assert_eq!(config["permission"]["task"], "deny");
+        assert_eq!(config["permission"]["todo"], "allow");
+        assert_eq!(config["permission"]["todoread"], "allow");
+        assert_eq!(config["permission"]["todowrite"], "allow");
         assert_eq!(config["permission"]["external_directory"], "deny");
         assert_eq!(config["permission"]["terminal_list"], "allow");
         assert_eq!(config["permission"]["terminal_write"], "ask");
@@ -2777,6 +2835,9 @@ mod tests {
             OpenCodeTransportRoute::SessionGet {
                 session_id: "session/one".into(),
             },
+            OpenCodeTransportRoute::SessionUpdate {
+                session_id: "session-1".into(),
+            },
             OpenCodeTransportRoute::SessionMessages {
                 session_id: "session-1".into(),
                 limit: Some(100),
@@ -2835,6 +2896,20 @@ mod tests {
             OpenCodeTransportRoute::SessionPermission { .. }
         ));
         assert!(validate_transport_body(&request.route, request.body.as_deref()).is_ok());
+
+        let update = OpenCodeTransportRoute::SessionUpdate {
+            session_id: "session-1".into(),
+        };
+        let valid_permissions = r#"{"permission":[{"permission":"read","pattern":"*","action":"deny"},{"permission":"read","pattern":"C:/project/**","action":"allow"},{"permission":"edit","pattern":"C:/project/**","action":"ask"},{"permission":"external_directory","pattern":"*","action":"deny"}]}"#;
+        assert!(validate_transport_body(&update, Some(valid_permissions)).is_ok());
+        for invalid in [
+            r#"{"permission":[]}"#,
+            r#"{"permission":[{"permission":"root","pattern":"*","action":"allow"}]}"#,
+            r#"{"permission":[{"permission":"edit","pattern":"*","action":"always"}]}"#,
+            r#"{"permission":[{"permission":"edit","pattern":"*","action":"allow","extra":true}]}"#,
+        ] {
+            assert!(validate_transport_body(&update, Some(invalid)).is_err());
+        }
 
         let valid_config = serde_json::json!({
             "provider": { "qwen": { "options": {

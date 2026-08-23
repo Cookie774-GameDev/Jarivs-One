@@ -40,6 +40,7 @@ export interface PersistentOpenCodeTurnClient extends OpenCodeSessionClient {
     system?: string;
     agent?: string;
     tools?: Readonly<Record<string, boolean>>;
+    permissions?: EffectivePermissionProfile['openCode'];
   }): Promise<void>;
 }
 
@@ -181,6 +182,7 @@ export class OpenCodeTurnCoordinator {
       ...(input.system?.trim() ? { system: input.system } : {}),
       ...(input.agent?.trim() ? { agent: input.agent } : {}),
       ...(input.tools ? { tools: input.tools } : {}),
+      permissions: permissions.openCode,
     });
 
     return {

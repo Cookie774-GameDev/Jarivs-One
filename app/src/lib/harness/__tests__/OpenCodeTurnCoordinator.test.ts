@@ -4,7 +4,7 @@ import { OpenCodeTurnCoordinator } from '../OpenCodeTurnCoordinator';
 import type { OpenCodeSessionPool } from '../OpenCodeSessionPool';
 
 const metadata: LiveModelRuntimeMetadata = {
-  connectionId: 'openai-chatgpt-pro',
+  connectionId: 'openai-codex',
   modelId: 'gpt-5.6-sol',
   variants: [
     { id: 'high', kind: 'reasoning', reasoningEffort: 'high' },
@@ -28,9 +28,17 @@ describe('OpenCodeTurnCoordinator', () => {
       chatId: 'chat',
       text: '/rlm off',
       selection: {
-        connectionId: 'openai-chatgpt-pro', providerId: 'openai', modelId: 'gpt-5.6-sol', metadata,
+        connectionId: 'openai-codex',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        metadata,
       },
-      policy: { mode: 'ask', access: 'read-only', approveAllForRun: false, projectRoot: 'C:/project' },
+      policy: {
+        mode: 'ask',
+        access: 'read-only',
+        approveAllForRun: false,
+        projectRoot: 'C:/project',
+      },
     });
     expect(result.kind).toBe('command');
     expect(sendAsync).not.toHaveBeenCalled();
@@ -53,20 +61,32 @@ describe('OpenCodeTurnCoordinator', () => {
       text: 'Reply with READY.',
       settings: { effort: 'high', fastMode: 'on', performance: 'quality', rlmEnabled: true },
       selection: {
-        connectionId: 'openai-chatgpt-pro', providerId: 'openai', modelId: 'gpt-5.6-sol', metadata,
+        connectionId: 'openai-codex',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        metadata,
       },
       policy: { mode: 'agent', access: 'full', approveAllForRun: true, projectRoot: 'C:/project' },
     });
     expect(result).toMatchObject({
-      kind: 'dispatched', sessionId: 'session', runtimeGeneration: 'generation',
-      controls: { connectionId: 'openai-chatgpt-pro', modelId: 'gpt-5.6-sol', variant: 'high-fast' },
+      kind: 'dispatched',
+      sessionId: 'session',
+      runtimeGeneration: 'generation',
+      controls: { connectionId: 'openai-codex', modelId: 'gpt-5.6-sol', variant: 'high-fast' },
       permissions: { gateway: { mutationAuthority: 'autonomous' } },
     });
-    expect(sendAsync).toHaveBeenCalledWith(expect.objectContaining({
-      sessionId: 'session',
-      text: 'Reply with READY.',
-      controls: expect.objectContaining({ modelId: 'gpt-5.6-sol', variant: 'high-fast' }),
-    }));
+    expect(sendAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'session',
+        text: 'Reply with READY.',
+        controls: expect.objectContaining({ modelId: 'gpt-5.6-sol', variant: 'high-fast' }),
+        permissions: expect.objectContaining({
+          edit: expect.objectContaining({ 'C:/project/**': 'allow' }),
+          bash: 'allow',
+          external_directory: 'deny',
+        }),
+      }),
+    );
   });
 
   it('sends Codex Spark even when leftover max effort is unsupported', async () => {
@@ -85,14 +105,21 @@ describe('OpenCodeTurnCoordinator', () => {
       text: 'hello',
       settings: { effort: 'max', fastMode: 'off', performance: 'quality', rlmEnabled: true },
       selection: {
-        connectionId: 'openai-chatgpt-pro', providerId: 'openai', modelId: 'gpt-5.3-codex-spark',
+        connectionId: 'openai-chatgpt-pro',
+        providerId: 'openai',
+        modelId: 'gpt-5.3-codex-spark',
         metadata: {
           connectionId: 'openai-chatgpt-pro',
           modelId: 'gpt-5.3-codex-spark',
           variants: [{ id: 'medium' }],
         },
       },
-      policy: { mode: 'ask', access: 'read-only', approveAllForRun: false, projectRoot: 'C:/project' },
+      policy: {
+        mode: 'ask',
+        access: 'read-only',
+        approveAllForRun: false,
+        projectRoot: 'C:/project',
+      },
     });
     expect(result.kind).toBe('dispatched');
     expect(sessions.sessionForChat).toHaveBeenCalledOnce();

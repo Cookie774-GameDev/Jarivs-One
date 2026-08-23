@@ -96,6 +96,7 @@ describe('persistent OpenCode live authority', () => {
     });
 
     expect(tools.vibespace_context).toBe(true);
+    expect(tools).toMatchObject({ todo: true, todoread: true, todowrite: true });
     expect(Object.keys(tools)).toEqual(expect.arrayContaining(['vibespace_context']));
     expect(Object.keys(tools).every((name) => /^[a-zA-Z0-9_-]+$/u.test(name))).toBe(true);
     expect(tools).not.toHaveProperty('vibespace_context.query');

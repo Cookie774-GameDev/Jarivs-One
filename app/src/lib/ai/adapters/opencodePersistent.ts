@@ -224,6 +224,19 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
         {},
         30_000,
       ),
+    update: async (input: {
+      path: { id: string };
+      body: {
+        permission: readonly import('@/lib/harness/OpenCodeSdkSessionClient').OpenCodePermissionRule[];
+      };
+    }): Promise<unknown> =>
+      requestJson(
+        this.handle.generation,
+        this.handle.scope,
+        `/session/${encodeURIComponent(input.path.id)}`,
+        { method: 'PATCH', body: JSON.stringify(input.body) },
+        30_000,
+      ),
     abort: async (input: { path: { id: string } }): Promise<unknown> =>
       requestJson(
         this.handle.generation,
@@ -1145,6 +1158,9 @@ export function toolsForPolicy(input: {
     bash: canTerminal,
     shell: canTerminal,
     task: canSubagents,
+    todo: true,
+    todoread: true,
+    todowrite: true,
     vibespace_context: !input.explicitReadRoot && input.rlmEnabled,
   };
   if (!input.requested) return Object.freeze(baseline);
@@ -1189,6 +1205,12 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     }
   })();
   const chatId = request.chatId?.trim() || request.sessionId?.trim() || request.requestId;
+  if ([...activeRequests.values()].some((active) => active.chatId === chatId)) {
+    reportPersistentTurnFailure('turn_binding');
+    throw new Error(
+      'OpenCode chat already has an active request. Cancel it before starting another.',
+    );
+  }
   const turn = (() => {
     try {
       return turnGate.begin(chatId, request.requestId);

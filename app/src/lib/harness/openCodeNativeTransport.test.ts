@@ -40,6 +40,28 @@ describe('native OpenCode transport', () => {
     expect(await response.text()).toBe('');
   });
 
+  it('maps only an exact session update to the native permission route', async () => {
+    const invoke = vi.fn(async () => ({ status: 200, statusText: 'OK', body: 'true' }));
+    await nativeOpenCodeRequest(
+      'opencode-server-generation',
+      '/session/session-1',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          permission: [{ permission: 'edit', pattern: 'C:/project/**', action: 'allow' }],
+        }),
+      },
+      5_000,
+      async () => ({ invoke, channel: vi.fn() as never }),
+    );
+
+    expect(invoke).toHaveBeenCalledWith('opencode_server_request', {
+      request: expect.objectContaining({
+        route: { kind: 'session_update', sessionId: 'session-1' },
+      }),
+    });
+  });
+
   it('delivers native channel events and cancels the exact generation stream', async () => {
     let onmessage: ((message: unknown) => void) | undefined;
     const invoke = vi.fn(async (command: string, _args: Record<string, unknown>) => {
@@ -72,11 +94,11 @@ describe('native OpenCode transport', () => {
       received.push(event);
     }
 
-    expect(received).toEqual([
-      { type: 'message.part.updated', properties: { delta: 'hello' } },
-    ]);
+    expect(received).toEqual([{ type: 'message.part.updated', properties: { delta: 'hello' } }]);
     const start = invoke.mock.calls.find(([command]) => command === 'opencode_server_event_stream');
-    const cancel = invoke.mock.calls.find(([command]) => command === 'opencode_server_event_cancel');
+    const cancel = invoke.mock.calls.find(
+      ([command]) => command === 'opencode_server_event_cancel',
+    );
     expect(start?.[1]).toMatchObject({
       generation: 'opencode-server-generation',
       directory: 'C:\\workspace',

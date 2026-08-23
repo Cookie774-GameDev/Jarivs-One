@@ -2476,6 +2476,25 @@ export function openCodeToolsForInteractionMode(
   );
 }
 
+export function mayAutoApproveOpenCodeRequest(input: {
+  approveAllForRun: boolean;
+  interactionMode: JarvisInteractionMode;
+  accessLevel: AccessLevel;
+  capability: string;
+  risk: 'low' | 'medium' | 'high';
+}): boolean {
+  const terminalLike = /^(?:terminal\.|command\.)/u.test(input.capability);
+  const subagentLike = /^(?:agent\.|task\.)/u.test(input.capability);
+  return (
+    input.approveAllForRun &&
+    input.interactionMode === 'agent' &&
+    input.accessLevel !== 'read-only' &&
+    (!terminalLike || input.accessLevel === 'full') &&
+    (!subagentLike || input.interactionMode === 'agent') &&
+    input.risk !== 'high'
+  );
+}
+
 function boundedReadOnlyResearchQueries(userText: string): readonly string[] {
   const numbered = userText
     .split(/\r?\n/gu)
@@ -5708,6 +5727,10 @@ export function startRuntimeListener(
       controller.signal.throwIfAborted();
       let responseCompositionVisible = false;
       const structuredAgent = structuredAgentTarget(detail.structuredContext);
+      const approveAllForRun =
+        detail.approveAllForRun === true || readPermissionAccess(String(chatId)).approveAll;
+      const runAccessLevel =
+        detail.accessLevel ?? (interactionMode === 'agent' ? 'full' : 'read-only');
       const providerRequest = {
         agent: runnable,
         chatId: String(chatId),
@@ -5741,8 +5764,8 @@ export function startRuntimeListener(
         projectId: projectId ? String(projectId) : undefined,
         runtimeSettings,
         interactionMode,
-        accessLevel: detail.accessLevel,
-        approveAllForRun: detail.approveAllForRun === true,
+        accessLevel: runAccessLevel,
+        approveAllForRun,
         workingDirectory:
           explicitReadRoot ??
           (projectId ? getStoredProjectRoot(projectId)?.trim() || undefined : undefined),
@@ -5791,7 +5814,15 @@ export function startRuntimeListener(
             return;
           }
           const request = openCodePermissionRequest(approval);
-          if (readPermissionAccess(String(chatId)).approveAll && request.risk !== 'high') {
+          if (
+            mayAutoApproveOpenCodeRequest({
+              approveAllForRun,
+              interactionMode,
+              accessLevel: runAccessLevel,
+              capability: approval.capability,
+              risk: request.risk,
+            })
+          ) {
             grantToolGatewayMutation(approval.sessionId, approval.capability, 'once');
             recordOpenCodeApprovalStatus(approval.sessionId, approval.id, 'approved');
             await respondToPersistentOpenCodeApproval({

@@ -16,6 +16,7 @@ type NativeTransportRoute =
   | { kind: 'provider_callback'; providerId: string }
   | { kind: 'session_create' }
   | { kind: 'session_get'; sessionId: string }
+  | { kind: 'session_update'; sessionId: string }
   | { kind: 'session_delete'; sessionId: string }
   | { kind: 'session_children'; sessionId: string }
   | { kind: 'session_messages'; sessionId: string; limit?: number }
@@ -61,8 +62,12 @@ function streamId(): string {
 }
 
 function safeError(error: unknown, fallback: string): Error {
-  const text = error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
-  const bounded = text.replace(/[\r\n\u0000-\u001f\u007f]+/gu, ' ').trim().slice(0, 512);
+  const text =
+    error instanceof Error ? error.message : typeof error === 'string' ? error : fallback;
+  const bounded = text
+    .replace(/[\r\n\u0000-\u001f\u007f]+/gu, ' ')
+    .trim()
+    .slice(0, 512);
   return new Error(bounded || fallback);
 }
 
@@ -92,7 +97,12 @@ function nativeRoute(
   else if (key === 'GET /config/providers') route = { kind: 'config_providers' };
   else if (key === 'GET /provider/auth') route = { kind: 'provider_auth' };
   else if (key === 'GET /provider') route = { kind: 'provider_status' };
-  else if (method === 'POST' && segments.length === 4 && segments[0] === 'provider' && segments[2] === 'oauth') {
+  else if (
+    method === 'POST' &&
+    segments.length === 4 &&
+    segments[0] === 'provider' &&
+    segments[2] === 'oauth'
+  ) {
     const providerId = decodedIdentifier(segments[1]);
     if (segments[3] === 'authorize') route = { kind: 'provider_authorize', providerId };
     else if (segments[3] === 'callback') route = { kind: 'provider_callback', providerId };
@@ -103,8 +113,12 @@ function nativeRoute(
   else if (segments[0] === 'session' && segments.length >= 2) {
     const sessionId = decodedIdentifier(segments[1]);
     if (segments.length === 2 && method === 'GET') route = { kind: 'session_get', sessionId };
-    else if (segments.length === 2 && method === 'DELETE') route = { kind: 'session_delete', sessionId };
-    else if (segments.length === 3 && segments[2] === 'children' && method === 'GET') route = { kind: 'session_children', sessionId };
+    else if (segments.length === 2 && method === 'PATCH')
+      route = { kind: 'session_update', sessionId };
+    else if (segments.length === 2 && method === 'DELETE')
+      route = { kind: 'session_delete', sessionId };
+    else if (segments.length === 3 && segments[2] === 'children' && method === 'GET')
+      route = { kind: 'session_children', sessionId };
     else if (segments.length === 3 && segments[2] === 'message' && method === 'GET') {
       const rawLimit = url.searchParams.get('limit');
       const limit = rawLimit === null ? undefined : Number(rawLimit);
@@ -112,18 +126,23 @@ function nativeRoute(
         throw new Error('OpenCode native transport message limit is invalid.');
       }
       route = { kind: 'session_messages', sessionId, ...(limit === undefined ? {} : { limit }) };
-    } else if (segments.length === 3 && segments[2] === 'diff' && method === 'GET') route = { kind: 'session_diff', sessionId };
-    else if (segments.length === 3 && segments[2] === 'prompt_async' && method === 'POST') route = { kind: 'session_prompt_async', sessionId };
-    else if (segments.length === 3 && segments[2] === 'abort' && method === 'POST') route = { kind: 'session_abort', sessionId };
-    else if (segments.length === 4 && segments[2] === 'permissions' && method === 'POST') route = {
-      kind: 'session_permission',
-      sessionId,
-      permissionId: decodedIdentifier(segments[3]),
-    };
+    } else if (segments.length === 3 && segments[2] === 'diff' && method === 'GET')
+      route = { kind: 'session_diff', sessionId };
+    else if (segments.length === 3 && segments[2] === 'prompt_async' && method === 'POST')
+      route = { kind: 'session_prompt_async', sessionId };
+    else if (segments.length === 3 && segments[2] === 'abort' && method === 'POST')
+      route = { kind: 'session_abort', sessionId };
+    else if (segments.length === 4 && segments[2] === 'permissions' && method === 'POST')
+      route = {
+        kind: 'session_permission',
+        sessionId,
+        permissionId: decodedIdentifier(segments[3]),
+      };
     else throw new Error('OpenCode native transport route is invalid.');
   } else throw new Error('OpenCode native transport route is invalid.');
   const allowedQueries = new Set(directory === undefined ? [] : ['directory']);
-  if (route.kind === 'session_messages' && url.searchParams.has('limit')) allowedQueries.add('limit');
+  if (route.kind === 'session_messages' && url.searchParams.has('limit'))
+    allowedQueries.add('limit');
   for (const key of url.searchParams.keys()) {
     if (!allowedQueries.has(key)) throw new Error('OpenCode native transport query is invalid.');
   }
@@ -160,9 +179,10 @@ export async function nativeOpenCodeRequest(
 
 function parsedEvent(data: string): OpenCodeRawEvent | undefined {
   const parsed = JSON.parse(data) as unknown;
-  const wrapped = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-    ? parsed as Record<string, unknown>
-    : undefined;
+  const wrapped =
+    parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
   const value = wrapped && 'data' in wrapped ? wrapped.data : parsed;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const event = value as Record<string, unknown>;
@@ -171,7 +191,7 @@ function parsedEvent(data: string): OpenCodeRawEvent | undefined {
     type: event.type,
     properties:
       event.properties && typeof event.properties === 'object' && !Array.isArray(event.properties)
-        ? event.properties as Record<string, unknown>
+        ? (event.properties as Record<string, unknown>)
         : undefined,
   };
 }
@@ -210,12 +230,16 @@ export async function* nativeOpenCodeEvents(
       streamId: id,
       onEvent: channel,
     })
-    .catch((error) => push({ kind: 'error', message: safeError(error, 'OpenCode event stream failed.').message }));
+    .catch((error) =>
+      push({ kind: 'error', message: safeError(error, 'OpenCode event stream failed.').message }),
+    );
   const cancel = () => {
-    void bridge.invoke('opencode_server_event_cancel', {
-      generation,
-      streamId: id,
-    }).catch(() => undefined);
+    void bridge
+      .invoke('opencode_server_event_cancel', {
+        generation,
+        streamId: id,
+      })
+      .catch(() => undefined);
     push({ kind: 'done' });
   };
   signal?.addEventListener('abort', cancel, { once: true });
@@ -236,10 +260,12 @@ export async function* nativeOpenCodeEvents(
   } finally {
     terminal = true;
     signal?.removeEventListener('abort', cancel);
-    await bridge.invoke('opencode_server_event_cancel', {
-      generation,
-      streamId: id,
-    }).catch(() => false);
+    await bridge
+      .invoke('opencode_server_event_cancel', {
+        generation,
+        streamId: id,
+      })
+      .catch(() => false);
     await invocation;
   }
 }

@@ -204,6 +204,7 @@ import {
   handleInstalledJarvisKernelClientRequest,
   installJarvisKernelRuntimeHost,
   liveVariantLookupForChatSelection,
+  mayAutoApproveOpenCodeRequest,
   openCodeToolsForInteractionMode,
   prepareOpenCodeMessagesForInteractionMode,
   resolveRuntimeReasoningPolicy,
@@ -228,6 +229,29 @@ function startRuntimeListener(
 }
 
 describe('approved action history context', () => {
+  it.each([
+    ['agent/full edit', true, 'agent', 'full', 'files.write', 'low', true],
+    ['agent/write terminal', true, 'agent', 'write', 'terminal.write', 'low', false],
+    ['agent/read-only', true, 'agent', 'read-only', 'files.write', 'low', false],
+    ['ask/full edit', true, 'ask', 'full', 'files.write', 'low', false],
+    ['plan/full edit', true, 'plan', 'full', 'files.write', 'low', false],
+    ['high risk', true, 'agent', 'full', 'files.write', 'high', false],
+    ['approve all off', false, 'agent', 'full', 'files.write', 'low', false],
+  ] as const)(
+    'bounds OpenCode auto approval for %s',
+    (_label, approveAllForRun, interactionMode, accessLevel, capability, risk, expected) => {
+      expect(
+        mayAutoApproveOpenCodeRequest({
+          approveAllForRun,
+          interactionMode,
+          accessLevel,
+          capability,
+          risk,
+        }),
+      ).toBe(expected);
+    },
+  );
+
   it('keeps a chat-native worker non-terminal while its response awaits approval', () => {
     expect(
       responseAwaitsApproval([
