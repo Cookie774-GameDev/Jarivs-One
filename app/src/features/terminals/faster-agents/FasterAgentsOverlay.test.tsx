@@ -12,10 +12,15 @@ vi.mock('./fasterAgentsAudio', () => ({
   playOpenWhipCrack: vi.fn(async () => true),
 }));
 vi.mock('./WhipCanvas', () => ({
-  WhipCanvas: ({ onCrack }: { onCrack: () => void }) => (
-    <button type="button" onClick={onCrack}>
-      Crack fixture
-    </button>
+  WhipCanvas: ({ onCrack, onDismiss }: { onCrack: () => void; onDismiss: () => void }) => (
+    <div data-testid="whip-canvas-fixture">
+      <button type="button" onClick={onCrack}>
+        Simulate pointer crack
+      </button>
+      <button type="button" onClick={onDismiss}>
+        Simulate canvas click
+      </button>
+    </div>
   ),
 }));
 import { FasterAgentsOverlay } from './FasterAgentsOverlay';
@@ -52,7 +57,7 @@ describe('FasterAgentsOverlay', () => {
     vi.unstubAllGlobals();
   });
 
-  it('lights selected panes and sends only to the exact selected group', async () => {
+  it('selects the real panes in place and sends only to the exact selected group', async () => {
     const pane1 = document.createElement('div');
     pane1.dataset.terminalDropPaneId = 'pane-1';
     const pane3 = document.createElement('div');
@@ -60,14 +65,18 @@ describe('FasterAgentsOverlay', () => {
     document.body.append(pane1, pane3);
 
     render(<FasterAgentsOverlay terminals={terminals} />);
-    expect(screen.getByTestId('faster-agents-dimmer').className).toContain('bg-black/70');
-    fireEvent.click(screen.getByRole('button', { name: /Terminal 1/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Terminal 3/ }));
+    expect(screen.getByTestId('faster-agents-dimmer').className).toContain('bg-black/55');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Terminal 1/ })).toBeNull();
+    fireEvent.pointerDown(pane1);
+    fireEvent.pointerDown(pane3);
     await waitFor(() => expect(pane1.dataset.fasterAgentsSelected).toBe('true'));
     expect(pane3.dataset.fasterAgentsSelected).toBe('true');
     expect(document.documentElement.dataset.fasterAgentsSelecting).toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: 'Continue to whip' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Crack fixture' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done selecting' }));
+    expect(document.documentElement.dataset.fasterAgentsWhipping).toBe('true');
+    expect(screen.queryByRole('button', { name: /crack now/i })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Simulate pointer crack' }));
 
     expect(enqueueTerminalCommand).toHaveBeenCalledOnce();
     expect(enqueueTerminalCommand).toHaveBeenCalledWith({
@@ -77,6 +86,22 @@ describe('FasterAgentsOverlay', () => {
     });
     pane1.remove();
     pane3.remove();
+  });
+
+  it('lets Enter finish selection and a canvas click dismiss without another delivery', async () => {
+    const pane1 = document.createElement('div');
+    pane1.dataset.terminalDropPaneId = 'pane-1';
+    document.body.append(pane1);
+    render(<FasterAgentsOverlay terminals={terminals} />);
+
+    fireEvent.pointerDown(pane1);
+    fireEvent.keyDown(document, { key: 'Enter' });
+    expect(await screen.findByTestId('whip-canvas-fixture')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Simulate canvas click' }));
+
+    expect(useFasterAgentsStore.getState().open).toBe(false);
+    expect(enqueueTerminalCommand).not.toHaveBeenCalled();
+    pane1.remove();
   });
 
   it('closing from selection sends nothing', () => {

@@ -3,21 +3,32 @@ export const OPENWHIP_CRACK_URLS = ['A', 'B', 'C', 'D', 'E'].map(
   (name) => `/audio/openwhip/${name}.mp3`,
 );
 
-const players = new Map<string, HTMLAudioElement>();
+export const OPENWHIP_AUDIO_VOICES_PER_SOUND = 3;
 
-function playerFor(url: string): HTMLAudioElement {
+const players = new Map<string, HTMLAudioElement[]>();
+const playerCursor = new Map<string, number>();
+let preloaded = false;
+
+function playersFor(url: string): HTMLAudioElement[] {
   const existing = players.get(url);
   if (existing) return existing;
-  const audio = new Audio(url);
-  audio.preload = 'auto';
-  audio.volume = 0.72;
-  players.set(url, audio);
-  return audio;
+  const voices = Array.from({ length: OPENWHIP_AUDIO_VOICES_PER_SOUND }, () => {
+    const audio = new Audio(url);
+    audio.preload = 'auto';
+    audio.volume = 0.72;
+    return audio;
+  });
+  players.set(url, voices);
+  playerCursor.set(url, 0);
+  return voices;
 }
 
 export function preloadOpenWhipCracks(): void {
-  if (typeof Audio === 'undefined') return;
-  for (const url of OPENWHIP_CRACK_URLS) playerFor(url).load();
+  if (typeof Audio === 'undefined' || preloaded) return;
+  for (const url of OPENWHIP_CRACK_URLS) {
+    for (const player of playersFor(url)) player.load();
+  }
+  preloaded = true;
 }
 
 export async function playOpenWhipCrack(random = Math.random): Promise<boolean> {
@@ -26,7 +37,11 @@ export async function playOpenWhipCrack(random = Math.random): Promise<boolean> 
     OPENWHIP_CRACK_URLS.length - 1,
     Math.floor(Math.max(0, random()) * OPENWHIP_CRACK_URLS.length),
   );
-  const audio = playerFor(OPENWHIP_CRACK_URLS[index]!);
+  const url = OPENWHIP_CRACK_URLS[index]!;
+  const voices = playersFor(url);
+  const cursor = playerCursor.get(url) ?? 0;
+  const audio = voices[cursor % voices.length]!;
+  playerCursor.set(url, (cursor + 1) % voices.length);
   try {
     audio.currentTime = 0;
     await audio.play();
@@ -37,10 +52,14 @@ export async function playOpenWhipCrack(random = Math.random): Promise<boolean> 
 }
 
 export function resetFasterAgentsAudioForTests(): void {
-  for (const audio of players.values()) {
-    audio.pause();
-    audio.removeAttribute('src');
-    audio.load();
+  for (const voices of players.values()) {
+    for (const audio of voices) {
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+    }
   }
   players.clear();
+  playerCursor.clear();
+  preloaded = false;
 }

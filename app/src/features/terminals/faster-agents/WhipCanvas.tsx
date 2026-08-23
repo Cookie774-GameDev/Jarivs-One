@@ -1,5 +1,4 @@
 import * as React from 'react';
-import { Button } from '@/components/ui/button';
 import {
   OPENWHIP_PHYSICS,
   advanceOpenWhip,
@@ -14,6 +13,13 @@ const HANDLE_THICK_SEGMENTS = 2;
 const HANDLE_WIDTH = 7;
 const TIP_WIDTH = 5;
 const OUTLINE_WIDTH = 3;
+const FRAME_MS = 1000 / 60;
+const MAX_FRAME_STEPS = 2;
+
+export function boundedWhipFrameSteps(elapsedMs: number): number {
+  if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) return 1;
+  return Math.max(1, Math.min(MAX_FRAME_STEPS, Math.round(elapsedMs / FRAME_MS)));
+}
 
 function drawOpenWhip(
   context: CanvasRenderingContext2D,
@@ -83,7 +89,7 @@ function drawOpenWhip(
 }
 
 /** Direct React/canvas port of OpenWhip's MIT-licensed overlay renderer. */
-export function WhipCanvas({ onCrack }: { onCrack: () => void }) {
+export function WhipCanvas({ onCrack, onDismiss }: { onCrack: () => void; onDismiss: () => void }) {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const stateRef = React.useRef<OpenWhipState | null>(null);
   const pointerRef = React.useRef<WhipPointer>({ x: 0, y: 0 });
@@ -98,12 +104,13 @@ export function WhipCanvas({ onCrack }: { onCrack: () => void }) {
     let frame = 0;
     let width = 1;
     let height = 1;
+    let previousFrameAt = performance.now();
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
       width = Math.max(1, rect.width);
       height = Math.max(1, rect.height);
-      const scale = Math.min(window.devicePixelRatio || 1, 2);
+      const scale = Math.min(window.devicePixelRatio || 1, 1.5);
       canvas.width = Math.round(width * scale);
       canvas.height = Math.round(height * scale);
       context.setTransform(scale, 0, 0, scale, 0, 0);
@@ -120,11 +127,16 @@ export function WhipCanvas({ onCrack }: { onCrack: () => void }) {
     const render = (now: number) => {
       const state = stateRef.current;
       if (state) {
-        if (advanceOpenWhip(state, pointerRef.current, { width, height }, now)) {
-          onCrackRef.current();
+        const steps = boundedWhipFrameSteps(now - previousFrameAt);
+        for (let step = 0; step < steps; step += 1) {
+          const stepNow = now - (steps - step - 1) * FRAME_MS;
+          if (advanceOpenWhip(state, pointerRef.current, { width, height }, stepNow)) {
+            onCrackRef.current();
+          }
         }
         drawOpenWhip(context, state, width, height);
       }
+      previousFrameAt = now;
       frame = requestAnimationFrame(render);
     };
     frame = requestAnimationFrame(render);
@@ -144,26 +156,21 @@ export function WhipCanvas({ onCrack }: { onCrack: () => void }) {
   };
 
   return (
-    <div className="relative h-full min-h-64 overflow-hidden rounded-xl border border-white/20 bg-transparent shadow-2xl">
+    <div className="fixed inset-0 z-[100] overflow-hidden bg-transparent">
       <canvas
         ref={canvasRef}
         aria-label="OpenWhip Faster Agents whip area"
-        className="h-full min-h-64 w-full touch-none cursor-none"
+        className="h-full w-full touch-none cursor-none"
         onPointerEnter={updatePointer}
         onPointerMove={updatePointer}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          onDismiss();
+        }}
       />
       <div className="pointer-events-none absolute inset-x-0 bottom-3 text-center text-xs text-white/70">
         Move quickly to crack the OpenWhip whip
       </div>
-      <Button
-        type="button"
-        size="sm"
-        variant="secondary"
-        className="absolute right-3 top-3"
-        onClick={onCrack}
-      >
-        Crack now
-      </Button>
       <span className="sr-only">OpenWhip physics: {OPENWHIP_PHYSICS.segments} segments</span>
     </div>
   );
