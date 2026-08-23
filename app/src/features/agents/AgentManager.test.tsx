@@ -239,7 +239,7 @@ describe('AgentManager save lifecycle', () => {
     expect(maxTokens.value).toBe('recommended');
   });
 
-  it('renders unavailable mock-default state truthfully without migrating agent or auth state', async () => {
+  it('hides provider and model controls for a preloaded agent without migrating its route', async () => {
     const mockDefaultAgent: Agent = {
       ...baseAgent,
       model: { provider: 'mock', model: 'mock-default' },
@@ -256,17 +256,9 @@ describe('AgentManager save lifecycle', () => {
 
     render(<AgentManager />);
 
-    const provider = screen.getByLabelText('Provider') as HTMLSelectElement;
-    const unavailable = Array.from(provider.options).find((option) => option.value === 'mock');
-    expect(provider.value).toBe('mock');
-    expect(unavailable?.selected).toBe(true);
-    expect(unavailable?.disabled).toBe(true);
-    expect(unavailable?.textContent).toContain('Mock (demo)');
-    expect(unavailable?.textContent).toContain('unavailable');
-    expect(screen.getByText(/configured for Mock \(demo\)/i).textContent).toContain(
-      'Default provider (Local Models)',
-    );
-    expect(screen.queryByText(/Connect Mock/i)).toBeNull();
+    expect(screen.queryByLabelText('Provider')).toBeNull();
+    expect(screen.queryByLabelText('Model')).toBeNull();
+    expect(screen.getByText('Run model')).toBeTruthy();
 
     expect(agentRepo.update).not.toHaveBeenCalled();
     expect(useAgentStore.getState().agents[mockDefaultAgent.id]?.model).toEqual({
@@ -277,21 +269,19 @@ describe('AgentManager save lifecycle', () => {
     expect(useAuthStore.getState().defaultLocalModel).toBe('llama3.2:latest');
   });
 
-  it('keeps a connected provider as a normal available provider', async () => {
+  it('does not expose a connected provider selector for a preloaded agent', async () => {
     const builtinAgent = { ...baseAgent, builtin: true };
     registerOnly(builtinAgent);
     await repoMocks(builtinAgent);
 
     render(<AgentManager />);
 
-    const provider = screen.getByLabelText('Provider') as HTMLSelectElement;
-    const googleOption = Array.from(provider.options).find((option) => option.value === 'google');
-    expect(provider.value).toBe('google');
-    expect(googleOption?.disabled).toBe(false);
-    expect(screen.queryByText(/unavailable current provider/i)).toBeNull();
+    expect(screen.queryByLabelText('Provider')).toBeNull();
+    expect(screen.queryByLabelText('Model')).toBeNull();
+    expect(useAgentStore.getState().agents[builtinAgent.id]?.model).toEqual(baseAgent.model);
   });
 
-  it('preserves the actual Default provider sentinel behavior', async () => {
+  it('preserves a preloaded Default provider sentinel without displaying route controls', async () => {
     const defaultAgent: Agent = {
       ...baseAgent,
       model: { provider: 'mock', model: 'default-provider' },
@@ -308,11 +298,12 @@ describe('AgentManager save lifecycle', () => {
 
     render(<AgentManager />);
 
-    const provider = screen.getByLabelText('Provider') as HTMLSelectElement;
-    expect(provider.value).toBe('default');
-    expect(provider.selectedOptions[0]?.textContent).toContain('Default provider');
-    expect(screen.getByText('Follows Settings → Providers → Default provider')).toBeTruthy();
-    expect(screen.queryByText(/configured for Mock \(demo\).*unavailable/i)).toBeNull();
+    expect(screen.queryByLabelText('Provider')).toBeNull();
+    expect(screen.queryByLabelText('Model')).toBeNull();
+    expect(useAgentStore.getState().agents[defaultAgent.id]?.model).toEqual({
+      provider: 'mock',
+      model: 'default-provider',
+    });
   });
 
   it('enables NO BS with the approved cinematic and persists its directive at the prompt end', async () => {

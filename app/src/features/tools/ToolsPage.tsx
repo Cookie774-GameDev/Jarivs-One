@@ -658,7 +658,10 @@ export function ToolsPage() {
   return (
     <div
       data-monochrome-route="tools"
-      className="flex h-full w-full flex-col overflow-y-auto bg-paper-warm [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:bg-none"
+      data-scroll-surface="tools"
+      aria-label="Tools workspace"
+      tabIndex={0}
+      className="flex h-full max-h-full min-h-0 w-full flex-col overflow-y-scroll overscroll-y-contain [scrollbar-gutter:stable] bg-paper-warm [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:bg-none"
     >
       <div className="mx-auto w-full max-w-5xl p-8">
         {/* Header */}

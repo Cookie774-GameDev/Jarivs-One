@@ -99,8 +99,8 @@ describe('AgentDetail MonoChrome appearance', () => {
     expect(screen.getByRole('button', { name: 'Start chat' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Edit' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Back to agents' })).toBeTruthy();
-    expect(screen.getByText('Provider')).toBeTruthy();
-    expect(screen.getByText('Model')).toBeTruthy();
+    expect(screen.queryByText('Provider')).toBeNull();
+    expect(screen.queryByText('Model')).toBeNull();
     expect(screen.getByText('Temperature')).toBeTruthy();
     expect(screen.getByText('writing')).toBeTruthy();
     expect(screen.getByText('project')).toBeTruthy();

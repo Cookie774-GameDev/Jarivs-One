@@ -249,25 +249,33 @@ export function AgentDetail() {
             className="surface-panel rounded-lg p-5 [html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-border [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none"
           >
             <div className="grid gap-4 sm:grid-cols-3">
-              <div>
-                <div className="text-metadata uppercase tracking-wider text-muted-foreground mb-1">
-                  Provider
-                </div>
-                <div className="text-secondary text-foreground">
-                  {getProviderDisplayName(agent.model.provider)}
-                </div>
-              </div>
-              <div>
-                <div className="text-metadata uppercase tracking-wider text-muted-foreground mb-1">
-                  Model
-                </div>
-                <div className="text-secondary text-foreground truncate">
-                  {getModelLabelForProvider(agent.model.provider, agent.model.model, providerCtx)}
-                </div>
-                <div className="font-mono text-[11px] text-muted-foreground truncate">
-                  {agent.model.model}
-                </div>
-              </div>
+              {!agent.builtin ? (
+                <>
+                  <div>
+                    <div className="text-metadata uppercase tracking-wider text-muted-foreground mb-1">
+                      Provider
+                    </div>
+                    <div className="text-secondary text-foreground">
+                      {getProviderDisplayName(agent.model.provider)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-metadata uppercase tracking-wider text-muted-foreground mb-1">
+                      Model
+                    </div>
+                    <div className="text-secondary text-foreground truncate">
+                      {getModelLabelForProvider(
+                        agent.model.provider,
+                        agent.model.model,
+                        providerCtx,
+                      )}
+                    </div>
+                    <div className="font-mono text-[11px] text-muted-foreground truncate">
+                      {agent.model.model}
+                    </div>
+                  </div>
+                </>
+              ) : null}
               <div>
                 <div className="text-metadata uppercase tracking-wider text-muted-foreground mb-1">
                   Temperature

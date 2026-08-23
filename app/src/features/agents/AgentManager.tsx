@@ -1295,7 +1295,7 @@ export function AgentManager() {
                   </div>
                 </div>
 
-                {customAgent ? (
+                {customAgent || selectedAgent.builtin ? (
                   <section
                     aria-label="Run model"
                     className="rounded-md border border-border bg-muted/20 px-3 py-2.5 text-secondary"

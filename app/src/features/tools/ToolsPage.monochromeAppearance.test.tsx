@@ -33,6 +33,12 @@ describe('ToolsPage MonoChrome appearance', () => {
     expect(route).not.toBeNull();
 
     expect(route!.className).toContain('bg-paper-warm');
+    expect(route!.className).toContain('min-h-0');
+    expect(route!.className).toContain('max-h-full');
+    expect(route!.className).toContain('overflow-y-scroll');
+    expect(route!.className).toContain('overscroll-y-contain');
+    expect(route!.tabIndex).toBe(0);
+    expect(route!.getAttribute('data-scroll-surface')).toBe('tools');
     expect(route!.className).toContain('[html[data-theme=monochrome]_&]:bg-background');
     expect(route!.className).toContain('[html[data-theme=monochrome]_&]:bg-none');
     expect(screen.getByRole('heading', { name: 'Author your own actions' })).toBeTruthy();
