@@ -54,6 +54,7 @@ import { getBuiltinActions, runAction } from '@/lib/actions';
 import type { ActionDef, ActionParam } from '@/lib/actions';
 import { OpenInTerminalDialog } from './open-in-terminal/OpenInTerminalDialog';
 import { CommandCenterToolCard } from './command-center/CommandCenterToolCard';
+import { EmpireFreezerToolCard } from '@/features/wellness';
 
 /* --------------------------------------------------------------------------
  * Quick-start templates
@@ -728,7 +729,10 @@ export function ToolsPage() {
         </div>
 
         <section className="mb-8" aria-labelledby="preloaded-tools-heading">
-          <h2 id="preloaded-tools-heading" className="mb-2 text-secondary font-medium text-foreground">
+          <h2
+            id="preloaded-tools-heading"
+            className="mb-2 text-secondary font-medium text-foreground"
+          >
             Preloaded tools
           </h2>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -749,6 +753,7 @@ export function ToolsPage() {
               <span className="text-xs font-medium text-accent-copper">Open</span>
             </button>
             <CommandCenterToolCard />
+            <EmpireFreezerToolCard />
           </div>
         </section>
 

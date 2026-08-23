@@ -89,6 +89,7 @@ import {
 import { markTerminalExecution } from '@/features/terminals/terminalExecutionStore';
 import { createJarvisCoreActions } from './registryJarvisCore';
 import { createModelSelectionActions } from './registryModelSelection';
+import { updateEmpireFreezerConfig } from '@/features/wellness/empireFreezer';
 
 /* --------------------------------------------------------------------------
  * Helpers
@@ -1088,6 +1089,71 @@ const CHAT_ACTIONS: ActionDef[] = [
  * wellness modalities (stretch, breath, hydration) plug in via the
  * `WellnessKind` union in `stores/ui.ts`.
  */
+const EMPIRE_FREEZER_ACTIONS: ActionDef[] = [
+  {
+    id: 'wellness.empireFreezer',
+    category: 'wellness',
+    label: 'Configure Empire Freezer',
+    description:
+      'Enable, pause, or run the lightweight VibeSpace-only 20-20-20 eye-rest cycle. Uses one local timer and no AI or network.',
+    icon: Flower2,
+    params: [
+      {
+        key: 'mode',
+        label: 'Mode',
+        type: 'select',
+        default: 'enable',
+        options: [
+          { value: 'enable', label: 'Enable' },
+          { value: 'pause', label: 'Pause' },
+          { value: 'run_now', label: 'Take a break now' },
+        ],
+      },
+      {
+        key: 'intervalMin',
+        label: 'Interval (minutes)',
+        type: 'number',
+        default: 20,
+        help: '1–180 minutes. Defaults to the 20-20-20 cadence.',
+      },
+      {
+        key: 'durationSec',
+        label: 'Break duration (seconds)',
+        type: 'number',
+        default: 20,
+        help: '5–600 seconds. Defaults to 20 seconds.',
+      },
+    ],
+    run: async (params) => {
+      const mode = params.mode === 'pause' || params.mode === 'run_now' ? params.mode : 'enable';
+      const intervalMin =
+        typeof params.intervalMin === 'number' && Number.isFinite(params.intervalMin)
+          ? Math.max(1, Math.min(180, params.intervalMin))
+          : 20;
+      const durationSec =
+        typeof params.durationSec === 'number' && Number.isFinite(params.durationSec)
+          ? Math.max(5, Math.min(600, params.durationSec))
+          : 20;
+
+      if (mode === 'run_now') {
+        useUIStore.getState().startWellness('eye-break-20-20-20', durationSec * 1000);
+        return ok(`Empire Freezer break started for ${Math.round(durationSec)}s.`);
+      }
+
+      updateEmpireFreezerConfig({
+        enabled: mode === 'enable',
+        intervalMs: intervalMin * 60_000,
+        durationMs: durationSec * 1000,
+      });
+      return ok(
+        mode === 'enable'
+          ? `Empire Freezer enabled: ${Math.round(durationSec)}s every ${Math.round(intervalMin)} minutes.`
+          : 'Empire Freezer paused.',
+      );
+    },
+  },
+];
+
 const WELLNESS_ACTIONS: ActionDef[] = [
   {
     id: 'wellness.eyeBreak',
@@ -1668,6 +1734,7 @@ export function getBuiltinActions(): ActionDef[] {
     ...TERMINAL_ACTIONS,
     ...SCHEDULE_ACTIONS,
     ...CHAT_ACTIONS,
+    ...EMPIRE_FREEZER_ACTIONS,
     ...createModelSelectionActions(),
     ...HOST_ACTIONS,
     ...CREATOR_ACTIONS,

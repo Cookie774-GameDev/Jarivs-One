@@ -57,7 +57,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { waitForIdle } from '@/stability/bootWhenVisible';
 import { startNotificationLoop } from '@/features/tasks';
 import { startClockEngine } from '@/features/clock/clockEngine';
-import { WellnessBreak } from '@/features/wellness';
+import { EmpireFreezerHost, WellnessBreak } from '@/features/wellness';
 import { useGlobalHotkeys } from '@/features/command-palette';
 import { WakeWordHost } from '@/features/voice/WakeWordHost';
 import {
@@ -2355,7 +2355,12 @@ function WorkspaceRoot() {
 
       {/* V3 — 20-20-20 eye-break overlay. Self-renders only while
           wellnessActive=true (wellness.eyeBreak action / assistant). */}
-      {plan.backgroundServicesEnabled ? <WellnessBreak /> : null}
+      {plan.backgroundServicesEnabled ? (
+        <>
+          <EmpireFreezerHost />
+          <WellnessBreak />
+        </>
+      ) : null}
 
       {/* V3 — actions palette (Mod+Shift+A). Direct user invocation of
           built-in actions and saved custom tools. Sibling to the

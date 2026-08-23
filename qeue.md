@@ -24,6 +24,14 @@ Updated: 2026-08-22 by `/root`. A checked item means fresh evidence exists; impl
 - [ ] Prove real microphone speech produces transcription through the selected dictation route; do not silently fall back.
 - [ ] Prove VibeSpace Doctor's backup-first durable IndexedDB recovery only in a disposable profile.
 
+## P3 — Lightweight tools and durable user state
+
+- [x] Add **Empire Freezer** to Tools: a refined, opt-in VibeSpace-only 20-minute / 20-second eye-rest cycle using one local timer, no AI/network, safe pause while hidden or busy, and immediate run/pause controls. Focused implementation proof is green; native visual acceptance is deferred by user request.
+- [ ] Inventory every user-owned local data store and classify update-safe, reset-vulnerable, backup-covered, and cloud-synced data without exposing user content.
+- [ ] Make normal app updates preserve all local user information and settings; add migration/restore regression coverage before changing storage formats.
+- [ ] Design and implement explicit-consent, account-scoped encrypted cloud backup/sync for eligible local information. Never upload secrets, credentials, terminal transcripts, or private files implicitly; Supabase production mutation/deployment requires separate exact authorization.
+- [ ] Add user-visible backup/export, restore preview, conflict handling, and last-success/error truth so a hard reset can recover opted-in information without silently overwriting newer local data.
+
 ## Completed with evidence
 
 - [x] Native file drag/drop preserves the exact Tauri disk path and attaches/removes safely — commit `3ce0c310`; focused 24/24; official native MP3-path proof.
