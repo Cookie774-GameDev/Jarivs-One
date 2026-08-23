@@ -21,10 +21,9 @@
  *      infinite re-entry. We guard with a per-call flag.
  *
  *   4. Cheap on the hot path. Each patched call adds one timestamp,
- *      one Date.now subtraction, and one zustand push. No
- *      JSON.stringify on the request body — bodies are stored
- *      lazily and serialised only when the UI renders the row's
- *      details panel.
+ *      one monotonic-duration subtraction, and one zustand push. Request
+ *      bodies, console arguments, provider output, and source content are
+ *      never mirrored into the log.
  */
 
 import { devConsole, type DevLogChannel, type DevLogLevel } from './store';
@@ -38,6 +37,12 @@ let teardown: (() => void) | null = null;
  * delivered to the original console without re-entering devConsole.
  */
 let isLogging = false;
+let nextOperationId = 1;
+
+function operationId(kind: 'fetch' | 'invoke'): string {
+  const id = nextOperationId++;
+  return `${kind}-${id}`;
+}
 
 /**
  * Console levels mapped to DevConsole levels. We keep `console.log`
@@ -53,26 +58,25 @@ const CONSOLE_METHODS: Array<{ method: keyof Console; level: DevLogLevel }> = [
   { method: 'debug', level: 'debug' },
 ];
 
-/**
- * Best-effort one-line summary of arbitrary console arguments. We
- * mirror what devtools shows: strings as-is, errors as `name:
- * message`, objects as their constructor name + first key. Full
- * detail still goes into `entry.detail` so the UI can pretty-print.
- */
-function summariseArgs(args: unknown[]): string {
-  if (args.length === 0) return '';
-  const first = args[0];
-  if (typeof first === 'string') {
-    return args.length === 1 ? first : `${first} (+${args.length - 1})`;
+/** Safe structural classification for console arguments; values stay in DevTools only. */
+function argumentType(value: unknown): string {
+  if (value instanceof Error) return value.name || 'Error';
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'Array';
+  if (typeof value === 'object') {
+    return (value as { constructor?: { name?: string } }).constructor?.name ?? 'Object';
   }
-  if (first instanceof Error) {
-    return `${first.name}: ${first.message}`;
-  }
-  if (typeof first === 'object' && first !== null) {
-    const ctor = (first as { constructor?: { name?: string } }).constructor?.name ?? 'Object';
-    return `[${ctor}]`;
-  }
-  return String(first);
+  return typeof value;
+}
+
+function monotonicNow(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+}
+
+function elapsedMs(start: number): number {
+  return Math.round(Math.max(0, monotonicNow() - start) * 100) / 100;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -109,7 +113,6 @@ function patchConsole(): () => void {
         /* ignore */
       }
       if (isLogging) return;
-      const message = summariseArgs(args);
       queueMicrotask(() => {
         if (!installed) return;
         try {
@@ -117,8 +120,13 @@ function patchConsole(): () => void {
           devConsole.log({
             channel: 'console',
             level,
-            message,
-            detail: { method, args },
+            message: `console.${method}`,
+            detail: {
+              method,
+              argumentCount: args.length,
+              firstArgumentType: args.length > 0 ? argumentType(args[0]) : 'none',
+              ...(args[0] instanceof Error ? { error: args[0] } : {}),
+            },
           });
         } catch {
           /* never let the patch throw */
@@ -151,19 +159,21 @@ function patchFetch(): () => void {
     input: RequestInfo | URL,
     init?: RequestInit,
   ): Promise<Response> {
-    const start = Date.now();
+    const start = monotonicNow();
+    const traceId = operationId('fetch');
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const method = (init?.method ?? 'GET').toUpperCase();
     const safeUrl = redactUrl(url);
     try {
       const res = await original(input, init);
-      const dur = Date.now() - start;
+      const dur = elapsedMs(start);
       devConsole.log({
         channel: 'fetch',
         level: res.ok ? 'info' : res.status >= 500 ? 'error' : 'warn',
         message: `${method} ${shortUrl(url)} → ${res.status}`,
         durationMs: dur,
         detail: {
+          operationId: traceId,
           url: safeUrl,
           method,
           status: res.status,
@@ -171,17 +181,19 @@ function patchFetch(): () => void {
           // Don't read the response body — that would consume the
           // stream. Headers are cheap to enumerate.
           responseHeaders: headersToObj(res.headers),
+          ...(responseRequestId(res.headers) ? { requestId: responseRequestId(res.headers) } : {}),
         },
       });
       return res;
     } catch (err) {
-      const dur = Date.now() - start;
+      const dur = elapsedMs(start);
       devConsole.log({
         channel: 'fetch',
         level: 'error',
         message: `${method} ${shortUrl(url)} → ${err instanceof Error ? err.message : 'failed'}`,
         durationMs: dur,
         detail: {
+          operationId: traceId,
           url: safeUrl,
           method,
           error:
@@ -251,6 +263,16 @@ function headersToObj(h: Headers): Record<string, string> {
     out[key] = value;
   });
   return out;
+}
+
+function responseRequestId(headers: Headers): string | undefined {
+  const value =
+    headers.get('x-request-id') ??
+    headers.get('request-id') ??
+    headers.get('x-correlation-id') ??
+    undefined;
+  const clean = value?.trim();
+  return clean && clean.length <= 120 ? clean : undefined;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -337,15 +359,16 @@ type InvokeFn = (cmd: string, args?: unknown, options?: unknown) => Promise<unkn
 
 function wrappedInvoke(original: InvokeFn): InvokeFn {
   return async (cmd, args, options) => {
-    const start = Date.now();
+    const start = monotonicNow();
+    const traceId = operationId('invoke');
     try {
       const result = await original(cmd, args, options);
       devConsole.log({
         channel: 'invoke',
         level: 'info',
         message: `invoke ${cmd}`,
-        durationMs: Date.now() - start,
-        detail: { cmd, args, ok: true },
+        durationMs: elapsedMs(start),
+        detail: { operationId: traceId, cmd, args, ok: true },
       });
       return result;
     } catch (err) {
@@ -353,9 +376,10 @@ function wrappedInvoke(original: InvokeFn): InvokeFn {
         channel: 'invoke',
         level: 'error',
         message: `invoke ${cmd} → ${err instanceof Error ? err.message : 'failed'}`,
-        durationMs: Date.now() - start,
+        durationMs: elapsedMs(start),
         detail: {
           cmd,
+          operationId: traceId,
           args,
           error:
             err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : err,

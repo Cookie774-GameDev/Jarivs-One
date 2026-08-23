@@ -34,20 +34,18 @@ export function DevConsoleHost() {
     devConsole.log({
       channel: 'app',
       level: 'info',
-      message: 'DevConsole booted',
+      message: 'Full Dev Log booted',
       detail: {
         tauri:
-          typeof (window as unknown as { __TAURI_INTERNALS__?: unknown })
-            .__TAURI_INTERNALS__ !== 'undefined',
+          typeof (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !==
+          'undefined',
         href: typeof location !== 'undefined' ? location.href : null,
-        userAgent:
-          typeof navigator !== 'undefined' ? navigator.userAgent : null,
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
         platform:
           typeof navigator !== 'undefined'
-            ? (navigator as Navigator & { platform?: string }).platform ?? null
+            ? ((navigator as Navigator & { platform?: string }).platform ?? null)
             : null,
-        language:
-          typeof navigator !== 'undefined' ? navigator.language : null,
+        language: typeof navigator !== 'undefined' ? navigator.language : null,
       },
     });
     return teardown;

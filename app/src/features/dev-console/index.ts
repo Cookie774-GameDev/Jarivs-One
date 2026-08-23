@@ -19,5 +19,17 @@ export {
   type DevLogChannel,
   type DevLogLevel,
   type DevLogEntry,
+  type DevLogViewMode,
 } from './store';
+export {
+  buildEvidenceLanes,
+  calculateVirtualWindow,
+  exportDevLog,
+  formatDevLogTimestamp,
+  humanizeEntry,
+  type DevLogArtifact,
+  type DevLogEvidenceLane,
+  type DevLogLaneKind,
+  type DevLogVirtualWindow,
+} from './fullDevLog';
 export { installPatchers } from './patchers';

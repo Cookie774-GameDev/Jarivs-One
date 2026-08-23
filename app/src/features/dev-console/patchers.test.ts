@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { afterEach, describe, expect, it } from 'vitest';
 import { installPatchers } from './patchers';
 import { useDevConsoleStore } from './store';
@@ -22,7 +24,11 @@ describe('DevConsole console patcher', () => {
         expect.objectContaining({
           channel: 'console',
           level: 'warn',
-          message: 'deferred console mirror probe',
+          message: 'console.warn',
+          detail: expect.objectContaining({
+            argumentCount: 1,
+            firstArgumentType: 'string',
+          }),
         }),
       ]);
     } finally {
@@ -83,6 +89,44 @@ describe('DevConsole console patcher', () => {
       expect(serialized).toContain('[redacted]');
     } finally {
       teardown();
+    }
+  });
+
+  it('records a safe request correlation without request or response content', async () => {
+    const originalFetch = window.fetch;
+    window.fetch = async () =>
+      new Response('private response body', {
+        status: 200,
+        headers: { 'x-request-id': 'upstream-request-1' },
+      });
+    const teardown = installPatchers();
+
+    try {
+      useDevConsoleStore.getState().clear();
+      await window.fetch('https://example.test/v1/models?api_key=private-query-secret', {
+        method: 'POST',
+        body: 'private request body',
+      });
+
+      const entry = useDevConsoleStore
+        .getState()
+        .entries.find((value) => value.channel === 'fetch');
+      const serialized = JSON.stringify(entry);
+      expect(entry).toMatchObject({
+        channel: 'fetch',
+        detail: {
+          operationId: expect.stringMatching(/^fetch-\d+$/u),
+          requestId: 'upstream-request-1',
+          method: 'POST',
+          status: 200,
+        },
+      });
+      expect(serialized).not.toContain('private-query-secret');
+      expect(serialized).not.toContain('private request body');
+      expect(serialized).not.toContain('private response body');
+    } finally {
+      teardown();
+      window.fetch = originalFetch;
     }
   });
 });

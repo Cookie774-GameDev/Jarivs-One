@@ -32,28 +32,72 @@
 
 import { create } from 'zustand';
 
-/** Hard cap on stored entries. ~1000 is plenty for live debug; older
- * entries fall off the front when the cap is exceeded. */
-const MAX_ENTRIES = 1000;
+/**
+ * Hard cap for the Full Dev Log. Ten thousand events is enough to retain a
+ * long native debugging session while keeping memory and export size bounded.
+ */
+export const DEV_LOG_CAPACITY = 10_000;
 const MAX_DETAIL_DEPTH = 5;
 const MAX_OBJECT_KEYS = 40;
 const MAX_ARRAY_ITEMS = 25;
 const MAX_DETAIL_STRING = 4000;
+const MAX_SERIALIZED_DETAIL = 24_000;
 const REDACTED = '[redacted]';
+const CONTENT_OMITTED = '[content omitted]';
 
-const SENSITIVE_KEY_RE = /(authorization|cookie|set-cookie|token|access[_-]?token|refresh[_-]?token|jwt|api[_-]?key|apikey|password|secret|client[_-]?secret|service[_-]?role)/i;
+const SENSITIVE_KEY_RE =
+  /(authorization|cookie|set-cookie|token|access[_-]?token|refresh[_-]?token|jwt|api[_-]?key|apikey|password|secret|client[_-]?secret|service[_-]?role)/i;
 const SENSITIVE_VALUE_PATTERNS: Array<[RegExp, string]> = [
-  [/\b(api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token|password|client[-_ ]?secret|private[-_ ]?key|secret)\s*([:=])\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, `$1$2${REDACTED}`],
+  [
+    /\b(api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token|password|client[-_ ]?secret|private[-_ ]?key|secret)\s*([:=])\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
+    `$1$2${REDACTED}`,
+  ],
   [/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, `Bearer ${REDACTED}`],
   [/\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, REDACTED],
   [/\b(sk|rk)_(live|test)_[A-Za-z0-9_]{8,}\b/g, REDACTED],
   [/\bwhsec_[A-Za-z0-9_]{8,}\b/g, REDACTED],
   [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, REDACTED],
   [/\bAIza[0-9A-Za-z_-]{20,}\b/g, REDACTED],
+  [/(https?:\/\/)[^\s/:@]+:[^\s/@]+@/gi, `$1${REDACTED}@`],
 ];
 
+const PRIVATE_CONTENT_KEYS = new Set([
+  'args',
+  'body',
+  'completion',
+  'content',
+  'input',
+  'instruction',
+  'instructions',
+  'filecontent',
+  'message',
+  'messagecontent',
+  'messages',
+  'output',
+  'preview',
+  'prompt',
+  'query',
+  'raw',
+  'requestbody',
+  'responsebody',
+  'response',
+  'result',
+  'snippet',
+  'source',
+  'sourcecontent',
+  'text',
+  'transcript',
+  'usertext',
+]);
+
+function isPrivateContentKey(key: string): boolean {
+  return PRIVATE_CONTENT_KEYS.has(key.replace(/[-_\s]/g, '').toLowerCase());
+}
+
 function truncateString(value: string, max = MAX_DETAIL_STRING): string {
-  return value.length > max ? `${value.slice(0, max)}…[truncated ${value.length - max} chars]` : value;
+  return value.length > max
+    ? `${value.slice(0, max)}…[truncated ${value.length - max} chars]`
+    : value;
 }
 
 function redactString(value: string, max = MAX_DETAIL_STRING): string {
@@ -61,6 +105,14 @@ function redactString(value: string, max = MAX_DETAIL_STRING): string {
   for (const [pattern, replacement] of SENSITIVE_VALUE_PATTERNS) {
     out = out.replace(pattern, replacement);
   }
+  out = out
+    .replace(
+      /([?&])(key|apikey|api_key|api-key|token|access_token|auth|authorization|signature|sig|secret|client_secret|password)=([^&#\s]*)/gi,
+      (_match, delimiter: string, key: string) => `${delimiter}${key}=${REDACTED}`,
+    )
+    .replace(/\b[A-Za-z]:[\\/]Users[\\/][^\\/\s"']+/gi, '%USERPROFILE%')
+    .replace(/\b\/Users\/[^/\s"']+/g, '~')
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[redacted-email]');
   return truncateString(out, max);
 }
 
@@ -83,20 +135,38 @@ export function redactForLog(value: unknown, depth = 0, seen = new WeakSet<objec
   seen.add(value);
 
   if (Array.isArray(value)) {
-    const items = value.slice(0, MAX_ARRAY_ITEMS).map((item) => redactForLog(item, depth + 1, seen));
-    if (value.length > MAX_ARRAY_ITEMS) items.push(`[Truncated ${value.length - MAX_ARRAY_ITEMS} items]`);
+    const items = value
+      .slice(0, MAX_ARRAY_ITEMS)
+      .map((item) => redactForLog(item, depth + 1, seen));
+    if (value.length > MAX_ARRAY_ITEMS)
+      items.push(`[Truncated ${value.length - MAX_ARRAY_ITEMS} items]`);
     return items;
   }
 
   const out: Record<string, unknown> = {};
   const entries = Object.entries(value as Record<string, unknown>);
   for (const [key, child] of entries.slice(0, MAX_OBJECT_KEYS)) {
-    out[key] = SENSITIVE_KEY_RE.test(key) ? REDACTED : redactForLog(child, depth + 1, seen);
+    out[key] = SENSITIVE_KEY_RE.test(key)
+      ? REDACTED
+      : isPrivateContentKey(key)
+        ? CONTENT_OMITTED
+        : redactForLog(child, depth + 1, seen);
   }
   if (entries.length > MAX_OBJECT_KEYS) {
     out.__truncatedKeys = entries.length - MAX_OBJECT_KEYS;
   }
   return out;
+}
+
+function sanitizeDetail(value: unknown): unknown {
+  const redacted = redactForLog(value);
+  const serialized = safeStringify(redacted, 0);
+  if (serialized.length <= MAX_SERIALIZED_DETAIL) return redacted;
+  return {
+    notice: '[detail bounded]',
+    originalCharacters: serialized.length,
+    preview: truncateString(serialized, 12_000),
+  };
 }
 
 /** Channels group entries by source so the UI can filter quickly. */
@@ -113,6 +183,7 @@ export type DevLogChannel =
   | 'app'; // generic app-level breadcrumbs
 
 export type DevLogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type DevLogViewMode = 'human' | 'deep';
 
 /** A single feed entry. Immutable once pushed. */
 export interface DevLogEntry {
@@ -150,17 +221,18 @@ interface DevConsoleState {
   levels: Set<DevLogLevel>;
   /** Free-text search filter applied to message + JSON-stringified detail. */
   query: string;
+  /** Human-readable timeline or exact sanitized trace rows. */
+  viewMode: DevLogViewMode;
 
-  /** Append a new entry. Truncates the head if MAX_ENTRIES exceeded. */
-  log: (
-    e: Omit<DevLogEntry, 'id' | 'ts'> & { ts?: number },
-  ) => DevLogEntry;
+  /** Append a new entry. Truncates the head when the capacity is exceeded. */
+  log: (e: Omit<DevLogEntry, 'id' | 'ts'> & { ts?: number }) => DevLogEntry;
   /** Drop every entry. */
   clear: () => void;
 
   setOpen: (v: boolean) => void;
   toggleOpen: () => void;
   setQuery: (q: string) => void;
+  setViewMode: (mode: DevLogViewMode) => void;
   toggleChannel: (c: DevLogChannel) => void;
   toggleLevel: (l: DevLogLevel) => void;
   /** Reset all filters back to "show everything". */
@@ -175,6 +247,7 @@ export const useDevConsoleStore = create<DevConsoleState>((set, get) => ({
   channels: new Set<DevLogChannel>(),
   levels: new Set<DevLogLevel>(),
   query: '',
+  viewMode: 'human',
 
   log: (e) => {
     const entry: DevLogEntry = {
@@ -183,8 +256,11 @@ export const useDevConsoleStore = create<DevConsoleState>((set, get) => ({
       level: e.level,
       channel: e.channel,
       message: redactString(e.message, 500),
-      detail: e.detail === undefined ? undefined : redactForLog(e.detail),
-      durationMs: e.durationMs,
+      detail: e.detail === undefined ? undefined : sanitizeDetail(e.detail),
+      durationMs:
+        e.durationMs !== undefined && Number.isFinite(e.durationMs) && e.durationMs >= 0
+          ? Math.round(Math.min(e.durationMs, 86_400_000) * 100) / 100
+          : undefined,
     };
     set((s) => {
       const next = s.entries.concat(entry);
@@ -192,9 +268,7 @@ export const useDevConsoleStore = create<DevConsoleState>((set, get) => ({
       // the array; we slice so React's reference-equality check fires
       // and subscribers re-render.
       const trimmed =
-        next.length > MAX_ENTRIES
-          ? next.slice(next.length - MAX_ENTRIES)
-          : next;
+        next.length > DEV_LOG_CAPACITY ? next.slice(next.length - DEV_LOG_CAPACITY) : next;
       return { entries: trimmed };
     });
     return entry;
@@ -205,6 +279,7 @@ export const useDevConsoleStore = create<DevConsoleState>((set, get) => ({
   setOpen: (v) => set({ open: v }),
   toggleOpen: () => set({ open: !get().open }),
   setQuery: (q) => set({ query: q }),
+  setViewMode: (viewMode) => set({ viewMode }),
 
   toggleChannel: (c) =>
     set((s) => {
