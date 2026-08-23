@@ -313,6 +313,18 @@ export function assertLiveEffortAuthority(authority, expectedEffort) {
   return true;
 }
 
+export function assertPersistedRouteSelection(inspection, expected) {
+  const selection = inspection?.selection ?? {};
+  const pairs = [
+    ['providerId', expected.expectedProvider],
+    ['connectionId', expected.expectedConnection],
+    ['modelId', expected.expectedModel],
+  ];
+  const mismatch = pairs.find(([key, value]) => value !== undefined && selection[key] !== value);
+  if (mismatch) fail('exact_route_mismatch', `Persisted route mismatch: ${mismatch[0]}`);
+  return true;
+}
+
 function assertPreflightRoute(inspection, expected) {
   const receipt = {
     providerId: inspection.selection?.providerId ?? '',
@@ -1100,7 +1112,10 @@ export async function runDriver(options, dependencies = {}) {
       }
       const savedRoute = await inspectPageState(page);
       if (savedRoute.activeChatId !== run.chatId) fail('active_chat_mismatch');
-      assertPreflightRoute(savedRoute, options);
+      // Effort, performance, Fast, RLM, and Approve All are intentionally
+      // one-shot controls. Their immutable dispatch receipt is authoritative;
+      // completion must retain only the durable provider route selection.
+      assertPersistedRouteSelection(savedRoute, options);
       const visibleControlAfter = await inspectVisibleModelControl(page, options);
       if (
         !visibleControlAfter.providerMatches ||

@@ -9,6 +9,7 @@ import {
   assessVisibleResponse,
   assertExactRoute,
   assertLiveEffortAuthority,
+  assertPersistedRouteSelection,
   classifyConsoleError,
   parseArgs,
   resolveOfficialNativeTarget,
@@ -92,6 +93,35 @@ test('accepts an explicit per-run approve-all expectation without making it mand
 test('can explicitly reuse a pre-scoped active chat without changing the default', () => {
   assert.equal(parseArgs(sendArgs()).reuseActiveChat, undefined);
   assert.equal(parseArgs(sendArgs(['--reuse-active-chat'])).reuseActiveChat, true);
+});
+
+test('completion accepts cleared one-shot controls but preserves exact durable selection', () => {
+  const expected = parseArgs(sendArgs(['--expect-approve-all', 'on']));
+  const completed = {
+    selection: {
+      providerId: 'opencode',
+      connectionId: 'opencode-cli',
+      modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+    },
+    runtime: {
+      effort: '',
+      runtimeEffort: '',
+      performance: '',
+      fastMode: '',
+      rlmEnabled: false,
+      approveAllForRun: false,
+    },
+  };
+
+  assert.doesNotThrow(() => assertPersistedRouteSelection(completed, expected));
+  assert.throws(
+    () =>
+      assertPersistedRouteSelection(
+        { ...completed, selection: { ...completed.selection, modelId: 'substituted' } },
+        expected,
+      ),
+    (error) => error instanceof NativeQuestionADriverError && error.code === 'exact_route_mismatch',
+  );
 });
 
 test('defaults to inspection and cannot accept prompt material', () => {
