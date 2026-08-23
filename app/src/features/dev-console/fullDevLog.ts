@@ -156,14 +156,103 @@ export function formatDuration(durationMs: number | undefined): string | undefin
   return `${Number.isInteger(durationMs) ? durationMs : durationMs.toFixed(2)} ms`;
 }
 
+function humanEvidence(entry: DevLogEntry): Map<string, string | number | boolean> {
+  const values = new Map<string, string | number | boolean>();
+  collectScalars(entry.detail, values);
+  return values;
+}
+
+function providerFailureReason(
+  entry: DevLogEntry,
+  values: Map<string, string | number | boolean>,
+): string {
+  const code = scalar(values, ['errorcode', 'code', 'errorcategory']);
+  const reason = scalar(values, ['reason']);
+  const status = scalar(values, ['statuscode', 'status']);
+  const fingerprint = [entry.message, code, reason, status].filter(Boolean).join(' ').toLowerCase();
+  if (/rate.?limit|too many requests|\b429\b/u.test(fingerprint)) return 'Rate limit reached';
+  if (/unauthori[sz]ed|authentication|auth.?failed|\b401\b/u.test(fingerprint)) {
+    return 'Authentication required';
+  }
+  if (/forbidden|access denied|permission denied|\b403\b/u.test(fingerprint)) {
+    return 'Access denied';
+  }
+  if (/timed?\s*out|timeout/u.test(fingerprint)) return 'Request timed out';
+  if (/unavailable|bad gateway|gateway timeout|\b50[234]\b/u.test(fingerprint)) {
+    return 'Provider unavailable';
+  }
+  return code && /^[a-z][a-z0-9_.-]{0,63}$/iu.test(code)
+    ? `Provider error (${String(redactForLog(code))})`
+    : 'Provider rejected the request';
+}
+
+function humanizedAiEvent(entry: DevLogEntry): { eyebrow: string; title: string } | undefined {
+  if (entry.channel !== 'ai') return undefined;
+  const values = humanEvidence(entry);
+  const provider = scalar(values, ['providerid', 'provider']);
+  const model = scalar(values, ['modelid', 'model']);
+  const connection = scalar(values, ['connectionid', 'connection']);
+  const isOpenCode = connection === 'opencode-cli' || /^opencode(?:-|$)/iu.test(provider ?? '');
+  const providerLabel = isOpenCode ? 'OpenCode' : provider;
+  const identity = [providerLabel, model].filter(Boolean).join(' / ') || 'Provider/model';
+
+  if (/^AI error\s+@|\bprovider request failed\b/iu.test(entry.message)) {
+    return {
+      eyebrow: 'Provider failure',
+      title: `${identity} request failed — ${providerFailureReason(entry, values)}`,
+    };
+  }
+  if (/^AI request\s*→/u.test(entry.message)) {
+    return {
+      eyebrow: 'Model request',
+      title: model
+        ? `${providerLabel ?? 'Provider'} received the request · ${model} is running`
+        : `${providerLabel ?? 'Model'} received the request and is running`,
+    };
+  }
+  if (/^AI done\s*←/u.test(entry.message)) {
+    return {
+      eyebrow: 'Model completion',
+      title: `${model ?? providerLabel ?? 'Model'} completed the request`,
+    };
+  }
+
+  const evidenceCount = scalar(values, [
+    'evidencecount',
+    'siyuanevidencecount',
+    'hydratedcount',
+    'candidatecount',
+  ]);
+  const route = scalar(values, ['route']);
+  const hasSiYuan = [...values.keys()].some((key) => key.startsWith('siyuan'));
+  if (hasSiYuan || /\bSiYuan\b/iu.test(entry.message)) {
+    return {
+      eyebrow: 'Knowledge evidence',
+      title: evidenceCount
+        ? `SiYuan gathered ${evidenceCount} evidence item${evidenceCount === '1' ? '' : 's'}`
+        : 'SiYuan evidence recorded',
+    };
+  }
+  if (/\b(?:RLM|Context route)\b/iu.test(entry.message) || values.has('rlmenabled')) {
+    return {
+      eyebrow: 'Context evidence',
+      title: evidenceCount
+        ? `RLM gathered ${evidenceCount} evidence item${evidenceCount === '1' ? '' : 's'}${route ? ` · ${route}` : ''}`
+        : `RLM evidence recorded${route ? ` · ${route}` : ''}`,
+    };
+  }
+  return undefined;
+}
+
 export function humanizeEntry(entry: DevLogEntry): {
   eyebrow: string;
   title: string;
   duration?: string;
 } {
+  const humanized = humanizedAiEvent(entry);
   return {
-    eyebrow: CHANNEL_LABELS[entry.channel],
-    title: entry.message,
+    eyebrow: humanized?.eyebrow ?? CHANNEL_LABELS[entry.channel],
+    title: humanized?.title ?? entry.message,
     ...(formatDuration(entry.durationMs) ? { duration: formatDuration(entry.durationMs) } : {}),
   };
 }
