@@ -36,13 +36,7 @@ import { formatUserDateTime } from '@/lib/timeFormat';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { notifyDone } from '@/lib/notifications';
 import type { ProviderId } from '@/types';
-import {
-  basename,
-  chooseProjectFolder,
-  chooseProjectFiles,
-  getStoredProjectRoot,
-  setStoredProjectRoot,
-} from '@/features/files/projectFiles';
+import { basename, chooseProjectFolder, chooseProjectFiles } from '@/features/files/projectFiles';
 import { startRightClickDrag } from '@/lib/rightClickDrag';
 import {
   ContextGraphPerformanceIndex,
@@ -108,6 +102,7 @@ import {
   type GitHubContextServerRepository,
 } from './githubContextAuth';
 import { buildGitHubProjectContextTree } from './githubContextTree';
+import { getStoredContextSourceRoot, setStoredContextSourceRoot } from './contextSourceRoot';
 import { SIYUAN_CONTEXT_VAULT_ENABLED } from './siyuan/siyuanContracts';
 import { SiyuanVaultSurface } from './siyuan/SiyuanVaultSurface';
 import './sakura-context.css';
@@ -141,7 +136,9 @@ export function ContextPage() {
   const apiKeys = useAuthStore((s) => s.apiKeys);
   const defaultProvider = useAuthStore((s) => s.defaultProvider);
   const setRoute = useUIStore((s) => s.setRoute);
-  const [rootDraft, setRootDraft] = React.useState(() => getStoredProjectRoot(projectId));
+  const [rootDraft, setRootDraft] = React.useState(() =>
+    getStoredContextSourceRoot(accountId, projectId),
+  );
   const [maps, setMaps] = React.useState<ContextMapRecord[]>([]);
   const [recovery, setRecovery] = React.useState<ContextRecoverySummary | null>(null);
   const [selectedMapId, setSelectedMapId] = React.useState<string | null>(null);
@@ -199,7 +196,7 @@ export function ContextPage() {
   React.useEffect(() => {
     generationAbortRef.current?.abort('context_scope_changed');
     generationAbortRef.current = null;
-    setRootDraft(getStoredProjectRoot(projectId));
+    setRootDraft(getStoredContextSourceRoot(accountId, projectId));
     setMaps([]);
     setRecovery(null);
     setSelectedMapId(null);
@@ -504,13 +501,13 @@ export function ContextPage() {
 
   const openFolderPicker = async () => {
     const picked = await chooseProjectFolder({
-      title: 'Choose project folder',
+      title: 'Choose a Context source folder',
       initialPath: rootDraft.trim() || undefined,
     });
     if (!picked) return;
     setRootDraft(picked);
-    setStoredProjectRoot(projectId, picked);
-    toast.success('Project folder selected', picked);
+    setStoredContextSourceRoot(accountId, projectId, picked);
+    toast.success('Context source selected', picked);
   };
 
   const openFilePicker = async () => {
@@ -521,7 +518,7 @@ export function ContextPage() {
     if (!picked) return;
     const containingFolder = parentDirectory(picked);
     setRootDraft(containingFolder);
-    setStoredProjectRoot(projectId, containingFolder);
+    setStoredContextSourceRoot(accountId, projectId, containingFolder);
     setStatus(
       `Selected ${basename(picked)}. Create Map will securely index its containing folder.`,
     );
@@ -635,14 +632,14 @@ export function ContextPage() {
   const rememberRoot = () => {
     const clean = rootDraft.trim();
     if (!clean) return;
-    setStoredProjectRoot(projectId, clean);
-    toast.success('Project folder saved', clean);
+    setStoredContextSourceRoot(accountId, projectId, clean);
+    toast.success('Context source saved', clean);
   };
 
   const makeSkillTree = React.useCallback(async () => {
     const rootDir = rootDraft.trim();
     if (!rootDir) {
-      toast.warning('Choose a project folder', 'Context needs a root folder to scan.');
+      toast.warning('Choose a Context source', 'Context needs a folder to scan.');
       return;
     }
     if (activeMapCount >= MAX_ACTIVE_CONTEXT_MAPS) {
@@ -672,7 +669,7 @@ export function ContextPage() {
     setGenerating(true);
     setStatus('Starting Context map creation...');
     try {
-      setStoredProjectRoot(projectId, rootDir);
+      setStoredContextSourceRoot(accountId, projectId, rootDir);
       const generated = await generateProjectContextTree({
         projectId,
         rootDir,
@@ -932,7 +929,7 @@ export function ContextPage() {
                 htmlFor="context-project-folder"
                 className="flex items-center gap-1.5 text-metadata uppercase tracking-wide text-muted-foreground"
               >
-                <FolderOpen className="h-3.5 w-3.5 text-accent-honey" /> Project folder
+                <FolderOpen className="h-3.5 w-3.5 text-accent-honey" /> Context source folder
               </label>
               <div className="flex gap-1.5">
                 <Input
@@ -973,7 +970,7 @@ export function ContextPage() {
                   onClick={rememberRoot}
                   disabled={!rootDraft.trim()}
                 >
-                  Save Root
+                  Save Source
                 </Button>
                 <Button
                   size="sm"

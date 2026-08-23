@@ -25,6 +25,16 @@ describe('Context Map focused user-testing repairs', () => {
     expect(source).toContain('Create map');
   });
 
+  it('keeps an arbitrary Context source independent from the Files project root', () => {
+    const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
+
+    expect(source).toContain('getStoredContextSourceRoot(accountId, projectId)');
+    expect(source).toContain('setStoredContextSourceRoot(accountId, projectId, rootDir)');
+    expect(source).toContain('Context source folder');
+    expect(source).not.toContain('getStoredProjectRoot');
+    expect(source).not.toContain('setStoredProjectRoot');
+  });
+
   it('populates the physical search index before presenting a new local map as ready', () => {
     const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
     const saveIndex = source.indexOf('const persisted = await savePersistedContextTree(generated)');
