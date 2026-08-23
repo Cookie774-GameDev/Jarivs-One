@@ -40,12 +40,12 @@ Browser surface: local Vite development preview controlled only through Playwrig
 
 | Timestamp (CDT) | Commit | Browser row | Evidence | Result |
 | --- | --- | --- | --- | --- |
-| 2026-08-22 22:14 | pending | Tools discovery | `Preloaded tools` exposed accessible `Run Faster Agents`; activating it changed the visible route from Tools to Terminal. | PASS |
-| 2026-08-22 22:14 | pending | Selection entry | Dialog exposed `Select your Snail`, one live pane, `0 / 10 selected`, and disabled Continue. Local voice asset returned HTTP 200 / 82,604 bytes; audible output was not human-verified. | PASS with audio caveat |
-| 2026-08-22 22:15 | pending | Dim/light selection | Dim layer class was `bg-black/70`; selected real pane had `data-faster-agents-selected=true`, computed opacity `1`, filter `brightness(1.12) saturate(1.1)`, z-index `90`, accessible pressed state, and `1 / 10 selected`. | PASS |
-| 2026-08-22 22:15 | pending | OpenWhip view | Confirm exposed a canvas labelled `OpenWhip Faster Agents whip area`, a 28-segment non-color description, and all five exact unique editable defaults: `FASTER`, `GO FASTER`, `Faster CLANKER`, `Work FASTER`, `Speed it up clanker`. | PASS |
-| 2026-08-22 22:15 | pending | One selected delivery | `Crack now` produced one `Whip delivered` status for exactly `1 selected terminal`. Exact ref-only queue payload and cancellation behavior are covered by focused unit tests because browser mode truthfully reports `Terminal backend not available`. | PASS (browser boundary explicit) |
-| 2026-08-22 22:16 | pending | Local upstream assets | Voice WAV and OpenWhip A–E MP3 files each returned HTTP 200. A–E sizes/hashes match upstream commit `83b976d`. | PASS |
+| 2026-08-22 22:14 | `86416c40` | Tools discovery | `Preloaded tools` exposed accessible `Run Faster Agents`; activating it changed the visible route from Tools to Terminal. | PASS |
+| 2026-08-22 22:14 | `86416c40` | Selection entry | Dialog exposed `Select your Snail`, one live pane, `0 / 10 selected`, and disabled Continue. Local voice asset returned HTTP 200 / 82,604 bytes; audible output was not human-verified. | PASS with audio caveat |
+| 2026-08-22 22:15 | `86416c40` | Dim/light selection | Dim layer class was `bg-black/70`; selected real pane had `data-faster-agents-selected=true`, computed opacity `1`, filter `brightness(1.12) saturate(1.1)`, z-index `90`, accessible pressed state, and `1 / 10 selected`. | PASS |
+| 2026-08-22 22:15 | `86416c40` | OpenWhip view | Confirm exposed a canvas labelled `OpenWhip Faster Agents whip area`, a 28-segment non-color description, and all five exact unique editable defaults: `FASTER`, `GO FASTER`, `Faster CLANKER`, `Work FASTER`, `Speed it up clanker`. | PASS |
+| 2026-08-22 22:15 | `86416c40` | One selected delivery | `Crack now` produced one `Whip delivered` status for exactly `1 selected terminal`. Exact ref-only queue payload and cancellation behavior are covered by focused unit tests because browser mode truthfully reports `Terminal backend not available`. | PASS (browser boundary explicit) |
+| 2026-08-22 22:16 | `86416c40` | Local upstream assets | Voice WAV and OpenWhip A–E MP3 files each returned HTTP 200. A–E sizes/hashes match upstream commit `83b976d`. | PASS |
 
 ## Automated verification
 
@@ -66,4 +66,5 @@ Browser surface: local Vite development preview controlled only through Playwrig
 
 ## Commits
 
-- Pending.
+- Feature/source commit: `86416c405b9047f570ca4caa0597ff00f4e7dca8` (`feat(tools): add OpenWhip Faster Agents`).
+- This follow-up plan update records the verified source commit; the agent-scoped lock records the final documentation commit and released ownership state.
