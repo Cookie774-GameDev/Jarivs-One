@@ -190,6 +190,11 @@ export interface LLMResponse {
     boundedSearchObserved: boolean;
     representativeReadCount: number;
   }>;
+  /** Sanitized semantic receipt for broad explicit-root audits; never contains prose or evidence. */
+  explicit_root_audit?: Readonly<{
+    complete: boolean;
+    issueCount: number;
+  }>;
 }
 
 /**

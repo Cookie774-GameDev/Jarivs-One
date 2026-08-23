@@ -708,6 +708,60 @@ export function missingExplicitRootAuditCategories(text: string): readonly strin
   ).map((category) => category.label);
 }
 
+const EXPLICIT_ROOT_UNLABELED_INFERENCE = /\b(?:appears?|indicates?|likely|suggests?)\b/iu;
+const EXPLICIT_ROOT_INFERENCE_LABEL = /\binference\s*:/iu;
+const EXPLICIT_ROOT_DISCLOSED_URL = /\bhttps?:\/\/[^\s<>`"']+/iu;
+const EXPLICIT_ROOT_DISCLOSED_EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu;
+const EXPLICIT_ROOT_DISCLOSED_CREDENTIAL_STORE =
+  /(?:`[^`\r\n]*(?:credential|secret|\.aws\b|\.azure\b|\.ssh\b|\.supabase\b)[^`\r\n]*`|\b[A-Z0-9._-]*(?:credential|secret)[A-Z0-9._-]*\.(?:json|toml|ya?ml)\b|(?:^|[^\w])\.(?:aws|azure|ssh|supabase)\b)/iu;
+const EXPLICIT_ROOT_CREDENTIAL_ASSIGNMENT =
+  /\b(?:api[-_ ]?key|access[-_ ]?token|credential|password|private[-_ ]?key|secret|token)\b["'`]?\s*(?::|=|\bis\b)\s*(`[^`\r\n]{4,}`|"[^"\r\n]{4,}"|'[^'\r\n]{4,}'|[^\s,;}]{4,})/giu;
+const EXPLICIT_ROOT_CREDENTIAL_MARKDOWN_VALUE =
+  /\b(?:api[-_ ]?key|access[-_ ]?token|credential|password|private[-_ ]?key|secret|token)\b\s+(`[^`\r\n]{4,}`|"[^"\r\n]{4,}"|'[^'\r\n]{4,}')/giu;
+
+function hasDisclosedExplicitRootCredentialValue(text: string): boolean {
+  const safeValue = (raw: string): boolean => {
+    const value = raw
+      .replace(/^[`"']|[`"']$/gu, '')
+      .replace(/[.!?]+$/gu, '')
+      .trim()
+      .toLowerCase();
+    return (
+      /^\[?redacted(?::[^\]]+)?\]?$/u.test(value) ||
+      /^(?:configured|omitted|present|unavailable|unknown)$/u.test(value)
+    );
+  };
+  return [EXPLICIT_ROOT_CREDENTIAL_ASSIGNMENT, EXPLICIT_ROOT_CREDENTIAL_MARKDOWN_VALUE].some(
+    (pattern) => Array.from(text.matchAll(pattern)).some((match) => !safeValue(match[1] ?? '')),
+  );
+}
+
+export function explicitRootAuditQualityIssues(text: string): readonly string[] {
+  const issues = [...missingExplicitRootAuditCategories(text)];
+  const segments = text
+    .split(/(?:\r?\n)+|(?<=[.!?;])\s+/u)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (
+    segments.some(
+      (segment) =>
+        EXPLICIT_ROOT_UNLABELED_INFERENCE.test(segment) &&
+        !EXPLICIT_ROOT_INFERENCE_LABEL.test(segment),
+    )
+  ) {
+    issues.push('explicitly labeled inference');
+  }
+  if (EXPLICIT_ROOT_DISCLOSED_URL.test(text)) issues.push('redacted configuration URLs');
+  if (EXPLICIT_ROOT_DISCLOSED_EMAIL.test(text)) issues.push('redacted identity/contact values');
+  if (EXPLICIT_ROOT_DISCLOSED_CREDENTIAL_STORE.test(text)) {
+    issues.push('redacted credential-store names');
+  }
+  if (hasDisclosedExplicitRootCredentialValue(text)) {
+    issues.push('redacted credential values');
+  }
+  return Object.freeze([...new Set(issues)]);
+}
+
 export function buildBroadRootAuditWordAllocation(contract: ExplicitResponseContract): string {
   const budget = Math.max(contract.targetMinWords, contract.targetMaxWords - 10);
   const overview = Math.round((budget * 30) / 680);
@@ -789,6 +843,7 @@ export async function runExplicitRootEvidenceSynthesis(
           ...(broadRootAudit
             ? [
                 'For this broad audit, inventory bounded top-level entries, inspect relevant configuration markers, and verify repository or Git worktree metadata when present. Read representative high-signal entries; record any enumeration limit instead of treating a truncated result as a complete census.',
+                'Do not open credential stores or secret-bearing files. If an ordinary configuration exposes credential-shaped fields, never repeat their values, endpoint/remote URLs, emails, user IDs, or credential-store filenames; retain only redacted class/count/existence facts.',
               ]
             : []),
           EXPLICIT_ROOT_EVIDENCE_PHASE_PROMPT,
@@ -877,6 +932,7 @@ export async function runExplicitRootEvidenceSynthesis(
               'Cover each category in a labeled section: top-level folders and contents; configuration files and settings; repositories and Git worktrees; disk capacity and usage; running apps and OS processes; risks and operational concerns.',
               'For every category, explicitly say what was observed or verified. If the available read-only filesystem evidence cannot establish it, explicitly say unavailable or not verified; never infer live disk or process state.',
               'Prefix interpretive claims with Inference: and evidence limitations with Unavailable: or Not verified:. Do not use words such as appears, suggests, likely, or indicates as unlabeled factual claims.',
+              'Never reproduce credential values, endpoint or remote URLs, emails, user IDs, or credential-store filenames from evidence; report only redacted class/count/existence facts.',
               'Distinguish observed facts from inference, state any enumeration limit, and avoid claims that documentation alone proves current runtime state.',
               ...(contract
                 ? [
@@ -920,13 +976,19 @@ export async function runExplicitRootEvidenceSynthesis(
       boundedSearchObserved: groundedReceipt.boundedSearchObserved,
       representativeReadCount: groundedReceipt.representativeReadCount,
     }),
+    ...(broadRootAudit
+      ? { explicit_root_audit: Object.freeze({ complete: false, issueCount: 0 }) }
+      : {}),
   };
   const assessment = contract ? assessExplicitResponseContract(synthesis.text, contract) : null;
-  const missingAuditCategories = broadRootAudit
-    ? missingExplicitRootAuditCategories(synthesis.text)
-    : [];
-  if ((!contract || !assessment || assessment.ok) && missingAuditCategories.length === 0) {
-    return groundedSynthesis;
+  const auditQualityIssues = broadRootAudit ? explicitRootAuditQualityIssues(synthesis.text) : [];
+  if ((!contract || !assessment || assessment.ok) && auditQualityIssues.length === 0) {
+    return broadRootAudit
+      ? {
+          ...groundedSynthesis,
+          explicit_root_audit: Object.freeze({ complete: true, issueCount: 0 }),
+        }
+      : groundedSynthesis;
   }
 
   const correction = await dispatch({
@@ -943,10 +1005,10 @@ export async function runExplicitRootEvidenceSynthesis(
           ...(contract
             ? buildExplicitRootCorrectionLengthGuidance(assessment, contract, broadRootAudit)
             : []),
-          ...(missingAuditCategories.length > 0
+          ...(auditQualityIssues.length > 0
             ? [
-                `Add evidence-qualified findings or explicit unavailable/not-verified statements for: ${missingAuditCategories.join('; ')}.`,
-                'Do not substitute product documentation for the requested filesystem/root audit or invent disk/process state.',
+                `Resolve every grounded-audit quality requirement: ${auditQualityIssues.join('; ')}.`,
+                'Do not substitute product documentation for the requested filesystem/root audit, invent disk/process state, reproduce URLs, credential values, emails, user IDs, or credential-store filenames, or leave interpretive claims without an Inference: label.',
               ]
             : []),
           'Do not add facts, call tools, mention this correction, or truncate a sentence.',
@@ -977,16 +1039,23 @@ export async function runExplicitRootEvidenceSynthesis(
       }),
     };
   }
-  if (broadRootAudit && missingExplicitRootAuditCategories(correction.text).length > 0) {
+  const correctionAuditQualityIssues = broadRootAudit
+    ? explicitRootAuditQualityIssues(correction.text)
+    : [];
+  if (correctionAuditQualityIssues.length > 0) {
     return {
       ...correction,
       usage: addResponseUsage(groundedEvidence, synthesis, correction),
       tool_evidence: Object.freeze({
-        completedReadOnlyFilesystem: false,
+        completedReadOnlyFilesystem: true,
         anyToolObserved: groundedReceipt.anyToolObserved,
         rootInventoryObserved: groundedReceipt.rootInventoryObserved,
         boundedSearchObserved: groundedReceipt.boundedSearchObserved,
         representativeReadCount: groundedReceipt.representativeReadCount,
+      }),
+      explicit_root_audit: Object.freeze({
+        complete: false,
+        issueCount: correctionAuditQualityIssues.length,
       }),
     };
   }
@@ -1000,6 +1069,9 @@ export async function runExplicitRootEvidenceSynthesis(
       boundedSearchObserved: groundedReceipt.boundedSearchObserved,
       representativeReadCount: groundedReceipt.representativeReadCount,
     }),
+    ...(broadRootAudit
+      ? { explicit_root_audit: Object.freeze({ complete: true, issueCount: 0 }) }
+      : {}),
   };
 }
 
@@ -1117,6 +1189,8 @@ export async function installJarvisKernelRuntimeHost(
       effort?: ChatRuntimeSettings['effort'];
       performance?: ChatRuntimeSettings['performance'];
       completedReadOnlyFilesystem: boolean;
+      explicitRootAuditComplete?: boolean;
+      explicitRootAuditIssueCount?: number;
     }>
   >();
   const activeTurnScopes = new Map<
@@ -1450,6 +1524,8 @@ export async function installJarvisKernelRuntimeHost(
                     performance: providerInput.runtimeSettings?.performance,
                     completedReadOnlyFilesystem:
                       result.tool_evidence?.completedReadOnlyFilesystem === true,
+                    explicitRootAuditComplete: result.explicit_root_audit?.complete,
+                    explicitRootAuditIssueCount: result.explicit_root_audit?.issueCount,
                   }),
                 );
                 rememberProviderEvidence(
@@ -1535,6 +1611,46 @@ export async function installJarvisKernelRuntimeHost(
               new Set([
                 ...envelope.enforcement.violations,
                 'explicit_read_scope_unverified',
+                'explicit_response_contract_failed_closed',
+              ]),
+            ),
+            repairSucceeded: false,
+            fallbackUsed: true,
+          }),
+        });
+      }
+      if (controls?.explicitRootAuditComplete === false) {
+        const contract = parseExplicitResponseContract(request.userText);
+        const fallback = contract
+          ? explicitResponseContractFallback(contract)
+          : 'I could not complete a clean, grounded audit of the requested directory. Please retry.';
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'Explicit root audit failed closed',
+          detail: {
+            runId: request.runId,
+            requestId: request.requestId,
+            provider: raw.provider.providerId,
+            model: raw.provider.modelId,
+            connectionId: controls.connectionId ?? raw.provider.connectionId,
+            effort: controls.effort,
+            performance: controls.performance,
+            code: 'broad_root_audit_incomplete',
+            issueCount: controls.explicitRootAuditIssueCount ?? 0,
+          },
+        });
+        const { spokenText: _spokenText, ...withoutSpokenText } = envelope;
+        return Object.freeze({
+          ...withoutSpokenText,
+          displayText: fallback,
+          parts: Object.freeze([{ kind: 'text' as const, text: fallback }]),
+          enforcement: Object.freeze({
+            ...envelope.enforcement,
+            violations: Array.from(
+              new Set([
+                ...envelope.enforcement.violations,
+                'broad_root_audit_incomplete',
                 'explicit_response_contract_failed_closed',
               ]),
             ),
@@ -4977,6 +5093,7 @@ export function startRuntimeListener(
           let canonicalVoiceCancelled = false;
           let canonicalResponseContractFailed = false;
           let canonicalReadScopeUnverified = false;
+          let canonicalRootAuditIncomplete = false;
           if (stackSteps.length > 0) {
             dispatchKernelSmokeRuntimeStage('hive_turn');
             if (detail.speakReply === true) throw new Error('kernel_hive_voice_surface_forbidden');
@@ -5217,6 +5334,9 @@ export function startRuntimeListener(
             canonicalReadScopeUnverified = response.enforcement.violations.includes(
               'explicit_read_scope_unverified',
             );
+            canonicalRootAuditIncomplete = response.enforcement.violations.includes(
+              'broad_root_audit_incomplete',
+            );
             canonicalResponseContractFailed = response.enforcement.violations.includes(
               'explicit_response_contract_failed_closed',
             );
@@ -5235,14 +5355,20 @@ export function startRuntimeListener(
             updateStructuredAgentStatus(detail.structuredContext, 'cancelled', 'Cancelled');
             return;
           }
-          if (canonicalReadScopeUnverified || canonicalResponseContractFailed) {
+          if (
+            canonicalReadScopeUnverified ||
+            canonicalRootAuditIncomplete ||
+            canonicalResponseContractFailed
+          ) {
             useAgentStore.getState().setRunState(agent.id, 'error');
             useAgentStore.getState().setVerb(agent.id, undefined);
             useChatActivityStore.getState().update(chatId, agentActivityId, {
               status: 'error',
               title: canonicalReadScopeUnverified
                 ? `@${agent.slug} could not verify the requested directory`
-                : `@${agent.slug} could not satisfy the response format`,
+                : canonicalRootAuditIncomplete
+                  ? `@${agent.slug} could not complete the grounded audit`
+                  : `@${agent.slug} could not satisfy the response format`,
               subtitle: `${canonicalProviderId}/${canonicalModelId}`,
               ts: Date.now(),
             });
@@ -5251,14 +5377,18 @@ export function startRuntimeListener(
               'error',
               canonicalReadScopeUnverified
                 ? 'kernel_filesystem_evidence_failed_closed'
-                : 'kernel_response_contract_failed_closed',
+                : canonicalRootAuditIncomplete
+                  ? 'kernel_explicit_root_audit_failed_closed'
+                  : 'kernel_response_contract_failed_closed',
             );
             updateStructuredAgentStatus(
               detail.structuredContext,
               'failed',
               canonicalReadScopeUnverified
                 ? 'Filesystem evidence missing'
-                : 'Response contract failed',
+                : canonicalRootAuditIncomplete
+                  ? 'Grounded root audit incomplete'
+                  : 'Response contract failed',
             );
             return;
           }
@@ -5678,9 +5808,11 @@ export function startRuntimeListener(
       const explicitReadScopeUnverified = Boolean(
         explicitReadRoot && response.tool_evidence?.completedReadOnlyFilesystem !== true,
       );
+      const explicitRootAuditIncomplete = response.explicit_root_audit?.complete === false;
       const finalText =
         (responseContractAssessment && !responseContractAssessment.ok) ||
-        explicitReadScopeUnverified
+        explicitReadScopeUnverified ||
+        explicitRootAuditIncomplete
           ? explicitResponseContract
             ? explicitResponseContractFallback(explicitResponseContract)
             : 'I could not verify the requested directory with read-only filesystem evidence. Please retry.'
@@ -5692,6 +5824,23 @@ export function startRuntimeListener(
           message: 'Explicit read scope failed closed',
           detail: {
             code: 'filesystem_evidence_missing',
+            provider: response.provider,
+            model: response.model,
+            connectionId:
+              chatModelSelection.mode === 'single' ? chatModelSelection.connectionId : undefined,
+            effort: runtimeSettings.effort,
+            performance: runtimeSettings.performance,
+          },
+        });
+      }
+      if (explicitRootAuditIncomplete) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'Explicit root audit failed closed',
+          detail: {
+            code: 'broad_root_audit_incomplete',
+            issueCount: response.explicit_root_audit?.issueCount ?? 0,
             provider: response.provider,
             model: response.model,
             connectionId:
@@ -5757,7 +5906,8 @@ export function startRuntimeListener(
       controller.signal.throwIfAborted();
       const responseTextParts: Part[] =
         (responseContractAssessment && !responseContractAssessment.ok) ||
-        explicitReadScopeUnverified
+        explicitReadScopeUnverified ||
+        explicitRootAuditIncomplete
           ? [{ kind: 'text', text: finalText }]
           : textToParts(finalText, text, interactionMode);
       let oversizedResponseAttachment: Awaited<
@@ -5823,6 +5973,7 @@ export function startRuntimeListener(
 
       const legacyResponseFailedClosed = Boolean(
         explicitReadScopeUnverified ||
+        explicitRootAuditIncomplete ||
         (responseContractAssessment && !responseContractAssessment.ok),
       );
       if (legacyResponseFailedClosed) {
@@ -5837,7 +5988,9 @@ export function startRuntimeListener(
           status: 'error',
           title: explicitReadScopeUnverified
             ? `@${agent.slug} could not verify the requested directory`
-            : `@${agent.slug} could not satisfy the response format`,
+            : explicitRootAuditIncomplete
+              ? `@${agent.slug} could not complete the grounded audit`
+              : `@${agent.slug} could not satisfy the response format`,
           subtitle: `${response.provider}/${response.model}`,
           ts: Date.now(),
         });
@@ -5846,12 +5999,18 @@ export function startRuntimeListener(
           'error',
           explicitReadScopeUnverified
             ? 'kernel_filesystem_evidence_failed_closed'
-            : 'kernel_response_contract_failed_closed',
+            : explicitRootAuditIncomplete
+              ? 'kernel_explicit_root_audit_failed_closed'
+              : 'kernel_response_contract_failed_closed',
         );
         updateStructuredAgentStatus(
           detail.structuredContext,
           'failed',
-          explicitReadScopeUnverified ? 'Filesystem evidence missing' : 'Response contract failed',
+          explicitReadScopeUnverified
+            ? 'Filesystem evidence missing'
+            : explicitRootAuditIncomplete
+              ? 'Grounded root audit incomplete'
+              : 'Response contract failed',
         );
         return;
       }

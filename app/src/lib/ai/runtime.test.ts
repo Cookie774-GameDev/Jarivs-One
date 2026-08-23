@@ -207,6 +207,7 @@ import {
   prepareOpenCodeMessagesForInteractionMode,
   resolveRuntimeReasoningPolicy,
   missingExplicitRootAuditCategories,
+  explicitRootAuditQualityIssues,
   runExplicitRootEvidenceSynthesis,
   shouldSuppressProviderPreview,
   startRuntimeListener as startKernelAwareRuntimeListener,
@@ -730,6 +731,59 @@ describe('startRuntimeListener agent routing', () => {
         targetMaxWords: 184,
       }),
     ).not.toContain('680-word');
+  });
+
+  it('rejects unlabeled inference and private configuration details from broad audits', () => {
+    expect(
+      explicitRootAuditQualityIssues(
+        [
+          'Observed top-level folders and contents.',
+          'Observed configurations and settings.',
+          'Verified repositories and Git worktrees.',
+          'Disk capacity and usage were not verified.',
+          'Running apps and OS process inventory are unavailable.',
+          'Observed risks and operational concerns.',
+          'The layout suggests heavy development activity.',
+          'apiKey `private-local-value` endpoint http://127.0.0.1:8000/v1.',
+          '"token": "synthetic-private-value".',
+          'password=synthetic-private-value.',
+          'User actions@example.com stores `gdrive-credentials.json`.',
+          'A plain .ssh directory was named.',
+        ].join('\n'),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        'explicitly labeled inference',
+        'redacted configuration URLs',
+        'redacted credential values',
+        'redacted identity/contact values',
+        'redacted credential-store names',
+      ]),
+    );
+    expect(
+      explicitRootAuditQualityIssues(
+        [
+          'Observed top-level folders and contents.',
+          'Observed configurations and settings; credential classes exist but values are redacted.',
+          'Verified repositories and Git worktrees.',
+          'Disk capacity and usage were not verified.',
+          'Running apps and OS process inventory are unavailable.',
+          'Observed risks and operational concerns. Inference: the layout suggests heavy development activity.',
+        ].join('\n'),
+      ),
+    ).toEqual([]);
+    expect(
+      explicitRootAuditQualityIssues(
+        [
+          'Observed top-level folders and contents.',
+          'Observed configurations and settings; apiKey: [redacted:credentials], token=omitted, and password is configured.',
+          'Verified repositories and Git worktrees.',
+          'Disk capacity and usage were not verified.',
+          'Running apps and OS process inventory are unavailable.',
+          'Observed risks and operational concerns.',
+        ].join('\n'),
+      ),
+    ).toEqual([]);
   });
 
   it('never synthesizes without evidence and rejects a changed session', async () => {
@@ -2926,8 +2980,12 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     expect(synthesisInstruction).not.toContain('compact labeled section');
     expect(synthesisInstruction).toContain('Prefix interpretive claims with Inference:');
     expect(synthesisInstruction).toContain('state any enumeration limit');
+    expect(synthesisInstruction).toContain('Never reproduce credential values');
     expect(mocks.runAgent.mock.calls[0]![0].messages.at(-1)?.content).toContain(
       'verify repository or Git worktree metadata when present',
+    );
+    expect(mocks.runAgent.mock.calls[0]![0].messages.at(-1)?.content).toContain(
+      'Do not open credential stores or secret-bearing files',
     );
     const verifiedProviderInput = mocks.runAgent.mock.calls[3]![0];
     expect(verifiedProviderInput.agent.model).toEqual({
@@ -4506,7 +4564,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
   });
 
-  it('buffers and fails closed a contracted installed-kernel response before any preview is visible', async () => {
+  it('fails an unsafe grounded audit closed through the installed kernel before any preview is visible', async () => {
     const openCodeConnection = PROVIDER_CONNECTIONS.find(
       (connection) => connection.id === 'opencode-cli',
     )!;
@@ -4560,17 +4618,71 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       created_at: 1,
       updated_at: 1,
     });
-    const invalidDraft = Array.from({ length: 144 }, (_, index) => `word${index}`).join(' ');
+    const unsafeCoverage = [
+      'Observed top-level folders and contents.',
+      'Observed configurations and settings with apiKey `synthetic-private-value`.',
+      'Verified repositories and Git worktrees.',
+      'Disk capacity and usage were not verified.',
+      'Running apps and OS process inventory are unavailable.',
+      'Observed risks and operational concerns.',
+    ].join(' ');
+    const unsafeDraft = [
+      unsafeCoverage,
+      Array.from(
+        { length: 680 - unsafeCoverage.split(/\s+/u).length },
+        (_, index) => `audit${index}`,
+      ).join(' '),
+    ].join(' ');
     mocks.runAgent.mockImplementationOnce(async (providerInput) => {
-      providerInput.onChunk?.({ delta: invalidDraft, done: false });
+      await providerInput.onHarnessSessionBound?.({ sessionId: 'session_installed_audit' });
+      return {
+        text: 'Evidence ready.',
+        usage: { input_tokens: 100, output_tokens: 2, cost_usd: 0 },
+        provider: providerInput.agent.model.provider,
+        model: providerInput.agent.model.model,
+        tool_evidence: {
+          completedReadOnlyFilesystem: true,
+          anyToolObserved: true,
+          rootInventoryObserved: true,
+          boundedSearchObserved: true,
+          representativeReadCount: 3,
+        },
+      };
+    });
+    mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      await providerInput.onHarnessSessionBound?.({ sessionId: 'session_installed_audit' });
+      providerInput.onChunk?.({ delta: unsafeDraft, done: false });
       expect(
         getPreview(providerInput.accountId!, providerInput.protectedAttempt!.runId),
       ).toBeNull();
       return {
-        text: invalidDraft,
-        usage: { input_tokens: 100, output_tokens: 144, cost_usd: 0 },
+        text: unsafeDraft,
+        usage: { input_tokens: 100, output_tokens: 680, cost_usd: 0 },
         provider: providerInput.agent.model.provider,
         model: providerInput.agent.model.model,
+        tool_evidence: {
+          completedReadOnlyFilesystem: false,
+          anyToolObserved: false,
+          rootInventoryObserved: false,
+          boundedSearchObserved: false,
+          representativeReadCount: 0,
+        },
+      };
+    });
+    mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      await providerInput.onHarnessSessionBound?.({ sessionId: 'session_installed_audit' });
+      return {
+        text: unsafeDraft,
+        usage: { input_tokens: 100, output_tokens: 680, cost_usd: 0 },
+        provider: providerInput.agent.model.provider,
+        model: providerInput.agent.model.model,
+        tool_evidence: {
+          completedReadOnlyFilesystem: false,
+          anyToolObserved: false,
+          rootInventoryObserved: false,
+          boundedSearchObserved: false,
+          representativeReadCount: 0,
+        },
       };
     });
     const disposeHost = await installJarvisKernelRuntimeHost({
@@ -4618,13 +4730,13 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
           },
         }),
       );
-      await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce(), { timeout: 3_000 });
+      await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(3), { timeout: 3_000 });
       await vi.waitFor(async () => {
         const message = await database.messages.where('chat_id').equals(harness.chatId).first();
         expect(JSON.stringify(message?.parts)).toContain(
           'I could not produce a clean, verified response within the requested format. Please retry.',
         );
-        expect(JSON.stringify(message?.parts)).not.toContain('word0');
+        expect(JSON.stringify(message?.parts)).not.toContain('synthetic-private-value');
       });
       const providerInput = mocks.runAgent.mock.calls[0]![0];
       expect(providerInput.agent.model).toEqual({
@@ -4640,11 +4752,10 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       });
       expect(mocks.devLog).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: 'Kernel explicit response contract failed closed',
+          message: 'Explicit root audit failed closed',
           detail: expect.objectContaining({
-            code: 'word_limit_below_target',
-            maxWords: 750,
-            wordCount: 144,
+            code: 'broad_root_audit_incomplete',
+            issueCount: 1,
             provider: 'opencode',
             model: 'opencode-go/deepseek-v4-flash-vision-exp',
             connectionId: 'opencode-cli',
@@ -4659,7 +4770,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       expect(runStates.at(-1)).toEqual({
         chatId: harness.chatId,
         status: 'error',
-        errorCode: 'kernel_response_contract_failed_closed',
+        errorCode: 'kernel_explicit_root_audit_failed_closed',
       });
     } finally {
       window.removeEventListener('jarvis:run-state', onRunState);
