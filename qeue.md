@@ -10,7 +10,7 @@ Updated: 2026-08-22 by `/root`. A checked item means fresh evidence exists; impl
 - [x] Remove response-path catalog work and unnecessary pre-provider waits while preserving exact provider, connection, model, effort, Context Gateway, and tool identity.
 - [x] Make the large model picker responsive without removing providers, models, headings, search, route truth, or accessibility.
 - [x] Verify a simple live DeepSeek V4 Flash response completes within 20 seconds when the provider itself responds within that budget; official native exact-route turn completed in 10.7 seconds.
-- [ ] Verify Jarvis voice/persona instructions remain present without adding latency or changing the selected model.
+- [ ] Verify Jarvis voice/persona instructions remain present without adding latency or changing the selected model. Identity/compiler/composer proof passes 3 files / 88 tests and the exact OpenCode route case passes, but the adjacent selected-provider Final Boss runtime case currently fails before dispatch (`runAgent` 0 calls) in an actively owned runtime scope.
 
 ## P1 — Model effort selector polish
 
@@ -46,3 +46,5 @@ Updated: 2026-08-22 by `/root`. A checked item means fresh evidence exists; impl
 ## Verified blockers
 
 - Pet native acceptance still fails: the rebuilt official app returns `visibility_check_failed` and retains a stale overlay label; the Pet-only attempt was removed instead of being committed. The remaining repair crosses the actively owned global window-close policy in `app/src-tauri/src/lib.rs`.
+- The final Jarvis selected-provider instruction runtime proof is blocked by a fresh pre-dispatch test failure in actively owned `app/src/lib/ai/runtime.ts` / `runtime.test.ts`; identity/compiler/composer and the exact OpenCode route proof remain green.
+- Real microphone transcription, Pet topmost/focus behavior, and Doctor durable recovery cannot be accepted in browser/Vite mode. They remain native-only while the user's current no-live-app instruction is active.
