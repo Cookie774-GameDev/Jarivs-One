@@ -42,4 +42,5 @@
   - Adjacent Ambient + Warm Settings + MonoChrome matrix: **PASS**, 12 files / 33 tests. Existing React `act(...)` warnings remain in `settingsVoiceSurfaces.monochromeAppearance.test.tsx` and are unrelated to this slice.
   - Direct Vite production bundle: **PASS**, 4,960 modules transformed; existing chunk-size/dynamic-import warnings remain.
   - Repository TypeScript build: **BLOCKED by unrelated pre-existing SiYuan test diagnostics** in `siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`; none is in this owned scope.
-  - Commit SHA: pending.
+  - Product/test/documentation commit: `f97d39d15181c5b15a3144bb9a4eb842bb85ef9e` (`feat(ambient): refine settings surfaces and saved mix playback`).
+  - Ownership released after the commit; later sound/notification work is a separate scope and lock.
