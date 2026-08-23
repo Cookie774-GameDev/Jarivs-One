@@ -79,6 +79,21 @@ function sendArgs(extra = []) {
   ];
 }
 
+test('accepts an explicit per-run approve-all expectation without making it mandatory', () => {
+  assert.equal(parseArgs(sendArgs()).expectedApproveAll, undefined);
+  assert.equal(parseArgs(sendArgs(['--expect-approve-all', 'on'])).expectedApproveAll, 'on');
+  assert.throws(
+    () => parseArgs(sendArgs(['--expect-approve-all', 'maybe'])),
+    (error) =>
+      error instanceof NativeQuestionADriverError && error.code === 'invalid_expected_approve_all',
+  );
+});
+
+test('can explicitly reuse a pre-scoped active chat without changing the default', () => {
+  assert.equal(parseArgs(sendArgs()).reuseActiveChat, undefined);
+  assert.equal(parseArgs(sendArgs(['--reuse-active-chat'])).reuseActiveChat, true);
+});
+
 test('defaults to inspection and cannot accept prompt material', () => {
   assert.equal(parseArgs(['--evidence-dir', EVIDENCE]).mode, 'inspect');
   assert.throws(
@@ -200,6 +215,7 @@ test('captures only exact dispatch identity and omits prompt, source, and creden
     performance: 'quality',
     fastMode: 'off',
     rlmEnabled: true,
+    approveAllForRun: false,
   });
   assert.doesNotMatch(JSON.stringify(receipt), /PRIVATE|private-source|sk-private/u);
   assert.doesNotThrow(() => assertExactRoute(receipt, parseArgs(sendArgs())));
@@ -240,6 +256,7 @@ test('rejects secret-bearing or malformed dispatch identity instead of recording
     performance: '',
     fastMode: '',
     rlmEnabled: false,
+    approveAllForRun: false,
   });
   assert.doesNotMatch(JSON.stringify(receipt), /PRIVATE|sk-secret/u);
 });
@@ -332,6 +349,7 @@ test('source can only attach to owned CDP and cannot launch, navigate, or close 
   for (const command of ['/effort ', '/performance ', '/fast ', '/rlm ']) {
     assert.match(source, new RegExp(command.replace('/', '\\/'), 'u'));
   }
+  assert.match(source, /\/approve-all /u);
   assert.doesNotMatch(source, /chromium\.launch\s*\(/u);
   assert.doesNotMatch(source, /\.goto\s*\(/u);
   assert.doesNotMatch(source, /browser\.close\s*\(/u);

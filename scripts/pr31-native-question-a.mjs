@@ -60,6 +60,10 @@ export function parseArgs(argv) {
       options.mode = name === '--send' ? 'send' : 'inspect';
       continue;
     }
+    if (name === '--reuse-active-chat') {
+      options.reuseActiveChat = true;
+      continue;
+    }
     const value = oneValue(argv, index, name);
     index += 1;
     if (name === '--evidence-dir') options.evidenceDir = path.resolve(value);
@@ -78,6 +82,7 @@ export function parseArgs(argv) {
     else if (name === '--expect-performance') options.expectedPerformance = value;
     else if (name === '--expect-fast') options.expectedFast = value;
     else if (name === '--expect-rlm') options.expectedRlm = value;
+    else if (name === '--expect-approve-all') options.expectedApproveAll = value;
     else fail('invalid_arguments', `Unknown option: ${name}`);
   }
   if (!options.evidenceDir) fail('evidence_directory_required');
@@ -121,6 +126,8 @@ export function parseArgs(argv) {
     fail('invalid_expected_fast');
   if (options.expectedRlm && !['on', 'off'].includes(options.expectedRlm))
     fail('invalid_expected_rlm');
+  if (options.expectedApproveAll && !['on', 'off'].includes(options.expectedApproveAll))
+    fail('invalid_expected_approve_all');
   if (options.rejectedEffort && !EFFORTS.has(options.rejectedEffort))
     fail('invalid_rejected_effort');
   if (
@@ -263,6 +270,7 @@ export function safeDispatchReceipt(detail) {
     performance: safeEnum(runtime?.performance, PERFORMANCES),
     fastMode: safeEnum(runtime?.fastMode, FAST_MODES),
     rlmEnabled: runtime?.rlmEnabled === true,
+    approveAllForRun: detail?.approveAllForRun === true,
   });
 }
 
@@ -290,6 +298,11 @@ export function assertExactRoute(receipt, expected) {
   if (mismatch) fail('exact_route_mismatch', `Exact route mismatch: ${mismatch[0]}`);
   if (expected.expectedRlm !== undefined && receipt.rlmEnabled !== (expected.expectedRlm === 'on'))
     fail('exact_route_mismatch', 'Exact route mismatch: rlmEnabled');
+  if (
+    expected.expectedApproveAll !== undefined &&
+    receipt.approveAllForRun !== (expected.expectedApproveAll === 'on')
+  )
+    fail('exact_route_mismatch', 'Exact route mismatch: approveAllForRun');
   return true;
 }
 
@@ -376,6 +389,7 @@ async function inspectPageState(page) {
       const chatId = typeof ui.activeChatId === 'string' ? ui.activeChatId : '';
       const selection = auth.chatModelSelection ?? {};
       const runtimeSettings = runtime.chats?.[chatId]?.settings ?? {};
+      const runtimePolicy = runtime.chats?.[chatId] ?? {};
       const reasoningPreference = reasoning.chats?.[chatId] ?? {};
       const safe = (value, pattern) => {
         const text = String(value ?? '');
@@ -418,6 +432,7 @@ async function inspectPageState(page) {
           performance: safeEnum(runtimeSettings.performance, ['responsive', 'balanced', 'quality']),
           fastMode: safeEnum(runtimeSettings.fastMode, ['auto', 'on', 'off']),
           rlmEnabled: runtimeSettings.rlmEnabled === true,
+          approveAllForRun: runtimePolicy.approveAllForRun === true,
         },
         selectors: {
           main: document.querySelectorAll('[data-vibespace-page="chat"]').length,
@@ -493,6 +508,7 @@ async function installProbe(page) {
           fastMode: String(runtime.fastMode ?? ''),
           rlmEnabled: runtime.rlmEnabled === true,
         },
+        approveAllForRun: detail.approveAllForRun === true,
       });
     });
     window.addEventListener('jarvis:run-state', (event) => {
@@ -574,7 +590,8 @@ async function applyRuntimeCommand(page, command) {
 }
 
 async function waitForRuntimeControl(page, field, expected) {
-  const value = field === 'rlmEnabled' ? expected === 'on' : expected;
+  const value =
+    field === 'rlmEnabled' || field === 'approveAllForRun' ? expected === 'on' : expected;
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
     const state = await inspectPageState(page);
@@ -648,6 +665,10 @@ async function configureExactRuntimeViaUi(page, expected) {
   await waitForRuntimeControl(page, 'fastMode', expected.expectedFast);
   await applyRuntimeCommand(page, `/rlm ${expected.expectedRlm}`);
   await waitForRuntimeControl(page, 'rlmEnabled', expected.expectedRlm);
+  if (expected.expectedApproveAll) {
+    await applyRuntimeCommand(page, `/approve-all ${expected.expectedApproveAll}`);
+    await waitForRuntimeControl(page, 'approveAllForRun', expected.expectedApproveAll);
+  }
   const after = await probeSnapshot(page);
   if (after.sends.slice(before.sends.length).some((entry) => entry.chatId === chatId))
     fail('local_control_dispatched_provider');
@@ -955,7 +976,8 @@ export async function runDriver(options, dependencies = {}) {
     const prompt = await readPrompt(options.promptFile);
     for (let index = 0; index < options.runs; index += 1) {
       stage = `run_${index + 1}_create_chat`;
-      const chatId = await createChat(page);
+      const chatId = options.reuseActiveChat ? await activeChatId(page) : await createChat(page);
+      if (!chatId) fail('active_chat_unavailable');
       stage = `run_${index + 1}_configure_model`;
       await configureExactModelViaUi(page, options);
       stage = `run_${index + 1}_configure_runtime`;
