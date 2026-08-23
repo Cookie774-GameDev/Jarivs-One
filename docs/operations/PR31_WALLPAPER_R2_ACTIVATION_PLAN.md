@@ -85,5 +85,5 @@
   - Repository-wide `npm run typecheck`: blocked by four pre-existing errors in concurrently owned SiYuan tests (`siyuanRlmProduction.test.ts` and `siyuanRlmRepository.test.ts`); no wallpaper file error was reported.
   - Native/manual app QA: NOT RUN, per the user's explicit instruction.
 - Product commit: `33e111562d1d2ad17fe536f525a83f877b64f8c1` (`feat(wallpaper): activate private R2 masters`).
-- Final documentation commit: pending.
-- Final lock release: pending.
+- Documentation evidence commit: `a5830c20183293a63a6b91a8516f3bc6d86963d0` (`docs(wallpaper): record R2 activation evidence`).
+- Final lock release: completed; the agent-scoped lock is marked `released` after the exact product and documentation commits.
