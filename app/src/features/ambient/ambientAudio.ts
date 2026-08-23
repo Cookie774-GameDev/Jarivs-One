@@ -13,6 +13,12 @@ export type AmbientLoadStatus =
   | { state: 'playing'; url: string }
   | { state: 'error'; url: string; message: string };
 
+export interface AmbientPlaybackProgress {
+  clipId: string | null;
+  currentTime: number;
+  duration: number;
+}
+
 export function musicProjectSignature(clips: readonly MusicClip[], loop: boolean): string {
   return JSON.stringify({
     loop,
@@ -53,6 +59,7 @@ export class AmbientAudioEngine {
   private loadStatus: AmbientLoadStatus = { state: 'idle' };
   private listeners = new Set<() => void>();
   private statusListeners = new Set<(status: AmbientLoadStatus) => void>();
+  private progressListeners = new Set<(progress: AmbientPlaybackProgress) => void>();
   private projectClips: MusicClip[] | null = null;
   private projectIndex = 0;
   private projectLoop = true;
@@ -82,6 +89,14 @@ export class AmbientAudioEngine {
     };
   }
 
+  public subscribeProgress(listener: (progress: AmbientPlaybackProgress) => void): () => void {
+    this.progressListeners.add(listener);
+    listener(this.playbackProgress());
+    return () => {
+      this.progressListeners.delete(listener);
+    };
+  }
+
   public getLastLoadError(): AmbientLoadError | null {
     return this.lastLoadError;
   }
@@ -96,6 +111,21 @@ export class AmbientAudioEngine {
 
   private notifyStatus(): void {
     for (const listener of this.statusListeners) listener(this.loadStatus);
+  }
+
+  private playbackProgress(): AmbientPlaybackProgress {
+    const currentTime = this.audio?.currentTime;
+    const duration = this.audio?.duration;
+    return {
+      clipId: this.currentProjectClip()?.id ?? null,
+      currentTime: Number.isFinite(currentTime) ? Math.max(0, currentTime ?? 0) : 0,
+      duration: Number.isFinite(duration) ? Math.max(0, duration ?? 0) : 0,
+    };
+  }
+
+  private notifyProgress(): void {
+    const progress = this.playbackProgress();
+    for (const listener of this.progressListeners) listener(progress);
   }
 
   private setLoadStatus(status: AmbientLoadStatus): void {
@@ -194,6 +224,7 @@ export class AmbientAudioEngine {
     const seek = () => {
       try {
         audio.currentTime = clip!.trimStart;
+        this.notifyProgress();
       } catch {
         // Some media engines reject seeking until metadata is fully available.
       }
@@ -232,7 +263,9 @@ export class AmbientAudioEngine {
       this.getAudio().currentTime >= clip.trimEnd
     ) {
       this.advanceProject();
+      return;
     }
+    this.notifyProgress();
   };
 
   private handleTrackError = (): void => {
@@ -249,6 +282,7 @@ export class AmbientAudioEngine {
   public play(track: AmbientTrack, volume: number): void {
     this.projectClips = null;
     this.projectSignature = '';
+    this.notifyProgress();
     const nextTrackIndex = getAmbientTrackIndex(track);
     const trackChanged = nextTrackIndex !== this.currentTrackIndex;
     this.currentTrackIndex = nextTrackIndex;
@@ -300,6 +334,19 @@ export class AmbientAudioEngine {
     }
   }
 
+  public seek(seconds: number): boolean {
+    if (!this.audio || !this.projectClips?.length || !Number.isFinite(seconds)) return false;
+    const clip = this.currentProjectClip();
+    if (!clip) return false;
+    const mediaEnd = Number.isFinite(this.audio.duration)
+      ? this.audio.duration
+      : Number.POSITIVE_INFINITY;
+    const playableEnd = Math.min(clip.trimEnd ?? mediaEnd, mediaEnd);
+    this.audio.currentTime = Math.max(clip.trimStart, Math.min(seconds, playableEnd));
+    this.notifyProgress();
+    return true;
+  }
+
   public setTrack(track: AmbientTrack): void {
     this.projectClips = null;
     this.projectSignature = '';
@@ -342,5 +389,6 @@ export class AmbientAudioEngine {
     this.audio = null;
     this.listeners.clear();
     this.statusListeners.clear();
+    this.progressListeners.clear();
   }
 }

@@ -7,6 +7,7 @@ class FakeAudio extends EventTarget {
   src = '';
   currentSrc = '';
   currentTime = 0;
+  duration = 90;
   volume = 1;
   playbackRate = 1;
   loop = false;
@@ -68,5 +69,42 @@ describe('AmbientAudioEngine music projects', () => {
     await Promise.resolve();
     expect(instances[0]!.src).not.toBe(firstSrc);
     expect(instances[0]!.currentTime).toBe(3);
+  });
+
+  it('publishes current song progress and seeks within its playable timeline', async () => {
+    const instances: FakeAudio[] = [];
+    vi.stubGlobal(
+      'Audio',
+      class extends FakeAudio {
+        constructor() {
+          super();
+          instances.push(this);
+        }
+      },
+    );
+    const engine = AmbientAudioEngine.getInstance();
+    const progress = vi.fn();
+    const unsubscribe = engine.subscribeProgress(progress);
+
+    engine.playProject([clips[0]!], false, 55);
+    await Promise.resolve();
+    expect(progress).toHaveBeenLastCalledWith({
+      clipId: clips[0]!.id,
+      currentTime: 2,
+      duration: 90,
+    });
+
+    expect(engine.seek(7.5)).toBe(true);
+    expect(instances[0]!.currentTime).toBe(7.5);
+    expect(progress).toHaveBeenLastCalledWith({
+      clipId: clips[0]!.id,
+      currentTime: 7.5,
+      duration: 90,
+    });
+    expect(engine.seek(-5)).toBe(true);
+    expect(instances[0]!.currentTime).toBe(2);
+    expect(engine.seek(99)).toBe(true);
+    expect(instances[0]!.currentTime).toBe(10);
+    unsubscribe();
   });
 });

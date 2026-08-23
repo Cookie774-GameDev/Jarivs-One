@@ -27,7 +27,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/toast';
 import { useUIStore } from '@/stores/ui';
-import { AmbientAudioEngine } from '../ambientAudio';
+import { AmbientAudioEngine, type AmbientPlaybackProgress } from '../ambientAudio';
 import { shouldAmbientMusicPlay } from '../ambientPlayback';
 import { MUSIC_LIBRARY, MUSIC_LIBRARY_TOTAL_BYTES, type MusicLibraryTrack } from './catalog';
 import { TrackArtwork } from './TrackArtwork';
@@ -43,6 +43,14 @@ const PREVIEW_MS = 15_000;
 
 function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatTime(seconds: number): string {
+  const safe = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+  const minutes = Math.floor(safe / 60);
+  return `${minutes}:${Math.floor(safe % 60)
+    .toString()
+    .padStart(2, '0')}`;
 }
 
 function restoreAmbientProject(): void {
@@ -79,6 +87,11 @@ export function MusicStudio({
   const savedAt = useMusicProjectStore((state) => state.savedAt);
   const [query, setQuery] = React.useState('');
   const [previewingId, setPreviewingId] = React.useState<string | null>(null);
+  const [playbackProgress, setPlaybackProgress] = React.useState<AmbientPlaybackProgress>({
+    clipId: null,
+    currentTime: 0,
+    duration: 0,
+  });
   const [selectedClipId, setSelectedClipId] = React.useState<string | null>(
     () => clips[0]?.id ?? null,
   );
@@ -87,6 +100,18 @@ export function MusicStudio({
   const fileInput = React.useRef<HTMLInputElement>(null);
   const selectedClip = clips.find((clip) => clip.id === selectedClipId) ?? clips[0] ?? null;
   const selectedIndex = selectedClip ? clips.findIndex((clip) => clip.id === selectedClip.id) : -1;
+  const selectedPreviewActive = Boolean(
+    selectedClip &&
+    previewingId === selectedClip.id &&
+    playbackProgress.clipId === selectedClip.id &&
+    playbackProgress.duration > 0,
+  );
+  const previewStart = selectedClip?.trimStart ?? 0;
+  const previewEnd = Math.max(previewStart, selectedClip?.trimEnd ?? playbackProgress.duration);
+  const previewPosition = Math.max(
+    previewStart,
+    Math.min(playbackProgress.currentTime, previewEnd),
+  );
 
   const stopPreview = React.useCallback(() => {
     if (previewTimer.current !== null) window.clearTimeout(previewTimer.current);
@@ -102,6 +127,11 @@ export function MusicStudio({
     },
     [],
   );
+
+  React.useEffect(() => {
+    const unsubscribe = AmbientAudioEngine.getInstance().subscribeProgress?.(setPlaybackProgress);
+    return () => unsubscribe?.();
+  }, []);
 
   React.useEffect(() => {
     if (clips.length === 0) {
@@ -461,6 +491,30 @@ export function MusicStudio({
                               : 'Preview selected'}
                           </Button>
                         </div>
+
+                        {selectedPreviewActive ? (
+                          <div className="rounded-lg border border-border bg-background/55 px-3 py-2">
+                            <div className="mb-1.5 flex items-center justify-between gap-3 text-[10px] text-muted-foreground">
+                              <span>Song preview timeline</span>
+                              <span className="font-mono text-foreground">
+                                {formatTime(previewPosition - previewStart)} /{' '}
+                                {formatTime(previewEnd - previewStart)}
+                              </span>
+                            </div>
+                            <input
+                              type="range"
+                              aria-label={`Preview position for ${selectedClip.name}`}
+                              min={previewStart}
+                              max={previewEnd}
+                              step="0.1"
+                              value={previewPosition}
+                              onChange={(event) =>
+                                AmbientAudioEngine.getInstance().seek(Number(event.target.value))
+                              }
+                              className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-border accent-accent-copper"
+                            />
+                          </div>
+                        ) : null}
 
                         <div className="grid gap-2 sm:grid-cols-3">
                           <label className="text-[10px] text-muted-foreground">

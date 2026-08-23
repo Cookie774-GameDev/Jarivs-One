@@ -66,6 +66,7 @@ export function Ambient() {
   const [musicStudioOpen, setMusicStudioOpen] = useState(false);
   const projectClipCount = useMusicProjectStore((state) => state.clips.length);
   const projectEnabled = useMusicProjectStore((state) => state.enabledForAmbient);
+  const projectLoop = useMusicProjectStore((state) => state.loop);
   const previewStopRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -81,7 +82,9 @@ export function Ambient() {
     ambientDrone,
     ambientAlwaysPlay,
   );
-  const selectedTrackLabel = getAmbientTrackDef(ambientTrack).label;
+  const selectedTrackLabel = projectEnabled
+    ? `VibeSpace Mix (${projectClipCount} songs)`
+    : getAmbientTrackDef(ambientTrack).label;
 
   useEffect(() => {
     if (planAllowsAmbientTrack(ambientTrack, activePlan, admin)) return;
@@ -120,7 +123,12 @@ export function Ambient() {
 
     setPreviewingMusic(true);
     const engine = AmbientAudioEngine.getInstance();
-    engine.play(ambientTrack, ambientVolume);
+    const project = useMusicProjectStore.getState();
+    if (project.enabledForAmbient && project.clips.length > 0) {
+      engine.playProject(project.clips, project.loop, ambientVolume);
+    } else {
+      engine.play(ambientTrack, ambientVolume);
+    }
     void engine.resume();
 
     previewStopRef.current = window.setTimeout(() => {
@@ -257,7 +265,8 @@ export function Ambient() {
         <div>
           <Label htmlFor="ambient-always-play">Play music 24/7</Label>
           <p className="text-metadata text-muted-foreground mt-1">
-            Loop the selected track all the time. When off, music only plays during ambient idle.
+            Keep the selected source playing outside idle mode. For VibeSpace Mix, its own Loop
+            setting controls whether it restarts after the final song.
           </p>
         </div>
         <Switch
@@ -289,18 +298,55 @@ export function Ambient() {
         <div className="flex flex-col gap-2">
           <Label>Track selector</Label>
           <p className="text-metadata text-muted-foreground">
-            Pick a track to loop. 24/7 plays it always; otherwise it plays on the ambient idle
-            screen.
+            Pick VibeSpace Mix or one hosted track. 24/7 keeps that source active; otherwise it
+            plays on the ambient idle screen.
           </p>
           <div className="grid grid-cols-2 gap-2 mt-1">
+            <button
+              type="button"
+              data-monochrome-control-size="preserve"
+              aria-pressed={projectEnabled}
+              disabled={projectClipCount === 0}
+              onClick={() => {
+                const project = useMusicProjectStore.getState();
+                project.setEnabledForAmbient(true);
+                project.save();
+                if (isMusicLive && project.clips.length > 0) {
+                  AmbientAudioEngine.getInstance().playProject(
+                    project.clips,
+                    project.loop,
+                    ambientVolume,
+                  );
+                }
+              }}
+              className={
+                'flex items-center gap-2.5 p-3 rounded-lg border text-left transition-all disabled:cursor-not-allowed disabled:opacity-50 ' +
+                (projectEnabled
+                  ? 'border-accent-copper bg-accent-copper/10 text-foreground shadow-sm'
+                  : 'border-border bg-panel text-muted-foreground hover:border-border-mid')
+              }
+            >
+              <SlidersHorizontal
+                className={`h-4 w-4 shrink-0 ${projectEnabled ? 'text-accent-copper' : 'text-muted-foreground/60'}`}
+              />
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-foreground">VibeSpace Mix</div>
+                <div className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
+                  {projectClipCount} songs · {projectLoop ? 'loops' : 'plays once'}
+                </div>
+              </div>
+            </button>
             {AMBIENT_TRACKS.map((t) => {
-              const active = ambientTrack === t.id;
+              const active = !projectEnabled && ambientTrack === t.id;
               return (
                 <button
                   key={t.id}
                   type="button"
                   data-monochrome-control-size="preserve"
                   onClick={() => {
+                    const project = useMusicProjectStore.getState();
+                    project.setEnabledForAmbient(false);
+                    project.save();
                     setAmbientTrack(t.id);
                     if (isMusicLive) {
                       AmbientAudioEngine.getInstance().setTrack(t.id);
@@ -328,6 +374,10 @@ export function Ambient() {
               );
             })}
           </div>
+          <p className="text-[11px] text-muted-foreground">
+            Fresh mixes start with all 64 songs once in catalog order. Reordering, trim, speed, and
+            Loop changes from Music Studio are used here.
+          </p>
           {musicStatus.state === 'error' ? (
             <p className="text-[11px] text-destructive">
               {selectedTrackLabel}: {musicStatus.message}
