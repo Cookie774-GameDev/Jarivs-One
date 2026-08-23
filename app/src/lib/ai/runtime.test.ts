@@ -193,6 +193,7 @@ vi.mock('@/features/context/rlm/contextRlmProduction', async (importOriginal) =>
 import {
   actionPartToLlmText,
   buildBroadRootAuditWordAllocation,
+  buildBroadRootAuditCorrectionGuidance,
   buildExplicitRootCorrectionLengthGuidance,
   responseAwaitsApproval,
   createCanonicalProviderEvidenceAuthority,
@@ -641,7 +642,7 @@ describe('startRuntimeListener agent routing', () => {
           'Disk capacity and storage usage were not verified.',
           'Running apps and OS process inventory are unavailable from filesystem evidence.',
           'Observed risks and operational concerns are listed below.',
-        ].join('\n'),
+        ].join('\n\n'),
       ),
     ).toEqual([]);
     expect(missingExplicitRootAuditCategories('Observed several project files.')).toEqual(
@@ -675,6 +676,16 @@ describe('startRuntimeListener agent routing', () => {
         '## Configurations\nObserved configurations and settings were read from disk.',
       ),
     ).not.toContain('configuration files and settings');
+    expect(
+      missingExplicitRootAuditCategories(
+        [
+          '**Running apps and OS processes** (60)\nUnavailable: no live process inventory was observed.',
+          '**Risks and operational concerns** (125)\nObserved: several operational risks require review.',
+        ].join('\n\n'),
+      ),
+    ).not.toEqual(
+      expect.arrayContaining(['running apps and OS processes', 'risks and operational concerns']),
+    );
   });
 
   it('gives the single correction an exact direction for short and over-limit drafts', () => {
@@ -733,6 +744,19 @@ describe('startRuntimeListener agent routing', () => {
     ).not.toContain('680-word');
   });
 
+  it('keeps the broad-audit correction concise and mechanically enumerated', () => {
+    const guidance = buildBroadRootAuditCorrectionGuidance(
+      { ok: false, code: 'word_limit_below_target', wordCount: 429 },
+      { maxWords: 750, minimumWords: 675, targetMinWords: 675, targetMaxWords: 690 },
+      ['redacted credential-store names', 'risks and operational concerns'],
+    ).join(' ');
+    expect(guidance).toContain('Add at least 246 actual substantive words');
+    expect(guidance).toContain('Use exactly seven headings');
+    expect(guidance).toContain('6 risk sentences');
+    expect(guidance).toContain('redacted credential-store names');
+    expect(guidance).not.toContain('approximate 680-word allocation');
+  });
+
   it('rejects unlabeled inference and private configuration details from broad audits', () => {
     expect(
       explicitRootAuditQualityIssues(
@@ -749,7 +773,7 @@ describe('startRuntimeListener agent routing', () => {
           'password=synthetic-private-value.',
           'User actions@example.com stores `gdrive-credentials.json`.',
           'A plain .ssh directory was named.',
-        ].join('\n'),
+        ].join('\n\n'),
       ),
     ).toEqual(
       expect.arrayContaining([
@@ -772,6 +796,30 @@ describe('startRuntimeListener agent routing', () => {
         ].join('\n'),
       ),
     ).toEqual([]);
+    expect(
+      explicitRootAuditQualityIssues(
+        [
+          'Observed top-level folders and contents.',
+          'Observed configurations and settings.',
+          'Verified repositories and Git worktrees. A debug path appears in the observed coordination text.',
+          'Disk capacity and usage were not verified.',
+          'Running apps and OS process inventory are unavailable.',
+          'Observed risks and operational concerns.',
+        ].join('\n\n'),
+      ),
+    ).not.toContain('explicitly labeled inference');
+    expect(
+      explicitRootAuditQualityIssues(
+        [
+          'Observed top-level folders and contents. This likely indicates heavy development activity.',
+          'Observed configurations and settings.',
+          'Verified repositories and Git worktrees.',
+          'Disk capacity and usage were not verified.',
+          'Running apps and OS process inventory are unavailable.',
+          'Observed risks and operational concerns.',
+        ].join('\n\n'),
+      ),
+    ).toContain('explicitly labeled inference');
     expect(
       explicitRootAuditQualityIssues(
         [
@@ -2981,6 +3029,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     expect(synthesisInstruction).toContain('Prefix interpretive claims with Inference:');
     expect(synthesisInstruction).toContain('state any enumeration limit');
     expect(synthesisInstruction).toContain('Never reproduce credential values');
+    expect(synthesisInstruction).toContain('never print planned counts or parenthetical budgets');
     expect(mocks.runAgent.mock.calls[0]![0].messages.at(-1)?.content).toContain(
       'verify repository or Git worktree metadata when present',
     );
@@ -3000,11 +3049,9 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     expect(verifiedProviderInput.explicitReadRoot).toBe(true);
     expect(verifiedProviderInput.explicitReadSynthesis).toBe(true);
     expect(verifiedProviderInput.messages.at(-1)?.content).toContain(
-      'Your immediately previous answer measured 700 words.',
+      'The previous draft measured 700 whitespace-delimited words.',
     );
-    expect(verifiedProviderInput.messages.at(-1)?.content).toContain(
-      'approximate 680-word allocation',
-    );
+    expect(verifiedProviderInput.messages.at(-1)?.content).toContain('Use exactly seven headings');
     await vi.waitFor(() =>
       expect(updateMessage).toHaveBeenCalledWith(
         'msg_explicit_read_root_assistant',

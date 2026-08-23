@@ -693,7 +693,7 @@ function isBroadExplicitRootAuditRequest(text: string): boolean {
 
 export function missingExplicitRootAuditCategories(text: string): readonly string[] {
   const segments = text
-    .split(/(?:\r?\n)+|(?<=[.!?;])\s+/u)
+    .split(/\r?\n\s*\r?\n/u)
     .map((segment) => segment.trim())
     .filter(Boolean);
   return EXPLICIT_ROOT_AUDIT_CATEGORIES.filter(
@@ -708,7 +708,7 @@ export function missingExplicitRootAuditCategories(text: string): readonly strin
   ).map((category) => category.label);
 }
 
-const EXPLICIT_ROOT_UNLABELED_INFERENCE = /\b(?:appears?|indicates?|likely|suggests?)\b/iu;
+const EXPLICIT_ROOT_UNLABELED_INFERENCE = /\b(?:appears?\s+to|indicates?|likely|suggests?)\b/iu;
 const EXPLICIT_ROOT_INFERENCE_LABEL = /\binference\s*:/iu;
 const EXPLICIT_ROOT_DISCLOSED_URL = /\bhttps?:\/\/[^\s<>`"']+/iu;
 const EXPLICIT_ROOT_DISCLOSED_EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu;
@@ -771,7 +771,11 @@ export function buildBroadRootAuditWordAllocation(contract: ExplicitResponseCont
   const disk = Math.round((budget * 60) / 680);
   const processes = Math.round((budget * 60) / 680);
   const risks = budget - overview - folders - configurations - repositories - disk - processes;
-  return `Use this approximate ${budget}-word allocation, including headings: ${overview} words of overview, ${folders} for folders and contents, ${configurations} for configurations, ${repositories} for repositories and worktrees, ${disk} for disk capacity and usage, ${processes} for running apps and processes, and ${risks} for risks and operational concerns.`;
+  const sentenceMinimums =
+    budget >= 600
+      ? ' Write at least 2 substantive overview sentences, 8 folder sentences, 5 configuration sentences, 5 repository/worktree sentences, 3 disk sentences, 3 process sentences, and 6 risk sentences.'
+      : '';
+  return `Use this approximate ${budget}-word allocation, including headings: ${overview} words of overview, ${folders} for folders and contents, ${configurations} for configurations, ${repositories} for repositories and worktrees, ${disk} for disk capacity and usage, ${processes} for running apps and processes, and ${risks} for risks and operational concerns. Use the allocation silently; never print planned counts or parenthetical budgets.${sentenceMinimums}`;
 }
 
 export function buildExplicitRootCorrectionLengthGuidance(
@@ -797,6 +801,27 @@ export function buildExplicitRootCorrectionLengthGuidance(
     guidance.push(buildBroadRootAuditWordAllocation(contract));
   }
   return Object.freeze(guidance);
+}
+
+export function buildBroadRootAuditCorrectionGuidance(
+  assessment: ExplicitResponseContractAssessment | null,
+  contract: ExplicitResponseContract,
+  qualityIssues: readonly string[],
+): readonly string[] {
+  const wordCount = assessment?.wordCount ?? 0;
+  const lengthDirection =
+    wordCount < contract.targetMinWords
+      ? `Add at least ${contract.targetMinWords - wordCount} actual substantive words.`
+      : wordCount > contract.targetMaxWords
+        ? `Remove at least ${wordCount - contract.targetMaxWords} words.`
+        : 'Preserve the valid length.';
+  return Object.freeze([
+    `The previous draft measured ${wordCount} whitespace-delimited words. Rewrite it once to ${contract.targetMinWords}-${contract.targetMaxWords} actual words and never exceed ${contract.maxWords}. ${lengthDirection}`,
+    'Use exactly seven headings: Overview; Folders and contents; Configurations; Repositories and Git worktrees; Disk capacity and usage; Running apps and OS processes; Risks and operational concerns.',
+    'Write at least 2 substantive overview sentences, 8 folder sentences, 5 configuration sentences, 5 repository/worktree sentences, 3 disk sentences, 3 process sentences, and 6 risk sentences. Do not print planning counts or parenthetical word budgets.',
+    `Fix exactly these requirements: ${qualityIssues.join('; ') || 'response length and grounded completeness'}.`,
+    'Begin every factual paragraph with Observed:, Verified:, Inference:, Unavailable:, or Not verified:. Never reproduce URLs, credential values, emails, user IDs, or credential-store/path names; aggregate them as names redacted.',
+  ]);
 }
 
 export async function runExplicitRootEvidenceSynthesis(
@@ -843,7 +868,7 @@ export async function runExplicitRootEvidenceSynthesis(
           ...(broadRootAudit
             ? [
                 'For this broad audit, inventory bounded top-level entries, inspect relevant configuration markers, and verify repository or Git worktree metadata when present. Read representative high-signal entries; record any enumeration limit instead of treating a truncated result as a complete census.',
-                'Do not open credential stores or secret-bearing files. If an ordinary configuration exposes credential-shaped fields, never repeat their values, endpoint/remote URLs, emails, user IDs, or credential-store filenames; retain only redacted class/count/existence facts.',
+                'Do not open credential stores or secret-bearing files. If an ordinary configuration exposes credential-shaped fields, never repeat their values, endpoint/remote URLs, emails, user IDs, or credential-store filenames; replace every store/path name with aggregate wording such as several credential stores (names redacted), retaining only redacted class/count/existence facts.',
               ]
             : []),
           EXPLICIT_ROOT_EVIDENCE_PHASE_PROMPT,
@@ -932,7 +957,7 @@ export async function runExplicitRootEvidenceSynthesis(
               'Cover each category in a labeled section: top-level folders and contents; configuration files and settings; repositories and Git worktrees; disk capacity and usage; running apps and OS processes; risks and operational concerns.',
               'For every category, explicitly say what was observed or verified. If the available read-only filesystem evidence cannot establish it, explicitly say unavailable or not verified; never infer live disk or process state.',
               'Prefix interpretive claims with Inference: and evidence limitations with Unavailable: or Not verified:. Do not use words such as appears, suggests, likely, or indicates as unlabeled factual claims.',
-              'Never reproduce credential values, endpoint or remote URLs, emails, user IDs, or credential-store filenames from evidence; report only redacted class/count/existence facts.',
+              'Never reproduce credential values, endpoint or remote URLs, emails, user IDs, or credential-store filenames from evidence; replace every store/path name with aggregate wording such as several credential stores (names redacted), reporting only redacted class/count/existence facts.',
               'Distinguish observed facts from inference, state any enumeration limit, and avoid claims that documentation alone proves current runtime state.',
               ...(contract
                 ? [
@@ -1002,13 +1027,15 @@ export async function runExplicitRootEvidenceSynthesis(
         content: [
           'Internal VibeSpace correction phase.',
           'Rewrite your immediately previous answer using only the evidence already present in this exact session.',
-          ...(contract
-            ? buildExplicitRootCorrectionLengthGuidance(assessment, contract, broadRootAudit)
-            : []),
-          ...(auditQualityIssues.length > 0
+          ...(contract && broadRootAudit
+            ? buildBroadRootAuditCorrectionGuidance(assessment, contract, auditQualityIssues)
+            : contract
+              ? buildExplicitRootCorrectionLengthGuidance(assessment, contract)
+              : []),
+          ...(!broadRootAudit && auditQualityIssues.length > 0
             ? [
                 `Resolve every grounded-audit quality requirement: ${auditQualityIssues.join('; ')}.`,
-                'Do not substitute product documentation for the requested filesystem/root audit, invent disk/process state, reproduce URLs, credential values, emails, user IDs, or credential-store filenames, or leave interpretive claims without an Inference: label.',
+                'Do not substitute product documentation for the requested filesystem/root audit, invent disk/process state, reproduce URLs, credential values, emails, user IDs, or credential-store filenames, or leave interpretive claims without an Inference: label. Replace every credential store/path name with aggregate wording such as several credential stores (names redacted). Do not print planning counts or parenthetical word budgets.',
               ]
             : []),
           'Do not add facts, call tools, mention this correction, or truncate a sentence.',
