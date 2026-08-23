@@ -14,4 +14,3 @@
 
 - Pet topmost/focus behavior, real microphone capture, and VibeSpace Doctor durable recovery require native Windows/Tauri capabilities. The user's current instruction forbids live VibeSpace app testing, while the repository forbids browser/Vite evidence as product acceptance. These three remain honestly unverified.
 - No broad desktop control, browser product QA, native launch, microphone access, overlay manipulation, Doctor repair, or real user-data operation occurred in this audit.
-
