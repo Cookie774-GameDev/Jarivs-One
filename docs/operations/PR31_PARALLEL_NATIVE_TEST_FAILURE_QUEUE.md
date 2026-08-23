@@ -114,3 +114,12 @@ Each test receives a monotonically increasing ID. Entries record UTC/local time,
 - RED evidence: the authenticated OpenCode route remained unpublished when another detector never settled
 - GREEN evidence: detector matrix passed 11/11, combined adjacent matrix passed 154/154, app typecheck and exact formatting/diff checks passed
 - Remaining acceptance: observe forced detection in the official native app and confirm the exact registered route becomes actionable without substitution
+
+### PR31-CODE-005 — exact combined effort + Fast transport green
+
+- Recorded: 2026-08-22T22:29:29-05:00
+- Root cause: the catalog prompt adapter returned an already-resolved effort variant before evaluating Fast, silently dropping the requested Fast control; the strict adapter also ignored native Fast
+- Repair: an effort variant plus Fast now requires the exact combined variant advertised by live metadata; missing combined authority fails closed, and the strict adapter rejects any unsupported Fast control
+- Exact identity: provider, connection, model ID, effort, performance, and RLM fields remain unchanged; no combined variant is invented and the UI toggle is not treated as provider proof
+- RED/GREEN evidence: three focused regressions failed before implementation; the complete SDK client matrix now passes 9/9 and exact formatting/diff checks pass
+- Remaining acceptance: Test B remains NOT RUN until the official native app exposes an authenticated GPT-5.6 Luna Max + Fast route with observed combined provider metadata; no substitute route is permitted

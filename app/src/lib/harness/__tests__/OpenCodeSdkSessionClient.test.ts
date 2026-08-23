@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   CatalogVariantPromptAdapter,
   OpenCodeSdkSessionClient,
+  StrictModelControlPromptAdapter,
   toProviderSafeOpenCodeTools,
   type ModelControlPromptAdapter,
   type OpenCodeRawEvent,
@@ -118,6 +119,57 @@ describe('OpenCodeSdkSessionClient', () => {
         body: expect.objectContaining({ variant: 'high-fast' }),
       }),
     );
+  });
+
+  it('combines an already-resolved effort variant with Fast only through exact live metadata', () => {
+    const adapter = new CatalogVariantPromptAdapter(() => ({
+      effortVariants: { max: 'max' },
+      combinedVariants: { 'max+fast': 'max-fast' },
+    }));
+
+    expect(
+      adapter.toPromptFields({
+        connectionId: 'openai-chatgpt-pro',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        variant: 'max',
+        serviceTier: 'fast',
+        performance: 'quality',
+        rlmEnabled: true,
+      }),
+    ).toEqual({ variant: 'max-fast' });
+  });
+
+  it('fails closed instead of silently dropping Fast from an effort variant', () => {
+    const adapter = new CatalogVariantPromptAdapter(() => ({
+      effortVariants: { max: 'max' },
+    }));
+
+    expect(() =>
+      adapter.toPromptFields({
+        connectionId: 'openai-chatgpt-pro',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        variant: 'max',
+        serviceTier: 'fast',
+        performance: 'quality',
+        rlmEnabled: true,
+      }),
+    ).toThrow(/combined max\+fast variant/u);
+  });
+
+  it('fails closed when the strict transport cannot carry native OpenCode Fast', () => {
+    expect(() =>
+      new StrictModelControlPromptAdapter().toPromptFields({
+        connectionId: 'opencode-cli',
+        providerId: 'opencode-go',
+        modelId: 'model',
+        variant: 'max',
+        openCodeFastMode: true,
+        performance: 'quality',
+        rlmEnabled: true,
+      }),
+    ).toThrow(/HARNESS_INCOMPATIBLE/u);
   });
 
   it('refuses blocking/per-turn fallback when promptAsync is unavailable', async () => {

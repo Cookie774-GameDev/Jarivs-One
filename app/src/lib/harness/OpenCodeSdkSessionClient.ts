@@ -74,9 +74,23 @@ export class CatalogVariantPromptAdapter implements ModelControlPromptAdapter {
   ) {}
 
   toPromptFields(controls: Readonly<OpenCodeRequestControls>): Readonly<Record<string, unknown>> {
-    if (controls.variant) return { variant: controls.variant };
     const descriptor = this.resolve(controls);
     const fast = controls.serviceTier === 'fast' || controls.openCodeFastMode === true;
+    if (controls.variant && fast) {
+      const effort =
+        controls.effort ??
+        Object.entries(descriptor?.effortVariants ?? {}).find(
+          ([, variant]) => variant === controls.variant,
+        )?.[0];
+      const combined = effort ? descriptor?.combinedVariants?.[`${effort}+fast`] : undefined;
+      if (!effort || !combined) {
+        throw new Error(
+          `VARIANT_NOT_AVAILABLE: ${controls.modelId} does not expose a combined ${effort ?? controls.variant}+fast variant.`,
+        );
+      }
+      return { variant: combined };
+    }
+    if (controls.variant) return { variant: controls.variant };
     const effort = controls.effort;
     if (fast && effort) {
       const combined = descriptor?.combinedVariants?.[`${effort}+fast`];
@@ -110,9 +124,9 @@ export class CatalogVariantPromptAdapter implements ModelControlPromptAdapter {
 
 export class StrictModelControlPromptAdapter implements ModelControlPromptAdapter {
   toPromptFields(controls: Readonly<OpenCodeRequestControls>): Readonly<Record<string, unknown>> {
-    if (controls.effort || controls.serviceTier) {
+    if (controls.effort || controls.serviceTier || controls.openCodeFastMode) {
       throw new Error(
-        'HARNESS_INCOMPATIBLE: installed OpenCode adapter cannot transport independent effort/service tier.',
+        'HARNESS_INCOMPATIBLE: installed OpenCode adapter cannot transport independent effort/Fast controls.',
       );
     }
     return controls.variant ? { variant: controls.variant } : {};
