@@ -18,7 +18,6 @@ import {
   BrainCircuit,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { AppearanceQuickSwitch } from './AppearanceQuickSwitch';
 import { Avatar } from '@/components/ui/avatar';
 import { Hint } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -362,7 +361,6 @@ export function TopBar() {
               the user keeps the maximum amount of vertical room for the
               workspace canvas (terminals especially). */}
       <div className="no-drag flex items-center gap-1">
-        <AppearanceQuickSwitch compact={compactChrome} />
         <ChatEngineMenu onNavigateChat={() => setRoute('chat')} />
       </div>
       {compactChrome ? (

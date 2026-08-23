@@ -123,6 +123,14 @@ describe('TopBar voice smoke evidence', () => {
     expect(control.className).toContain('min-w-6');
   });
 
+  it('keeps appearance selection out of the top bar', () => {
+    renderTopBar(false);
+
+    expect(screen.queryByRole('group', { name: 'App appearance' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Jarvis One' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'MonoChrome' })).toBeNull();
+  });
+
   it('places the unique voice.open selector on the genuine opener', async () => {
     renderTopBar(true);
 
