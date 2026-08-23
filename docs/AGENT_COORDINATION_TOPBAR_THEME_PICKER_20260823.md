@@ -11,3 +11,8 @@
 - Playwright Local at `http://localhost:5173/?route=account`: application header has zero `App appearance` groups and no quick-theme labels.
 - Playwright then opened Settings → Appearance and confirmed the `App theme` radio group still contains Jarvis One, Default, MonoChrome, and Warm, with the previously selected Default state preserved.
 - No appearance store, sync, Settings implementation, component contract, or slash-command file was edited.
+
+## Release checkpoint
+
+- Product commit: `77f80b6d` (`fix(shell): remove top bar theme picker`).
+- Exact scope released at `2026-08-23T15:03:00-05:00`.
