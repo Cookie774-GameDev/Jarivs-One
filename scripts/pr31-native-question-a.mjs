@@ -584,6 +584,40 @@ async function waitForRuntimeControl(page, field, expected) {
   fail(`runtime_control_${field}_not_applied`);
 }
 
+async function configureExactModelViaUi(page, expected) {
+  const main = page.locator('[data-vibespace-page="chat"]:visible');
+  const trigger = main.locator('button[aria-label="Choose model"]:visible');
+  if ((await trigger.count()) !== 1) fail('model_control_unavailable');
+  await trigger.click();
+  const dropdown = page.locator('.jarvis-slash-dropdown:visible');
+  await dropdown.waitFor({ state: 'visible', timeout: 10_000 });
+  const search = dropdown.locator('input[aria-label="Search providers and models"]:visible');
+  if ((await search.count()) !== 1) fail('model_search_unavailable');
+  await search.fill(expected.expectedModel);
+  const exactOptionId = `${expected.expectedConnection}:${expected.expectedModel}`;
+  const exactOption = dropdown.locator(`[data-value="${exactOptionId}"]`);
+  await exactOption.waitFor({ state: 'visible', timeout: 15_000 });
+  if ((await exactOption.count()) !== 1) fail('exact_model_option_ambiguous');
+  await exactOption.click();
+  const effort = dropdown.locator(`[data-effort-level="${expected.expectedEffort}"]`);
+  await effort.waitFor({ state: 'visible', timeout: 5_000 });
+  if ((await effort.count()) !== 1) fail('expected_effort_option_ambiguous');
+  await effort.click();
+  await dropdown.waitFor({ state: 'hidden', timeout: 5_000 });
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const state = await inspectPageState(page);
+    if (
+      state.selection.providerId === expected.expectedProvider &&
+      state.selection.connectionId === expected.expectedConnection &&
+      state.selection.modelId === expected.expectedModel
+    )
+      return;
+    await page.waitForTimeout(50);
+  }
+  fail('exact_model_selection_not_applied');
+}
+
 async function configureExactRuntimeViaUi(page, expected) {
   const chatId = await activeChatId(page);
   const before = await probeSnapshot(page);
@@ -904,6 +938,10 @@ export async function runDriver(options, dependencies = {}) {
     for (let index = 0; index < options.runs; index += 1) {
       stage = `run_${index + 1}_create_chat`;
       const chatId = await createChat(page);
+      stage = `run_${index + 1}_configure_model`;
+      await configureExactModelViaUi(page, options);
+      stage = `run_${index + 1}_configure_runtime`;
+      await configureExactRuntimeViaUi(page, options);
       let rejectedEffortProof = null;
       if (options.rejectedEffort) {
         stage = `run_${index + 1}_reject_unsupported_effort`;
@@ -913,8 +951,6 @@ export async function runDriver(options, dependencies = {}) {
           liveAuthority,
         );
       }
-      stage = `run_${index + 1}_configure_runtime`;
-      await configureExactRuntimeViaUi(page, options);
       stage = `run_${index + 1}_preflight`;
       const preflight = await inspectPageState(page);
       if (preflight.activeChatId !== chatId) fail('active_chat_mismatch');

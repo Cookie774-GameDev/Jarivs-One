@@ -319,6 +319,14 @@ test('source can only attach to owned CDP and cannot launch, navigate, or close 
   assert.match(source, /group\.elementHandles\(\)/u);
   assert.match(source, /section\[aria-label="Chats"\]/u);
   assert.match(source, /runtime_control_\$\{field\}_not_applied/u);
+  assert.match(source, /`\$\{expected\.expectedConnection\}:\$\{expected\.expectedModel\}`/u);
+  assert.ok(
+    source.indexOf('await configureExactModelViaUi(page, options)') <
+      source.indexOf('stage = `run_${index + 1}_reject_unsupported_effort`') &&
+      source.indexOf('stage = `run_${index + 1}_configure_runtime`') <
+        source.indexOf('stage = `run_${index + 1}_reject_unsupported_effort`'),
+    'the exact expected route must be configured before unsupported-effort proof',
+  );
   for (const command of ['/effort ', '/performance ', '/fast ', '/rlm ']) {
     assert.match(source, new RegExp(command.replace('/', '\\/'), 'u'));
   }
