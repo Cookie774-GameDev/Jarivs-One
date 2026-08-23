@@ -67,3 +67,18 @@
 - Commit gate: exact formatting and diff checks PASS; staged Gitleaks scanned 39.51 KB with zero leaks. The 8-file / 54-test matrix and direct production bundle remained the fresh behavioral/build evidence for the committed source.
 - No live restore, production cloud mutation, secret access, terminal transcript access, or project-file write occurred. Official native Account visual acceptance remains deferred under the user's no-live-app instruction.
 - Exact source/test/UI/queue scope is released.
+
+## 2026-08-22 — normal-update durability contract lane claimed
+
+- Agent: `VS-CODEX-UPDATE-DURABILITY-20260822`
+- Branch/base: `integration/UnifiedChungus-final` at `6ea1d34c`.
+- Exact scope: one new read-only durability contract test; this ledger; `qeue.md`; agent-scoped lock.
+- Intent: freeze the installed-app identifier, IndexedDB name, current additive version chain, and absence of destructive update cleanup so ordinary release/version changes cannot silently move or erase the user's WebView storage authority.
+- Safety boundary: no schema, database, updater, installer, app identifier, localStorage producer, or user data is changed.
+
+## 2026-08-22 — normal-update durability implementation checkpoint
+
+- Added a read-only regression contract that freezes the production Tauri identifier `ai.jarvis.desktop`, product name, IndexedDB name `jarvis-v1`, V12/51-store authority, and the complete additive `version(1)` through `version(12)` registration chain.
+- The contract uses an isolated fake IndexedDB to prove a same-authority reopen preserves a nested settings row exactly while local preferences remain untouched. It also fails if a destructive Dexie upgrade hook or database delete enters the production database constructor.
+- No updater, schema, storage producer, app configuration, or user data was changed.
+- Fresh update/migration/portable/cloud matrix: PASS, 4 files / 28 tests. Full TypeScript reports only the same four separately owned SiYuan test diagnostics; the new contract has no diagnostic.
