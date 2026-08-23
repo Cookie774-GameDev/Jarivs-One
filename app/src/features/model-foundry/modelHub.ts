@@ -537,6 +537,7 @@ export function classifySource(
     'jsx',
     'py',
     'rs',
+    'pdf',
     'docx',
   ].includes(ext);
   const hasVerifiedTranscription =

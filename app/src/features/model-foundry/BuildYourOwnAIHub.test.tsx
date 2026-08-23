@@ -74,6 +74,18 @@ describe('BuildYourOwnAIHub', () => {
     });
   });
 
+  it('explains packaged PDF text support without claiming OCR or native multimodality', () => {
+    render(<BuildYourOwnAIHub open onOpenChange={vi.fn()} />);
+
+    expect(screen.getByText(/PDF and DOCX text are extracted locally/i)).toBeTruthy();
+    expect(
+      screen.getByText(/Scanned\/image-only PDFs need a verified OCR processor/i),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/video frames and native audio\/video generation are not claimed/i),
+    ).toBeTruthy();
+  });
+
   it('offers one truthful setup path for all verified weight-training methods', async () => {
     installTrainingWorker.mockResolvedValue({
       installed: true,

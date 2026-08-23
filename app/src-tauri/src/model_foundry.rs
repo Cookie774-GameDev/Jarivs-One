@@ -936,6 +936,7 @@ fn validated_sources(paths: &[String]) -> Result<Vec<PathBuf>, String> {
                     | "jsx"
                     | "py"
                     | "rs"
+                    | "pdf"
                     | "docx"
                     | "wav"
                     | "mp3"
@@ -1076,14 +1077,52 @@ fn extract_docx_text(source: &Path, bytes: &[u8]) -> Result<String, String> {
     Ok(text)
 }
 
+fn extract_pdf_text(source: &Path, bytes: &[u8]) -> Result<String, String> {
+    const MAX_EXTRACTED_PDF_TEXT_BYTES: usize = 32 * 1024 * 1024;
+    let pages = pdf_extract::extract_text_from_mem_by_pages(bytes).map_err(|_| {
+        format!(
+            "{} is malformed, encrypted, or uses unsupported PDF content.",
+            source.display()
+        )
+    })?;
+    let mut prepared = String::new();
+    for (index, page) in pages.iter().enumerate() {
+        let text = page.trim();
+        if text.is_empty() {
+            continue;
+        }
+        if !prepared.is_empty() {
+            prepared.push_str("\n\n");
+        }
+        prepared.push_str(&format!("PDF page {}\n{text}", index + 1));
+        if prepared.len() > MAX_EXTRACTED_PDF_TEXT_BYTES {
+            return Err(format!(
+                "{} exceeds the 32 MB extracted PDF text limit.",
+                source.display()
+            ));
+        }
+    }
+    if prepared.trim().is_empty() {
+        return Err(format!(
+            "{} contains no extractable PDF text. Image-only or scanned PDFs require a verified local OCR processor, which is not installed.",
+            source.display()
+        ));
+    }
+    Ok(prepared)
+}
+
 fn prepare_source_text(source: &Path, bytes: &[u8]) -> Result<(String, String), String> {
     let extension = source
         .extension()
         .and_then(|value| value.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
-    if extension == "docx" {
-        let prepared = extract_docx_text(source, bytes)?;
+    if matches!(extension.as_str(), "docx" | "pdf") {
+        let prepared = if extension == "docx" {
+            extract_docx_text(source, bytes)?
+        } else {
+            extract_pdf_text(source, bytes)?
+        };
         if contains_high_confidence_secret(&prepared) {
             return Err(format!(
                 "{} contains a high-confidence credential or private-key pattern. Redact and review it before training.",
@@ -2233,6 +2272,50 @@ pub fn model_foundry_export_artifact(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn minimal_pdf_with_text(text: &str) -> Vec<u8> {
+        let stream = format!("BT /F1 18 Tf 72 720 Td ({text}) Tj ET");
+        let objects = [
+            "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>".to_string(),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+            format!("<< /Length {} >>\nstream\n{stream}\nendstream", stream.len()),
+        ];
+        let mut pdf = b"%PDF-1.4\n".to_vec();
+        let mut offsets = vec![0usize];
+        for (index, object) in objects.iter().enumerate() {
+            offsets.push(pdf.len());
+            pdf.extend_from_slice(format!("{} 0 obj\n{}\nendobj\n", index + 1, object).as_bytes());
+        }
+        let xref = pdf.len();
+        pdf.extend_from_slice(format!("xref\n0 {}\n", objects.len() + 1).as_bytes());
+        pdf.extend_from_slice(b"0000000000 65535 f \n");
+        for offset in offsets.into_iter().skip(1) {
+            pdf.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+        }
+        pdf.extend_from_slice(
+            format!(
+                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n",
+                objects.len() + 1
+            )
+            .as_bytes(),
+        );
+        pdf
+    }
+
+    #[test]
+    fn extracts_bounded_pdf_text_with_page_provenance() {
+        let bytes = minimal_pdf_with_text("Model Foundry reads PDF text locally");
+        let text = extract_pdf_text(Path::new("manual.pdf"), &bytes).unwrap();
+        assert!(text.contains("PDF page 1"));
+        assert!(text.contains("Model Foundry reads PDF text locally"));
+        assert!(extract_pdf_text(Path::new("broken.pdf"), b"not a pdf").is_err());
+        let secret = minimal_pdf_with_text("sk-examplecredentialvalue123456789");
+        assert!(prepare_source_text(Path::new("secret.pdf"), &secret)
+            .unwrap_err()
+            .contains("credential"));
+    }
 
     #[cfg(target_os = "windows")]
     #[test]

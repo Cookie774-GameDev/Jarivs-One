@@ -113,6 +113,10 @@ describe('model foundry domain', () => {
   it('rejects image training for a text-only base model', () => {
     expect(classifySource('photo.png', 'qlora', false).use).toBe('unsupported');
     expect(classifySource('notes.md', 'knowledge', false).use).toBe('retrieval');
+    expect(classifySource('manual.pdf', 'knowledge', false)).toMatchObject({
+      kind: 'document',
+      use: 'retrieval',
+    });
     expect(classifySource('examples.jsonl', 'qlora', false).use).toBe('fine_tuning');
   });
 
@@ -302,13 +306,13 @@ describe('model foundry domain', () => {
     });
   });
 
-  it('fails closed with source-specific recovery guidance when an extractor is unavailable', () => {
+  it('supports packaged document extraction and fails closed when media processors are unavailable', () => {
     const pdf = classifySource('manual.pdf', 'knowledge', false);
     const docx = classifySource('manual.docx', 'knowledge', false);
     const audio = classifySource('recording.wav', 'knowledge', false);
     const video = classifySource('demo.mp4', 'knowledge', false);
-    expect(pdf).toMatchObject({ kind: 'document', use: 'unsupported' });
-    expect(pdf.explanation).toContain('document extractor');
+    expect(pdf).toMatchObject({ kind: 'document', use: 'retrieval' });
+    expect(pdf.explanation).toContain('locally');
     expect(docx).toMatchObject({ kind: 'document', use: 'retrieval' });
     expect(audio).toMatchObject({ kind: 'audio', use: 'unsupported' });
     expect(audio.explanation).toContain('transcription');

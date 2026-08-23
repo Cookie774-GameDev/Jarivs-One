@@ -70,3 +70,19 @@
 
 - Product commit: `1bbf5cf6` (`feat(foundry): add drive-aware training profiles`), containing exactly the 12 claimed tracked Model Foundry source/test/catalog/ledger files. Exact staging, staged diff check, and staged Gitleaks passed; no unrelated dirty file was staged.
 - Agent-scoped ownership is released after this receipt. Native manual testing, true multimodal architecture-specific trainers, persistent live OpenCode serving/catalog confirmation, packaged PDF/image/video-frame extraction, and large-media streaming remain explicitly unclaimed rather than inferred complete.
+
+## 2026-08-22T20:54:00-05:00 — Packaged local PDF preparation claim
+
+- Agent/task: `VS-CODEX-ROOT-FOUNDRY-PDF-20260822` / `PR31-FOUNDRY-PACKAGED-PDF-PREPARATION` at `4c102d2b77ec45325cbe19d47ae4963c4f0aa1bb`.
+- Exact clean scope: native Cargo manifest/lock, `model_foundry.rs`, renderer source classification and its focused test, this ledger, and the matching agent lock. Active `lib.rs`, OpenCode/router/catalog, Chat, and every unrelated agent path remain excluded.
+- Official docs.rs crate source confirms `pdf-extract` 0.12.0 is MIT licensed and exposes in-memory per-page extraction. The bounded implementation will package it into VibeSpace, preserve page labels in prepared text, quarantine secret patterns, reject malformed/encrypted/image-only PDFs honestly, and perform no OCR, cloud call, or native-vision claim.
+- Dependency metadata reports `lopdf` 0.42.0, the parser under `pdf-extract` 0.12.0, requires Rust 1.85. The native manifest minimum is therefore advanced from 1.78 to 1.85 rather than publishing an unbuildable minimum; the checked toolchain is Rust 1.96.0.
+- Scope extends to the clean Hub source/focused test solely to show packaged PDF/DOCX support and the scanned-PDF OCR boundary in onboarding; no layout or unrelated flow is included.
+
+## 2026-08-22T21:06:59-05:00 — Packaged local PDF preparation verified
+
+- The native source allowlist and renderer now accept PDF as a locally packaged text source. `pdf-extract` 0.12.0 extracts in memory per page; prepared text carries explicit `PDF page N` provenance, a 32 MB extracted-text ceiling, existing source/prepared SHA-256 manifests, chunk deduplication, and the same high-confidence credential quarantine as every other document path.
+- Malformed, encrypted, unsupported, scanned, and image-only PDFs fail closed. The user-facing explanation says local OCR is not installed and does not imply vision, OCR, upload, native multimodal understanding, or weight-training capability.
+- Parser dependency truth: `pdf-extract` is pinned at 0.12.0 and `lopdf` is directly pinned at 0.42.0 because the Tauri Cargo lock is intentionally ignored. Dependency metadata reports only permissive licenses in the parser subtree and a Rust 1.85 minimum, so the native manifest now truthfully requires Rust 1.85. Verification used Rust 1.96.0. `cargo-audit` is not installed on this machine, so no RustSec-scan claim is made.
+- Verification: packaged PDF extraction/malformed/credential fixture passed; the final renderer matrix passed `38/38` (`35/35` document/UI tests plus `3/3` Foundry runtime tests); native Foundry matrix passed `45/45`; `cargo check` and repeated `cargo check --locked` passed with existing dead-code warnings; formatting and scoped diff check passed. Repository typecheck remains blocked only by four unrelated active SiYuan test errors, with no Foundry error reported.
+- The shared branch advanced independently during the slice; no intervening commit touched the exact claimed paths. Native/manual app control remains intentionally deferred by user instruction.

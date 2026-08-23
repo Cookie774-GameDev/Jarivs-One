@@ -724,9 +724,11 @@ export function BuildYourOwnAIHub({
                   </li>
                 </ol>
                 <p className="mt-3 text-metadata text-muted-foreground">
-                  MP3 and MP4 can supply local transcript knowledge when the speech processor is
-                  installed. The current weight-training bases are text models; video frames and
-                  native audio/video generation are not claimed.
+                  PDF and DOCX text are extracted locally. Scanned/image-only PDFs need a verified
+                  OCR processor and stay unavailable for now. MP3 and MP4 can supply local
+                  transcript knowledge when the speech processor is installed. The current
+                  weight-training bases are text models; video frames and native audio/video
+                  generation are not claimed.
                 </p>
               </details>
               <div>
