@@ -24,7 +24,10 @@ export interface OpenCodeSdkClientLike {
     get?: (input: { path: { id: string } }) => Promise<unknown>;
     update?: (input: {
       path: { id: string };
-      body: { permission: readonly OpenCodePermissionRule[] };
+      body: {
+        title?: string;
+        permission?: readonly OpenCodePermissionRule[];
+      };
     }) => Promise<unknown>;
     abort(input: { path: { id: string } }): Promise<unknown>;
     promptAsync?: (input: {
@@ -206,10 +209,30 @@ export class OpenCodeSdkSessionClient implements OpenCodeSessionClient {
   }
 
   async createSession(input: { scope: HarnessScope; title?: string }): Promise<{ id: string }> {
+    const title = input.title?.trim();
     const response = await this.client.session.create({
-      body: { ...(input.title?.trim() ? { title: input.title.trim() } : {}) },
+      body: { ...(title ? { title } : {}) },
     });
-    return { id: requiredId(unwrapData(response), 'OpenCode session.create') };
+    const id = requiredId(unwrapData(response), 'OpenCode session.create');
+    if (title) {
+      if (!this.client.session.update || !this.client.session.get) {
+        throw new Error(
+          'HARNESS_INCOMPATIBLE: installed OpenCode SDK/server cannot persist and verify session titles.',
+        );
+      }
+      await this.client.session.update({ path: { id }, body: { title } });
+      const persisted = unwrapData<{ id?: unknown; title?: unknown }>(
+        await this.client.session.get({ path: { id } }),
+      );
+      if (
+        requiredId(persisted, 'OpenCode session.get') !== id ||
+        typeof persisted.title !== 'string' ||
+        persisted.title.trim() !== title
+      ) {
+        throw new Error('SESSION_TITLE_MISMATCH: OpenCode did not persist the VibeSpace title.');
+      }
+    }
+    return { id };
   }
 
   async getSession(sessionId: string): Promise<{ id: string } | null> {

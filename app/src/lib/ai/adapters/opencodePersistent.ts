@@ -227,7 +227,8 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
     update: async (input: {
       path: { id: string };
       body: {
-        permission: readonly import('@/lib/harness/OpenCodeSdkSessionClient').OpenCodePermissionRule[];
+        title?: string;
+        permission?: readonly import('@/lib/harness/OpenCodeSdkSessionClient').OpenCodePermissionRule[];
       };
     }): Promise<unknown> =>
       requestJson(
