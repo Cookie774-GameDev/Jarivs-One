@@ -46,6 +46,7 @@ import {
   formatExplicitResponseContract,
   parseExplicitResponseContract,
   type ExplicitResponseContract,
+  type ExplicitResponseContractAssessment,
 } from '@/lib/jarvis/response/explicitResponseContract';
 import type { LLMContentPart, LLMMessage, LLMResponse, LLMStreamChunk } from './types';
 import { llmContentToText } from './types';
@@ -624,11 +625,11 @@ function hasCompleteExplicitRootEvidence(response: Readonly<LLMResponse>): boole
   const receipt = response.tool_evidence;
   return Boolean(
     receipt?.completedReadOnlyFilesystem === true &&
-      receipt.anyToolObserved === true &&
-      receipt.rootInventoryObserved === true &&
-      receipt.boundedSearchObserved === true &&
-      Number.isSafeInteger(receipt.representativeReadCount) &&
-      receipt.representativeReadCount >= 2,
+    receipt.anyToolObserved === true &&
+    receipt.rootInventoryObserved === true &&
+    receipt.boundedSearchObserved === true &&
+    Number.isSafeInteger(receipt.representativeReadCount) &&
+    receipt.representativeReadCount >= 2,
   );
 }
 
@@ -662,7 +663,10 @@ function mergeExplicitRootEvidence(
 
 const EXPLICIT_ROOT_AUDIT_CATEGORIES = Object.freeze([
   { label: 'top-level folders and contents', pattern: /\b(?:folder|directory|top-level|root)\b/iu },
-  { label: 'configuration files and settings', pattern: /\b(?:config|configuration|settings?)\b/iu },
+  {
+    label: 'configuration files and settings',
+    pattern: /\b(?:config|configuration|settings?)\b/iu,
+  },
   { label: 'repositories and Git worktrees', pattern: /\b(?:git|repositor|worktree)\w*\b/iu },
   {
     label: 'disk capacity and usage',
@@ -702,6 +706,43 @@ export function missingExplicitRootAuditCategories(text: string): readonly strin
             : EXPLICIT_ROOT_EVIDENCE_QUALIFIER.test(segment)),
       ),
   ).map((category) => category.label);
+}
+
+export function buildBroadRootAuditWordAllocation(contract: ExplicitResponseContract): string {
+  const budget = Math.max(contract.targetMinWords, contract.targetMaxWords - 10);
+  const overview = Math.round((budget * 30) / 680);
+  const folders = Math.round((budget * 185) / 680);
+  const configurations = Math.round((budget * 115) / 680);
+  const repositories = Math.round((budget * 105) / 680);
+  const disk = Math.round((budget * 60) / 680);
+  const processes = Math.round((budget * 60) / 680);
+  const risks = budget - overview - folders - configurations - repositories - disk - processes;
+  return `Use this approximate ${budget}-word allocation, including headings: ${overview} words of overview, ${folders} for folders and contents, ${configurations} for configurations, ${repositories} for repositories and worktrees, ${disk} for disk capacity and usage, ${processes} for running apps and processes, and ${risks} for risks and operational concerns.`;
+}
+
+export function buildExplicitRootCorrectionLengthGuidance(
+  assessment: ExplicitResponseContractAssessment | null,
+  contract: ExplicitResponseContract,
+  includeBroadAuditBudget = false,
+): readonly string[] {
+  const wordCount = assessment?.wordCount ?? 0;
+  const direction =
+    assessment?.ok === false && assessment.code === 'word_limit_below_target'
+      ? `Add at least ${Math.max(0, contract.targetMinWords - wordCount)} substantive evidence-or-limitation words, concentrated in underdeveloped sections rather than repetition.`
+      : assessment?.ok === false && assessment.code === 'word_limit_exceeded'
+        ? `Remove at least ${Math.max(0, wordCount - contract.targetMaxWords)} words while preserving every evidence-qualified category and limitation.`
+        : assessment?.ok === false
+          ? 'Rewrite the malformed or duplicated material cleanly while preserving the required length and evidence.'
+          : 'Preserve the valid length while materially correcting the missing audit coverage rather than merely rephrasing it.';
+  const guidance = [
+    `Your immediately previous answer measured ${wordCount} words.`,
+    direction,
+    `Submit ${contract.targetMinWords}-${contract.targetMaxWords} whitespace-delimited words and never exceed ${contract.maxWords}.`,
+  ];
+  if (includeBroadAuditBudget) {
+    guidance.push(buildBroadRootAuditWordAllocation(contract));
+  }
+  return Object.freeze(guidance);
 }
 
 export async function runExplicitRootEvidenceSynthesis(
@@ -828,12 +869,13 @@ export async function runExplicitRootEvidenceSynthesis(
             content: [
               'Internal VibeSpace grounded home-root audit synthesis.',
               'Answer the original request using only evidence already collected in this exact session; do not summarize VibeSpace product documentation as a substitute for the requested root.',
-              'Cover each category in a compact labeled section: top-level folders and contents; configuration files and settings; repositories and Git worktrees; disk capacity and usage; running apps and OS processes; risks and operational concerns.',
+              'Cover each category in a labeled section: top-level folders and contents; configuration files and settings; repositories and Git worktrees; disk capacity and usage; running apps and OS processes; risks and operational concerns.',
               'For every category, explicitly say what was observed or verified. If the available read-only filesystem evidence cannot establish it, explicitly say unavailable or not verified; never infer live disk or process state.',
               'Distinguish observed facts from inference and avoid claims that documentation alone proves current runtime state.',
               ...(contract
                 ? [
                     `The complete answer must contain ${contract.targetMinWords}-${contract.targetMaxWords} whitespace-delimited words; budget all six sections before drafting.`,
+                    buildBroadRootAuditWordAllocation(contract),
                   ]
                 : []),
             ].join(' '),
@@ -893,10 +935,7 @@ export async function runExplicitRootEvidenceSynthesis(
           'Internal VibeSpace correction phase.',
           'Rewrite your immediately previous answer using only the evidence already present in this exact session.',
           ...(contract
-            ? [
-                `Your immediately previous answer measured ${assessment?.wordCount ?? 0} words; expand it materially rather than merely rephrasing it.`,
-                `Submit ${contract.targetMinWords}-${contract.targetMaxWords} whitespace-delimited words and never exceed ${contract.maxWords}.`,
-              ]
+            ? buildExplicitRootCorrectionLengthGuidance(assessment, contract, broadRootAudit)
             : []),
           ...(missingAuditCategories.length > 0
             ? [
@@ -932,10 +971,7 @@ export async function runExplicitRootEvidenceSynthesis(
       }),
     };
   }
-  if (
-    broadRootAudit &&
-    missingExplicitRootAuditCategories(correction.text).length > 0
-  ) {
+  if (broadRootAudit && missingExplicitRootAuditCategories(correction.text).length > 0) {
     return {
       ...correction,
       usage: addResponseUsage(groundedEvidence, synthesis, correction),
@@ -5781,7 +5817,7 @@ export function startRuntimeListener(
 
       const legacyResponseFailedClosed = Boolean(
         explicitReadScopeUnverified ||
-          (responseContractAssessment && !responseContractAssessment.ok),
+        (responseContractAssessment && !responseContractAssessment.ok),
       );
       if (legacyResponseFailedClosed) {
         if (streamingVoice) {
@@ -5809,9 +5845,7 @@ export function startRuntimeListener(
         updateStructuredAgentStatus(
           detail.structuredContext,
           'failed',
-          explicitReadScopeUnverified
-            ? 'Filesystem evidence missing'
-            : 'Response contract failed',
+          explicitReadScopeUnverified ? 'Filesystem evidence missing' : 'Response contract failed',
         );
         return;
       }

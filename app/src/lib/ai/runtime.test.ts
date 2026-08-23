@@ -192,6 +192,8 @@ vi.mock('@/features/context/rlm/contextRlmProduction', async (importOriginal) =>
 
 import {
   actionPartToLlmText,
+  buildBroadRootAuditWordAllocation,
+  buildExplicitRootCorrectionLengthGuidance,
   responseAwaitsApproval,
   createCanonicalProviderEvidenceAuthority,
   createJarvisCommandCenterHostPort,
@@ -630,14 +632,16 @@ describe('startRuntimeListener agent routing', () => {
 
   it('requires evidence-qualified coverage for every broad root-audit category', () => {
     expect(
-      missingExplicitRootAuditCategories([
-        'Observed top-level folders and directory contents.',
-        'Verified configuration files and settings.',
-        'Observed Git repositories and worktrees.',
-        'Disk capacity and storage usage were not verified.',
-        'Running apps and OS process inventory are unavailable from filesystem evidence.',
-        'Observed risks and operational concerns are listed below.',
-      ].join('\n')),
+      missingExplicitRootAuditCategories(
+        [
+          'Observed top-level folders and directory contents.',
+          'Verified configuration files and settings.',
+          'Observed Git repositories and worktrees.',
+          'Disk capacity and storage usage were not verified.',
+          'Running apps and OS process inventory are unavailable from filesystem evidence.',
+          'Observed risks and operational concerns are listed below.',
+        ].join('\n'),
+      ),
     ).toEqual([]);
     expect(missingExplicitRootAuditCategories('Observed several project files.')).toEqual(
       expect.arrayContaining([
@@ -652,12 +656,7 @@ describe('startRuntimeListener agent routing', () => {
       missingExplicitRootAuditCategories(
         'Observed disk capacity and storage usage. Verified running apps and OS process inventory.',
       ),
-    ).toEqual(
-      expect.arrayContaining([
-        'disk capacity and usage',
-        'running apps and OS processes',
-      ]),
-    );
+    ).toEqual(expect.arrayContaining(['disk capacity and usage', 'running apps and OS processes']));
     expect(
       missingExplicitRootAuditCategories(
         'Disk capacity and storage usage cannot be verified from filesystem evidence. Running apps and OS process inventory were not available.',
@@ -665,6 +664,62 @@ describe('startRuntimeListener agent routing', () => {
     ).not.toEqual(
       expect.arrayContaining(['disk capacity and usage', 'running apps and OS processes']),
     );
+  });
+
+  it('gives the single correction an exact direction for short and over-limit drafts', () => {
+    const contract = {
+      maxWords: 750,
+      minimumWords: 675,
+      targetMinWords: 675,
+      targetMaxWords: 690,
+    };
+    expect(
+      buildExplicitRootCorrectionLengthGuidance(
+        { ok: false, code: 'word_limit_below_target', wordCount: 475 },
+        contract,
+        true,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        'Your immediately previous answer measured 475 words.',
+        expect.stringContaining('Add at least 200 substantive'),
+        expect.stringContaining('approximate 680-word allocation'),
+      ]),
+    );
+    expect(
+      buildExplicitRootCorrectionLengthGuidance(
+        { ok: false, code: 'word_limit_exceeded', wordCount: 814 },
+        contract,
+        true,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        'Your immediately previous answer measured 814 words.',
+        expect.stringContaining('Remove at least 124 words'),
+      ]),
+    );
+    expect(
+      buildExplicitRootCorrectionLengthGuidance(
+        { ok: false, code: 'word_limit_below_target', wordCount: 120 },
+        { maxWords: 200, minimumWords: 180, targetMinWords: 180, targetMaxWords: 184 },
+      ).join(' '),
+    ).not.toContain('allocation');
+    expect(
+      buildBroadRootAuditWordAllocation({
+        maxWords: 200,
+        minimumWords: 180,
+        targetMinWords: 180,
+        targetMaxWords: 184,
+      }),
+    ).toContain('approximate 180-word allocation');
+    expect(
+      buildBroadRootAuditWordAllocation({
+        maxWords: 200,
+        minimumWords: 180,
+        targetMinWords: 180,
+        targetMaxWords: 184,
+      }),
+    ).not.toContain('680-word');
   });
 
   it('never synthesizes without evidence and rejects a changed session', async () => {
@@ -2855,9 +2910,10 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       }),
     );
     await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(4));
-    expect(mocks.runAgent.mock.calls[2]![0].messages.at(-1)?.content).toContain(
-      '675-690 whitespace-delimited words',
-    );
+    const synthesisInstruction = mocks.runAgent.mock.calls[2]![0].messages.at(-1)?.content;
+    expect(synthesisInstruction).toContain('675-690 whitespace-delimited words');
+    expect(synthesisInstruction).toContain('approximate 680-word allocation');
+    expect(synthesisInstruction).not.toContain('compact labeled section');
     const verifiedProviderInput = mocks.runAgent.mock.calls[3]![0];
     expect(verifiedProviderInput.agent.model).toEqual({
       provider: 'opencode',
@@ -2871,7 +2927,10 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     expect(verifiedProviderInput.explicitReadRoot).toBe(true);
     expect(verifiedProviderInput.explicitReadSynthesis).toBe(true);
     expect(verifiedProviderInput.messages.at(-1)?.content).toContain(
-      'Your immediately previous answer measured 700 words',
+      'Your immediately previous answer measured 700 words.',
+    );
+    expect(verifiedProviderInput.messages.at(-1)?.content).toContain(
+      'approximate 680-word allocation',
     );
     await vi.waitFor(() =>
       expect(updateMessage).toHaveBeenCalledWith(
