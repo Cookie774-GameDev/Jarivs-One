@@ -55,6 +55,7 @@ import type {
   KernelTurnCommitResult,
   KernelTurnTerminalStatus,
 } from './kernelTurnCommit';
+import type { ChatRuntimeSettings } from '@/features/chat/runtime/chatRuntimeCommandController';
 
 export interface JarvisKernelTurnInput {
   run: Readonly<JarvisRun>;
@@ -77,6 +78,8 @@ export interface JarvisKernelTurnInput {
   context: JarvisContextPack;
   outputContract: JarvisOutputContract;
   workingDirectory?: string;
+  providerOptions?: Readonly<Record<string, unknown>>;
+  runtimeSettings?: Readonly<ChatRuntimeSettings>;
 }
 
 export interface JarvisKernelTurnResult {
@@ -134,6 +137,8 @@ export type JarvisKernelPrepareProvider = (input: {
   model: Readonly<JarvisModelSnapshot>;
   messages: readonly LLMMessage[];
   workingDirectory?: string;
+  providerOptions?: Readonly<Record<string, unknown>>;
+  runtimeSettings?: Readonly<ChatRuntimeSettings>;
 }) => Promise<JarvisPreparedProviderDispatch>;
 
 export type JarvisKernelProcessResponse = (
@@ -665,6 +670,12 @@ async function runJarvisKernelExecution(
           agent: input.agent,
           model: input.model,
           messages: input.messageHistory,
+          ...(input.providerOptions === undefined
+            ? {}
+            : { providerOptions: input.providerOptions }),
+          ...(input.runtimeSettings === undefined
+            ? {}
+            : { runtimeSettings: input.runtimeSettings }),
           ...(input.workingDirectory === undefined
             ? {}
             : { workingDirectory: input.workingDirectory }),

@@ -40,6 +40,12 @@ import {
   explicitExactLiteralFromRequest,
   reconcileExplicitExactLiteral,
 } from './exactLiteralReply';
+import {
+  assessExplicitResponseContract,
+  explicitResponseContractFallback,
+  formatExplicitResponseContract,
+  parseExplicitResponseContract,
+} from '@/lib/jarvis/response/explicitResponseContract';
 import type { LLMContentPart, LLMMessage, LLMStreamChunk } from './types';
 import { llmContentToText } from './types';
 import {
@@ -620,6 +626,14 @@ export async function installJarvisKernelRuntimeHost(
     Readonly<RawProviderResponse>,
     readonly JarvisArtifactDraft[]
   >();
+  const providerControlEvidence = new WeakMap<
+    Readonly<RawProviderResponse>,
+    Readonly<{
+      connectionId?: string;
+      effort?: ChatRuntimeSettings['effort'];
+      performance?: ChatRuntimeSettings['performance'];
+    }>
+  >();
   const activeTurnScopes = new Map<
     string,
     Readonly<{ accountId: string; runId: string; requestId: string; chatId: string }>
@@ -853,6 +867,11 @@ export async function installJarvisKernelRuntimeHost(
                 throw new Error('kernel_provider_configuration_disposed');
               }
               let previewState = createStreamingPreviewState();
+              const lastUserText = llmContentToText(
+                [...providerInput.messages].reverse().find((message) => message.role === 'user')
+                  ?.content ?? '',
+              );
+              const explicitResponseContract = parseExplicitResponseContract(lastUserText);
               const startedAt = now();
               const modelSnapshotRef = `jmodel_${providerInput.model.providerId}_${providerInput.model.modelId}_${providerInput.model.capturedAt}`;
               const response = runAgent({
@@ -864,19 +883,17 @@ export async function installJarvisKernelRuntimeHost(
                 projectId: providerInput.projectId,
                 workingDirectory: providerInput.workingDirectory,
                 compiledPrompt: providerInput.compiledPrompt,
+                provider_options: providerInput.providerOptions
+                  ? { ...providerInput.providerOptions }
+                  : undefined,
+                runtimeSettings: providerInput.runtimeSettings
+                  ? { ...providerInput.runtimeSettings }
+                  : undefined,
                 tools: openCodeToolsForInteractionMode(
                   providerInput.interactionMode,
                   providerInput.messages,
                   {
-                    explicitReadRoot: Boolean(
-                      extractExplicitReadRoot(
-                        llmContentToText(
-                          [...providerInput.messages]
-                            .reverse()
-                            .find((message) => message.role === 'user')?.content ?? '',
-                        ),
-                      ),
-                    ),
+                    explicitReadRoot: Boolean(extractExplicitReadRoot(lastUserText)),
                   },
                 ),
                 requestId: providerInput.requestId,
@@ -898,6 +915,7 @@ export async function installJarvisKernelRuntimeHost(
                     title: 'Jarvis is preparing the final response',
                     subtitle: `${providerInput.agent.model.provider}/${providerInput.agent.model.model}`,
                   });
+                  if (explicitResponseContract) return;
                   setPreview({
                     ...scope,
                     text: decision.visibleText,
@@ -933,6 +951,14 @@ export async function installJarvisKernelRuntimeHost(
                   completedAt,
                 });
                 providerArtifactDrafts.set(raw, Object.freeze([]));
+                providerControlEvidence.set(
+                  raw,
+                  Object.freeze({
+                    connectionId: providerInput.model.connectionId,
+                    effort: providerInput.runtimeSettings?.effort,
+                    performance: providerInput.runtimeSettings?.performance,
+                  }),
+                );
                 rememberProviderEvidence(
                   Object.freeze({
                     producerId: 'provider_response',
@@ -981,6 +1007,29 @@ export async function installJarvisKernelRuntimeHost(
           throw new Error('kernel_response_repair_provider_unavailable');
         },
       });
+      if (envelope.enforcement.violations.includes('explicit_response_contract_failed_closed')) {
+        const contract = parseExplicitResponseContract(request.userText);
+        const assessment = contract ? assessExplicitResponseContract(raw.text, contract) : null;
+        const controls = providerControlEvidence.get(raw);
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'Kernel explicit response contract failed closed',
+          detail: {
+            runId: request.runId,
+            requestId: request.requestId,
+            provider: raw.provider.providerId,
+            model: raw.provider.modelId,
+            connectionId: controls?.connectionId ?? raw.provider.connectionId,
+            effort: controls?.effort,
+            performance: controls?.performance,
+            code: assessment && !assessment.ok ? assessment.code : 'output_reference_policy',
+            maxWords: contract?.maxWords,
+            wordCount: assessment?.wordCount,
+          },
+        });
+        return envelope;
+      }
       const { inferFallbackActionProposals, shouldReplaceModelActionsWithFileReadFallback } =
         await import('@/lib/actions/fallbackActions');
       const existingIds = envelope.parts
@@ -2729,6 +2778,8 @@ async function createRuntimeKernelTurn(input: {
   surface?: 'hive_final';
   contextBlocks: readonly Readonly<JarvisRuntimeContextBlock>[];
   model: import('@/lib/jarvis/contracts').JarvisModelSnapshot;
+  providerOptions?: Readonly<Record<string, unknown>>;
+  runtimeSettings?: Readonly<ChatRuntimeSettings>;
 }): Promise<JarvisKernelTurnInput> {
   const account = resolveAccountIdentity(useAuthStore.getState());
   if (!account) throw new Error('canonical_account_identity_unavailable');
@@ -2815,6 +2866,12 @@ async function createRuntimeKernelTurn(input: {
     userText: input.providerUserText ?? input.text,
     messageHistory: [...input.messages],
     model: input.model,
+    ...(input.providerOptions === undefined
+      ? {}
+      : { providerOptions: { ...input.providerOptions } }),
+    ...(input.runtimeSettings === undefined
+      ? {}
+      : { runtimeSettings: { ...input.runtimeSettings } }),
     identity: {
       identityVersion: JARVIS_IDENTITY_POLICY.identityVersion,
       coreHash,
@@ -3392,6 +3449,7 @@ export function startRuntimeListener(
     });
     setLiveAgentActivityPhase(chatId, agentActivityId, initialActivityPhase);
     const explicitReadRoot = extractExplicitReadRoot(text);
+    const explicitResponseContract = parseExplicitResponseContract(text);
     const requestsContextTool = !explicitReadRoot && requestsReadOnlyContextTool(text);
     let resolvedRequestContext: Awaited<ReturnType<typeof resolveJarvisContext>>;
     try {
@@ -4055,7 +4113,8 @@ export function startRuntimeListener(
       return;
     }
     const bufferExactLiteralStreaming =
-      reasoningPolicy?.mode === 'token-saver' && explicitExactLiteralFromRequest(text) !== null;
+      (reasoningPolicy?.mode === 'token-saver' && explicitExactLiteralFromRequest(text) !== null) ||
+      explicitResponseContract !== null;
     if (stackStepsEarly.length === 0) {
       runnable = applyChatModelSelectionToAgent(runnable, chatModelSelection);
     }
@@ -4063,6 +4122,17 @@ export function startRuntimeListener(
       runnable = {
         ...runnable,
         system_prompt: [runnable.system_prompt, reasoningPolicy.executionInstructions]
+          .filter(Boolean)
+          .join('\n\n'),
+      };
+    }
+    if (explicitResponseContract) {
+      runnable = {
+        ...runnable,
+        system_prompt: [
+          runnable.system_prompt,
+          formatExplicitResponseContract(explicitResponseContract),
+        ]
           .filter(Boolean)
           .join('\n\n'),
       };
@@ -4527,6 +4597,8 @@ export function startRuntimeListener(
               speakReply: detail.speakReply === true,
               contextBlocks: runtimeContextBlocks,
               model,
+              providerOptions: reasoningPolicy?.providerOptions,
+              runtimeSettings,
             });
             await bindCanonicalCancellation(host, turn);
             await persistRouteDisclosureBeforeProviderUse();
@@ -5015,12 +5087,37 @@ export function startRuntimeListener(
       // chat thread renders inline Approve/Cancel cards alongside prose.
       const rawFinalText = response.text || acc;
       const reconciledExactLiteral = reconcileExplicitExactLiteral(text, rawFinalText);
-      const finalText =
+      const sanitizedFinalText =
         reconciledExactLiteral !== rawFinalText
           ? reconciledExactLiteral
           : sanitizePromptLeaks(
               sanitizeUnsupportedActionMacros(sanitizeCredentialRequests(rawFinalText)),
             );
+      const responseContractAssessment = explicitResponseContract
+        ? assessExplicitResponseContract(sanitizedFinalText, explicitResponseContract)
+        : null;
+      const finalText =
+        responseContractAssessment && !responseContractAssessment.ok
+          ? explicitResponseContractFallback(explicitResponseContract!)
+          : sanitizedFinalText;
+      if (responseContractAssessment && !responseContractAssessment.ok) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'Explicit response contract failed closed',
+          detail: {
+            code: responseContractAssessment.code,
+            wordCount: responseContractAssessment.wordCount,
+            maxWords: explicitResponseContract?.maxWords,
+            provider: response.provider,
+            model: response.model,
+            connectionId:
+              chatModelSelection.mode === 'single'
+                ? chatModelSelection.connectionId
+                : undefined,
+          },
+        });
+      }
       const responseInspector = retrievedResponseContext
         ? buildContextResponseInspector(
             projectId ? String(projectId) : null,
@@ -5059,7 +5156,10 @@ export function startRuntimeListener(
         });
       }
       controller.signal.throwIfAborted();
-      const responseTextParts = textToParts(finalText, text, interactionMode);
+      const responseTextParts: Part[] =
+        responseContractAssessment && !responseContractAssessment.ok
+          ? [{ kind: 'text', text: finalText }]
+          : textToParts(finalText, text, interactionMode);
       let oversizedResponseAttachment: Awaited<
         ReturnType<typeof createOversizedMessageAttachment>
       > = null;

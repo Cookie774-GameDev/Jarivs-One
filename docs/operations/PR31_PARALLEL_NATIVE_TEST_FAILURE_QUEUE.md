@@ -135,3 +135,26 @@ Each test receives a monotonically increasing ID. Entries record UTC/local time,
 - Typecheck boundary: this slice's prior kernel typing error is cleared; the broad app typecheck now reports only four concurrent errors in `siyuanRlmProduction.test.ts` and `siyuanRlmRepository.test.ts`, outside this owned scope
 - Broad evidence boundary: the full runtime file was attempted and currently has 65 broader failures across approval, voice, shadow, cancellation, and kernel fixtures outside this focused assertion set; this slice does not claim that broad matrix green or assign those failures a historical cause
 - Remaining acceptance: rerun Question A in official native VibeSpace, inspect the real answer and receipts, independently grade it, and do not claim 90+ from code evidence alone
+
+### PR31-CODE-007 — explicit Test A response contract checkpoint
+
+- Recorded: 2026-08-22T23:19:45-05:00
+- Root cause: both legacy and installed-kernel response paths could visibly stream and commit a response above the user's explicit word maximum; the installed kernel also applied output-reference notices and downstream action inference after response generation
+- Repair: bounded generic word-contract parsing adds a 90–96% target band, buffers contracted previews, validates the complete visible response before commit, detects substantial duplicated tails and internal notices, and fails closed with a contract-compliant text-only response after the single exact provider attempt
+- Installed-kernel boundary: enforcement now runs after output-reference policy, never overrides sensitive or verified lifecycle modes, never treats tokenizer-owned structured placeholders as leakage, and returns before any fallback action inference after rejection
+- Exact identity: no retry or second provider call was added; provider, connection, full model ID, effort, performance, request text, and working directory remain unchanged
+- Safe diagnostics: Dev Console records only request/run IDs, provider/model, fixed failure code, maximum, and word count; prompt, response, source content, credentials, and tokens remain excluded
+- Fresh focused evidence: pure contract plus complete response pipeline pass 90/90; exact installed-kernel preview/fail-close regression passes 1/1; focused legacy explicit-root path remains green in the combined targeted matrix
+- Latency boundary: contracted answers intentionally expose no first-token preview, so visible latency equals canonical completion latency; no streamed first-token latency claim is permitted
+- Remaining acceptance: broad typecheck is still running under concurrent workspace load; official-native exact-route Question A remains paused at the user's request and is not yet rescored
+
+#### PR31-CODE-007 follow-up — minimum quality floor and kernel control parity
+
+- Recorded: 2026-08-22T23:34:00-05:00
+- Quality floor: target-form requests such as `750-word summary` now require 675–750 visible words; the prior 144-word native answer fails with `word_limit_below_target`. Maximum-only wording remains minimum-free, and sensitive responses retain safety-mode priority
+- Parser hardening: quoted incidental limit prose is not treated as an output contract; `under N words` is exclusive; tiny budgets use a one-word fail-closed response
+- Kernel control repair: the already-resolved provider options plus exact effort, performance, Fast, and request-local RLM settings now pass through the installed-kernel turn into the same single provider attempt instead of falling back to router defaults
+- Diagnostics: installed-kernel rejection evidence now includes the safe connection ID, observed effort, and performance alongside provider/model and fixed contract code; no content or credentials are logged
+- Fresh focused evidence: pure contract plus full response pipeline pass 92/92; installed-kernel preview/minimum-floor/exact-control regression passes 1/1; legacy explicit-root test remains green
+- Typecheck boundary: rerun reaches only the same four concurrent SiYuan test errors in `siyuanRlmProduction.test.ts` and `siyuanRlmRepository.test.ts`; no owned-file TypeScript error is reported
+- Native boundary: app remains intentionally stopped at the user's storage-clearing request; no native rescore is claimed

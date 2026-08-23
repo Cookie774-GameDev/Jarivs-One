@@ -47,6 +47,7 @@ import {
   clearOpenCodeApprovalStatuses,
   recordOpenCodeApprovalStatus,
 } from '@/lib/harness/openCodeApprovalState';
+import { getPreview } from '@/features/chat/streamingPreviewStore';
 
 const mocks = vi.hoisted(() => ({
   runAgent: vi.fn(),
@@ -2123,6 +2124,18 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       created_at: 1,
       updated_at: 1,
     };
+    const invalidDraft = Array.from({ length: 751 }, (_, index) => `word${index}`).join(' ');
+    mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      providerInput.onChunk?.({ delta: invalidDraft, done: false });
+      providerInput.onChunk?.({ delta: '', done: true });
+      return {
+        text: invalidDraft,
+        usage: { input_tokens: 100, output_tokens: 751, cost_usd: 0 },
+        provider: 'opencode',
+        model: 'opencode-go/deepseek-v4-flash-vision-exp',
+      };
+    });
+    const updateMessage = vi.fn(async () => undefined);
     const stop = trackListener(
       startRuntimeListener({
         getAgentById: (id) => (id === jarvis.id ? jarvis : null),
@@ -2135,7 +2148,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
           created_at: 2,
           updated_at: 2,
         })),
-        updateMessage: vi.fn(async () => undefined),
+        updateMessage,
       }),
     );
 
@@ -2172,6 +2185,9 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     expect(providerInput.agent.system_prompt).toContain(
       'Separate observed facts from inference and state unavailable evidence plainly.',
     );
+    expect(providerInput.agent.system_prompt).toContain(
+      'The final answer must never exceed 750 words.',
+    );
     expect(mocks.resolveJarvisContext).not.toHaveBeenCalled();
     expect(mocks.rememberConversationDestination).not.toHaveBeenCalled();
     expect(mocks.getProjectContextBlock).not.toHaveBeenCalled();
@@ -2206,6 +2222,35 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
           reasoningMode: 'normal',
           reasoningEffort: 'medium',
           runtimePerformance: 'quality',
+        }),
+      }),
+    );
+    expect(mocks.runAgent).toHaveBeenCalledOnce();
+    await vi.waitFor(() =>
+      expect(updateMessage).toHaveBeenCalledWith(
+        'msg_explicit_read_root_assistant',
+        expect.objectContaining({
+          parts: [
+            {
+              kind: 'text',
+              text: 'I could not produce a clean, verified response within the requested format. Please retry.',
+            },
+          ],
+        }),
+      ),
+    );
+    expect(JSON.stringify(updateMessage.mock.calls)).not.toContain('word0');
+    expect(JSON.stringify(updateMessage.mock.calls)).not.toContain('word750');
+    expect(JSON.stringify(updateMessage.mock.calls)).not.toContain(invalidDraft);
+    expect(mocks.devLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Explicit response contract failed closed',
+        detail: expect.objectContaining({
+          code: 'word_limit_exceeded',
+          wordCount: 751,
+          maxWords: 750,
+          provider: 'opencode',
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
         }),
       }),
     );
@@ -3758,6 +3803,155 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     expect(mocks.runAgent).not.toHaveBeenCalled();
     expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
   });
+
+  it('buffers and fails closed a contracted installed-kernel response before any preview is visible', async () => {
+    const openCodeConnection = PROVIDER_CONNECTIONS.find(
+      (connection) => connection.id === 'opencode-cli',
+    )!;
+    rememberLiveOpenCodeProviders([
+      {
+        id: 'opencode-go',
+        name: 'OpenCode Go',
+        connected: true,
+        models: [
+          {
+            id: 'deepseek-v4-flash-vision-exp',
+            name: 'DeepSeek V4 FLASH Vision Exp',
+            variants: ['medium'],
+          },
+        ],
+      },
+    ]);
+    useAuthStore.setState({
+      chatModelSelection: selectionFromOption(
+        openCodeConnection.providerId as ProviderId,
+        'opencode-go/deepseek-v4-flash-vision-exp',
+        openCodeConnection,
+      ),
+    });
+    mocks.extractExplicitReadRoot.mockReturnValue('C:\\Users\\viper');
+    const protectedJarvis = agent('agent_jarvis', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const userText =
+      'C:\\Users\\viper Hi, please read your context and make me a 750-word summary of it in total.';
+    harness.bindings.getMessages = vi.fn(async () => [
+      {
+        id: 'msg_kernel_user' as MessageId,
+        chat_id: harness.chatId,
+        role: 'user' as const,
+        parts: [{ kind: 'text' as const, text: userText }],
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]);
+    const database = createJarvisDb(
+      uniqueTestDbName('runtime-installed-explicit-contract'),
+      TEST_INDEXED_DB,
+    );
+    await database.open();
+    await database.chats.add({
+      id: harness.chatId,
+      workspace_id: 'workspace_runtime_explicit_contract' as never,
+      title: 'Installed explicit contract',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    const invalidDraft = Array.from({ length: 144 }, (_, index) => `word${index}`).join(' ');
+    mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      providerInput.onChunk?.({ delta: invalidDraft, done: false });
+      expect(
+        getPreview(providerInput.accountId!, providerInput.protectedAttempt!.runId),
+      ).toBeNull();
+      return {
+        text: invalidDraft,
+        usage: { input_tokens: 100, output_tokens: 144, cost_usd: 0 },
+        provider: providerInput.agent.model.provider,
+        model: providerInput.agent.model.model,
+      };
+    });
+    const disposeHost = await installJarvisKernelRuntimeHost({
+      db: database,
+      bindKernelActions: () =>
+        ({
+          create: vi.fn() as never,
+          decide: vi.fn() as never,
+          execute: vi.fn() as never,
+          executeAutoApprovedSafe: vi.fn() as never,
+        }) as never,
+      capabilitySnapshots: {
+        getForAccount: vi.fn(async () => ({
+          capturedAt: 1,
+          tools: [],
+          plugins: [],
+          mcps: [],
+          terminals: [],
+          agents: [],
+          entitlements: { source: 'unavailable' as const, capabilities: [] },
+        })),
+      },
+      randomUUID: () => 'runtime-installed-explicit-contract',
+      now: () => 10,
+    });
+    trackCleanup(disposeHost);
+    trackListener(
+      startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId: harness.chatId,
+            text: userText,
+            interactionMode: 'ask',
+            reasoningPreference: { mode: 'normal', effortOverride: 'medium' },
+            runtimeSettings: { effort: 'medium', performance: 'quality' },
+          },
+        }),
+      );
+      await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce(), { timeout: 3_000 });
+      await vi.waitFor(async () => {
+        const message = await database.messages.where('chat_id').equals(harness.chatId).first();
+        expect(JSON.stringify(message?.parts)).toContain(
+          'I could not produce a clean, verified response within the requested format. Please retry.',
+        );
+        expect(JSON.stringify(message?.parts)).not.toContain('word0');
+      });
+      const providerInput = mocks.runAgent.mock.calls[0]![0];
+      expect(providerInput.agent.model).toEqual({
+        provider: 'opencode',
+        model: 'opencode-go/deepseek-v4-flash-vision-exp',
+      });
+      expect(providerInput.connectionId).toBe('opencode-cli');
+      expect(providerInput.provider_options).toEqual({});
+      expect(providerInput.runtimeSettings).toMatchObject({
+        effort: 'medium',
+        performance: 'quality',
+        rlmEnabled: false,
+      });
+      expect(mocks.devLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'Kernel explicit response contract failed closed',
+          detail: expect.objectContaining({
+            code: 'word_limit_below_target',
+            maxWords: 750,
+            wordCount: 144,
+            provider: 'opencode',
+            model: 'opencode-go/deepseek-v4-flash-vision-exp',
+            connectionId: 'opencode-cli',
+            effort: 'medium',
+            performance: 'quality',
+          }),
+        }),
+      );
+    } finally {
+      disposeHost();
+      database.close();
+      await database.delete();
+    }
+  }, 15_000);
 
   it('persists a length-limited provider response as partial through the installed host', async () => {
     mocks.buildRoutedMcpTaskContext.mockReturnValueOnce(

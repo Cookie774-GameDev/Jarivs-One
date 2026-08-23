@@ -120,6 +120,104 @@ function expectSpeechGateAccepted(
 }
 
 describe('processJarvisResponse', () => {
+  it('fails a contracted oversized answer closed without changing the exact provider snapshot', async () => {
+    const provider = {
+      providerId: 'opencode',
+      modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+      connectionMode: 'external-cli' as const,
+      capabilities: {},
+      capturedAt: 7,
+    };
+    const oversized = Array.from({ length: 751 }, (_, index) => `word${index}`).join(' ');
+    const repair = { repair: vi.fn(async () => Promise.reject(new Error('unavailable'))) };
+    const result = await processJarvisResponse(
+      { ...raw(oversized), provider },
+      request({
+        userText:
+          'C:\\Users\\viper Hi, please read your context and make me a 750-word summary of it in total.',
+        model: provider,
+      }),
+      repair,
+    );
+
+    expect(repair.repair).toHaveBeenCalledOnce();
+    expect(repair.repair).toHaveBeenCalledWith(
+      expect.objectContaining({ prose: oversized }),
+    );
+    expect(result.provider).toEqual(provider);
+    expect(result.displayText).toBe(
+      'I could not produce a clean, verified response within the requested format. Please retry.',
+    );
+    expect(result.displayText).not.toContain('word0');
+    expect(result.parts).toEqual([{ kind: 'text', text: result.displayText }]);
+    expect(result.enforcement.violations).toContain('explicit_response_contract_failed_closed');
+    expect(result.displayText.trim().split(/\s+/u).length).toBeLessThanOrEqual(750);
+  });
+
+  it('accepts one compliant long-form contracted answer without repair', async () => {
+    const prose = Array.from({ length: 700 }, (_, index) => `fact${index}`).join(' ');
+    const repair = { repair: vi.fn() };
+    const result = await processJarvisResponse(
+      raw(prose),
+      request({ userText: 'Create a 750-word summary.' }),
+      repair,
+    );
+
+    expect(repair.repair).not.toHaveBeenCalled();
+    expect(result.mode).toBe('long_form_delivery');
+    expect(result.displayText).toBe(prose);
+    expect(result.enforcement.fallbackUsed).toBe(false);
+  });
+
+  it('fails a materially undersized target-form summary closed', async () => {
+    const short = Array.from({ length: 144 }, (_, index) => `fact${index}`).join(' ');
+    const result = await processJarvisResponse(
+      raw(short),
+      request({ userText: 'Create a 750-word summary.' }),
+      { repair: vi.fn(async () => Promise.reject(new Error('unavailable'))) },
+    );
+
+    expect(result.displayText).toBe(
+      'I could not produce a clean, verified response within the requested format. Please retry.',
+    );
+    expect(result.enforcement.violations).toEqual(
+      expect.arrayContaining([
+        'explicit_response_word_limit_below_target',
+        'explicit_response_contract_failed_closed',
+      ]),
+    );
+  });
+
+  it('fails a substantial duplicated completion tail closed in the official pipeline', async () => {
+    const repeated = Array.from({ length: 60 }, (_, index) => `evidence${index}`).join(' ');
+    const result = await processJarvisResponse(
+      raw(`${repeated} ${repeated}`),
+      request({ userText: 'Create a 750-word summary.' }),
+      { repair: vi.fn(async () => Promise.reject(new Error('unavailable'))) },
+    );
+
+    expect(result.parts).toEqual([{ kind: 'text', text: result.displayText }]);
+    expect(result.enforcement.violations).toEqual(
+      expect.arrayContaining([
+        'explicit_response_duplicate_tail',
+        'explicit_response_contract_failed_closed',
+      ]),
+    );
+  });
+
+  it('does not expose output-policy notices inside a contracted answer', async () => {
+    const rawPath = 'C:\\private\\invented-output.txt';
+    const result = await processJarvisResponse(
+      raw(`Saved the completed report to \`${rawPath}\`.`),
+      request({ userText: 'Give me a 100-word summary.' }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.displayText).not.toContain(rawPath);
+    expect(result.displayText).not.toContain('[unverified output location omitted]');
+    expect(result.enforcement.violations).toContain('explicit_response_contract_failed_closed');
+  });
+
   it.each([
     'Which model are you using?',
     'what model is currently active',
@@ -458,6 +556,32 @@ describe('processJarvisResponse', () => {
     expect(result.displayText).toBe(providerText);
     expect(result.enforcement.violations).not.toEqual(
       expect.arrayContaining([expect.stringMatching(/^unverified_output_reference:/)]),
+    );
+  });
+
+  it('does not let a word contract override sensitive response handling', async () => {
+    const result = await processJarvisResponse(
+      raw('Call local emergency services now and stay with someone you trust.'),
+      request({ userText: 'I may hurt myself. Give me a 750-word answer.' }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.mode).toBe('sensitive');
+    expect(result.displayText).toMatch(/emergency services/i);
+    expect(result.enforcement.violations).not.toContain('explicit_response_contract_failed_closed');
+  });
+
+  it('does not mistake a valid structured region for leaked internal scaffolding', async () => {
+    const action = '```action\n{"id":"nav.chat","params":{"chatId":"chat-2"}}\n```';
+    const result = await processJarvisResponse(
+      raw(`Prepared.\n\n${action}`),
+      request({ userText: 'Keep the response at most 750 words.' }),
+      { repair: vi.fn() },
+    );
+
+    expect(result.enforcement.violations).not.toContain('explicit_response_contract_failed_closed');
+    expect(result.parts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'action_proposal' })]),
     );
   });
 

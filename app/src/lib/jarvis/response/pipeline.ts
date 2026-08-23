@@ -46,6 +46,11 @@ import {
   tokenizeJarvisResponse,
 } from './tokenizer';
 import { enforceJarvisOutputReferencePolicy } from './outputReferencePolicy';
+import {
+  assessExplicitResponseContract,
+  explicitResponseContractFallback,
+  parseExplicitResponseContract,
+} from './explicitResponseContract';
 
 export interface RawProviderResponse {
   text: string;
@@ -499,9 +504,16 @@ export async function processJarvisResponse(
     if (!validation.ok) throw new JarvisResponsePipelineError(validation.errors);
     return deepFreezeJarvisCopy(envelope);
   }
+  const explicitResponseContract = parseExplicitResponseContract(snapshot.request.userText);
   const tokenized = tokenizeJarvisResponse(snapshot.raw.text);
   const emptyProviderReply = snapshot.raw.text.trim().length === 0;
-  const mode = classifyJarvisResponseMode(snapshot.request, facts);
+  const classifiedMode = classifyJarvisResponseMode(snapshot.request, facts);
+  const mode =
+    explicitResponseContract &&
+    explicitResponseContract.maxWords > 80 &&
+    classifiedMode === 'direct_answer'
+      ? 'long_form_delivery'
+      : classifiedMode;
   const sensitiveTopic =
     mode === 'sensitive'
       ? (classifyJarvisSensitiveTopic(snapshot.request.userText) ?? 'general')
@@ -529,6 +541,23 @@ export async function processJarvisResponse(
     ...sanitized.violations,
     ...invalidRegionViolations,
     ...lintResponseProse(prose, mode, facts, sensitiveTopic),
+    ...(explicitResponseContract && !sensitiveTopic
+      ? (() => {
+          const assessment = assessExplicitResponseContract(
+            snapshot.raw.text,
+            explicitResponseContract,
+          );
+          return assessment.ok
+            ? []
+            : [
+                safeViolation(
+                  `explicit_response_${assessment.code}`,
+                  'repairable',
+                  'The response violates the explicit visible-output contract.',
+                ),
+              ];
+        })()
+      : []),
   ];
   const hasQuarantine = initialViolations.some((item) => item.disposition === 'quarantine');
   const validPlaceholders = sensitiveTopic
@@ -536,7 +565,10 @@ export async function processJarvisResponse(
     : tokenized.regions
         .filter((region) => region.valid)
         .map((region) => jarvisRegionPlaceholder(region.index));
-  const longFormParts = mode === 'long_form_delivery' ? splitLongFormWrapper(prose) : undefined;
+  const longFormParts =
+    mode === 'long_form_delivery' && !explicitResponseContract
+      ? splitLongFormWrapper(prose)
+      : undefined;
   const mutableRepairProse = longFormParts?.wrapper ?? prose;
   const mutableRepairPlaceholders = validPlaceholders.filter((placeholder) =>
     mutableRepairProse.includes(placeholder),
@@ -620,13 +652,29 @@ export async function processJarvisResponse(
     snapshot.request.sourceRefs,
   );
   finalProse = outputReferencePolicy.proseWithPlaceholders;
-  const validRegions = sensitiveTopic ? [] : outputReferencePolicy.structuredRegions;
+  let validRegions = sensitiveTopic ? [] : outputReferencePolicy.structuredRegions;
   const restoredDisplayText = restoreJarvisStructuredRegions(finalProse, validRegions);
   const preserveLongFormArtifactSuffix =
     Boolean(longFormParts) && !hasQuarantine && !needsDeterministicFallback;
-  const displayText = preserveLongFormArtifactSuffix
+  let displayText = preserveLongFormArtifactSuffix
     ? restoredDisplayText.trimStart()
     : restoredDisplayText.trim();
+  const finalContractAssessment = explicitResponseContract
+    ? assessExplicitResponseContract(displayText, explicitResponseContract)
+    : null;
+  const explicitContractFailed = Boolean(
+    explicitResponseContract &&
+    !sensitiveTopic &&
+    ((finalContractAssessment && !finalContractAssessment.ok) ||
+      outputReferencePolicy.violationCodes.length > 0),
+  );
+  if (explicitContractFailed) {
+    repairSucceeded = false;
+    const fallback = explicitResponseContractFallback(explicitResponseContract!);
+    finalProse = fallback;
+    displayText = fallback;
+    validRegions = [];
+  }
   const spokenText = deriveJarvisSpokenText({
     proseWithPlaceholders: finalProse,
     mode,
@@ -637,6 +685,7 @@ export async function processJarvisResponse(
     new Set([
       ...initialViolations.map((item) => item.code),
       ...outputReferencePolicy.violationCodes,
+      ...(explicitContractFailed ? ['explicit_response_contract_failed_closed'] : []),
     ]),
   );
   const envelope: JarvisResponseEnvelope = {
@@ -648,7 +697,9 @@ export async function processJarvisResponse(
     ...(snapshot.request.outputContract.voiceDelivery === 'none' || !spokenText
       ? {}
       : { spokenText }),
-    parts: validatedParts(displayText, snapshot.request),
+    parts: explicitContractFailed
+      ? textParts(displayText)
+      : validatedParts(displayText, snapshot.request),
     artifactIds: [],
     sourceRefs: snapshot.request.sourceRefs,
     ...(facts.executionState &&
@@ -667,7 +718,8 @@ export async function processJarvisResponse(
         hasQuarantine ||
         emptyProviderReply ||
         needsDeterministicFallback ||
-        outputReferencePolicy.violationCodes.length > 0,
+        outputReferencePolicy.violationCodes.length > 0 ||
+        explicitContractFailed,
     },
     completedAt: snapshot.raw.completedAt,
   };
