@@ -3646,6 +3646,9 @@ export function startRuntimeListener(
             '## Explicit read scope',
             'The leading path is the authoritative read scope for this turn.',
             'Inspect only evidence reachable under that directory; do not treat the agent system prompt, active project, model/tool inventory, or unrelated Context Map as the requested content.',
+            'Use the available read-only filesystem tools (list, glob, grep, and read) before drafting the answer.',
+            'Do not make factual audit claims until you have inspected the requested directory; if no filesystem observation succeeds, say that evidence is unavailable instead of answering from memory or unrelated context.',
+            'For a broad audit, first inspect bounded top-level entries, then read only relevant configuration or repository evidence. Do not claim process state, disk totals, or other live system facts unless an approved tool actually observed them.',
             'Separate observed facts from inference and state unavailable evidence plainly.',
           ].join('\n')
         : '',

@@ -133,6 +133,7 @@ export function formatExplicitResponseContract(contract: ExplicitResponseContrac
   return [
     '## Explicit response contract',
     `The final answer must never exceed ${contract.maxWords} words. ${targetInstruction}`,
+    'The response will be discarded if it falls outside the required bounds, so budget sections before writing and omit appendices once the target is met.',
     'Count the complete final answer, including headings and list items. Finish cleanly; never truncate a sentence.',
     'Do not emit internal placeholders, output-location notices, hidden scaffolding, or duplicated sections.',
     'For factual requests, prefer concrete evidence and clearly distinguish observed facts, inference, and unavailable evidence.',

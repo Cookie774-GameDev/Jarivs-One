@@ -2236,6 +2236,12 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       'Separate observed facts from inference and state unavailable evidence plainly.',
     );
     expect(providerInput.agent.system_prompt).toContain(
+      'Use the available read-only filesystem tools',
+    );
+    expect(providerInput.agent.system_prompt).toContain(
+      'Do not make factual audit claims until you have inspected the requested directory',
+    );
+    expect(providerInput.agent.system_prompt).toContain(
       'The final answer must never exceed 750 words.',
     );
     expect(mocks.resolveJarvisContext).not.toHaveBeenCalled();

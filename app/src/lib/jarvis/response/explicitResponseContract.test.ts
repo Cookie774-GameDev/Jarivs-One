@@ -19,6 +19,9 @@ describe('explicitResponseContract', () => {
     });
     expect(formatExplicitResponseContract(contract!)).toContain('never exceed 750 words');
     expect(formatExplicitResponseContract(contract!)).toContain('Aim for 675-720 words');
+    expect(formatExplicitResponseContract(contract!)).toContain(
+      'The response will be discarded if it falls outside the required bounds',
+    );
   });
 
   it('uses the strictest explicit limit and ignores incidental or unreasonable numbers', () => {
