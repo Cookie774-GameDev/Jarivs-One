@@ -8,6 +8,7 @@
 import * as React from 'react';
 import { PetOverlay } from './PetOverlay';
 import {
+  hidePetOverlay,
   openOrFocusPetMiniPanel,
   reassertPetOverlayTopmost,
   setPetPanelOpenFlag,
@@ -26,6 +27,7 @@ export function PetOverlayWindow({ runtimeEffectsEnabled = true }: PetOverlayWin
   const sleepTimeoutMs = usePetSettingsStore((s) => s.sleepTimeoutMs);
   const idleFunIntervalMs = usePetSettingsStore((s) => s.idleFunIntervalMs);
   const panelMode = usePetSettingsStore((s) => s.panelMode) ?? 'normal';
+  const setOverlayVisible = usePetSettingsStore((s) => s.setOverlayVisible);
   const theme = useUIStore((s) => s.theme);
 
   React.useEffect(() => {
@@ -122,6 +124,12 @@ export function PetOverlayWindow({ runtimeEffectsEnabled = true }: PetOverlayWin
         tauriWindowMode
         sleepTimeoutMs={sleepTimeoutMs}
         idleFunIntervalMs={idleFunIntervalMs}
+        onRequestClose={() => {
+          if (!runtimeEffectsEnabled) return;
+          setOverlayVisible(false);
+          setPetPanelOpenFlag(false);
+          void hidePetOverlay().catch(() => undefined);
+        }}
         onOpenPanel={() => {
           if (!runtimeEffectsEnabled) return;
           // Shared Axo+Glitch path: single-flight open, confirm-then-hide overlay.

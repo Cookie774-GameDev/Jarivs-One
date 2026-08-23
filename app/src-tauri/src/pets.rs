@@ -27,6 +27,8 @@ const MAIN_NAV_EXCLUSION_LOGICAL_W: f64 = 240.0;
 const PET_AUTOSTART_VALUE_NAME: &str = "VibeSpace";
 const TOPMOST_WATCHDOG_INTERVAL_MS: u64 = 1000;
 const OVERLAY_SHOW_RESULT_TIMEOUT: Duration = Duration::from_secs(2);
+const STALE_WINDOW_LABEL_RETRY_INTERVAL: Duration = Duration::from_millis(25);
+const STALE_WINDOW_LABEL_RETRY_ATTEMPTS: usize = 20;
 
 #[cfg(target_os = "windows")]
 const PET_TOPMOST_POS_FLAGS: windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS =
@@ -944,9 +946,33 @@ fn log_pet_window_metrics(label: &str, win: &WebviewWindow) {
     eprintln!("[pets] {label}: title={title:?} visible={visible} pos={pos} size={size}");
 }
 
-fn get_or_create_pet_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
+fn should_reuse_pet_window<E>(visibility: Result<bool, E>) -> bool {
+    visibility.is_ok()
+}
+
+fn overlay_acquire_failure_reason(error: &str) -> &'static str {
+    if error == "failed to retire stale pet-overlay window" {
+        "stale_window_retire_failed"
+    } else if error.contains("already exists") || error.contains("label") {
+        "window_label_conflict"
+    } else {
+        "window_create_failed"
+    }
+}
+
+enum PetOverlayAcquire {
+    Ready { created: bool },
+    StaleRetired,
+}
+
+fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
     if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
-        return Ok(win);
+        if should_reuse_pet_window(win.is_visible()) {
+            return Ok(PetOverlayAcquire::Ready { created: false });
+        }
+        win.destroy()
+            .map_err(|_| "failed to retire stale pet-overlay window".to_string())?;
+        return Ok(PetOverlayAcquire::StaleRetired);
     }
 
     #[cfg(debug_assertions)]
@@ -974,12 +1000,17 @@ fn get_or_create_pet_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
         "--default-background-color=00000000 --disable-features=CalculateNativeWinOcclusion --autoplay-policy=no-user-gesture-required",
     )
     .build()
-    .map_err(|e| format!("failed to create pet-overlay window: {e}"))
+    .map_err(|e| format!("failed to create pet-overlay window: {e}"))?;
+    Ok(PetOverlayAcquire::Ready { created: true })
 }
 
 fn get_or_create_pet_panel(app: &AppHandle) -> Result<WebviewWindow, String> {
     if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
-        return Ok(win);
+        if should_reuse_pet_window(win.is_visible()) {
+            return Ok(win);
+        }
+        win.destroy()
+            .map_err(|_| "failed to retire stale pet-mini-panel window".to_string())?;
     }
 
     #[cfg(debug_assertions)]
@@ -1037,45 +1068,7 @@ pub async fn pet_show_overlay(app: AppHandle) -> Result<PetOverlayShowResult, St
     };
 
     let (result_tx, result_rx) = std::sync::mpsc::sync_channel(1);
-    let app_for_create = app.clone();
-    let create_result_tx = result_tx.clone();
-    if app
-        .run_on_main_thread(move || {
-            let created = app_for_create
-                .get_webview_window(PET_OVERLAY_LABEL)
-                .is_none();
-            if get_or_create_pet_overlay(&app_for_create).is_err() {
-                let _ = create_result_tx.send(PetOverlayShowResult::failed("window_create_failed"));
-                return;
-            }
-
-            // Let the WebView creation message return to the event loop before
-            // applying window operations. Calling set_position/show immediately
-            // after build() can race WebView2 and produce "failed to receive
-            // message from webview" on Windows.
-            let app_for_show = app_for_create.clone();
-            let show_result_tx = create_result_tx.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(Duration::from_millis(80));
-                let app_for_callback = app_for_show.clone();
-                let callback_result_tx = show_result_tx.clone();
-                if app_for_show
-                    .run_on_main_thread(move || {
-                        let result = show_existing_pet_overlay(app_for_callback, x, y, created)
-                            .unwrap_or_else(|reason| {
-                                PetOverlayShowResult::failed_after_create(created, reason)
-                            });
-                        let _ = callback_result_tx.send(result);
-                    })
-                    .is_err()
-                {
-                    let _ = show_result_tx
-                        .send(PetOverlayShowResult::failed("main_thread_unavailable"));
-                }
-            });
-        })
-        .is_err()
-    {
+    if schedule_pet_overlay_acquire(app.clone(), x, y, result_tx, true).is_err() {
         return Ok(PetOverlayShowResult::failed("main_thread_unavailable"));
     }
 
@@ -1093,6 +1086,67 @@ pub async fn pet_show_overlay(app: AppHandle) -> Result<PetOverlayShowResult, St
         }
         Err(_) => Ok(PetOverlayShowResult::failed("native_task_failed")),
     }
+}
+
+fn schedule_pet_overlay_acquire(
+    app: AppHandle,
+    x: f64,
+    y: f64,
+    result_tx: std::sync::mpsc::SyncSender<PetOverlayShowResult>,
+    allow_stale_retry: bool,
+) -> tauri::Result<()> {
+    let callback_app = app.clone();
+    app.run_on_main_thread(move || match acquire_pet_overlay(&callback_app) {
+        Ok(PetOverlayAcquire::Ready { created }) => {
+            schedule_existing_pet_overlay_show(callback_app, x, y, created, result_tx);
+        }
+        Ok(PetOverlayAcquire::StaleRetired) if allow_stale_retry => {
+            let retry_app = callback_app.clone();
+            std::thread::spawn(move || {
+                for _ in 0..STALE_WINDOW_LABEL_RETRY_ATTEMPTS {
+                    if retry_app.get_webview_window(PET_OVERLAY_LABEL).is_none() {
+                        let _ = schedule_pet_overlay_acquire(retry_app, x, y, result_tx, false);
+                        return;
+                    }
+                    std::thread::sleep(STALE_WINDOW_LABEL_RETRY_INTERVAL);
+                }
+                let _ = result_tx.send(PetOverlayShowResult::failed("window_label_conflict"));
+            });
+        }
+        Ok(PetOverlayAcquire::StaleRetired) => {
+            let _ = result_tx.send(PetOverlayShowResult::failed("window_label_conflict"));
+        }
+        Err(error) => {
+            let _ = result_tx.send(PetOverlayShowResult::failed(
+                overlay_acquire_failure_reason(&error),
+            ));
+        }
+    })
+}
+
+fn schedule_existing_pet_overlay_show(
+    app: AppHandle,
+    x: f64,
+    y: f64,
+    created: bool,
+    result_tx: std::sync::mpsc::SyncSender<PetOverlayShowResult>,
+) {
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(80));
+        let callback_app = app.clone();
+        let callback_result_tx = result_tx.clone();
+        if app
+            .run_on_main_thread(move || {
+                let result = show_existing_pet_overlay(callback_app, x, y, created).unwrap_or_else(
+                    |reason| PetOverlayShowResult::failed_after_create(created, reason),
+                );
+                let _ = callback_result_tx.send(result);
+            })
+            .is_err()
+        {
+            let _ = result_tx.send(PetOverlayShowResult::failed("main_thread_unavailable"));
+        }
+    });
 }
 
 fn show_existing_pet_overlay(
@@ -1700,6 +1754,29 @@ mod tests {
         assert_eq!(serialized["topmostApplied"], false);
         assert_eq!(serialized["rendererReady"], serde_json::Value::Null);
         assert_eq!(serialized["reason"], "window_create_failed");
+    }
+
+    #[test]
+    fn stale_registered_pet_window_is_rebuilt_but_a_hidden_healthy_window_is_reused() {
+        assert!(!should_reuse_pet_window(Err(())));
+        assert!(should_reuse_pet_window(Ok::<bool, ()>(false)));
+        assert!(should_reuse_pet_window(Ok::<bool, ()>(true)));
+    }
+
+    #[test]
+    fn overlay_acquire_failure_distinguishes_stale_retirement_from_creation() {
+        assert_eq!(
+            overlay_acquire_failure_reason("failed to retire stale pet-overlay window"),
+            "stale_window_retire_failed"
+        );
+        assert_eq!(
+            overlay_acquire_failure_reason("failed to create pet-overlay window"),
+            "window_create_failed"
+        );
+        assert_eq!(
+            overlay_acquire_failure_reason("a webview with label pet-overlay already exists"),
+            "window_label_conflict"
+        );
     }
 
     #[test]

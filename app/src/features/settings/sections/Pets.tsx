@@ -19,7 +19,7 @@ import {
   hidePetPanel,
   isPetOverlayVisible,
   isTauriRuntime,
-  openOrFocusPetPanel,
+  openOrFocusPetMiniPanel,
   setPetOverlayPosition,
   setPetStartWithWindows,
   showPetOverlay,
@@ -89,6 +89,7 @@ export function Pets() {
   const showPet = async () => {
     setEnabled(true);
     setOverlayVisible(true);
+    await hidePetPanel().catch(() => undefined);
     await showPetOverlay();
   };
 
@@ -104,11 +105,11 @@ export function Pets() {
   };
 
   const resetPanelPosition = async () => {
-    await openOrFocusPetPanel(200, 120, panelMode);
+    await openOrFocusPetMiniPanel(200, 120, panelMode);
   };
 
   const openPanel = async () => {
-    await openOrFocusPetPanel(undefined, undefined, panelMode);
+    await openOrFocusPetMiniPanel(undefined, undefined, panelMode);
   };
 
   const diag = (anim: PetForceAnimDetail['anim']) => {

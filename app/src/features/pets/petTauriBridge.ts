@@ -25,10 +25,12 @@ export type PetOverlayShowReason =
   | 'position_failed'
   | 'show_failed'
   | 'size_failed'
+  | 'stale_window_retire_failed'
   | 'topmost_failed'
   | 'visibility_check_failed'
   | 'visibility_timeout'
   | 'window_create_failed'
+  | 'window_label_conflict'
   | 'window_missing';
 
 /**
@@ -128,10 +130,12 @@ function isPetOverlayShowResult(value: unknown): value is PetOverlayShowResult {
     result.reason === 'position_failed' ||
     result.reason === 'show_failed' ||
     result.reason === 'size_failed' ||
+    result.reason === 'stale_window_retire_failed' ||
     result.reason === 'topmost_failed' ||
     result.reason === 'visibility_check_failed' ||
     result.reason === 'visibility_timeout' ||
     result.reason === 'window_create_failed' ||
+    result.reason === 'window_label_conflict' ||
     result.reason === 'window_missing';
   return (
     result.mode === 'native-overlay' &&
@@ -265,9 +269,7 @@ export async function openOrFocusPetPanel(
   } catch {
     return failedPetPanelOpen('native_command_failed');
   }
-  return isPetPanelOpenResult(response)
-    ? response
-    : failedPetPanelOpen('native_result_invalid');
+  return isPetPanelOpenResult(response) ? response : failedPetPanelOpen('native_result_invalid');
 }
 
 /** Open/focus the mini panel without changing standalone pet visibility. */

@@ -270,4 +270,21 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     expect(onShow).not.toHaveBeenCalled();
     window.removeEventListener('vibespace:pet-overlay-show', onShow);
   });
+
+  it.each(['stale_window_retire_failed', 'window_label_conflict'] as const)(
+    'preserves the sanitized native recovery reason %s',
+    async (reason) => {
+      invokeMock.mockResolvedValueOnce({
+        mode: 'native-overlay',
+        created: false,
+        visible: false,
+        topmostApplied: false,
+        rendererReady: null,
+        reason,
+      });
+
+      const { showPetOverlay } = await import('./petTauriBridge');
+      await expect(showPetOverlay()).resolves.toMatchObject({ reason });
+    },
+  );
 });

@@ -9,14 +9,24 @@ const bridge = vi.hoisted(() => ({
   reassertPetOverlayTopmost: vi.fn(async () => undefined),
 }));
 
+const settings = vi.hoisted(() => ({
+  overlayVisible: true,
+  setOverlayVisible: vi.fn(),
+}));
+const runtime = vi.hoisted(() => ({ tauri: true }));
+
 vi.mock('./PetOverlay', () => ({ PetOverlay: () => null }));
-vi.mock('./PetMiniPanel', () => ({ PetMiniPanel: () => null }));
+vi.mock('./PetMiniPanel', () => ({
+  PetMiniPanel: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="inline-pet-panel" /> : null,
+}));
 vi.mock('./petTauriBridge', () => ({
   claimPetHostInstance: vi.fn(() => true),
   hidePetOverlay: bridge.hidePetOverlay,
+  hidePetPanel: vi.fn(async () => undefined),
   isPetOverlayVisible: bridge.isPetOverlayVisible,
   isPetPanelVisible: bridge.isPetPanelVisible,
-  isTauriRuntime: vi.fn(() => true),
+  isTauriRuntime: vi.fn(() => runtime.tauri),
   openOrFocusPetMiniPanel: vi.fn(),
   PET_OPEN_PANEL_EVENT: 'vibespace:pet-open-panel',
   PET_PANEL_OPEN_FLAG_KEY: 'vibespace:pet-panel-open',
@@ -32,20 +42,25 @@ vi.mock('./petRuntimeEvents', () => ({
 vi.mock('./petPresentationStore', () => ({
   installPetPresentationStorageSync: vi.fn(() => () => undefined),
 }));
-vi.mock('./petSettingsStore', () => ({
-  installPetSettingsStorageSync: vi.fn(() => () => undefined),
-  usePetSettingsStore: (selector: (state: Record<string, unknown>) => unknown) =>
-    selector({
-      enabled: true,
-      reducedMotion: false,
-      panelMode: 'normal',
-      overlayVisible: true,
-      sleepTimeoutMs: 300_000,
-      idleFunIntervalMs: 60_000,
-      setOverlayVisible: vi.fn(),
-      setEnabled: vi.fn(),
-    }),
-}));
+vi.mock('./petSettingsStore', () => {
+  const state = () => ({
+    enabled: true,
+    reducedMotion: false,
+    panelMode: 'normal',
+    overlayVisible: settings.overlayVisible,
+    sleepTimeoutMs: 300_000,
+    idleFunIntervalMs: 60_000,
+    setOverlayVisible: settings.setOverlayVisible,
+    setEnabled: vi.fn(),
+  });
+  const usePetSettingsStore = (selector: (value: Record<string, unknown>) => unknown) =>
+    selector(state());
+  usePetSettingsStore.getState = state;
+  return {
+    installPetSettingsStorageSync: vi.fn(() => () => undefined),
+    usePetSettingsStore,
+  };
+});
 vi.mock('./pixiAtlasPlayer', () => ({ getLivePixiApplicationCount: vi.fn(() => 0) }));
 vi.mock('./petDevPerf', () => ({ installPetDevPerfGlobal: vi.fn(() => () => undefined) }));
 
@@ -79,6 +94,40 @@ describe('PetHost native overlay recovery', () => {
     vi.clearAllMocks();
     bridge.isPetPanelVisible.mockResolvedValue(false);
     bridge.isPetOverlayVisible.mockResolvedValue(false);
+    settings.overlayVisible = true;
+    settings.setOverlayVisible.mockClear();
+    runtime.tauri = true;
+  });
+
+  it('keeps an enabled Pet intentionally hidden instead of reopening it', async () => {
+    settings.overlayVisible = false;
+
+    render(<PetHost />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(settings.setOverlayVisible).not.toHaveBeenCalled();
+    expect(bridge.showPetOverlay).not.toHaveBeenCalled();
+  });
+
+  it('unmounts the browser mini panel before showing the Pet again', async () => {
+    runtime.tauri = false;
+    bridge.showPetOverlay.mockResolvedValue(visibleNativeOverlay());
+    const mounted = render(<PetHost />);
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('vibespace:pet-open-panel'));
+      await Promise.resolve();
+    });
+    expect(mounted.queryByTestId('inline-pet-panel')).not.toBeNull();
+
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('jarvis:pet:show'));
+      await Promise.resolve();
+    });
+    expect(mounted.queryByTestId('inline-pet-panel')).toBeNull();
   });
 
   afterEach(() => {

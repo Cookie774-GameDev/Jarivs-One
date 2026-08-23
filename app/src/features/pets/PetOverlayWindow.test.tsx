@@ -1,12 +1,28 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PetOverlayWindow } from './PetOverlayWindow';
 
+const overlayBridge = vi.hoisted(() => ({
+  hidePetOverlay: vi.fn(async () => undefined),
+}));
+
+const petSettings = vi.hoisted(() => ({
+  setOverlayVisible: vi.fn(),
+}));
+
 vi.mock('./PetOverlay', () => ({
-  PetOverlay: () => <canvas data-pet-pixi-canvas="true" />,
+  PetOverlay: ({ onRequestClose }: { onRequestClose?: () => void }) => (
+    <>
+      <canvas data-pet-pixi-canvas="true" />
+      <button type="button" onClick={onRequestClose}>
+        Close Pet
+      </button>
+    </>
+  ),
 }));
 
 vi.mock('./petTauriBridge', () => ({
+  hidePetOverlay: overlayBridge.hidePetOverlay,
   openOrFocusPetPanel: vi.fn(async () => undefined),
   openOrFocusPetMiniPanel: vi.fn(async () => ({
     panelVisible: true,
@@ -29,6 +45,7 @@ vi.mock('./petSettingsStore', () => ({
       reducedMotion: false,
       sleepTimeoutMs: 300_000,
       idleFunIntervalMs: 60_000,
+      setOverlayVisible: petSettings.setOverlayVisible,
     }),
 }));
 
@@ -40,6 +57,19 @@ vi.mock('@/stores/ui', () => ({
 describe('PetOverlayWindow transparency shell', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('persists an intentional hide when Close is selected in the detached overlay', async () => {
+    const root = document.createElement('div');
+    root.id = 'root';
+    document.body.appendChild(root);
+    render(<PetOverlayWindow />, { container: root });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close Pet' }));
+
+    expect(petSettings.setOverlayVisible).toHaveBeenCalledWith(false);
+    await waitFor(() => expect(overlayBridge.hidePetOverlay).toHaveBeenCalledTimes(1));
+    root.remove();
   });
 
   afterEach(() => {

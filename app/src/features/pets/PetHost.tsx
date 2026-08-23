@@ -12,6 +12,7 @@ import { PetMiniPanel } from './PetMiniPanel';
 import {
   claimPetHostInstance,
   hidePetOverlay,
+  hidePetPanel,
   isPetOverlayVisible,
   isPetPanelVisible,
   isTauriRuntime,
@@ -279,16 +280,10 @@ export function PetHost({
     };
   }, [claimed, enabled, hideSpriteForPanel, overlayVisible, runtimeEffectsEnabled, tauri]);
 
-  React.useEffect(() => {
-    if (!runtimeEffectsEnabled) return;
-    if (enabled && !overlayVisible) {
-      setOverlayVisible(true);
-    }
-  }, [enabled, overlayVisible, runtimeEffectsEnabled, setOverlayVisible]);
-
   const closePanel = React.useCallback(() => {
     setPanelOpen(false);
     setHideSpriteForPanel(false);
+    setUseInlineFallback(false);
     setPetPanelOpenFlag(false);
     void showPetOverlay().catch(() => undefined);
   }, []);
@@ -355,10 +350,14 @@ export function PetHost({
         usePetSettingsStore.getState().setEnabled(true);
       }
       usePetSettingsStore.getState().setOverlayVisible(true);
-      setPanelOpen(false);
-      setHideSpriteForPanel(false);
-      setPetPanelOpenFlag(false);
-      void showPetOverlay().catch(() => undefined);
+      void (async () => {
+        if (tauri) await hidePetPanel().catch(() => undefined);
+        setPanelOpen(false);
+        setHideSpriteForPanel(false);
+        setUseInlineFallback(false);
+        setPetPanelOpenFlag(false);
+        await showPetOverlay().catch(() => undefined);
+      })();
     };
     const onClosePanel = () => closePanel();
     window.addEventListener(PET_OPEN_PANEL_EVENT, onOpen);
@@ -369,7 +368,7 @@ export function PetHost({
       window.removeEventListener('jarvis:pet:show', onShow);
       window.removeEventListener('jarvis:pet:close-panel', onClosePanel);
     };
-  }, [closePanel, openPanel, runtimeEffectsEnabled]);
+  }, [closePanel, openPanel, runtimeEffectsEnabled, tauri]);
 
   if (!claimed || !enabled || !effectiveOverlayVisible || shuttingDown) return null;
 
@@ -418,7 +417,7 @@ export function PetHost({
         />
       )}
       {/* Browser-only: Tauri primary and failure paths use native windows. */}
-      {!tauri && (
+      {!tauri && useInlineFallback && (
         <PetMiniPanel
           open={panelOpen}
           onClose={closePanel}
