@@ -16,3 +16,9 @@
 - Fresh focused verification: `npm run test -- src/lib/cloudRecovery.test.ts src/features/settings/sections/Account.cloudRecovery.test.tsx src/features/settings/sections/Account.profile.test.tsx src/lib/db/index.migration.test.ts --reporter=dot` — PASS, 4 files / 32 tests.
 - Full `npm run typecheck` reports only the four known, separately owned SiYuan test diagnostics at `siyuanRlmProduction.test.ts:110` and `siyuanRlmRepository.test.ts:215,254,271`; no diagnostic remains in this scope.
 - No live account recovery was executed and no production Supabase state was changed. Native visual acceptance remains deferred under the user's current no-live-app instruction.
+
+## 2026-08-22 — committed and released
+
+- Product commit: `b09f6d89775d2ce31df2eedd60dc898c683e807c` (`feat(account): add safe cloud recovery preview`).
+- Final proof: focused Account/cloud/migration matrix PASS, 4 files / 32 tests; direct Vite production bundle PASS in 1m 8s; scoped formatting/diff checks PASS; staged Gitleaks scanned 28.71 KB with zero leaks. Full TypeScript remains blocked only by the four separately owned SiYuan test diagnostics already listed above.
+- Remaining durability work is intentionally separate: complete all-store inventory, portable local export, end-to-end encrypted opt-in backup for eligible non-secret data, and official native Account visual acceptance. This commit does not claim those items.
