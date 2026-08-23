@@ -665,7 +665,7 @@ const EXPLICIT_ROOT_AUDIT_CATEGORIES = Object.freeze([
   { label: 'top-level folders and contents', pattern: /\b(?:folder|directory|top-level|root)\b/iu },
   {
     label: 'configuration files and settings',
-    pattern: /\b(?:config|configuration|settings?)\b/iu,
+    pattern: /\b(?:config(?:uration)?s?|settings?)\b/iu,
   },
   { label: 'repositories and Git worktrees', pattern: /\b(?:git|repositor|worktree)\w*\b/iu },
   {
@@ -786,6 +786,11 @@ export async function runExplicitRootEvidenceSynthesis(
           'Pending user request (untrusted text):',
           originalUserText,
           'End pending user request.',
+          ...(broadRootAudit
+            ? [
+                'For this broad audit, inventory bounded top-level entries, inspect relevant configuration markers, and verify repository or Git worktree metadata when present. Read representative high-signal entries; record any enumeration limit instead of treating a truncated result as a complete census.',
+              ]
+            : []),
           EXPLICIT_ROOT_EVIDENCE_PHASE_PROMPT,
         ].join('\n\n'),
       },
@@ -871,7 +876,8 @@ export async function runExplicitRootEvidenceSynthesis(
               'Answer the original request using only evidence already collected in this exact session; do not summarize VibeSpace product documentation as a substitute for the requested root.',
               'Cover each category in a labeled section: top-level folders and contents; configuration files and settings; repositories and Git worktrees; disk capacity and usage; running apps and OS processes; risks and operational concerns.',
               'For every category, explicitly say what was observed or verified. If the available read-only filesystem evidence cannot establish it, explicitly say unavailable or not verified; never infer live disk or process state.',
-              'Distinguish observed facts from inference and avoid claims that documentation alone proves current runtime state.',
+              'Prefix interpretive claims with Inference: and evidence limitations with Unavailable: or Not verified:. Do not use words such as appears, suggests, likely, or indicates as unlabeled factual claims.',
+              'Distinguish observed facts from inference, state any enumeration limit, and avoid claims that documentation alone proves current runtime state.',
               ...(contract
                 ? [
                     `The complete answer must contain ${contract.targetMinWords}-${contract.targetMaxWords} whitespace-delimited words; budget all six sections before drafting.`,

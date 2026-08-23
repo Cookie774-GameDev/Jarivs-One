@@ -669,6 +669,11 @@ describe('startRuntimeListener agent routing', () => {
         'Inferred concerns (not observed): dated worktree claims may drift from current state.',
       ),
     ).not.toContain('risks and operational concerns');
+    expect(
+      missingExplicitRootAuditCategories(
+        '## Configurations\nObserved configurations and settings were read from disk.',
+      ),
+    ).not.toContain('configuration files and settings');
   });
 
   it('gives the single correction an exact direction for short and over-limit drafts', () => {
@@ -2919,6 +2924,11 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     expect(synthesisInstruction).toContain('675-690 whitespace-delimited words');
     expect(synthesisInstruction).toContain('approximate 680-word allocation');
     expect(synthesisInstruction).not.toContain('compact labeled section');
+    expect(synthesisInstruction).toContain('Prefix interpretive claims with Inference:');
+    expect(synthesisInstruction).toContain('state any enumeration limit');
+    expect(mocks.runAgent.mock.calls[0]![0].messages.at(-1)?.content).toContain(
+      'verify repository or Git worktree metadata when present',
+    );
     const verifiedProviderInput = mocks.runAgent.mock.calls[3]![0];
     expect(verifiedProviderInput.agent.model).toEqual({
       provider: 'opencode',
