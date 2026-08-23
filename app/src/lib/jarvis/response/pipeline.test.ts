@@ -428,6 +428,15 @@ describe('processJarvisResponse', () => {
     expect(result.enforcement.violations).not.toContain('unverified_output_location:0');
   });
 
+  it('does not combine distant file and Access words into a path output claim', async () => {
+    const providerText =
+      'It has produced a very large, checkpointed feature surface: an infinite Canvas with shared docs/Canvas.md content, shapes, connectors, frames, presentation assets, local persistence, snapping, lasso, and presenter notes; a separate feature boundary with 48 files and 543 tests; and a Qwen Access paywall.';
+    const result = await processJarvisResponse(raw(providerText), request(), { repair: vi.fn() });
+
+    expect(result.displayText).toBe(providerText);
+    expect(result.enforcement.violations).not.toContain('unverified_output_location:0');
+  });
+
   it('still omits a directly asserted unverified produced output location', async () => {
     const result = await processJarvisResponse(
       raw('The report was produced at `./reports/out.md`.'),

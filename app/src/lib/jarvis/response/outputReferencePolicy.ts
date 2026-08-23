@@ -97,31 +97,12 @@ function isPermittedReference(
   return candidates.some((candidate) => permitted.has(canonicalReference(candidate)));
 }
 
-function statementAround(text: string, start: number, end: number): string {
-  const preceding = text.slice(0, start);
-  const boundary = Math.max(
-    preceding.lastIndexOf('\n'),
-    preceding.lastIndexOf('.'),
-    preceding.lastIndexOf('!'),
-    preceding.lastIndexOf('?'),
-  );
-  const following = text.slice(end);
-  const relativeEnds = [
-    following.indexOf('\n'),
-    following.indexOf('.'),
-    following.indexOf('!'),
-    following.indexOf('?'),
-  ].filter((index) => index >= 0);
-  const statementEnd = relativeEnds.length > 0 ? end + Math.min(...relativeEnds) : text.length;
-  return text.slice(boundary + 1, statementEnd);
-}
-
 function isOutputLocationClaim(text: string, start: number, end: number): boolean {
-  const statement = statementAround(text, start, end);
+  const local = text.slice(Math.max(0, start - 96), Math.min(text.length, end + 96));
   return (
     DIRECT_PRODUCED_LOCATION.test(text.slice(Math.max(0, start - 96), start)) ||
-    OUTPUT_ASSERTION.test(statement) ||
-    (OUTPUT_NOUN.test(statement) && OUTPUT_ACCESS.test(statement))
+    OUTPUT_ASSERTION.test(local) ||
+    (OUTPUT_NOUN.test(local) && OUTPUT_ACCESS.test(local))
   );
 }
 
