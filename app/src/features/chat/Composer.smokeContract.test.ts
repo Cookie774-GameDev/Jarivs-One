@@ -28,4 +28,13 @@ describe('Composer smoke controls', () => {
     expect(source).toContain(remainderRoute);
     expect(source.indexOf(bareCanvasGuard)).toBeLessThan(source.indexOf(remainderRoute));
   });
+
+  it('renders the main model picker above app-level overlays', () => {
+    expect(source).toContain(
+      'className="z-[120] w-auto border-0 bg-transparent p-0 shadow-none"',
+    );
+    expect(source).not.toContain(
+      "className={cn('w-auto border-0 bg-transparent p-0 shadow-none', compact && 'z-[120]')}",
+    );
+  });
 });

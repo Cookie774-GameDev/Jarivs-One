@@ -253,6 +253,8 @@ import {
   type ModelPickerGroup,
   type ModelPickerOption,
 } from '@/lib/ai/useAccessibleChatModels';
+import { openCodePersistentAdapter } from '@/lib/ai/adapters/opencodePersistent';
+import type { ProviderDiscoveredModel } from '@/lib/ai/adapters/types';
 import { getProviderConnectionDescriptor, PROVIDER_CONNECTIONS } from '@/lib/ai/adapters/catalog';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
 import {
@@ -300,6 +302,7 @@ import {
   applyChatRuntimeCommand,
   parseChatRuntimeCommand,
 } from './runtime/chatRuntimeCommandController';
+import { supportedEffortPreferences } from './runtime/runtimeModelControls';
 import {
   clearApproveAllForRun,
   readChatRuntimePolicyState,
@@ -381,6 +384,70 @@ export function reasoningSelectionFromChatModel<T extends { mode: string }>(
     providerId: single.providerId,
     modelId: single.modelId,
     ...(typeof single.connectionId === 'string' ? { connectionId: single.connectionId } : {}),
+  };
+}
+
+export function authoritativeLiveEffortsForSelection<T extends { mode: string }>(
+  selection: T,
+  options: readonly ModelPickerOption[],
+): readonly EffortLabel[] | null {
+  const id = selectionOptionId(selection as ChatModelSelection);
+  if (!id) return null;
+  const option = options.find((candidate) => candidate.id === id);
+  if (
+    !option ||
+    option.available === false ||
+    option.catalogSource !== 'opencode-live' ||
+    option.variants === undefined
+  )
+    return null;
+  return supportedEffortPreferences({
+    connectionId:
+      option.connectionId ??
+      (selection.mode === 'single'
+        ? (selection as T & { connectionId?: string }).connectionId
+        : undefined) ??
+      option.provider,
+    modelId: option.modelId,
+    variants: option.variants.map((variant) => ({ id: variant })),
+  });
+}
+
+export function authoritativeLiveEffortsFromDiscoveredModels<T extends { mode: string }>(
+  selection: T,
+  models: readonly ProviderDiscoveredModel[],
+): readonly EffortLabel[] | null {
+  if (selection.mode !== 'single') return null;
+  const single = selection as T & { connectionId?: unknown; modelId?: unknown };
+  if (single.connectionId !== 'opencode-cli' || typeof single.modelId !== 'string') return null;
+  const exact = models.find((model) => model.id === single.modelId);
+  if (!exact || exact.variants === undefined) return null;
+  return supportedEffortPreferences({
+    connectionId: 'opencode-cli',
+    modelId: exact.id,
+    variants: exact.variants.map((variant) => ({ id: variant })),
+  });
+}
+
+export function liveAuthorityRejectsEffort(
+  effort: EffortLabel,
+  allowed: readonly EffortLabel[] | null,
+): boolean {
+  return allowed !== null && !allowed.includes(effort);
+}
+
+export function liveEffortPickerState(allowed: readonly EffortLabel[], saved: EffortLabel | null) {
+  return {
+    options: allowed.map((effort) => ({
+      id: effort,
+      label: effort[0]!.toUpperCase() + effort.slice(1),
+      description:
+        effort === 'auto'
+          ? 'Use the provider default or the active policy mode.'
+          : `${effort[0]!.toUpperCase() + effort.slice(1)} reasoning effort.`,
+    })),
+    selectedId: saved !== null && allowed.includes(saved) ? saved : 'auto',
+    error: undefined,
   };
 }
 
@@ -1023,6 +1090,7 @@ export function Composer({
   const selectedModels = useAuthStore((s) => s.selectedModels);
   const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
   const setChatModelSelection = useAuthStore((s) => s.setChatModelSelection);
+  const [modelSelectionReadyChatId, setModelSelectionReadyChatId] = useState('');
   const promptForgeModelSelection = useAuthStore((s) => s.promptForgeModelSelection);
   const setPromptForgeModelSelection = useAuthStore((s) => s.setPromptForgeModelSelection);
   const promptForgeAutoUpgradeOnSend = useAuthStore((s) => s.promptForgeAutoUpgradeOnSend);
@@ -1057,6 +1125,56 @@ export function Composer({
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
   const ollamaOptions = useOllamaModelOptions();
   const accessibleChatModels = useAccessibleChatModels();
+  const optionLiveEfforts = useMemo(
+    () =>
+      modelSelectionReadyChatId === String(chatId)
+        ? authoritativeLiveEffortsForSelection(chatModelSelection, accessibleChatModels.flatOptions)
+        : null,
+    [accessibleChatModels.flatOptions, chatId, chatModelSelection, modelSelectionReadyChatId],
+  );
+  const selectionId = selectionOptionId(chatModelSelection);
+  const [fetchedLiveEffortAuthority, setFetchedLiveEffortAuthority] = useState<{
+    chatId: string;
+    selectionId: string;
+    efforts: readonly EffortLabel[];
+  } | null>(null);
+  useEffect(() => {
+    setFetchedLiveEffortAuthority(null);
+    if (
+      modelSelectionReadyChatId !== String(chatId) ||
+      optionLiveEfforts !== null ||
+      !selectionId ||
+      chatModelSelection.mode !== 'single' ||
+      chatModelSelection.connectionId !== 'opencode-cli'
+    ) {
+      return;
+    }
+    let cancelled = false;
+    const expectedChatId = String(chatId);
+    const expectedSelectionId = selectionId;
+    void (openCodePersistentAdapter.listModels?.() ?? Promise.resolve([]))
+      .then((models) => {
+        const efforts = authoritativeLiveEffortsFromDiscoveredModels(chatModelSelection, models);
+        if (cancelled || efforts === null) return;
+        setFetchedLiveEffortAuthority({
+          chatId: expectedChatId,
+          selectionId: expectedSelectionId,
+          efforts,
+        });
+      })
+      .catch(() => {
+        // The provider adapter remains authoritative when live catalog discovery is unavailable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [chatId, chatModelSelection, modelSelectionReadyChatId, optionLiveEfforts, selectionId]);
+  const authoritativeLiveEfforts =
+    optionLiveEfforts ??
+    (fetchedLiveEffortAuthority?.chatId === String(chatId) &&
+    fetchedLiveEffortAuthority.selectionId === selectionId
+      ? fetchedLiveEffortAuthority.efforts
+      : null);
   const [projectFileOptions, setProjectFileOptions] = useState<SlashCommandOption[]>([]);
   const [projectFilesLoading, setProjectFilesLoading] = useState(false);
   const [projectFilesError, setProjectFilesError] = useState<string | undefined>(undefined);
@@ -1067,16 +1185,45 @@ export function Composer({
   const reasoningPickerState = useMemo(() => {
     const command = normalizeSlashCmd(optionPickerCtx?.cmd.cmd ?? '');
     if (command !== 'effort' && command !== 'mode') return null;
-    return buildReasoningSlashPickerState({
+    const staticState = buildReasoningSlashPickerState({
       command,
       selection: reasoningSelection,
       preference: reasoningPreference,
     });
-  }, [optionPickerCtx, reasoningPreference, reasoningSelection]);
+    return command === 'effort' && authoritativeLiveEfforts !== null
+      ? liveEffortPickerState(authoritativeLiveEfforts, reasoningPreference.effortOverride)
+      : staticState;
+  }, [authoritativeLiveEfforts, optionPickerCtx, reasoningPreference, reasoningSelection]);
 
   useEffect(() => {
     setReasoningPreference(readChatReasoningPreference(String(chatId)));
   }, [chatId]);
+
+  useEffect(() => {
+    const saved = reasoningPreference.effortOverride;
+    const runtimeEffort = runtimePolicy.settings.effort;
+    const clearSaved =
+      saved !== null && liveAuthorityRejectsEffort(saved, authoritativeLiveEfforts);
+    const clearRuntime = liveAuthorityRejectsEffort(runtimeEffort, authoritativeLiveEfforts);
+    if (!clearSaved && !clearRuntime) return;
+    if (clearSaved) {
+      writeChatReasoningEffort(String(chatId), null);
+      setReasoningPreference(readChatReasoningPreference(String(chatId)));
+    }
+    if (clearRuntime) {
+      const next = writeChatRuntimePolicyState(String(chatId), {
+        ...runtimePolicy,
+        settings: { ...runtimePolicy.settings, effort: 'auto' },
+      });
+      setRuntimePolicy(next);
+    }
+    const rejected = clearSaved ? saved! : runtimeEffort;
+    const available = authoritativeLiveEfforts?.filter((effort) => effort !== 'auto').join(', ');
+    toast.warning(
+      'Unsupported effort cleared',
+      `The live model does not offer ${rejected}. Choose ${available || 'Auto'}.`,
+    );
+  }, [authoritativeLiveEfforts, chatId, reasoningPreference.effortOverride, runtimePolicy]);
 
   useEffect(() => {
     if (!pluginAccountId) {
@@ -1113,6 +1260,7 @@ export function Composer({
   // A chat's exact connection is local-only metadata. Restore it when switching chats.
   useEffect(() => {
     let cancelled = false;
+    setModelSelectionReadyChatId('');
     void chatRepo
       .getById(chatId as ChatId)
       .then((chat) => {
@@ -1129,7 +1277,10 @@ export function Composer({
           selectionFromOption(chat.connection.providerId as ProviderId, modelId, chat.connection),
         );
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setModelSelectionReadyChatId(String(chatId));
+      });
     return () => {
       cancelled = true;
     };
@@ -2092,6 +2243,19 @@ export function Composer({
     if (cmd === 'effort' && rest) {
       const parsed = parseChatRuntimeCommand(`/effort ${rest}`);
       if (parsed) {
+        const requested =
+          parsed.kind === 'effort' && parsed.value && parsed.value !== 'status'
+            ? parsed.value
+            : null;
+        if (requested && liveAuthorityRejectsEffort(requested, authoritativeLiveEfforts)) {
+          const available = authoritativeLiveEfforts!
+            .filter((effort) => effort !== 'auto')
+            .join(', ');
+          await addSystem(
+            `Effort “${requested}” is not available for the selected live model. Available: ${available || 'Auto'}.`,
+          );
+          return true;
+        }
         const result = applyChatRuntimeCommand(runtimePolicy.settings, parsed);
         const next = writeChatRuntimePolicyState(String(chatId), {
           ...runtimePolicy,
@@ -2113,6 +2277,16 @@ export function Composer({
       if (rest) {
         const effort = parseReasoningEffortArgument(rest);
         if (effort !== undefined) {
+          const normalized = effort ?? 'auto';
+          if (liveAuthorityRejectsEffort(normalized, authoritativeLiveEfforts)) {
+            const available = authoritativeLiveEfforts!
+              .filter((candidate) => candidate !== 'auto')
+              .join(', ');
+            await addSystem(
+              `Effort “${normalized}” is not available for the selected live model. Available: ${available || 'Auto'}.`,
+            );
+            return true;
+          }
           writeChatReasoningEffort(String(chatId), effort);
           setReasoningPreference(readChatReasoningPreference(String(chatId)));
           setText('');
@@ -2698,6 +2872,20 @@ export function Composer({
     // When a route slash command has a remainder (e.g. "/terminals close 5 terminals"),
     // handleSlashCommand returns the remainder text so we send it as the message.
     let rawSendText = typeof slashResult === 'string' ? slashResult.trim() : afterInline;
+
+    const currentReasoning = readChatReasoningPreference(String(chatId));
+    const currentRuntime = readChatRuntimePolicyState(String(chatId));
+    const invalidEffort = [currentReasoning.effortOverride, currentRuntime.settings.effort].find(
+      (value): value is EffortLabel =>
+        value !== null && liveAuthorityRejectsEffort(value, authoritativeLiveEfforts),
+    );
+    if (invalidEffort) {
+      toast.error(
+        'Cannot send',
+        `Effort “${invalidEffort}” is not available for the selected live model.`,
+      );
+      return false;
+    }
 
     // Shared Prompt Upgrade Engine: optional auto-upgrade before Send.
     // Manual Upgrade button still opens preview/edit. On failure, fall back to original.
@@ -4874,7 +5062,10 @@ export function Composer({
                     }}
                   />
                   {chatModelSelection.mode === 'single' && chatModelSelection.connectionId ? (
-                    <ConnectionInfoPopover connectionId={chatModelSelection.connectionId} />
+                    <ConnectionInfoPopover
+                      connectionId={chatModelSelection.connectionId}
+                      modelId={chatModelSelection.modelId}
+                    />
                   ) : null}
                   <ModeIndicator
                     mode={interactionMode}
@@ -5264,7 +5455,7 @@ function ModelPicker({
         side="top"
         align="start"
         sideOffset={6}
-        className={cn('w-auto border-0 bg-transparent p-0 shadow-none', compact && 'z-[120]')}
+        className="z-[120] w-auto border-0 bg-transparent p-0 shadow-none"
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
         <ModelPickerTypeahead
