@@ -99,6 +99,23 @@ pub struct StartRequest {
     training_config: Option<crate::model_foundry_training::TrainingConfiguration>,
     #[serde(default)]
     target_modules: Option<Vec<String>>,
+    #[serde(default)]
+    training_examples: Vec<SupervisedMediaExample>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SupervisedMediaExample {
+    path: String,
+    media_type: String,
+    prompt: String,
+    response: String,
+    #[serde(default = "default_planned_frames")]
+    planned_frames: u8,
+}
+
+fn default_planned_frames() -> u8 {
+    8
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -897,6 +914,116 @@ fn split_training_dataset(dataset: &Path) -> Result<(String, String), String> {
     Ok((rows[..split_at].join("\n"), rows[split_at..].join("\n")))
 }
 
+fn prepare_supervised_media_dataset(
+    examples: &[SupervisedMediaExample],
+    base_model_id: &str,
+    job_dir: &Path,
+) -> Result<(String, String), String> {
+    let rows = prepare_supervised_media_rows(examples, base_model_id, job_dir)?;
+    split_training_rows(rows)
+}
+
+fn prepare_supervised_media_rows(
+    examples: &[SupervisedMediaExample],
+    base_model_id: &str,
+    job_dir: &Path,
+) -> Result<Vec<String>, String> {
+    if examples.len() > MAX_INLINE_DATASET_EXAMPLES {
+        return Err("Multimodal training exceeds the 20000 example bound.".into());
+    }
+    let modalities = crate::model_foundry_training::training_model_modalities(base_model_id)?;
+    let media_dir = job_dir.join("media");
+    fs::create_dir_all(&media_dir)
+        .map_err(|error| format!("Could not create the private media directory: {error}"))?;
+    let mut rows = Vec::with_capacity(examples.len());
+    for (index, example) in examples.iter().enumerate() {
+        let media_type = example.media_type.trim().to_ascii_lowercase();
+        if !matches!(media_type.as_str(), "image" | "video")
+            || !modalities.iter().any(|value| value == &media_type)
+        {
+            return Err(format!(
+                "The selected base model does not support labeled {media_type} training."
+            ));
+        }
+        let prompt = example.prompt.trim();
+        let response = example.response.trim();
+        if prompt.is_empty()
+            || response.is_empty()
+            || prompt.len() > 16_384
+            || response.len() > 16_384
+        {
+            return Err(
+                "Every media example requires a bounded training question and expected answer."
+                    .into(),
+            );
+        }
+        let canonical = PathBuf::from(example.path.trim())
+            .canonicalize()
+            .map_err(|_| "A selected media example is missing or inaccessible.".to_string())?;
+        let metadata = fs::symlink_metadata(&canonical)
+            .map_err(|error| format!("Could not inspect a selected media example: {error}"))?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() {
+            return Err("A selected media example is not a safe regular file.".into());
+        }
+        let extension = canonical
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let extension_ok = match media_type.as_str() {
+            "image" => matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp"),
+            "video" => matches!(extension.as_str(), "mp4" | "mov" | "webm"),
+            _ => false,
+        };
+        if !extension_ok {
+            return Err("A selected media file extension does not match its declared type.".into());
+        }
+        validate_source_size(&canonical, &extension, metadata.len())?;
+        let target = media_dir.join(format!("{index:06}.{extension}"));
+        fs::copy(&canonical, &target)
+            .map_err(|error| format!("Could not copy a selected media example locally: {error}"))?;
+        let source_sha256 = stream_file_sha256(&canonical)?;
+        let copied_sha256 = stream_file_sha256(&target)?;
+        if source_sha256 != copied_sha256 {
+            return Err("A copied media example failed its integrity check.".into());
+        }
+        rows.push(
+            serde_json::json!({
+                "prompt": prompt,
+                "response": response,
+                "mediaType": media_type,
+                "mediaPath": target.to_string_lossy(),
+                "mediaSha256": copied_sha256,
+                "plannedFrames": if media_type == "video" { example.planned_frames.clamp(1, 32) } else { 1 },
+            })
+            .to_string(),
+        );
+    }
+    Ok(rows)
+}
+
+fn split_training_rows(rows: Vec<String>) -> Result<(String, String), String> {
+    if rows.len() < 2 {
+        return Err("Weight training requires at least two reviewed examples so validation remains separate.".into());
+    }
+    let validation_count = (rows.len() / 10).max(1).min(rows.len() - 1);
+    let split_at = rows.len() - validation_count;
+    Ok((rows[..split_at].join("\n"), rows[split_at..].join("\n")))
+}
+
+fn prepare_weight_text_rows(sources: &[PathBuf]) -> Result<Vec<String>, String> {
+    let prepared = clean_chunks(sources)?;
+    let rows = prepared
+        .chunks
+        .into_iter()
+        .map(|chunk| serde_json::json!({ "text": chunk.text }).to_string())
+        .collect::<Vec<_>>();
+    if rows.is_empty() {
+        return Err("The selected documents produced no safe local training text.".into());
+    }
+    Ok(rows)
+}
+
 fn validated_sources(paths: &[String]) -> Result<Vec<PathBuf>, String> {
     if paths.is_empty() {
         return Err("Choose at least one local source with the native picker.".into());
@@ -1623,6 +1750,17 @@ pub fn model_foundry_start_training(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
+    if method == FoundryMethod::Knowledge && !request.training_examples.is_empty() {
+        return Err(
+            "Labeled image and video examples require a verified multimodal weight-training model."
+                .into(),
+        );
+    }
+    if !request.training_examples.is_empty() && inline_dataset.is_some() {
+        return Err(
+            "Inline Dataset Studio exports cannot be mixed with picker-selected media.".into(),
+        );
+    }
     if inline_dataset.is_some() && !request.source_paths.is_empty() {
         return Err(
             "Provide picker-selected sources or an inline Dataset Studio export, not both.".into(),
@@ -1647,24 +1785,62 @@ pub fn model_foundry_start_training(
             })?;
         canonicalized_validation = Some(canonicalize_inline_dataset(validation_dataset, None)?);
         Vec::new()
+    } else if request.source_paths.is_empty() && !request.training_examples.is_empty() {
+        Vec::new()
     } else {
         validated_sources(&request.source_paths)?
     };
     if method == FoundryMethod::Weight
         && inline_dataset.is_none()
-        && (sources.len() != 1
-            || sources[0]
-                .extension()
-                .and_then(|value| value.to_str())
-                .is_none_or(|value| !value.eq_ignore_ascii_case("jsonl")))
+        && sources.is_empty()
+        && request.training_examples.is_empty()
     {
-        return Err("Weight training requires exactly one validated local JSONL dataset.".into());
+        return Err("Weight training requires reviewed local data.".into());
     }
     let id = format!("job_{}", nanoid::nanoid!(14));
     let job_dir = foundry_root(&app)?.join("jobs").join(&id);
     fs::create_dir_all(&job_dir)
         .map_err(|error| format!("Could not create private job directory: {error}"))?;
-    if let Some(canonical_dataset) = canonicalized.as_deref() {
+    let one_jsonl = sources.len() == 1
+        && sources[0]
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.eq_ignore_ascii_case("jsonl"));
+    if method == FoundryMethod::Weight
+        && inline_dataset.is_none()
+        && (!request.training_examples.is_empty() || !one_jsonl)
+    {
+        if sources.iter().any(|source| {
+            source
+                .extension()
+                .and_then(|value| value.to_str())
+                .is_some_and(|value| value.eq_ignore_ascii_case("jsonl"))
+        }) {
+            return Err("Use one reviewed JSONL dataset by itself, or combine documents with labeled media.".into());
+        }
+        let mut rows = if sources.is_empty() {
+            Vec::new()
+        } else {
+            prepare_weight_text_rows(&sources)?
+        };
+        if !request.training_examples.is_empty() {
+            rows.extend(prepare_supervised_media_rows(
+                &request.training_examples,
+                &request.base_model_id,
+                &job_dir,
+            )?);
+        }
+        let (train, validation) = split_training_rows(rows)?;
+        let dataset_path = job_dir.join("dataset.jsonl");
+        write_atomic(&dataset_path, train.as_bytes()).map_err(|error| {
+            format!("Could not store the private prepared training split: {error}")
+        })?;
+        let validation_path = job_dir.join("validation-dataset.jsonl");
+        write_atomic(&validation_path, validation.as_bytes()).map_err(|error| {
+            format!("Could not store the private prepared validation split: {error}")
+        })?;
+        sources = vec![dataset_path];
+    } else if let Some(canonical_dataset) = canonicalized.as_deref() {
         let dataset_path = job_dir.join("dataset.jsonl");
         write_atomic(&dataset_path, canonical_dataset.as_bytes())
             .map_err(|error| format!("Could not store the private inline dataset: {error}"))?;
@@ -2862,5 +3038,47 @@ mod tests {
         assert!(canonicalize_inline_dataset(dataset, Some(&good.to_uppercase())).is_ok());
         let error = canonicalize_inline_dataset(dataset, Some("deadbeef")).unwrap_err();
         assert!(error.contains("fingerprint"));
+    }
+
+    #[test]
+    fn supervised_media_is_copied_hashed_and_split_inside_the_private_job() {
+        let root =
+            std::env::temp_dir().join(format!("vibespace-foundry-media-{}", nanoid::nanoid!()));
+        let source_a = root.join("a.png");
+        let source_b = root.join("b.png");
+        let job = root.join("job");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&source_a, b"first-reviewed-image").unwrap();
+        fs::write(&source_b, b"second-reviewed-image").unwrap();
+        let examples = vec![
+            SupervisedMediaExample {
+                path: source_a.to_string_lossy().into_owned(),
+                media_type: "image".into(),
+                prompt: "What is shown?".into(),
+                response: "The first reviewed frame.".into(),
+                planned_frames: 1,
+            },
+            SupervisedMediaExample {
+                path: source_b.to_string_lossy().into_owned(),
+                media_type: "image".into(),
+                prompt: "What is shown?".into(),
+                response: "The second reviewed frame.".into(),
+                planned_frames: 1,
+            },
+        ];
+
+        let (train, validation) =
+            prepare_supervised_media_dataset(&examples, "smolvlm2-256m-video-instruct", &job)
+                .unwrap();
+
+        assert_eq!(train.lines().count(), 1);
+        assert_eq!(validation.lines().count(), 1);
+        for row in train.lines().chain(validation.lines()) {
+            let value: serde_json::Value = serde_json::from_str(row).unwrap();
+            let media = PathBuf::from(value["mediaPath"].as_str().unwrap());
+            assert!(media.starts_with(job.join("media")));
+            assert_eq!(value["mediaSha256"].as_str().unwrap().len(), 64);
+        }
+        let _ = fs::remove_dir_all(root);
     }
 }

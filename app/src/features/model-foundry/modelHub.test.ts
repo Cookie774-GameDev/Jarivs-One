@@ -5,6 +5,8 @@ import {
   applyTrainingComputePreset,
   defaultFoundryTrainingConfiguration,
   estimateFoundryTrainingDuration,
+  measureTrainingJsonl,
+  measureTrainingText,
   TRAINING_COMPUTE_PRESETS,
   validateFoundryTrainingConfiguration,
   formatFoundryStorageBytes,
@@ -30,6 +32,15 @@ const workstation = {
 };
 
 describe('model foundry domain', () => {
+  it('measures plain local training text without inventing a fixed source count', () => {
+    const measurement = measureTrainingText('a'.repeat(12_001));
+    expect(measurement).toMatchObject({
+      examples: 3,
+      textTokens: 3_001,
+      totalBytes: 12_001,
+      measured: true,
+    });
+  });
   it('creates an explicit reproducible baseline instead of relying on worker defaults', () => {
     expect(defaultFoundryTrainingConfiguration('lora')).toEqual({
       method: 'lora',
@@ -82,26 +93,44 @@ describe('model foundry domain', () => {
     });
   });
 
-  it('returns an honest duration range and makes low-memory slower than faster', () => {
+  it('uses measured examples and tokens and keeps low-memory slower on identical hardware', () => {
+    const measurement = measureTrainingJsonl(
+      [
+        JSON.stringify({ prompt: 'Describe the component', completion: 'A bounded answer.' }),
+        JSON.stringify({ prompt: 'Explain the test', completion: 'A second reviewed answer.' }),
+      ].join('\n'),
+    );
+    expect(measurement).toMatchObject({ examples: 2, mediaExamples: 0 });
+    expect(measurement.textTokens).toBeGreaterThan(10);
     const lowMemory = estimateFoundryTrainingDuration({
       method: 'qlora',
       parametersB: 1.5,
       configuration: applyTrainingComputePreset('qlora', 'low-memory'),
-      hardware: { ...workstation, vramGb: 6 },
-      usableSourceCount: 4,
+      hardware: workstation,
+      measurement,
+    });
+    const balanced = estimateFoundryTrainingDuration({
+      method: 'qlora',
+      parametersB: 1.5,
+      configuration: applyTrainingComputePreset('qlora', 'balanced'),
+      hardware: workstation,
+      measurement,
     });
     const faster = estimateFoundryTrainingDuration({
       method: 'qlora',
       parametersB: 1.5,
       configuration: applyTrainingComputePreset('qlora', 'faster'),
       hardware: workstation,
-      usableSourceCount: 4,
+      measurement,
     });
 
     expect(lowMemory.minimumHours).toBeGreaterThan(0);
     expect(lowMemory.maximumHours).toBeGreaterThan(lowMemory.minimumHours);
+    expect(lowMemory.maximumHours).toBeGreaterThan(balanced.maximumHours);
+    expect(balanced.maximumHours).toBeGreaterThan(faster.maximumHours);
     expect(lowMemory.maximumHours).toBeGreaterThan(faster.maximumHours);
-    expect(lowMemory.disclaimer).toMatch(/estimate/i);
+    expect(lowMemory.basis).toMatch(/2 measured examples/i);
+    expect(lowMemory.disclaimer).toMatch(/calibrated prediction/i);
   });
 
   it('recommends the strongest model that genuinely fits', () => {
@@ -111,17 +140,25 @@ describe('model foundry domain', () => {
   });
 
   it('rejects image training for a text-only base model', () => {
-    expect(classifySource('photo.png', 'qlora', false).use).toBe('unsupported');
-    expect(classifySource('notes.md', 'knowledge', false).use).toBe('retrieval');
-    expect(classifySource('manual.pdf', 'knowledge', false)).toMatchObject({
+    expect(classifySource('photo.png', 'qlora', ['text']).use).toBe('unsupported');
+    expect(classifySource('photo.png', 'qlora', ['text', 'image', 'video']).use).toBe(
+      'fine_tuning',
+    );
+    expect(classifySource('clip.mp4', 'qlora', ['text', 'image', 'video']).use).toBe('fine_tuning');
+    expect(classifySource('notes.md', 'knowledge', ['text']).use).toBe('retrieval');
+    expect(classifySource('notes.md', 'full', ['text'])).toMatchObject({
+      use: 'fine_tuning',
+      explanation: expect.stringMatching(/text-continuation/i),
+    });
+    expect(classifySource('manual.pdf', 'knowledge', ['text'])).toMatchObject({
       kind: 'document',
       use: 'retrieval',
     });
-    expect(classifySource('examples.jsonl', 'qlora', false).use).toBe('fine_tuning');
+    expect(classifySource('examples.jsonl', 'qlora', ['text']).use).toBe('fine_tuning');
   });
 
   it('fails closed for unsupported full tuning and insufficient hardware', () => {
-    const source = classifySource('examples.jsonl', 'qlora', false);
+    const source = classifySource('examples.jsonl', 'qlora', ['text']);
     expect(
       mayStartTraining({
         name: 'Specialist',
@@ -200,7 +237,7 @@ describe('model foundry domain', () => {
         model,
         method: 'lora',
         hardware: workstation,
-        sources: [classifySource('examples.jsonl', 'lora', false)],
+        sources: [classifySource('examples.jsonl', 'lora', ['text'])],
         worker,
       }),
     ).toBeNull();
@@ -307,10 +344,10 @@ describe('model foundry domain', () => {
   });
 
   it('supports packaged document extraction and fails closed when media processors are unavailable', () => {
-    const pdf = classifySource('manual.pdf', 'knowledge', false);
-    const docx = classifySource('manual.docx', 'knowledge', false);
-    const audio = classifySource('recording.wav', 'knowledge', false);
-    const video = classifySource('demo.mp4', 'knowledge', false);
+    const pdf = classifySource('manual.pdf', 'knowledge', ['text']);
+    const docx = classifySource('manual.docx', 'knowledge', ['text']);
+    const audio = classifySource('recording.wav', 'knowledge', ['text']);
+    const video = classifySource('demo.mp4', 'knowledge', ['text']);
     expect(pdf).toMatchObject({ kind: 'document', use: 'retrieval' });
     expect(pdf.explanation).toContain('locally');
     expect(docx).toMatchObject({ kind: 'document', use: 'retrieval' });
@@ -319,12 +356,12 @@ describe('model foundry domain', () => {
     expect(video).toMatchObject({ kind: 'video', use: 'unsupported' });
     expect(video.explanation).toContain('frame');
     expect(
-      classifySource('recording.mp3', 'knowledge', false, 'C:\\recording.mp3', {
+      classifySource('recording.mp3', 'knowledge', ['text'], 'C:\\recording.mp3', {
         transcriptionReady: true,
       }),
     ).toMatchObject({ kind: 'audio', use: 'retrieval' });
     expect(
-      classifySource('demo.mp4', 'knowledge', false, 'C:\\demo.mp4', {
+      classifySource('demo.mp4', 'knowledge', ['text'], 'C:\\demo.mp4', {
         transcriptionReady: true,
       }),
     ).toMatchObject({
@@ -333,11 +370,11 @@ describe('model foundry domain', () => {
       explanation: expect.stringMatching(/audio track|frames/i),
     });
     expect(
-      classifySource('recording.mp3', 'lora', false, 'C:\\recording.mp3', {
+      classifySource('recording.mp3', 'lora', ['text'], 'C:\\recording.mp3', {
         transcriptionReady: true,
       }).use,
     ).toBe('unsupported');
-    expect(classifySource('notes.md', 'knowledge', false).use).toBe('retrieval');
+    expect(classifySource('notes.md', 'knowledge', ['text']).use).toBe('retrieval');
   });
 
   it('recovers safely from corrupted persisted jobs', () => {

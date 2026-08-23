@@ -41,6 +41,76 @@ export interface TrainingComputePreset {
   maxSequenceLength: number;
 }
 
+export interface TrainingDatasetMeasurement {
+  examples: number;
+  textTokens: number;
+  mediaExamples: number;
+  imageExamples: number;
+  videoExamples: number;
+  plannedVideoFrames: number;
+  totalBytes: number;
+  measured: boolean;
+}
+
+export function emptyTrainingMeasurement(): TrainingDatasetMeasurement {
+  return {
+    examples: 0,
+    textTokens: 0,
+    mediaExamples: 0,
+    imageExamples: 0,
+    videoExamples: 0,
+    plannedVideoFrames: 0,
+    totalBytes: 0,
+    measured: false,
+  };
+}
+
+export function measureTrainingJsonl(content: string): TrainingDatasetMeasurement {
+  const measurement = emptyTrainingMeasurement();
+  measurement.totalBytes = new TextEncoder().encode(content).byteLength;
+  for (const line of content.split(/\r?\n/u)) {
+    if (!line.trim()) continue;
+    let value: unknown;
+    try {
+      value = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const record = value as Record<string, unknown>;
+    const prompt = typeof record.prompt === 'string' ? record.prompt.trim() : '';
+    const completionValue = record.completion ?? record.response;
+    const completion = typeof completionValue === 'string' ? completionValue.trim() : '';
+    if (!prompt || !completion) continue;
+    const mediaType = record.mediaType;
+    const isImage = mediaType === 'image';
+    const isVideo = mediaType === 'video';
+    const plannedFrames =
+      isVideo && Number.isSafeInteger(record.plannedFrames)
+        ? Math.max(1, Math.min(32, Number(record.plannedFrames)))
+        : 0;
+    measurement.examples += 1;
+    measurement.textTokens += Math.max(1, Math.ceil((prompt.length + completion.length) / 4));
+    measurement.imageExamples += isImage ? 1 : 0;
+    measurement.videoExamples += isVideo ? 1 : 0;
+    measurement.mediaExamples += isImage || isVideo ? 1 : 0;
+    measurement.plannedVideoFrames += plannedFrames;
+  }
+  measurement.measured = measurement.examples > 0;
+  return measurement;
+}
+
+export function measureTrainingText(content: string): TrainingDatasetMeasurement {
+  const measurement = emptyTrainingMeasurement();
+  const normalized = content.trim();
+  measurement.totalBytes = new TextEncoder().encode(content).byteLength;
+  if (!normalized) return measurement;
+  measurement.examples = Math.max(1, Math.ceil(normalized.length / 6_000));
+  measurement.textTokens = Math.max(1, Math.ceil(normalized.length / 4));
+  measurement.measured = true;
+  return measurement;
+}
+
 export const TRAINING_COMPUTE_PRESETS: readonly TrainingComputePreset[] = [
   {
     id: 'low-memory',
@@ -118,25 +188,24 @@ export function estimateFoundryTrainingDuration(input: {
   parametersB: number;
   configuration: FoundryTrainingConfiguration;
   hardware: HardwareProfile;
-  usableSourceCount: number;
+  measurement: TrainingDatasetMeasurement;
 }): FoundryTrainingDurationEstimate {
-  const sourceCount = Math.max(1, Math.floor(input.usableSourceCount || 1));
-  const estimatedExamples = Math.max(64, sourceCount * 250);
+  const examples = Math.max(1, Math.floor(input.measurement.examples || 1));
+  const measuredTextTokens = Math.max(input.measurement.textTokens, examples * 24);
+  const visualTokens =
+    input.measurement.imageExamples * 512 + input.measurement.plannedVideoFrames * 512;
+  const tokensPerEpoch = Math.max(64, measuredTextTokens + visualTokens);
   const effectiveBatch = Math.max(
     1,
     input.configuration.batchSize * input.configuration.gradientAccumulation,
   );
-  const epochSteps = Math.ceil((estimatedExamples * input.configuration.epochs) / effectiveBatch);
+  const epochSteps = Math.ceil((examples * input.configuration.epochs) / effectiveBatch);
   const optimizationSteps = Math.max(
     1,
     Math.min(input.configuration.maxSteps ?? epochSteps, epochSteps),
   );
-  const processedTokens =
-    optimizationSteps *
-    input.configuration.gradientAccumulation *
-    input.configuration.batchSize *
-    input.configuration.maxSequenceLength *
-    0.65;
+  const averageTokensPerExample = tokensPerEpoch / examples;
+  const processedTokens = optimizationSteps * effectiveBatch * averageTokensPerExample;
   const parametersB = Math.max(0.1, input.parametersB);
   const methodCost = input.method === 'full' ? 3.5 : input.method === 'qlora' ? 1.15 : 1;
   const acceleratorCapacity =
@@ -145,7 +214,34 @@ export function estimateFoundryTrainingDuration(input: {
     acceleratorCapacity > 0
       ? (1_250 * acceleratorCapacity) / (parametersB * methodCost)
       : (45 * Math.max(1, input.hardware.ramGb / 8)) / (parametersB * methodCost);
-  const centralSeconds = processedTokens / Math.max(1, tokenRate);
+  const matchingPreset = TRAINING_COMPUTE_PRESETS.find(
+    (preset) =>
+      preset.batchSize === input.configuration.batchSize &&
+      preset.gradientAccumulation === input.configuration.gradientAccumulation &&
+      preset.maxSequenceLength === input.configuration.maxSequenceLength,
+  )?.id;
+  const computeMultiplier =
+    matchingPreset === 'low-memory'
+      ? 1.8
+      : matchingPreset === 'faster'
+        ? 0.72
+        : matchingPreset === 'balanced'
+          ? 1
+          : Math.max(
+              0.45,
+              Math.min(
+                4,
+                Math.sqrt(input.configuration.gradientAccumulation / 4) /
+                  Math.sqrt(input.configuration.batchSize),
+              ),
+            );
+  const startupSeconds = parametersB * methodCost * (acceleratorCapacity > 0 ? 420 : 1_800);
+  const centralSeconds =
+    (startupSeconds + processedTokens / Math.max(1, tokenRate)) * computeMultiplier;
+  const visualBasis =
+    input.measurement.mediaExamples > 0
+      ? `, ${input.measurement.imageExamples} images and ${input.measurement.plannedVideoFrames} planned video frames`
+      : '';
   return {
     minimumHours: roundedHours(centralSeconds * 0.75),
     maximumHours: Math.max(
@@ -153,9 +249,9 @@ export function estimateFoundryTrainingDuration(input: {
       roundedHours(centralSeconds * 1.8),
     ),
     optimizationSteps,
-    basis: `${sourceCount} source${sourceCount === 1 ? '' : 's'}, ${optimizationSteps.toLocaleString()} planned optimization steps, and the detected ${acceleratorCapacity > 0 ? 'GPU' : 'CPU'}.`,
+    basis: `${examples} measured example${examples === 1 ? '' : 's'}, ${measuredTextTokens.toLocaleString()} measured text tokens${visualBasis}, ${optimizationSteps.toLocaleString()} optimization steps, and the detected ${acceleratorCapacity > 0 ? 'GPU' : 'CPU'}.`,
     disclaimer:
-      'Planning estimate only. Actual time changes with prepared example count, token lengths, cooling, and other computer activity.',
+      'Calibrated prediction from the selected data and requested settings. It tightens after real training telemetry exists; cooling, drivers, and other computer activity can still change the result.',
   };
 }
 
@@ -343,6 +439,7 @@ export interface TrainableModel {
   local: true;
   quality: 'efficient' | 'balanced' | 'high';
   speed: 'fast' | 'medium' | 'slow';
+  modalities?: readonly TrainingModality[];
 }
 
 export function modelFoundryMethodAvailability(
@@ -377,6 +474,10 @@ export interface ClassifiedSource {
   kind: 'document' | 'code' | 'image' | 'audio' | 'video' | 'dataset';
   use: SourceUse;
   explanation: string;
+  supervisedPrompt?: string;
+  expectedAnswer?: string;
+  plannedFrames?: number;
+  measuredJsonl?: TrainingDatasetMeasurement;
 }
 
 export interface FoundryJob {
@@ -420,6 +521,7 @@ export const TRAINABLE_MODELS: readonly TrainableModel[] = [
     local: true,
     quality: 'efficient',
     speed: 'fast',
+    modalities: ['text'],
   },
   {
     id: 'qwen2.5:7b-instruct-q4_K_M',
@@ -433,6 +535,7 @@ export const TRAINABLE_MODELS: readonly TrainableModel[] = [
     local: true,
     quality: 'balanced',
     speed: 'medium',
+    modalities: ['text'],
   },
   {
     id: 'llama3.1:8b-instruct-q4_K_M',
@@ -446,6 +549,7 @@ export const TRAINABLE_MODELS: readonly TrainableModel[] = [
     local: true,
     quality: 'high',
     speed: 'medium',
+    modalities: ['text'],
   },
 ] as const;
 
@@ -510,7 +614,7 @@ const extensions: Record<string, ClassifiedSource['kind']> = {
 export function classifySource(
   name: string,
   method: TrainingMethod,
-  multimodal: boolean,
+  modalities: readonly TrainingModality[],
   path?: string,
   processors: { transcriptionReady?: boolean } = {},
 ): ClassifiedSource {
@@ -544,7 +648,11 @@ export function classifySource(
     method === 'knowledge' &&
     processors.transcriptionReady === true &&
     (kind === 'audio' || kind === 'video');
-  if (!hasVerifiedTextExtractor && !hasVerifiedTranscription) {
+  const hasVerifiedMultimodalTraining =
+    method !== 'knowledge' &&
+    ((kind === 'image' && modalities.includes('image')) ||
+      (kind === 'video' && modalities.includes('video')));
+  if (!hasVerifiedTextExtractor && !hasVerifiedTranscription && !hasVerifiedMultimodalTraining) {
     const explanation =
       kind === 'document'
         ? 'A verified local document extractor for this format is not installed. Convert it to TXT or Markdown; it will not be processed or uploaded as-is.'
@@ -553,9 +661,9 @@ export function classifySource(
           : kind === 'video'
             ? 'Verified local video transcription and frame-caption extraction are not installed. The video will not be processed or uploaded.'
             : kind === 'image'
-              ? multimodal
-                ? 'A verified local multimodal training backend is not installed. The image will not be processed or uploaded.'
-                : 'The selected text model cannot use images. Choose a supported multimodal build path when one becomes available.'
+              ? modalities.includes('image')
+                ? 'The verified local multimodal worker is unavailable. The image will not be processed or uploaded.'
+                : 'The selected base model cannot use images. Choose a model marked Image + Video.'
               : 'A verified local structured-data extractor for this format is not installed. The file will not be processed or uploaded.';
     return {
       name,
@@ -563,6 +671,19 @@ export function classifySource(
       kind,
       use: 'unsupported',
       explanation,
+    };
+  }
+  if (hasVerifiedMultimodalTraining) {
+    return {
+      name,
+      path,
+      kind,
+      use: 'fine_tuning',
+      explanation:
+        kind === 'video'
+          ? 'Video frames will be sampled locally and used only with the supervised question and expected answer you review.'
+          : 'The image will be decoded locally and used only with the supervised question and expected answer you review.',
+      plannedFrames: kind === 'video' ? 8 : undefined,
     };
   }
   if (kind === 'audio' || kind === 'video') {
@@ -587,6 +708,16 @@ export function classifySource(
         method === 'knowledge'
           ? 'Validated and indexed as retrieval knowledge.'
           : 'Validated as structured examples, deduplicated, and split before training.',
+    };
+  }
+  if (method !== 'knowledge') {
+    return {
+      name,
+      path,
+      kind,
+      use: 'fine_tuning',
+      explanation:
+        'Extracted locally as text-continuation training data. For instruction behavior, reviewed prompt/answer JSONL remains the higher-quality choice.',
     };
   }
   return {
@@ -630,6 +761,26 @@ export function mayStartTraining(input: {
     return compatibility?.warning ?? 'The selected model is not compatible.';
   if (!input.sources.some((source) => source.use !== 'unsupported'))
     return 'Attach at least one supported source or dataset.';
+  const incompleteMedia = input.sources.find(
+    (source) =>
+      source.use !== 'unsupported' &&
+      (source.kind === 'image' || source.kind === 'video') &&
+      (!source.supervisedPrompt?.trim() || !source.expectedAnswer?.trim()),
+  );
+  if (incompleteMedia)
+    return `Add a training question and expected answer for ${incompleteMedia.name}.`;
+  if (input.method !== 'knowledge') {
+    const usable = input.sources.filter((source) => source.use !== 'unsupported');
+    const media = usable.filter((source) => source.kind === 'image' || source.kind === 'video');
+    const measuredExamples = usable.reduce(
+      (total, source) => total + (source.measuredJsonl?.examples ?? 0),
+      0,
+    );
+    if (media.length > 0 && measuredExamples === 0 && media.length < 2)
+      return 'Add at least two labeled media examples so validation remains separate.';
+    if (media.length === 0 && measuredExamples > 0 && measuredExamples < 2)
+      return 'Weight training needs at least two reviewed examples so validation remains separate.';
+  }
   return null;
 }
 

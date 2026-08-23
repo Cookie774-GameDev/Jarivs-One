@@ -7,8 +7,10 @@ without requiring torch/transformers to be installed.
 from __future__ import annotations
 
 import importlib.util
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 WORKER_PATH = Path(__file__).resolve().parent / "worker.py"
 
@@ -57,6 +59,61 @@ class ExampleShapingTests(unittest.TestCase):
         record = {"text": "  A plain note.  "}
         self.assertEqual(self.worker._example_text(record), "A plain note.")
         self.assertEqual(self.worker._example_prompt_prefix(record), "")
+
+
+class LocalMediaDecodeTests(unittest.TestCase):
+    def setUp(self):
+        self.worker = load_worker()
+
+    def test_decodes_a_local_image_as_rgb(self):
+        from PIL import Image
+
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "frame.png"
+            Image.new("RGBA", (4, 3), (1, 2, 3, 255)).save(path)
+
+            frames = self.worker._load_media_frames(
+                {"mediaType": "image", "mediaPath": str(path), "plannedFrames": 1}
+            )
+
+            self.assertEqual(len(frames), 1)
+            self.assertEqual(frames[0].mode, "RGB")
+            self.assertEqual(frames[0].size, (4, 3))
+
+    def test_samples_video_across_the_reported_frame_range(self):
+        class FakeImage:
+            def __init__(self, index):
+                self.index = index
+
+            def convert(self, _mode):
+                return self
+
+        class FakeFrame:
+            def __init__(self, index):
+                self.index = index
+
+            def to_image(self):
+                return FakeImage(self.index)
+
+        class FakeContainer:
+            def __init__(self):
+                self.streams = type("Streams", (), {"video": [type("Stream", (), {"frames": 5})()]})()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def decode(self, _stream):
+                return [FakeFrame(index) for index in range(5)]
+
+        with patch("av.open", return_value=FakeContainer()):
+            frames = self.worker._load_media_frames(
+                {"mediaType": "video", "mediaPath": "C:/private/clip.mp4", "plannedFrames": 3}
+            )
+
+        self.assertEqual([frame.index for frame in frames], [0, 2, 4])
 
 
 if __name__ == "__main__":

@@ -105,6 +105,7 @@ pub(crate) struct TrainingCatalogModel {
     pub(crate) expected_vram_gb: u16,
     pub(crate) context_tokens: u32,
     pub(crate) precision: String,
+    pub(crate) modalities: Vec<String>,
     pub(crate) speed: String,
     pub(crate) quality: String,
     pub(crate) cpu_practical: bool,
@@ -200,6 +201,12 @@ pub(crate) fn training_catalog() -> Result<Vec<TrainingCatalogModel>, String> {
             || model.expected_ram_gb == 0
             || model.expected_vram_gb == 0
             || model.context_tokens == 0
+            || model.modalities.is_empty()
+            || !model
+                .modalities
+                .iter()
+                .all(|modality| matches!(modality.as_str(), "text" | "image" | "video" | "audio"))
+            || !model.modalities.iter().any(|modality| modality == "text")
             || !matches!(model.speed.as_str(), "fast" | "medium" | "slow")
             || !matches!(model.quality.as_str(), "efficient" | "balanced" | "high")
             || model.files.is_empty()
@@ -411,6 +418,14 @@ pub(crate) fn training_model_id_allowed(base_model_id: &str) -> bool {
         .unwrap_or(false)
 }
 
+pub(crate) fn training_model_modalities(base_model_id: &str) -> Result<Vec<String>, String> {
+    training_catalog()?
+        .into_iter()
+        .find(|model| model.id == base_model_id)
+        .map(|model| model.modalities)
+        .ok_or_else(|| "The selected trainable base model is not in the verified catalog.".into())
+}
+
 pub(crate) fn training_model_parameters_b(base_model_id: &str) -> Result<f64, String> {
     training_catalog()?
         .into_iter()
@@ -544,6 +559,7 @@ struct TrainingRunRequest {
     local_only: bool,
     method: String,
     base_model_path: String,
+    model_modalities: Vec<String>,
     dataset_path: String,
     validation_dataset_path: String,
     output_dir: String,
@@ -1750,6 +1766,7 @@ pub(crate) fn run_training_worker(
         local_only: true,
         method: method.to_string(),
         base_model_path: model.to_string_lossy().into_owned(),
+        model_modalities: model_manifest.modalities.clone(),
         dataset_path: dataset.to_string_lossy().into_owned(),
         validation_dataset_path: validation_dataset.to_string_lossy().into_owned(),
         output_dir: output.to_string_lossy().into_owned(),
@@ -2109,6 +2126,7 @@ mod tests {
             expected_vram_gb: 1,
             context_tokens: 1024,
             precision: "BF16 safetensors".into(),
+            modalities: vec!["text".into()],
             speed: "fast".into(),
             quality: "efficient".into(),
             cpu_practical: true,
@@ -2465,13 +2483,21 @@ mod tests {
     #[test]
     fn training_catalog_is_pinned_public_and_hash_complete() {
         let catalog = training_catalog().unwrap();
-        assert_eq!(catalog.len(), 8);
+        assert_eq!(catalog.len(), 10);
         assert!(catalog
             .iter()
             .any(|model| model.id == "qwen2.5-coder-0.5b-instruct"));
         assert!(catalog
             .iter()
             .any(|model| model.id == "qwen2.5-math-1.5b-instruct"));
+        let multimodal = catalog
+            .iter()
+            .filter(|model| model.modalities == ["text", "image", "video"])
+            .collect::<Vec<_>>();
+        assert_eq!(multimodal.len(), 2);
+        assert!(multimodal
+            .iter()
+            .all(|model| model.source_id.starts_with("HuggingFaceTB/SmolVLM2-")));
         for model in catalog {
             assert_eq!(model.license, "apache-2.0");
             assert!(!model.gated);
@@ -2482,6 +2508,7 @@ mod tests {
                 .all(|character| character.is_ascii_hexdigit()));
             assert!(model.source_id.contains('/'));
             assert!(model.download_bytes > 0);
+            assert!(model.modalities.iter().any(|value| value == "text"));
             assert!(model
                 .files
                 .iter()

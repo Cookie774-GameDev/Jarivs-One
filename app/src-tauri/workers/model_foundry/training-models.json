@@ -1,8 +1,160 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-08-08",
+  "updatedAt": "2026-08-22",
   "sourceHost": "huggingface.co",
   "models": [
+    {
+      "id": "smolvlm2-256m-video-instruct",
+      "label": "SmolVLM2 256M Video Instruct",
+      "sourceId": "HuggingFaceTB/SmolVLM2-256M-Video-Instruct",
+      "revision": "067788b187b95ebe7b2e040b3e4299e342e5b8fd",
+      "license": "apache-2.0",
+      "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+      "gated": false,
+      "parametersB": 0.256,
+      "downloadBytes": 1030848071,
+      "expectedRamGb": 8,
+      "expectedVramGb": 4,
+      "contextTokens": 16384,
+      "precision": "BF16 safetensors · image + video understanding",
+      "modalities": ["text", "image", "video"],
+      "speed": "fast",
+      "quality": "efficient",
+      "cpuPractical": true,
+      "files": [
+        {
+          "path": "chat_template.json",
+          "bytes": 430,
+          "sha256": "b585e3598909a5687f9f9d738d35223724dedef256b9b274e1cbfb32b13c74bf"
+        },
+        {
+          "path": "config.json",
+          "bytes": 3812,
+          "sha256": "756cb7d37d7659c9d5a71c563f9d2530f9dd674ab7e909d8d0dd5b1a2d3e8317"
+        },
+        {
+          "path": "generation_config.json",
+          "bytes": 136,
+          "sha256": "34835060c9f0f74d1acb456cc72ca32746d3843d9eb5f578f9cbffac1d2eb840"
+        },
+        {
+          "path": "merges.txt",
+          "bytes": 466391,
+          "sha256": "0b54e8aa4e53d5383e2e4bc635a56b43f9647f7b13832d5d9ecd8f82dac4f510"
+        },
+        {
+          "path": "model.safetensors",
+          "bytes": 1025998224,
+          "sha256": "dcc8f4c00d30d70bb3028a1bfc373e1b1972e25919f8788183cae4ae72431ce2"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "bytes": 599,
+          "sha256": "149e315d9410368e5491455bb06e0f763426e9e56cca731c13b24404a29b6374"
+        },
+        {
+          "path": "processor_config.json",
+          "bytes": 67,
+          "sha256": "f3ad45028447b3562b4752be0d5916d6806c1ef589091a469608dcf0faa1737c"
+        },
+        {
+          "path": "special_tokens_map.json",
+          "bytes": 868,
+          "sha256": "2dfea2a426162316ff1567c82bc6d36d9690cd9f90455f075c77daca78b45c60"
+        },
+        {
+          "path": "tokenizer.json",
+          "bytes": 3548256,
+          "sha256": "5ece781dc8d2b2f3e2f289ca0ae50b17cfc27dd27bfe7971bb8241e0b964331a"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 28626,
+          "sha256": "dd9ce2ab89a3dd881bd9378f1a79b943a064b9275a7e1706d5b7b47b68977913"
+        },
+        {
+          "path": "vocab.json",
+          "bytes": 800662,
+          "sha256": "82b84012e3add4d01d12ba14442026e49b8cbbaead1f79ecf3d919784f82dc79"
+        }
+      ]
+    },
+    {
+      "id": "smolvlm2-500m-video-instruct",
+      "label": "SmolVLM2 500M Video Instruct",
+      "sourceId": "HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+      "revision": "7b375e1b73b11138ff12fe22c8f2822d8fe03467",
+      "license": "apache-2.0",
+      "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+      "gated": false,
+      "parametersB": 0.5,
+      "downloadBytes": 2034840426,
+      "expectedRamGb": 12,
+      "expectedVramGb": 6,
+      "contextTokens": 16384,
+      "precision": "BF16 safetensors · image + video understanding",
+      "modalities": ["text", "image", "video"],
+      "speed": "medium",
+      "quality": "balanced",
+      "cpuPractical": false,
+      "files": [
+        {
+          "path": "chat_template.json",
+          "bytes": 430,
+          "sha256": "b585e3598909a5687f9f9d738d35223724dedef256b9b274e1cbfb32b13c74bf"
+        },
+        {
+          "path": "config.json",
+          "bytes": 3767,
+          "sha256": "ea6bc1237e96247f6258de3e202e2e62b93d6f386dc47e7b36b5588bf3a15e17"
+        },
+        {
+          "path": "generation_config.json",
+          "bytes": 136,
+          "sha256": "34835060c9f0f74d1acb456cc72ca32746d3843d9eb5f578f9cbffac1d2eb840"
+        },
+        {
+          "path": "merges.txt",
+          "bytes": 466391,
+          "sha256": "0b54e8aa4e53d5383e2e4bc635a56b43f9647f7b13832d5d9ecd8f82dac4f510"
+        },
+        {
+          "path": "model.safetensors",
+          "bytes": 2029990624,
+          "sha256": "b9bfd456c9472c0acd5719d6e514c4b859891af205ee1a736552fd3497b8b0c3"
+        },
+        {
+          "path": "preprocessor_config.json",
+          "bytes": 599,
+          "sha256": "149e315d9410368e5491455bb06e0f763426e9e56cca731c13b24404a29b6374"
+        },
+        {
+          "path": "processor_config.json",
+          "bytes": 67,
+          "sha256": "f3ad45028447b3562b4752be0d5916d6806c1ef589091a469608dcf0faa1737c"
+        },
+        {
+          "path": "special_tokens_map.json",
+          "bytes": 868,
+          "sha256": "2dfea2a426162316ff1567c82bc6d36d9690cd9f90455f075c77daca78b45c60"
+        },
+        {
+          "path": "tokenizer.json",
+          "bytes": 3548256,
+          "sha256": "5ece781dc8d2b2f3e2f289ca0ae50b17cfc27dd27bfe7971bb8241e0b964331a"
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 28626,
+          "sha256": "dd9ce2ab89a3dd881bd9378f1a79b943a064b9275a7e1706d5b7b47b68977913"
+        },
+        {
+          "path": "vocab.json",
+          "bytes": 800662,
+          "sha256": "82b84012e3add4d01d12ba14442026e49b8cbbaead1f79ecf3d919784f82dc79"
+        }
+      ]
+    },
     {
       "id": "smollm2-135m-instruct",
       "label": "SmolLM2 135M Instruct",
@@ -17,6 +169,7 @@
       "expectedVramGb": 2,
       "contextTokens": 8192,
       "precision": "BF16 safetensors",
+      "modalities": ["text"],
       "speed": "fast",
       "quality": "efficient",
       "cpuPractical": true,
@@ -77,6 +230,7 @@
       "expectedVramGb": 3,
       "contextTokens": 8192,
       "precision": "BF16 safetensors",
+      "modalities": ["text"],
       "speed": "fast",
       "quality": "efficient",
       "cpuPractical": true,
@@ -137,6 +291,7 @@
       "expectedVramGb": 8,
       "contextTokens": 8192,
       "precision": "BF16 safetensors",
+      "modalities": ["text"],
       "speed": "medium",
       "quality": "balanced",
       "cpuPractical": false,
@@ -197,6 +352,7 @@
       "expectedVramGb": 4,
       "contextTokens": 32768,
       "precision": "BF16 safetensors",
+      "modalities": ["text"],
       "speed": "fast",
       "quality": "balanced",
       "cpuPractical": true,
@@ -252,6 +408,7 @@
       "expectedVramGb": 8,
       "contextTokens": 32768,
       "precision": "BF16 safetensors",
+      "modalities": ["text"],
       "speed": "medium",
       "quality": "high",
       "cpuPractical": false,
@@ -307,6 +464,7 @@
       "expectedVramGb": 4,
       "contextTokens": 32768,
       "precision": "BF16 safetensors · code specialist",
+      "modalities": ["text"],
       "speed": "fast",
       "quality": "balanced",
       "cpuPractical": true,
@@ -362,6 +520,7 @@
       "expectedVramGb": 8,
       "contextTokens": 32768,
       "precision": "BF16 safetensors · code specialist",
+      "modalities": ["text"],
       "speed": "medium",
       "quality": "high",
       "cpuPractical": false,
@@ -417,6 +576,7 @@
       "expectedVramGb": 8,
       "contextTokens": 32768,
       "precision": "BF16 safetensors · math specialist",
+      "modalities": ["text"],
       "speed": "medium",
       "quality": "high",
       "cpuPractical": false,

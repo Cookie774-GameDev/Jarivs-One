@@ -29,6 +29,7 @@ ALLOWED_REQUEST_KEYS = frozenset(
         "localOnly",
         "method",
         "baseModelPath",
+        "modelModalities",
         "datasetPath",
         "validationDatasetPath",
         "outputDir",
@@ -82,6 +83,8 @@ def probe() -> int:
         "peft",
         "trl",
         "bitsandbytes",
+        "PIL",
+        "av",
     ):
         try:
             module = __import__(name)
@@ -135,6 +138,7 @@ def probe() -> int:
         methods.append("qlora")
         precisions.extend(("int8", "int4"))
     ready = bool(methods)
+    media_ready = bool(ready and packages.get("PIL") and packages.get("av"))
     print(
         json.dumps(
             {
@@ -143,7 +147,7 @@ def probe() -> int:
                 "ready": ready,
                 "packages": packages,
                 "methods": methods,
-                "modalities": ["text"] if ready else [],
+                "modalities": (["text", "image", "video"] if media_ready else ["text"]) if ready else [],
                 "precisions": list(dict.fromkeys(precisions)),
                 "reason": (
                     None
@@ -170,6 +174,14 @@ def _read_request(request_path: str) -> tuple[dict[str, Any], dict[str, Any]]:
     if method not in ALLOWED_METHODS:
         _fail("Training method is not supported.")
     model = _absolute_path(payload.get("baseModelPath"), "baseModelPath")
+    model_modalities = payload.get("modelModalities", ["text"])
+    if (
+        not isinstance(model_modalities, list)
+        or not model_modalities
+        or "text" not in model_modalities
+        or any(value not in ("text", "image", "video", "audio") for value in model_modalities)
+    ):
+        _fail("Verified model modalities are invalid.")
     dataset = _absolute_path(payload.get("datasetPath"), "datasetPath")
     schema_version = payload.get("schemaVersion", 1)
     if schema_version not in (1, 2):
@@ -309,6 +321,32 @@ def _read_request(request_path: str) -> tuple[dict[str, Any], dict[str, Any]]:
                     _fail(
                         f"{label} line {line_number} needs non-empty text or prompt/response fields."
                     )
+                media_type = record.get("mediaType")
+                if media_type is not None:
+                    if media_type not in ("image", "video") or media_type not in model_modalities:
+                        _fail(f"{label} line {line_number} uses an unsupported model modality.")
+                    media_path = _absolute_path(record.get("mediaPath"), "mediaPath")
+                    expected_sha256 = record.get("mediaSha256")
+                    planned_frames = record.get("plannedFrames", 1)
+                    suffixes = (
+                        frozenset((".png", ".jpg", ".jpeg", ".webp"))
+                        if media_type == "image"
+                        else frozenset((".mp4", ".mov", ".webm"))
+                    )
+                    if (
+                        not media_path.is_file()
+                        or media_path.is_symlink()
+                        or not media_path.is_relative_to(path.parent)
+                        or media_path.suffix.lower() not in suffixes
+                        or not isinstance(expected_sha256, str)
+                        or len(expected_sha256) != 64
+                        or any(character not in "0123456789abcdefABCDEF" for character in expected_sha256)
+                        or _sha256_file(media_path).lower() != expected_sha256.lower()
+                        or not isinstance(planned_frames, int)
+                        or isinstance(planned_frames, bool)
+                        or not 1 <= planned_frames <= 32
+                    ):
+                        _fail(f"{label} line {line_number} has unsafe or altered local media.")
                 examples += 1
                 if examples > MAX_EXAMPLES:
                     _fail(f"{label} exceeds the safe example limit.")
@@ -330,6 +368,7 @@ def _read_request(request_path: str) -> tuple[dict[str, Any], dict[str, Any]]:
         ),
         "trainingConfig": config,
         "targetModules": target_modules,
+        "modelModalities": model_modalities,
     }
     summary = {
         "protocol": PROTOCOL,
@@ -339,6 +378,7 @@ def _read_request(request_path: str) -> tuple[dict[str, Any], dict[str, Any]]:
         "examples": examples,
         "validationExamples": validation_examples,
         "trainingConfig": config,
+        "modelModalities": model_modalities,
     }
     return normalized, summary
 
@@ -371,6 +411,50 @@ def completion_only_labels(input_ids: list[int], prompt_token_count: int) -> lis
     return [-100] * masked + list(input_ids[masked:])
 
 
+def _load_media_frames(record: dict[str, Any]) -> list[Any]:
+    """Decode one verified local image or uniformly sample bounded video frames."""
+    from PIL import Image
+
+    path = Path(str(record["mediaPath"]))
+    if record.get("mediaType") == "image":
+        with Image.open(path) as image:
+            return [image.convert("RGB").copy()]
+    import av
+
+    planned = int(record.get("plannedFrames", 8))
+    frames: list[Any] = []
+    with av.open(str(path), mode="r") as container:
+        stream = container.streams.video[0]
+        total = int(stream.frames or 0)
+        if total > 0:
+            targets = {
+                round(index * max(0, total - 1) / max(1, planned - 1))
+                for index in range(planned)
+            }
+            for index, frame in enumerate(container.decode(stream)):
+                if index in targets:
+                    frames.append(frame.to_image().convert("RGB"))
+                if len(frames) >= min(planned, total):
+                    break
+        else:
+            import random
+
+            reservoir: list[tuple[int, Any]] = []
+            generator = random.Random(7)
+            for index, frame in enumerate(container.decode(stream)):
+                image = frame.to_image().convert("RGB")
+                if len(reservoir) < planned:
+                    reservoir.append((index, image))
+                else:
+                    replacement = generator.randint(0, index)
+                    if replacement < planned:
+                        reservoir[replacement] = (index, image)
+            frames = [image for _, image in sorted(reservoir)]
+    if not frames:
+        _fail("A verified local video example contains no decodable frames.")
+    return frames
+
+
 def train(request_path: str) -> int:
     request, summary = _read_request(request_path)
 
@@ -384,6 +468,8 @@ def train(request_path: str) -> int:
         import torch
         from transformers import (
             AutoModelForCausalLM,
+            AutoModelForImageTextToText,
+            AutoProcessor,
             AutoTokenizer,
             DataCollatorForSeq2Seq,
             Trainer,
@@ -401,6 +487,18 @@ def train(request_path: str) -> int:
         _fail("Output directory already exists; choose a new version directory.")
     if resume_checkpoint and not output_dir.is_dir():
         _fail("Resume output directory is unavailable.")
+
+    def load_records(path: str) -> list[dict[str, Any]]:
+        records: list[dict[str, Any]] = []
+        with Path(path).open("r", encoding="utf-8") as stream:
+            for line in stream:
+                if line.strip():
+                    records.append(json.loads(line))
+        return records
+
+    dataset = load_records(str(request["datasetPath"]))
+    validation_dataset = load_records(str(request["validationDatasetPath"]))
+    multimodal = any(record.get("mediaType") in ("image", "video") for record in dataset + validation_dataset)
 
     model_kwargs: dict[str, Any] = {
         "local_files_only": True,
@@ -434,14 +532,25 @@ def train(request_path: str) -> int:
             else torch.float16
         )
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_path,
-        local_files_only=True,
-        trust_remote_code=False,
-    )
+    processor = None
+    if multimodal:
+        processor = AutoProcessor.from_pretrained(
+            model_path, local_files_only=True, trust_remote_code=False
+        )
+        tokenizer = processor.tokenizer
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_path,
+            local_files_only=True,
+            trust_remote_code=False,
+        )
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
-    model = AutoModelForCausalLM.from_pretrained(model_path, **model_kwargs)
+    model = (
+        AutoModelForImageTextToText.from_pretrained(model_path, **model_kwargs)
+        if multimodal
+        else AutoModelForCausalLM.from_pretrained(model_path, **model_kwargs)
+    )
 
     if method in ("lora", "qlora"):
         try:
@@ -458,20 +567,9 @@ def train(request_path: str) -> int:
                 lora_dropout=float(config["loraDropout"]),
                 bias="none",
                 task_type="CAUSAL_LM",
-                target_modules=request.get("targetModules"),
+                target_modules=request.get("targetModules") or ("all-linear" if multimodal else None),
             ),
         )
-
-    def load_records(path: str) -> list[dict[str, Any]]:
-        records: list[dict[str, Any]] = []
-        with Path(path).open("r", encoding="utf-8") as stream:
-            for line in stream:
-                if line.strip():
-                    records.append(json.loads(line))
-        return records
-
-    dataset = load_records(str(request["datasetPath"]))
-    validation_dataset = load_records(str(request["validationDatasetPath"]))
 
     max_length = min(
         int(getattr(tokenizer, "model_max_length", config["maxSequenceLength"])),
@@ -479,6 +577,41 @@ def train(request_path: str) -> int:
     )
 
     def tokenize(record: dict[str, Any]) -> dict[str, Any]:
+        if record.get("mediaType") in ("image", "video"):
+            if processor is None:
+                _fail("The verified multimodal processor is unavailable.")
+            frames = _load_media_frames(record)
+            media_content = [{"type": "image"} for _ in frames]
+            user_content = [*media_content, {"type": "text", "text": str(record["prompt"]).strip()}]
+            prompt_messages = [{"role": "user", "content": user_content}]
+            full_messages = [
+                *prompt_messages,
+                {"role": "assistant", "content": [{"type": "text", "text": str(record.get("response", record.get("completion"))).strip()}]},
+            ]
+            prompt_text = processor.apply_chat_template(prompt_messages, add_generation_prompt=True)
+            full_text = processor.apply_chat_template(full_messages, add_generation_prompt=False)
+            encoded_batch = processor(
+                text=full_text,
+                images=frames,
+                truncation=True,
+                max_length=max_length,
+                return_tensors="pt",
+            )
+            prompt_batch = processor(
+                text=prompt_text,
+                images=frames,
+                truncation=True,
+                max_length=max_length,
+                return_tensors="pt",
+            )
+            encoded = {key: value.squeeze(0) for key, value in encoded_batch.items()}
+            encoded["labels"] = torch.tensor(
+                completion_only_labels(
+                    encoded["input_ids"].tolist(), int(prompt_batch["input_ids"].shape[-1])
+                ),
+                dtype=torch.long,
+            )
+            return encoded
         encoded = tokenizer(
             _example_text(record),
             truncation=True,
@@ -506,6 +639,34 @@ def train(request_path: str) -> int:
 
         def __getitem__(self, index: int) -> dict[str, Any]:
             return self.rows[index]
+
+    class MultimodalCollator:
+        def __call__(self, features: list[dict[str, Any]]) -> dict[str, Any]:
+            text_rows = [
+                {key: row[key] for key in ("input_ids", "attention_mask", "labels") if key in row}
+                for row in features
+            ]
+            batch = DataCollatorForSeq2Seq(
+                tokenizer=tokenizer, padding=True, label_pad_token_id=-100
+            )(text_rows)
+            tensor_keys = set().union(*(set(row) for row in features)) - {
+                "input_ids", "attention_mask", "labels"
+            }
+            for key in tensor_keys:
+                template = next(row[key] for row in features if key in row)
+                values = [
+                    row.get(key, template.new_zeros((0, *template.shape[1:])))
+                    for row in features
+                ]
+                maximum = max(value.shape[0] for value in values)
+                padded = []
+                for value in values:
+                    if value.shape[0] < maximum:
+                        padding = value.new_zeros((maximum - value.shape[0], *value.shape[1:]))
+                        value = torch.cat((value, padding), dim=0)
+                    padded.append(value)
+                batch[key] = torch.stack(padded)
+            return batch
     output_dir.mkdir(parents=True, exist_ok=bool(resume_checkpoint))
     use_bf16 = bool(
         torch.cuda.is_available()
@@ -539,16 +700,22 @@ def train(request_path: str) -> int:
         args=arguments,
         train_dataset=ListDataset(tokenized),
         eval_dataset=ListDataset(tokenized_validation),
-        data_collator=DataCollatorForSeq2Seq(
-            tokenizer=tokenizer,
-            padding=True,
-            label_pad_token_id=-100,
+        data_collator=(
+            MultimodalCollator()
+            if multimodal
+            else DataCollatorForSeq2Seq(
+                tokenizer=tokenizer,
+                padding=True,
+                label_pad_token_id=-100,
+            )
         ),
     )
-    trainer.train(resume_from_checkpoint=resume_checkpoint or None)
+    training_result = trainer.train(resume_from_checkpoint=resume_checkpoint or None)
     evaluation_metrics = trainer.evaluate()
     trainer.save_model(str(output_dir))
     tokenizer.save_pretrained(str(output_dir))
+    if processor is not None:
+        processor.save_pretrained(str(output_dir))
     (output_dir / "vibespace-training.json").write_text(
         json.dumps(
             {
@@ -575,6 +742,11 @@ def train(request_path: str) -> int:
                 "evaluationMetrics": {
                     key: value
                     for key, value in evaluation_metrics.items()
+                    if isinstance(value, (int, float))
+                },
+                "trainingMetrics": {
+                    key: value
+                    for key, value in training_result.metrics.items()
                     if isinstance(value, (int, float))
                 },
             },
@@ -664,6 +836,7 @@ def _read_inference_request(request_path: str) -> dict[str, Any]:
         "artifactPath": str(artifact),
         "responsePath": str(response),
         "messages": normalized_messages,
+        "modelModalities": metadata.get("modelModalities", ["text"]),
         "maxOutputTokens": _bounded_integer(
             payload.get("maxOutputTokens"), "maxOutputTokens", 1, 4096
         ),
@@ -677,28 +850,45 @@ def infer(request_path: str) -> int:
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     try:
         import torch
-        from transformers import AutoModelForCausalLM, AutoTokenizer
+        from transformers import (
+            AutoModelForCausalLM,
+            AutoModelForImageTextToText,
+            AutoProcessor,
+            AutoTokenizer,
+        )
     except Exception as error:
         _fail(f"Verified local inference libraries are unavailable: {type(error).__name__}.")
 
     model_path = str(request["baseModelPath"])
     artifact_path = str(request["artifactPath"])
     method = str(request["method"])
-    tokenizer = AutoTokenizer.from_pretrained(
-        artifact_path,
-        local_files_only=True,
-        trust_remote_code=False,
+    multimodal = any(
+        value in ("image", "video") for value in request.get("modelModalities", [])
+    )
+    processor = (
+        AutoProcessor.from_pretrained(
+            artifact_path, local_files_only=True, trust_remote_code=False
+        )
+        if multimodal
+        else None
+    )
+    tokenizer = (
+        processor.tokenizer
+        if processor is not None
+        else AutoTokenizer.from_pretrained(
+            artifact_path,
+            local_files_only=True,
+            trust_remote_code=False,
+        )
     )
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
     if tokenizer.pad_token_id is None or tokenizer.eos_token_id is None:
         _fail("The trained model tokenizer has no safe generation boundary.")
     model_source = artifact_path if method == "full" else model_path
-    model = AutoModelForCausalLM.from_pretrained(
-        model_source,
-        local_files_only=True,
-        trust_remote_code=False,
-        torch_dtype="auto",
+    model_class = AutoModelForImageTextToText if multimodal else AutoModelForCausalLM
+    model = model_class.from_pretrained(
+        model_source, local_files_only=True, trust_remote_code=False, torch_dtype="auto"
     )
     if method in ("lora", "qlora"):
         try:
@@ -730,11 +920,21 @@ def infer(request_path: str) -> int:
     configured_context = int(getattr(model.config, "max_position_embeddings", 4096))
     context_tokens = max(256, min(configured_context, 16384))
     output_budget = min(int(request["maxOutputTokens"]), context_tokens - 1)
-    encoded = tokenizer(
-        prompt,
-        return_tensors="pt",
-        truncation=True,
-        max_length=context_tokens - output_budget,
+    encoded = (
+        processor(
+            text=prompt,
+            images=None,
+            return_tensors="pt",
+            truncation=True,
+            max_length=context_tokens - output_budget,
+        )
+        if processor is not None
+        else tokenizer(
+            prompt,
+            return_tensors="pt",
+            truncation=True,
+            max_length=context_tokens - output_budget,
+        )
     )
     encoded = {key: value.to(device) for key, value in encoded.items()}
     input_tokens = int(encoded["input_ids"].shape[-1])

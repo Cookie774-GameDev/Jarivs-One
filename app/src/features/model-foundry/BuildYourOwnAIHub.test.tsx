@@ -28,6 +28,7 @@ const verifiedModel: VerifiedTrainingModel = {
   expectedVramGb: 2,
   contextTokens: 8192,
   precision: 'BF16 safetensors',
+  modalities: ['text'],
   speed: 'fast',
   quality: 'efficient',
   cpuPractical: true,
@@ -74,7 +75,7 @@ describe('BuildYourOwnAIHub', () => {
     });
   });
 
-  it('explains packaged PDF text support without claiming OCR or native multimodality', () => {
+  it('explains document and labeled media training without claiming media generation', () => {
     render(<BuildYourOwnAIHub open onOpenChange={vi.fn()} />);
 
     expect(screen.getByText(/PDF and DOCX text are extracted locally/i)).toBeTruthy();
@@ -82,7 +83,7 @@ describe('BuildYourOwnAIHub', () => {
       screen.getByText(/Scanned\/image-only PDFs need a verified OCR processor/i),
     ).toBeTruthy();
     expect(
-      screen.getByText(/video frames and native audio\/video generation are not claimed/i),
+      screen.getByText(/produce text answers; image, audio, and video generation are not claimed/i),
     ).toBeTruthy();
   });
 
@@ -293,7 +294,7 @@ describe('BuildYourOwnAIHub', () => {
     expect(screen.getByRole('button', { name: /^Low memory/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Balanced/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Faster/i })).toBeTruthy();
-    expect(screen.getByText(/Estimated training time:/i)).toBeTruthy();
+    expect(screen.getByText(/receive a measured prediction/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^Low memory/i }));
     fireEvent.click(screen.getByText(/Advanced reproducible settings/i));
     expect((screen.getByLabelText('Seed') as HTMLInputElement).value).toBe('7');

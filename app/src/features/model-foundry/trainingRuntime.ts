@@ -47,6 +47,7 @@ export interface VerifiedTrainingModel {
   expectedVramGb: number;
   contextTokens: number;
   precision: string;
+  modalities: TrainingModality[];
   speed: 'fast' | 'medium' | 'slow';
   quality: 'efficient' | 'balanced' | 'high';
   cpuPractical: boolean;
@@ -72,6 +73,7 @@ export function verifiedTrainingModelToTrainableModel(
     local: true,
     quality: model.quality,
     speed: model.speed,
+    modalities: model.modalities,
   };
 }
 
@@ -197,6 +199,13 @@ function normalizeVerifiedTrainingModel(entry: unknown): VerifiedTrainingModel {
     typeof entry.contextTokens !== 'number' ||
     !('precision' in entry) ||
     typeof entry.precision !== 'string' ||
+    !('modalities' in entry) ||
+    !Array.isArray(entry.modalities) ||
+    entry.modalities.length === 0 ||
+    filterValues(
+      entry.modalities.filter((value): value is string => typeof value === 'string'),
+      MODALITIES,
+    ).length !== entry.modalities.length ||
     !('speed' in entry) ||
     !['fast', 'medium', 'slow'].includes(String(entry.speed)) ||
     !('quality' in entry) ||
@@ -228,6 +237,7 @@ function normalizeVerifiedTrainingModel(entry: unknown): VerifiedTrainingModel {
     expectedVramGb: entry.expectedVramGb,
     contextTokens: entry.contextTokens,
     precision: entry.precision,
+    modalities: filterValues(entry.modalities as string[], MODALITIES),
     speed: String(entry.speed) as VerifiedTrainingModel['speed'],
     quality: String(entry.quality) as VerifiedTrainingModel['quality'],
     cpuPractical: entry.cpuPractical,

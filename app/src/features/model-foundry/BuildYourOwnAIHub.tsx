@@ -6,17 +6,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { readTextFile } from '@/lib/fs';
 import {
   classifySource,
   compatibleModels,
   applyTrainingComputePreset,
   defaultFoundryTrainingConfiguration,
   estimateFoundryTrainingDuration,
+  emptyTrainingMeasurement,
   formatFoundryStorageBytes,
   foundryModelOptions,
   isModelInstalled,
   loadJobs,
   mayStartTraining,
+  measureTrainingJsonl,
+  measureTrainingText,
   modelFoundryMethodAvailability,
   newlyCompletedJobId,
   planLocalTrainingMethod,
@@ -277,6 +281,15 @@ export function BuildYourOwnAIHub({
     method === 'knowledge'
       ? null
       : (trainingCatalog.find((model) => model.id === selectedModel.id) ?? null);
+  const availableTrainingModalities = React.useMemo(
+    () =>
+      method === 'knowledge'
+        ? (['text'] as const)
+        : (selectedModel.modalities ?? ['text']).filter((modality) =>
+            trainingWorkerCapability?.modalities.includes(modality),
+          ),
+    [method, selectedModel.modalities, trainingWorkerCapability],
+  );
   const assessed = React.useMemo(() => {
     const base = compatibleModels(hardware, availableModels);
     if (method === 'knowledge') return base;
@@ -320,19 +333,46 @@ export function BuildYourOwnAIHub({
       ? `Download and verify ${selectedModel.label} before local processing.`
       : null) ??
     (method === 'knowledge' ? null : validateFoundryTrainingConfiguration(trainingConfig));
-  const usableSourceCount = sources.filter((source) => source.use !== 'unsupported').length;
+  const datasetMeasurement = React.useMemo(() => {
+    const total = emptyTrainingMeasurement();
+    for (const source of sources) {
+      if (source.use === 'unsupported') continue;
+      if (source.measuredJsonl) {
+        total.examples += source.measuredJsonl.examples;
+        total.textTokens += source.measuredJsonl.textTokens;
+        total.totalBytes += source.measuredJsonl.totalBytes;
+      }
+      if (
+        (source.kind === 'image' || source.kind === 'video') &&
+        source.supervisedPrompt?.trim() &&
+        source.expectedAnswer?.trim()
+      ) {
+        total.examples += 1;
+        total.textTokens += Math.max(
+          1,
+          Math.ceil((source.supervisedPrompt.length + source.expectedAnswer.length) / 4),
+        );
+        total.mediaExamples += 1;
+        total.imageExamples += source.kind === 'image' ? 1 : 0;
+        total.videoExamples += source.kind === 'video' ? 1 : 0;
+        total.plannedVideoFrames += source.kind === 'video' ? (source.plannedFrames ?? 8) : 0;
+      }
+    }
+    total.measured = total.examples > 0;
+    return total;
+  }, [sources]);
   const durationEstimate = React.useMemo(
     () =>
-      method === 'knowledge'
+      method === 'knowledge' || !datasetMeasurement.measured
         ? null
         : estimateFoundryTrainingDuration({
             method,
             parametersB: selectedModel.parametersB,
             configuration: trainingConfig,
             hardware,
-            usableSourceCount,
+            measurement: datasetMeasurement,
           }),
-    [hardware, method, selectedModel.parametersB, trainingConfig, usableSourceCount],
+    [datasetMeasurement, hardware, method, selectedModel.parametersB, trainingConfig],
   );
 
   const selectComputePreset = (presetId: TrainingComputePresetId) => {
@@ -387,14 +427,25 @@ export function BuildYourOwnAIHub({
     }
   };
 
-  const addSources = (files: FileList | null) => {
+  const addSources = async (files: FileList | null) => {
     if (!files) return;
-    setSources((current) => [
-      ...current,
-      ...Array.from(files).map((file) =>
-        classifySource(file.name, method, false, undefined, { transcriptionReady }),
-      ),
-    ]);
+    const classified = await Promise.all(
+      Array.from(files).map(async (file) => {
+        const source = classifySource(file.name, method, availableTrainingModalities, undefined, {
+          transcriptionReady,
+        });
+        if (method !== 'knowledge' && file.name.toLowerCase().endsWith('.jsonl')) {
+          source.measuredJsonl = measureTrainingJsonl(await file.text());
+        } else if (
+          method !== 'knowledge' &&
+          /\.(txt|md|json|csv|ts|tsx|js|jsx|py|rs)$/iu.test(file.name)
+        ) {
+          source.measuredJsonl = measureTrainingText(await file.text());
+        }
+        return source;
+      }),
+    );
+    setSources((current) => [...current, ...classified]);
   };
 
   const pickLocalSources = async () => {
@@ -406,14 +457,29 @@ export function BuildYourOwnAIHub({
         title: 'Choose local Model Foundry sources',
       });
       const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
-      setSources((current) => [
-        ...current,
-        ...paths.map((path) =>
-          classifySource(path.split(/[\\/]/).pop() ?? path, method, false, path, {
-            transcriptionReady,
-          }),
-        ),
-      ]);
+      const classified = await Promise.all(
+        paths.map(async (path) => {
+          const source = classifySource(
+            path.split(/[\\/]/).pop() ?? path,
+            method,
+            availableTrainingModalities,
+            path,
+            { transcriptionReady },
+          );
+          if (method !== 'knowledge' && path.toLowerCase().endsWith('.jsonl')) {
+            const read = await readTextFile(path);
+            if (read.ok) source.measuredJsonl = measureTrainingJsonl(read.content);
+          } else if (
+            method !== 'knowledge' &&
+            /\.(txt|md|json|csv|ts|tsx|js|jsx|py|rs)$/iu.test(path)
+          ) {
+            const read = await readTextFile(path);
+            if (read.ok) source.measuredJsonl = measureTrainingText(read.content);
+          }
+          return source;
+        }),
+      );
+      setSources((current) => [...current, ...classified]);
     } catch {
       setError('The native file picker is unavailable. No private file was accessed.');
     }
@@ -438,9 +504,29 @@ export function BuildYourOwnAIHub({
           method,
           ...(method === 'knowledge' ? {} : { trainingConfig: { ...trainingConfig, method } }),
           sourcePaths: sources
-            .filter((source) => source.use !== 'unsupported')
+            .filter(
+              (source) =>
+                source.use !== 'unsupported' && source.kind !== 'image' && source.kind !== 'video',
+            )
             .map((source) => source.path)
             .filter((path): path is string => Boolean(path)),
+          trainingExamples:
+            method === 'knowledge'
+              ? []
+              : sources
+                  .filter(
+                    (source) =>
+                      source.use !== 'unsupported' &&
+                      (source.kind === 'image' || source.kind === 'video') &&
+                      Boolean(source.path),
+                  )
+                  .map((source) => ({
+                    path: source.path,
+                    mediaType: source.kind,
+                    prompt: source.supervisedPrompt?.trim(),
+                    response: source.expectedAnswer?.trim(),
+                    plannedFrames: source.kind === 'video' ? (source.plannedFrames ?? 8) : 1,
+                  })),
           localOnly: true,
         },
       });
@@ -726,9 +812,10 @@ export function BuildYourOwnAIHub({
                 <p className="mt-3 text-metadata text-muted-foreground">
                   PDF and DOCX text are extracted locally. Scanned/image-only PDFs need a verified
                   OCR processor and stay unavailable for now. MP3 and MP4 can supply local
-                  transcript knowledge when the speech processor is installed. The current
-                  weight-training bases are text models; video frames and native audio/video
-                  generation are not claimed.
+                  transcript knowledge when the speech processor is installed. Verified SmolVLM2
+                  bases can train on labeled images and sampled MP4/MOV/WebM frames alongside
+                  documents. They produce text answers; image, audio, and video generation are not
+                  claimed.
                 </p>
               </details>
               <div>
@@ -935,6 +1022,14 @@ export function BuildYourOwnAIHub({
                         <span className="rounded bg-muted px-2 py-0.5 text-metadata">
                           {model.quality} quality
                         </span>
+                        {(model.modalities ?? ['text']).map((modality) => (
+                          <span
+                            key={modality}
+                            className="rounded bg-accent-cyan/10 px-2 py-0.5 text-metadata text-accent-cyan"
+                          >
+                            {modality}
+                          </span>
+                        ))}
                       </div>
                       <p className="mt-2 text-secondary text-muted-foreground">
                         {model.parametersB}B parameters · ~{model.downloadGb} GB download ·{' '}
@@ -953,6 +1048,13 @@ export function BuildYourOwnAIHub({
                             ? 'Compatible with measured hardware'
                             : 'Not compatible with measured hardware'}
                       </p>
+                      {(model.modalities?.includes('image') ||
+                        model.modalities?.includes('video')) && (
+                        <p className="mt-1 text-secondary text-muted-foreground">
+                          Understands labeled image/video examples and produces text answers. It
+                          does not generate image or video files.
+                        </p>
+                      )}
                       {verified ? (
                         <>
                           <p className="mt-2 text-secondary">
@@ -1155,6 +1257,13 @@ export function BuildYourOwnAIHub({
                         </p>
                       </div>
                     )}
+                    {!durationEstimate && (
+                      <p className="mt-3 rounded-md bg-muted/60 p-3 text-secondary text-muted-foreground">
+                        Add readable text/JSONL data or at least two labeled image/video examples to
+                        receive a measured prediction. PDF/DOCX size is finalized during private
+                        local preparation.
+                      </p>
+                    )}
                   </section>
                   <details className="rounded-lg border border-border p-4">
                     <summary className="cursor-pointer font-semibold">
@@ -1354,7 +1463,11 @@ export function BuildYourOwnAIHub({
               </button>
               <label className="sr-only">
                 Browser fallback source picker
-                <input type="file" multiple onChange={(event) => addSources(event.target.files)} />
+                <input
+                  type="file"
+                  multiple
+                  onChange={(event) => void addSources(event.target.files)}
+                />
               </label>
               <p className="text-secondary text-muted-foreground">
                 Files stay local. Nothing is uploaded without a separate explicit permission flow.
@@ -1369,6 +1482,80 @@ export function BuildYourOwnAIHub({
                     {source.use.replace('_', ' ')}
                   </span>
                   <p className="text-secondary text-muted-foreground">{source.explanation}</p>
+                  {method !== 'knowledge' &&
+                    source.use !== 'unsupported' &&
+                    (source.kind === 'image' || source.kind === 'video') && (
+                      <div className="mt-3 grid gap-3">
+                        <div>
+                          <Label htmlFor={`foundry-media-prompt-${index}`}>
+                            Training question or instruction
+                          </Label>
+                          <Textarea
+                            id={`foundry-media-prompt-${index}`}
+                            value={source.supervisedPrompt ?? ''}
+                            placeholder="For example: What is happening in this clip?"
+                            onChange={(event) =>
+                              setSources((current) =>
+                                current.map((candidate, candidateIndex) =>
+                                  candidateIndex === index
+                                    ? { ...candidate, supervisedPrompt: event.target.value }
+                                    : candidate,
+                                ),
+                              )
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`foundry-media-answer-${index}`}>Expected answer</Label>
+                          <Textarea
+                            id={`foundry-media-answer-${index}`}
+                            value={source.expectedAnswer ?? ''}
+                            placeholder="Write the answer the model should learn."
+                            onChange={(event) =>
+                              setSources((current) =>
+                                current.map((candidate, candidateIndex) =>
+                                  candidateIndex === index
+                                    ? { ...candidate, expectedAnswer: event.target.value }
+                                    : candidate,
+                                ),
+                              )
+                            }
+                          />
+                        </div>
+                        {source.kind === 'video' && (
+                          <div>
+                            <Label htmlFor={`foundry-video-frames-${index}`}>
+                              Frames sampled across the clip (1–32)
+                            </Label>
+                            <Input
+                              id={`foundry-video-frames-${index}`}
+                              type="number"
+                              min={1}
+                              max={32}
+                              value={source.plannedFrames ?? 8}
+                              onChange={(event) =>
+                                setSources((current) =>
+                                  current.map((candidate, candidateIndex) =>
+                                    candidateIndex === index
+                                      ? {
+                                          ...candidate,
+                                          plannedFrames: Math.max(
+                                            1,
+                                            Math.min(32, event.currentTarget.valueAsNumber || 8),
+                                          ),
+                                        }
+                                      : candidate,
+                                  ),
+                                )
+                              }
+                            />
+                            <p className="mt-1 text-metadata text-muted-foreground">
+                              More frames can capture more of the clip but use more memory and time.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                 </div>
               ))}
             </>
@@ -1388,10 +1575,16 @@ export function BuildYourOwnAIHub({
                 explanations.
               </p>
               {durationEstimate && (
-                <p>
-                  Planning estimate: {durationEstimate.minimumHours}–{durationEstimate.maximumHours}{' '}
-                  hours · {durationEstimate.optimizationSteps.toLocaleString()} optimization steps.
-                </p>
+                <div>
+                  <p>
+                    Planning estimate: {durationEstimate.minimumHours}–
+                    {durationEstimate.maximumHours} hours ·{' '}
+                    {durationEstimate.optimizationSteps.toLocaleString()} optimization steps.
+                  </p>
+                  <p className="mt-1 text-metadata text-muted-foreground">
+                    {durationEstimate.basis} {durationEstimate.disclaimer}
+                  </p>
+                </div>
               )}
               {startError && <p className="text-amber-300">{startError}</p>}
             </div>

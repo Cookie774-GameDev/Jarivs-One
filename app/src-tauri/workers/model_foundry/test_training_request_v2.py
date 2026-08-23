@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -85,6 +86,46 @@ class TrainingRequestV2Tests(unittest.TestCase):
         self.request_path.write_text(json.dumps(request), encoding="utf-8")
 
         with self.assertRaisesRegex(ValueError, "closed trainingConfig"):
+            _read_request(str(self.request_path))
+
+    def test_accepts_hash_verified_media_only_for_declared_model_modality(self) -> None:
+        media = self.root / "media" / "frame.png"
+        media.parent.mkdir()
+        media.write_bytes(b"bounded-test-image")
+        record = {
+            "prompt": "What is shown?",
+            "response": "A reviewed test frame.",
+            "mediaType": "image",
+            "mediaPath": str(media),
+            "mediaSha256": hashlib.sha256(media.read_bytes()).hexdigest(),
+            "plannedFrames": 1,
+        }
+        self.train.write_text(json.dumps(record), encoding="utf-8")
+        self.validation.write_text(json.dumps(record), encoding="utf-8")
+        request = self.request()
+        request["modelModalities"] = ["text", "image", "video"]
+        self.request_path.write_text(json.dumps(request), encoding="utf-8")
+
+        normalized, summary = _read_request(str(self.request_path))
+
+        self.assertEqual(normalized["modelModalities"], ["text", "image", "video"])
+        self.assertEqual(summary["examples"], 1)
+
+    def test_rejects_media_for_a_text_only_model(self) -> None:
+        media = self.root / "frame.png"
+        media.write_bytes(b"bounded-test-image")
+        record = {
+            "prompt": "What is shown?",
+            "response": "A reviewed test frame.",
+            "mediaType": "image",
+            "mediaPath": str(media),
+            "mediaSha256": hashlib.sha256(media.read_bytes()).hexdigest(),
+            "plannedFrames": 1,
+        }
+        self.train.write_text(json.dumps(record), encoding="utf-8")
+        self.request_path.write_text(json.dumps(self.request()), encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "unsupported model modality"):
             _read_request(str(self.request_path))
 
 
