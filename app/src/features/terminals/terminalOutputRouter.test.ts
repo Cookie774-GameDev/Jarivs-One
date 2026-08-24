@@ -1,5 +1,32 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createTerminalOutputRouter, type TerminalOutputPayload } from './terminalOutputRouter';
+import {
+  createTerminalOutputIndex,
+  createTerminalOutputRouter,
+  type TerminalOutputPayload,
+} from './terminalOutputRouter';
+
+describe('terminal output subscription index', () => {
+  it('selects only unbound startup listeners and the exact session bucket', () => {
+    const index = createTerminalOutputIndex();
+    index.add(1);
+    index.add(2);
+    index.add(3);
+    index.bind(2, 'tty_first');
+    index.bind(3, 'tty_second');
+
+    expect(index.targets('tty_first')).toEqual([1, 2]);
+    expect(index.targets('tty_second')).toEqual([1, 3]);
+    expect(index.targets('tty_unknown')).toEqual([1]);
+
+    index.bind(1, 'tty_first');
+    index.bind(2, 'tty_second');
+    expect(index.targets('tty_first')).toEqual([1]);
+    expect(index.targets('tty_second')).toEqual([2, 3]);
+
+    index.remove(2);
+    expect(index.targets('tty_second')).toEqual([3]);
+  });
+});
 
 describe('terminal output router', () => {
   it('uses one native listener and routes bound sessions without cross-talk', async () => {
