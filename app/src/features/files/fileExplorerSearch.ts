@@ -340,10 +340,11 @@ export async function walkEntries(
   const out: FsEntry[] = [];
   const seen = new Set<string>();
   const queue: Array<{ path: string; depth: number }> = [{ path: startDir, depth: 0 }];
+  let queueHead = 0;
   let scanned = 0;
 
-  while (queue.length > 0 && out.length < maxFiles) {
-    const item = queue.shift()!;
+  while (queueHead < queue.length && out.length < maxFiles) {
+    const item = queue[queueHead++]!;
     if (item.depth > maxDepth) continue;
     const key = item.path.replace(/[\\/]+$/, '').toLowerCase();
     if (seen.has(key)) continue;

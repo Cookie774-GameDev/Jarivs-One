@@ -1,4 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const fsMocks = vi.hoisted(() => ({
+  listDirectory: vi.fn(),
+  readTextFileSample: vi.fn(),
+}));
+
+vi.mock('@/lib/fs', () => fsMocks);
+
 import {
   canSearchFileContent,
   describeSearchClues,
@@ -9,8 +17,71 @@ import {
   parseAiPathList,
   parseSearchClues,
   scoreEntriesLocally,
+  walkEntries,
 } from './fileExplorerSearch';
 import type { FsEntry } from '@/lib/fs';
+
+beforeEach(() => {
+  fsMocks.listDirectory.mockReset();
+  fsMocks.readTextFileSample.mockReset();
+  fsMocks.readTextFileSample.mockResolvedValue({
+    ok: false,
+    error: { code: 'NOT_FOUND', message: 'No test sample' },
+  });
+});
+
+describe('walkEntries', () => {
+  it('preserves breadth-first result, access-root, and progress order', async () => {
+    const entriesByPath = new Map<string, FsEntry[]>([
+      [
+        'C:\\root',
+        [
+          { name: 'a', path: 'C:\\root\\a', isDir: true },
+          { name: 'b', path: 'C:\\root\\b', isDir: true },
+          { name: 'root.txt', path: 'C:\\root\\root.txt', isDir: false },
+        ],
+      ],
+      [
+        'C:\\root\\a',
+        [
+          { name: 'a1', path: 'C:\\root\\a\\a1', isDir: true },
+          { name: 'a.txt', path: 'C:\\root\\a\\a.txt', isDir: false },
+        ],
+      ],
+      ['C:\\root\\b', [{ name: 'b.txt', path: 'C:\\root\\b\\b.txt', isDir: false }]],
+      ['C:\\root\\a\\a1', [{ name: 'deep.txt', path: 'C:\\root\\a\\a1\\deep.txt', isDir: false }]],
+    ]);
+    const progress: number[] = [];
+    fsMocks.listDirectory.mockImplementation(async (path: string) => ({
+      ok: true,
+      path,
+      entries: entriesByPath.get(path) ?? [],
+    }));
+
+    const result = await walkEntries('C:\\root', {
+      accessRoot: 'C:\\root',
+      maxDepth: 4,
+      onProgress: (scanned) => progress.push(scanned),
+    });
+
+    expect(fsMocks.listDirectory.mock.calls).toEqual([
+      ['C:\\root', { root: 'C:\\root' }],
+      ['C:\\root\\a', { root: 'C:\\root' }],
+      ['C:\\root\\b', { root: 'C:\\root' }],
+      ['C:\\root\\a\\a1', { root: 'C:\\root' }],
+    ]);
+    expect(result.map((entry) => entry.path)).toEqual([
+      'C:\\root\\a',
+      'C:\\root\\b',
+      'C:\\root\\root.txt',
+      'C:\\root\\a\\a1',
+      'C:\\root\\a\\a.txt',
+      'C:\\root\\b\\b.txt',
+      'C:\\root\\a\\a1\\deep.txt',
+    ]);
+    expect(progress).toEqual([7]);
+  });
+});
 
 describe('path kind helpers', () => {
   it('detects text, image, and video paths for previews', () => {
