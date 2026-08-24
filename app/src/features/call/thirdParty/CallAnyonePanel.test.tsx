@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { CallAnyonePanel } from './CallAnyonePanel';
 
@@ -262,5 +262,75 @@ describe('Call Anyone approval flow', () => {
         }),
       ),
     );
+  });
+
+  it('does not overlap slow active-call status polls or continue after cleanup', async () => {
+    vi.useFakeTimers();
+    let releaseFirstPoll: ((value: Record<string, unknown>) => void) | undefined;
+    const prepared = {
+      id: 'job-poll',
+      status: 'awaiting_user_approval',
+      destinationDisplayName: 'Clinic',
+      destinationMasked: '+* (***) ***-0110',
+      purpose: 'Ask about office hours.',
+      openingDisclosure: 'Hello, I am the VibeSpace AI assistant.',
+      approvedScript: 'Ask about office hours.',
+      allowedActions: ['ask_questions'],
+      maximumDurationSeconds: 300,
+      maximumCreditReservation: 480,
+    };
+    const queued = { ...prepared, status: 'queued' };
+    const client = {
+      prepare: vi.fn().mockResolvedValue(prepared),
+      approve: vi.fn().mockResolvedValue({ ...prepared, status: 'approved' }),
+      start: vi.fn().mockResolvedValue(queued),
+      get: vi
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise<Record<string, unknown>>((resolve) => {
+              releaseFirstPoll = resolve;
+            }),
+        )
+        .mockResolvedValue(queued),
+      cancel: vi.fn(),
+      approveLive: vi.fn(),
+      declineLive: vi.fn(),
+      saveContact: vi.fn().mockResolvedValue({ id: 'contact-1' }),
+    };
+    const { unmount } = render(<CallAnyonePanel client={client} />);
+
+    completeRecipientStep('+13125550110');
+    fireEvent.change(screen.getByLabelText('Purpose'), {
+      target: { value: 'Ask about office hours.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Review call' }));
+    await act(async () => undefined);
+    fireEvent.click(screen.getByRole('button', { name: 'Approve and call' }));
+    await act(async () => undefined);
+
+    await act(async () => {
+      vi.advanceTimersByTime(7_500);
+      await Promise.resolve();
+    });
+    expect(client.get).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      releaseFirstPoll?.(queued);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(2_500);
+      await Promise.resolve();
+    });
+    expect(client.get).toHaveBeenCalledTimes(2);
+
+    unmount();
+    await act(async () => {
+      vi.advanceTimersByTime(5_000);
+      await Promise.resolve();
+    });
+    expect(client.get).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 });

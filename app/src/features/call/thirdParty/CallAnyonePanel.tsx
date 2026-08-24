@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { getSupabaseClient } from '@/lib/supabase/client';
+import { createSingleFlightRunner } from '@/stability/singleFlight';
 import { createThirdPartyCallClient, ThirdPartyCallError } from './client';
 import {
   callCreditImpact,
@@ -116,13 +117,19 @@ export function CallAnyonePanel({
     if (!client || !job || ['completed', 'failed', 'cancelled', 'blocked'].includes(job.status)) {
       return;
     }
+    let cancelled = false;
+    const poll = createSingleFlightRunner(async () => {
+      const next = await client.get(job.id);
+      if (!cancelled) setJob(next);
+    });
     const timer = window.setInterval(() => {
-      void client
-        .get(job.id)
-        .then((next) => setJob(next))
-        .catch(() => undefined);
+      void poll.run().catch(() => undefined);
     }, 2_500);
-    return () => window.clearInterval(timer);
+    return () => {
+      cancelled = true;
+      poll.stop();
+      window.clearInterval(timer);
+    };
   }, [client, job?.id, job?.status]);
 
   async function prepare() {
