@@ -890,6 +890,39 @@ describe('cloud sync authority lifecycle', () => {
 
   const claimKey = cloudSyncQueueClaimKey;
 
+  it('batches multiple exact-owner records into one atomic remote upsert', async () => {
+    for (let index = 1; index <= 2; index += 1) {
+      const id = `syq_batch_${index}`;
+      syncHarness.queueRows.set(id, {
+        ...pendingRow(),
+        id,
+        row_id: `wsp_batch_${index}`,
+        payload: { id: `wsp_batch_${index}`, name: `Workspace ${index}` },
+        created_at: index,
+      });
+      bindOwner(id, {
+        state: 'cloud',
+        userId: 'user-a',
+        capturedAt: index,
+      });
+    }
+    syncHarness.resolveUpsert({ error: null });
+    const controller = new AbortController();
+
+    await expect(
+      processSyncQueue({ userId: 'user-a', signal: controller.signal }),
+    ).resolves.toEqual({ processed: 2, errored: 0, skipped: 0 });
+
+    expect(syncHarness.upsert).toHaveBeenCalledTimes(1);
+    expect(syncHarness.upsert).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({ user_id: 'user-a', row_id: 'wsp_batch_1' }),
+        expect.objectContaining({ user_id: 'user-a', row_id: 'wsp_batch_2' }),
+      ],
+      expect.anything(),
+    );
+  });
+
   it('sanitizes protected direct enqueue payloads before queue construction and retains collisions', async () => {
     let promptReads = 0;
     const protectedPayload: Record<string, unknown> = {

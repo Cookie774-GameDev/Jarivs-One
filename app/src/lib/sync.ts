@@ -816,6 +816,10 @@ export async function processSyncQueue(
     let processed = 0;
     let errored = localOnlyErrored;
     let skipped = pending.pendingCount - pending.rows.length;
+    const prepared: Array<{
+      claimed: ClaimedSyncQueueRow;
+      cloudRecord: CloudSyncRecord;
+    }> = [];
 
     for (const candidate of pending.rows) {
       if (authority.signal.aborted) break;
@@ -844,8 +848,6 @@ export async function processSyncQueue(
         continue;
       }
 
-      let remoteFailed = false;
-      let remoteFailure: unknown;
       try {
         if (claimed.row.table === CONTEXT_DOCUMENTS_SYNC_TABLE) {
           await (
@@ -856,25 +858,13 @@ export async function processSyncQueue(
             authority.signal,
           );
         }
-        const cloudRecord = buildCloudSyncRecord(claimed.row, claimed.owner);
-        const remote = await awaitUnlessAborted(
-          client
-            .from(CLOUD_SYNC_RECORDS_TABLE)
-            .upsert(cloudRecord, { onConflict: CLOUD_SYNC_CONFLICT_TARGET })
-            .abortSignal(authority.signal),
-          authority.signal,
-        );
-        if (remote.kind === 'cancelled') break;
-        if (remote.value.error) throw remote.value.error;
+        prepared.push({
+          claimed,
+          cloudRecord: buildCloudSyncRecord(claimed.row, claimed.owner),
+        });
       } catch (e) {
         if (authority.signal.aborted) break;
-        remoteFailed = true;
-        remoteFailure = e;
-      }
-
-      if (remoteFailed) {
-        const message =
-          remoteFailure instanceof Error ? remoteFailure.message : String(remoteFailure);
+        const message = e instanceof Error ? e.message : String(e);
         const settled = await settleClaimedQueueRow(claimed, authority, {
           status: 'error' as SyncStatus,
           error: message,
@@ -885,18 +875,47 @@ export async function processSyncQueue(
           continue;
         }
         errored++;
-        continue;
+      }
+    }
+
+    if (!authority.signal.aborted && prepared.length > 0) {
+      const payload =
+        prepared.length === 1 ? prepared[0].cloudRecord : prepared.map((item) => item.cloudRecord);
+      let remoteFailure: unknown;
+      try {
+        const remote = await awaitUnlessAborted(
+          client
+            .from(CLOUD_SYNC_RECORDS_TABLE)
+            .upsert(payload, { onConflict: CLOUD_SYNC_CONFLICT_TARGET })
+            .abortSignal(authority.signal),
+          authority.signal,
+        );
+        if (remote.kind === 'cancelled') {
+          return { processed, errored, skipped };
+        }
+        if (remote.value.error) throw remote.value.error;
+      } catch (error) {
+        if (authority.signal.aborted) return { processed, errored, skipped };
+        remoteFailure = error;
       }
 
-      const settled = await settleClaimedQueueRow(claimed, authority, {
-        status: 'done' as SyncStatus,
-      });
-      if (authority.signal.aborted) break;
-      if (!settled) {
-        skipped++;
-        continue;
+      const patch = remoteFailure
+        ? {
+            status: 'error' as SyncStatus,
+            error: remoteFailure instanceof Error ? remoteFailure.message : String(remoteFailure),
+          }
+        : { status: 'done' as SyncStatus };
+      for (const item of prepared) {
+        const settled = await settleClaimedQueueRow(item.claimed, authority, patch);
+        if (authority.signal.aborted) break;
+        if (!settled) {
+          skipped++;
+        } else if (remoteFailure) {
+          errored++;
+        } else {
+          processed++;
+        }
       }
-      processed++;
     }
 
     return { processed, errored, skipped };
