@@ -145,11 +145,14 @@ export interface LocalIntelligenceOpenTelemetryOptions {
 
 class BoundedLocalSpanProcessor implements SpanProcessor {
   readonly #maxSpans: number;
-  readonly #receipts: Readonly<LocalIntelligenceSpanReceipt>[] = [];
+  readonly #receipts: Array<Readonly<LocalIntelligenceSpanReceipt> | undefined>;
+  #firstIndex = 0;
+  #size = 0;
   #shutDown = false;
 
   constructor(maxSpans: number) {
     this.#maxSpans = maxSpans;
+    this.#receipts = new Array(maxSpans);
   }
 
   onStart(_span: unknown, _parentContext: Context): void {}
@@ -157,9 +160,12 @@ class BoundedLocalSpanProcessor implements SpanProcessor {
   onEnd(span: ReadableSpan): void {
     if (this.#shutDown) return;
     const receipt = receiptFromSpan(span);
-    this.#receipts.push(receipt);
-    if (this.#receipts.length > this.#maxSpans) {
-      this.#receipts.splice(0, this.#receipts.length - this.#maxSpans);
+    if (this.#size < this.#maxSpans) {
+      this.#receipts[(this.#firstIndex + this.#size) % this.#maxSpans] = receipt;
+      this.#size += 1;
+    } else {
+      this.#receipts[this.#firstIndex] = receipt;
+      this.#firstIndex = (this.#firstIndex + 1) % this.#maxSpans;
     }
   }
 
@@ -173,11 +179,20 @@ class BoundedLocalSpanProcessor implements SpanProcessor {
   }
 
   snapshot(): readonly Readonly<LocalIntelligenceSpanReceipt>[] {
-    return Object.freeze([...this.#receipts]);
+    return Object.freeze(
+      Array.from(
+        { length: this.#size },
+        (_, offset) => this.#receipts[(this.#firstIndex + offset) % this.#maxSpans]!,
+      ),
+    );
   }
 
   clear(): void {
-    this.#receipts.splice(0, this.#receipts.length);
+    for (let offset = 0; offset < this.#size; offset += 1) {
+      this.#receipts[(this.#firstIndex + offset) % this.#maxSpans] = undefined;
+    }
+    this.#firstIndex = 0;
+    this.#size = 0;
   }
 }
 

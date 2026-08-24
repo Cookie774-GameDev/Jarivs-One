@@ -141,4 +141,23 @@ describe('local intelligence OpenTelemetry bridge', () => {
       }),
     );
   });
+
+  it('preserves chronological receipt order across repeated capacity wraps', () => {
+    const bridge = createLocalIntelligenceOpenTelemetry({ enabled: true, maxSpans: 3 });
+    for (let index = 1; index <= 10; index += 1) {
+      bridge.record(
+        event({
+          eventId: `evt-${index}`,
+          observedAt: index,
+          attemptNumber: index,
+        }),
+      );
+    }
+
+    expect(bridge.snapshot().map(({ eventId }) => eventId)).toEqual(['evt-8', 'evt-9', 'evt-10']);
+
+    bridge.clear();
+    bridge.record(event({ eventId: 'evt-after-clear', observedAt: 11, attemptNumber: 11 }));
+    expect(bridge.snapshot().map(({ eventId }) => eventId)).toEqual(['evt-after-clear']);
+  });
 });
