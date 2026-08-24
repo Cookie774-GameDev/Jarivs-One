@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useShallow } from 'zustand/react/shallow';
 import { db } from '@/lib/db';
 import { useAuthStore } from '@/stores/auth';
 import { useAgentStore } from '@/stores/agents';
@@ -25,8 +26,6 @@ export function getTerminalWorkStatus(lastOutputAt?: number, hasActiveProcess = 
 }
 
 export function useLiveTerminalStatuses(workspaceId: WorkspaceId | null, projectId: string | null): LiveTerminalStatus[] {
-  const transcripts = useTerminalTranscriptStore((s) => s.sessions);
-
   const sessions =
     useLiveQuery(async () => {
       if (!workspaceId) return [] as TerminalSession[];
@@ -39,9 +38,13 @@ export function useLiveTerminalStatuses(workspaceId: WorkspaceId | null, project
         .sort((a, b) => b.last_active_at - a.last_active_at);
     }, [workspaceId, projectId]) ?? [];
 
+  const transcripts = useTerminalTranscriptStore(
+    useShallow((state) => sessions.map((session) => state.sessions[session.id])),
+  );
+
   return useMemo(() => {
-    return sessions.map((session) => {
-      const transcript = transcripts[session.id];
+    return sessions.map((session, index) => {
+      const transcript = transcripts[index];
       const lastOutputAt = transcript?.lastWriteAt ?? session.last_active_at;
       const status = getTerminalWorkStatus(lastOutputAt, session.status === 'running');
       const summary = transcript?.text?.trim().split('\n').filter(Boolean).pop()?.slice(0, 120);
