@@ -4,17 +4,27 @@ export type StabilityDiagnostic =
   | { type: 'terminal-output-trimmed'; at: number; droppedCharacters: number };
 
 export function createStabilityDiagnostics(limit = 128) {
-  const entries: StabilityDiagnostic[] = [];
+  const capacity = Math.max(0, Math.floor(limit));
+  const entries = new Array<StabilityDiagnostic>(capacity);
+  let firstIndex = 0;
+  let size = 0;
 
   return {
     record(entry: StabilityDiagnostic) {
-      entries.push(Object.freeze({ ...entry }));
-      if (entries.length > limit) {
-        entries.splice(0, entries.length - limit);
+      if (capacity === 0) return;
+      const stored = Object.freeze({ ...entry }) as StabilityDiagnostic;
+      if (size < capacity) {
+        entries[(firstIndex + size) % capacity] = stored;
+        size += 1;
+      } else {
+        entries[firstIndex] = stored;
+        firstIndex = (firstIndex + 1) % capacity;
       }
     },
     snapshot(): readonly StabilityDiagnostic[] {
-      return entries.map((entry) => ({ ...entry }));
+      return Array.from({ length: size }, (_, offset) => ({
+        ...entries[(firstIndex + offset) % capacity],
+      }));
     },
   };
 }
