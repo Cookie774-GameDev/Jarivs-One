@@ -416,23 +416,66 @@ function projectActivity(event: ChatActivityEvent): TranscriptBlock {
   };
 }
 
+function compareTranscriptBlocks(left: TranscriptBlock, right: TranscriptBlock): number {
+  return left.ts - right.ts || left.id.localeCompare(right.id);
+}
+
+function isOrderedTranscript(blocks: readonly TranscriptBlock[]): boolean {
+  for (let index = 1; index < blocks.length; index += 1) {
+    if (compareTranscriptBlocks(blocks[index - 1]!, blocks[index]!) > 0) return false;
+  }
+  return true;
+}
+
+function mergeOrderedTranscripts(
+  left: readonly TranscriptBlock[],
+  right: readonly TranscriptBlock[],
+): TranscriptBlock[] {
+  const merged = new Array<TranscriptBlock>(left.length + right.length);
+  let leftIndex = 0;
+  let rightIndex = 0;
+  let outputIndex = 0;
+  while (leftIndex < left.length && rightIndex < right.length) {
+    if (compareTranscriptBlocks(left[leftIndex]!, right[rightIndex]!) <= 0) {
+      merged[outputIndex] = left[leftIndex]!;
+      leftIndex += 1;
+    } else {
+      merged[outputIndex] = right[rightIndex]!;
+      rightIndex += 1;
+    }
+    outputIndex += 1;
+  }
+  while (leftIndex < left.length) {
+    merged[outputIndex] = left[leftIndex]!;
+    leftIndex += 1;
+    outputIndex += 1;
+  }
+  while (rightIndex < right.length) {
+    merged[outputIndex] = right[rightIndex]!;
+    rightIndex += 1;
+    outputIndex += 1;
+  }
+  return merged;
+}
+
 export function projectAgenticTranscript(
   messages: readonly Message[],
   activity: readonly ChatActivityEvent[],
   options: { preserveAssistantMessages?: boolean } = {},
 ): TranscriptBlock[] {
   const seenActivity = new Set<string>();
+  const messageBlocks = messages.flatMap((message) =>
+    projectMessage(message, options.preserveAssistantMessages === true),
+  );
   const activityBlocks = activity.flatMap((event) => {
     if (seenActivity.has(event.id)) return [];
     seenActivity.add(event.id);
     return [projectActivity(event)];
   });
-  return [
-    ...messages.flatMap((message) =>
-      projectMessage(message, options.preserveAssistantMessages === true),
-    ),
-    ...activityBlocks,
-  ].sort((left, right) => left.ts - right.ts || left.id.localeCompare(right.id));
+  if (isOrderedTranscript(messageBlocks) && isOrderedTranscript(activityBlocks)) {
+    return mergeOrderedTranscripts(messageBlocks, activityBlocks);
+  }
+  return [...messageBlocks, ...activityBlocks].sort(compareTranscriptBlocks);
 }
 
 export function summarizeAgenticSession(

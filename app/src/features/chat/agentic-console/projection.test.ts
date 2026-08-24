@@ -167,6 +167,65 @@ describe('projectAgenticTranscript', () => {
     ]);
   });
 
+  it('preserves exact chronological ordering for interleaved and unordered sources', () => {
+    const blocks = projectAgenticTranscript(
+      [
+        message('late', 'user', 30, [{ kind: 'text', text: 'Late prompt' }]),
+        message('early', 'user', 10, [{ kind: 'text', text: 'Early prompt' }]),
+      ],
+      [
+        {
+          id: 'middle',
+          chatId: 'chat-1',
+          kind: 'tool',
+          status: 'done',
+          title: 'Middle activity',
+          ts: 20,
+        },
+        {
+          id: 'first',
+          chatId: 'chat-1',
+          kind: 'tool',
+          status: 'done',
+          title: 'First activity',
+          ts: 5,
+        },
+      ],
+    );
+
+    expect(blocks.map((block) => block.sourceId)).toEqual([
+      'activity:first',
+      'message:early',
+      'activity:middle',
+      'message:late',
+    ]);
+  });
+
+  it('merges already ordered canonical sources without changing interleaved order', () => {
+    const blocks = projectAgenticTranscript(
+      [
+        message('first', 'user', 10, [{ kind: 'text', text: 'First prompt' }]),
+        message('last', 'user', 30, [{ kind: 'text', text: 'Last prompt' }]),
+      ],
+      [
+        {
+          id: 'middle',
+          chatId: 'chat-1',
+          kind: 'tool',
+          status: 'done',
+          title: 'Middle activity',
+          ts: 20,
+        },
+      ],
+    );
+
+    expect(blocks.map((block) => block.sourceId)).toEqual([
+      'message:first',
+      'activity:middle',
+      'message:last',
+    ]);
+  });
+
   it('extracts truthful exit and duration evidence from structured command results', () => {
     const messages = [
       message('command', 'assistant', 1, [
