@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useAuthStore } from '@/stores/auth';
 import { getSupabaseClient } from '@/lib/supabase/client';
 import {
+  DesktopPresenceCapabilityMissingError,
   markDesktopPresenceOffline,
   publishDesktopPresence,
   type DesktopPresenceInput,
@@ -34,17 +35,21 @@ export function startDesktopPresenceHeartbeat({
 }: HeartbeatOptions): () => void {
   let active = true;
   let running = false;
+  let capabilityMissing = false;
   let lastDeviceId: string | null = null;
 
   const pulse = async () => {
-    if (!active || running || !isCurrent()) return;
+    if (!active || running || capabilityMissing || !isCurrent()) return;
     running = true;
     try {
       const snapshot = await collect();
       if (!active || !isCurrent()) return;
       lastDeviceId = snapshot.deviceId;
       await publish(client, expectedUserId, snapshot);
-    } catch {
+    } catch (error) {
+      if (error instanceof DesktopPresenceCapabilityMissingError) {
+        capabilityMissing = true;
+      }
       // The website will age the last heartbeat into an offline state.
     } finally {
       running = false;
@@ -57,7 +62,7 @@ export function startDesktopPresenceHeartbeat({
   return () => {
     active = false;
     unschedule(timer);
-    if (lastDeviceId && isCurrent()) {
+    if (!capabilityMissing && lastDeviceId && isCurrent()) {
       void markOffline(client, expectedUserId, lastDeviceId).catch(() => undefined);
     }
   };

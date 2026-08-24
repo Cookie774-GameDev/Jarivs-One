@@ -50,7 +50,14 @@ interface PresenceRpcClient {
   rpc(
     name: string,
     params: Record<string, unknown>,
-  ): PromiseLike<{ data: unknown; error: { message?: string } | null }>;
+  ): PromiseLike<{ data: unknown; error: { code?: string; message?: string } | null }>;
+}
+
+export class DesktopPresenceCapabilityMissingError extends Error {
+  constructor() {
+    super('Desktop presence is unavailable.');
+    this.name = 'DesktopPresenceCapabilityMissingError';
+  }
 }
 
 function safeText(value: unknown, maxLength: number): string {
@@ -137,6 +144,7 @@ export async function publishDesktopPresence(
     p_background_task_count: snapshot.backgroundTaskCount,
     p_recent_sync_at: snapshot.recentSyncAt,
   });
+  if (error?.code === 'PGRST202') throw new DesktopPresenceCapabilityMissingError();
   if (error) throw new Error('Desktop presence is unavailable.');
   return data === true;
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { DesktopPresenceCapabilityMissingError } from '@/lib/supabase/desktopPresence';
 import { startDesktopPresenceHeartbeat } from './DesktopPresencePublisher';
 
 const snapshot = {
@@ -156,5 +157,61 @@ describe('desktop presence heartbeat', () => {
       expect(publish).toHaveBeenCalledTimes(1);
       expect(markOffline).not.toHaveBeenCalled();
     });
+  });
+
+  it('stops repeated work after the backend confirms the presence RPC is unavailable', async () => {
+    let timer: (() => void) | undefined;
+    const collect = vi.fn().mockResolvedValue(snapshot);
+    const publish = vi.fn().mockRejectedValue(new DesktopPresenceCapabilityMissingError());
+    const markOffline = vi.fn().mockResolvedValue(true);
+
+    const dispose = startDesktopPresenceHeartbeat({
+      client: { rpc: vi.fn() },
+      expectedUserId,
+      collect,
+      publish,
+      markOffline,
+      setInterval: (callback) => {
+        timer = callback;
+        return 15 as unknown as ReturnType<typeof setInterval>;
+      },
+      clearInterval: vi.fn(),
+    });
+
+    await vi.waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
+    timer?.();
+    timer?.();
+    await Promise.resolve();
+
+    expect(collect).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledTimes(1);
+    dispose();
+    expect(markOffline).not.toHaveBeenCalled();
+  });
+
+  it('keeps retrying ordinary transient publication failures', async () => {
+    let timer: (() => void) | undefined;
+    const publish = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('temporary network failure'))
+      .mockResolvedValue(true);
+
+    const dispose = startDesktopPresenceHeartbeat({
+      client: { rpc: vi.fn() },
+      expectedUserId,
+      collect: vi.fn().mockResolvedValue(snapshot),
+      publish,
+      markOffline: vi.fn().mockResolvedValue(true),
+      setInterval: (callback) => {
+        timer = callback;
+        return 17 as unknown as ReturnType<typeof setInterval>;
+      },
+      clearInterval: vi.fn(),
+    });
+
+    await vi.waitFor(() => expect(publish).toHaveBeenCalledTimes(1));
+    timer?.();
+    await vi.waitFor(() => expect(publish).toHaveBeenCalledTimes(2));
+    dispose();
   });
 });

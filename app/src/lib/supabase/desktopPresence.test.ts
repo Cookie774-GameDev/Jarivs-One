@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  DesktopPresenceCapabilityMissingError,
   markDesktopPresenceOffline,
   publishDesktopPresence,
   sanitizeDesktopPresence,
@@ -77,6 +78,33 @@ describe('desktop presence boundary', () => {
       p_expected_user_id: accountA,
       p_device_id: 'device_12345678',
     });
+  });
+
+  it('classifies the official missing-RPC response without exposing provider details', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: null,
+      error: {
+        code: 'PGRST202',
+        message: 'Could not find the function public.publish_desktop_presence(secret_value)',
+      },
+    });
+
+    const pending = publishDesktopPresence({ rpc }, accountA, {
+      deviceId: 'device_12345678',
+      displayName: 'Main PC',
+      appVersion: '1.5.0',
+      terminals: [],
+      chats: [],
+      agentJobs: [],
+      activeRuntime: null,
+      providerUsage: {},
+      backgroundTaskCount: 0,
+      recentSyncAt: null,
+    });
+
+    await expect(pending).rejects.toBeInstanceOf(DesktopPresenceCapabilityMissingError);
+    await expect(pending).rejects.toThrow('Desktop presence is unavailable.');
+    await expect(pending).rejects.not.toThrow(/secret_value/);
   });
 
   it('fails closed when a delayed publish reaches transport after the account changes', async () => {
