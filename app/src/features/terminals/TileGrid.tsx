@@ -314,18 +314,27 @@ export function TileGrid({
   }, [allLeaves, fullscreenPaneId]);
   const didMountRef = React.useRef(false);
   const pendingCanonicalClosePaneIds = React.useRef(new Set<string>());
-  const terminalExecutions = useTerminalExecutionStore((state) => state.executions);
 
   React.useEffect(() => {
-    for (const paneId of [...pendingCanonicalClosePaneIds.current]) {
-      const executionId = allLeaves.find((leaf) => leaf.id === paneId)?.executionId;
-      const status = executionId ? terminalExecutions[executionId]?.status : undefined;
-      if (!status || !['complete', 'failed', 'cancelled'].includes(status)) continue;
-      pendingCanonicalClosePaneIds.current.delete(paneId);
-      playUiSound('trash_delete');
-      onChange((currentTree) => closePane(currentTree, paneId));
-    }
-  }, [allLeaves, onChange, terminalExecutions]);
+    const closeSettledCanonicalPanes = (
+      terminalExecutions: ReturnType<typeof useTerminalExecutionStore.getState>['executions'],
+    ) => {
+      if (pendingCanonicalClosePaneIds.current.size === 0) return;
+      for (const paneId of [...pendingCanonicalClosePaneIds.current]) {
+        const executionId = allLeaves.find((leaf) => leaf.id === paneId)?.executionId;
+        const status = executionId ? terminalExecutions[executionId]?.status : undefined;
+        if (!status || !['complete', 'failed', 'cancelled'].includes(status)) continue;
+        pendingCanonicalClosePaneIds.current.delete(paneId);
+        playUiSound('trash_delete');
+        onChange((currentTree) => closePane(currentTree, paneId));
+      }
+    };
+
+    closeSettledCanonicalPanes(useTerminalExecutionStore.getState().executions);
+    return useTerminalExecutionStore.subscribe((state) =>
+      closeSettledCanonicalPanes(state.executions),
+    );
+  }, [allLeaves, onChange]);
 
   const { cols, rows } = gridDimensions(leaves.length);
   const defaultTerminalFontSize = useUIStore((s) => s.defaultTerminalFontSize);
