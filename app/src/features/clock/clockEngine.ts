@@ -14,16 +14,32 @@ declare global {
 }
 
 let runningInstanceId = 0;
+let backgroundClockFlight: Promise<void> | null = null;
 
-export function startClockEngine(options: { intervalMs?: number; now?: () => number } = {}): () => void {
+export function startClockEngine(
+  options: {
+    intervalMs?: number;
+    now?: () => number;
+    runDue?: (now: number) => Promise<number>;
+  } = {},
+): () => void {
   const intervalMs = Math.max(250, options.intervalMs ?? 1000);
   const now = options.now ?? Date.now;
+  const runDue = options.runDue ?? fireDueClockEntries;
   const myInstance = ++runningInstanceId;
   let stopped = false;
 
   const tick = () => {
-    if (stopped || myInstance !== runningInstanceId) return;
-    void fireDueClockEntries(now());
+    if (stopped || myInstance !== runningInstanceId || backgroundClockFlight) return;
+    const flight = runDue(now())
+      .then(() => undefined)
+      .catch((error) => {
+        console.warn('[ClockEngine] due-alert pass failed', error);
+      })
+      .finally(() => {
+        if (backgroundClockFlight === flight) backgroundClockFlight = null;
+      });
+    backgroundClockFlight = flight;
   };
 
   tick();
