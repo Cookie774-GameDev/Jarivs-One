@@ -440,49 +440,69 @@ export function summarizeAgenticSession(
   activity: readonly ChatActivityEvent[],
   evidence: AgenticSessionEvidence = {},
 ): AgenticSessionSummary {
-  const uniqueFiles = new Set(activity.map((event) => event.filePath).filter(Boolean));
-  const started = [
-    ...messages.map((message) => message.created_at),
-    ...activity.map((event) => event.startedAt ?? event.ts),
-  ].filter(Number.isFinite);
-  const ended = activity
-    .map((event) => event.endedAt)
-    .filter((value): value is number => value != null);
-  const running = activity.find(
-    (event) => event.status === 'running' || event.status === 'pending',
-  );
-  const hasError = activity.some((event) => event.status === 'error');
-  const hasBlocked = activity.some((event) =>
-    /blocked|approval|permission/i.test(`${event.status} ${event.title}`),
-  );
-  const latestActivity = [...activity].sort(
-    (left, right) => (right.endedAt ?? right.ts) - (left.endedAt ?? left.ts),
-  )[0];
-  const hasAssistantAnswer = messages.some(
-    (message) => message.role === 'assistant' && textParts(message).length > 0,
-  );
-  const hasCompletedActivity = activity.some((event) => event.status === 'done');
-  const tokenValues = messages.flatMap((message) => {
+  const uniqueFiles = new Set<string>();
+  let earliestStartedAt: number | undefined;
+  let latestEndedAt: number | undefined;
+  let running: ChatActivityEvent | undefined;
+  let latestActivity: ChatActivityEvent | undefined;
+  let latestActivityAt: number | undefined;
+  let hasError = false;
+  let hasBlocked = false;
+  let hasCompletedActivity = false;
+  let addedLines = 0;
+  let removedLines = 0;
+
+  for (const event of activity) {
+    if (event.filePath) uniqueFiles.add(event.filePath);
+    const eventStartedAt = event.startedAt ?? event.ts;
+    if (
+      Number.isFinite(eventStartedAt) &&
+      (earliestStartedAt === undefined || eventStartedAt < earliestStartedAt)
+    ) {
+      earliestStartedAt = eventStartedAt;
+    }
+    if (event.endedAt != null) {
+      latestEndedAt =
+        latestEndedAt === undefined ? event.endedAt : Math.max(latestEndedAt, event.endedAt);
+    }
+    if (!running && (event.status === 'running' || event.status === 'pending')) running = event;
+    hasError ||= event.status === 'error';
+    hasBlocked ||= /blocked|approval|permission/i.test(`${event.status} ${event.title}`);
+    hasCompletedActivity ||= event.status === 'done';
+    addedLines += event.addedLines ?? 0;
+    removedLines += event.removedLines ?? 0;
+
+    const completedAt = event.endedAt ?? event.ts;
+    if (latestActivity === undefined || completedAt > (latestActivityAt as number)) {
+      latestActivity = event;
+      latestActivityAt = completedAt;
+    }
+  }
+
+  let hasAssistantAnswer = false;
+  let hasTokenUsage = false;
+  let tokenCount = 0;
+  let model = '—';
+  for (const message of messages) {
+    if (
+      Number.isFinite(message.created_at) &&
+      (earliestStartedAt === undefined || message.created_at < earliestStartedAt)
+    ) {
+      earliestStartedAt = message.created_at;
+    }
+    if (!hasAssistantAnswer && message.role === 'assistant' && textParts(message).length > 0) {
+      hasAssistantAnswer = true;
+    }
     const usage = message.usage;
-    return usage ? [(usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)] : [];
-  });
-  const model =
-    [...messages]
-      .reverse()
-      .map((message) => message.usage?.model)
-      .find((value): value is string => Boolean(value)) ?? '—';
+    if (usage) {
+      hasTokenUsage = true;
+      tokenCount += (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0);
+      if (usage.model) model = usage.model;
+    }
+  }
   const startedAt =
-    typeof evidence.startedAt === 'number'
-      ? evidence.startedAt
-      : started.length
-        ? Math.min(...started)
-        : '—';
-  const endedAt =
-    typeof evidence.endedAt === 'number'
-      ? evidence.endedAt
-      : ended.length
-        ? Math.max(...ended)
-        : '—';
+    typeof evidence.startedAt === 'number' ? evidence.startedAt : (earliestStartedAt ?? '—');
+  const endedAt = typeof evidence.endedAt === 'number' ? evidence.endedAt : (latestEndedAt ?? '—');
   const evidenceStatus = String(evidence.status ?? '').toLowerCase();
   const mappedStatus: AgenticSessionSummary['status'] | undefined =
     /awaiting|blocked|approval|permission/.test(evidenceStatus)
@@ -541,9 +561,9 @@ export function summarizeAgenticSession(
                       ? 'Partially complete'
                       : 'Ready'),
     fileCount: uniqueFiles.size,
-    addedLines: activity.reduce((total, event) => total + (event.addedLines ?? 0), 0),
-    removedLines: activity.reduce((total, event) => total + (event.removedLines ?? 0), 0),
-    tokenCount: tokenValues.length ? tokenValues.reduce((total, value) => total + value, 0) : '—',
+    addedLines,
+    removedLines,
+    tokenCount: hasTokenUsage ? tokenCount : '—',
     startedAt,
     endedAt,
     durationMs:
