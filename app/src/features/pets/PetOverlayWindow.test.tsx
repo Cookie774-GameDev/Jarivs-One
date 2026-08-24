@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PetOverlayWindow } from './PetOverlayWindow';
 
 const overlayBridge = vi.hoisted(() => ({
   hidePetOverlay: vi.fn(async () => undefined),
+  reassertPetOverlayTopmost: vi.fn(async () => undefined),
 }));
 
 const petSettings = vi.hoisted(() => ({
@@ -29,7 +30,7 @@ vi.mock('./petTauriBridge', () => ({
     useInlineFallback: false,
     coalesced: false,
   })),
-  reassertPetOverlayTopmost: vi.fn(async () => undefined),
+  reassertPetOverlayTopmost: overlayBridge.reassertPetOverlayTopmost,
   setPetPanelOpenFlag: vi.fn(),
   showPetOverlay: vi.fn(async () => undefined),
 }));
@@ -73,6 +74,7 @@ describe('PetOverlayWindow transparency shell', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     document.documentElement.removeAttribute('data-vibespace-view');
     document.body.removeAttribute('data-vibespace-view');
     document.documentElement.removeAttribute('style');
@@ -151,5 +153,48 @@ describe('PetOverlayWindow transparency shell', () => {
       configurable: true,
       get: () => 'visible',
     });
+  });
+
+  it('coalesces concurrent topmost recovery triggers and stops after cleanup', async () => {
+    vi.useFakeTimers();
+    let releaseRecovery: (() => void) | undefined;
+    overlayBridge.reassertPetOverlayTopmost
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseRecovery = resolve;
+          }),
+      )
+      .mockResolvedValue(undefined);
+    const root = document.createElement('div');
+    root.id = 'root';
+    document.body.appendChild(root);
+
+    const { unmount } = render(<PetOverlayWindow />, { container: root });
+    window.dispatchEvent(new Event('focus'));
+    window.dispatchEvent(new Event('pageshow'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    await act(async () => {
+      vi.advanceTimersByTime(15_000);
+      await Promise.resolve();
+    });
+    expect(overlayBridge.reassertPetOverlayTopmost).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      releaseRecovery?.();
+      await Promise.resolve();
+    });
+    window.dispatchEvent(new Event('focus'));
+    await act(async () => undefined);
+    expect(overlayBridge.reassertPetOverlayTopmost).toHaveBeenCalledTimes(2);
+
+    unmount();
+    window.dispatchEvent(new Event('focus'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await Promise.resolve();
+    });
+    expect(overlayBridge.reassertPetOverlayTopmost).toHaveBeenCalledTimes(2);
   });
 });

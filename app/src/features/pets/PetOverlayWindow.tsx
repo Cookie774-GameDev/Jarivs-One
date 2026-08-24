@@ -17,6 +17,7 @@ import {
 import { installPetPresentationStorageSync } from './petPresentationStore';
 import { installPetSettingsStorageSync, usePetSettingsStore } from './petSettingsStore';
 import { applyThemeToDocument, useUIStore } from '@/stores/ui';
+import { createSingleFlightRunner } from '@/stability/singleFlight';
 
 export interface PetOverlayWindowProps {
   runtimeEffectsEnabled?: boolean;
@@ -79,10 +80,13 @@ export function PetOverlayWindow({ runtimeEffectsEnabled = true }: PetOverlayWin
     if (!runtimeEffectsEnabled) return;
     // Keep the pet above browsers / borderless games. OS exclusive-fullscreen
     // can still cover all topmost HWNDs; reassert helps the common cases.
-    const recoverTopmost = () => {
+    const recovery = createSingleFlightRunner(async () => {
       // Occlusion sets visibilityState to hidden — that is exactly when the pet
       // must re-pin above YouTube / other apps. Native watchdog owns the loop.
-      void reassertPetOverlayTopmost().catch(() => undefined);
+      await reassertPetOverlayTopmost();
+    });
+    const recoverTopmost = () => {
+      void recovery.run().catch(() => undefined);
     };
     recoverTopmost();
     // Immediate follow-up — Windows/WebView2 sometimes drops topmost right after show.
@@ -92,6 +96,7 @@ export function PetOverlayWindow({ runtimeEffectsEnabled = true }: PetOverlayWin
     window.addEventListener('pageshow', recoverTopmost);
     document.addEventListener('visibilitychange', recoverTopmost);
     return () => {
+      recovery.stop();
       window.clearTimeout(boot);
       window.clearInterval(interval);
       window.removeEventListener('focus', recoverTopmost);
