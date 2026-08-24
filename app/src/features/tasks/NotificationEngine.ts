@@ -26,6 +26,7 @@ import type { Reminder, Task } from '@/types/task';
 const POLL_INTERVAL_MS = 30 * 1000;
 const REMINDER_DELIVERY_CLAIM_MS = 2 * 60 * 1000;
 let runningInstanceId = 0;
+let backgroundPollFlight: Promise<void> | null = null;
 const activeReminderDeliveries = new Set<string>();
 
 /** Detail payload for the `jarvis:reminder` window event. */
@@ -49,19 +50,23 @@ export function startNotificationLoop(): () => void {
   let stopped = false;
   let timer: ReturnType<typeof setInterval> | null = null;
 
-  const tick = async () => {
-    if (stopped || myInstance !== runningInstanceId) return;
-    try {
-      await pollOnce();
-    } catch (err) {
-      // Never crash the loop on transient repo failures.
-      // eslint-disable-next-line no-console
-      console.warn('[NotificationEngine] tick failed', err);
-    }
+  const tick = () => {
+    if (stopped || myInstance !== runningInstanceId || backgroundPollFlight) return;
+    const flight = pollOnce()
+      .then(() => undefined)
+      .catch((err) => {
+        // Never crash the loop on transient repo failures.
+        // eslint-disable-next-line no-console
+        console.warn('[NotificationEngine] tick failed', err);
+      })
+      .finally(() => {
+        if (backgroundPollFlight === flight) backgroundPollFlight = null;
+      });
+    backgroundPollFlight = flight;
   };
 
   // Fire immediately on start, then on the interval.
-  void tick();
+  tick();
   timer = setInterval(tick, POLL_INTERVAL_MS);
 
   return () => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Reminder, Task } from '@/types/task';
 
 const mocks = vi.hoisted(() => ({
@@ -53,7 +53,7 @@ vi.mock('@/components/ui/toast', () => ({
   },
 }));
 
-import { pollOnce } from './NotificationEngine';
+import { pollOnce, startNotificationLoop } from './NotificationEngine';
 
 function pollWithClaim(now: number, claimId: string): Promise<number> {
   return (
@@ -191,6 +191,10 @@ describe('NotificationEngine', () => {
       permission: 'granted',
       message: 'ok',
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('does not poll without an active workspace', async () => {
@@ -428,5 +432,32 @@ describe('NotificationEngine', () => {
       status: 'scheduled',
       delivery_claim: { id: 'claim_workspace_switch' },
     });
+  });
+
+  it('keeps slow background reminder scans single-flight across timer ticks', async () => {
+    vi.useFakeTimers();
+    let releaseFirstScan: ((tasks: Task[]) => void) | undefined;
+    mocks.listOpen
+      .mockImplementationOnce(
+        () =>
+          new Promise<Task[]>((resolve) => {
+            releaseFirstScan = resolve;
+          }),
+      )
+      .mockResolvedValue([]);
+
+    const stop = startNotificationLoop();
+    await vi.runAllTicks();
+    expect(mocks.listOpen).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(mocks.listOpen).toHaveBeenCalledTimes(1);
+
+    releaseFirstScan?.([]);
+    await vi.runAllTicks();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(mocks.listOpen).toHaveBeenCalledTimes(2);
+
+    stop();
   });
 });
