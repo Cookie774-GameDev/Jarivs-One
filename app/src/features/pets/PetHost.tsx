@@ -31,6 +31,7 @@ import { installPetPresentationStorageSync } from './petPresentationStore';
 import { installPetSettingsStorageSync, usePetSettingsStore } from './petSettingsStore';
 import { getLivePixiApplicationCount } from './pixiAtlasPlayer';
 import { installPetDevPerfGlobal } from './petDevPerf';
+import { createSingleFlightRunner } from '@/stability/singleFlight';
 
 // WebView2 can reject the first detached-window show while its host is still
 // attaching. Retrying a few times is enough to recover that startup race
@@ -128,7 +129,7 @@ export function PetHost({
   React.useEffect(() => {
     if (!runtimeEffectsEnabled || !claimed || !tauri) return;
     let cancelled = false;
-    const tick = async () => {
+    const poll = createSingleFlightRunner(async () => {
       const panelVis = await isPetPanelVisible();
       if (cancelled) return;
       if (panelVis) {
@@ -145,11 +146,13 @@ export function PetHost({
         setHideSpriteForPanel(false);
         setUseInlineFallback(false);
       }
-    };
-    void tick();
-    const id = window.setInterval(() => void tick(), 400);
+    });
+    const tick = () => void poll.run().catch(() => undefined);
+    tick();
+    const id = window.setInterval(tick, 400);
     return () => {
       cancelled = true;
+      poll.stop();
       window.clearInterval(id);
     };
   }, [claimed, runtimeEffectsEnabled, tauri]);

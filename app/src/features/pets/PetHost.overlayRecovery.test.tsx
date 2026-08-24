@@ -198,4 +198,37 @@ describe('PetHost native overlay recovery', () => {
     expect(bridge.showPetOverlay).toHaveBeenCalledTimes(5);
     expect(bridge.reassertPetOverlayTopmost).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps the 400ms native panel visibility poll single-flight when the bridge is slow', async () => {
+    render(<PetHost />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const callsBeforeSlowPoll = bridge.isPetPanelVisible.mock.calls.length;
+    const releaseSlowPolls: Array<(visible: boolean) => void> = [];
+    bridge.isPetPanelVisible.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          releaseSlowPolls.push(resolve);
+        }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    const callsAfterFirstTick = bridge.isPetPanelVisible.mock.calls.length;
+    expect(callsAfterFirstTick).toBeGreaterThan(callsBeforeSlowPoll);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_600);
+    });
+    expect(bridge.isPetPanelVisible).toHaveBeenCalledTimes(callsAfterFirstTick);
+
+    for (const release of releaseSlowPolls) release(false);
+    await act(async () => {
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(bridge.isPetPanelVisible.mock.calls.length).toBeGreaterThan(callsAfterFirstTick);
+  });
 });
