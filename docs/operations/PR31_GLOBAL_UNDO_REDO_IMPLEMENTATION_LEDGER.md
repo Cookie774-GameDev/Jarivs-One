@@ -22,3 +22,11 @@
 - Formatting: PASS for new/changed implementation and tests; exact tracked diff whitespace check PASS.
 - Native QA: NOT RUN. The user explicitly instructed this task not to start VibeSpace, and an existing app instance cannot prove this new uncommitted source. No browser preview was used as native product proof.
 - Branch/HEAD at checkpoint remains `integration/UnifiedChungus-final` / `8dba4ff5e20e59a268ba6168a75b3f59354e56c3`; commit pending exact-scope review.
+
+## 2026-08-24 15:37 CDT — Complete and released
+
+- Product commit: `8bd64d60958fb59b6dc5a011bf17363ec9aab0a8` (`feat(app): add global undo and redo commands`), 13 exact owned files, 671 insertions / 11 deletions.
+- Fresh final evidence: focused matrix PASS (6 files / 32 tests); Prettier PASS on all new and directly modified implementation/tests; cached diff whitespace check PASS; Gitleaks scanned approximately 26.12 KB of the exact staged scope with no leaks; standalone Vite production bundle PASS (4,972 modules).
+- Broader truth: adjacent suites recorded above include 46 PASS and 12 unrelated `AgentManager` JARVIS-profile failures. Repository-wide type/build commands remain blocked only by the four unowned SiYuan RLM test diagnostics listed above. Native QA remains not run under the user's explicit no-start instruction.
+- Remaining scope boundary: ordinary editable controls use the native WebView text history; global command history currently covers agent/custom-skill Recycle Bin deletion/restoration and is ready for other transactional features to register later without adding UI. Permanent destructive operations remain intentionally non-reversible.
+- Lock `VS-CODEX-GLOBAL-UNDO-REDO-20260824` released. All unrelated dirty files, active locks, processes, services, and user data were preserved.
