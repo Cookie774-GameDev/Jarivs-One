@@ -53,6 +53,8 @@ export const MAX_TOTAL_TRANSCRIPTS_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
  */
 const TRUNCATION_MARKER = '[…earlier output trimmed…]\n';
 const TRANSCRIPT_STORAGE_DEBOUNCE_MS = 350;
+const LARGE_GRID_TRANSCRIPT_STORAGE_DEBOUNCE_MS = 2_000;
+const LARGE_GRID_SESSION_THRESHOLD = 10;
 const TRANSCRIPT_STORAGE_KEY = 'jarvis-terminal-transcripts';
 const TRANSCRIPT_BACKUP_STORAGE_KEY = 'jarvis-terminal-transcripts-backup';
 
@@ -451,7 +453,12 @@ export function flushTranscriptStorage(): void {
 
 function scheduleTranscriptStorageFlush(): void {
   if (typeof window === 'undefined' || transcriptStorageTimer) return;
-  transcriptStorageTimer = setTimeout(flushTranscriptStorage, TRANSCRIPT_STORAGE_DEBOUNCE_MS);
+  const sessionCount = Object.keys(useTerminalTranscriptStore.getState().sessions).length;
+  const delay =
+    sessionCount > LARGE_GRID_SESSION_THRESHOLD
+      ? LARGE_GRID_TRANSCRIPT_STORAGE_DEBOUNCE_MS
+      : TRANSCRIPT_STORAGE_DEBOUNCE_MS;
+  transcriptStorageTimer = setTimeout(flushTranscriptStorage, delay);
 }
 
 if (typeof window !== 'undefined') {

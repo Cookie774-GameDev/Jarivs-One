@@ -309,6 +309,28 @@ describe('transcript store persistence performance', () => {
       expect(restored?.[`pty_stress_${index}`]?.text).toBe(expectedOutputs[index]);
     }
   });
+
+  it('batches timer-driven persistence for large terminal grids without delaying explicit flushes', () => {
+    vi.useFakeTimers();
+    const store = useTerminalTranscriptStore.getState();
+    for (let index = 0; index < MAX_PERSISTED_SESSIONS; index += 1) {
+      store.registerSession(`pty_batch_${index}`, { agentSlug: null });
+    }
+    flushTranscriptStorage();
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+
+    store.appendOutput('pty_batch_0', 'batched output\n');
+    vi.advanceTimersByTime(1_999);
+    expect(setItem).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(setItem).toHaveBeenCalled();
+
+    setItem.mockClear();
+    store.appendOutput('pty_batch_0', 'flush now\n');
+    flushTranscriptStorage();
+    expect(setItem).toHaveBeenCalled();
+  });
 });
 
 describe('transcript store — append + retrieve', () => {
