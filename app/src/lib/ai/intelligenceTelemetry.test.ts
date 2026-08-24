@@ -74,4 +74,22 @@ describe('local intelligence telemetry', () => {
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(Object.isFrozen(snapshot[0])).toBe(true);
   });
+
+  it('preserves chronological order across repeated wraps and releases cleared entries', () => {
+    const telemetry = createLocalIntelligenceTelemetry({ maxEvents: 3 });
+    for (let index = 1; index <= 10; index += 1) {
+      telemetry.record(event({ eventId: `evt-${index}`, observedAt: index }));
+    }
+
+    expect(telemetry.snapshot().map(({ eventId }) => eventId)).toEqual([
+      'evt-8',
+      'evt-9',
+      'evt-10',
+    ]);
+
+    telemetry.clear();
+    expect(telemetry.snapshot()).toEqual([]);
+    telemetry.record(event({ eventId: 'evt-after-clear', observedAt: 11 }));
+    expect(telemetry.snapshot().map(({ eventId }) => eventId)).toEqual(['evt-after-clear']);
+  });
 });

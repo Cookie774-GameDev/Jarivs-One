@@ -146,19 +146,33 @@ export function createLocalIntelligenceTelemetry(
   if (!Number.isSafeInteger(maxEvents) || maxEvents < 1 || maxEvents > 10_000) {
     throw new Error('Invalid intelligence telemetry retention limit.');
   }
-  const events: Readonly<IntelligenceTelemetryEvent>[] = [];
+  const events = new Array<Readonly<IntelligenceTelemetryEvent> | undefined>(maxEvents);
+  let firstIndex = 0;
+  let size = 0;
 
   return {
     record(event) {
       validateEvent(event);
-      events.push(detachEvent(event));
-      if (events.length > maxEvents) events.splice(0, events.length - maxEvents);
+      const detached = detachEvent(event);
+      if (size < maxEvents) {
+        events[(firstIndex + size) % maxEvents] = detached;
+        size += 1;
+      } else {
+        events[firstIndex] = detached;
+        firstIndex = (firstIndex + 1) % maxEvents;
+      }
     },
     snapshot() {
-      return Object.freeze([...events]);
+      return Object.freeze(
+        Array.from({ length: size }, (_, offset) => events[(firstIndex + offset) % maxEvents]!),
+      );
     },
     clear() {
-      events.splice(0, events.length);
+      for (let offset = 0; offset < size; offset += 1) {
+        events[(firstIndex + offset) % maxEvents] = undefined;
+      }
+      firstIndex = 0;
+      size = 0;
     },
     exporterState() {
       return Object.freeze({ enabled: false as const, exporter: null });
