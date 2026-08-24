@@ -42,6 +42,10 @@ export type HotkeyId =
   | 'ASSISTANT'
   | 'JARVIS_BUBBLE'
   | 'ACTIONS'
+  | 'UNDO'
+  | 'UNDO_X'
+  | 'REDO'
+  | 'REDO_SHIFT'
   | 'DEV_CONSOLE'
   | 'DEV_CONSOLE_F12';
 
@@ -80,6 +84,10 @@ export const DEFAULT_HOTKEYS: Readonly<Record<HotkeyId, Hotkey>> = Object.freeze
   ASSISTANT: 'Mod+J',
   JARVIS_BUBBLE: 'Shift+Tab',
   ACTIONS: 'Mod+Shift+A',
+  UNDO: 'Mod+Z',
+  UNDO_X: 'Mod+X',
+  REDO: 'Mod+Y',
+  REDO_SHIFT: 'Mod+Shift+Z',
   DEV_CONSOLE: 'Mod+Shift+D',
   DEV_CONSOLE_F12: 'F12',
 });
@@ -119,6 +127,10 @@ export const HOTKEY_LABELS: Readonly<Record<HotkeyId, string>> = Object.freeze({
   ASSISTANT: 'Open assistant command bar',
   JARVIS_BUBBLE: 'Toggle chat auto-approve (chat) / open Assistant elsewhere',
   ACTIONS: 'Open actions palette',
+  UNDO: 'Undo',
+  UNDO_X: 'Undo outside text fields (Cut inside text fields)',
+  REDO: 'Redo',
+  REDO_SHIFT: 'Redo (alternate)',
   DEV_CONSOLE: 'Toggle developer console',
   DEV_CONSOLE_F12: 'Toggle developer console (F12)',
 });
@@ -130,6 +142,10 @@ export const HOTKEY_SETTINGS_ORDER: readonly HotkeyId[] = Object.freeze([
   'ASSISTANT',
   'LAUNCHER',
   'SETTINGS',
+  'UNDO',
+  'UNDO_X',
+  'REDO',
+  'REDO_SHIFT',
   'TOGGLE_NAV',
   'TOGGLE_INSPECTOR',
   'TOGGLE_INSPECTOR_I',

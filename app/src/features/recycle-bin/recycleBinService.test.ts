@@ -48,7 +48,7 @@ function harness() {
         entityId: payload.id,
         name: payload.name,
         deletedAt: 10,
-        expiresAt: 20,
+        expiresAt: Date.now() + 60_000,
         payload,
       };
       archives.push(item);
@@ -61,7 +61,7 @@ function harness() {
         entityId: payload.id,
         name: payload.name,
         deletedAt: 10,
-        expiresAt: 20,
+        expiresAt: Date.now() + 60_000,
         payload,
       };
       archives.push(item);
@@ -90,6 +90,7 @@ function harness() {
   const registerAgent = vi.fn();
   const unregisterAgent = vi.fn();
   const refreshSkills = vi.fn();
+  const history = { record: vi.fn() };
   const service = createRecycleBinService({
     bin,
     agents,
@@ -98,6 +99,7 @@ function harness() {
     unregisterAgent,
     refreshSkills,
     newAgentId: () => 'agt-restored' as AgentId,
+    history,
   });
   return {
     archives,
@@ -107,6 +109,7 @@ function harness() {
     registerAgent,
     unregisterAgent,
     refreshSkills,
+    history,
     service,
   };
 }
@@ -232,4 +235,45 @@ describe('recycleBinService', () => {
     expect(test.skills.restoreCustomSkill).not.toHaveBeenCalled();
     expect(test.bin.removeArchive).not.toHaveBeenCalled();
   });
+
+  it('records a completed agent deletion as a reversible recycle operation', async () => {
+    const test = harness();
+    const original = agent();
+
+    await test.service.moveAgentToRecycleBin(original);
+    const operation = test.history.record.mock.calls[0]?.[0] as ReversibleOperation;
+    expect(operation.label).toBe('Delete agent Researcher');
+
+    await operation.undo();
+    expect(test.agents.create).toHaveBeenCalledWith(expect.objectContaining({ id: original.id }));
+    expect(test.registerAgent).toHaveBeenCalledOnce();
+
+    test.agents.getById.mockResolvedValueOnce(original);
+    await operation.redo();
+    expect(test.agents.delete).toHaveBeenCalledTimes(2);
+    expect(test.unregisterAgent).toHaveBeenCalledTimes(2);
+  });
+
+  it('records skill deletion and restoration without recursively adding history entries', async () => {
+    const test = harness();
+    const original = skill();
+    test.skills.getCustomSkill.mockReturnValue(original);
+
+    await test.service.moveSkillToRecycleBin(original.id);
+    const operation = test.history.record.mock.calls[0]?.[0] as ReversibleOperation;
+    expect(operation.label).toBe('Delete skill Custom skill');
+    expect(test.history.record).toHaveBeenCalledOnce();
+
+    await operation.undo();
+    await operation.redo();
+    expect(test.history.record).toHaveBeenCalledOnce();
+    expect(test.skills.restoreCustomSkill).toHaveBeenCalledWith(original);
+    expect(test.skills.removeCustomSkill).toHaveBeenCalledTimes(2);
+  });
 });
+
+type ReversibleOperation = {
+  label: string;
+  undo(): void | Promise<void>;
+  redo(): void | Promise<void>;
+};

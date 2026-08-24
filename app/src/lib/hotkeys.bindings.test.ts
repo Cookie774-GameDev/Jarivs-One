@@ -34,6 +34,16 @@ describe('hotkey rebinding + conflicts', () => {
     expect(HOTKEY_SETTINGS_ORDER.length).toBe(ids.length);
   });
 
+  it('registers undo and redo as visible rebindable Settings commands', () => {
+    expect(DEFAULT_HOTKEYS).toMatchObject({
+      UNDO: 'Mod+Z',
+      UNDO_X: 'Mod+X',
+      REDO: 'Mod+Y',
+      REDO_SHIFT: 'Mod+Shift+Z',
+    });
+    expect(HOTKEY_SETTINGS_ORDER.slice(5, 9)).toEqual(['UNDO', 'UNDO_X', 'REDO', 'REDO_SHIFT']);
+  });
+
   it('detects conflicts before saving (Ctrl/Mod+K example)', () => {
     // TOGGLE_NAV default is Mod+B; rebind to palette's Mod+K
     const conflicts = findConflicts('TOGGLE_NAV', 'Mod+K');

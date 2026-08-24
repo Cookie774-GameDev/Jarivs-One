@@ -16,6 +16,7 @@ import { CouncilActivityStrip } from './ActivityStrip';
 import { isWorkbenchDetachedSearch } from '@/features/workbench/window';
 import { NightlySecondBrainHost } from '@/features/context/NightlySecondBrainHost';
 import { GlobalUiSoundHost } from '@/lib/sfx';
+import { GlobalUndoRedoHost } from '@/features/undo-redo';
 import './sakura-shell.css';
 
 interface AppShellProps {
@@ -83,6 +84,7 @@ export function AppShell({ children }: AppShellProps) {
             data-workbench-detached={workbenchDetached ? 'true' : 'false'}
           >
             <GlobalUiSoundHost />
+            <GlobalUndoRedoHost />
             {isTauri && !workbenchDetached && <BrowserChatSurfaceGuard />}
             <NightlySecondBrainHost />
             {sakuraActive && <SakuraBackdrop route={route} />}
@@ -125,6 +127,7 @@ export function AppShell({ children }: AppShellProps) {
           data-focus-mode-route={focusActive ? route : undefined}
         >
           <GlobalUiSoundHost />
+          <GlobalUndoRedoHost />
           {isTauri && route === 'chat' && <BrowserChatBindingHost />}
           {isTauri && <BrowserChatSurfaceGuard />}
           <NightlySecondBrainHost />

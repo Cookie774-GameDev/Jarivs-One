@@ -4,6 +4,7 @@ import { agentRepo, type AgentCreateInput } from '@/lib/db/repositories';
 import { newAgentId } from '@/lib/ids';
 import { useAgentStore } from '@/stores/agents';
 import type { Agent, AgentId } from '@/types';
+import { globalUndoRedo, type ReversibleAction } from '@/features/undo-redo/history';
 import {
   recycleBinStore,
   type RecycleBinItem,
@@ -43,6 +44,7 @@ export interface RecycleBinServiceDependencies {
   unregisterAgent: (id: AgentId) => void;
   refreshSkills: () => void;
   newAgentId: () => AgentId;
+  history: { record(action: ReversibleAction): void };
 }
 
 function withoutAgentTimestamps(agent: Agent): Omit<Agent, 'created_at' | 'updated_at'> {
@@ -80,7 +82,7 @@ async function selectRestoredAgentIdentity(
 }
 
 export function createRecycleBinService(dependencies: RecycleBinServiceDependencies) {
-  async function moveAgentToRecycleBin(agent: Agent): Promise<RecycledAgentItem> {
+  async function moveAgentToRecycleBinRaw(agent: Agent): Promise<RecycledAgentItem> {
     if (agent.builtin) throw new Error('Built-in agents cannot be deleted.');
     const archived = dependencies.bin.archiveAgent(agent);
     try {
@@ -98,7 +100,7 @@ export function createRecycleBinService(dependencies: RecycleBinServiceDependenc
     return archived;
   }
 
-  async function moveSkillToRecycleBin(id: string): Promise<RecycledSkillItem> {
+  async function moveSkillToRecycleBinRaw(id: string): Promise<RecycledSkillItem> {
     const store = dependencies.skills();
     const skill = store.getCustomSkill(id);
     if (!skill) throw new Error('Only custom skills can be moved to the Recycle Bin.');
@@ -131,7 +133,9 @@ export function createRecycleBinService(dependencies: RecycleBinServiceDependenc
     return archived;
   }
 
-  async function restoreAgent(item: RecycledAgentItem): Promise<RecycleBinRestoreResult> {
+  async function restoreAgent(
+    item: RecycledAgentItem,
+  ): Promise<Extract<RecycleBinRestoreResult, { kind: 'agent' }>> {
     const identity = await selectRestoredAgentIdentity(item, dependencies);
     const input: AgentCreateInput = {
       ...withoutAgentTimestamps(item.payload),
@@ -159,7 +163,9 @@ export function createRecycleBinService(dependencies: RecycleBinServiceDependenc
     return { kind: 'agent', entityId: restored.id, renamed: identity.renamed };
   }
 
-  async function restoreSkill(item: RecycledSkillItem): Promise<RecycleBinRestoreResult> {
+  async function restoreSkill(
+    item: RecycledSkillItem,
+  ): Promise<Extract<RecycleBinRestoreResult, { kind: 'skill' }>> {
     const store = dependencies.skills();
     store.restoreCustomSkill(item.payload);
     try {
@@ -180,14 +186,89 @@ export function createRecycleBinService(dependencies: RecycleBinServiceDependenc
     return { kind: 'skill', entityId: item.entityId, renamed: false };
   }
 
+  function recordAgentDeletion(initialArchive: RecycledAgentItem): void {
+    let archive = initialArchive;
+    let activeId = initialArchive.entityId;
+    dependencies.history.record({
+      label: `Delete agent ${initialArchive.name}`,
+      undo: async () => {
+        const restored = await restoreAgent(archive);
+        activeId = restored.entityId;
+      },
+      redo: async () => {
+        const active = await dependencies.agents.getById(activeId);
+        if (!active) throw new Error('The agent is no longer available to redo this action.');
+        archive = await moveAgentToRecycleBinRaw(active);
+      },
+    });
+  }
+
+  function recordSkillDeletion(initialArchive: RecycledSkillItem): void {
+    let archive = initialArchive;
+    dependencies.history.record({
+      label: `Delete skill ${initialArchive.name}`,
+      undo: async () => {
+        await restoreSkill(archive);
+      },
+      redo: async () => {
+        archive = await moveSkillToRecycleBinRaw(initialArchive.entityId);
+      },
+    });
+  }
+
+  function recordAgentRestore(
+    initialArchive: RecycledAgentItem,
+    initialResult: Extract<RecycleBinRestoreResult, { kind: 'agent' }>,
+  ): void {
+    let archive = initialArchive;
+    let activeId = initialResult.entityId;
+    dependencies.history.record({
+      label: `Restore agent ${initialArchive.name}`,
+      undo: async () => {
+        const active = await dependencies.agents.getById(activeId);
+        if (!active)
+          throw new Error('The restored agent is no longer available to undo this action.');
+        archive = await moveAgentToRecycleBinRaw(active);
+      },
+      redo: async () => {
+        const restored = await restoreAgent(archive);
+        activeId = restored.entityId;
+      },
+    });
+  }
+
+  function recordSkillRestore(initialArchive: RecycledSkillItem): void {
+    let archive = initialArchive;
+    dependencies.history.record({
+      label: `Restore skill ${initialArchive.name}`,
+      undo: async () => {
+        archive = await moveSkillToRecycleBinRaw(initialArchive.entityId);
+      },
+      redo: async () => {
+        await restoreSkill(archive);
+      },
+    });
+  }
+
   return {
-    moveAgentToRecycleBin,
-    moveSkillToRecycleBin,
-    restore(item: RecycleBinItem): Promise<RecycleBinRestoreResult> {
+    async moveAgentToRecycleBin(agent: Agent): Promise<RecycledAgentItem> {
+      const archived = await moveAgentToRecycleBinRaw(agent);
+      recordAgentDeletion(archived);
+      return archived;
+    },
+    async moveSkillToRecycleBin(id: string): Promise<RecycledSkillItem> {
+      const archived = await moveSkillToRecycleBinRaw(id);
+      recordSkillDeletion(archived);
+      return archived;
+    },
+    async restore(item: RecycleBinItem): Promise<RecycleBinRestoreResult> {
       if (item.expiresAt <= Date.now()) {
-        return Promise.reject(new Error('This Recycle Bin item has expired.'));
+        throw new Error('This Recycle Bin item has expired.');
       }
-      return item.kind === 'agent' ? restoreAgent(item) : restoreSkill(item);
+      const result = item.kind === 'agent' ? await restoreAgent(item) : await restoreSkill(item);
+      if (item.kind === 'agent' && result.kind === 'agent') recordAgentRestore(item, result);
+      else if (item.kind === 'skill') recordSkillRestore(item);
+      return result;
     },
     permanentlyDelete(archiveId: string): void {
       dependencies.bin.removeArchive(archiveId);
@@ -206,4 +287,5 @@ export const recycleBinService = createRecycleBinService({
   unregisterAgent: (id) => useAgentStore.getState().unregisterAgent(id),
   refreshSkills: () => skillRegistry.refresh(),
   newAgentId,
+  history: globalUndoRedo,
 });
