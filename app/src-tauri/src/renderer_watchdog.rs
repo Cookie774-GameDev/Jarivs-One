@@ -703,24 +703,30 @@ impl RendererWatchdog {
         if let Ok(mut heartbeat) = self.last_heartbeat.lock() {
             *heartbeat = Instant::now();
         }
-        if let Ok(mut recovery) = self.recovery.lock() {
-            recovery.reload_attempts = 0;
-            recovery.recreate_attempts = 0;
-            recovery.last_action_at = None;
-        }
-        if self.process_restart_allowed.load(Ordering::SeqCst) {
-            return false;
-        }
-        let Ok(mut healthy_since) = self.healthy_since.lock() else {
-            return false;
+        let sustained_health = if let Ok(mut healthy_since) = self.healthy_since.lock() {
+            let elapsed = healthy_since.map(|started| started.elapsed());
+            if should_rearm_process_restart(elapsed) {
+                *healthy_since = None;
+                true
+            } else {
+                healthy_since.get_or_insert_with(Instant::now);
+                false
+            }
+        } else {
+            false
         };
-        let elapsed = healthy_since.map(|started| started.elapsed());
-        if should_rearm_process_restart(elapsed) {
-            *healthy_since = None;
+
+        if sustained_health {
+            if let Ok(mut recovery) = self.recovery.lock() {
+                recovery.reload_attempts = 0;
+                recovery.recreate_attempts = 0;
+                recovery.last_action_at = None;
+            }
+        }
+        if sustained_health && !self.process_restart_allowed.load(Ordering::SeqCst) {
             self.process_restart_allowed.store(true, Ordering::SeqCst);
             true
         } else {
-            healthy_since.get_or_insert_with(Instant::now);
             false
         }
     }
@@ -3031,6 +3037,32 @@ mod tests {
         assert!(!should_rearm_process_restart(Some(Duration::from_secs(1))));
         assert!(!should_rearm_process_restart(Some(Duration::from_secs(59))));
         assert!(should_rearm_process_restart(Some(Duration::from_secs(60))));
+    }
+
+    #[test]
+    fn recovery_attempts_reset_only_after_sustained_renderer_health() {
+        let watchdog = super::RendererWatchdog::new(true);
+        {
+            let mut recovery = watchdog.recovery.lock().unwrap();
+            recovery.reload_attempts = 2;
+            recovery.recreate_attempts = 1;
+            recovery.last_action_at = Some(Instant::now());
+        }
+
+        watchdog.record_heartbeat();
+        {
+            let recovery = watchdog.recovery.lock().unwrap();
+            assert_eq!(recovery.reload_attempts, 2);
+            assert_eq!(recovery.recreate_attempts, 1);
+            assert!(recovery.last_action_at.is_some());
+        }
+
+        *watchdog.healthy_since.lock().unwrap() = Some(Instant::now() - Duration::from_secs(61));
+        watchdog.record_heartbeat();
+        let recovery = watchdog.recovery.lock().unwrap();
+        assert_eq!(recovery.reload_attempts, 0);
+        assert_eq!(recovery.recreate_attempts, 0);
+        assert_eq!(recovery.last_action_at, None);
     }
 
     #[test]
