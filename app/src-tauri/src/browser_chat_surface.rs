@@ -205,15 +205,58 @@ fn is_browser_chat_label(label: &str) -> bool {
         || label.starts_with("browser-chat-gemini-")
 }
 
-fn deactivate_surface(app: &AppHandle, label: &str) -> Result<(), String> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SurfaceDeactivationMode {
+    PreserveSession,
+    Destroy,
+}
+
+fn is_profile_scoped_browser_chat_label(label: &str) -> bool {
+    [
+        "browser-chat-chatgpt-",
+        "browser-chat-claude-",
+        "browser-chat-gemini-",
+    ]
+    .iter()
+    .any(|prefix| {
+        label.strip_prefix(prefix).is_some_and(|digest| {
+            digest.len() == 16 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
+    })
+}
+
+fn surface_deactivation_mode(label: &str, tracked: bool) -> SurfaceDeactivationMode {
+    if tracked && is_profile_scoped_browser_chat_label(label) {
+        SurfaceDeactivationMode::PreserveSession
+    } else {
+        SurfaceDeactivationMode::Destroy
+    }
+}
+
+fn deactivate_surface(
+    app: &AppHandle,
+    label: &str,
+    mode: SurfaceDeactivationMode,
+) -> Result<(), String> {
     if let Some(webview) = app.get_webview(label) {
         // On Windows/WebView2 a hidden child can retain its last compositor surface
-        // and stay painted over the default VibeSpace page. Park it off-screen, hide
-        // it, then close it so only an explicit Browser Chat open can recreate it.
+        // and stay painted over the default VibeSpace page. A tracked account surface
+        // stays alive but parked off-screen at 1px so ordinary route changes do not
+        // reload ChatGPT or trigger its restart/recovery page. Legacy and orphaned
+        // surfaces are still closed so an old renderer cannot overlay the shell.
         let _ = webview.set_position(LogicalPosition::new(-32_000.0, -32_000.0));
         let _ = webview.set_size(LogicalSize::new(1.0, 1.0));
-        let _ = webview.hide();
-        let _ = webview.close();
+        match mode {
+            SurfaceDeactivationMode::PreserveSession => {
+                // Keeping WebView2 composited at an off-screen 1px location avoids
+                // the stale hidden-child frame while retaining the live provider page.
+                let _ = webview.show();
+            }
+            SurfaceDeactivationMode::Destroy => {
+                let _ = webview.hide();
+                let _ = webview.close();
+            }
+        }
     }
     Ok(())
 }
@@ -225,7 +268,11 @@ fn hide_surfaces_except(
 ) -> Result<(), String> {
     for surface in &state.surfaces {
         if Some(surface.label.as_str()) != selected {
-            deactivate_surface(app, &surface.label)?;
+            deactivate_surface(
+                app,
+                &surface.label,
+                surface_deactivation_mode(&surface.label, true),
+            )?;
         }
     }
 
@@ -233,7 +280,7 @@ fn hide_surfaces_except(
     // in-place upgrade cannot leave a legacy provider view floating over the current shell.
     for label in LEGACY_SURFACE_LABELS {
         if Some(label) != selected {
-            deactivate_surface(app, label)?;
+            deactivate_surface(app, label, SurfaceDeactivationMode::Destroy)?;
         }
     }
 
@@ -244,7 +291,8 @@ fn hide_surfaces_except(
         .filter(|label| is_browser_chat_label(label) && Some(label.as_str()) != selected)
         .collect();
     for label in leftover {
-        deactivate_surface(app, &label)?;
+        let tracked = state.surfaces.iter().any(|surface| surface.label == label);
+        deactivate_surface(app, &label, surface_deactivation_mode(&label, tracked))?;
     }
     Ok(())
 }
@@ -466,7 +514,12 @@ fn open_provider(
     }
 
     if !visibility_generation_is_current(requested_generation) {
-        deactivate_surface(&app, &label)?;
+        let mode = if created {
+            SurfaceDeactivationMode::Destroy
+        } else {
+            SurfaceDeactivationMode::PreserveSession
+        };
+        deactivate_surface(&app, &label, mode)?;
         if state.visible_label.as_deref() == Some(label.as_str()) {
             state.visible_label = None;
         }
@@ -479,7 +532,12 @@ fn open_provider(
         .map_err(|error| format!("browser_chat_show_failed:{error}"))?;
 
     if !visibility_generation_is_current(requested_generation) {
-        deactivate_surface(&app, &label)?;
+        let mode = if created {
+            SurfaceDeactivationMode::Destroy
+        } else {
+            SurfaceDeactivationMode::PreserveSession
+        };
+        deactivate_surface(&app, &label, mode)?;
         state.visible_label = None;
         return Ok(created);
     }
@@ -548,7 +606,6 @@ pub async fn browser_chat_surface_hide_all(
             .map_err(|_| "browser_chat_surface_lock_unavailable".to_string())?;
         hide_surfaces_except(&app, &state, None)?;
         state.visible_label = None;
-        state.surfaces.clear();
         Ok::<(), String>(())
     })
     .await
@@ -576,10 +633,10 @@ pub async fn browser_chat_surface_hide(
             .map(|surface| surface.label.clone())
             .collect();
         for label in &labels {
-            deactivate_surface(&app, label)?;
+            deactivate_surface(&app, label, SurfaceDeactivationMode::PreserveSession)?;
         }
         let legacy_label = format!("browser-chat-{}", provider.id);
-        deactivate_surface(&app, &legacy_label)?;
+        deactivate_surface(&app, &legacy_label, SurfaceDeactivationMode::Destroy)?;
         if state
             .visible_label
             .as_ref()
@@ -597,6 +654,26 @@ pub async fn browser_chat_surface_hide(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preserves_tracked_profile_sessions_but_destroys_legacy_or_orphan_surfaces() {
+        assert_eq!(
+            surface_deactivation_mode("browser-chat-chatgpt-0123456789abcdef", true),
+            SurfaceDeactivationMode::PreserveSession
+        );
+        assert_eq!(
+            surface_deactivation_mode("browser-chat-claude-0123456789abcdef", true),
+            SurfaceDeactivationMode::PreserveSession
+        );
+        assert_eq!(
+            surface_deactivation_mode("browser-chat-chatgpt", false),
+            SurfaceDeactivationMode::Destroy
+        );
+        assert_eq!(
+            surface_deactivation_mode("browser-chat-chatgpt-fedcba9876543210", false),
+            SurfaceDeactivationMode::Destroy
+        );
+    }
 
     #[test]
     fn treats_legacy_and_profile_scoped_labels_as_browser_chat_surfaces() {
