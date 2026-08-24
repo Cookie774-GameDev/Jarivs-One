@@ -29,14 +29,8 @@
  */
 
 import { create } from 'zustand';
-import {
-  MAX_PENDING_ESCAPE_CHARS,
-  splitTrailingIncompleteEscape,
-} from './terminalEscape';
-import {
-  sanitizePersistedDraft,
-  sanitizePersistedTerminalText,
-} from './terminalContentSanitizer';
+import { MAX_PENDING_ESCAPE_CHARS, splitTrailingIncompleteEscape } from './terminalEscape';
+import { sanitizePersistedDraft, sanitizePersistedTerminalText } from './terminalContentSanitizer';
 
 /* -------------------------------------------------------------------------- */
 /*  Constants                                                                 */
@@ -49,8 +43,8 @@ import {
  * few minutes" window without ballooning memory.
  */
 export const MAX_BYTES_PER_SESSION = 32 * 1024;
-export const MAX_PERSISTED_SESSIONS = 10;
-export const MAX_TOTAL_TRANSCRIPTS_SIZE_BYTES = 512 * 1024; // 512 KB
+export const MAX_PERSISTED_SESSIONS = 30;
+export const MAX_TOTAL_TRANSCRIPTS_SIZE_BYTES = 2 * 1024 * 1024; // 2 MB
 
 /**
  * Truncation marker prefixed when the buffer is full and we drop
@@ -85,7 +79,8 @@ const ANSI_REGEX =
 
 const ORPHAN_CSI_FRAGMENT = /\[(?:\??\d[\d;?]*|[;?][\d;?]*)[\x20-\x2F]*[A-Za-z]/g;
 const ORPHAN_CSI_NO_PARAM_FRAGMENT = /(^|[\r\n])\[(?:K|J|H|m)(?=$|[^\w])/g;
-const ORPHAN_OSC_FRAGMENT = /(^|[\r\n])(?:\x1B)?\](?:\d{1,3}|[A-Za-z])(?:;[^\r\n\x07]*)?(?:\x07|\r?\n|$)/g;
+const ORPHAN_OSC_FRAGMENT =
+  /(^|[\r\n])(?:\x1B)?\](?:\d{1,3}|[A-Za-z])(?:;[^\r\n\x07]*)?(?:\x07|\r?\n|$)/g;
 /** Legacy: orphan `[0` digit-repeat fragments from pre-NoProfile ConPTY artefacts. */
 const ORPHAN_DIGIT_REPEAT = /(?:^|[\r\n])(?:\[0)+\[?(?=$|[\r\n])/g;
 /** Legacy: orphan `[I` tab fragments from pre-NoProfile PSReadLine escape soup. */
@@ -150,7 +145,9 @@ function sanitizeTerminalOutputChunk(
     pendingEscape: nextPending,
   };
 }
-export function terminalRestoreText(session: Partial<SessionTranscript> | null | undefined): string {
+export function terminalRestoreText(
+  session: Partial<SessionTranscript> | null | undefined,
+): string {
   const source =
     typeof session?.text === 'string' && session.text.length > 0
       ? session.text
@@ -213,7 +210,12 @@ interface TranscriptState {
   /** Bind the session to its agent + command so by-agent lookups work. */
   registerSession: (
     sessionId: string,
-    init: { agentSlug?: string | null; command?: string | null; paneId?: string | null; projectId?: string | null },
+    init: {
+      agentSlug?: string | null;
+      command?: string | null;
+      paneId?: string | null;
+      projectId?: string | null;
+    },
   ) => void;
 
   /**
@@ -222,10 +224,7 @@ interface TranscriptState {
    * the existing transcript to flow under the new slug going forward
    * without losing the bytes already captured.
    */
-  retagSession: (
-    sessionId: string,
-    agentSlug: string | null,
-  ) => void;
+  retagSession: (sessionId: string, agentSlug: string | null) => void;
 
   /** Append raw PTY bytes; performs ANSI strip + ring-buffer trim internally. */
   appendOutput: (sessionId: string, raw: string) => void;
@@ -277,7 +276,9 @@ function appendBounded(existing: string, chunk: string): string {
  * within strict limits on count, per-session size, and total size.
  * Newest sessions are kept; oldest are evicted.
  */
-export function pruneSessions(sessions: Record<string, SessionTranscript>): Record<string, SessionTranscript> {
+export function pruneSessions(
+  sessions: Record<string, SessionTranscript>,
+): Record<string, SessionTranscript> {
   const sessionList = Object.values(sessions);
   if (sessionList.length === 0) return sessions;
 
@@ -308,7 +309,9 @@ export function pruneSessions(sessions: Record<string, SessionTranscript>): Reco
     const evicted = activeSessions.pop();
     if (evicted) {
       delete pruned[evicted.sessionId];
-      console.warn(`[TRANSCRIPTS PRUNING] Evicted old session transcript '${evicted.sessionId}' to fit total cap.`);
+      console.warn(
+        `[TRANSCRIPTS PRUNING] Evicted old session transcript '${evicted.sessionId}' to fit total cap.`,
+      );
     }
     jsonStr = JSON.stringify({ sessions: pruned });
   }
@@ -366,14 +369,11 @@ export function deserializeTranscriptSessions(
         projectId: typeof session.projectId === 'string' ? session.projectId : null,
         agentSlug: typeof session.agentSlug === 'string' ? session.agentSlug : null,
         command: typeof session.command === 'string' ? session.command : null,
-        text: sanitizePersistedTerminalText(
-          typeof session.text === 'string' ? session.text : '',
-          {
-            maxBytes: MAX_BYTES_PER_SESSION,
-            maxLines: 100_000,
-            truncationMarker: '',
-          },
-        ).text,
+        text: sanitizePersistedTerminalText(typeof session.text === 'string' ? session.text : '', {
+          maxBytes: MAX_BYTES_PER_SESSION,
+          maxLines: 100_000,
+          truncationMarker: '',
+        }).text,
         rawText: '',
         pendingEscape: '',
         currentInput: sanitizePersistedDraft(
@@ -451,10 +451,7 @@ export function flushTranscriptStorage(): void {
 
 function scheduleTranscriptStorageFlush(): void {
   if (typeof window === 'undefined' || transcriptStorageTimer) return;
-  transcriptStorageTimer = setTimeout(
-    flushTranscriptStorage,
-    TRANSCRIPT_STORAGE_DEBOUNCE_MS,
-  );
+  transcriptStorageTimer = setTimeout(flushTranscriptStorage, TRANSCRIPT_STORAGE_DEBOUNCE_MS);
 }
 
 if (typeof window !== 'undefined') {
@@ -469,154 +466,152 @@ if (typeof window !== 'undefined') {
 /*  Zustand store                                                             */
 /* -------------------------------------------------------------------------- */
 
-export const useTerminalTranscriptStore = create<TranscriptState>()(
-    (set) => ({
-      sessions: loadInitialSessions(),
+export const useTerminalTranscriptStore = create<TranscriptState>()((set) => ({
+  sessions: loadInitialSessions(),
 
-      registerSession: (sessionId, init) => {
-        set((state) => {
-          const existing = state.sessions[sessionId];
-          const nextSessions = {
-            ...state.sessions,
-            [sessionId]: {
-              sessionId,
-              paneId: init.paneId ?? existing?.paneId ?? null,
-              projectId: init.projectId ?? existing?.projectId ?? null,
-              agentSlug: init.agentSlug ?? existing?.agentSlug ?? null,
-              command: init.command ?? existing?.command ?? null,
-              text: existing?.text ?? '',
-              rawText: existing?.rawText ?? '',
-              pendingEscape: existing?.pendingEscape ?? '',
-              currentInput: existing?.currentInput ?? '',
-              lastWriteAt: existing?.lastWriteAt ?? Date.now(),
-              bytesSeen: existing?.bytesSeen ?? 0,
-            },
-          };
-          return { sessions: enforceSessionCount(nextSessions) };
-        });
-        scheduleTranscriptStorageFlush();
-      },
+  registerSession: (sessionId, init) => {
+    set((state) => {
+      const existing = state.sessions[sessionId];
+      const nextSessions = {
+        ...state.sessions,
+        [sessionId]: {
+          sessionId,
+          paneId: init.paneId ?? existing?.paneId ?? null,
+          projectId: init.projectId ?? existing?.projectId ?? null,
+          agentSlug: init.agentSlug ?? existing?.agentSlug ?? null,
+          command: init.command ?? existing?.command ?? null,
+          text: existing?.text ?? '',
+          rawText: existing?.rawText ?? '',
+          pendingEscape: existing?.pendingEscape ?? '',
+          currentInput: existing?.currentInput ?? '',
+          lastWriteAt: existing?.lastWriteAt ?? Date.now(),
+          bytesSeen: existing?.bytesSeen ?? 0,
+        },
+      };
+      return { sessions: enforceSessionCount(nextSessions) };
+    });
+    scheduleTranscriptStorageFlush();
+  },
 
-      retagSession: (sessionId, agentSlug) => {
-        set((state) => {
-          const cur = state.sessions[sessionId];
-          if (!cur) return {};
-          const nextSessions = {
-            ...state.sessions,
-            [sessionId]: { ...cur, agentSlug },
-          };
-          return { sessions: nextSessions };
-        });
-        scheduleTranscriptStorageFlush();
-      },
+  retagSession: (sessionId, agentSlug) => {
+    set((state) => {
+      const cur = state.sessions[sessionId];
+      if (!cur) return {};
+      const nextSessions = {
+        ...state.sessions,
+        [sessionId]: { ...cur, agentSlug },
+      };
+      return { sessions: nextSessions };
+    });
+    scheduleTranscriptStorageFlush();
+  },
 
-      appendOutput: (sessionId, raw) => {
-        set((state) => {
-          const cur = state.sessions[sessionId];
-          if (!cur) return {};
-          const cleaned = sanitizeTerminalOutputChunk(raw, cur.pendingEscape);
-          const nextSessions = {
-            ...state.sessions,
-            [sessionId]: {
-              ...cur,
-              text: appendBounded(cur.text, cleaned.text),
-              rawText: '',
-              pendingEscape: cleaned.pendingEscape,
-              bytesSeen: cur.bytesSeen + raw.length,
-              lastWriteAt: Date.now(),
-            },
-          };
-          // Hot path (fires on every PTY chunk): per-session bounding is
-          // already handled by appendBounded; the expensive full prune
-          // happens in the debounced storage flush.
-          return { sessions: nextSessions };
-        });
-        scheduleTranscriptStorageFlush();
-      },
+  appendOutput: (sessionId, raw) => {
+    set((state) => {
+      const cur = state.sessions[sessionId];
+      if (!cur) return {};
+      const cleaned = sanitizeTerminalOutputChunk(raw, cur.pendingEscape);
+      const nextSessions = {
+        ...state.sessions,
+        [sessionId]: {
+          ...cur,
+          text: appendBounded(cur.text, cleaned.text),
+          rawText: '',
+          pendingEscape: cleaned.pendingEscape,
+          bytesSeen: cur.bytesSeen + raw.length,
+          lastWriteAt: Date.now(),
+        },
+      };
+      // Hot path (fires on every PTY chunk): per-session bounding is
+      // already handled by appendBounded; the expensive full prune
+      // happens in the debounced storage flush.
+      return { sessions: nextSessions };
+    });
+    scheduleTranscriptStorageFlush();
+  },
 
-      setCurrentInput: (sessionId, currentInput) => {
-        set((state) => {
-          const cur = state.sessions[sessionId];
-          if (!cur) return {};
-          const safeInput = sanitizePersistedDraft(currentInput, cur.text);
-          if (cur.currentInput === safeInput) return {};
-          const nextSessions = {
-            ...state.sessions,
-            [sessionId]: {
-              ...cur,
-              currentInput: safeInput,
-            },
-          };
-          // Hot path (typing): do not update lastWriteAt. Draft input is
-          // persistence metadata, not PTY activity; bumping it wakes
-          // by-activity subscribers across 6-10 panes.
-          return { sessions: nextSessions };
-        });
-        scheduleTranscriptStorageFlush();
-      },
+  setCurrentInput: (sessionId, currentInput) => {
+    set((state) => {
+      const cur = state.sessions[sessionId];
+      if (!cur) return {};
+      const safeInput = sanitizePersistedDraft(currentInput, cur.text);
+      if (cur.currentInput === safeInput) return {};
+      const nextSessions = {
+        ...state.sessions,
+        [sessionId]: {
+          ...cur,
+          currentInput: safeInput,
+        },
+      };
+      // Hot path (typing): do not update lastWriteAt. Draft input is
+      // persistence metadata, not PTY activity; bumping it wakes
+      // by-activity subscribers across 6-10 panes.
+      return { sessions: nextSessions };
+    });
+    scheduleTranscriptStorageFlush();
+  },
 
-      forgetSession: (sessionId) => {
-        set((state) => {
-          if (!state.sessions[sessionId]) return {};
-          const next = { ...state.sessions };
-          delete next[sessionId];
-          return { sessions: next };
-        });
-        scheduleTranscriptStorageFlush();
-      },
+  forgetSession: (sessionId) => {
+    set((state) => {
+      if (!state.sessions[sessionId]) return {};
+      const next = { ...state.sessions };
+      delete next[sessionId];
+      return { sessions: next };
+    });
+    scheduleTranscriptStorageFlush();
+  },
 
-      transferSession: (oldSessionId, newSessionId) => {
-        set((state) => {
-          const oldSession = state.sessions[oldSessionId];
-          if (!oldSession) return {};
-          const nextSessions = { ...state.sessions };
-          nextSessions[newSessionId] = {
-            ...oldSession,
-            sessionId: newSessionId,
-            lastWriteAt: Date.now(),
-          };
-          delete nextSessions[oldSessionId];
-          return { sessions: enforceSessionCount(nextSessions) };
-        });
-        scheduleTranscriptStorageFlush();
-      },
+  transferSession: (oldSessionId, newSessionId) => {
+    set((state) => {
+      const oldSession = state.sessions[oldSessionId];
+      if (!oldSession) return {};
+      const nextSessions = { ...state.sessions };
+      nextSessions[newSessionId] = {
+        ...oldSession,
+        sessionId: newSessionId,
+        lastWriteAt: Date.now(),
+      };
+      delete nextSessions[oldSessionId];
+      return { sessions: enforceSessionCount(nextSessions) };
+    });
+    scheduleTranscriptStorageFlush();
+  },
 
-      clearSessionTranscript: (sessionId) => {
-        set((state) => {
-          const cur = state.sessions[sessionId];
-          if (!cur) return {};
-          const nextSessions = {
-            ...state.sessions,
-            [sessionId]: {
-              ...cur,
-              text: '',
-              rawText: '',
-              pendingEscape: '',
-              currentInput: '',
-              bytesSeen: 0,
-              lastWriteAt: Date.now(),
-            },
-          };
-          return { sessions: nextSessions };
-        });
-        scheduleTranscriptStorageFlush();
-      },
+  clearSessionTranscript: (sessionId) => {
+    set((state) => {
+      const cur = state.sessions[sessionId];
+      if (!cur) return {};
+      const nextSessions = {
+        ...state.sessions,
+        [sessionId]: {
+          ...cur,
+          text: '',
+          rawText: '',
+          pendingEscape: '',
+          currentInput: '',
+          bytesSeen: 0,
+          lastWriteAt: Date.now(),
+        },
+      };
+      return { sessions: nextSessions };
+    });
+    scheduleTranscriptStorageFlush();
+  },
 
-      reset: () => {
-        set({ sessions: {} });
-        pendingStorageWrites.delete(TRANSCRIPT_STORAGE_KEY);
-        pendingStorageWrites.delete(TRANSCRIPT_BACKUP_STORAGE_KEY);
-        if (transcriptStorageTimer) {
-          clearTimeout(transcriptStorageTimer);
-          transcriptStorageTimer = null;
-        }
-        if (typeof window !== 'undefined') {
-          window.localStorage.removeItem(TRANSCRIPT_STORAGE_KEY);
-          window.localStorage.removeItem(TRANSCRIPT_BACKUP_STORAGE_KEY);
-        }
-      },
-    })
-);
+  reset: () => {
+    set({ sessions: {} });
+    pendingStorageWrites.delete(TRANSCRIPT_STORAGE_KEY);
+    pendingStorageWrites.delete(TRANSCRIPT_BACKUP_STORAGE_KEY);
+    if (transcriptStorageTimer) {
+      clearTimeout(transcriptStorageTimer);
+      transcriptStorageTimer = null;
+    }
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(TRANSCRIPT_STORAGE_KEY);
+      window.localStorage.removeItem(TRANSCRIPT_BACKUP_STORAGE_KEY);
+    }
+  },
+}));
 
 /* -------------------------------------------------------------------------- */
 /*  Public selectors                                                          */
@@ -627,9 +622,7 @@ export const useTerminalTranscriptStore = create<TranscriptState>()(
  * `useTerminalTranscriptStore.getState().sessions[id]` from non-React
  * callers. Returns `undefined` when the session isn't tracked.
  */
-export function getSessionTranscript(
-  sessionId: string,
-): SessionTranscript | undefined {
+export function getSessionTranscript(sessionId: string): SessionTranscript | undefined {
   return useTerminalTranscriptStore.getState().sessions[sessionId];
 }
 
@@ -641,14 +634,9 @@ export function getSessionTranscript(
  * Returned in most-recently-active order so callers that only show
  * the top N get the freshest data.
  */
-export function getSessionsForAgent(
-  agentSlug: string,
-): SessionTranscript[] {
-  const all = Object.values(
-    useTerminalTranscriptStore.getState().sessions,
-  );
+export function getSessionsForAgent(agentSlug: string): SessionTranscript[] {
+  const all = Object.values(useTerminalTranscriptStore.getState().sessions);
   const matches = all.filter((s) => s.agentSlug === agentSlug);
   matches.sort((a, b) => b.lastWriteAt - a.lastWriteAt);
   return matches;
 }
-

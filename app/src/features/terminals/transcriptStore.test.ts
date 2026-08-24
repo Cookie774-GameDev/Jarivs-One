@@ -16,6 +16,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   MAX_BYTES_PER_SESSION,
+  MAX_PERSISTED_SESSIONS,
   deserializeTranscriptSessions,
   flushTranscriptStorage,
   getSessionTranscript,
@@ -88,9 +89,7 @@ describe('stripAnsi', () => {
   });
 
   it('removes prompt-line palette/control garbage without stripping normal commands', () => {
-    expect(stripAnsi('PS C:\\Users\\viper> [0[I[0[feffef[0[0[\n')).toBe(
-      'PS C:\\Users\\viper> \n',
-    );
+    expect(stripAnsi('PS C:\\Users\\viper> [0[I[0[feffef[0[0[\n')).toBe('PS C:\\Users\\viper> \n');
     expect(stripAnsi('PS C:\\Users\\viper> npm test [0]\n')).toBe(
       'PS C:\\Users\\viper> npm test [0]\n',
     );
@@ -150,9 +149,7 @@ describe('terminalRestoreText', () => {
       ].join('\n'),
     });
 
-    expect(restored).toBe(
-      'PS C:\\Users\\viper> \r\n\r\nPS C:\\Users\\viper> npm test [0]',
-    );
+    expect(restored).toBe('PS C:\\Users\\viper> \r\n\r\nPS C:\\Users\\viper> npm test [0]');
     expect(restored).not.toContain('[<35;');
     expect(restored).not.toContain('[0[I');
     expect(restored).not.toContain('feffef');
@@ -184,7 +181,12 @@ describe('transcript restore round-trip (reload path)', () => {
 
   it('persists chunked output and restores it in order after a simulated reload', () => {
     const store = useTerminalTranscriptStore.getState();
-    store.registerSession('pty_rt', { agentSlug: 'coder', command: 'opencode', paneId: 'pane_rt', projectId: 'proj_rt' });
+    store.registerSession('pty_rt', {
+      agentSlug: 'coder',
+      command: 'opencode',
+      paneId: 'pane_rt',
+      projectId: 'proj_rt',
+    });
     // Chunks arrive with colours and a split escape across boundaries —
     // exactly what the PTY does.
     store.appendOutput('pty_rt', '\x1B[32m$ npm test\x1B[0m\r\n');
@@ -200,9 +202,7 @@ describe('transcript restore round-trip (reload path)', () => {
 
     const restored = terminalRestoreText(session);
     // Order preserved, escapes gone, lines joined with CRLF for xterm replay.
-    expect(restored).toBe(
-      '$ npm test\r\nTests: 12 passed\r\nwarn: slow test\r\nDone in 3.2s\r\n',
-    );
+    expect(restored).toBe('$ npm test\r\nTests: 12 passed\r\nwarn: slow test\r\nDone in 3.2s\r\n');
     expect(restored).not.toContain('\x1B');
   });
 
@@ -280,6 +280,35 @@ describe('transcript store persistence performance', () => {
     );
     expect(getSessionTranscript('pty_input_activity')?.lastWriteAt).toBe(before);
   });
+
+  it('retains and restores the required 30 concurrent terminal transcript sessions', () => {
+    expect(MAX_PERSISTED_SESSIONS).toBe(30);
+    const store = useTerminalTranscriptStore.getState();
+    const expectedOutputs: string[] = [];
+    for (let index = 0; index < MAX_PERSISTED_SESSIONS; index += 1) {
+      const sessionId = `pty_stress_${index}`;
+      const prefix = `terminal-${index}-output:`;
+      const output = `${prefix}${'x'.repeat(MAX_BYTES_PER_SESSION - prefix.length)}`;
+      expectedOutputs.push(output);
+      store.registerSession(sessionId, {
+        agentSlug: index % 2 === 0 ? 'builder' : 'reviewer',
+        paneId: `pane_${index}`,
+        projectId: `project_${index % 3}`,
+      });
+      store.appendOutput(sessionId, output);
+    }
+
+    expect(Object.keys(useTerminalTranscriptStore.getState().sessions)).toHaveLength(30);
+    flushTranscriptStorage();
+    const restored = deserializeTranscriptSessions(
+      window.localStorage.getItem('jarvis-terminal-transcripts'),
+    );
+
+    expect(Object.keys(restored ?? {})).toHaveLength(30);
+    for (let index = 0; index < MAX_PERSISTED_SESSIONS; index += 1) {
+      expect(restored?.[`pty_stress_${index}`]?.text).toBe(expectedOutputs[index]);
+    }
+  });
 });
 
 describe('transcript store — append + retrieve', () => {
@@ -354,9 +383,7 @@ describe('transcript store — append + retrieve', () => {
     // run (the audit's "ghost transcripts" finding). The store now
     // ties lifecycle strictly to register/forget — late or
     // unregistered output is dropped.
-    useTerminalTranscriptStore
-      .getState()
-      .appendOutput('pty_lazy', 'pre-register output\n');
+    useTerminalTranscriptStore.getState().appendOutput('pty_lazy', 'pre-register output\n');
     expect(getSessionTranscript('pty_lazy')).toBeUndefined();
   });
 });
@@ -370,7 +397,7 @@ describe('transcript store — bounded ring buffer', () => {
     store.appendOutput('pty_big', huge);
     const snap = getSessionTranscript('pty_big');
     expect(snap).toBeDefined();
-    expect((snap?.text.length ?? 0)).toBeLessThanOrEqual(MAX_BYTES_PER_SESSION);
+    expect(snap?.text.length ?? 0).toBeLessThanOrEqual(MAX_BYTES_PER_SESSION);
   });
 
   it('prefixes a truncation marker after trimming', () => {
@@ -492,7 +519,6 @@ describe('transcript store — lifecycle', () => {
     expect(getSessionTranscript('pty_project_new')?.text).toBe('owned output\n');
   });
 });
-
 
 describe('transcript persistence durability', () => {
   const KEY = 'jarvis-terminal-transcripts';
