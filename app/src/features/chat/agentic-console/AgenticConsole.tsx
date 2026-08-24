@@ -31,8 +31,8 @@ import {
   TRANSCRIPT_PAGE_SIZE,
   formatUnifiedDiffLines,
   projectAgenticTranscript,
+  projectAgenticTranscriptWindow,
   summarizeAgenticSession,
-  windowTranscriptBlocks,
   type AgenticSessionEvidence,
   type AgenticSessionSummary,
   type TranscriptBlock,
@@ -625,23 +625,20 @@ export function AgenticConsole({
   const [preferences, updatePreferences] = useConsolePreferences();
   const [mountedCount, setMountedCount] = React.useState(MAX_MOUNTED_BLOCKS);
   const rootRef = React.useRef<HTMLElement>(null);
-  const blocks = React.useMemo(
+  const transcriptWindow = React.useMemo(
     () =>
-      projectAgenticTranscript(messages, activity, {
+      projectAgenticTranscriptWindow(messages, activity, mountedCount, {
         preserveAssistantMessages: creatorDraftKind != null,
       }),
-    [messages, activity, creatorDraftKind],
+    [messages, activity, mountedCount, creatorDraftKind],
   );
+  const blocks = transcriptWindow.visible;
   const summary = React.useMemo(
     () => summarizeAgenticSession(messages, activity, sessionEvidence),
     [messages, activity, sessionEvidence],
   );
-  const windowed = React.useMemo(
-    () => windowTranscriptBlocks(blocks, mountedCount),
-    [blocks, mountedCount],
-  );
   const finalAnswerId = [...blocks].reverse().find((block) => block.kind === 'answer')?.id;
-  const loadCount = Math.min(TRANSCRIPT_PAGE_SIZE, windowed.remaining);
+  const loadCount = Math.min(TRANSCRIPT_PAGE_SIZE, transcriptWindow.remaining);
 
   React.useEffect(() => {
     document.documentElement.dataset.agenticConsoleCaret =
@@ -687,7 +684,9 @@ export function AgenticConsole({
     `Duration: ${formatDuration(summary.durationMs)}`,
   ].join('\n');
   const exportSession = () => {
-    const exportBlocks = blocks.map((block) => {
+    const exportBlocks = projectAgenticTranscript(messages, activity, {
+      preserveAssistantMessages: creatorDraftKind != null,
+    }).map((block) => {
       if ('message' in block) {
         const { message: _message, ...safeBlock } = block;
         if (block.kind === 'legacy') {
@@ -730,7 +729,10 @@ export function AgenticConsole({
   // Empty idle chats: do not double empty-state. Once there are messages,
   // activity, or run evidence, always mount the session mini command center.
   const hasTranscriptWork =
-    messages.length > 0 || activity.length > 0 || Boolean(sessionEvidence) || blocks.length > 0;
+    messages.length > 0 ||
+    activity.length > 0 ||
+    Boolean(sessionEvidence) ||
+    transcriptWindow.total > 0;
   if (!hasTranscriptWork) return null;
 
   return (
@@ -758,7 +760,7 @@ export function AgenticConsole({
       />
       {blocks.length > 0 ? (
         <div className="agentic-transcript" aria-label="Agentic transcript">
-          {windowed.remaining > 0 ? (
+          {transcriptWindow.remaining > 0 ? (
             <button
               type="button"
               className="agentic-history"
@@ -769,7 +771,7 @@ export function AgenticConsole({
               Load {loadCount} older events
             </button>
           ) : null}
-          {windowed.visible.map((block) => (
+          {blocks.map((block) => (
             <BlockView
               key={block.id}
               block={block}

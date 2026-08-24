@@ -6,6 +6,7 @@ import {
   MAX_OUTPUT_CHARS,
   formatUnifiedDiffLines,
   projectAgenticTranscript,
+  projectAgenticTranscriptWindow,
   sanitizeConsoleText,
   summarizeAgenticSession,
   windowTranscriptBlocks,
@@ -361,6 +362,89 @@ describe('agentic transcript session and viewport', () => {
     expect(next.visible).toHaveLength(500);
     expect(next.visible[0]?.id).toBe('b-150');
     expect(next.remaining).toBe(150);
+  });
+
+  it('projects only the ordered visible tail while matching the canonical full window exactly', () => {
+    const messages = Array.from({ length: 500 }, (_, index) =>
+      message(`message-${index}`, 'user', index * 10 + 1, [
+        { kind: 'text', text: `Prompt ${index}` },
+      ]),
+    );
+    const activity = Array.from({ length: 200 }, (_, index) => ({
+      id: `activity-${index.toString().padStart(3, '0')}`,
+      chatId: 'chat-1',
+      kind: 'tool' as const,
+      status: 'done' as const,
+      title: `Activity ${index}`,
+      ts: index * 10 + 5,
+    }));
+    const full = projectAgenticTranscript(messages, activity);
+
+    const projected = projectAgenticTranscriptWindow(messages, activity, 400);
+
+    expect(projected.total).toBe(full.length);
+    expect(projected.remaining).toBe(300);
+    expect(projected.visible).toEqual(windowTranscriptBlocks(full, 400).visible);
+  });
+
+  it('does not stringify historical payloads outside the ordered visible tail', () => {
+    const poisonedArgs = {
+      toJSON() {
+        throw new Error('historical payload should not be projected');
+      },
+      toString() {
+        throw new Error('historical payload should not be projected');
+      },
+    };
+    const historical = message('historical-tool', 'assistant', 1, [
+      {
+        kind: 'tool_call',
+        tool: 'custom.tool',
+        args: poisonedArgs,
+        call_id: 'historical-call',
+      },
+    ]);
+    const recent = Array.from({ length: 400 }, (_, index) =>
+      message(`recent-${index}`, 'user', index + 2, [{ kind: 'text', text: `Recent ${index}` }]),
+    );
+
+    const projected = projectAgenticTranscriptWindow([historical, ...recent], [], 400);
+
+    expect(projected.total).toBe(401);
+    expect(projected.remaining).toBe(1);
+    expect(projected.visible).toHaveLength(400);
+    expect(projected.visible[0]?.sourceId).toBe('message:recent-0');
+  });
+
+  it('falls back to exact full projection for unordered canonical inputs', () => {
+    const messages = [
+      message('late', 'user', 30, [{ kind: 'text', text: 'Late' }]),
+      message('early', 'user', 10, [{ kind: 'text', text: 'Early' }]),
+    ];
+    const activity: ChatActivityEvent[] = [
+      {
+        id: 'later-activity',
+        chatId: 'chat-1',
+        kind: 'tool',
+        status: 'done',
+        title: 'Later',
+        ts: 25,
+      },
+      {
+        id: 'earlier-activity',
+        chatId: 'chat-1',
+        kind: 'tool',
+        status: 'done',
+        title: 'Earlier',
+        ts: 5,
+      },
+    ];
+    const full = projectAgenticTranscript(messages, activity);
+
+    expect(projectAgenticTranscriptWindow(messages, activity, 3)).toEqual({
+      ...windowTranscriptBlocks(full, 3),
+      total: full.length,
+    });
   });
 
   it('does not mislabel a cancelled run or a user-only prompt as completed', () => {

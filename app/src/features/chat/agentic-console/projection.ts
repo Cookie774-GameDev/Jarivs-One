@@ -478,6 +478,127 @@ export function projectAgenticTranscript(
   return [...messageBlocks, ...activityBlocks].sort(compareTranscriptBlocks);
 }
 
+type ProjectedMessageShape = {
+  count: number;
+  firstTs: number;
+  lastTs: number;
+};
+
+function projectedMessageShape(
+  message: Message,
+  preserveAssistantMessages: boolean,
+): ProjectedMessageShape {
+  if (
+    hasInteractiveParts(message) ||
+    message.role === 'system' ||
+    message.role === 'user' ||
+    (preserveAssistantMessages && message.role === 'assistant')
+  ) {
+    return { count: 1, firstTs: message.created_at, lastTs: message.created_at };
+  }
+
+  const resultIds = new Set(
+    message.parts.flatMap((part) => (part.kind === 'tool_result' ? [part.call_id] : [])),
+  );
+  const pairedResults = new Set<string>();
+  let count = 0;
+  let firstIndex = 0;
+  let lastIndex = 0;
+  const record = (index: number) => {
+    if (count === 0) firstIndex = index;
+    lastIndex = index;
+    count += 1;
+  };
+  message.parts.forEach((part, index) => {
+    if (part.kind === 'text' || part.kind === 'reasoning') {
+      if (part.text.trim()) record(index);
+      return;
+    }
+    if (part.kind === 'tool_call') {
+      if (resultIds.has(part.call_id)) pairedResults.add(part.call_id);
+      record(index);
+      return;
+    }
+    if (part.kind === 'tool_result' && !pairedResults.has(part.call_id)) record(index);
+  });
+  if (count === 0) return { count: 1, firstTs: message.created_at, lastTs: message.created_at };
+  return {
+    count,
+    firstTs: message.created_at + firstIndex / 1000,
+    lastTs: message.created_at + lastIndex / 1000,
+  };
+}
+
+function dedupeActivity(activity: readonly ChatActivityEvent[]): ChatActivityEvent[] {
+  const seen = new Set<string>();
+  return activity.filter((event) => {
+    if (seen.has(event.id)) return false;
+    seen.add(event.id);
+    return true;
+  });
+}
+
+function activityProjectionId(event: ChatActivityEvent): string {
+  return `activity:${event.id}:${event.diff?.trim() ? 'diff' : 'activity'}`;
+}
+
+function isOrderedActivity(activity: readonly ChatActivityEvent[]): boolean {
+  for (let index = 1; index < activity.length; index += 1) {
+    const previous = activity[index - 1]!;
+    const current = activity[index]!;
+    const order =
+      previous.ts - current.ts ||
+      activityProjectionId(previous).localeCompare(activityProjectionId(current));
+    if (order > 0) return false;
+  }
+  return true;
+}
+
+export function projectAgenticTranscriptWindow(
+  messages: readonly Message[],
+  activity: readonly ChatActivityEvent[],
+  mountedCount = MAX_MOUNTED_BLOCKS,
+  options: { preserveAssistantMessages?: boolean } = {},
+): { visible: readonly TranscriptBlock[]; remaining: number; total: number } {
+  const count = Math.max(0, Math.floor(mountedCount));
+  const preserveAssistantMessages = options.preserveAssistantMessages === true;
+  const messageShapes = messages.map((message) =>
+    projectedMessageShape(message, preserveAssistantMessages),
+  );
+  const uniqueActivity = dedupeActivity(activity);
+  const messageTotal = messageShapes.reduce((total, shape) => total + shape.count, 0);
+  const total = messageTotal + uniqueActivity.length;
+  const messagesOrdered = messageShapes.every(
+    (shape, index) => index === 0 || shape.firstTs > messageShapes[index - 1]!.lastTs,
+  );
+
+  if (!messagesOrdered || !isOrderedActivity(uniqueActivity)) {
+    const full = projectAgenticTranscript(messages, activity, options);
+    const windowed = windowTranscriptBlocks(full, count);
+    return { ...windowed, total: full.length };
+  }
+  if (count === 0 || total === 0) return { visible: [], remaining: total, total };
+
+  let messageStart = messages.length;
+  let selectedMessageBlocks = 0;
+  while (messageStart > 0 && selectedMessageBlocks < count) {
+    messageStart -= 1;
+    selectedMessageBlocks += messageShapes[messageStart]!.count;
+  }
+  const selectedActivity = uniqueActivity.slice(-count);
+  const projectedTail = projectAgenticTranscript(
+    messages.slice(messageStart),
+    selectedActivity,
+    options,
+  );
+  const visible = windowTranscriptBlocks(projectedTail, count).visible;
+  return {
+    visible,
+    remaining: Math.max(0, total - visible.length),
+    total,
+  };
+}
+
 export function summarizeAgenticSession(
   messages: readonly Message[],
   activity: readonly ChatActivityEvent[],
