@@ -161,8 +161,8 @@ describe('PetOverlayWindow transparency shell', () => {
     overlayBridge.reassertPetOverlayTopmost
       .mockImplementationOnce(
         () =>
-          new Promise<void>((resolve) => {
-            releaseRecovery = resolve;
+          new Promise<undefined>((resolve) => {
+            releaseRecovery = () => resolve(undefined);
           }),
       )
       .mockResolvedValue(undefined);
