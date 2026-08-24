@@ -51,6 +51,7 @@ const defaults: WorkspaceUsageAnalytics = {
 
 let lastTickAt = Date.now();
 let ticking = false;
+let rollupInFlight: Promise<void> | null = null;
 
 const TRACKED_PROVIDERS: ProviderId[] = [
   'openai',
@@ -102,20 +103,30 @@ export const useWorkspaceAnalyticsStore = create<AnalyticsState>()(
         if (delta <= 0 || delta > 60_000) return;
         set((s) => ({ backgroundRunningMs: s.backgroundRunningMs + delta }));
       },
-      refreshTokenRollup: async () => {
-        const byModel = await loadRollupByModel();
-        const totalInputTokens = byModel.reduce((n, r) => n + r.inputTokens, 0);
-        const totalOutputTokens = byModel.reduce((n, r) => n + r.outputTokens, 0);
-        const estimatedTotalCostUsd = byModel.reduce((n, r) => n + r.estimatedCostUsd, 0);
-        set({
-          byModel,
-          totalInputTokens,
-          totalOutputTokens,
-          totalTokens: totalInputTokens + totalOutputTokens,
-          estimatedTotalCostUsd,
-          completedMilestones: useMilestonesStore.getState().items.filter((i) => i.status === 'done').length,
-          toolRunCount: useToolRunsStore.getState().runs.length,
+      refreshTokenRollup: () => {
+        if (rollupInFlight) return rollupInFlight;
+        const run = (async () => {
+          const byModel = await loadRollupByModel();
+          const totalInputTokens = byModel.reduce((n, r) => n + r.inputTokens, 0);
+          const totalOutputTokens = byModel.reduce((n, r) => n + r.outputTokens, 0);
+          const estimatedTotalCostUsd = byModel.reduce((n, r) => n + r.estimatedCostUsd, 0);
+          set({
+            byModel,
+            totalInputTokens,
+            totalOutputTokens,
+            totalTokens: totalInputTokens + totalOutputTokens,
+            estimatedTotalCostUsd,
+            completedMilestones: useMilestonesStore
+              .getState()
+              .items.filter((i) => i.status === 'done').length,
+            toolRunCount: useToolRunsStore.getState().runs.length,
+          });
+        })();
+        const tracked = run.finally(() => {
+          if (rollupInFlight === tracked) rollupInFlight = null;
         });
+        rollupInFlight = tracked;
+        return tracked;
       },
       snapshot: () => {
         const s = get();
