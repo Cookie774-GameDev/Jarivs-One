@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { ArrowDown, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,12 @@ import { AgenticConsole, AgenticConsoleErrorBoundary } from './agentic-console';
 import { CONSOLE_PREFERENCE_EVENT, loadConsolePreferences } from './agentic-console/preferences';
 import { useAuthStore } from '@/stores/auth';
 import type { ChatModelSelection } from '@/lib/ai/modelSelection';
+import {
+  INITIAL_CHAT_MESSAGE_WINDOW,
+  anchoredChatScrollTop,
+  nextChatMessageWindowCount,
+  windowChatMessages,
+} from './chatMessageWindow';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -149,6 +155,7 @@ function roughPayloadSize(value: unknown): number {
 export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThreadProps) {
   const persistedMessages = useChatMessages(fixtureMessages ? null : chatId);
   const messages = fixtureMessages ?? persistedMessages;
+  const chatKey = String(chatId);
   const commandCenterBinding = useJarvisCommandCenterBinding();
   const hasProjectedCanonicalRun = useJarvisTaskRunStore((state) =>
     Object.values(state.runs).some((run) => run.canonical && run.chatId === String(chatId)),
@@ -158,8 +165,22 @@ export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThr
   const hasCanonicalRun = hasProjectedCanonicalRun || Boolean(currentCanonicalRun);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickyRef = useRef(true);
+  const pendingHistoryAnchorRef = useRef<{ scrollHeight: number; scrollTop: number } | undefined>(
+    undefined,
+  );
   const [consoleView, setConsoleView] = useState(() => loadConsolePreferences().view);
   const [hasNewActivityBelow, setHasNewActivityBelow] = useState(false);
+  const [classicWindow, setClassicWindow] = useState({
+    chatId: chatKey,
+    mountedCount: INITIAL_CHAT_MESSAGE_WINDOW,
+  });
+  const classicMountedCount =
+    classicWindow.chatId === chatKey ? classicWindow.mountedCount : INITIAL_CHAT_MESSAGE_WINDOW;
+  const classicMessages = useMemo(
+    () =>
+      consoleView === 'classic' ? windowChatMessages(messages, classicMountedCount) : messages,
+    [classicMountedCount, consoleView, messages],
+  );
   const fallbackAgents = useMemo(() => extractAgentCards(messages), [messages]);
   const creatorDraftKind = useMemo(() => detectCreatorDraftKind(messages), [messages]);
   const commandCenterHandlers = useMemo<JarvisCommandCenterHandlers>(() => {
@@ -309,6 +330,21 @@ export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThr
   const tailSize = streamingSize(messages[messages.length - 1]);
   const activityEvents = useUnifiedChatActivity(String(chatId));
   useEffect(() => {
+    pendingHistoryAnchorRef.current = undefined;
+    setClassicWindow((current) =>
+      current.chatId === chatKey
+        ? current
+        : { chatId: chatKey, mountedCount: INITIAL_CHAT_MESSAGE_WINDOW },
+    );
+  }, [chatKey]);
+  useLayoutEffect(() => {
+    const anchor = pendingHistoryAnchorRef.current;
+    const el = scrollRef.current;
+    if (!anchor || !el) return;
+    pendingHistoryAnchorRef.current = undefined;
+    el.scrollTop = anchoredChatScrollTop(anchor.scrollHeight, anchor.scrollTop, el.scrollHeight);
+  }, [classicMessages.length]);
+  useEffect(() => {
     const refreshConsoleView = () => setConsoleView(loadConsolePreferences().view);
     window.addEventListener(CONSOLE_PREFERENCE_EVENT, refreshConsoleView);
     return () => window.removeEventListener(CONSOLE_PREFERENCE_EVENT, refreshConsoleView);
@@ -317,6 +353,24 @@ export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThr
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
+    if (
+      consoleView === 'classic' &&
+      el.scrollTop <= 48 &&
+      classicMessages.length < messages.length &&
+      !pendingHistoryAnchorRef.current
+    ) {
+      pendingHistoryAnchorRef.current = {
+        scrollHeight: el.scrollHeight,
+        scrollTop: el.scrollTop,
+      };
+      setClassicWindow((current) => ({
+        chatId: chatKey,
+        mountedCount: nextChatMessageWindowCount(
+          messages.length,
+          current.chatId === chatKey ? current.mountedCount : INITIAL_CHAT_MESSAGE_WINDOW,
+        ),
+      }));
+    }
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     stickyRef.current = distFromBottom < 80;
     if (stickyRef.current) setHasNewActivityBelow(false);
@@ -417,7 +471,7 @@ export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThr
               <ThreadHint />
             ) : (
               <AnimatePresence initial={false}>
-                {messages.map((message) => (
+                {classicMessages.map((message) => (
                   <MessageBubble
                     key={message.id}
                     message={message}
