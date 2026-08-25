@@ -40,6 +40,14 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import './sakura-projects.css';
 
@@ -70,6 +78,8 @@ interface DraftState {
   no_context_mode: boolean;
   allowed_agent_slugs: string[];
 }
+
+type DeleteConfirmationStage = 'closed' | 'selection' | 'impact' | 'typed';
 
 function projectToDraft(p: Project): DraftState {
   return {
@@ -136,6 +146,11 @@ export function ProjectDetail() {
   const [providerProjectUrls, setProviderProjectUrls] = React.useState<
     Partial<Record<BrowserChatProviderId, string>>
   >({});
+  const [deleteStage, setDeleteStage] = React.useState<DeleteConfirmationStage>('closed');
+  const [deleteImpactCount, setDeleteImpactCount] = React.useState(0);
+  const [deleteConfirmation, setDeleteConfirmation] = React.useState('');
+  const [deleting, setDeleting] = React.useState(false);
+  const deleteInFlightRef = React.useRef(false);
   React.useEffect(() => {
     if (project) setDraft(projectToDraft(project));
   }, [project?.id, project?.updated_at]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -175,34 +190,83 @@ export function ProjectDetail() {
     setDraft({ ...draft, allowed_agent_slugs: next });
   };
 
-  const handleDelete = async () => {
-    if (!project || !workspaceId) return;
-    const remaining = await projectRepo.listByWorkspace(workspaceId);
-    if (remaining.length <= 1) {
-      toast.warning("Can't delete", 'You need at least one project. Create another first.');
+  const resetDeleteConfirmation = React.useCallback(() => {
+    setDeleteStage('closed');
+    setDeleteImpactCount(0);
+    setDeleteConfirmation('');
+  }, []);
+
+  const refreshDeleteImpact = async () => {
+    if (!project || !workspaceId) return null;
+    const [remaining, chats] = await Promise.all([
+      projectRepo.listByWorkspace(workspaceId),
+      chatRepo.listByProject(project.id),
+    ]);
+    if (remaining.filter((candidate) => candidate.id !== project.id).length === 0) {
+      toast.warning("Can't delete", 'You need at least one other project. Create another first.');
+      return null;
+    }
+    setDeleteImpactCount(chats.length);
+    return { remaining, chats };
+  };
+
+  const openDeleteConfirmation = () => {
+    setDeleteImpactCount(chatCount ?? 0);
+    setDeleteConfirmation('');
+    setDeleteStage('selection');
+  };
+
+  const continueDeleteConfirmation = async () => {
+    if (deleteStage === 'selection') {
+      if (await refreshDeleteImpact()) setDeleteStage('impact');
       return;
     }
-    const ok = window.confirm(
-      `Delete "${project.name}"?\n\n` +
-        `${chatCount ?? 0} chat${chatCount === 1 ? '' : 's'} in this project will be unassigned ` +
-        `(not deleted) and become visible from the default project.`,
-    );
-    if (!ok) return;
+    if (deleteStage === 'impact') {
+      // Refresh immediately before the typed stage so the user confirms
+      // current impact rather than the stale live-query snapshot.
+      if (await refreshDeleteImpact()) setDeleteStage('typed');
+    }
+  };
+
+  const handleDelete = async () => {
+    if (
+      !project ||
+      !workspaceId ||
+      deleteStage !== 'typed' ||
+      deleteConfirmation !== 'Delete' ||
+      deleteInFlightRef.current
+    ) {
+      return;
+    }
+    deleteInFlightRef.current = true;
+    setDeleting(true);
     try {
+      // Recheck the last-project invariant at the final destructive boundary.
+      const remaining = await projectRepo.listByWorkspace(workspaceId);
+      const fallback = remaining.find((candidate) => candidate.id !== project.id);
+      if (!fallback) {
+        toast.warning("Can't delete", 'You need at least one other project. Create another first.');
+        return;
+      }
+
       // Unassign chats first so they don't dangle.
       const chats = await chatRepo.listByProject(project.id);
+      setDeleteImpactCount(chats.length);
       for (const c of chats) {
         await chatRepo.update(c.id, { project_id: undefined });
       }
       await projectRepo.delete(project.id);
       // Switch to the next project so the workspace doesn't sit on a
       // deleted id.
-      const fallback = remaining.find((p) => p.id !== project.id) ?? remaining[0]!;
       setProjectId(fallback.id);
       toast.success('Project deleted', `Removed "${project.name}".`);
+      resetDeleteConfirmation();
       setRoute('chat');
     } catch (err) {
       toast.error('Delete failed', err instanceof Error ? err.message : 'Try again.');
+    } finally {
+      deleteInFlightRef.current = false;
+      setDeleting(false);
     }
   };
 
@@ -590,7 +654,7 @@ export function ProjectDetail() {
                 variant="outline"
                 size="sm"
                 className="border-destructive/40 text-destructive hover:bg-destructive/10"
-                onClick={() => void handleDelete()}
+                onClick={openDeleteConfirmation}
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 Delete project
@@ -599,6 +663,118 @@ export function ProjectDetail() {
           </section>
         </div>
       </div>
+
+      <Dialog
+        open={deleteStage !== 'closed'}
+        onOpenChange={(open) => {
+          if (!open && !deleting) resetDeleteConfirmation();
+        }}
+      >
+        <DialogContent
+          hideClose
+          aria-busy={deleting}
+          onEscapeKeyDown={(event) => {
+            if (deleting) event.preventDefault();
+          }}
+          onPointerDownOutside={(event) => {
+            if (deleting) event.preventDefault();
+          }}
+        >
+          {deleteStage === 'selection' ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Delete {project.name}?</DialogTitle>
+                <DialogDescription>
+                  You selected this project for deletion. Nothing has been changed yet.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-secondary text-foreground">
+                Confirm that <strong>{project.name}</strong> is the project you intend to remove.
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" onClick={resetDeleteConfirmation}>
+                  Cancel project deletion
+                </Button>
+                <Button variant="outline" onClick={() => void continueDeleteConfirmation()}>
+                  Continue to impact review
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
+
+          {deleteStage === 'impact' ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Review deletion impact</DialogTitle>
+                <DialogDescription>
+                  This impact was refreshed from local storage before this step.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-secondary text-foreground">
+                <p>
+                  {deleteImpactCount} chat{deleteImpactCount === 1 ? '' : 's'} will become
+                  unassigned, not deleted.
+                </p>
+                <p>
+                  Saved terminal state associated with this project will no longer be restored with
+                  the deleted project.
+                </p>
+                <p>VibeSpace will switch to another existing project.</p>
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" onClick={resetDeleteConfirmation}>
+                  Cancel project deletion
+                </Button>
+                <Button variant="outline" onClick={() => void continueDeleteConfirmation()}>
+                  Continue to final confirmation
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
+
+          {deleteStage === 'typed' ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Type Delete to confirm</DialogTitle>
+                <DialogDescription>
+                  This is the final confirmation for {project.name}. The word is case-sensitive.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2">
+                <Label htmlFor="project-delete-confirmation">
+                  Type Delete to confirm project deletion
+                </Label>
+                <Input
+                  id="project-delete-confirmation"
+                  autoComplete="off"
+                  autoFocus
+                  disabled={deleting}
+                  value={deleteConfirmation}
+                  onChange={(event) => setDeleteConfirmation(event.target.value)}
+                  placeholder="Delete"
+                />
+                <p className="text-metadata text-muted-foreground">
+                  Current impact: {deleteImpactCount} chat
+                  {deleteImpactCount === 1 ? '' : 's'} will become unassigned.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="ghost" disabled={deleting} onClick={resetDeleteConfirmation}>
+                  Cancel project deletion
+                </Button>
+                <Button
+                  variant="outline"
+                  className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                  disabled={deleteConfirmation !== 'Delete' || deleting}
+                  onClick={() => void handleDelete()}
+                >
+                  {deleting ? 'Deleting project…' : 'Permanently delete project'}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
