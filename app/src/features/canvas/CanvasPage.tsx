@@ -1347,6 +1347,9 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
   }, [presentation.status]);
 
   React.useEffect(() => {
+    if (!canvasRouteActive && workspaceRef.current?.closest('[data-canvas-route-cache]')) {
+      return;
+    }
     const onKeyDown = (event: KeyboardEvent) => {
       if (presentation.status === 'presenting') {
         if (event.key === 'Escape') {
@@ -1459,6 +1462,7 @@ export function CanvasPage({ persistence }: CanvasPageProps = {}) {
       window.removeEventListener('blur', onBlur);
     };
   }, [
+    canvasRouteActive,
     copySelected,
     cutSelected,
     deleteSelected,

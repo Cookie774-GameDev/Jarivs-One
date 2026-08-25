@@ -100,6 +100,7 @@ export function PreviewStudio() {
 
   // Host size observer
   React.useEffect(() => {
+    if (route !== 'preview') return;
     const host = hostRef.current;
     if (!host) return;
     const ro = new ResizeObserver(() => {
@@ -108,7 +109,7 @@ export function PreviewStudio() {
     ro.observe(host);
     setHostSize({ w: host.clientWidth, h: host.clientHeight });
     return () => ro.disconnect();
-  }, []);
+  }, [route]);
 
   // Hide native surface when leaving route; show when returning
   React.useEffect(() => {
