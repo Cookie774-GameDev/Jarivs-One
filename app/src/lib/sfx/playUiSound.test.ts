@@ -74,4 +74,10 @@ describe('VibeSpace SFX', () => {
     expect(shouldPlayComposerKey({ key: 'a', isComposing: true })).toBe(false);
     expect(playComposerKeySound({ key: 'v', ctrlKey: true })).toBe(false);
   });
+
+  it('suppresses a second handler for the same key within the playback window', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    expect(playComposerKeySound({ key: 'a' })).toBe(true);
+    expect(playComposerKeySound({ key: 'a' })).toBe(false);
+  });
 });
