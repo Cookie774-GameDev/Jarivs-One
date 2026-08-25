@@ -1,5 +1,3 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import type {
   McpClientInvokeOptions,
@@ -231,10 +229,6 @@ export function createMcpSdkClientAdapter(options: McpSdkClientAdapterOptions): 
     )
   }
 
-  const clientFactory = options.clientFactory ?? (() =>
-    new Client({ name: 'vibespace-mcp-gateway', version: '1.0.0' }) as McpSdkClientPort)
-  const transportFactory = options.transportFactory ?? ((url: URL) =>
-    new StreamableHTTPClientTransport(url))
   let client: McpSdkClientPort | null = null
   let startPromise: Promise<McpServerClient> | null = null
   let catalogPromise: Promise<McpSdkCatalog> | null = null
@@ -242,8 +236,24 @@ export function createMcpSdkClientAdapter(options: McpSdkClientAdapterOptions): 
   const start = async (): Promise<McpServerClient> => {
     if (startPromise) return startPromise
     startPromise = (async () => {
-      const nextClient = clientFactory()
-      await nextClient.connect(transportFactory(endpoint))
+      const [clientModule, transportModule] = await Promise.all([
+        options.clientFactory
+          ? Promise.resolve(null)
+          : import('@modelcontextprotocol/sdk/client/index.js'),
+        options.transportFactory
+          ? Promise.resolve(null)
+          : import('@modelcontextprotocol/sdk/client/streamableHttp.js'),
+      ])
+      const nextClient =
+        options.clientFactory?.() ??
+        (new clientModule!.Client({
+          name: 'vibespace-mcp-gateway',
+          version: '1.0.0',
+        }) as McpSdkClientPort)
+      const transport =
+        options.transportFactory?.(endpoint) ??
+        (new transportModule!.StreamableHTTPClientTransport(endpoint) as Transport)
+      await nextClient.connect(transport)
       client = nextClient
       const server: McpServerClient = {
         listTools: async (signal) => (await getCatalog(signal)).tools.map((tool) => ({
