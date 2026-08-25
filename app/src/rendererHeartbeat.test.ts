@@ -106,4 +106,33 @@ describe('renderer heartbeat', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(emit).toHaveBeenCalledTimes(5);
   });
+
+  it('keeps at most one native heartbeat emit in flight while the bridge is stalled', async () => {
+    vi.useFakeTimers();
+    const completions: Array<() => void> = [];
+    const emit = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          completions.push(resolve);
+        }),
+    );
+
+    const stop = startRendererHeartbeat({ emit, isDesktop: true, windowLabel: 'main' });
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(emit).toHaveBeenCalledTimes(1);
+
+    completions.shift()?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(emit).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(emit).toHaveBeenCalledTimes(2);
+
+    stop();
+    completions.shift()?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(emit).toHaveBeenCalledTimes(2);
+  });
 });

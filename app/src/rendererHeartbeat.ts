@@ -29,13 +29,36 @@ export function startRendererHeartbeat(options: RendererHeartbeatOptions = {}): 
     `renderer-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let disposed = false;
   let timer: number | null = null;
+  let emissionInFlight = false;
+  let emissionQueued = false;
 
   const beat = () => {
     if (disposed) return;
-    void send(RENDERER_HEARTBEAT_EVENT, { at: Date.now(), generation }).catch(() => {
-      // The native watchdog remains unarmed until it receives a heartbeat.
-      // Renderer startup must never fail because the event bridge is unavailable.
-    });
+    if (emissionInFlight) {
+      emissionQueued = true;
+      return;
+    }
+
+    emissionInFlight = true;
+    let emission: Promise<void>;
+    try {
+      emission = send(RENDERER_HEARTBEAT_EVENT, { at: Date.now(), generation });
+    } catch {
+      emissionInFlight = false;
+      return;
+    }
+
+    void emission
+      .catch(() => {
+        // The native watchdog remains unarmed until it receives a heartbeat.
+        // Renderer startup must never fail because the event bridge is unavailable.
+      })
+      .finally(() => {
+        emissionInFlight = false;
+        if (disposed || !emissionQueued) return;
+        emissionQueued = false;
+        beat();
+      });
   };
 
   const sendImmediateAndEnsureCadence = () => {
@@ -59,6 +82,7 @@ export function startRendererHeartbeat(options: RendererHeartbeatOptions = {}): 
 
   return () => {
     disposed = true;
+    emissionQueued = false;
     if (timer !== null) {
       window.clearInterval(timer);
       timer = null;
