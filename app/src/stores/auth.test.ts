@@ -286,7 +286,7 @@ describe('useAuthStore API key persistence', () => {
     const persisted = window.localStorage.getItem('jarvis-auth') ?? '';
     expect(persisted).toContain('"stackPreset":"custom"');
     expect(persisted).toContain('"chatModelSelection":{"mode":"hive","hiveId":"custom"}');
-    expect(persisted).toContain('"model":"gpt-5.1"');
+    expect(persisted).toContain('"model":"gpt-5.6-terra"');
     expect(persisted).not.toContain('sk_');
     expect(persisted).not.toContain('service_role');
   });

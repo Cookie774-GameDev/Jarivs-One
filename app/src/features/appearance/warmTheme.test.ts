@@ -462,7 +462,7 @@ describe('Warm theme presentation contract', () => {
       /\[data-sakura-surface='settings-content'\]\s*\{[\s\S]*?background:\s*transparent[\s\S]*?backdrop-filter:\s*none/u,
     );
     expect(css).toMatch(
-      /\.mc7f-settings-modal\s+\[role='tabpanel'\]\s+section,[\s\S]*?background:\s*rgb\(242 225 205 \/ 0\.48\)[\s\S]*?backdrop-filter:\s*none/u,
+      /\.mc7f-settings-modal\s+\[role='tabpanel'\]\s+section,[\s\S]*?background:\s*transparent[\s\S]*?box-shadow:\s*none[\s\S]*?backdrop-filter:\s*none/u,
     );
     expect(css).toMatch(
       /\.mc7f-settings-appearance\s+\[class\*='bg-panel'\]\s*\{[\s\S]*?background-color:\s*rgb\(242 225 205 \/ 0\.48\)\s*!important[\s\S]*?backdrop-filter:\s*none/u,

@@ -359,7 +359,10 @@ export function buildJarvisModelSwitchCandidates(
         connected: connectionTruth.connected,
         available:
           connectionTruth.available &&
-          (connection.mode === 'external-cli' || accessible.has(option.id) || isHiveModel),
+          (options.modelOptions !== undefined ||
+            connection.mode === 'external-cli' ||
+            accessible.has(option.id) ||
+            isHiveModel),
         supportsImages:
           connection.capabilities.images && modelSupportsVision(option.provider, option.id),
         supportsTools: connection.capabilities.tools,
