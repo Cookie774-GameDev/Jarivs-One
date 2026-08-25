@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'node:path';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
+import { manualChunks } from './viteChunking';
 
 // https://vitejs.dev/config/
 const host = process.env.TAURI_DEV_HOST;
@@ -74,6 +75,9 @@ const frontendAssetVersion =
  *                     actually starts a Jarvis Call.
  *   `xterm`         — terminal emulator. Already lazy via Terminals page.
  *   `cmdk`          — Cmd+K palette + mention typeahead.
+ *   `gpt-o200k`     — immutable o200k rank data used by repository token budgets.
+ *                     Isolated from the application bootstrap for stable caching
+ *                     without pulling the separately lazy cl100k table forward.
  *
  * Settings-sections — deliberately NOT in this list.
  *
@@ -96,37 +100,6 @@ const frontendAssetVersion =
  * boundary creates), keeps shared symbols in the boot chunk, and stops
  * the back-edge that was preloading supabase + livekit at startup.
  */
-function manualChunks(id: string): string | undefined {
-  if (!id.includes('node_modules')) {
-    // App code: split AI providers into their own chunk so the heavy
-    // adapters don't ride the boot path. Settings sections are NOT split
-    // here on purpose (see comment block above).
-    if (id.includes('/src/lib/ai/providers/')) return 'ai-providers';
-    return undefined;
-  }
-
-  // node_modules — vendor chunks keyed off the package name segment.
-  const m = id.match(/node_modules\/(?:\.pnpm\/)?(@[^/]+\/[^/]+|[^/]+)/);
-  const pkg = m ? m[1] : null;
-  if (!pkg) return undefined;
-
-  if (pkg === 'react' || pkg === 'react-dom' || pkg === 'scheduler') return 'react';
-  if (pkg === 'motion' || pkg === 'framer-motion') return 'motion';
-  if (pkg.startsWith('@radix-ui/')) return 'radix';
-  if (pkg === 'dexie' || pkg === 'dexie-react-hooks') return 'dexie';
-  if (pkg === 'lucide-react') return 'lucide';
-  if (pkg === '@supabase/supabase-js' || pkg.startsWith('@supabase/')) return 'supabase';
-  if (pkg === 'livekit-client') return 'livekit';
-  if (pkg === 'xterm' || pkg.startsWith('xterm-addon-')) return 'xterm';
-  if (pkg === 'cmdk') return 'cmdk';
-  if (pkg === 'zustand') return 'zustand';
-  if (pkg === 'date-fns') return 'date-fns';
-  if (pkg === 'class-variance-authority' || pkg === 'clsx' || pkg === 'tailwind-merge') {
-    return 'ui-utils';
-  }
-  return undefined;
-}
-
 export default defineConfig({
   plugins: [react()],
   cacheDir: viteCacheDir,
@@ -170,7 +143,9 @@ export default defineConfig({
           ];
           return extra.flatMap((candidate) => {
             try {
-              return fs.existsSync(candidate) ? [candidate, fs.realpathSync(candidate)] : [candidate];
+              return fs.existsSync(candidate)
+                ? [candidate, fs.realpathSync(candidate)]
+                : [candidate];
             } catch {
               return [candidate];
             }
