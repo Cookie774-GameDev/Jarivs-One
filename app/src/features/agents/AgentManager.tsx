@@ -584,7 +584,6 @@ export function AgentManager() {
     if (!draft.name.trim()) return 'Agent name is required.';
     if (!draft.description.trim()) return 'Agent description is required.';
     if (!protectedJarvis && !draft.system_prompt.trim()) return 'System prompt is required.';
-    if (!agentModelAvailable) return 'Select an available model before saving.';
     if (!Number.isFinite(draft.temperature) || draft.temperature < 0 || draft.temperature > 2) {
       return 'Temperature must be between 0 and 2.';
     }
