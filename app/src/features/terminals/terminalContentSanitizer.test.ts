@@ -80,6 +80,44 @@ describe('sanitizePersistedTerminalText', () => {
     expect(result.text).toBe('😀😀😀😀');
     expect(result.text).not.toContain('�');
   });
+
+  it('trims a large UTF-8 transcript without shifting the line array', () => {
+    const input = Array.from(
+      { length: 2_000 },
+      (_, index) => `line-${index.toString().padStart(4, '0')}-😀`,
+    ).join('\n');
+    const originalShift = Array.prototype.shift;
+    let shiftCalls = 0;
+    Array.prototype.shift = function countedShift<T>(this: T[]): T | undefined {
+      shiftCalls += 1;
+      return originalShift.call(this) as T | undefined;
+    };
+
+    try {
+      const result = sanitizePersistedTerminalText(input, {
+        maxBytes: 120,
+        maxLines: 2_000,
+        truncationMarker: '[trimmed]\n',
+      });
+
+      expect(shiftCalls).toBe(0);
+      expect(result).toEqual({
+        text: [
+          '[trimmed]',
+          'line-1993-😀',
+          'line-1994-😀',
+          'line-1995-😀',
+          'line-1996-😀',
+          'line-1997-😀',
+          'line-1998-😀',
+          'line-1999-😀',
+        ].join('\n'),
+        truncated: true,
+      });
+    } finally {
+      Array.prototype.shift = originalShift;
+    }
+  });
 });
 
 describe('sensitive prompt protection', () => {

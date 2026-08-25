@@ -121,8 +121,14 @@ function boundedTail(
     body = lines.join('\n');
   }
 
-  while (lines.length > 1 && utf8ByteLength(body) > bodyBudget) {
-    lines.shift();
+  let bodyBytes = utf8ByteLength(body);
+  let lineHead = 0;
+  while (lines.length - lineHead > 1 && bodyBytes > bodyBudget) {
+    bodyBytes -= utf8ByteLength(lines[lineHead] ?? '') + 1;
+    lineHead += 1;
+  }
+  if (lineHead > 0) {
+    lines = lines.slice(lineHead);
     body = lines.join('\n');
   }
   if (utf8ByteLength(body) > bodyBudget) {
