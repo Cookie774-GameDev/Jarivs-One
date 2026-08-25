@@ -172,7 +172,15 @@ export function BrowserPage({ routeVisible = true }: { routeVisible?: boolean })
     const identity = getActiveAccountIdentity();
     const session = cdpRef.current;
     const sessionId = runtime?.session_id;
-    if (engine !== 'agent' || !cdpConnected || !identity || !session || !sessionId || !active) {
+    if (
+      !routeVisible ||
+      engine !== 'agent' ||
+      !cdpConnected ||
+      !identity ||
+      !session ||
+      !sessionId ||
+      !active
+    ) {
       return;
     }
     let origin = 'null';
@@ -201,7 +209,7 @@ export function BrowserPage({ routeVisible = true }: { routeVisible?: boolean })
       lease.revoke();
       if (hostLeaseRef.current?.id === lease.id) hostLeaseRef.current = null;
     };
-  }, [active, cdpConnected, engine, runtime?.session_id]);
+  }, [active, cdpConnected, engine, routeVisible, runtime?.session_id]);
 
   const navigateIframe = (url: string) => {
     setIframeBlocked(false);

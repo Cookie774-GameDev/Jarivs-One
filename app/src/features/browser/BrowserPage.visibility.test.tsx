@@ -10,10 +10,19 @@ const browserHarness = vi.hoisted(() => ({
   connect: vi.fn(),
   navigate: vi.fn(),
   browserStop: vi.fn(),
+  leaseRevoke: vi.fn(),
+  registerHost: vi.fn(),
   frameListener: null as null | ((frame: string) => void),
 }));
 
 vi.mock('@/lib/tauri', () => ({ openExternal: vi.fn(async () => undefined) }));
+vi.mock('@/lib/accountIdentity', () => ({
+  getActiveAccountIdentity: vi.fn(() => ({ accountId: 'account-visibility' })),
+}));
+vi.mock('./browserGoalIntegration', () => ({
+  BROWSER_GOAL_HOST_LEASE_MS: 60_000,
+  registerBrowserGoalHostSession: browserHarness.registerHost,
+}));
 
 vi.mock('./browserClient', () => ({
   browserStart: vi.fn(async () => ({
@@ -62,6 +71,10 @@ describe('BrowserPage cached-route visibility', () => {
     browserHarness.connect.mockResolvedValue(undefined);
     browserHarness.navigate.mockResolvedValue(undefined);
     browserHarness.browserStop.mockResolvedValue(false);
+    browserHarness.registerHost.mockImplementation(() => ({
+      id: 'lease-visibility',
+      revoke: browserHarness.leaseRevoke,
+    }));
     browserHarness.frameListener = null;
     useBrowserStore.setState({
       tabs: [
@@ -128,5 +141,20 @@ describe('BrowserPage cached-route visibility', () => {
       browserHarness.start.mock.invocationCallOrder[0],
     );
     await act(async () => releaseStop());
+  });
+
+  it('releases the goal-host lease while hidden and restores it without closing the session', async () => {
+    const view = render(<BrowserPage routeVisible />);
+    fireEvent.click(screen.getByRole('button', { name: 'Agent runtime' }));
+
+    await waitFor(() => expect(browserHarness.registerHost).toHaveBeenCalledTimes(1));
+    view.rerender(<BrowserPage routeVisible={false} />);
+
+    await waitFor(() => expect(browserHarness.leaseRevoke).toHaveBeenCalledTimes(1));
+    expect(browserHarness.close).not.toHaveBeenCalled();
+    expect(browserHarness.browserStop).not.toHaveBeenCalled();
+
+    view.rerender(<BrowserPage routeVisible />);
+    await waitFor(() => expect(browserHarness.registerHost).toHaveBeenCalledTimes(2));
   });
 });
