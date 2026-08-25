@@ -39,4 +39,31 @@ describe('terminal render queue', () => {
       droppedCharacters: oversized.length,
     });
   });
+
+  it('bounds a large backpressure burst without shifting pending arrays', () => {
+    const queue = createTerminalRenderQueue(32);
+    const originalShift = Array.prototype.shift;
+    let shiftCalls = 0;
+    Array.prototype.shift = function countedShift<T>(this: T[]): T | undefined {
+      shiftCalls += 1;
+      return originalShift.call(this) as T | undefined;
+    };
+
+    try {
+      for (let index = 0; index < 2_000; index += 1) {
+        queue.enqueue(
+          `${index.toString().padStart(4, '0')}\n`,
+          `${index.toString().padStart(4, '0')}\n`,
+        );
+      }
+      expect(shiftCalls).toBe(0);
+      expect(queue.drain()).toEqual({
+        displayData: '1994\n1995\n1996\n1997\n1998\n1999\n',
+        transcriptData: '1994\n1995\n1996\n1997\n1998\n1999\n',
+        droppedCharacters: 9_970,
+      });
+    } finally {
+      Array.prototype.shift = originalShift;
+    }
+  });
 });
