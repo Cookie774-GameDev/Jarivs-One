@@ -2,7 +2,6 @@ import * as React from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { Play, Pause, ExternalLink, MessageSquare } from 'lucide-react';
 import { messageRepo, chatRepo, db } from '@/lib/db';
-import { useUIStore } from '@/stores/ui';
 import { useAgentStore } from '@/stores/agents';
 import { useAuthStore } from '@/stores/auth';
 import { Avatar } from '@/components/ui/avatar';
@@ -13,6 +12,8 @@ import type { Agent, Chat, ChatId, Message, Part } from '@/types';
 import type { BrowserChatSnapshotRow } from '@/lib/db/schema';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { createChatGptSnapshotRepository } from '@/features/browser-chat/chatGptExport';
+import { toast } from '@/components/ui/toast';
+import { openStoredChat } from './openStoredChat';
 
 export interface ReplayProps {
   chatId: ChatId | null;
@@ -119,15 +120,13 @@ function ProviderSnapshotReplay({ snapshotId }: { snapshotId: string }) {
  * scrub manually.
  */
 function NativeReplay({ chatId }: Pick<ReplayProps, 'chatId'>) {
-  const setActiveChat = useUIStore((s) => s.setActiveChat);
-  const setRoute = useUIStore((s) => s.setRoute);
-
   const [chat, setChat] = React.useState<Chat | null>(null);
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [position, setPosition] = React.useState(0);
   const [playing, setPlaying] = React.useState(false);
   const [speed, setSpeed] = React.useState<Speed>(1);
   const [loading, setLoading] = React.useState(false);
+  const [openingChat, setOpeningChat] = React.useState(false);
 
   // Load chat + messages whenever the selection changes. Reset transport
   // so each new chat starts fresh at index 0, paused.
@@ -201,10 +200,33 @@ function NativeReplay({ chatId }: Pick<ReplayProps, 'chatId'>) {
     return () => window.removeEventListener('keydown', onKey);
   }, [chatId, messages.length]);
 
-  const onOpenInChat = () => {
-    if (!chatId) return;
-    setActiveChat(chatId);
-    setRoute('chat');
+  const onOpenInChat = async () => {
+    if (!chatId || openingChat) return;
+    setOpeningChat(true);
+    try {
+      const result = await openStoredChat(chatId);
+      if (result.status === 'opened') {
+        if (result.model === 'unavailable') {
+          toast.warning(
+            'Saved model unavailable',
+            'The messages were restored without selecting another model. Choose a model before sending.',
+          );
+        }
+        return;
+      }
+      if (result.status === 'forbidden') {
+        toast.error(
+          'Chat not opened',
+          'That saved chat does not belong to the current account and workspace.',
+        );
+      } else if (result.status === 'not-found') {
+        toast.error('Chat not opened', 'That saved chat no longer exists.');
+      } else if (result.status === 'failed') {
+        toast.error('Chat not opened', 'VibeSpace could not restore that saved chat safely.');
+      }
+    } finally {
+      setOpeningChat(false);
+    }
   };
 
   if (!chatId) return <ReplayEmpty />;
@@ -213,7 +235,12 @@ function NativeReplay({ chatId }: Pick<ReplayProps, 'chatId'>) {
   if (messages.length === 0)
     return (
       <div className="flex h-full flex-col">
-        <ReplayHeader chat={chat} messages={messages} onOpenInChat={onOpenInChat} />
+        <ReplayHeader
+          chat={chat}
+          messages={messages}
+          openingChat={openingChat}
+          onOpenInChat={() => void onOpenInChat()}
+        />
         <ReplayEmpty message="This chat has no messages to replay." />
       </div>
     );
@@ -222,7 +249,12 @@ function NativeReplay({ chatId }: Pick<ReplayProps, 'chatId'>) {
 
   return (
     <div className="flex h-full flex-col">
-      <ReplayHeader chat={chat} messages={messages} onOpenInChat={onOpenInChat} />
+      <ReplayHeader
+        chat={chat}
+        messages={messages}
+        openingChat={openingChat}
+        onOpenInChat={() => void onOpenInChat()}
+      />
 
       <Scrubber
         position={position}
@@ -252,10 +284,12 @@ function NativeReplay({ chatId }: Pick<ReplayProps, 'chatId'>) {
 function ReplayHeader({
   chat,
   messages,
+  openingChat,
   onOpenInChat,
 }: {
   chat: Chat;
   messages: Message[];
+  openingChat: boolean;
   onOpenInChat: () => void;
 }) {
   const agents = useAgentStore((s) => s.agents);
@@ -306,11 +340,12 @@ function ReplayHeader({
         variant="outline"
         size="sm"
         onClick={onOpenInChat}
-        aria-label="Open in chat"
+        aria-label={openingChat ? 'Opening saved chat' : 'Open in chat'}
+        disabled={openingChat}
         className="shrink-0"
       >
         <ExternalLink />
-        Open in chat
+        {openingChat ? 'Opening…' : 'Open in chat'}
       </Button>
     </header>
   );
