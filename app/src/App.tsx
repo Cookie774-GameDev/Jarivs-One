@@ -148,6 +148,7 @@ import { useBoundHotkey } from '@/lib/hotkeys';
 import { FullscreenHost } from '@/features/fullscreen';
 import { DevConsoleHost } from '@/features/dev-console';
 import { OpenCodeSystemLogHost } from '@/features/opencode-system-log';
+import { SiyuanIndexJobHost } from '@/features/context/siyuan/SiyuanIndexJobHost';
 import { initTerminalScheduler } from '@/features/terminals/terminalScheduler';
 import { revokeTerminalExecutionsForAccount } from '@/features/terminals/terminalExecutionStore';
 import { TerminalCliRuntimeHost } from '@/features/terminals';
@@ -3296,6 +3297,7 @@ function AppContent({ plan }: { plan: RuntimePlan }) {
       {plan.terminalCliEnabled ? <TerminalCliRuntimeHost /> : null}
       {plan.devConsoleEnabled ? <DevConsoleHost /> : null}
       {plan.devConsoleEnabled ? <OpenCodeSystemLogHost /> : null}
+      <SiyuanIndexJobHost />
     </ErrorBoundary>
   );
 }

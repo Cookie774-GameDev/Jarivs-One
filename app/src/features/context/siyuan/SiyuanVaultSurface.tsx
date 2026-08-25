@@ -10,10 +10,16 @@ import {
 
 export function SiyuanVaultSurface({
   projectId,
+  mapId,
+  notebookId,
+  rootDocumentId,
   onClose,
   bridge = productionSiyuanSurfaceBridge,
 }: {
   projectId: string;
+  mapId: string;
+  notebookId: string | null;
+  rootDocumentId: string | null;
   onClose(): void;
   bridge?: SiyuanSurfaceBridge;
 }) {
@@ -27,8 +33,20 @@ export function SiyuanVaultSurface({
     setState('loading');
     setError('');
     try {
-      const status = await bridge.open(projectId, measureSiyuanSurfaceBounds(element));
-      if (!status.created || !status.visible || status.projectId !== projectId) {
+      const status = await bridge.open(
+        projectId,
+        { mapId, notebookId, rootDocumentId, graphMode: 'local' },
+        measureSiyuanSurfaceBounds(element),
+      );
+      if (
+        !status.created ||
+        !status.visible ||
+        status.projectId !== projectId ||
+        status.mapId !== mapId ||
+        status.notebookId !== notebookId ||
+        status.rootDocumentId !== rootDocumentId ||
+        status.graphMode !== 'local'
+      ) {
         throw new Error('siyuan_surface_status_invalid');
       }
       setState('ready');
@@ -36,12 +54,17 @@ export function SiyuanVaultSurface({
       setError(redactSiyuanSurfaceError(cause));
       setState('error');
     }
-  }, [bridge, projectId]);
+  }, [bridge, mapId, notebookId, projectId, rootDocumentId]);
 
   React.useEffect(() => {
     void open();
     return () => {
-      void bridge.hide();
+      // A retained child webview keeps the native window in multi-webview
+      // mode even while hidden. Commands that legitimately require the
+      // ordinary main WebviewWindow would then fail before reaching their
+      // authority checks. Retire the child whenever focused-map mode exits;
+      // reopening remains fast because the supervised SiYuan kernel stays up.
+      void bridge.close();
     };
   }, [bridge, open]);
 
@@ -80,6 +103,7 @@ export function SiyuanVaultSurface({
   return (
     <section
       data-testid="siyuan-vault-surface"
+      data-siyuan-map-id={mapId}
       className="absolute inset-0 z-50 flex min-h-0 flex-col bg-background"
       aria-label="SiYuan Context Vault"
     >
@@ -89,7 +113,7 @@ export function SiyuanVaultSurface({
             <ShieldCheck className="h-4 w-4 text-accent-sage" /> Context Vault
           </div>
           <p className="truncate text-metadata text-muted-foreground">
-            Official SiYuan v3.8.1 · project-scoped · local loopback only
+            Official SiYuan v3.8.1 graph · embedded · project-scoped · local loopback only
           </p>
         </div>
         <Button
@@ -123,7 +147,7 @@ export function SiyuanVaultSurface({
             <div aria-live="polite" className="text-secondary text-muted-foreground">
               <RefreshCw className="mx-auto mb-3 h-5 w-5 animate-spin text-accent-copper" />
               {state === 'ready'
-                ? 'Native Context Vault is active over this protected rectangle.'
+                ? 'The official SiYuan graph is embedded inside this VibeSpace page.'
                 : 'Starting the local Context Vault…'}
             </div>
           )}

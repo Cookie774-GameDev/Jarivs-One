@@ -1,0 +1,626 @@
+import { applySecretPolicy } from '@/lib/security/secretDetector';
+import { listDirectory, type FsEntry, type FsListResult } from '@/lib/fs';
+import type { ContextMapRecord, ContextTreeNode } from '../tree';
+import type { SiyuanSummaryPolicy } from './siyuanMapManifest';
+import {
+  canResumeSiyuanIndexJob,
+  checkpointSiyuanIndexJob,
+  createSiyuanIndexJob,
+  readSiyuanIndexEntries,
+  readSiyuanIndexFrontier,
+  readSiyuanIndexJob,
+  replaceSiyuanIndexJob,
+  type SiyuanIndexDirectory,
+  type SiyuanIndexJobRecord,
+} from './siyuanIndexJobStore';
+import { canonicalSiyuanAuthorityRoot } from './siyuanPathAuthority';
+import { estimateSiyuanDiscoveryProgress } from './siyuanProgress';
+
+export interface SiyuanSafeIndexEntry {
+  nodeId: string;
+  parentNodeId: string | null;
+  title: string;
+  kind: ContextTreeNode['kind'];
+  relativePath: string | null;
+  sourcePointer: string | null;
+  summary: string | null;
+  sizeBytes: number | null;
+  modifiedAt: number | null;
+  summaryState?: 'completed' | 'skipped' | 'failed';
+}
+
+export interface SiyuanSafeIndex {
+  entries: SiyuanSafeIndexEntry[];
+  excluded: number;
+  unreadable: number;
+  summarized: number;
+}
+
+export type SiyuanDirectoryLister = (
+  path: string,
+  options: { root: string; strictProjectBoundary: true },
+) => Promise<FsListResult>;
+
+export interface SiyuanIndexJobControl {
+  readonly state: 'running' | 'paused' | 'cancelled';
+  pause(): void;
+  resume(): void;
+  cancel(): void;
+  checkpoint(): Promise<void>;
+}
+
+export function createSiyuanIndexJobControl(): SiyuanIndexJobControl {
+  let state: SiyuanIndexJobControl['state'] = 'running';
+  const isCancelled = () => state === 'cancelled';
+  let resumeWaiters: Array<() => void> = [];
+  const release = () => {
+    const waiters = resumeWaiters;
+    resumeWaiters = [];
+    waiters.forEach((resolve) => resolve());
+  };
+  return Object.freeze({
+    get state() {
+      return state;
+    },
+    pause() {
+      if (state === 'running') state = 'paused';
+    },
+    resume() {
+      if (state !== 'paused') return;
+      state = 'running';
+      release();
+    },
+    cancel() {
+      state = 'cancelled';
+      release();
+    },
+    async checkpoint() {
+      if (isCancelled()) throw new Error('siyuan_index_cancelled');
+      if (state === 'paused') {
+        await new Promise<void>((resolve) => resumeWaiters.push(resolve));
+      }
+      if (isCancelled()) throw new Error('siyuan_index_cancelled');
+    },
+  });
+}
+
+export function createDurableSiyuanIndexJobControl(
+  projectId: string,
+  mapId: string,
+): SiyuanIndexJobControl {
+  let state: SiyuanIndexJobControl['state'] = 'running';
+  return {
+    get state() {
+      return state;
+    },
+    pause() {
+      state = 'paused';
+    },
+    resume() {
+      state = 'running';
+    },
+    cancel() {
+      state = 'cancelled';
+    },
+    async checkpoint() {
+      while (true) {
+        const job = await readSiyuanIndexJob(projectId, mapId);
+        if (!job || job.status === 'cancelled') {
+          state = 'cancelled';
+          throw new Error('siyuan_index_cancelled');
+        }
+        if (job.status !== 'paused') {
+          state = 'running';
+          return;
+        }
+        state = 'paused';
+        await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 250));
+      }
+    },
+  };
+}
+
+const EXCLUDED_SEGMENTS = new Set([
+  '$recycle.bin',
+  '.cache',
+  '.aws',
+  '.azure',
+  '.claude',
+  '.claude-provider',
+  '.codex',
+  '.docker',
+  '.git',
+  '.gnupg',
+  '.hg',
+  '.kube',
+  '.npm',
+  '.password-store',
+  '.pnpm-store',
+  '.pki',
+  '.ssh',
+  '.svn',
+  'appdata/local/temp',
+  'appdata/local/google/chrome',
+  'appdata/local/microsoft/edge',
+  'appdata/local/microsoft/credentials',
+  'appdata/roaming/mozilla',
+  'appdata/roaming/microsoft/credentials',
+  'browser profiles',
+  'build',
+  'cache',
+  'coverage',
+  'dist',
+  'node_modules',
+  'target',
+  'temp',
+]);
+const SECRET_FILE =
+  /^(?:\.env(?:\..*)?|\.git-credentials|\.netrc|\.npmrc|\.pypirc|auth(?:entication)?\.json|credentials?(?:\..*)?|id_(?:rsa|ecdsa|ed25519)|secrets?(?:\..*)?|tokens?(?:\..*)?|.*\.(?:key|pem|p12|pfx))$/iu;
+const MAX_ENTRIES = 500_000;
+const DIRECTORY_SCAN_CONCURRENCY = 8;
+
+function canonical(value: string): string {
+  return value
+    .replace(/\\/gu, '/')
+    .replace(/\/{2,}/gu, '/')
+    .replace(/\/$/u, '');
+}
+
+function relativeSource(root: string, value: string | undefined): string | null {
+  if (!value) return null;
+  const base = canonical(root);
+  const candidate = canonical(value);
+  const combined =
+    /^[A-Za-z]:\//u.test(candidate) || candidate.startsWith('/')
+      ? candidate
+      : `${base}/${candidate}`;
+  const normalizedBase = base.toLocaleLowerCase('en-US');
+  const normalized = combined.toLocaleLowerCase('en-US');
+  if (normalized !== normalizedBase && !normalized.startsWith(`${normalizedBase}/`)) return null;
+  const relative = combined.slice(base.length).replace(/^\//u, '');
+  if (relative.split('/').some((segment) => segment === '..' || segment === '.')) return null;
+  return relative;
+}
+
+function excludedPath(
+  relativePath: string | null,
+  title: string,
+  customExclusions: readonly string[] = [],
+): boolean {
+  if (SECRET_FILE.test(title.trim())) return true;
+  if (!relativePath) return false;
+  const lower = relativePath.toLocaleLowerCase('en-US');
+  return (
+    [...EXCLUDED_SEGMENTS].some(
+      (segment) =>
+        lower === segment || lower.startsWith(`${segment}/`) || lower.includes(`/${segment}/`),
+    ) ||
+    customExclusions.some((selected) => {
+      const exact = canonical(selected).replace(/^\.\//u, '').toLocaleLowerCase('en-US');
+      return exact !== '' && (lower === exact || lower.startsWith(`${exact}/`));
+    })
+  );
+}
+
+function extension(value: string): string {
+  const match = /\.([A-Za-z0-9_-]{1,32})$/u.exec(value);
+  return match?.[1]?.toLocaleLowerCase('en-US') ?? '';
+}
+
+function normalizedCustomExclusions(root: string, values: readonly string[]): string[] {
+  return values
+    .map((value) => relativeSource(root, value) ?? canonical(value).replace(/^\.\//u, ''))
+    .filter((value) => value !== '');
+}
+
+function normalizedSummaryPolicy(root: string, policy: SiyuanSummaryPolicy): SiyuanSummaryPolicy {
+  return {
+    ...policy,
+    selectedPaths: policy.selectedPaths
+      .map((value) => {
+        const relative = relativeSource(root, value);
+        if (relative === '') return '.';
+        return relative ?? canonical(value).replace(/^\.\//u, '');
+      })
+      .filter((value) => value !== ''),
+  };
+}
+
+function legacyNormalizedSummaryPolicy(
+  root: string,
+  policy: SiyuanSummaryPolicy,
+): SiyuanSummaryPolicy {
+  return {
+    ...policy,
+    selectedPaths: policy.selectedPaths
+      .map((value) => relativeSource(root, value) ?? canonical(value).replace(/^\.\//u, ''))
+      .filter((value) => value !== ''),
+  };
+}
+
+function indexPolicyFingerprintPayload(
+  root: string,
+  policy: SiyuanSummaryPolicy,
+  excludedPaths: readonly string[],
+  schemaVersion: 1 | 2,
+): string {
+  return JSON.stringify({
+    schemaVersion,
+    root: canonical(root).toLocaleLowerCase('en-US'),
+    summaryMode: policy.mode,
+    selectedExtensions: [...policy.selectedExtensions].sort(),
+    selectedPaths: [...policy.selectedPaths]
+      .map((value) => canonical(value).toLocaleLowerCase('en-US'))
+      .sort(),
+    excludedPaths: normalizedCustomExclusions(root, excludedPaths)
+      .map((value) => canonical(value).toLocaleLowerCase('en-US'))
+      .sort(),
+  });
+}
+
+export function siyuanIndexPolicyFingerprint(
+  root: string,
+  policy: SiyuanSummaryPolicy,
+  excludedPaths: readonly string[],
+): string {
+  const normalizedPolicy = normalizedSummaryPolicy(root, policy);
+  return indexPolicyFingerprintPayload(root, normalizedPolicy, excludedPaths, 2);
+}
+
+function legacySiyuanIndexPolicyFingerprint(
+  root: string,
+  policy: SiyuanSummaryPolicy,
+  excludedPaths: readonly string[],
+): string {
+  return indexPolicyFingerprintPayload(
+    root,
+    legacyNormalizedSummaryPolicy(root, policy),
+    excludedPaths,
+    1,
+  );
+}
+
+function summarySelected(
+  node: ContextTreeNode,
+  relativePath: string | null,
+  policy: SiyuanSummaryPolicy,
+): boolean {
+  if (policy.mode === 'none') return false;
+  if (policy.mode === 'all') return true;
+  const ext = extension(node.title);
+  if (ext && policy.selectedExtensions.includes(ext)) return true;
+  return Boolean(
+    relativePath &&
+    policy.selectedPaths.some(
+      (selected) =>
+        selected === '.' ||
+        relativePath === canonical(selected) ||
+        relativePath.startsWith(`${canonical(selected)}/`),
+    ),
+  );
+}
+
+export function buildSiyuanSafeIndex(
+  record: ContextMapRecord,
+  policy: SiyuanSummaryPolicy,
+  customExclusions: readonly string[] = [],
+): SiyuanSafeIndex {
+  const entries: SiyuanSafeIndexEntry[] = [];
+  const exclusions = normalizedCustomExclusions(record.rootDir, customExclusions);
+  const summaryPolicy = normalizedSummaryPolicy(record.rootDir, policy);
+  let excluded = 0;
+  let summarized = 0;
+  const walk = (nodes: readonly ContextTreeNode[], parentNodeId: string | null): void => {
+    for (const node of nodes) {
+      if (entries.length >= MAX_ENTRIES) throw new Error('siyuan_safe_index_entry_limit');
+      const relativePath = relativeSource(record.rootDir, node.path);
+      if (
+        (node.path && relativePath === null) ||
+        excludedPath(relativePath, node.title, exclusions)
+      ) {
+        excluded += 1;
+        continue;
+      }
+      const summaryResult = summarySelected(node, relativePath, summaryPolicy)
+        ? applySecretPolicy(node.summary ?? '', 'exclude')
+        : null;
+      const summary =
+        summaryResult?.decision === 'allowed' ? summaryResult.text?.trim() || null : null;
+      if (summary) summarized += 1;
+      entries.push(
+        Object.freeze({
+          nodeId: node.id,
+          parentNodeId,
+          title: node.title
+            .replace(/[\r\n\u0000-\u001f\u007f]+/gu, ' ')
+            .trim()
+            .slice(0, 500),
+          kind: node.kind,
+          relativePath,
+          sourcePointer:
+            relativePath === null ? null : `${canonical(record.rootDir)}/${relativePath}`,
+          summary,
+          sizeBytes: Number.isSafeInteger(node.sizeBytes) ? (node.sizeBytes ?? null) : null,
+          modifiedAt: Number.isSafeInteger(node.modifiedAt) ? (node.modifiedAt ?? null) : null,
+        }),
+      );
+      if (node.children?.length) walk(node.children, node.id);
+    }
+  };
+  walk(record.tree.nodes, null);
+  return Object.freeze({
+    entries: Object.freeze(entries) as SiyuanSafeIndexEntry[],
+    excluded,
+    unreadable: 0,
+    summarized,
+  });
+}
+
+function entryKind(entry: FsEntry): ContextTreeNode['kind'] {
+  return entry.isDir ? 'area' : 'file';
+}
+
+function existingSummaries(record: ContextMapRecord): Map<string, string> {
+  const summaries = new Map<string, string>();
+  const visit = (nodes: readonly ContextTreeNode[]) => {
+    for (const node of nodes) {
+      const relative = relativeSource(record.rootDir, node.path);
+      if (relative !== null && node.summary.trim()) {
+        summaries.set(canonical(relative).toLocaleLowerCase('en-US'), node.summary);
+      }
+      if (node.children?.length) visit(node.children);
+    }
+  };
+  visit(record.tree.nodes);
+  return summaries;
+}
+
+/**
+ * Builds the complete allowed metadata tree independently of the bounded
+ * content sampler. The native list command enforces the selected root and
+ * rejects links/reparse points; this function never reads or mutates content.
+ */
+export async function scanSiyuanFilesystemIndex(
+  record: ContextMapRecord,
+  policy: SiyuanSummaryPolicy,
+  options: Readonly<{
+    signal?: AbortSignal;
+    control?: SiyuanIndexJobControl;
+    onProgress?: (
+      counts: Readonly<{ indexed: number; excluded: number; unreadable: number }>,
+    ) => void;
+    list?: SiyuanDirectoryLister;
+    excludedPaths?: readonly string[];
+    durableJob?: Readonly<{ accountId: string | null; projectId: string; mapId: string }>;
+  }> = {},
+): Promise<SiyuanSafeIndex> {
+  const root = canonical(record.rootDir);
+  const list = options.list ?? listDirectory;
+  const summaries = existingSummaries(record);
+  const exclusions = normalizedCustomExclusions(root, options.excludedPaths ?? []);
+  const summaryPolicy = normalizedSummaryPolicy(root, policy);
+  let entries: SiyuanSafeIndexEntry[] = [];
+  let queue: SiyuanIndexDirectory[] = [{ path: root, relativePath: '', parentNodeId: null }];
+  let cursor = 0;
+  let excluded = 0;
+  let unreadable = 0;
+  let summarized = 0;
+  let durableRecord: SiyuanIndexJobRecord | null = null;
+
+  if (options.durableJob) {
+    const { accountId, projectId, mapId } = options.durableJob;
+    const policyFingerprint = siyuanIndexPolicyFingerprint(
+      root,
+      policy,
+      options.excludedPaths ?? [],
+    );
+    const legacyPolicyFingerprint = legacySiyuanIndexPolicyFingerprint(
+      root,
+      policy,
+      options.excludedPaths ?? [],
+    );
+    let existing = await readSiyuanIndexJob(projectId, mapId);
+    if (existing && existing.accountId === null && accountId !== null) {
+      existing = { ...existing, accountId, updatedAt: Date.now() };
+      await checkpointSiyuanIndexJob({ job: existing });
+    }
+    if (existing?.policyFingerprint === legacyPolicyFingerprint) {
+      existing = { ...existing, policyFingerprint, updatedAt: Date.now() };
+      await checkpointSiyuanIndexJob({ job: existing });
+    }
+    if (existing && existing.phase !== 'discovering') {
+      if (
+        existing.accountId !== accountId ||
+        canonicalSiyuanAuthorityRoot(existing.canonicalRoot) !==
+          canonicalSiyuanAuthorityRoot(root) ||
+        existing.policyFingerprint !== policyFingerprint
+      ) {
+        throw new Error('siyuan_index_resume_authority_mismatch');
+      }
+      entries = await readSiyuanIndexEntries(projectId, mapId);
+      return Object.freeze({
+        entries: Object.freeze(entries) as SiyuanSafeIndexEntry[],
+        excluded: existing.excluded,
+        unreadable: existing.unreadable,
+        summarized: existing.summarized,
+      });
+    }
+    if (existing) {
+      if (
+        !canResumeSiyuanIndexJob(existing, { accountId, canonicalRoot: root, policyFingerprint })
+      ) {
+        throw new Error(`siyuan_index_not_resumable:${existing.status}`);
+      }
+      durableRecord = existing;
+      [queue, entries] = await Promise.all([
+        readSiyuanIndexFrontier(projectId, mapId),
+        readSiyuanIndexEntries(projectId, mapId),
+      ]);
+      if (queue.length !== existing.frontierLength || entries.length !== existing.indexed) {
+        throw new Error('siyuan_index_checkpoint_inconsistent');
+      }
+      cursor = existing.cursor;
+      excluded = existing.excluded;
+      unreadable = existing.unreadable;
+      summarized = existing.summarized;
+    } else {
+      durableRecord = createSiyuanIndexJob({
+        accountId,
+        projectId,
+        mapId,
+        canonicalRoot: root,
+        policyFingerprint,
+      });
+      await replaceSiyuanIndexJob(durableRecord, queue[0]);
+    }
+  }
+
+  while (cursor < queue.length) {
+    await options.control?.checkpoint();
+    if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+    const directories = queue.slice(cursor, cursor + DIRECTORY_SCAN_CONCURRENCY);
+    cursor += directories.length;
+    const listings = await Promise.all(
+      directories.map(async (directory) => ({
+        directory,
+        result: await list(directory.path, { root, strictProjectBoundary: true }),
+      })),
+    );
+    const batchEntries: SiyuanSafeIndexEntry[] = [];
+    const batchDirectories: SiyuanIndexDirectory[] = [];
+    for (const { directory, result } of listings) {
+      if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+      if (!result.ok) {
+        unreadable += 1;
+        options.onProgress?.({ indexed: entries.length, excluded, unreadable });
+        continue;
+      }
+      const children = [...result.entries].sort((left, right) =>
+        left.name.localeCompare(right.name, 'en-US'),
+      );
+      for (const child of children) {
+        if (entries.length >= MAX_ENTRIES) throw new Error('siyuan_safe_index_entry_limit');
+        const relativePath = relativeSource(root, child.path);
+        if (relativePath === null || excludedPath(relativePath, child.name, exclusions)) {
+          excluded += 1;
+          continue;
+        }
+        const nodeId = `path:${canonical(relativePath)}`;
+        const summaryCandidate = summaries.get(canonical(relativePath).toLocaleLowerCase('en-US'));
+        const summaryNode: ContextTreeNode = {
+          id: nodeId,
+          title: child.name,
+          kind: entryKind(child),
+          summary: summaryCandidate ?? '',
+          path: child.path,
+        };
+        const summaryResult = summarySelected(summaryNode, relativePath, summaryPolicy)
+          ? applySecretPolicy(summaryCandidate ?? '', 'exclude')
+          : null;
+        const summary =
+          summaryResult?.decision === 'allowed' ? summaryResult.text?.trim() || null : null;
+        if (summary) summarized += 1;
+        const indexedEntry: SiyuanSafeIndexEntry = {
+          nodeId,
+          parentNodeId: directory.parentNodeId,
+          title: child.name
+            .replace(/[\r\n\u0000-\u001f\u007f]+/gu, ' ')
+            .trim()
+            .slice(0, 500),
+          kind: entryKind(child),
+          relativePath,
+          sourcePointer: child.path,
+          summary,
+          sizeBytes: Number.isSafeInteger(child.size) ? (child.size ?? null) : null,
+          modifiedAt: Number.isSafeInteger(child.modifiedMs) ? (child.modifiedMs ?? null) : null,
+        };
+        entries.push(indexedEntry);
+        batchEntries.push(indexedEntry);
+        if (child.isDir) {
+          const queuedDirectory = { path: child.path, relativePath, parentNodeId: nodeId };
+          queue.push(queuedDirectory);
+          batchDirectories.push(queuedDirectory);
+        }
+      }
+      options.onProgress?.({ indexed: entries.length, excluded, unreadable });
+    }
+    if (durableRecord) {
+      const sampledAt = Date.now();
+      const estimate = estimateSiyuanDiscoveryProgress({
+        previous: {
+          determinate: durableRecord.estimatedPercent !== null,
+          approximatePercent:
+            durableRecord.estimatedPercent === null
+              ? null
+              : Math.min(99, durableRecord.estimatedPercent * 4),
+          etaSeconds: durableRecord.estimatedEtaSeconds,
+          ratePerSecond: null,
+          samples: durableRecord.discoverySamples,
+        },
+        sample: {
+          at: sampledAt,
+          processed: cursor,
+          frontierRemaining: Math.max(0, queue.length - cursor),
+          discovered: entries.length,
+        },
+      });
+      durableRecord = {
+        ...durableRecord,
+        cursor,
+        frontierLength: queue.length,
+        indexed: entries.length,
+        excluded,
+        unreadable,
+        summarized,
+        updatedAt: sampledAt,
+        rateSamples: [...durableRecord.rateSamples, { at: sampledAt, processed: cursor }].slice(
+          -20,
+        ),
+        discoverySamples: [...estimate.samples],
+        estimatedPercent:
+          estimate.approximatePercent === null
+            ? durableRecord.estimatedPercent
+            : Math.max(
+                durableRecord.estimatedPercent ?? 0,
+                Math.min(24.75, estimate.approximatePercent * 0.25),
+              ),
+        estimatedEtaSeconds: estimate.etaSeconds,
+      };
+      await checkpointSiyuanIndexJob({
+        job: durableRecord,
+        appendedEntries: batchEntries,
+        appendedDirectories: batchDirectories,
+      });
+    }
+    await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
+  }
+
+  if (durableRecord) {
+    const completedDiscoveryAt = Date.now();
+    durableRecord = {
+      ...durableRecord,
+      phase: 'creating_nodes',
+      status: 'running',
+      cursor,
+      frontierLength: queue.length,
+      indexed: entries.length,
+      excluded,
+      unreadable,
+      summarized,
+      updatedAt: completedDiscoveryAt,
+      completedAt: null,
+      phaseStartedAt: completedDiscoveryAt,
+      rateSamples: [{ at: completedDiscoveryAt, processed: 0 }],
+      estimatedPercent: Math.max(durableRecord.estimatedPercent ?? 0, 25),
+      estimatedEtaSeconds: null,
+    };
+    await checkpointSiyuanIndexJob({ job: durableRecord });
+  }
+
+  return Object.freeze({
+    entries: Object.freeze(entries) as SiyuanSafeIndexEntry[],
+    excluded,
+    unreadable,
+    summarized,
+  });
+}

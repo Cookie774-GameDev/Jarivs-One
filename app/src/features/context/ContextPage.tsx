@@ -57,7 +57,6 @@ import {
   findContextNode,
   flattenContextNodes,
   formatContextAttachmentForTerminal,
-  generateProjectContextTree,
   isContextTreeCoverageBounded,
   nodeToAttachment,
   serializeContextAttachment,
@@ -106,12 +105,291 @@ import { getStoredContextSourceRoot, setStoredContextSourceRoot } from './contex
 import { SIYUAN_CONTEXT_VAULT_ENABLED } from './siyuan/siyuanContracts';
 import { SiyuanVaultSurface } from './siyuan/SiyuanVaultSurface';
 import { productionSiyuanContextMaps } from './siyuanContextMapIntegration';
+import {
+  DEFAULT_SIYUAN_SUMMARY_EXTENSIONS,
+  readSiyuanMapManifest,
+  updateSiyuanMapManifest,
+  writeSiyuanMapManifest,
+  type SiyuanSummaryMode,
+} from './siyuan/siyuanMapManifest';
+import {
+  createSiyuanIndexJobControl,
+  siyuanIndexPolicyFingerprint,
+} from './siyuan/siyuanSafeIndex';
+import {
+  archiveAndReplaceSiyuanIndexJob,
+  archiveAndRestartSiyuanSummaryJobForCloud,
+  createSiyuanIndexJob,
+  readSiyuanIndexEntries,
+  readSiyuanIndexJob,
+  updateSiyuanIndexJobStatus,
+  type SiyuanIndexJobRecord,
+} from './siyuan/siyuanIndexJobStore';
+import { formatSiyuanJobEta, siyuanOverallProgressPercent } from './siyuan/siyuanProgress';
+import { computeSiyuanCloudSummaryScope } from './siyuan/siyuanSummaryPipeline';
+import {
+  canOpenPartialSiyuanSurface,
+  hasSiyuanMapJobAuthority,
+} from './siyuan/siyuanSurfaceAvailability';
 import './sakura-context.css';
 
 const PROJECT_ROOT_NODE_ID = '__jarvis-context-root__';
 const MAP_WIDTH = 6400;
 const MAP_HEIGHT = 4400;
 const MAP_CENTER = { x: MAP_WIDTH / 2, y: MAP_HEIGHT / 2 };
+
+function createSiyuanMetadataSeed(projectId: string | null, rootDir: string): ProjectContextTree {
+  return {
+    version: 1,
+    projectId,
+    rootDir,
+    generatedAt: Date.now(),
+    model: 'siyuan-metadata-index-v1',
+    fileCount: 0,
+    totalBytes: 0,
+    summary:
+      'The complete allowed structure and any approved summaries are indexed directly in SiYuan.',
+    nodes: [],
+  };
+}
+
+function SiyuanIndexProgressCard({
+  job,
+  summaryScope,
+  onPause,
+  onResume,
+  onCancel,
+  onRetry,
+  onRestart,
+  cloudDisclosure,
+  onApproveCloud,
+  cloudApprovalPending,
+}: {
+  job: SiyuanIndexJobRecord;
+  summaryScope: string;
+  onPause: () => void;
+  onResume: () => void;
+  onCancel: () => void;
+  onRetry: () => void;
+  onRestart: () => void;
+  cloudDisclosure: Readonly<{
+    providerId: string;
+    connectionId: string;
+    modelId: string;
+    eligibleFileCount: number;
+    eligibleSourceBytes: number;
+    estimatedMaxSentBytes: number;
+  }> | null;
+  onApproveCloud: () => void;
+  cloudApprovalPending: boolean;
+}) {
+  const phaseLabel: Record<SiyuanIndexJobRecord['phase'], string> = {
+    discovering: 'Discovering allowed files and folders',
+    creating_nodes: 'Creating SiYuan nodes',
+    summarizing: 'Generating selected summaries',
+    reconciling: 'Reconciling and finalizing',
+    completed: 'Context Map complete',
+  };
+  const exactPercent = siyuanOverallProgressPercent(job);
+  const elapsedSeconds = Math.max(
+    0,
+    Math.floor(
+      ((job.status === 'running' ? Date.now() : job.updatedAt) - job.startedAt - job.pausedMs) /
+        1_000,
+    ),
+  );
+  const eta = formatSiyuanJobEta(job);
+  const elapsed =
+    elapsedSeconds < 60
+      ? `${elapsedSeconds}s`
+      : elapsedSeconds < 3_600
+        ? `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`
+        : `${Math.floor(elapsedSeconds / 3_600)}h ${Math.floor((elapsedSeconds % 3_600) / 60)}m`;
+  return (
+    <section
+      className="rounded-xl border border-border/80 bg-paper-soft/75 p-3 shadow-sm backdrop-blur-sm"
+      aria-label="SiYuan map progress"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            {job.status === 'running' && job.phase !== 'completed' ? (
+              <span
+                data-testid="siyuan-working-animation"
+                aria-hidden="true"
+                className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-accent-copper/25 bg-accent-copper/10 text-accent-copper"
+              >
+                <span className="absolute inset-0 rounded-full bg-accent-copper/10 motion-safe:animate-ping motion-reduce:animate-none" />
+                <RefreshCw className="relative h-3 w-3 animate-spin motion-reduce:animate-none" />
+              </span>
+            ) : null}
+            <p className="truncate text-sm font-medium text-foreground">{phaseLabel[job.phase]}</p>
+          </div>
+          <p className="text-metadata text-muted-foreground">
+            {job.status === 'paused'
+              ? job.pauseReason === 'local_model_unavailable'
+                ? 'Summaries paused safely — the exact local model is unavailable. Cloud use requires approval.'
+                : job.pauseReason === 'cloud_approval_required'
+                  ? 'Cloud summaries paused safely — approval or scope needs review.'
+                  : 'Paused safely — your checkpoint is saved.'
+              : job.status === 'cancelled'
+                ? 'Cancelled — this job will not resume automatically.'
+                : job.status === 'failed'
+                  ? job.startupDisposition === 'needs_repair'
+                    ? 'Automatic resume stopped safely and needs repair.'
+                    : 'Needs repair before it can continue.'
+                  : job.phase === 'completed'
+                    ? 'Finished and saved.'
+                    : job.startupDisposition === 'auto_resumed'
+                      ? `Auto-resumed after reopening · ${exactPercent === null ? 'recalculating…' : `≈ ${Math.round(exactPercent)}% · ${eta}${job.phase === 'discovering' ? ' for discovery' : ' remaining'} · elapsed ${elapsed}`}`
+                      : exactPercent === null
+                        ? 'Estimating time…'
+                        : `≈ ${Math.round(exactPercent)}% · ${eta}${job.phase === 'discovering' ? ' for discovery' : ' remaining'} · elapsed ${elapsed}`}
+          </p>
+        </div>
+        <span className="text-sm font-semibold tabular-nums text-foreground">
+          {exactPercent === null
+            ? '≈ —'
+            : `${job.phase === 'completed' ? '' : '≈ '}${Math.round(exactPercent)}%`}
+        </span>
+      </div>
+      <div
+        className="mt-2 h-2 overflow-hidden rounded-full bg-paper/70"
+        role="progressbar"
+        aria-label="SiYuan map creation progress"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={exactPercent === null ? undefined : Math.round(exactPercent)}
+        aria-valuetext={
+          exactPercent === null
+            ? 'Estimating time…'
+            : `${job.phase === 'completed' ? '' : 'Approximately '}${Math.round(exactPercent)}%`
+        }
+      >
+        <div
+          className={cn(
+            'h-full rounded-full bg-accent transition-[width] duration-500',
+            exactPercent === null && 'w-1/3 animate-pulse motion-reduce:animate-none',
+          )}
+          style={exactPercent === null ? undefined : { width: `${exactPercent}%` }}
+        />
+      </div>
+      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-metadata text-muted-foreground sm:grid-cols-4">
+        <div>
+          <dt>Indexed</dt>
+          <dd className="font-medium text-foreground">{job.indexed.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>Excluded</dt>
+          <dd className="font-medium text-foreground">{job.excluded.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>Unreadable</dt>
+          <dd className="font-medium text-foreground">{job.unreadable.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>SiYuan nodes</dt>
+          <dd className="font-medium text-foreground">{job.createdNodes.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>Summarized</dt>
+          <dd className="font-medium text-foreground">
+            {job.summarized.toLocaleString()}
+            {job.summaryEligible > 0 ? ` / ${job.summaryEligible.toLocaleString()}` : ''}
+          </dd>
+        </div>
+        <div>
+          <dt>Skipped</dt>
+          <dd className="font-medium text-foreground">{job.skipped.toLocaleString()}</dd>
+        </div>
+        <div>
+          <dt>Failed</dt>
+          <dd className="font-medium text-foreground">{job.failed.toLocaleString()}</dd>
+        </div>
+      </dl>
+      <p className="mt-2 text-metadata text-muted-foreground">Summary scope: {summaryScope}</p>
+      {job.totalTokens > 0 ? (
+        <p className="mt-2 text-metadata text-muted-foreground">
+          Summary usage: {job.inputTokens.toLocaleString()} input ·{' '}
+          {job.outputTokens.toLocaleString()} output · {job.totalTokens.toLocaleString()} total (
+          {job.tokenProvenance === 'reported' ? 'Reported' : 'Estimated'})
+        </p>
+      ) : null}
+      {job.summaryModelId ? (
+        <p className="mt-1 text-metadata text-muted-foreground">
+          Summary model: {job.summaryProviderId} / {job.summaryModelId} · connection{' '}
+          {job.summaryConnectionId}
+        </p>
+      ) : null}
+      {job.pauseReason === 'local_model_unavailable' ? (
+        <div className="mt-3 rounded-lg border border-accent-copper/30 bg-paper/70 p-3">
+          <p className="text-secondary font-medium text-foreground">Approve cloud summaries</p>
+          {cloudDisclosure ? (
+            <>
+              <p className="mt-1 text-metadata text-muted-foreground">
+                Exact route: {cloudDisclosure.providerId} / {cloudDisclosure.modelId} · connection{' '}
+                {cloudDisclosure.connectionId}
+              </p>
+              <p className="mt-1 text-metadata text-muted-foreground">
+                {cloudDisclosure.eligibleFileCount.toLocaleString()} eligible files ·{' '}
+                {formatBytes(cloudDisclosure.eligibleSourceBytes)} source · up to{' '}
+                {formatBytes(cloudDisclosure.estimatedMaxSentBytes)} of sampled file text may be
+                sent.
+              </p>
+              <p className="mt-1 text-metadata text-muted-foreground">
+                Privacy warning: approved file samples leave this device for this exact provider and
+                model. No provider or model substitution is allowed.
+              </p>
+              <Button
+                className="mt-2"
+                size="sm"
+                variant="accent"
+                onClick={onApproveCloud}
+                disabled={cloudApprovalPending}
+              >
+                {cloudApprovalPending ? 'Saving approval…' : 'Approve exact route and resume'}
+              </Button>
+            </>
+          ) : (
+            <p className="mt-1 text-metadata text-muted-foreground">
+              Select one connected cloud model in Chat first. VibeSpace will show its exact route
+              and data scope here before approval.
+            </p>
+          )}
+        </div>
+      ) : null}
+      {job.phase !== 'completed' ? (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {job.status === 'running' ? (
+            <Button size="sm" variant="secondary" onClick={onPause}>
+              Pause
+            </Button>
+          ) : null}
+          {job.status === 'paused' ? (
+            <Button size="sm" variant="secondary" onClick={onResume}>
+              Resume
+            </Button>
+          ) : null}
+          {job.status === 'failed' ? (
+            <Button size="sm" variant="secondary" onClick={onRetry}>
+              Retry
+            </Button>
+          ) : null}
+          {job.status === 'failed' || job.status === 'cancelled' ? (
+            <Button size="sm" variant="ghost" onClick={onRestart}>
+              Restart safely
+            </Button>
+          ) : null}
+          {job.status === 'running' || job.status === 'paused' ? (
+            <Button size="sm" variant="ghost" onClick={onCancel}>
+              Cancel
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
 const MAX_CONTEXT_MAP_LAYOUT_NODES = 100_000;
 const MAX_CONTEXT_MAP_LAYOUT_EDGES = 500_000;
 const DEFAULT_VIEW = centeredView(3000, 2100);
@@ -125,6 +403,7 @@ const contextSearchIndexPopulation = createContextSearchIndexPopulationPort();
 export function ContextPage() {
   const projectId = useAuthStore((s) => s.projectId);
   const accountId = useAuthStore((s) => resolveAccountIdentity(s)?.accountId ?? null);
+  const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
   const setRoute = useUIStore((s) => s.setRoute);
   const [rootDraft, setRootDraft] = React.useState(() =>
     getStoredContextSourceRoot(accountId, projectId),
@@ -134,6 +413,23 @@ export function ContextPage() {
   const [selectedMapId, setSelectedMapId] = React.useState<string | null>(null);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [generating, setGenerating] = React.useState(false);
+  const [siyuanIndexing, setSiyuanIndexing] = React.useState(false);
+  const [indexJobSnapshot, setIndexJobSnapshot] = React.useState<SiyuanIndexJobRecord | null>(null);
+  const [indexResumeNonce, setIndexResumeNonce] = React.useState(0);
+  const [cloudSummaryDisclosure, setCloudSummaryDisclosure] = React.useState<{
+    providerId: string;
+    connectionId: string;
+    modelId: string;
+    eligibleFileCount: number;
+    eligibleSourceBytes: number;
+    estimatedMaxSentBytes: number;
+  } | null>(null);
+  const [cloudApprovalPending, setCloudApprovalPending] = React.useState(false);
+  const [summaryMode, setSummaryMode] = React.useState<SiyuanSummaryMode>('selected');
+  const [summaryPathDraft, setSummaryPathDraft] = React.useState('');
+  const [summarySelectedPaths, setSummarySelectedPaths] = React.useState<string[]>([]);
+  const [exclusionDraft, setExclusionDraft] = React.useState('');
+  const [customExclusions, setCustomExclusions] = React.useState<string[]>([]);
   const [structuralPreview, setStructuralPreview] = React.useState<ProjectContextTree | null>(null);
   const [siyuanTree, setSiyuanTree] = React.useState<ProjectContextTree | null>(null);
   const [mapFlash, setMapFlash] = React.useState(false);
@@ -153,6 +449,8 @@ export function ContextPage() {
   const [jarvisUi, setJarvisUi] = React.useState<ContextJarvisUi>(() => buildJarvisContextUi(null));
   const lastAppliedFileRef = React.useRef('');
   const generationAbortRef = React.useRef<AbortController | null>(null);
+  const cloudApprovalPendingRef = React.useRef(false);
+  const indexControlRef = React.useRef<ReturnType<typeof createSiyuanIndexJobControl> | null>(null);
 
   const applyPersistenceState = React.useCallback(
     (state: Awaited<ReturnType<typeof ensureContextPersistence>>) => {
@@ -181,6 +479,11 @@ export function ContextPage() {
 
   React.useEffect(() => {
     generationAbortRef.current?.abort('context_scope_changed');
+    // Wake a paused scanner so the abort can reach its durable checkpoint.
+    // Scope changes are an interruption, not a user cancellation: the job
+    // remains resumable when its original account/project is opened again.
+    indexControlRef.current?.resume();
+    indexControlRef.current = null;
     generationAbortRef.current = null;
     setRootDraft(getStoredContextSourceRoot(accountId, projectId));
     setMaps([]);
@@ -188,6 +491,7 @@ export function ContextPage() {
     setSelectedMapId(null);
     setSelectedId(null);
     setGenerating(false);
+    setSiyuanIndexing(false);
     setStructuralPreview(null);
     setSiyuanTree(null);
     setJarvisUi(buildJarvisContextUi(null));
@@ -211,14 +515,6 @@ export function ContextPage() {
     };
   }, [accountId, applyPersistenceState, projectId]);
 
-  React.useEffect(
-    () => () => {
-      generationAbortRef.current?.abort('context_unmounted');
-      generationAbortRef.current = null;
-    },
-    [],
-  );
-
   React.useEffect(() => {
     const onUpdated = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId?: string | null; mapId?: string | null }>)
@@ -239,35 +535,220 @@ export function ContextPage() {
       null,
     [maps, selectedMapId],
   );
+
+  React.useEffect(() => {
+    if (!projectId || !selectedMap || selectedMap.sourceType === 'github_repository') {
+      setIndexJobSnapshot(null);
+      return;
+    }
+    let active = true;
+    const refresh = async () => {
+      const job = await readSiyuanIndexJob(projectId, selectedMap.id);
+      if (active) setIndexJobSnapshot(job);
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 1_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [projectId, selectedMap]);
   const tree =
     structuralPreview ?? (SIYUAN_CONTEXT_VAULT_ENABLED ? siyuanTree : (selectedMap?.tree ?? null));
   const treeCoverageBounded = tree ? isContextTreeCoverageBounded(tree) : false;
+  const indexSummaryScope = React.useMemo(() => {
+    if (!projectId || !selectedMap) return 'No summaries';
+    const policy = readSiyuanMapManifest(projectId, selectedMap.id)?.summaryPolicy;
+    if (!policy || policy.mode === 'none') return 'No summaries';
+    if (policy.mode === 'all') return `Everything eligible under ${selectedMap.rootDir}`;
+    if (policy.selectedPaths.length) return policy.selectedPaths.join(', ');
+    if (policy.selectedExtensions.length) {
+      return `Eligible file types: ${policy.selectedExtensions.map((value) => `.${value}`).join(', ')}`;
+    }
+    return 'Selected content only';
+  }, [indexJobSnapshot?.updatedAt, projectId, selectedMap]);
+
+  React.useEffect(() => {
+    if (
+      !projectId ||
+      !selectedMap ||
+      indexJobSnapshot?.pauseReason !== 'local_model_unavailable' ||
+      chatModelSelection.mode !== 'single' ||
+      !('connectionId' in chatModelSelection) ||
+      !chatModelSelection.connectionId ||
+      chatModelSelection.providerId === 'ollama' ||
+      chatModelSelection.providerId === 'local'
+    ) {
+      setCloudSummaryDisclosure(null);
+      return;
+    }
+    let active = true;
+    void readSiyuanIndexEntries(projectId, selectedMap.id).then((entries) => {
+      const manifest = readSiyuanMapManifest(projectId, selectedMap.id);
+      if (!active || !manifest) return;
+      setCloudSummaryDisclosure({
+        providerId: chatModelSelection.providerId,
+        connectionId: chatModelSelection.connectionId,
+        modelId: chatModelSelection.modelId,
+        ...computeSiyuanCloudSummaryScope(entries, selectedMap.rootDir, manifest.summaryPolicy),
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [chatModelSelection, indexJobSnapshot?.pauseReason, projectId, selectedMap]);
+
+  const approveCloudSummaries = React.useCallback(async () => {
+    if (!projectId || !selectedMap || !cloudSummaryDisclosure || cloudApprovalPendingRef.current) {
+      return;
+    }
+    cloudApprovalPendingRef.current = true;
+    setCloudApprovalPending(true);
+    let approvalSaved = false;
+    try {
+      const [job, entries] = await Promise.all([
+        readSiyuanIndexJob(projectId, selectedMap.id),
+        readSiyuanIndexEntries(projectId, selectedMap.id),
+      ]);
+      const manifest = readSiyuanMapManifest(projectId, selectedMap.id);
+      if (!job || !manifest || job.pauseReason !== 'local_model_unavailable') {
+        throw new Error('siyuan_cloud_summary_approval_state_changed');
+      }
+      const currentScope = computeSiyuanCloudSummaryScope(
+        entries,
+        selectedMap.rootDir,
+        manifest.summaryPolicy,
+      );
+      if (
+        currentScope.eligibleFileCount !== cloudSummaryDisclosure.eligibleFileCount ||
+        currentScope.eligibleSourceBytes !== cloudSummaryDisclosure.eligibleSourceBytes ||
+        currentScope.estimatedMaxSentBytes !== cloudSummaryDisclosure.estimatedMaxSentBytes
+      ) {
+        throw new Error('siyuan_cloud_summary_approval_scope_changed');
+      }
+      const approvedAt = Date.now();
+      const approvedManifest = updateSiyuanMapManifest(
+        manifest,
+        {
+          cloudSummaryApproval: {
+            ...cloudSummaryDisclosure,
+            sourceRoot: selectedMap.rootDir,
+            summaryPolicyFingerprint: job.policyFingerprint,
+            privacyAcknowledged: true,
+            approvedAt,
+          },
+        },
+        approvedAt,
+      );
+      writeSiyuanMapManifest(approvedManifest);
+      approvalSaved = true;
+      const restarted = await archiveAndRestartSiyuanSummaryJobForCloud(
+        projectId,
+        selectedMap.id,
+        cloudSummaryDisclosure,
+        approvedAt,
+      );
+      setIndexJobSnapshot(restarted);
+      setIndexResumeNonce((value) => value + 1);
+      setStatus('Approved exact cloud summary route. Resuming from the saved structural index…');
+    } catch (error) {
+      setStatus(
+        approvalSaved
+          ? 'Cloud approval was saved safely, but resume needs review. No files were sent.'
+          : 'Cloud summary approval needs review. No files were sent.',
+      );
+      toast.error(
+        approvalSaved ? 'Cloud resume not applied' : 'Cloud approval not applied',
+        error instanceof Error ? error.message : 'The approval scope changed.',
+      );
+    } finally {
+      cloudApprovalPendingRef.current = false;
+      setCloudApprovalPending(false);
+    }
+  }, [cloudSummaryDisclosure, projectId, selectedMap]);
 
   React.useEffect(() => {
     if (!SIYUAN_CONTEXT_VAULT_ENABLED || !projectId || !selectedMap || generating) return;
     let active = true;
+    const controller = new AbortController();
+    const control = createSiyuanIndexJobControl();
     setSiyuanTree(null);
     setStatus('Reading this Context Map from SiYuan...');
-    void productionSiyuanContextMaps
-      .read(projectId, selectedMap)
-      .then((snapshot) => snapshot ?? productionSiyuanContextMaps.sync(projectId, selectedMap))
+    void readSiyuanIndexJob(projectId, selectedMap.id)
+      .then(async (job) => {
+        if (job && ['paused', 'cancelled', 'failed'].includes(job.status)) {
+          if (active) {
+            setIndexJobSnapshot(job);
+            setStatus(
+              job.status === 'paused'
+                ? 'SiYuan indexing is paused safely.'
+                : job.status === 'cancelled'
+                  ? 'SiYuan indexing was cancelled.'
+                  : 'SiYuan indexing needs repair.',
+            );
+          }
+          return null;
+        }
+        const manifest = readSiyuanMapManifest(projectId, selectedMap.id);
+        if (
+          job?.status === 'running' &&
+          !hasSiyuanMapJobAuthority(selectedMap, manifest, job, accountId)
+        ) {
+          const failed = await updateSiyuanIndexJobStatus(projectId, selectedMap.id, 'failed');
+          if (active) {
+            setIndexJobSnapshot(failed ?? job);
+            setStatus('SiYuan indexing needs repair before this map can resume.');
+          }
+          return null;
+        }
+        if (!active) return null;
+        const existing = await productionSiyuanContextMaps.read(projectId, selectedMap);
+        if (existing) return existing;
+        if (job?.status === 'completed') {
+          setStatus('SiYuan Context Map needs repair before it can reopen.');
+          return null;
+        }
+        generationAbortRef.current = controller;
+        indexControlRef.current = control;
+        setSiyuanIndexing(true);
+        return productionSiyuanContextMaps.sync(projectId, selectedMap, {
+          accountId,
+          signal: controller.signal,
+          control,
+          onIndexProgress: ({ indexed, excluded, unreadable }) => {
+            if (!active) return;
+            setStatus(
+              `SiYuan indexed ${indexed.toLocaleString()} items · ${excluded.toLocaleString()} excluded · ${unreadable.toLocaleString()} unreadable`,
+            );
+          },
+        });
+      })
       .then((snapshot) => {
-        if (!active) return;
+        if (!active || !snapshot) return;
         setSiyuanTree(snapshot.tree);
         setStatus('SiYuan Context Map ready.');
       })
       .catch((error) => {
         if (!active) return;
+        if (controller.signal.aborted) return;
         setStatus('SiYuan could not read this Context Map.');
         toast.error(
           'SiYuan Context Map unavailable',
           error instanceof Error ? error.message : 'Unknown local vault error',
         );
+      })
+      .finally(() => {
+        if (generationAbortRef.current === controller) generationAbortRef.current = null;
+        if (indexControlRef.current === control) indexControlRef.current = null;
+        if (active) setSiyuanIndexing(false);
       });
     return () => {
       active = false;
+      // The durable job intentionally outlives this page. Route changes only
+      // detach React state updates; explicit Pause/Cancel and authority-scope
+      // changes remain the operations that stop native indexing work.
     };
-  }, [generating, projectId, selectedMap]);
+  }, [accountId, generating, indexResumeNonce, projectId, selectedMap]);
   const activeMapCount = React.useMemo(
     () => maps.filter((map) => map.status === 'active').length,
     [maps],
@@ -474,11 +955,40 @@ export function ContextPage() {
       if (SIYUAN_CONTEXT_VAULT_ENABLED && projectId && record) {
         setStatus('Opening this SiYuan Context Map...');
         try {
-          const snapshot =
-            (await productionSiyuanContextMaps.read(projectId, record)) ??
-            (await productionSiyuanContextMaps.sync(projectId, record));
-          setSiyuanTree(snapshot.tree);
-          setStatus('SiYuan Context Map ready.');
+          const manifest = readSiyuanMapManifest(projectId, record.id);
+          const durableJob = await readSiyuanIndexJob(projectId, record.id);
+          if (durableJob && !hasSiyuanMapJobAuthority(record, manifest, durableJob, accountId)) {
+            const safeJob =
+              durableJob.status === 'running'
+                ? ((await updateSiyuanIndexJobStatus(projectId, record.id, 'failed')) ?? durableJob)
+                : durableJob;
+            setIndexJobSnapshot(safeJob);
+            setStatus('SiYuan indexing needs repair before this map can open.');
+            return;
+          }
+          if (canOpenPartialSiyuanSurface(record, manifest, durableJob, accountId)) {
+            setSiyuanTree(record.tree);
+            setStatus(
+              durableJob?.status === 'running'
+                ? 'SiYuan Context Map is still indexing.'
+                : 'SiYuan Context Map opened at its latest safe checkpoint.',
+            );
+          } else if (durableJob && ['paused', 'cancelled', 'failed'].includes(durableJob.status)) {
+            setIndexJobSnapshot(durableJob);
+            setStatus('This SiYuan Context Map has no viewable checkpoint yet.');
+            return;
+          } else {
+            const existing = await productionSiyuanContextMaps.read(projectId, record);
+            if (!existing && durableJob?.status === 'completed') {
+              setStatus('SiYuan Context Map needs repair before it can reopen.');
+              return;
+            }
+            const snapshot =
+              existing ??
+              (await productionSiyuanContextMaps.sync(projectId, record, { accountId }));
+            setSiyuanTree(snapshot.tree);
+            setStatus('SiYuan Context Map ready.');
+          }
         } catch (error) {
           setStatus('SiYuan could not read this Context Map.');
           toast.error(
@@ -491,7 +1001,7 @@ export function ContextPage() {
       setCenterMode('graph');
       setFocusedMap(true);
     },
-    [maps, projectId, selectMap],
+    [accountId, maps, projectId, selectMap],
   );
 
   const closeFocusedMap = React.useCallback(() => {
@@ -513,19 +1023,36 @@ export function ContextPage() {
       if (!record || record.status === 'deleted') return;
       const confirmed = window.confirm(`Move the Context Map '${record.name}' to Recycling Bin?`);
       if (!confirmed) return;
+      const wasRunning = indexJobSnapshot?.mapId === mapId && indexJobSnapshot.status === 'running';
       try {
+        if (projectId) {
+          if (indexJobSnapshot?.mapId === mapId) indexControlRef.current?.pause();
+          await updateSiyuanIndexJobStatus(projectId, mapId, 'paused');
+        }
         const state = await deletePersistedContextMap(projectId, mapId);
         if (!applyPersistenceState(state)) return;
+        if (projectId) {
+          await productionSiyuanContextMaps.retire(projectId, record).catch((error) => {
+            toast.warning(
+              'Context Map moved; SiYuan cleanup needs retry',
+              error instanceof Error ? error.message : 'Unknown local vault error',
+            );
+          });
+        }
         setSelectedId(state.selectedMapId ? PROJECT_ROOT_NODE_ID : null);
         toast.info('Context Map moved to Recycling Bin', record.name);
       } catch (error) {
+        if (wasRunning && projectId) {
+          await updateSiyuanIndexJobStatus(projectId, mapId, 'running').catch(() => undefined);
+          indexControlRef.current?.resume();
+        }
         toast.error(
           'Could not delete Context map',
           error instanceof Error ? error.message : 'Unknown persistence error',
         );
       }
     },
-    [applyPersistenceState, maps, projectId],
+    [applyPersistenceState, indexJobSnapshot, maps, projectId],
   );
 
   const restoreMap = React.useCallback(
@@ -535,6 +1062,20 @@ export function ContextPage() {
       try {
         const state = await restorePersistedContextMap(projectId, mapId);
         if (!applyPersistenceState(state)) return;
+        if (projectId) {
+          const restored = state.maps.find((map) => map.id === mapId && map.status === 'active');
+          if (restored) {
+            await updateSiyuanIndexJobStatus(projectId, mapId, 'running');
+            await productionSiyuanContextMaps
+              .sync(projectId, restored, { accountId })
+              .catch((error) => {
+                toast.warning(
+                  'Context Map restored; SiYuan is still rebuilding it',
+                  error instanceof Error ? error.message : 'Unknown local vault error',
+                );
+              });
+          }
+        }
         setSelectedId(PROJECT_ROOT_NODE_ID);
         toast.success('Context Map restored', record.name);
       } catch (error) {
@@ -548,7 +1089,7 @@ export function ContextPage() {
         );
       }
     },
-    [applyPersistenceState, maps, projectId],
+    [accountId, applyPersistenceState, maps, projectId],
   );
 
   const openFolderPicker = async () => {
@@ -663,7 +1204,16 @@ export function ContextPage() {
           (map) => map.id === persisted.selectedMapId && map.status === 'active',
         );
         if (projectId && persistedMap) {
-          const snapshot = await productionSiyuanContextMaps.sync(projectId, persistedMap);
+          const snapshot = await productionSiyuanContextMaps.sync(projectId, persistedMap, {
+            sourcePolicy: { readOnly: true, excludedPaths: customExclusions },
+            summaryPolicy: {
+              mode: summaryMode,
+              selectedExtensions: summarySelectedPaths.length
+                ? []
+                : [...DEFAULT_SIYUAN_SUMMARY_EXTENSIONS],
+              selectedPaths: summarySelectedPaths,
+            },
+          });
           setSiyuanTree(snapshot.tree);
         }
         if (!applyPersistenceState(persisted)) return;
@@ -685,7 +1235,17 @@ export function ContextPage() {
         setGithubBusy(false);
       }
     },
-    [accountId, activeMapCount, applyPersistenceState, githubBusy, githubInstallationId, projectId],
+    [
+      accountId,
+      activeMapCount,
+      applyPersistenceState,
+      githubBusy,
+      githubInstallationId,
+      projectId,
+      summaryMode,
+      summarySelectedPaths,
+      customExclusions,
+    ],
   );
 
   const rememberRoot = () => {
@@ -711,31 +1271,20 @@ export function ContextPage() {
 
     generationAbortRef.current?.abort('superseded');
     const controller = new AbortController();
+    const indexControl = createSiyuanIndexJobControl();
     generationAbortRef.current = controller;
+    indexControlRef.current = indexControl;
     setStructuralPreview(null);
     setGenerating(true);
     setStatus('Starting Context map creation...');
     try {
       setStoredContextSourceRoot(accountId, projectId, rootDir);
-      const generated = await generateProjectContextTree({
-        projectId,
-        rootDir,
-        provider: 'local',
-        onProgress: setStatus,
-        signal: controller.signal,
-        onStructuralMap: (preview) => {
-          const auth = useAuthStore.getState();
-          if (
-            controller.signal.aborted ||
-            resolveAccountIdentity(auth)?.accountId !== accountId ||
-            (auth.projectId ?? null) !== (projectId ?? null)
-          ) {
-            return;
-          }
-          setStructuralPreview(preview);
-          setSelectedId(PROJECT_ROOT_NODE_ID);
-        },
-      });
+      // Native SiYuan maps must not run the legacy bounded preview generator:
+      // that path reads source content before the user's summary boundary is
+      // applied and writes context_map.json into the selected source. Persist
+      // only an internal metadata seed; the guarded SiYuan scanner below owns
+      // recursive discovery, exclusions, summaries, and source pointers.
+      const generated = createSiyuanMetadataSeed(projectId, rootDir);
       const persistenceAuth = useAuthStore.getState();
       if (
         controller.signal.aborted ||
@@ -757,6 +1306,8 @@ export function ContextPage() {
       // so oversized, media, and binary-like files remain metadata-only for
       // both RLM indexing and the SiYuan canonical snapshot.
       const generatedMap = { ...persistedMap, tree: generated };
+      let completedPersistence = persisted;
+      let indexedFileCount = generated.fileCount;
       setStatus(`Indexing ${generated.fileCount} Context files...`);
       try {
         await contextSearchIndexPopulation.populateCreatedMap(
@@ -770,8 +1321,40 @@ export function ContextPage() {
       }
       if (projectId && SIYUAN_CONTEXT_VAULT_ENABLED) {
         setStatus('Adding this map to the SiYuan Context Vault...');
-        const snapshot = await productionSiyuanContextMaps.sync(projectId, generatedMap);
-        setSiyuanTree(snapshot.tree);
+        setSiyuanIndexing(true);
+        const snapshot = await productionSiyuanContextMaps.sync(projectId, generatedMap, {
+          accountId,
+          sourcePolicy: { readOnly: true, excludedPaths: customExclusions },
+          summaryPolicy: {
+            mode: summaryMode,
+            selectedExtensions: summarySelectedPaths.length
+              ? []
+              : [...DEFAULT_SIYUAN_SUMMARY_EXTENSIONS],
+            selectedPaths: summarySelectedPaths,
+          },
+          signal: controller.signal,
+          control: indexControl,
+          onIndexProgress: ({ indexed, excluded, unreadable }) => {
+            setStatus(
+              `SiYuan indexed ${indexed.toLocaleString()} items · ${excluded.toLocaleString()} excluded · ${unreadable.toLocaleString()} unreadable`,
+            );
+          },
+        });
+        indexedFileCount = snapshot.manifest?.counts.indexed ?? generated.fileCount;
+        const completedTree: ProjectContextTree = {
+          ...generated,
+          generatedAt: Date.now(),
+          model: 'siyuan-managed-v1',
+          fileCount: indexedFileCount,
+          summary: `SiYuan indexed ${indexedFileCount.toLocaleString()} allowed source items.`,
+        };
+        completedPersistence = await savePersistedContextTree(completedTree, {
+          mapId: persistedMap.id,
+          requireExisting: true,
+          expectedUpdatedAt: persistedMap.updatedAt,
+        });
+        setSiyuanTree(completedTree);
+        setSiyuanIndexing(false);
         setStatus('SiYuan Context Map ready.');
       }
       const indexedAuth = useAuthStore.getState();
@@ -784,12 +1367,12 @@ export function ContextPage() {
         setStructuralPreview(null);
         return;
       }
-      if (!applyPersistenceState(persisted)) return;
+      if (!applyPersistenceState(completedPersistence)) return;
       setStructuralPreview(null);
       setSelectedId(PROJECT_ROOT_NODE_ID);
       setMapFlash(true);
       window.setTimeout(() => setMapFlash(false), 1250);
-      const contextBody = `${generated.fileCount} files mapped with ${shortModel(generated.model)}.`;
+      const contextBody = `${indexedFileCount.toLocaleString()} items indexed with SiYuan.`;
       const notifyState = useUIStore.getState();
       if (!notifyState.notificationMaster || !notifyState.doneNotifications.contextMaps) {
         toast.success('Context map ready', contextBody);
@@ -829,10 +1412,21 @@ export function ContextPage() {
         (auth.projectId ?? null) === (projectId ?? null)
       ) {
         generationAbortRef.current = null;
+        indexControlRef.current = null;
+        setSiyuanIndexing(false);
         setGenerating(false);
       }
     }
-  }, [activeMapCount, accountId, applyPersistenceState, projectId, rootDraft]);
+  }, [
+    activeMapCount,
+    accountId,
+    applyPersistenceState,
+    customExclusions,
+    projectId,
+    rootDraft,
+    summaryMode,
+    summarySelectedPaths,
+  ]);
 
   React.useEffect(() => {
     const onCreateMap = () => void makeSkillTree();
@@ -869,6 +1463,15 @@ export function ContextPage() {
   );
 
   if (focusedMap && SIYUAN_CONTEXT_VAULT_ENABLED && projectId && selectedMap?.status === 'active') {
+    const focusedManifest = readSiyuanMapManifest(projectId, selectedMap.id);
+    const focusedProgressLabel =
+      indexJobSnapshot?.phase === 'discovering'
+        ? 'Discovering allowed files and folders'
+        : indexJobSnapshot?.phase === 'summarizing'
+          ? `Summarizing ${indexJobSnapshot.summarized.toLocaleString()} / ${indexJobSnapshot.summaryEligible.toLocaleString()}`
+          : indexJobSnapshot?.phase === 'reconciling'
+            ? 'Reconciling and finalizing'
+            : `Indexing ${indexJobSnapshot?.createdNodes.toLocaleString() ?? '0'} nodes`;
     return (
       <div
         data-monochrome-route="context"
@@ -889,9 +1492,33 @@ export function ContextPage() {
               Official SiYuan map · source files stay read-only
             </p>
           </div>
+          {indexJobSnapshot?.mapId === selectedMap.id &&
+          indexJobSnapshot.status === 'running' &&
+          indexJobSnapshot.phase !== 'completed' ? (
+            <div
+              data-siyuan-focused-progress
+              className="ml-auto flex shrink-0 items-center gap-2 rounded-full border border-accent-copper/25 bg-accent-copper/10 px-3 py-1.5 text-metadata text-foreground"
+              aria-label={`SiYuan map progress: ${focusedProgressLabel}`}
+            >
+              <span
+                aria-hidden="true"
+                className="relative flex h-4 w-4 items-center justify-center rounded-full text-accent-copper"
+              >
+                <span className="absolute inset-0 rounded-full bg-accent-copper/15 motion-safe:animate-ping motion-reduce:animate-none" />
+                <RefreshCw className="relative h-3 w-3 animate-spin motion-reduce:animate-none" />
+              </span>
+              <span>{focusedProgressLabel}</span>
+            </div>
+          ) : null}
         </header>
         <div className="relative min-h-0 flex-1">
-          <SiyuanVaultSurface projectId={projectId} onClose={closeFocusedMap} />
+          <SiyuanVaultSurface
+            projectId={projectId}
+            mapId={selectedMap.id}
+            notebookId={focusedManifest?.notebookId ?? null}
+            rootDocumentId={focusedManifest?.rootDocumentId ?? null}
+            onClose={closeFocusedMap}
+          />
         </div>
       </div>
     );
@@ -942,9 +1569,12 @@ export function ContextPage() {
       </div>
 
       <aside
+        data-context-sidebar-scroll
         data-monochrome-surface="context-tree"
         data-sakura-surface="context-tree"
-        className="relative z-10 flex w-[340px] shrink-0 flex-col border-r border-border bg-panel/85 shadow-soft backdrop-blur xl:w-[400px] [html[data-theme=monochrome]_&]:w-[304px] [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none"
+        aria-label="Context Map navigation and sources"
+        tabIndex={0}
+        className="relative z-10 flex min-h-0 overflow-y-auto overscroll-y-contain w-[340px] shrink-0 flex-col border-r border-border bg-panel/85 shadow-soft backdrop-blur xl:w-[400px] [html[data-theme=monochrome]_&]:w-[304px] [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none"
       >
         <div className="space-y-3 border-b border-border p-4">
           <div className="flex items-start justify-between gap-3">
@@ -1023,6 +1653,169 @@ export function ContextPage() {
                   SiYuan Context Map · local, project-scoped, and no provider credential required
                 </span>
               </div>
+              <details className="rounded-lg border border-border bg-paper px-2.5 py-2 text-metadata">
+                <summary className="cursor-pointer font-semibold text-foreground">
+                  Review privacy and exclusions
+                </summary>
+                <p className="mt-2 text-muted-foreground">
+                  VibeSpace skips credentials, browser profiles, caches, temporary data, recycle
+                  bins, dependencies, build outputs, system locations, detected secrets, and
+                  links/junctions. Originals remain read-only.
+                </p>
+                <label htmlFor="context-custom-exclusion" className="mt-2 block text-foreground">
+                  Add another excluded path
+                </label>
+                <div className="mt-1 flex gap-1.5">
+                  <Input
+                    id="context-custom-exclusion"
+                    value={exclusionDraft}
+                    onChange={(event) => setExclusionDraft(event.target.value)}
+                    placeholder="Private or generated subfolder"
+                    className="font-mono text-metadata"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={!exclusionDraft.trim()}
+                    onClick={() => {
+                      const exact = exclusionDraft.trim();
+                      setCustomExclusions((current) =>
+                        current.includes(exact) ? current : [...current, exact],
+                      );
+                      setExclusionDraft('');
+                    }}
+                  >
+                    Exclude
+                  </Button>
+                </div>
+                {customExclusions.length ? (
+                  <ul className="mt-2 space-y-1" aria-label="Additional excluded paths">
+                    {customExclusions.map((path) => (
+                      <li key={path} className="flex items-center justify-between gap-2">
+                        <span className="truncate font-mono" title={path}>
+                          {path}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-accent-copper hover:underline"
+                          onClick={() =>
+                            setCustomExclusions((current) =>
+                              current.filter((candidate) => candidate !== path),
+                            )
+                          }
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </details>
+              <div
+                className="grid grid-cols-4 gap-1 text-center text-[10px] uppercase tracking-wide text-muted-foreground"
+                aria-label="Context map creation steps"
+              >
+                {['1 Source', '2 Privacy', '3 Summaries', '4 Create'].map((step) => (
+                  <span key={step} className="rounded-md border border-border bg-paper px-1 py-1">
+                    {step}
+                  </span>
+                ))}
+              </div>
+              <fieldset className="rounded-lg border border-border bg-paper p-2.5">
+                <legend className="px-1 text-metadata font-semibold text-foreground">
+                  Summaries
+                </legend>
+                <p className="mb-2 text-metadata text-muted-foreground">
+                  Every eligible item discovered by the safe scan is indexed either way. Summaries
+                  use the registered local model first; cloud use always asks before sending
+                  anything.
+                </p>
+                <div className="space-y-1" role="radiogroup" aria-label="Summary coverage">
+                  {(
+                    [
+                      ['none', 'No summaries'],
+                      ['selected', 'Selected folders / file types (recommended)'],
+                      ['all', 'Everything eligible'],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <label
+                      key={value}
+                      className={cn(
+                        'flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-metadata',
+                        summaryMode === value
+                          ? 'border-accent-copper/45 bg-accent-copper/10 text-foreground'
+                          : 'border-transparent text-muted-foreground hover:bg-paper-soft',
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="context-summary-mode"
+                        value={value}
+                        checked={summaryMode === value}
+                        onChange={() => setSummaryMode(value)}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                {summaryMode === 'selected' ? (
+                  <div className="mt-2 space-y-1.5">
+                    <p className="text-metadata text-muted-foreground">
+                      Add a folder to summarize only that folder. Leave this empty to use the
+                      recommended file types across the map. Everything else stays searchable as
+                      structure and metadata.
+                    </p>
+                    <div className="flex gap-1.5">
+                      <Input
+                        id="context-summary-path"
+                        value={summaryPathDraft}
+                        onChange={(event) => setSummaryPathDraft(event.target.value)}
+                        placeholder="Folder inside the source, or its full path"
+                        className="h-8 min-w-0 text-metadata"
+                      />
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={!summaryPathDraft.trim()}
+                        onClick={() => {
+                          const path = summaryPathDraft.trim();
+                          if (!path) return;
+                          setSummarySelectedPaths((current) =>
+                            current.some((entry) => entry.toLowerCase() === path.toLowerCase())
+                              ? current
+                              : [...current, path],
+                          );
+                          setSummaryPathDraft('');
+                        }}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                    {summarySelectedPaths.map((path) => (
+                      <div
+                        key={path}
+                        className="flex items-center gap-2 rounded-md border border-border bg-paper-soft px-2 py-1 text-metadata"
+                      >
+                        <span className="min-w-0 flex-1 truncate" title={path}>
+                          {path}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            setSummarySelectedPaths((current) =>
+                              current.filter((entry) => entry !== path),
+                            )
+                          }
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </fieldset>
               <div className="flex gap-1.5">
                 <Button
                   size="sm"
@@ -1047,6 +1840,92 @@ export function ContextPage() {
                   Create Map
                 </Button>
               </div>
+              {indexJobSnapshot && projectId ? (
+                <SiyuanIndexProgressCard
+                  job={indexJobSnapshot}
+                  summaryScope={indexSummaryScope}
+                  cloudDisclosure={cloudSummaryDisclosure}
+                  onApproveCloud={() => void approveCloudSummaries()}
+                  cloudApprovalPending={cloudApprovalPending}
+                  onPause={() => {
+                    indexControlRef.current?.pause();
+                    void updateSiyuanIndexJobStatus(
+                      projectId,
+                      indexJobSnapshot.mapId,
+                      'paused',
+                    ).then((job) => job && setIndexJobSnapshot(job));
+                    setStatus('SiYuan indexing paused safely.');
+                  }}
+                  onResume={() => {
+                    void updateSiyuanIndexJobStatus(
+                      projectId,
+                      indexJobSnapshot.mapId,
+                      'running',
+                    ).then((job) => {
+                      if (job) setIndexJobSnapshot(job);
+                      if (indexControlRef.current) indexControlRef.current.resume();
+                      else setIndexResumeNonce((value) => value + 1);
+                    });
+                    setStatus('Resuming the SiYuan index…');
+                  }}
+                  onCancel={() => {
+                    indexControlRef.current?.cancel();
+                    generationAbortRef.current?.abort('user_cancelled');
+                    void updateSiyuanIndexJobStatus(
+                      projectId,
+                      indexJobSnapshot.mapId,
+                      'cancelled',
+                    ).then((job) => job && setIndexJobSnapshot(job));
+                    setStatus('SiYuan indexing cancelled. Saved nodes remain recoverable.');
+                  }}
+                  onRetry={() => {
+                    void updateSiyuanIndexJobStatus(
+                      projectId,
+                      indexJobSnapshot.mapId,
+                      'running',
+                    ).then((job) => {
+                      if (job) setIndexJobSnapshot(job);
+                      setIndexResumeNonce((value) => value + 1);
+                    });
+                  }}
+                  onRestart={() => {
+                    void (async () => {
+                      const restartMap = maps.find(
+                        (map) => map.id === indexJobSnapshot.mapId && map.status === 'active',
+                      );
+                      const manifest =
+                        projectId && restartMap
+                          ? readSiyuanMapManifest(projectId, restartMap.id)
+                          : null;
+                      if (!projectId || !restartMap || !manifest) {
+                        setStatus('Safe restart needs the current map authority. Repair it first.');
+                        return;
+                      }
+                      const restarted = createSiyuanIndexJob({
+                        accountId,
+                        projectId,
+                        mapId: restartMap.id,
+                        canonicalRoot: restartMap.rootDir,
+                        policyFingerprint: siyuanIndexPolicyFingerprint(
+                          restartMap.rootDir,
+                          manifest.summaryPolicy,
+                          manifest.sourcePolicy.excludedPaths,
+                        ),
+                      });
+                      await archiveAndReplaceSiyuanIndexJob(restarted, {
+                        path: restartMap.rootDir,
+                        relativePath: '',
+                        parentNodeId: null,
+                      });
+                      setIndexJobSnapshot(restarted);
+                      setIndexResumeNonce((value) => value + 1);
+                      setStatus(
+                        'Restarting the source traversal safely; existing managed SiYuan nodes will be reused.',
+                      );
+                    })();
+                  }}
+                />
+              ) : null}
               <p className="text-metadata text-muted-foreground">
                 Create Map builds the local structure, saves it, indexes it for RLM, and adds it to
                 the official SiYuan vault.
@@ -1073,6 +1952,7 @@ export function ContextPage() {
           ) : null}
           <ContextMapList
             maps={maps}
+            projectId={projectId}
             selectedMapId={selectedMap?.id ?? null}
             activeMapCount={activeMapCount}
             onSelect={openFocusedMap}
@@ -1427,6 +2307,7 @@ function EmptyTree() {
 
 function ContextMapList({
   maps,
+  projectId,
   selectedMapId,
   activeMapCount,
   onSelect,
@@ -1434,19 +2315,54 @@ function ContextMapList({
   onRestore,
 }: {
   maps: ContextMapRecord[];
+  projectId: string | null;
   selectedMapId: string | null;
   activeMapCount: number;
   onSelect: (mapId: string) => void;
   onDelete: (mapId: string) => void;
   onRestore: (mapId: string) => void;
 }) {
-  if (maps.length === 0) return null;
   const activeMaps = maps.filter((map) => map.status === 'active');
   const recycledMaps = maps.filter((map) => map.status === 'deleted');
+  const [jobSnapshots, setJobSnapshots] = React.useState<Record<string, SiyuanIndexJobRecord>>({});
+
+  React.useEffect(() => {
+    if (!projectId || activeMaps.length === 0) {
+      setJobSnapshots({});
+      return;
+    }
+    let mounted = true;
+    const refresh = async () => {
+      const snapshots = await Promise.all(
+        activeMaps.map(
+          async (map) => [map.id, await readSiyuanIndexJob(projectId, map.id)] as const,
+        ),
+      );
+      if (!mounted) return;
+      setJobSnapshots(
+        Object.fromEntries(
+          snapshots.flatMap(([mapId, job]) => (job ? [[mapId, job] as const] : [])),
+        ),
+      );
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 1_000);
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, [activeMaps.map((map) => map.id).join('\u0000'), projectId]);
+
+  if (maps.length === 0) return null;
   const mapRow = (map: ContextMapRecord) => {
     const selected = map.id === selectedMapId;
     const deleted = map.status === 'deleted';
     const mapFilePath = map.filePath ?? contextMapFilePath(map.rootDir);
+    const job = jobSnapshots[map.id];
+    const visibleFileCount = job?.indexed ?? map.tree.fileCount;
+    const compactPercent = job ? siyuanOverallProgressPercent(job) : null;
+    const compactRounded = compactPercent === null ? null : Math.round(compactPercent);
+    const compactEta = job ? formatSiyuanJobEta(job) : null;
     return (
       <div
         key={map.id}
@@ -1481,8 +2397,50 @@ function ContextMapList({
               {map.name}
             </span>
             <span className="block truncate font-mono text-metadata text-muted-foreground">
-              {map.tree.fileCount} files - {mapFilePath}
+              {visibleFileCount.toLocaleString()} files - {mapFilePath}
             </span>
+            {!deleted && job && job.phase !== 'completed' ? (
+              <span
+                className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground"
+                role="progressbar"
+                aria-label={`Index progress for ${map.name}`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={compactRounded ?? undefined}
+                aria-valuetext={
+                  compactRounded === null
+                    ? (compactEta ?? 'Estimating time…')
+                    : `Approximately ${compactRounded}% · ${compactEta}`
+                }
+              >
+                {job.status === 'running' ? (
+                  <RefreshCw
+                    aria-hidden="true"
+                    className="h-2.5 w-2.5 shrink-0 animate-spin text-accent-copper motion-reduce:animate-none"
+                  />
+                ) : null}
+                <span className="h-1 min-w-10 flex-1 overflow-hidden rounded-full bg-paper/80">
+                  <span
+                    className={cn(
+                      'block h-full rounded-full bg-accent-copper transition-[width] duration-500',
+                      compactPercent === null && 'w-1/3 animate-pulse motion-reduce:animate-none',
+                    )}
+                    style={compactPercent === null ? undefined : { width: `${compactPercent}%` }}
+                  />
+                </span>
+                <span className="shrink-0 tabular-nums">
+                  {job.status === 'paused'
+                    ? 'Paused'
+                    : job.status === 'cancelled'
+                      ? 'Cancelled'
+                      : job.status === 'failed'
+                        ? 'Needs repair'
+                        : compactPercent === null
+                          ? 'Estimating…'
+                          : `≈ ${compactRounded}% · ${compactEta} · ${job.createdNodes.toLocaleString()} nodes`}
+                </span>
+              </span>
+            ) : null}
           </span>
           <span
             className={cn(

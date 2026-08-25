@@ -20,6 +20,17 @@ export interface SiyuanSurfaceStatus {
   created: boolean;
   visible: boolean;
   projectId: string | null;
+  mapId: string | null;
+  notebookId: string | null;
+  rootDocumentId: string | null;
+  graphMode: 'local' | 'global' | null;
+}
+
+export interface SiyuanSurfaceTarget {
+  mapId: string;
+  notebookId: string | null;
+  rootDocumentId: string | null;
+  graphMode: 'local' | 'global';
 }
 
 export type SiyuanSurfaceInvoker = (
@@ -46,10 +57,15 @@ export function redactSiyuanSurfaceError(value: unknown): string {
 export function parseSiyuanSurfaceStatus(value: unknown): SiyuanSurfaceStatus {
   const status = record(value);
   if (
-    Object.keys(status).sort().join(',') !== 'created,projectId,visible' ||
+    Object.keys(status).sort().join(',') !==
+      'created,graphMode,mapId,notebookId,projectId,rootDocumentId,visible' ||
     typeof status.created !== 'boolean' ||
     typeof status.visible !== 'boolean' ||
-    (status.projectId !== null && typeof status.projectId !== 'string')
+    (status.projectId !== null && typeof status.projectId !== 'string') ||
+    (status.mapId !== null && typeof status.mapId !== 'string') ||
+    (status.notebookId !== null && typeof status.notebookId !== 'string') ||
+    (status.rootDocumentId !== null && typeof status.rootDocumentId !== 'string') ||
+    (status.graphMode !== null && status.graphMode !== 'local' && status.graphMode !== 'global')
   ) {
     throw new Error('siyuan_surface_status_invalid');
   }
@@ -60,7 +76,32 @@ export function parseSiyuanSurfaceStatus(value: unknown): SiyuanSurfaceStatus {
       status.projectId === null
         ? null
         : assertSiyuanIdentifier(status.projectId, 'siyuan_project_id_invalid'),
+    mapId:
+      status.mapId === null ? null : assertSiyuanIdentifier(status.mapId, 'siyuan_map_id_invalid'),
+    notebookId: status.notebookId === null ? null : assertSiyuanNodeId(status.notebookId),
+    rootDocumentId:
+      status.rootDocumentId === null ? null : assertSiyuanNodeId(status.rootDocumentId),
+    graphMode: status.graphMode as SiyuanSurfaceStatus['graphMode'],
   });
+}
+
+function assertSiyuanNodeId(value: string): string {
+  const exact = value.trim();
+  if (!/^\d{14}-[a-z0-9]{7}$/u.test(exact)) throw new Error('siyuan_node_id_invalid');
+  return exact;
+}
+
+export function assertSiyuanSurfaceTarget(value: SiyuanSurfaceTarget): SiyuanSurfaceTarget {
+  const target: SiyuanSurfaceTarget = {
+    mapId: assertSiyuanIdentifier(value.mapId, 'siyuan_map_id_invalid'),
+    notebookId: value.notebookId === null ? null : assertSiyuanNodeId(value.notebookId),
+    rootDocumentId: value.rootDocumentId === null ? null : assertSiyuanNodeId(value.rootDocumentId),
+    graphMode: value.graphMode,
+  };
+  if (target.graphMode === 'local' && (!target.notebookId || !target.rootDocumentId)) {
+    throw new Error('siyuan_surface_target_invalid');
+  }
+  return Object.freeze(target);
 }
 
 export function assertSiyuanSurfaceBounds(value: SiyuanSurfaceBounds): SiyuanSurfaceBounds {
@@ -90,7 +131,11 @@ export function measureSiyuanSurfaceBounds(element: HTMLElement): SiyuanSurfaceB
 }
 
 export interface SiyuanSurfaceBridge {
-  open(projectId: string, bounds: SiyuanSurfaceBounds): Promise<SiyuanSurfaceStatus>;
+  open(
+    projectId: string,
+    target: SiyuanSurfaceTarget,
+    bounds: SiyuanSurfaceBounds,
+  ): Promise<SiyuanSurfaceStatus>;
   setBounds(bounds: SiyuanSurfaceBounds): Promise<boolean>;
   hide(): Promise<boolean>;
   reload(): Promise<boolean>;
@@ -100,10 +145,12 @@ export interface SiyuanSurfaceBridge {
 
 export function createSiyuanSurfaceBridge(invoke: SiyuanSurfaceInvoker): SiyuanSurfaceBridge {
   return Object.freeze<SiyuanSurfaceBridge>({
-    async open(projectId: string, bounds: SiyuanSurfaceBounds) {
+    async open(projectId: string, target: SiyuanSurfaceTarget, bounds: SiyuanSurfaceBounds) {
+      const safeTarget = assertSiyuanSurfaceTarget(target);
       return parseSiyuanSurfaceStatus(
         await invoke(SIYUAN_SURFACE_COMMANDS.open, {
           projectId: assertSiyuanIdentifier(projectId, 'siyuan_project_id_invalid'),
+          ...safeTarget,
           bounds: assertSiyuanSurfaceBounds(bounds),
         }),
       );

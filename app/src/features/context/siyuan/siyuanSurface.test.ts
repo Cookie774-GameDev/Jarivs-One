@@ -12,14 +12,36 @@ import {
 } from './siyuanSurface';
 
 describe('SiYuan restricted surface bridge', () => {
-  it('sends only project identity and bounded geometry and accepts a redacted status', async () => {
-    const invoke = vi.fn(async () => ({ created: true, visible: true, projectId: 'project-1' }));
+  it('sends exact map/notebook/root graph identity and bounded geometry', async () => {
+    const status = {
+      created: true,
+      visible: true,
+      projectId: 'project-1',
+      mapId: 'map-1',
+      notebookId: '20260824010101-abcdefg',
+      rootDocumentId: '20260824010102-abcdefg',
+      graphMode: 'local' as const,
+    };
+    const invoke = vi.fn(async () => status);
     const bridge = createSiyuanSurfaceBridge(invoke);
     await expect(
-      bridge.open('project-1', { x: 400, y: 80, width: 1_200, height: 800 }),
-    ).resolves.toEqual({ created: true, visible: true, projectId: 'project-1' });
+      bridge.open(
+        'project-1',
+        {
+          mapId: 'map-1',
+          notebookId: '20260824010101-abcdefg',
+          rootDocumentId: '20260824010102-abcdefg',
+          graphMode: 'local',
+        },
+        { x: 400, y: 80, width: 1_200, height: 800 },
+      ),
+    ).resolves.toEqual(status);
     expect(invoke).toHaveBeenCalledWith(SIYUAN_SURFACE_COMMANDS.open, {
       projectId: 'project-1',
+      mapId: 'map-1',
+      notebookId: '20260824010101-abcdefg',
+      rootDocumentId: '20260824010102-abcdefg',
+      graphMode: 'local',
       bounds: { x: 400, y: 80, width: 1_200, height: 800 },
     });
     expect(JSON.stringify(invoke.mock.calls)).not.toMatch(/cookie|token|origin|port|url/iu);
@@ -31,6 +53,10 @@ describe('SiYuan restricted surface bridge', () => {
         created: true,
         visible: true,
         projectId: 'project-1',
+        mapId: 'map-1',
+        notebookId: '20260824010101-abcdefg',
+        rootDocumentId: '20260824010102-abcdefg',
+        graphMode: 'local',
         token: 'forbidden',
       }),
     ).toThrow('siyuan_surface_status_invalid');
