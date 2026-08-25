@@ -10,7 +10,7 @@ import {
 import { Code2, Palette } from 'lucide-react';
 import { parseSelectableTheme, type SelectableTheme } from '@/features/appearance/themeContract';
 import { SELECTABLE_THEMES } from '@/features/appearance/themes';
-import { applyThemeToDocument } from '@/stores/ui';
+import { applyThemeToDocument, useUIStore } from '@/stores/ui';
 import { CONSOLE_PROFILES, type ConsoleProfile } from './agentic-console/preferences';
 import {
   SlashCommandOptionPicker,
@@ -372,12 +372,21 @@ export const ThemeSlashPicker = forwardRef<ThemeSlashPickerRef, ThemeSlashPicker
       },
     }));
 
-    useEffect(
-      () => () => {
+    useEffect(() => {
+      const unsubscribe = useUIStore.subscribe((state, previous) => {
+        if (state.theme === previous.theme) return;
+        // Preview changes never write the store. A store change therefore
+        // represents a real commit (including a detached-window sync) and
+        // becomes the new rollback authority for cancel/unmount.
+        committedThemeRef.current = state.theme;
+        setSelectedTheme(state.theme);
+        applyThemeToDocument(state.theme);
+      });
+      return () => {
+        unsubscribe();
         applyThemeToDocument(committedThemeRef.current);
-      },
-      [],
-    );
+      };
+    }, []);
 
     return (
       <SlashCommandOptionPicker

@@ -1,7 +1,8 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { createRef } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { applyThemeToDocument } from '@/stores/ui';
+import { applyThemeSyncToApplication } from '@/features/appearance/themeSync';
+import { applyThemeToDocument, useUIStore } from '@/stores/ui';
 import {
   ConsoleThemeSlashPicker,
   isGlobalThemePickerCommand,
@@ -11,7 +12,10 @@ import {
 
 describe('ThemeSlashPicker', () => {
   afterEach(() => {
-    applyThemeToDocument('default');
+    act(() => {
+      applyThemeToDocument('default');
+      useUIStore.setState({ theme: 'default' });
+    });
     localStorage.clear();
   });
 
@@ -112,6 +116,53 @@ describe('ThemeSlashPicker', () => {
 
     expect(document.documentElement.dataset.themePreference).toBe('warm');
   });
+
+  it('keeps a newer cross-window committed appearance when a stale local preview cancels', () => {
+    const ref = createRef<ThemeSlashPickerRef>();
+    const onCancel = vi.fn();
+    render(
+      <ThemeSlashPicker
+        ref={ref}
+        commandLabel="appearance"
+        initialTheme="default"
+        onCommit={vi.fn()}
+        onCancel={onCancel}
+      />,
+    );
+
+    act(() => ref.current?.moveDown());
+    expect(document.documentElement.dataset.themePreference).toBe('monochrome');
+
+    act(() => applyThemeSyncToApplication('warm', document, useUIStore));
+    expect(useUIStore.getState().theme).toBe('warm');
+    act(() => ref.current?.cancel());
+
+    expect(document.documentElement.dataset.themePreference).toBe('warm');
+    expect(useUIStore.getState().theme).toBe('warm');
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it('commits pointer selection and keeps the chosen appearance through unmount', () => {
+    const onCommit = vi.fn((theme) => useUIStore.getState().setTheme(theme));
+    const rendered = render(
+      <ThemeSlashPicker
+        commandLabel="appearance"
+        initialTheme="default"
+        onCommit={onCommit}
+        onCancel={vi.fn()}
+      />,
+    );
+    const warmRow = screen.getByText('Warm').closest('[data-value="warm"]');
+    if (!warmRow) throw new Error('Warm theme row missing.');
+
+    fireEvent.mouseEnter(warmRow);
+    fireEvent.click(warmRow);
+    rendered.unmount();
+
+    expect(onCommit).toHaveBeenCalledWith('warm');
+    expect(useUIStore.getState().theme).toBe('warm');
+    expect(document.documentElement.dataset.themePreference).toBe('warm');
+  });
 });
 
 describe('ConsoleThemeSlashPicker', () => {
@@ -150,5 +201,6 @@ describe('ConsoleThemeSlashPicker', () => {
 
     act(() => ref.current?.selectCurrent());
     expect(onCommit).toHaveBeenCalledWith('midnight-blue');
+    expect(document.documentElement.dataset.themePreference).toBe('default');
   });
 });
