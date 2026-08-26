@@ -59,6 +59,8 @@ export type FsListResult =
   | { ok: true; entries: FsEntry[]; path: string }
   | { ok: false; error: FsReadError; path: string };
 
+export type FsBatchListResult = readonly FsListResult[];
+
 export type FsWriteResult =
   | { ok: true; path: string }
   | { ok: false; error: FsReadError; path: string };
@@ -303,6 +305,58 @@ export async function listDirectory(
   } catch (err) {
     return { ok: false, error: classifyInvokeError(err), path };
   }
+}
+
+/**
+ * Reconcile several directories through one strict native root capability.
+ * Native returns one outcome per requested path. Expected file races remain
+ * per-path; malformed, authority, root, or IPC failures abort the whole batch.
+ */
+export async function listDirectoriesStrict(
+  paths: readonly string[],
+  options: FsAccessOptions,
+): Promise<FsBatchListResult> {
+  if (!options.root || paths.length < 1 || paths.length > 64) {
+    throw new Error('fs_list_dirs_strict:mutation_invalid');
+  }
+  let raw: unknown;
+  try {
+    raw = await invoke<unknown[]>('fs_list_dirs_strict', {
+      paths: [...paths],
+      root: options.root,
+    });
+  } catch (err) {
+    throw new Error(`fs_list_dirs_strict:${classifyInvokeError(err).code}`);
+  }
+  if (!Array.isArray(raw) || raw.length !== paths.length) {
+    throw new Error('fs_list_dirs_strict:invalid_response');
+  }
+  return paths.map((path, index): FsListResult => {
+    const outcome = raw[index];
+    if (!outcome || typeof outcome !== 'object' || Array.isArray(outcome)) {
+      throw new Error('fs_list_dirs_strict:invalid_response');
+    }
+    const record = outcome as Record<string, unknown>;
+    if (record.path !== path) {
+      throw new Error('fs_list_dirs_strict:invalid_response');
+    }
+    if (typeof record.error === 'string') {
+      if (record.entries != null) throw new Error('fs_list_dirs_strict:invalid_response');
+      const error = classifyError(record.error);
+      if (!['not_found', 'symlink_blocked', 'not_a_dir'].includes(error.code)) {
+        throw new Error(`fs_list_dirs_strict:${error.code}`);
+      }
+      return { ok: false, error, path };
+    }
+    if (!Array.isArray(record.entries)) {
+      throw new Error('fs_list_dirs_strict:invalid_response');
+    }
+    const entries = record.entries.map(normalizeFsEntry);
+    if (entries.some((entry) => entry === null)) {
+      throw new Error('fs_list_dirs_strict:invalid_response');
+    }
+    return { ok: true, entries: entries as FsEntry[], path };
+  });
 }
 
 export async function writeTextFile(

@@ -44,6 +44,8 @@ use std::sync::Mutex;
 const MAX_FILE_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_WRITE_BYTES: usize = 1024 * 1024;
 const MAX_DIR_ENTRIES: usize = 500;
+const MAX_STRICT_DIR_BATCH: usize = 64;
+const MAX_STRICT_BATCH_ENTRIES: usize = 500_000;
 const MAX_SAMPLE_BYTES: u64 = 1024 * 1024;
 const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_TEXT_MUTATION_BYTES: usize = 256 * 1024;
@@ -59,6 +61,14 @@ pub struct FsEntry {
     pub size: Option<u64>,
     pub created_ms: Option<u128>,
     pub modified_ms: Option<u128>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsDirectoryListing {
+    pub path: String,
+    pub entries: Option<Vec<FsEntry>>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -696,19 +706,95 @@ pub fn fs_list_dir(
     Ok(out)
 }
 
+/// Lists several directories against one already-opened strict root capability.
+/// Each requested directory retains its own success/error result so one stale or
+/// unreadable branch cannot discard the rest of a reconciliation batch.
+#[tauri::command]
+pub fn fs_list_dirs_strict(
+    paths: Vec<String>,
+    root: Option<String>,
+) -> Result<Vec<FsDirectoryListing>, String> {
+    if paths.is_empty() || paths.len() > MAX_STRICT_DIR_BATCH {
+        return Err("mutation_invalid".to_string());
+    }
+    let strict_root = StrictProjectRoot::open(root.as_deref())?;
+    let mut total_entries = 0usize;
+    let mut listings = Vec::with_capacity(paths.len());
+    for path in paths {
+        let result = strict_root
+            .relative(&path)
+            .and_then(|relative| strict_root.open_dir(&relative))
+            .and_then(|directory| {
+                list_open_directory_complete(
+                    &directory,
+                    Path::new(&path),
+                    true,
+                    MAX_STRICT_BATCH_ENTRIES - total_entries,
+                )
+            });
+        match result {
+            Ok(entries) => {
+                total_entries = total_entries.saturating_add(entries.len());
+                if total_entries > MAX_STRICT_BATCH_ENTRIES {
+                    return Err("too_large".to_string());
+                }
+                listings.push(FsDirectoryListing {
+                    path,
+                    entries: Some(entries),
+                    error: None,
+                });
+            }
+            Err(error) => listings.push(FsDirectoryListing {
+                path,
+                entries: None,
+                error: Some(error),
+            }),
+        }
+    }
+    Ok(listings)
+}
+
 fn list_open_directory(
     directory: &Dir,
     display_path: &Path,
     reject_links: bool,
+) -> Result<Vec<FsEntry>, String> {
+    list_open_directory_bounded(
+        directory,
+        display_path,
+        reject_links,
+        MAX_DIR_ENTRIES,
+        false,
+    )
+}
+
+fn list_open_directory_complete(
+    directory: &Dir,
+    display_path: &Path,
+    reject_links: bool,
+    remaining_budget: usize,
+) -> Result<Vec<FsEntry>, String> {
+    list_open_directory_bounded(
+        directory,
+        display_path,
+        reject_links,
+        remaining_budget,
+        true,
+    )
+}
+
+fn list_open_directory_bounded(
+    directory: &Dir,
+    display_path: &Path,
+    reject_links: bool,
+    entry_budget: usize,
+    error_on_overflow: bool,
 ) -> Result<Vec<FsEntry>, String> {
     let mut out = Vec::new();
     for entry in directory
         .entries()
         .map_err(|error| format!("io: {error}"))?
     {
-        if out.len() >= MAX_DIR_ENTRIES {
-            break;
-        }
         let entry = entry.map_err(|error| format!("io: {error}"))?;
         let file_type = entry.file_type().ok();
         if reject_links
@@ -741,6 +827,12 @@ fn list_open_directory(
         let Some(metadata) = metadata else {
             continue;
         };
+        if out.len() >= entry_budget {
+            if error_on_overflow {
+                return Err("too_large".to_string());
+            }
+            break;
+        }
         let is_dir = metadata.is_dir();
         let created_ms = metadata
             .created()
@@ -766,6 +858,7 @@ fn list_open_directory(
             .is_dir
             .cmp(&left.is_dir)
             .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+            .then_with(|| left.name.cmp(&right.name))
     });
     Ok(out)
 }
@@ -1487,6 +1580,135 @@ mod tests {
             "root_not_dir"
         );
         std::fs::remove_file(root_file).unwrap();
+    }
+
+    #[test]
+    fn strict_batch_lists_in_order_and_isolates_per_directory_failures() {
+        let root = test_root("strict-batch");
+        let first = root.join("first");
+        let second = root.join("second");
+        std::fs::create_dir_all(&first).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        std::fs::write(first.join("one.txt"), b"one").unwrap();
+        std::fs::write(second.join("two.txt"), b"two").unwrap();
+        let missing = root.join("missing");
+
+        let listed = fs_list_dirs_strict(
+            vec![
+                first.to_string_lossy().to_string(),
+                missing.to_string_lossy().to_string(),
+                second.to_string_lossy().to_string(),
+            ],
+            Some(root.to_string_lossy().to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(listed.len(), 3);
+        assert_eq!(listed[0].path, first.to_string_lossy());
+        assert_eq!(listed[0].entries.as_ref().unwrap()[0].name, "one.txt");
+        assert_eq!(listed[1].path, missing.to_string_lossy());
+        assert_eq!(listed[1].error.as_deref(), Some("not_found"));
+        assert_eq!(listed[2].path, second.to_string_lossy());
+        assert_eq!(listed[2].entries.as_ref().unwrap()[0].name, "two.txt");
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn strict_batch_rejects_invalid_cardinality_before_traversal() {
+        assert_eq!(
+            fs_list_dirs_strict(Vec::new(), Some("C:\\missing".to_string())).unwrap_err(),
+            "mutation_invalid"
+        );
+        assert_eq!(
+            fs_list_dirs_strict(
+                vec!["C:\\missing".to_string(); MAX_STRICT_DIR_BATCH + 1],
+                Some("C:\\missing".to_string()),
+            )
+            .unwrap_err(),
+            "mutation_invalid"
+        );
+    }
+
+    #[test]
+    fn strict_batch_fails_an_outside_path_without_losing_an_allowed_sibling() {
+        let root = test_root("strict-batch-boundary");
+        let outside = test_root("strict-batch-outside");
+        std::fs::create_dir_all(root.join("inside")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+
+        let listed = fs_list_dirs_strict(
+            vec![
+                root.join("inside").to_string_lossy().to_string(),
+                outside.to_string_lossy().to_string(),
+            ],
+            Some(root.to_string_lossy().to_string()),
+        )
+        .unwrap();
+        assert!(listed[0].entries.is_some());
+        assert_eq!(listed[1].error.as_deref(), Some("outside_root"));
+
+        std::fs::remove_dir_all(root).unwrap();
+        std::fs::remove_dir_all(outside).unwrap();
+    }
+
+    #[test]
+    fn strict_batch_returns_every_entry_beyond_the_legacy_single_list_limit() {
+        let root = test_root("strict-batch-complete");
+        std::fs::create_dir_all(&root).unwrap();
+        for index in 0..1_001 {
+            std::fs::write(root.join(format!("file-{index:04}.txt")), b"safe").unwrap();
+        }
+
+        let first = fs_list_dirs_strict(
+            vec![root.to_string_lossy().to_string()],
+            Some(root.to_string_lossy().to_string()),
+        )
+        .unwrap();
+        let second = fs_list_dirs_strict(
+            vec![root.to_string_lossy().to_string()],
+            Some(root.to_string_lossy().to_string()),
+        )
+        .unwrap();
+        let first_names: Vec<_> = first[0]
+            .entries
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect();
+        let second_names: Vec<_> = second[0]
+            .entries
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect();
+        assert_eq!(first_names.len(), 1_001);
+        assert_eq!(first_names, second_names);
+        assert_eq!(first_names.first(), Some(&"file-0000.txt"));
+        assert_eq!(first_names.last(), Some(&"file-1000.txt"));
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn strict_complete_listing_rejects_before_exceeding_its_memory_budget() {
+        let root = test_root("strict-batch-budget");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("a.txt"), b"a").unwrap();
+        std::fs::write(root.join("b.txt"), b"b").unwrap();
+        std::fs::write(root.join("c.txt"), b"c").unwrap();
+        let opened = Dir::open_ambient_dir(&root, cap_fs_ext::ambient_authority()).unwrap();
+
+        assert_eq!(
+            list_open_directory_complete(&opened, &root, true, 2).unwrap_err(),
+            "too_large"
+        );
+        assert_eq!(list_open_directory(&opened, &root, true).unwrap().len(), 3);
+
+        drop(opened);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

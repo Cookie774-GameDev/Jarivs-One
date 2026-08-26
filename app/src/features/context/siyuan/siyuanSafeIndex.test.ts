@@ -353,6 +353,185 @@ describe('SiYuan safe read-only index', () => {
     expect(index.entries.map((entry) => entry.relativePath)).toEqual(['One', 'Two']);
   });
 
+  it('lists 65 nested directories through at most four ordered batches of 32', async () => {
+    const root = 'C:/Users/viper';
+    const directories = Array.from({ length: 65 }, (_, index) => ({
+      name: `Dir-${String(index).padStart(2, '0')}`,
+      path: `${root}/Dir-${String(index).padStart(2, '0')}`,
+      isDir: true,
+    }));
+    const requestedBatches: string[][] = [];
+
+    const index = await scanSiyuanFilesystemIndex(
+      map(),
+      { mode: 'none', selectedExtensions: [], selectedPaths: [] },
+      {
+        listBatch: async (paths, options) => {
+          expect(options).toEqual({ root, strictProjectBoundary: true });
+          requestedBatches.push([...paths]);
+          return paths.map((path) => ({
+            ok: true as const,
+            path,
+            entries: path === root ? directories : [],
+          }));
+        },
+      },
+    );
+
+    expect(requestedBatches.map((batch) => batch.length)).toEqual([1, 32, 32, 1]);
+    expect(requestedBatches).toHaveLength(4);
+    expect(requestedBatches.flat()).toHaveLength(66);
+    expect(new Set(requestedBatches.flat()).size).toBe(66);
+    expect(index.entries.map((entry) => entry.relativePath)).toEqual(
+      directories.map((directory) => directory.name),
+    );
+  });
+
+  it('skips excluded directories while unreadable siblings do not stop the batch', async () => {
+    const root = 'C:/Users/viper';
+    const requestedBatches: string[][] = [];
+    const index = await scanSiyuanFilesystemIndex(
+      map(),
+      { mode: 'none', selectedExtensions: [], selectedPaths: [] },
+      {
+        listBatch: async (paths) => {
+          requestedBatches.push([...paths]);
+          return paths.map((path) => {
+            if (path === root) {
+              return {
+                ok: true as const,
+                path,
+                entries: [
+                  { name: '.git', path: `${root}/.git`, isDir: true },
+                  { name: 'Allowed', path: `${root}/Allowed`, isDir: true },
+                  { name: 'Locked', path: `${root}/Locked`, isDir: true },
+                  { name: 'Other', path: `${root}/Other`, isDir: true },
+                ],
+              };
+            }
+            if (path === `${root}/Locked`) {
+              return {
+                ok: false as const,
+                path,
+                error: { code: 'symlink_blocked' as const },
+              };
+            }
+            return {
+              ok: true as const,
+              path,
+              entries: [
+                {
+                  name: path.endsWith('/Allowed') ? 'notes.md' : 'image.png',
+                  path: `${path}/${path.endsWith('/Allowed') ? 'notes.md' : 'image.png'}`,
+                  isDir: false,
+                },
+              ],
+            };
+          });
+        },
+      },
+    );
+
+    expect(requestedBatches).toHaveLength(2);
+    expect(requestedBatches.flat()).not.toContain(`${root}/.git`);
+    expect(index.excluded).toBe(1);
+    expect(index.unreadable).toBe(1);
+    expect(index.entries.map((entry) => entry.relativePath)).toEqual([
+      'Allowed',
+      'Locked',
+      'Other',
+      'Allowed/notes.md',
+      'Other/image.png',
+    ]);
+  });
+
+  it('stops before the next native batch when cancellation follows a completed batch', async () => {
+    const root = 'C:/Users/viper';
+    const directories = Array.from({ length: 65 }, (_, index) => ({
+      name: `Dir-${String(index).padStart(2, '0')}`,
+      path: `${root}/Dir-${String(index).padStart(2, '0')}`,
+      isDir: true,
+    }));
+    const requestedBatches: string[][] = [];
+    const indexedProgress: number[] = [];
+    let checkpoints = 0;
+
+    await expect(
+      scanSiyuanFilesystemIndex(
+        map(),
+        { mode: 'none', selectedExtensions: [], selectedPaths: [] },
+        {
+          control: {
+            state: 'running',
+            pause() {},
+            resume() {},
+            cancel() {},
+            async checkpoint() {
+              checkpoints += 1;
+              if (checkpoints > 1) throw new Error('siyuan_index_cancelled');
+            },
+          },
+          listBatch: async (paths) => {
+            requestedBatches.push([...paths]);
+            return paths.map((path) => ({
+              ok: true as const,
+              path,
+              entries: path === root ? directories : [],
+            }));
+          },
+          onProgress: ({ indexed }) => indexedProgress.push(indexed),
+        },
+      ),
+    ).rejects.toThrow('siyuan_index_cancelled');
+
+    expect(requestedBatches).toEqual([[root]]);
+    expect(indexedProgress.at(-1)).toBe(65);
+    expect(checkpoints).toBe(2);
+  });
+
+  it('does not advance a durable discovery cursor when a native batch fails globally', async () => {
+    const durableJob = { accountId: null, projectId: 'project-1', mapId: 'map-1' };
+    await expect(
+      scanSiyuanFilesystemIndex(
+        map(),
+        { mode: 'none', selectedExtensions: [], selectedPaths: [] },
+        {
+          durableJob,
+          listBatch: async () => {
+            throw new Error('fs_list_dirs_strict:root_not_found');
+          },
+        },
+      ),
+    ).rejects.toThrow('fs_list_dirs_strict:root_not_found');
+
+    const failed = await readSiyuanIndexJob('project-1', 'map-1');
+    expect(failed).toMatchObject({ cursor: 0, indexed: 0, frontierLength: 1 });
+
+    const resumed = await scanSiyuanFilesystemIndex(
+      map(),
+      { mode: 'none', selectedExtensions: [], selectedPaths: [] },
+      {
+        durableJob,
+        listBatch: async (paths) =>
+          paths.map((path) => ({
+            ok: true as const,
+            path,
+            entries:
+              path === 'C:/Users/viper'
+                ? [
+                    {
+                      name: 'recovered.txt',
+                      path: 'C:/Users/viper/recovered.txt',
+                      isDir: false,
+                    },
+                  ]
+                : [],
+          })),
+      },
+    );
+    expect(resumed.entries.map((entry) => entry.relativePath)).toEqual(['recovered.txt']);
+  });
+
   it('indexes a synthetic source far beyond the 120-file content-preview limit', async () => {
     const files = Array.from({ length: 5_000 }, (_, index) => ({
       name: `file-${index}.txt`,

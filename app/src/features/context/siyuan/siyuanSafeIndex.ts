@@ -1,5 +1,11 @@
 import { applySecretPolicy } from '@/lib/security/secretDetector';
-import { listDirectory, type FsEntry, type FsListResult } from '@/lib/fs';
+import {
+  listDirectoriesStrict,
+  listDirectory,
+  type FsBatchListResult,
+  type FsEntry,
+  type FsListResult,
+} from '@/lib/fs';
 import type { ContextMapRecord, ContextTreeNode } from '../tree';
 import type { SiyuanSummaryPolicy } from './siyuanMapManifest';
 import {
@@ -40,6 +46,11 @@ export type SiyuanDirectoryLister = (
   path: string,
   options: { root: string; strictProjectBoundary: true },
 ) => Promise<FsListResult>;
+
+export type SiyuanDirectoryBatchLister = (
+  paths: readonly string[],
+  options: { root: string; strictProjectBoundary: true },
+) => Promise<FsBatchListResult>;
 
 export interface SiyuanIndexJobControl {
   readonly state: 'running' | 'paused' | 'cancelled';
@@ -196,7 +207,7 @@ const EXCLUDED_SEGMENTS = new Set([
 const SECRET_FILE =
   /^(?:\.env(?:\..*)?|\.git-credentials|\.netrc|\.npmrc|\.pypirc|auth(?:entication)?\.json|credentials?(?:\..*)?|id_(?:rsa|ecdsa|ed25519)|secrets?(?:\..*)?|tokens?(?:\..*)?|.*\.(?:key|pem|p12|pfx))$/iu;
 const MAX_ENTRIES = 500_000;
-const DIRECTORY_SCAN_CONCURRENCY = 8;
+const DIRECTORY_SCAN_BATCH_SIZE = 32;
 
 function canonical(value: string): string {
   return value
@@ -429,12 +440,14 @@ export async function scanSiyuanFilesystemIndex(
       counts: Readonly<{ indexed: number; excluded: number; unreadable: number }>,
     ) => void;
     list?: SiyuanDirectoryLister;
+    listBatch?: SiyuanDirectoryBatchLister;
     excludedPaths?: readonly string[];
     durableJob?: Readonly<{ accountId: string | null; projectId: string; mapId: string }>;
   }> = {},
 ): Promise<SiyuanSafeIndex> {
   const root = canonical(record.rootDir);
   const list = options.list ?? listDirectory;
+  const listBatch = options.listBatch ?? (options.list ? null : listDirectoriesStrict);
   const summaries = existingSummaries(record);
   const exclusions = normalizedCustomExclusions(root, options.excludedPaths ?? []);
   const summaryPolicy = normalizedSummaryPolicy(root, policy);
@@ -517,14 +530,25 @@ export async function scanSiyuanFilesystemIndex(
   while (cursor < queue.length) {
     await options.control?.checkpoint(options.signal);
     if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
-    const directories = queue.slice(cursor, cursor + DIRECTORY_SCAN_CONCURRENCY);
+    const directories = queue.slice(cursor, cursor + DIRECTORY_SCAN_BATCH_SIZE);
+    const batchResults = listBatch
+      ? await listBatch(
+          directories.map((directory) => directory.path),
+          { root, strictProjectBoundary: true },
+        )
+      : await Promise.all(
+          directories.map((directory) =>
+            list(directory.path, { root, strictProjectBoundary: true }),
+          ),
+        );
+    if (batchResults.length !== directories.length) {
+      throw new Error('siyuan_index_batch_incomplete');
+    }
     cursor += directories.length;
-    const listings = await Promise.all(
-      directories.map(async (directory) => ({
-        directory,
-        result: await list(directory.path, { root, strictProjectBoundary: true }),
-      })),
-    );
+    const listings = directories.map((directory, index) => ({
+      directory,
+      result: batchResults[index]!,
+    }));
     const batchEntries: SiyuanSafeIndexEntry[] = [];
     const batchDirectories: SiyuanIndexDirectory[] = [];
     for (const { directory, result } of listings) {

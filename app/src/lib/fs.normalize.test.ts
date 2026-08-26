@@ -4,6 +4,7 @@ import {
   copyProjectFile,
   createDirectory,
   createDirectoryWithReceipt,
+  listDirectoriesStrict,
   moveProjectFileWithReceipt,
   normalizeFsEntry,
   statProjectPath,
@@ -76,6 +77,112 @@ describe('normalizeFsEntry', () => {
   it('returns null for incomplete payloads', () => {
     expect(normalizeFsEntry({})).toBeNull();
     expect(normalizeFsEntry(null)).toBeNull();
+  });
+});
+
+describe('listDirectoriesStrict', () => {
+  beforeEach(() => invokeMock.mockReset());
+
+  it('preserves requested order and cardinality across mixed native successes and errors', async () => {
+    const paths = ['C:\\repo\\one', 'C:\\repo\\locked', 'C:\\repo\\three'];
+    invokeMock.mockResolvedValueOnce([
+      {
+        path: paths[0],
+        entries: [
+          {
+            name: 'camel.txt',
+            path: `${paths[0]}\\camel.txt`,
+            isDir: false,
+            size: 4,
+            modifiedMs: 10,
+          },
+        ],
+      },
+      { path: paths[1], error: 'symlink_blocked' },
+      {
+        path: paths[2],
+        entries: [
+          {
+            name: 'snake.txt',
+            path: `${paths[2]}\\snake.txt`,
+            is_dir: false,
+            size: '5',
+            modified_ms: '11',
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      listDirectoriesStrict(paths, {
+        root: 'C:\\repo',
+        strictProjectBoundary: true,
+      }),
+    ).resolves.toEqual([
+      {
+        ok: true,
+        path: paths[0],
+        entries: [expect.objectContaining({ name: 'camel.txt', size: 4, modifiedMs: 10 })],
+      },
+      {
+        ok: false,
+        path: paths[1],
+        error: { code: 'symlink_blocked', raw: 'symlink_blocked' },
+      },
+      {
+        ok: true,
+        path: paths[2],
+        entries: [expect.objectContaining({ name: 'snake.txt', size: 5, modifiedMs: 11 })],
+      },
+    ]);
+    expect(invokeMock).toHaveBeenCalledWith('fs_list_dirs_strict', {
+      paths,
+      root: 'C:\\repo',
+    });
+  });
+
+  it('fails the complete batch when native outcomes are reordered or missing', async () => {
+    const paths = ['C:\\repo\\one', 'C:\\repo\\two', 'C:\\repo\\three'];
+    invokeMock.mockResolvedValueOnce([
+      { path: paths[1], entries: [] },
+      { path: paths[0], entries: [] },
+    ]);
+
+    await expect(
+      listDirectoriesStrict(paths, {
+        root: 'C:\\repo',
+        strictProjectBoundary: true,
+      }),
+    ).rejects.toThrow('fs_list_dirs_strict:invalid_response');
+  });
+
+  it('rejects global native failures and malformed child entries without partial success', async () => {
+    const paths = ['C:\\repo\\one'];
+    invokeMock.mockRejectedValueOnce('root_not_found');
+    await expect(
+      listDirectoriesStrict(paths, { root: 'C:\\repo', strictProjectBoundary: true }),
+    ).rejects.toThrow('fs_list_dirs_strict:root_not_found');
+
+    invokeMock.mockResolvedValueOnce([{ path: paths[0], entries: [{ name: 'missing-path' }] }]);
+    await expect(
+      listDirectoriesStrict(paths, { root: 'C:\\repo', strictProjectBoundary: true }),
+    ).rejects.toThrow('fs_list_dirs_strict:invalid_response');
+  });
+
+  it('allows only expected per-directory races and aborts authority errors', async () => {
+    const path = 'C:\\repo\\one';
+    for (const code of ['not_found', 'symlink_blocked', 'not_a_dir']) {
+      invokeMock.mockResolvedValueOnce([{ path, error: code }]);
+      await expect(
+        listDirectoriesStrict([path], { root: 'C:\\repo', strictProjectBoundary: true }),
+      ).resolves.toMatchObject([{ ok: false, path, error: { code } }]);
+    }
+    for (const code of ['outside_root', 'not_absolute', 'too_large', 'unknown_failure']) {
+      invokeMock.mockResolvedValueOnce([{ path, error: code }]);
+      await expect(
+        listDirectoriesStrict([path], { root: 'C:\\repo', strictProjectBoundary: true }),
+      ).rejects.toThrow(`fs_list_dirs_strict:${code === 'unknown_failure' ? 'unknown' : code}`);
+    }
   });
 });
 

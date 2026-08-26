@@ -695,6 +695,7 @@ fn run_ordinary(
             fsread::fs_create_text_with_content,
             fsread::fs_compare_and_swap_text,
             fsread::fs_list_dir,
+            fsread::fs_list_dirs_strict,
             fsread::fs_rename_file,
             fsread::fs_delete_file,
             fsread::fs_read_image_base64,
@@ -972,6 +973,7 @@ fsread::fs_create_text_file
 fsread::fs_create_text_with_content
 fsread::fs_compare_and_swap_text
 fsread::fs_list_dir
+fsread::fs_list_dirs_strict
 fsread::fs_rename_file
 fsread::fs_delete_file
 fsread::fs_read_image_base64
@@ -1009,6 +1011,7 @@ credentials::credential_get
 credentials::credential_delete
 dictation::dictation_paste_text
 dictation::trigger_os_dictation
+set_global_dictation_enabled
 faster_whisper::faster_whisper_model_path
 faster_whisper::faster_whisper_check_installed
 faster_whisper::faster_whisper_status
@@ -1092,9 +1095,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "ea0730364829815742eee5edbcbc12015f5974620881282cd7e855a5b0c3c875";
+        "e4e173c63b356b3adda37dc67826c2333906da21fb3cc8a14e4242d57a8f4f7f";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "7eb278ae1f7ea23d85560289264f07624fce4a9d24197981e5ba817c3d9d8de6";
+        "9a5a6571238380d8c44f61bd984d65b2a40bc43d5298a17d8cf801069fc483f0";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
