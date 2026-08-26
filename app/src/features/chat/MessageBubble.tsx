@@ -5,6 +5,7 @@ import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appea
 import { useAgentStore } from '@/stores/agents';
 import { cn, formatRelative, hueFromString } from '@/lib/utils';
 import { MessagePart } from './MessagePart';
+import { AssistantActivityLedger } from './activity-ledger/AssistantActivityLedger';
 import type { Message } from '@/types';
 import type { JarvisCreatorKind } from '@/features/jarvis-creator/contracts';
 
@@ -41,6 +42,10 @@ export function MessageBubble({ message, compact = false, creatorDraftKind }: Me
   // we wrap the response in a soft, warm radiant glow that matches the cozy
   // composer halo.
   const isHiveResponse = message.parts.some((p) => p.kind === 'stack_step');
+  const assistantVisibleParts =
+    message.role === 'assistant'
+      ? message.parts.filter((part) => part.kind !== 'tool_call' && part.kind !== 'tool_result')
+      : message.parts;
 
   const slug = agent?.slug ?? message.agent_id ?? 'jarvis';
   const hue = agent?.color_hue ?? hueFromString(slug);
@@ -214,7 +219,7 @@ export function MessageBubble({ message, compact = false, creatorDraftKind }: Me
             style={isHiveResponse ? undefined : { borderLeftColor: agentColor, borderLeftWidth: 1 }}
           >
             <div className="flex flex-col gap-2">
-              {message.parts.map((part, i) => (
+              {assistantVisibleParts.map((part, i) => (
                 <MessagePart
                   key={i}
                   part={part}
@@ -225,6 +230,9 @@ export function MessageBubble({ message, compact = false, creatorDraftKind }: Me
                   creatorDraftKind={assistantCreatorDraftKind}
                 />
               ))}
+              {message.role === 'assistant' ? (
+                <AssistantActivityLedger message={message} compact={compact} />
+              ) : null}
             </div>
           </div>
           <ActionStrip
