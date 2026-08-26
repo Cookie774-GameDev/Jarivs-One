@@ -38,3 +38,9 @@
 - Music Studio now presents one compact dark editing timeline with an aligned clip ruler, sticky `A1` lane, deterministic per-clip waveforms, 0.65×–1.8× zoom, drag reorder, selected state, and a bounded active-clip playhead. The existing selected-song scrubber, trim, speed, preview, loop, save, ambience, and audio engine remain authoritative.
 - Verification: focused TDD matrix `3 files / 13 tests` PASS; adjacent ambient matrix `8 files / 27 tests` PASS; direct Vite production build PASS (`4,981` modules). Prettier PASS. Repository typecheck reports only concurrent protected Context/SiYuan diagnostics and no owned-file diagnostic.
 - Manual/native QA was not run; no app process was started.
+
+### 2026-08-25 19:05 CDT — Product commit
+
+- Product commit: `4f72ae89` (`feat(ambient): dedupe and refine music timeline`).
+- Exact committed scope: six Music Studio source/test files plus this evidence document. Generated catalog inventory, cloud services, audio assets, ambient engine, and unrelated dirty work remained untouched.
+- Release status: product scope complete and lock released. Repository-wide typecheck remains independently blocked by the recorded concurrent Context/SiYuan diagnostics.
