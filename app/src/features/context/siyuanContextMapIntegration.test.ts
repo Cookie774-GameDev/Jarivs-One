@@ -716,6 +716,101 @@ describe('SiYuan Context Map integration', () => {
     }
   });
 
+  it('skips bound structural batches on summary resume but still creates a missing binding', async () => {
+    const record = { ...map(), id: 'map-summary-structural-resume' };
+    const policy = { mode: 'all' as const, selectedExtensions: [], selectedPaths: [] };
+    const fingerprint = siyuanIndexPolicyFingerprint(record.rootDir, policy, []);
+    const indexedEntries = Array.from({ length: 2 }, (_, index) => ({
+      nodeId: `path:file-${index}.ts`,
+      parentNodeId: null,
+      title: `file-${index}.ts`,
+      kind: 'file' as const,
+      relativePath: `file-${index}.ts`,
+      sourcePointer: `${record.rootDir}\\file-${index}.ts`,
+      summary: null,
+      sizeBytes: index + 1,
+      modifiedAt: index + 1,
+    }));
+    const job = {
+      ...createSiyuanIndexJob({
+        accountId: 'account-1',
+        projectId: 'project-1',
+        mapId: record.id,
+        canonicalRoot: record.rootDir,
+        policyFingerprint: fingerprint,
+      }),
+      phase: 'summarizing' as const,
+      status: 'running' as const,
+      indexed: indexedEntries.length,
+      createdNodes: indexedEntries.length - 1,
+      summaryProviderId: 'deepseek',
+      summaryConnectionId: 'deepseek-api',
+      summaryModelId: 'deepseek-chat',
+      summaryEffort: 'high' as const,
+    };
+    await replaceSiyuanIndexJob(job, {
+      path: record.rootDir,
+      relativePath: '',
+      parentNodeId: null,
+    });
+    await checkpointSiyuanIndexJob({ job, appendedEntries: indexedEntries });
+    await writeSiyuanNodeBindings('project-1', record.id, {
+      [indexedEntries[0]!.nodeId]: 'bound-doc',
+    });
+    writeSiyuanMapManifest(createSiyuanMapManifest(record, 'project-1', policy));
+
+    const previousInternals = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    const nativePort = port();
+    const durableControl = createSiyuanIndexJobControl();
+    const checkpoint = vi.fn((signal?: AbortSignal) => durableControl.checkpoint(signal));
+    const control = {
+      get state() {
+        return durableControl.state;
+      },
+      pause: () => durableControl.pause(),
+      resume: () => durableControl.resume(),
+      cancel: () => durableControl.cancel(),
+      checkpoint,
+    };
+    try {
+      await expect(
+        createSiyuanContextMapIntegration(nativePort).sync('project-1', record, {
+          accountId: 'account-1',
+          workspaceId: 'workspace-1',
+          summaryPolicy: policy,
+          control,
+          list: async (path) => ({
+            ok: true,
+            path,
+            entries: indexedEntries.map((entry) => ({
+              name: entry.title,
+              path: entry.sourcePointer!,
+              isDir: false,
+              size: entry.sizeBytes,
+              modifiedMs: entry.modifiedAt,
+            })),
+          }),
+        }),
+      ).rejects.toThrow('siyuan_cloud_summary_approval_required');
+
+      const nodeCreates = vi
+        .mocked(nativePort.createManagedDocument)
+        .mock.calls.filter((call) => call[1].includes('/Nodes/'));
+      expect(nodeCreates).toHaveLength(1);
+      expect(nodeCreates[0]?.[1]).toContain('file-1');
+      expect(nativePort.getBlock).not.toHaveBeenCalled();
+      expect(nativePort.updateManagedDocument).not.toHaveBeenCalled();
+      expect(checkpoint).toHaveBeenCalledTimes(3);
+    } finally {
+      if (previousInternals === undefined) {
+        delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      } else {
+        (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = previousInternals;
+      }
+    }
+  });
+
   it.each([
     ['missing approval', null],
     [

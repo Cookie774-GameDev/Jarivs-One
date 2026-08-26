@@ -470,17 +470,12 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
     }
     let activeNodeIds = new Set(index.entries.map((entry) => entry.nodeId));
     const documentPromises = new Map<string, Promise<string>>();
-    for (let cursor = 0; cursor < index.entries.length; cursor += SIYUAN_NODE_WRITE_CONCURRENCY) {
+    const unboundEntries = index.entries.filter((entry) => !bindings[entry.nodeId]);
+    for (let cursor = 0; cursor < unboundEntries.length; cursor += SIYUAN_NODE_WRITE_CONCURRENCY) {
       await options.control?.checkpoint(options.signal);
       if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
-      const batch = index.entries.slice(cursor, cursor + SIYUAN_NODE_WRITE_CONCURRENCY);
+      const batch = unboundEntries.slice(cursor, cursor + SIYUAN_NODE_WRITE_CONCURRENCY);
       const tasks = batch.map((entry) => {
-        const completedDocumentId = bindings[entry.nodeId];
-        if (completedDocumentId) {
-          const completed = Promise.resolve([entry.nodeId, completedDocumentId] as const);
-          documentPromises.set(entry.nodeId, Promise.resolve(completedDocumentId));
-          return completed;
-        }
         const parentPromise = entry.parentNodeId
           ? (documentPromises.get(entry.parentNodeId) ??
             Promise.resolve(bindings[entry.parentNodeId] ?? rootDocument.id))
