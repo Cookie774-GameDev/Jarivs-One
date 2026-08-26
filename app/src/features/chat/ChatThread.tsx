@@ -514,14 +514,16 @@ export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThr
           : undefined
       }
     >
-      <AgentChecklistBar
-        run={currentCanonicalRun}
-        events={currentCanonicalState.events}
-        messages={messages}
-        coverageComplete={currentCanonicalState.eventCoverageComplete}
-        coverageTruncated={currentCanonicalState.eventCoverageTruncated}
-        compact={compact}
-      />
+      {consoleView === 'classic' ? (
+        <AgentChecklistBar
+          run={currentCanonicalRun}
+          events={currentCanonicalState.events}
+          messages={messages}
+          coverageComplete={currentCanonicalState.eventCoverageComplete}
+          coverageTruncated={currentCanonicalState.eventCoverageTruncated}
+          compact={compact}
+        />
+      ) : null}
       <div
         data-sik-evidence={
           KERNEL_SMOKE_ENABLED && commandCenterBinding ? SIK_EVIDENCE.chatRuntimeReady : undefined
@@ -540,6 +542,14 @@ export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThr
             fallback={
               <>
                 {/* Fallback only: single classic mini command center if agentic projection fails. */}
+                <AgentChecklistBar
+                  run={currentCanonicalRun}
+                  events={currentCanonicalState.events}
+                  messages={messages}
+                  coverageComplete={currentCanonicalState.eventCoverageComplete}
+                  coverageTruncated={currentCanonicalState.eventCoverageTruncated}
+                  compact={compact}
+                />
                 <ChatActivityTimeline chatId={chatId} compact={compact} />
                 {messages.length === 0 ? (
                   <ThreadHint />
@@ -566,6 +576,17 @@ export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThr
               compact={compact}
               creatorDraftKind={creatorDraftKind}
               sessionEvidence={agenticSessionEvidence}
+              headerProgress={
+                <AgentChecklistBar
+                  run={currentCanonicalRun}
+                  events={currentCanonicalState.events}
+                  messages={messages}
+                  coverageComplete={currentCanonicalState.eventCoverageComplete}
+                  coverageTruncated={currentCanonicalState.eventCoverageTruncated}
+                  compact={compact}
+                  embedded
+                />
+              }
               actions={agenticActions}
             />
           </AgenticConsoleErrorBoundary>

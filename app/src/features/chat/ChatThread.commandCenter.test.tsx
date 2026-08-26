@@ -259,7 +259,20 @@ describe('ChatThread Command Center routing', () => {
         id: 'message-assistant' as Message['id'],
         chat_id: 'chat-1' as Message['chat_id'],
         role: 'assistant',
-        parts: [{ kind: 'text', text: 'Hello — staying on this chat.' }],
+        parts: [
+          { kind: 'text', text: 'Hello — staying on this chat.' },
+          {
+            kind: 'tool_call',
+            tool: 'todowrite',
+            call_id: 'todo-command-header',
+            args: {
+              todos: [
+                { content: 'Plan the game', status: 'completed' },
+                { content: 'Build the game', status: 'in_progress' },
+              ],
+            },
+          },
+        ],
         created_at: 100,
         updated_at: 100,
       },
@@ -278,6 +291,17 @@ describe('ChatThread Command Center routing', () => {
       expect(document.querySelectorAll('[data-testid="jarvis-session-panel"]').length).toBe(1);
     });
     expect(document.querySelector('[data-agentic-console]')).not.toBeNull();
+    const header = document.querySelector('[data-testid="jarvis-session-panel"]');
+    const progress = document.querySelector('[data-agent-checklist-bar]');
+    expect(document.querySelectorAll('[data-agent-checklist-bar]')).toHaveLength(1);
+    expect(progress?.getAttribute('data-checklist-placement')).toBe('command-header');
+    expect(header?.contains(progress)).toBe(true);
+    expect(header?.querySelector('.agentic-session__identity')?.nextElementSibling).toBe(
+      progress?.parentElement,
+    );
+    expect(progress?.parentElement?.nextElementSibling).toBe(
+      header?.querySelector('.agentic-session__metrics-row'),
+    );
   });
 
   it('discovers a canonical run from the account-bound data port without a legacy projection', async () => {

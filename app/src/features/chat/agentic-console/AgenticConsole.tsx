@@ -57,6 +57,7 @@ export interface AgenticConsoleProps {
   compact?: boolean;
   creatorDraftKind?: JarvisCreatorKind;
   sessionEvidence?: AgenticSessionEvidence;
+  headerProgress?: React.ReactNode;
   actions?: {
     cancel?: () => void | Promise<void>;
     retry?: () => void | Promise<void>;
@@ -142,6 +143,7 @@ function SessionHeader({
   chatId,
   summary,
   preferences,
+  headerProgress,
   onPreferences,
   actions,
   onExpandAll,
@@ -152,6 +154,7 @@ function SessionHeader({
   chatId: string;
   summary: AgenticSessionSummary;
   preferences: ConsolePreferences;
+  headerProgress?: React.ReactNode;
   onPreferences: (patch: Partial<ConsolePreferences>) => void;
   actions?: AgenticConsoleProps['actions'];
   onExpandAll: () => void;
@@ -176,6 +179,7 @@ function SessionHeader({
       className="agentic-session"
       aria-label="Agentic session summary"
       data-testid="jarvis-session-panel"
+      data-has-progress={headerProgress ? 'true' : undefined}
     >
       <div className="agentic-session__identity">
         <span className={cn('agentic-status-dot', `is-${summary.status}`)} aria-hidden="true" />
@@ -184,6 +188,7 @@ function SessionHeader({
           <span title={summary.currentOperation}>{summary.currentOperation}</span>
         </div>
       </div>
+      {headerProgress ? <div className="agentic-session__progress">{headerProgress}</div> : null}
       <div className="agentic-session__metrics-row">
         <button
           type="button"
@@ -564,6 +569,7 @@ export function AgenticConsole({
   compact = false,
   creatorDraftKind,
   sessionEvidence,
+  headerProgress,
   actions,
 }: AgenticConsoleProps) {
   const [preferences, updatePreferences] = useConsolePreferences();
@@ -707,6 +713,7 @@ export function AgenticConsole({
         chatId={chatId}
         summary={summary}
         preferences={preferences}
+        headerProgress={headerProgress}
         onPreferences={updatePreferences}
         actions={actions}
         onExpandAll={() => setDetailsOpen(true)}

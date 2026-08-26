@@ -79,6 +79,17 @@ describe('AgentChecklistBar', () => {
     expect(screen.getByText('Run tests')).toBeTruthy();
   });
 
+  it('renders as a non-sticky command-header control when embedded', () => {
+    const { container } = render(<AgentChecklistBar run={run} events={events} embedded />);
+    const bar = container.querySelector('[data-agent-checklist-bar]');
+
+    expect(bar).not.toBeNull();
+    expect(bar?.getAttribute('data-checklist-placement')).toBe('command-header');
+    expect(bar?.classList.contains('sticky')).toBe(false);
+    expect(bar?.classList.contains('border-b')).toBe(false);
+    expect(screen.getByRole('progressbar', { name: 'Agent checklist' })).toBeTruthy();
+  });
+
   it('does not call degraded work complete and hides percentages for incomplete history', () => {
     const degraded = [
       {

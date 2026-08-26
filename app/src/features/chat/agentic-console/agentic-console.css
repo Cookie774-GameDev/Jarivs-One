@@ -201,6 +201,19 @@ html[data-theme='origami'] [data-agentic-console] {
   justify-content: flex-end;
 }
 
+.agentic-session[data-has-progress='true'] {
+  grid-template-columns: minmax(120px, auto) minmax(220px, 1fr) minmax(0, auto) auto;
+}
+
+.agentic-session__progress {
+  min-width: 0;
+  width: 100%;
+}
+
+.agentic-session__progress [data-agent-checklist-bar] {
+  max-width: 100%;
+}
+
 .agentic-session__identity,
 .agentic-session__metrics,
 .agentic-session__metrics span,
@@ -745,6 +758,15 @@ html[data-theme='origami'] [data-agentic-console] {
     grid-column: 1 / -1;
     flex-wrap: wrap;
     padding-left: 17px;
+  }
+
+  .agentic-session[data-has-progress='true'] .agentic-session__progress {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .agentic-session[data-has-progress='true'] .agentic-session__metrics-row {
+    grid-row: 3;
   }
 
   .agentic-session__actions {

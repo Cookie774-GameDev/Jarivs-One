@@ -449,6 +449,35 @@ describe('AgenticConsole', () => {
     expect(screen.getByRole('button', { name: 'Export session' })).toBeTruthy();
   });
 
+  it('places the authoritative progress control between Jarvis status and model metrics', () => {
+    const messages = [
+      message('user', 'user', 10, [{ kind: 'text', text: 'Follow the milestone list.' }]),
+    ];
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages,
+      activity: [],
+      sessionEvidence: {
+        status: 'running',
+        currentOperation: 'Jarvis is running',
+        model: 'opencode-go/deepseek-v4-flash-vision-exp',
+      },
+      headerProgress: <div data-testid="header-progress">Milestone progress</div>,
+    });
+
+    const header = rendered.container.querySelector('[data-testid="jarvis-session-panel"]');
+    const status = screen.getByLabelText('Session status').closest('.agentic-session__identity');
+    const progress = screen.getByTestId('header-progress');
+    const metrics = screen
+      .getByLabelText('Open session details')
+      .closest('.agentic-session__metrics-row');
+
+    expect(header).not.toBeNull();
+    expect(header?.contains(progress)).toBe(true);
+    expect(status?.nextElementSibling).toBe(progress.parentElement);
+    expect(progress.parentElement?.nextElementSibling).toBe(metrics);
+  });
+
   it('keeps raw tool payloads private and expands the safe ledger explicitly', () => {
     renderConsole({
       chatId: 'chat-console',

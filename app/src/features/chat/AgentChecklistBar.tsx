@@ -180,6 +180,7 @@ export function AgentChecklistBar({
   coverageComplete = true,
   coverageTruncated = false,
   compact = false,
+  embedded = false,
   messages = [],
 }: {
   run: JarvisRun | undefined;
@@ -187,6 +188,7 @@ export function AgentChecklistBar({
   coverageComplete?: boolean;
   coverageTruncated?: boolean;
   compact?: boolean;
+  embedded?: boolean;
   messages?: readonly Message[];
 }) {
   const [expanded, setExpanded] = React.useState(false);
@@ -226,9 +228,12 @@ export function AgentChecklistBar({
   return (
     <section
       data-agent-checklist-bar
+      data-checklist-placement={embedded ? 'command-header' : 'standalone'}
       className={cn(
-        'sticky top-0 z-30 mx-auto w-full border-b border-border/65 bg-paper-soft/90 px-3 py-2 shadow-sm backdrop-blur-xl',
-        compact ? 'max-w-full' : 'max-w-[1600px]',
+        embedded
+          ? 'relative min-w-0 w-full'
+          : 'sticky top-0 z-30 mx-auto w-full border-b border-border/65 bg-paper-soft/90 px-3 py-2 shadow-sm backdrop-blur-xl',
+        !embedded && (compact ? 'max-w-full' : 'max-w-[1600px]'),
       )}
       aria-label="Agent checklist"
     >
