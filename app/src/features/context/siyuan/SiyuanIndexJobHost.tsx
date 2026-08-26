@@ -71,6 +71,7 @@ export async function runSiyuanStartupResume<T>(options: {
   mapId: string;
   run: () => Promise<T>;
   isRunning: () => Promise<boolean>;
+  shouldMarkNeedsRepair?: () => Promise<boolean>;
   signal?: AbortSignal;
   onRetry?: (error: unknown, attempt: number) => void;
   sleep?: (milliseconds: number) => Promise<void>;
@@ -91,7 +92,8 @@ export async function runSiyuanStartupResume<T>(options: {
       maxAttempts: options.maxAttempts,
     });
   } catch (error) {
-    if (!options.signal?.aborted && (await options.isRunning())) {
+    const shouldMarkNeedsRepair = options.shouldMarkNeedsRepair ?? options.isRunning;
+    if (!options.signal?.aborted && (await shouldMarkNeedsRepair())) {
       await markDisposition(options.projectId, options.mapId, 'needs_repair');
     }
     throw error;
@@ -186,6 +188,10 @@ export function SiyuanIndexJobHost() {
                   }),
                 isRunning: async () =>
                   (await readSiyuanIndexJob(projectId, map.id))?.status === 'running',
+                shouldMarkNeedsRepair: async () => {
+                  const status = (await readSiyuanIndexJob(projectId, map.id))?.status;
+                  return status === 'running' || status === 'failed';
+                },
                 onRetry: (error, attempt) =>
                   devConsole.log({
                     channel: 'ai',

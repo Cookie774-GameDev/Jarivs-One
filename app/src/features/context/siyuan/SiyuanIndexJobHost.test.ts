@@ -161,6 +161,31 @@ describe('SiYuan durable startup host', () => {
     expect(status).toBe('failed');
   });
 
+  it('marks repair when integration fails the job before startup retry unwinds', async () => {
+    const dispositions: string[] = [];
+    let status: 'running' | 'failed' = 'running';
+    await expect(
+      runSiyuanStartupResume({
+        projectId: 'project-1',
+        mapId: 'map-1',
+        run: async () => {
+          status = 'failed';
+          throw new Error('siyuan_native_block_recovery_inconclusive');
+        },
+        isRunning: async () => status === 'running',
+        shouldMarkNeedsRepair: async () => status === 'running' || status === 'failed',
+        markDisposition: async (_projectId, _mapId, disposition) => {
+          dispositions.push(disposition);
+          return null;
+        },
+        maxAttempts: 1,
+      }),
+    ).rejects.toThrow('siyuan_native_block_recovery_inconclusive');
+
+    expect(status).toBe('failed');
+    expect(dispositions).toEqual(['auto_resumed', 'needs_repair']);
+  });
+
   it('resumes only matching-account active local maps with running jobs', () => {
     const maps = [map('map-1'), map('map-2'), map('map-3')];
     const running = runningJob(maps[0]!);
@@ -176,6 +201,46 @@ describe('SiYuan durable startup host', () => {
       }).map((item) => item.id),
     ).toEqual(['map-1']);
   });
+
+  it.each(['discovering', 'creating_nodes', 'summarizing', 'reconciling'] as const)(
+    'selects an authority-matching running %s checkpoint for startup resume',
+    (phase) => {
+      const current = map(`map-${phase}`);
+      const running = { ...runningJob(current), phase };
+
+      expect(
+        resumableSiyuanMaps({
+          accountId: 'account-1',
+          projectId: 'project-1',
+          jobs: [running],
+          maps: [current],
+          manifestForMap: manifestFor,
+        }).map((item) => item.id),
+      ).toEqual([current.id]);
+    },
+  );
+
+  it.each(['paused', 'cancelled', 'failed', 'completed'] as const)(
+    'never auto-resumes a %s checkpoint in any phase',
+    (status) => {
+      const current = map(`map-${status}`);
+      const durable = {
+        ...runningJob(current),
+        phase: status === 'completed' ? ('completed' as const) : ('creating_nodes' as const),
+        status,
+      };
+
+      expect(
+        resumableSiyuanMaps({
+          accountId: 'account-1',
+          projectId: 'project-1',
+          jobs: [durable],
+          maps: [current],
+          manifestForMap: manifestFor,
+        }),
+      ).toEqual([]);
+    },
+  );
 
   it('never resumes recycled maps or cancelled jobs', () => {
     const deleted = map('map-1', 'deleted');
