@@ -49,11 +49,11 @@ Official updater reference: https://v2.tauri.app/plugin/updater/
 - Tauri updater resources are process-local; an interrupted download is safely retried after restart.
 - Windows exits when `install()` launches the signed installer. macOS/Linux need an explicit process exit after close-triggered installation so the next launch uses the new build.
 - `cover` maximizes the 16:9 intro on non-16:9 monitors by cropping edges; it avoids letterboxing and never down-selects the 4K source.
-- Rollback is the single owned commit produced by this task; no updater keys, manifests, deployed artifacts, or native lifecycle files are changed.
+- Rollback the owned product commit and its evidence-only follow-up; no updater keys, manifests, deployed artifacts, or native lifecycle files are changed.
 
 ## Evidence and commits
 
 - Starting HEAD: `e9c9309246bff379aec9078cae9b379295e4521d`
-- Result commit(s): pending
-- Automated evidence: 6 focused files / 23 tests PASS; Vite production build PASS with 4,981 modules; full TypeScript has no owned diagnostic and remains non-green only on four pre-existing active SiYuan test nullability diagnostics. Exact diff and staged secret scan are pending.
+- Result commit(s): product commit `3b5bc466` (`feat(updates): install signed releases on next close`); final evidence is in the commit containing this finalized document.
+- Automated evidence: 6 focused files / 23 tests PASS; Vite production build PASS with 4,981 modules; full TypeScript has no owned diagnostic and remains non-green only on four pre-existing active SiYuan test nullability diagnostics. Exact staged diff check PASS; Gitleaks staged scan PASS with no leaks.
 - Native/manual evidence: not run by explicit user instruction
