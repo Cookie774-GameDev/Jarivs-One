@@ -141,7 +141,10 @@ import {
   type SiyuanIndexJobRecord,
 } from './siyuan/siyuanIndexJobStore';
 import { formatSiyuanJobEta, siyuanOverallProgressPercent } from './siyuan/siyuanProgress';
-import { computeSiyuanCloudSummaryScope } from './siyuan/siyuanSummaryPipeline';
+import {
+  approvedCloudSiyuanSummaryIdentity,
+  computeSiyuanCloudSummaryScope,
+} from './siyuan/siyuanSummaryPipeline';
 import {
   readSiyuanSummaryRoutePreference,
   matchesSiyuanSummaryRoutePreference,
@@ -189,6 +192,7 @@ function SiyuanIndexProgressCard({
   onSummaryModelChange,
   onApproveCloud,
   cloudApprovalPending,
+  cloudApprovalSaved,
 }: {
   job: SiyuanIndexJobRecord;
   summaryScope: string;
@@ -212,6 +216,7 @@ function SiyuanIndexProgressCard({
   onSummaryModelChange: (routeId: string, effort: EffortLabel) => void;
   onApproveCloud: () => void;
   cloudApprovalPending: boolean;
+  cloudApprovalSaved: boolean;
 }) {
   const phaseLabel: Record<SiyuanIndexJobRecord['phase'], string> = {
     discovering: 'Discovering allowed files and folders',
@@ -358,7 +363,9 @@ function SiyuanIndexProgressCard({
       </div>
       {job.status === 'paused' && job.phase === 'summarizing' ? (
         <div className="mt-3 rounded-lg border border-accent-copper/30 bg-paper/70 p-3">
-          <p className="text-secondary font-medium text-foreground">Approve cloud summaries</p>
+          <p className="text-secondary font-medium text-foreground">
+            {cloudApprovalSaved ? 'Resume approved cloud summaries' : 'Approve cloud summaries'}
+          </p>
           {cloudDisclosure ? (
             <>
               <p className="mt-1 text-metadata text-muted-foreground">
@@ -382,7 +389,13 @@ function SiyuanIndexProgressCard({
                 onClick={onApproveCloud}
                 disabled={cloudApprovalPending}
               >
-                {cloudApprovalPending ? 'Saving approval…' : 'Approve exact route and resume'}
+                {cloudApprovalPending
+                  ? cloudApprovalSaved
+                    ? 'Resuming…'
+                    : 'Saving approval…'
+                  : cloudApprovalSaved
+                    ? 'Resume approved exact route'
+                    : 'Approve exact route and resume'}
               </Button>
             </>
           ) : (
@@ -549,6 +562,7 @@ export function ContextPage() {
     estimatedMaxSentBytes: number;
   } | null>(null);
   const [cloudApprovalPending, setCloudApprovalPending] = React.useState(false);
+  const [cloudApprovalSaved, setCloudApprovalSaved] = React.useState(false);
   const [summaryModelRouteId, setSummaryModelRouteId] = React.useState('');
   const [summaryModelEffort, setSummaryModelEffort] = React.useState<EffortLabel>('auto');
   const [summaryMode, setSummaryMode] = React.useState<SiyuanSummaryMode>('selected');
@@ -787,6 +801,7 @@ export function ContextPage() {
       isLocalProvider(selectedSummaryModel.provider)
     ) {
       setCloudSummaryDisclosure(null);
+      setCloudApprovalSaved(false);
       return;
     }
     const selectedCloudModel = selectedSummaryModel;
@@ -794,13 +809,32 @@ export function ContextPage() {
     void readSiyuanIndexEntries(projectId, selectedMap.id).then((entries) => {
       const manifest = readSiyuanMapManifest(projectId, selectedMap.id);
       if (!active || !manifest) return;
-      setCloudSummaryDisclosure({
+      const disclosure = {
         providerId: selectedCloudModel.provider,
         connectionId: selectedCloudModel.connectionId!,
         modelId: selectedCloudModel.modelId,
         effort: summaryModelEffort,
         ...computeSiyuanCloudSummaryScope(entries, selectedMap.rootDir, manifest.summaryPolicy),
-      });
+      };
+      setCloudSummaryDisclosure(disclosure);
+      try {
+        const approvedIdentity = approvedCloudSiyuanSummaryIdentity({
+          approval: manifest.cloudSummaryApproval,
+          job: indexJobSnapshot,
+          entries,
+          root: selectedMap.rootDir,
+          policy: manifest.summaryPolicy,
+        });
+        setCloudApprovalSaved(
+          hasSiyuanMapJobAuthority(selectedMap, manifest, indexJobSnapshot, accountId) &&
+            approvedIdentity.providerId === disclosure.providerId &&
+            approvedIdentity.connectionId === disclosure.connectionId &&
+            approvedIdentity.modelId === disclosure.modelId &&
+            (approvedIdentity.effort ?? 'auto') === disclosure.effort,
+        );
+      } catch {
+        setCloudApprovalSaved(false);
+      }
     });
     return () => {
       active = false;
@@ -808,10 +842,77 @@ export function ContextPage() {
   }, [
     selectedSummaryModel,
     summaryModelEffort,
-    indexJobSnapshot?.phase,
-    indexJobSnapshot?.status,
+    indexJobSnapshot,
     projectId,
     selectedMap,
+    accountId,
+  ]);
+
+  const resumeApprovedCloudSummaries = React.useCallback(async () => {
+    if (!projectId || !selectedMap || !cloudSummaryDisclosure) {
+      throw new Error('siyuan_cloud_summary_resume_context_missing');
+    }
+    const [job, entries] = await Promise.all([
+      readSiyuanIndexJob(projectId, selectedMap.id),
+      readSiyuanIndexEntries(projectId, selectedMap.id),
+    ]);
+    const manifest = readSiyuanMapManifest(projectId, selectedMap.id);
+    const selectedPreference = readSiyuanSummaryRoutePreference(
+      window.localStorage,
+      accountId,
+      projectId,
+      selectedMap.id,
+    );
+    if (
+      !job ||
+      !manifest ||
+      job.status !== 'paused' ||
+      job.phase !== 'summarizing' ||
+      !hasSiyuanMapJobAuthority(selectedMap, manifest, job, accountId)
+    ) {
+      throw new Error('siyuan_cloud_summary_authority_changed');
+    }
+    const approvedIdentity = approvedCloudSiyuanSummaryIdentity({
+      approval: manifest.cloudSummaryApproval,
+      job,
+      entries,
+      root: selectedMap.rootDir,
+      policy: manifest.summaryPolicy,
+    });
+    const exactApprovedIdentity = {
+      ...approvedIdentity,
+      effort: approvedIdentity.effort ?? 'auto',
+    };
+    if (
+      !matchesSiyuanSummaryRoutePreference(selectedPreference, exactApprovedIdentity) ||
+      selectedSummaryModel?.provider !== approvedIdentity.providerId ||
+      selectedSummaryModel.connectionId !== approvedIdentity.connectionId ||
+      selectedSummaryModel.modelId !== approvedIdentity.modelId ||
+      summaryModelEffort !== (approvedIdentity.effort ?? 'auto') ||
+      cloudSummaryDisclosure.providerId !== approvedIdentity.providerId ||
+      cloudSummaryDisclosure.connectionId !== approvedIdentity.connectionId ||
+      cloudSummaryDisclosure.modelId !== approvedIdentity.modelId ||
+      cloudSummaryDisclosure.effort !== (approvedIdentity.effort ?? 'auto')
+    ) {
+      throw new Error('siyuan_cloud_summary_route_changed');
+    }
+    const resumedAt = Date.now();
+    const resumed = await resumeSiyuanSummaryJobWithSameCloudRoute(
+      projectId,
+      selectedMap.id,
+      exactApprovedIdentity,
+      resumedAt,
+    );
+    setIndexJobSnapshot(resumed);
+    setIndexResumeNonce((value) => value + 1);
+    setStatus('Resuming the previously approved exact route without changing consent…');
+  }, [
+    accountId,
+    cloudSummaryDisclosure,
+    projectId,
+    selectedMap,
+    selectedSummaryModel,
+    summaryModelEffort,
   ]);
 
   const approveCloudSummaries = React.useCallback(async () => {
@@ -887,6 +988,30 @@ export function ContextPage() {
       ) {
         throw new Error('siyuan_cloud_summary_approval_scope_changed');
       }
+      const persistedApprovalMatchesSelectedRoute =
+        manifest.cloudSummaryApproval?.providerId === cloudSummaryDisclosure.providerId &&
+        manifest.cloudSummaryApproval.connectionId === cloudSummaryDisclosure.connectionId &&
+        manifest.cloudSummaryApproval.modelId === cloudSummaryDisclosure.modelId &&
+        (manifest.cloudSummaryApproval.effort ?? 'auto') === cloudSummaryDisclosure.effort;
+      if (persistedApprovalMatchesSelectedRoute) {
+        const approvedIdentity = approvedCloudSiyuanSummaryIdentity({
+          approval: manifest.cloudSummaryApproval,
+          job,
+          entries,
+          root: selectedMap.rootDir,
+          policy: manifest.summaryPolicy,
+        });
+        if (
+          approvedIdentity.providerId !== cloudSummaryDisclosure.providerId ||
+          approvedIdentity.connectionId !== cloudSummaryDisclosure.connectionId ||
+          approvedIdentity.modelId !== cloudSummaryDisclosure.modelId ||
+          (approvedIdentity.effort ?? 'auto') !== cloudSummaryDisclosure.effort
+        ) {
+          throw new Error('siyuan_cloud_summary_route_changed');
+        }
+        await resumeApprovedCloudSummaries();
+        return;
+      }
       const approvedAt = Date.now();
       const approvedManifest = updateSiyuanMapManifest(
         manifest,
@@ -960,6 +1085,7 @@ export function ContextPage() {
     accountId,
     cloudSummaryDisclosure,
     projectId,
+    resumeApprovedCloudSummaries,
     selectedMap,
     selectedSummaryModel,
     summaryModelEffort,
@@ -2162,6 +2288,7 @@ export function ContextPage() {
                   onSummaryModelChange={selectSummaryModel}
                   onApproveCloud={() => void approveCloudSummaries()}
                   cloudApprovalPending={cloudApprovalPending}
+                  cloudApprovalSaved={cloudApprovalSaved}
                   onPause={() => {
                     indexControlRef.current?.pause();
                     void productionSiyuanContextMaps

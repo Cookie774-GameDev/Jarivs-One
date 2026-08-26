@@ -88,6 +88,49 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(destructiveArchive).toBeGreaterThan(sameRouteResume);
   });
 
+  it('resumes persisted exact-route consent with a fresh clock and without rewriting approval', () => {
+    const recoveryStart = source.indexOf(
+      'const resumeApprovedCloudSummaries = React.useCallback(async () => {',
+    );
+    const recoveryEnd = source.indexOf(
+      'const approveCloudSummaries = React.useCallback(async () => {',
+      recoveryStart,
+    );
+    const recovery = source.slice(recoveryStart, recoveryEnd);
+
+    expect(recoveryStart).toBeGreaterThan(-1);
+    expect(recoveryEnd).toBeGreaterThan(recoveryStart);
+    expect(source).toContain('Resume approved exact route');
+    expect(source).toContain('Approve exact route and resume');
+    expect(recovery).toContain('approvedCloudSiyuanSummaryIdentity({');
+    expect(recovery).toContain('hasSiyuanMapJobAuthority(selectedMap, manifest, job, accountId)');
+    expect(recovery).toContain('const resumedAt = Date.now();');
+    expect(recovery).toContain('resumeSiyuanSummaryJobWithSameCloudRoute(');
+    expect(recovery).toContain('exactApprovedIdentity,\n      resumedAt,');
+    expect(recovery).not.toContain('updateSiyuanMapManifest(');
+    expect(recovery).not.toContain('writeSiyuanMapManifest(');
+    expect(recovery).not.toContain('cloudSummaryApproval:');
+    expect(recovery).not.toContain('approvedAt');
+    expect(recovery).not.toContain('archiveSiyuanSummaryJobForCloudRestart');
+    expect(recovery).not.toContain('archiveAndRestartSiyuanSummaryJobForCloud');
+    expect(recovery).not.toContain('resetSiyuanSummaryEntry');
+    expect(recovery).not.toContain('updateSiyuanIndexJobStatus(');
+
+    const approvalStart = source.indexOf(
+      'const approveCloudSummaries = React.useCallback(async () => {',
+    );
+    const approvedAt = source.indexOf('const approvedAt = Date.now();', approvalStart);
+    const approvalBeforeWrite = source.slice(approvalStart, approvedAt);
+    const validator = approvalBeforeWrite.indexOf('approvedCloudSiyuanSummaryIdentity({');
+    const resume = approvalBeforeWrite.indexOf('await resumeApprovedCloudSummaries();');
+    expect(approvedAt).toBeGreaterThan(approvalStart);
+    expect(validator).toBeGreaterThan(-1);
+    expect(resume).toBeGreaterThan(validator);
+    expect(approvalBeforeWrite).toContain('const persistedApprovalMatchesSelectedRoute =');
+    expect(approvalBeforeWrite).toContain('approvedCloudSiyuanSummaryIdentity({');
+    expect(approvalBeforeWrite).toContain('await resumeApprovedCloudSummaries();');
+  });
+
   it('discloses and approves only remaining persisted summary work', () => {
     expect(source).not.toMatch(
       /computeSiyuanCloudSummaryScope\(\s*entries\.map\(resetSiyuanSummaryEntry\)/gu,
