@@ -136,7 +136,6 @@ import {
   createSiyuanIndexJob,
   readSiyuanIndexEntries,
   readSiyuanIndexJob,
-  resetSiyuanSummaryEntry,
   resumeSiyuanSummaryJobWithSameCloudRoute,
   updateSiyuanIndexJobStatus,
   type SiyuanIndexJobRecord,
@@ -800,11 +799,7 @@ export function ContextPage() {
         connectionId: selectedCloudModel.connectionId!,
         modelId: selectedCloudModel.modelId,
         effort: summaryModelEffort,
-        ...computeSiyuanCloudSummaryScope(
-          entries.map(resetSiyuanSummaryEntry),
-          selectedMap.rootDir,
-          manifest.summaryPolicy,
-        ),
+        ...computeSiyuanCloudSummaryScope(entries, selectedMap.rootDir, manifest.summaryPolicy),
       });
     });
     return () => {
@@ -881,7 +876,7 @@ export function ContextPage() {
         throw new Error('siyuan_cloud_summary_authority_changed');
       }
       const currentScope = computeSiyuanCloudSummaryScope(
-        entries.map(resetSiyuanSummaryEntry),
+        entries,
         selectedMap.rootDir,
         manifest.summaryPolicy,
       );

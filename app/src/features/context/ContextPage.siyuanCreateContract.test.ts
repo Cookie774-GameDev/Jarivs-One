@@ -87,4 +87,11 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(sameRouteResume).toBeGreaterThan(-1);
     expect(destructiveArchive).toBeGreaterThan(sameRouteResume);
   });
+
+  it('discloses and approves only remaining persisted summary work', () => {
+    expect(source).not.toMatch(
+      /computeSiyuanCloudSummaryScope\(\s*entries\.map\(resetSiyuanSummaryEntry\)/gu,
+    );
+    expect(source.match(/computeSiyuanCloudSummaryScope\(\s*entries,/gu)).toHaveLength(2);
+  });
 });
