@@ -71,6 +71,8 @@ export type ProviderEvent =
       result?: unknown;
       /** Sanitized request-local scope classification; never carries a path or reusable authority. */
       scope?: 'explicit_root_inventory';
+      /** Bounded OpenCode todo evidence. Never carries generic tool input or output. */
+      checklist?: import('../openCodeChecklist').OpenCodeChecklistSnapshot;
     }
   | { type: 'model'; modelId: string }
   | { type: 'usage'; usage: UsageSnapshot }

@@ -12,6 +12,8 @@ import {
   filterOpenCodeModelsToConnectedProviders,
   managedOpenCodeAuthResult,
   normalizePersistentOpenCodeUsage,
+  normalizeToolEvent,
+  openCodeChecklistSnapshotsFromMessages,
   openCodePersistentAdapter,
   parseOpenCodeLiveModels,
   parseConnectedOpenCodeProviderIds,
@@ -52,6 +54,82 @@ const liveModels = parseOpenCodeLiveModels({
 });
 
 describe('persistent OpenCode live authority', () => {
+  it('retains only bounded todo milestone evidence from tool updates', () => {
+    const event = normalizeToolEvent(
+      {
+        type: 'message.part.updated',
+        properties: {
+          part: {
+            type: 'tool',
+            tool: 'todowrite',
+            callID: 'todo-call-1',
+            state: {
+              status: 'running',
+              input: {
+                todos: [
+                  {
+                    id: 'milestone-1',
+                    content: 'Build the first level',
+                    status: 'in_progress',
+                    path: 'C:/private',
+                  },
+                ],
+                prompt: 'must-not-survive',
+              },
+            },
+          },
+        },
+      },
+      {},
+    );
+
+    expect(event).toMatchObject({
+      type: 'tool',
+      name: 'todowrite',
+      status: 'started',
+      callId: 'todo-call-1',
+      checklist: {
+        tool: 'todowrite',
+        callId: 'todo-call-1',
+        todos: [{ id: 'milestone-1', content: 'Build the first level', status: 'in_progress' }],
+      },
+    });
+    expect(JSON.stringify(event)).not.toMatch(/private|must-not-survive/iu);
+  });
+
+  it('reconciles persisted todo evidence when idle polling wins the live-event race', () => {
+    const snapshots = openCodeChecklistSnapshotsFromMessages([
+      {
+        info: { role: 'assistant' },
+        parts: [
+          {
+            type: 'tool',
+            tool: 'todowrite',
+            callID: 'todo-call-persisted',
+            state: {
+              status: 'completed',
+              input: {
+                todos: [
+                  { content: 'Build the maze', status: 'in_progress', privatePath: 'C:/private' },
+                ],
+              },
+              output: 'must-not-survive',
+            },
+          },
+        ],
+      },
+    ]);
+
+    expect(snapshots).toEqual([
+      {
+        tool: 'todowrite',
+        callId: 'todo-call-persisted',
+        todos: [{ id: 'item-1', content: 'Build the maze', status: 'in_progress' }],
+      },
+    ]);
+    expect(JSON.stringify(snapshots)).not.toMatch(/private|must-not-survive/iu);
+  });
+
   it('normalizes the full OpenCode usage receipt with provider provenance', () => {
     const usage = normalizePersistentOpenCodeUsage({
       type: 'message.updated',

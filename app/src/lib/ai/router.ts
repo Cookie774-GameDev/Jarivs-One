@@ -484,6 +484,10 @@ async function executePersistentOpenCode(
     let terminalDoneObserved = false;
     let completedReadOnlyFilesystem = false;
     let anyToolObserved = false;
+    const checklistEvidence = new Map<
+      string,
+      import('./openCodeChecklist').OpenCodeChecklistSnapshot
+    >();
     let rootInventoryObserved = false;
     let boundedSearchObserved = false;
     const representativeReads = new Set<string>();
@@ -552,6 +556,7 @@ async function executePersistentOpenCode(
           observedSessionId = event.sessionId;
         } else if (event.type === 'tool') {
           anyToolObserved = true;
+          if (event.checklist) checklistEvidence.set(event.checklist.callId, event.checklist);
           if (req.explicitReadSynthesis) {
             throw new Error('kernel_explicit_root_synthesis_tool_observed');
           }
@@ -620,6 +625,9 @@ async function executePersistentOpenCode(
         boundedSearchObserved,
         representativeReadCount: representativeReads.size,
       }),
+      ...(checklistEvidence.size > 0
+        ? { checklist_evidence: Object.freeze([...checklistEvidence.values()]) }
+        : {}),
     };
   } catch (error) {
     if (!isAbortError(error) && !providerReportedFailure) {

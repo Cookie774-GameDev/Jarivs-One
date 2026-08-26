@@ -58,6 +58,7 @@ import { decideContextRoute } from '@/features/context/rlm/routeDecision';
 import { harnessRuntimeManager, type HarnessRuntimeManager } from '@/lib/harness/runtimeManager';
 import { nativeOpenCodeEvents, nativeOpenCodeRequest } from '@/lib/harness/openCodeNativeTransport';
 import { normalizePortableAbsolutePath } from '@/lib/actions/filePolicy';
+import { sanitizeOpenCodeChecklistSnapshot } from '@/lib/ai/openCodeChecklist';
 
 const SESSION_REGISTRY_KEY = 'vibespace.opencode-session-registry.v1';
 const AUTH_CACHE_TTL_MS = 60_000;
@@ -732,7 +733,7 @@ export function classifyExplicitRootInventoryScope(
   return matches ? 'explicit_root_inventory' : undefined;
 }
 
-function normalizeToolEvent(
+export function normalizeToolEvent(
   event: OpenCodeRawEvent,
   request: Pick<ProviderRequest, 'explicitReadRoot' | 'workingDirectory'>,
 ): ProviderEvent | undefined {
@@ -751,16 +752,17 @@ function normalizeToolEvent(
         : 'started';
   const name = cleanIdentifier(part.tool ?? part.name, 256);
   if (!name) return undefined;
+  const callId = cleanIdentifier(part.callID ?? part.callId ?? part.id);
   const scope = classifyExplicitRootInventoryScope({ name, status, input: state?.input }, request);
+  const checklist = sanitizeOpenCodeChecklistSnapshot(name, callId, state?.input);
   return {
     type: 'tool',
     name,
     status,
-    ...(cleanIdentifier(part.callID ?? part.callId ?? part.id)
-      ? { callId: cleanIdentifier(part.callID ?? part.callId ?? part.id) }
-      : {}),
+    ...(callId ? { callId } : {}),
     ...(status === 'completed' && state && 'output' in state ? { result: state.output } : {}),
     ...(scope ? { scope } : {}),
+    ...(checklist ? { checklist } : {}),
   };
 }
 
@@ -927,6 +929,26 @@ function assistantTextFromMessages(messages: readonly OpenCodeMessageRecord[]): 
       .join('');
   }
   return '';
+}
+
+export function openCodeChecklistSnapshotsFromMessages(
+  messages: readonly OpenCodeMessageRecord[],
+): readonly import('../openCodeChecklist').OpenCodeChecklistSnapshot[] {
+  const snapshots = new Map<string, import('../openCodeChecklist').OpenCodeChecklistSnapshot>();
+  for (const message of messages) {
+    const role = cleanIdentifier(message.info?.role, 32)?.toLocaleLowerCase('en-US');
+    if (role !== 'assistant') continue;
+    for (const part of message.parts ?? []) {
+      const state = recordOf(part.state);
+      const snapshot = sanitizeOpenCodeChecklistSnapshot(
+        part.tool ?? part.name,
+        part.callID ?? part.callId ?? part.id,
+        state?.input,
+      );
+      if (snapshot) snapshots.set(snapshot.callId, snapshot);
+    }
+  }
+  return Object.freeze([...snapshots.values()]);
 }
 
 /**
@@ -1555,6 +1577,16 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     if (canonical && canonical !== emittedText) {
       const delta = canonicalOpenCodeTextSuffix(emittedText, canonical);
       if (delta) yield { type: 'text', delta };
+    }
+    const reconciledChecklists = openCodeChecklistSnapshotsFromMessages(messages);
+    for (const checklist of reconciledChecklists) {
+      yield {
+        type: 'tool',
+        name: checklist.tool,
+        status: 'completed',
+        callId: checklist.callId,
+        checklist,
+      };
     }
     yield { type: 'done', finishReason };
   } catch (error) {

@@ -21,6 +21,8 @@ import type {
   JarvisCommandCenterHandlers,
   JarvisRun,
 } from '@/features/jarvis-command-center/types';
+import type { JarvisEvent } from '@/lib/jarvis/contracts/execution';
+import { jarvisEventRepo } from '@/lib/db/jarvisRepositories';
 import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
 import type { ChatId, Message, Part } from '@/types';
 import type { JarvisCreatorKind } from '@/features/jarvis-creator/contracts';
@@ -36,6 +38,7 @@ import {
   nextChatMessageWindowCount,
   windowChatMessages,
 } from './chatMessageWindow';
+import { AgentChecklistBar, readBoundedAgentChecklistEvidence } from './AgentChecklistBar';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -59,16 +62,24 @@ export interface ChatThreadProps {
   fixtureMessages?: readonly Message[];
 }
 
-function useCurrentCanonicalRun(
+function useCurrentCanonicalRunState(
   binding: ReturnType<typeof useJarvisCommandCenterBinding>,
   chatId: string,
-): JarvisRun | undefined {
+): Readonly<{
+  run?: JarvisRun;
+  events: readonly JarvisEvent[];
+  eventCoverageComplete: boolean;
+  eventCoverageTruncated: boolean;
+}> {
   type BoundDataPort = NonNullable<typeof binding>['dataPort'];
   type Presence = Readonly<{
     accountId: string;
     chatId: string;
     dataPort: BoundDataPort;
     run?: JarvisRun;
+    events: readonly JarvisEvent[];
+    eventCoverageComplete: boolean;
+    eventCoverageTruncated: boolean;
   }>;
   const [presence, setPresence] = useState<Presence>();
   const accountId = binding?.hostPort.accountId;
@@ -80,10 +91,24 @@ function useCurrentCanonicalRun(
       return;
     }
     const scope = { accountId, chatId, dataPort } as const;
-    setPresence(scope);
+    setPresence({
+      ...scope,
+      events: [],
+      eventCoverageComplete: false,
+      eventCoverageTruncated: false,
+    });
     let disposed = false;
     let generation = 0;
+    let refreshTimer: number | undefined;
+    let refreshing = false;
+    let refreshQueued = false;
+    let backfillCompletedRunId: string | undefined;
     const refresh = async () => {
+      if (refreshing) {
+        refreshQueued = true;
+        return;
+      }
+      refreshing = true;
       const requestGeneration = ++generation;
       try {
         const runs = await dataPort.getRunsForChat({
@@ -91,23 +116,90 @@ function useCurrentCanonicalRun(
           chatId,
           limit: 1,
         });
+        const run = runs.find(
+          (candidate) => candidate.accountId === accountId && candidate.chatId === chatId,
+        );
+        const events = run
+          ? await dataPort.getEventsForRun({ accountId, runId: run.id, limit: 500 })
+          : [];
+        const mergedPages = new Map<string, JarvisEvent>();
+        let fetchedCoverageComplete =
+          !run || events.length < 500 || Math.min(...events.map((event) => event.seq)) <= 1;
+        let fetchedCoverageTruncated = false;
+        if (run && !fetchedCoverageComplete && backfillCompletedRunId !== run.id) {
+          const backfill = await readBoundedAgentChecklistEvidence((afterSeq, limit) =>
+            jarvisEventRepo.listByRun(accountId, run.id, { afterSeq, limit }),
+          );
+          for (const event of backfill.events) {
+            mergedPages.set(`${event.runId}:${event.seq}`, event);
+          }
+          fetchedCoverageComplete = backfill.coverageComplete;
+          fetchedCoverageTruncated = backfill.coverageTruncated;
+          backfillCompletedRunId = run.id;
+        }
+        for (const event of events) mergedPages.set(`${event.runId}:${event.seq}`, event);
         if (!disposed && requestGeneration === generation) {
-          setPresence({
-            ...scope,
-            run: runs.find((run) => run.accountId === accountId && run.chatId === chatId),
+          const relevantEvents = [...mergedPages.values()].filter(
+            (event) =>
+              event.runId === run?.id &&
+              (Boolean(event.canonicalResultEvidence?.stepId) ||
+                (event.producerSourceEvidence?.producerKind === 'hive' &&
+                  Boolean(event.producerSourceEvidence.producerIdentity.stepId))),
+          );
+          setPresence((current) => {
+            const sameRun = current?.run?.id === run?.id;
+            const merged = new Map<string, JarvisEvent>();
+            if (sameRun && current) {
+              for (const event of current.events) merged.set(`${event.runId}:${event.seq}`, event);
+            }
+            for (const event of relevantEvents) merged.set(`${event.runId}:${event.seq}`, event);
+            return {
+              ...scope,
+              run,
+              events: [...merged.values()].sort((left, right) => left.seq - right.seq),
+              eventCoverageComplete:
+                fetchedCoverageComplete || Boolean(sameRun && current?.eventCoverageComplete),
+              eventCoverageTruncated:
+                fetchedCoverageTruncated || Boolean(sameRun && current?.eventCoverageTruncated),
+            };
           });
         }
       } catch {
         if (!disposed && requestGeneration === generation) {
-          setPresence(scope);
+          setPresence((current) => ({
+            ...scope,
+            run: current?.dataPort === dataPort ? current.run : undefined,
+            events: current?.dataPort === dataPort ? current.events : [],
+            eventCoverageComplete:
+              current?.dataPort === dataPort ? current.eventCoverageComplete : false,
+            eventCoverageTruncated:
+              current?.dataPort === dataPort ? current.eventCoverageTruncated : false,
+          }));
+        }
+      } finally {
+        refreshing = false;
+        if (!disposed && refreshQueued) {
+          refreshQueued = false;
+          refreshTimer = window.setTimeout(() => {
+            refreshTimer = undefined;
+            void refresh();
+          }, 120);
         }
       }
     };
-    const unsubscribe = dataPort.subscribe(accountId, chatId, () => void refresh());
+    const scheduleRefresh = () => {
+      if (refreshTimer !== undefined) return;
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = undefined;
+        void refresh();
+      }, 120);
+    };
+    const unsubscribe = dataPort.subscribe(accountId, chatId, scheduleRefresh);
     void refresh();
     return () => {
       disposed = true;
       generation += 1;
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
       unsubscribe();
     };
   }, [accountId, chatId, dataPort]);
@@ -116,8 +208,13 @@ function useCurrentCanonicalRun(
     presence.accountId === accountId &&
     presence.chatId === chatId &&
     presence.dataPort === dataPort
-    ? presence.run
-    : undefined;
+    ? {
+        run: presence.run,
+        events: presence.events,
+        eventCoverageComplete: presence.eventCoverageComplete,
+        eventCoverageTruncated: presence.eventCoverageTruncated,
+      }
+    : { events: [], eventCoverageComplete: false, eventCoverageTruncated: false };
 }
 
 /**
@@ -160,7 +257,8 @@ export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThr
   const hasProjectedCanonicalRun = useJarvisTaskRunStore((state) =>
     Object.values(state.runs).some((run) => run.canonical && run.chatId === String(chatId)),
   );
-  const currentCanonicalRun = useCurrentCanonicalRun(commandCenterBinding, String(chatId));
+  const currentCanonicalState = useCurrentCanonicalRunState(commandCenterBinding, String(chatId));
+  const currentCanonicalRun = currentCanonicalState.run;
   const chatModelSelection = useAuthStore((state) => state.chatModelSelection);
   const hasCanonicalRun = hasProjectedCanonicalRun || Boolean(currentCanonicalRun);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -416,6 +514,14 @@ export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThr
           : undefined
       }
     >
+      <AgentChecklistBar
+        run={currentCanonicalRun}
+        events={currentCanonicalState.events}
+        messages={messages}
+        coverageComplete={currentCanonicalState.eventCoverageComplete}
+        coverageTruncated={currentCanonicalState.eventCoverageTruncated}
+        compact={compact}
+      />
       <div
         data-sik-evidence={
           KERNEL_SMOKE_ENABLED && commandCenterBinding ? SIK_EVIDENCE.chatRuntimeReady : undefined

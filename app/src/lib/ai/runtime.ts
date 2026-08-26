@@ -70,6 +70,7 @@ import {
   readPermissionAccess,
 } from '@/features/jarvis-interaction/permissionAccessStore';
 import { respondToPersistentOpenCodeApproval } from '@/lib/ai/adapters/opencodePersistent';
+import { openCodeChecklistParts } from '@/lib/ai/openCodeChecklist';
 import { grantToolGatewayMutation } from '@/lib/harness/toolGatewayAuthority';
 import { recordOpenCodeApprovalStatus } from '@/lib/harness/openCodeApprovalState';
 import { buildAgentTerminalContext } from '@/features/terminals/agentContext';
@@ -1226,6 +1227,10 @@ export async function installJarvisKernelRuntimeHost(
     Readonly<RawProviderResponse>,
     readonly JarvisArtifactDraft[]
   >();
+  const providerChecklistEvidence = new WeakMap<
+    Readonly<RawProviderResponse>,
+    readonly import('./openCodeChecklist').OpenCodeChecklistSnapshot[]
+  >();
   const providerControlEvidence = new WeakMap<
     Readonly<RawProviderResponse>,
     Readonly<{
@@ -1560,6 +1565,10 @@ export async function installJarvisKernelRuntimeHost(
                   completedAt,
                 });
                 providerArtifactDrafts.set(raw, Object.freeze([]));
+                providerChecklistEvidence.set(
+                  raw,
+                  Object.freeze([...(result.checklist_evidence ?? [])]),
+                );
                 providerControlEvidence.set(
                   raw,
                   Object.freeze({
@@ -1725,23 +1734,36 @@ export async function installJarvisKernelRuntimeHost(
         });
         return envelope;
       }
+      const checklistParts = openCodeChecklistParts(providerChecklistEvidence.get(raw) ?? []);
+      providerChecklistEvidence.delete(raw);
+      const envelopeWithChecklist =
+        checklistParts.length > 0
+          ? Object.freeze({
+              ...envelope,
+              parts: Object.freeze([...envelope.parts, ...checklistParts]),
+            })
+          : envelope;
       const { inferFallbackActionProposals, shouldReplaceModelActionsWithFileReadFallback } =
         await import('@/lib/actions/fallbackActions');
-      const existingIds = envelope.parts
+      const existingIds = envelopeWithChecklist.parts
         .filter(
           (part): part is Extract<(typeof envelope.parts)[number], { kind: 'action_proposal' }> =>
             part.kind === 'action_proposal',
         )
         .map((part) => part.action_id);
-      const fallback = inferFallbackActionProposals(request.userText, envelope.displayText);
+      const fallback = inferFallbackActionProposals(
+        request.userText,
+        envelopeWithChecklist.displayText,
+      );
       if (!shouldReplaceModelActionsWithFileReadFallback(existingIds, fallback)) {
-        return envelope;
+        return envelopeWithChecklist;
       }
       return {
-        ...envelope,
+        ...envelopeWithChecklist,
         mode: 'approval_required',
         parts: [
-          { kind: 'text' as const, text: envelope.displayText },
+          { kind: 'text' as const, text: envelopeWithChecklist.displayText },
+          ...checklistParts,
           ...fallback.map((proposal) => ({
             kind: 'action_proposal' as const,
             call_id: proposal.call_id,

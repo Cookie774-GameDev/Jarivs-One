@@ -213,6 +213,50 @@ describe('canonical OpenCode AI routing', () => {
     );
   });
 
+  it('returns the latest bounded OpenCode todo snapshots without generic tool payloads', async () => {
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield {
+          type: 'tool',
+          name: 'todowrite',
+          status: 'started',
+          callId: 'todo-call-1',
+          checklist: {
+            tool: 'todowrite',
+            callId: 'todo-call-1',
+            todos: [{ id: 'one', content: 'Build the game', status: 'in_progress' }],
+          },
+        } as const;
+        yield {
+          type: 'tool',
+          name: 'todowrite',
+          status: 'completed',
+          callId: 'todo-call-1',
+          result: { secret: 'must-not-be-retained' },
+          checklist: {
+            tool: 'todowrite',
+            callId: 'todo-call-1',
+            todos: [{ id: 'one', content: 'Build the game', status: 'completed' }],
+          },
+        } as const;
+        yield { type: 'done', finishReason: 'stop' } as const;
+      })(),
+    );
+
+    const response = await runAgent({
+      agent: openaiAgent,
+      messages: [{ role: 'user', content: 'make a milestone list' }],
+    });
+    expect(response.checklist_evidence).toEqual([
+      {
+        tool: 'todowrite',
+        callId: 'todo-call-1',
+        todos: [{ id: 'one', content: 'Build the game', status: 'completed' }],
+      },
+    ]);
+    expect(JSON.stringify(response.checklist_evidence)).not.toContain('must-not-be-retained');
+  });
+
   it('fails closed if any tool event appears during grounded synthesis', async () => {
     openCodeSend.mockImplementationOnce(() =>
       (async function* () {

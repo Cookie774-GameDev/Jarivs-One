@@ -190,6 +190,8 @@ export interface LLMResponse {
     boundedSearchObserved: boolean;
     representativeReadCount: number;
   }>;
+  /** Bounded OpenCode todo snapshots; generic tool arguments and results are never retained. */
+  checklist_evidence?: readonly import('./openCodeChecklist').OpenCodeChecklistSnapshot[];
   /** Sanitized semantic receipt for broad explicit-root audits; never contains prose or evidence. */
   explicit_root_audit?: Readonly<{
     complete: boolean;
