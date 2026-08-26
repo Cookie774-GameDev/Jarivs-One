@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   check: vi.fn(),
   flush: vi.fn(),
   relaunch: vi.fn(),
+  exit: vi.fn(),
 }));
 
 vi.mock('@/lib/utils', () => ({ isTauri: true }));
@@ -11,9 +12,18 @@ vi.mock('@/lib/persistence/workspaceFlush', () => ({
   flushWorkspacePersistence: mocks.flush,
 }));
 vi.mock('@tauri-apps/plugin-updater', () => ({ check: mocks.check }));
-vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: mocks.relaunch }));
+vi.mock('@tauri-apps/plugin-process', () => ({
+  relaunch: mocks.relaunch,
+  exit: mocks.exit,
+}));
 
-import { checkForAppUpdate, compareReleaseVersions } from './updates';
+import {
+  checkForAppUpdate,
+  compareReleaseVersions,
+  installPreparedAppUpdate,
+  normalizeUpdateNotes,
+  prepareAppUpdate,
+} from './updates';
 import { MONOCHROME_VISUAL_TEST } from './runtimeProfile';
 
 describe('checkForAppUpdate persistence gates', () => {
@@ -21,6 +31,7 @@ describe('checkForAppUpdate persistence gates', () => {
     vi.clearAllMocks();
     vi.unstubAllEnvs();
     mocks.relaunch.mockResolvedValue(undefined);
+    mocks.exit.mockResolvedValue(undefined);
   });
 
   it('awaits persistence before install and again before relaunch', async () => {
@@ -60,6 +71,92 @@ describe('checkForAppUpdate persistence gates', () => {
     releaseRelaunchFlush?.();
     await expect(pending).resolves.toMatchObject({ available: true, installed: true });
     expect(mocks.relaunch).toHaveBeenCalledOnce();
+  });
+});
+
+describe('deferred updater lifecycle', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+    mocks.flush.mockResolvedValue({ completed: 1, failed: 0, timedOut: false });
+    mocks.relaunch.mockResolvedValue(undefined);
+    mocks.exit.mockResolvedValue(undefined);
+  });
+
+  it('downloads a verified update without installing or relaunching it', async () => {
+    const download = vi.fn(async (onEvent: (event: { event: string }) => void) => {
+      onEvent({ event: 'Finished' });
+    });
+    const install = vi.fn();
+    mocks.check.mockResolvedValue({
+      version: '9.9.9',
+      body: 'Safe release notes',
+      download,
+      install,
+    });
+
+    await expect(prepareAppUpdate({ expectedVersion: '9.9.9' })).resolves.toMatchObject({
+      available: true,
+      prepared: true,
+      installed: false,
+      version: '9.9.9',
+    });
+
+    expect(download).toHaveBeenCalledOnce();
+    expect(install).not.toHaveBeenCalled();
+    expect(mocks.flush).not.toHaveBeenCalled();
+    expect(mocks.relaunch).not.toHaveBeenCalled();
+    expect(mocks.exit).not.toHaveBeenCalled();
+  });
+
+  it('installs the prepared update on natural close and exits without a forced relaunch', async () => {
+    const download = vi.fn();
+    const install = vi.fn();
+    mocks.check.mockResolvedValue({ version: '9.9.8', body: 'Notes', download, install });
+    await prepareAppUpdate({ expectedVersion: '9.9.8' });
+
+    await expect(installPreparedAppUpdate({ relaunch: false })).resolves.toMatchObject({
+      installed: true,
+      version: '9.9.8',
+    });
+
+    expect(mocks.flush).toHaveBeenCalledWith('pre-update-install');
+    expect(install).toHaveBeenCalledOnce();
+    expect(mocks.exit).toHaveBeenCalledWith(0);
+    expect(mocks.relaunch).not.toHaveBeenCalled();
+  });
+
+  it('does not duplicate the native exit persistence flush', async () => {
+    const download = vi.fn();
+    const install = vi.fn();
+    mocks.check.mockResolvedValue({ version: '9.9.7', body: 'Notes', download, install });
+    await prepareAppUpdate({ expectedVersion: '9.9.7' });
+
+    await installPreparedAppUpdate({ relaunch: false, persistenceAlreadyRequested: true });
+
+    expect(mocks.flush).not.toHaveBeenCalled();
+    expect(install).toHaveBeenCalledOnce();
+    expect(mocks.exit).toHaveBeenCalledWith(0);
+  });
+
+  it('refuses to stage a different version than the one shown to the user', async () => {
+    const download = vi.fn();
+    mocks.check.mockResolvedValue({ version: '10.0.0', body: 'Different', download });
+
+    await expect(prepareAppUpdate({ expectedVersion: '9.9.9' })).rejects.toThrow(
+      /changed while preparing/i,
+    );
+    expect(download).not.toHaveBeenCalled();
+  });
+});
+
+describe('normalizeUpdateNotes', () => {
+  it('returns bounded readable release notes and a truthful fallback', () => {
+    expect(normalizeUpdateNotes('  Security fixes.\u0000\nFaster startup.  ', '2.0.0')).toBe(
+      'Security fixes.\nFaster startup.',
+    );
+    expect(normalizeUpdateNotes('   ', '2.0.0')).toContain('Release notes for VibeSpace v2.0.0');
+    expect(normalizeUpdateNotes('x'.repeat(10_000), '2.0.0').length).toBeLessThanOrEqual(2_004);
   });
 });
 

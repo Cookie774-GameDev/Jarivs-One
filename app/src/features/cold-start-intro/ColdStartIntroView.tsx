@@ -179,11 +179,13 @@ export function ColdStartIntroView() {
       }}
     >
       <video
+        data-testid="cold-start-intro-video"
         ref={videoRef}
         src={COLD_START_INTRO_VIDEO_SRC}
         playsInline
-        autoPlay
-        // Muted is intentionally OFF — preserve authored AAC audio.
+        // Playback starts exactly once in the effect above. The native intro
+        // window grants autoplay; the muted-first handshake preserves picture
+        // startup reliability before restoring the authored AAC track.
         muted={false}
         controls={false}
         disablePictureInPicture
@@ -203,7 +205,8 @@ export function ColdStartIntroView() {
           inset: 0,
           width: '100%',
           height: '100%',
-          objectFit: 'contain',
+          objectFit: 'cover',
+          objectPosition: 'center center',
           background: '#050608',
           display: failed ? 'none' : 'block',
         }}

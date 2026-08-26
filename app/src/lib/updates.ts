@@ -24,6 +24,7 @@ export interface UpdateProgress {
 
 export interface UpdateResult {
   available: boolean;
+  prepared?: boolean;
   installed: boolean;
   version?: string;
   notes?: string;
@@ -41,7 +42,7 @@ interface PendingUpdate {
 /** The updater download/install progress event shape used by the install seam. */
 interface UpdateDownloadEvent {
   event: 'Started' | 'Progress' | 'Finished' | (string & {});
-  data: { contentLength?: number | null; chunkLength: number };
+  data?: { contentLength?: number | null; chunkLength?: number };
 }
 
 /** Private adapters for the five frozen `updates.ts` side-effect rows. */
@@ -55,8 +56,17 @@ interface UpdateEffectSeams {
     update: PendingUpdate,
     onEvent: (event: UpdateDownloadEvent) => void,
   ): Promise<void>;
+  /** Download a pending update without installing it. */
+  downloadUpdate(
+    update: PendingUpdate,
+    onEvent: (event: UpdateDownloadEvent) => void,
+  ): Promise<void>;
+  /** Install an update previously downloaded by `downloadUpdate`. */
+  installPreparedUpdate(update: PendingUpdate): Promise<void>;
   /** Row 5: relaunch the application (process effect). */
   relaunch(): Promise<void>;
+  /** Finish a natural close on platforms where install does not exit automatically. */
+  exit(): Promise<void>;
 }
 
 const updateEffectAdapters: UpdateEffectSeams = {
@@ -75,11 +85,27 @@ const updateEffectAdapters: UpdateEffectSeams = {
     };
     await handle.downloadAndInstall(onEvent);
   },
+  async downloadUpdate(update, onEvent) {
+    const handle = update.handle as {
+      download(cb: (event: UpdateDownloadEvent) => void): Promise<void>;
+    };
+    await handle.download(onEvent);
+  },
+  async installPreparedUpdate(update) {
+    const handle = update.handle as { install(): Promise<void> };
+    await handle.install();
+  },
   async relaunch() {
     const { relaunch } = await import('@tauri-apps/plugin-process');
     await relaunch();
   },
+  async exit() {
+    const { exit } = await import('@tauri-apps/plugin-process');
+    await exit(0);
+  },
 };
+
+let preparedUpdate: PendingUpdate | undefined;
 
 /**
  * Fail-closed guard for the frozen update side-effect rows. In the visual-test
@@ -103,6 +129,127 @@ export function getAutoUpdateEnabled(): boolean {
 export function setAutoUpdateEnabled(enabled: boolean): void {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(AUTO_UPDATE_KEY, enabled ? '1' : '0');
+}
+
+const MAX_UPDATE_NOTES_LENGTH = 2_000;
+
+export function normalizeUpdateNotes(notes: string | undefined, version: string): string {
+  const normalized = (notes ?? '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, '')
+    .replace(/\r\n?/gu, '\n')
+    .trim();
+  if (!normalized) {
+    return `Release notes for VibeSpace v${version} are available on the official release page.`;
+  }
+  if (normalized.length <= MAX_UPDATE_NOTES_LENGTH) return normalized;
+  return `${normalized.slice(0, MAX_UPDATE_NOTES_LENGTH).trimEnd()}…`;
+}
+
+function releaseUrl(version: string): string {
+  return `${UPDATE_RELEASES_URL}/tag/v${version.replace(/^v/u, '')}`;
+}
+
+function reportDownloadProgress(
+  onProgress: ((progress: UpdateProgress) => void) | undefined,
+): (event: UpdateDownloadEvent) => void {
+  let downloadedBytes = 0;
+  let totalBytes: number | undefined;
+  onProgress?.({ phase: 'downloading', downloadedBytes, totalBytes });
+  return (event) => {
+    if (event.event === 'Started') {
+      downloadedBytes = 0;
+      totalBytes = event.data?.contentLength ?? undefined;
+    } else if (event.event === 'Progress') {
+      downloadedBytes += event.data?.chunkLength ?? 0;
+    } else if (event.event === 'Finished') {
+      onProgress?.({ phase: 'available', downloadedBytes, totalBytes });
+      return;
+    }
+    onProgress?.({ phase: 'downloading', downloadedBytes, totalBytes });
+  };
+}
+
+export async function prepareAppUpdate(options: {
+  expectedVersion: string;
+  onProgress?: (progress: UpdateProgress) => void;
+}): Promise<UpdateResult> {
+  if (!isTauri) throw new Error('Updates are only available in the installed desktop app.');
+  assertUpdateEffectsAllowed('updater-check');
+
+  if (preparedUpdate?.version === options.expectedVersion) {
+    return {
+      available: true,
+      prepared: true,
+      installed: false,
+      version: preparedUpdate.version,
+      notes: normalizeUpdateNotes(preparedUpdate.notes, preparedUpdate.version),
+      notesUrl: releaseUrl(preparedUpdate.version),
+      releaseChannel: UPDATE_RELEASE_CHANNEL,
+    };
+  }
+
+  const update = await updateEffectAdapters.checkUpdate();
+  if (!update) {
+    options.onProgress?.({ phase: 'none' });
+    return {
+      available: false,
+      prepared: false,
+      installed: false,
+      releaseChannel: UPDATE_RELEASE_CHANNEL,
+    };
+  }
+  if (update.version !== options.expectedVersion) {
+    throw new Error(
+      'The available update changed while preparing it. Check again before installing.',
+    );
+  }
+
+  assertUpdateEffectsAllowed('updater-download');
+  await updateEffectAdapters.downloadUpdate(update, reportDownloadProgress(options.onProgress));
+  preparedUpdate = update;
+  return {
+    available: true,
+    prepared: true,
+    installed: false,
+    version: update.version,
+    notes: normalizeUpdateNotes(update.notes, update.version),
+    notesUrl: releaseUrl(update.version),
+    releaseChannel: UPDATE_RELEASE_CHANNEL,
+  };
+}
+
+export async function installPreparedAppUpdate(options: {
+  relaunch: boolean;
+  persistenceAlreadyRequested?: boolean;
+}): Promise<UpdateResult> {
+  const update = preparedUpdate;
+  if (!update) throw new Error('No downloaded update is ready to install.');
+
+  if (!options.persistenceAlreadyRequested) {
+    assertUpdateEffectsAllowed('persistence-flush-install');
+    await updateEffectAdapters.flushPersistence('pre-update-install');
+  }
+  assertUpdateEffectsAllowed('install-prepared-update');
+  await updateEffectAdapters.installPreparedUpdate(update);
+  preparedUpdate = undefined;
+
+  if (options.relaunch) {
+    assertUpdateEffectsAllowed('relaunch');
+    await updateEffectAdapters.relaunch();
+  } else {
+    assertUpdateEffectsAllowed('exit-after-update-install');
+    await updateEffectAdapters.exit();
+  }
+
+  return {
+    available: true,
+    prepared: true,
+    installed: true,
+    version: update.version,
+    notes: normalizeUpdateNotes(update.notes, update.version),
+    notesUrl: releaseUrl(update.version),
+    releaseChannel: UPDATE_RELEASE_CHANNEL,
+  };
 }
 
 export async function checkForAppUpdate(
@@ -134,7 +281,7 @@ export async function checkForAppUpdate(
       installed: false,
       version,
       notes,
-      notesUrl: `${UPDATE_RELEASES_URL}/tag/v${version.replace(/^v/u, '')}`,
+      notesUrl: releaseUrl(version),
       releaseChannel: UPDATE_RELEASE_CHANNEL,
     };
   }
@@ -152,12 +299,12 @@ export async function checkForAppUpdate(
   await updateEffectAdapters.installUpdate(update, (event) => {
     if (event.event === 'Started') {
       downloadedBytes = 0;
-      totalBytes = event.data.contentLength ?? undefined;
+      totalBytes = event.data?.contentLength ?? undefined;
       options.onProgress?.({ phase: 'downloading', downloadedBytes, totalBytes });
       return;
     }
     if (event.event === 'Progress') {
-      downloadedBytes += event.data.chunkLength;
+      downloadedBytes += event.data?.chunkLength ?? 0;
       options.onProgress?.({ phase: 'downloading', downloadedBytes, totalBytes });
       return;
     }
@@ -176,8 +323,8 @@ export async function checkForAppUpdate(
   assertUpdateEffectsAllowed('relaunch');
   try {
     await updateEffectAdapters.relaunch();
-  } catch (err) {
-    console.warn('[updates] relaunch failed after install', err);
+  } catch {
+    console.warn('[updates] Relaunch failed after the signed update was installed.');
   }
 
   return {
@@ -185,7 +332,7 @@ export async function checkForAppUpdate(
     installed: true,
     version,
     notes,
-    notesUrl: `${UPDATE_RELEASES_URL}/tag/v${version.replace(/^v/u, '')}`,
+    notesUrl: releaseUrl(version),
     releaseChannel: UPDATE_RELEASE_CHANNEL,
   };
 }

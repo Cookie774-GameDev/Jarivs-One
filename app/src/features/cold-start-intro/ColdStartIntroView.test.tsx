@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { COLD_START_INTRO_CROSSFADE_MS, COLD_START_INTRO_HARD_TIMEOUT_MS } from './introAsset';
 import { ColdStartIntroView } from './ColdStartIntroView';
@@ -53,6 +53,18 @@ describe('ColdStartIntroView recovery', () => {
     expect(native.main.show).toHaveBeenCalledTimes(1);
     expect(native.main.unminimize).toHaveBeenCalledTimes(1);
     expect(native.current.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts one deterministic preloaded 4K presentation path at maximum viewport fill', () => {
+    render(<ColdStartIntroView />);
+
+    const video = screen.getByTestId('cold-start-intro-video') as HTMLVideoElement;
+    expect(video.preload).toBe('auto');
+    expect(video.autoplay).toBe(false);
+    expect(video.style.width).toBe('100%');
+    expect(video.style.height).toBe('100%');
+    expect(video.style.objectFit).toBe('cover');
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
   });
 
   it('continues the native handoff and closes the intro when one main-window step rejects', async () => {

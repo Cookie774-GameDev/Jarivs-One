@@ -7,6 +7,8 @@ import { UpdateWarningHost } from './UpdateWarningHost';
 
 const mocks = vi.hoisted(() => ({
   checkForAppUpdate: vi.fn(),
+  prepareAppUpdate: vi.fn(),
+  installPreparedAppUpdate: vi.fn(),
   toast: {
     error: vi.fn(),
     info: vi.fn(),
@@ -18,11 +20,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/updates', () => ({
   checkForAppUpdate: mocks.checkForAppUpdate,
   getAutoUpdateEnabled: () => true,
+  prepareAppUpdate: mocks.prepareAppUpdate,
+  installPreparedAppUpdate: mocks.installPreparedAppUpdate,
+  normalizeUpdateNotes: (notes: string | undefined, version: string) =>
+    notes?.trim() || `Release notes for VibeSpace v${version}.`,
 }));
 
-vi.mock('@/lib/persistence/workspaceFlush', () => ({
-  flushWorkspacePersistence: vi.fn(),
-}));
+vi.mock('@/lib/sfx/playUiSound', () => ({ playUiSound: vi.fn() }));
 
 vi.mock('@/components/ui/toast', () => ({
   toast: mocks.toast,
