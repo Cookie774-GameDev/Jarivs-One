@@ -202,6 +202,7 @@ const EXCLUDED_SEGMENTS = new Set([
   'dist',
   'node_modules',
   'target',
+  'target-codex-tests',
   'temp',
 ]);
 const SECRET_FILE =
@@ -243,7 +244,10 @@ function excludedPath(
   return (
     [...EXCLUDED_SEGMENTS].some(
       (segment) =>
-        lower === segment || lower.startsWith(`${segment}/`) || lower.includes(`/${segment}/`),
+        lower === segment ||
+        lower.startsWith(`${segment}/`) ||
+        lower.endsWith(`/${segment}`) ||
+        lower.includes(`/${segment}/`),
     ) ||
     customExclusions.some((selected) => {
       const exact = canonical(selected).replace(/^\.\//u, '').toLocaleLowerCase('en-US');

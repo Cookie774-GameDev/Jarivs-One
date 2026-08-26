@@ -137,4 +137,33 @@ describe('ContextPage SiYuan creation contract', () => {
     );
     expect(source.match(/computeSiyuanCloudSummaryScope\(\s*entries,/gu)).toHaveLength(2);
   });
+
+  it('refreshes changed file membership without approving or dispatching summaries', () => {
+    const refreshStart = source.indexOf(
+      'const refreshCloudSummaryScope = React.useCallback(async () => {',
+    );
+    const effectStart = source.indexOf('React.useEffect(() => {', refreshStart);
+    const refresh = source.slice(refreshStart, effectStart);
+    expect(source).toContain('Refresh file scope');
+    expect(refreshStart).toBeGreaterThan(-1);
+    expect(refresh).toContain('hasSiyuanMapJobAuthority(selectedMap, manifest, job, accountId)');
+    expect(refresh).toContain('forceScopeReconcileRef.current = {');
+    expect(refresh).toContain('mapId: selectedMap.id,');
+    expect(refresh).toContain('requestId: crypto.randomUUID(),');
+    expect(refresh).toContain('forceScopeReconcileRef.current) return;');
+    expect(refresh).not.toContain('updateSiyuanMapManifest(');
+    expect(refresh).not.toContain('writeSiyuanMapManifest(');
+    expect(refresh).not.toContain('resumeSiyuanSummaryJobWithSameCloudRoute(');
+    expect(source).toContain('refreshIntent.projectId === projectId');
+    expect(source).toContain('refreshIntent.mapId === selectedMap.id');
+    expect(source).toContain("updateSiyuanIndexJobStatus(projectId, selectedMap.id, 'running')");
+    expect(source).toContain("durableJob?.status === 'running'");
+    expect(source).toContain("updateSiyuanIndexJobStatus(projectId, selectedMap.id, 'paused')");
+    expect(source).toContain('const existing = forceReconcile');
+    expect(source).toContain("throw new Error('siyuan_cloud_summary_scope_refresh_detached')");
+    expect(source).toContain("throw new Error('siyuan_cloud_summary_scope_refresh_terminal')");
+    expect(source).toContain("durableJob.status !== 'running'");
+    expect(source).toContain('if (!forceReconcile || refreshIntentCleared)');
+    expect(source).toContain('forceReconcile,');
+  });
 });

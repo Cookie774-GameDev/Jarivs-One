@@ -281,6 +281,7 @@ export interface SiyuanContextMapSyncOptions {
   signal?: AbortSignal;
   control?: SiyuanIndexJobControl;
   list?: SiyuanDirectoryLister;
+  forceReconcile?: boolean;
   onIndexProgress?: (
     counts: Readonly<{
       indexed: number;
@@ -418,7 +419,8 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
       ? await readSiyuanIndexJob(projectId, record.id)
       : null;
     const needsResumeReconciliation = Boolean(
-      durableJob && (durableJob.reconciledAt ?? 0) < rendererStartedAt,
+      durableJob &&
+      (options.forceReconcile === true || (durableJob.reconciledAt ?? 0) < rendererStartedAt),
     );
     if (durableJob?.status === 'running') {
       const resumeNow = Date.now();

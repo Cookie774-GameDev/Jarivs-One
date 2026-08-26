@@ -925,6 +925,7 @@ describe('SiYuan Context Map integration', () => {
       }),
       phase: 'creating_nodes' as const,
       indexed: 1,
+      reconciledAt: Date.now() + 60_000,
     };
     await replaceSiyuanIndexJob(job, {
       path: record.rootDir,
@@ -954,6 +955,7 @@ describe('SiYuan Context Map integration', () => {
       const result = await createSiyuanContextMapIntegration(nativePort).sync('project-1', record, {
         accountId: 'account-1',
         summaryPolicy: policy,
+        forceReconcile: true,
         list: async (path) => ({
           ok: true,
           path,

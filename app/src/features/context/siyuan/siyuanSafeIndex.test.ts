@@ -403,6 +403,11 @@ describe('SiYuan safe read-only index', () => {
                 path,
                 entries: [
                   { name: '.git', path: `${root}/.git`, isDir: true },
+                  {
+                    name: 'target-codex-tests',
+                    path: `${root}/Allowed/target-codex-tests`,
+                    isDir: true,
+                  },
                   { name: 'Allowed', path: `${root}/Allowed`, isDir: true },
                   { name: 'Locked', path: `${root}/Locked`, isDir: true },
                   { name: 'Other', path: `${root}/Other`, isDir: true },
@@ -434,7 +439,8 @@ describe('SiYuan safe read-only index', () => {
 
     expect(requestedBatches).toHaveLength(2);
     expect(requestedBatches.flat()).not.toContain(`${root}/.git`);
-    expect(index.excluded).toBe(1);
+    expect(requestedBatches.flat()).not.toContain(`${root}/Allowed/target-codex-tests`);
+    expect(index.excluded).toBe(2);
     expect(index.unreadable).toBe(1);
     expect(index.entries.map((entry) => entry.relativePath)).toEqual([
       'Allowed',

@@ -191,8 +191,10 @@ function SiyuanIndexProgressCard({
   summaryModelEffort,
   onSummaryModelChange,
   onApproveCloud,
+  onRefreshScope,
   cloudApprovalPending,
   cloudApprovalSaved,
+  scopeRefreshPending,
 }: {
   job: SiyuanIndexJobRecord;
   summaryScope: string;
@@ -215,8 +217,10 @@ function SiyuanIndexProgressCard({
   summaryModelEffort: EffortLabel;
   onSummaryModelChange: (routeId: string, effort: EffortLabel) => void;
   onApproveCloud: () => void;
+  onRefreshScope: () => void;
   cloudApprovalPending: boolean;
   cloudApprovalSaved: boolean;
+  scopeRefreshPending: boolean;
 }) {
   const phaseLabel: Record<SiyuanIndexJobRecord['phase'], string> = {
     discovering: 'Discovering allowed files and folders',
@@ -387,7 +391,7 @@ function SiyuanIndexProgressCard({
                 size="sm"
                 variant="accent"
                 onClick={onApproveCloud}
-                disabled={cloudApprovalPending}
+                disabled={cloudApprovalPending || scopeRefreshPending}
               >
                 {cloudApprovalPending
                   ? cloudApprovalSaved
@@ -396,6 +400,15 @@ function SiyuanIndexProgressCard({
                   : cloudApprovalSaved
                     ? 'Resume approved exact route'
                     : 'Approve exact route and resume'}
+              </Button>
+              <Button
+                className="mt-2 ml-2"
+                size="sm"
+                variant="secondary"
+                onClick={onRefreshScope}
+                disabled={cloudApprovalPending || scopeRefreshPending}
+              >
+                {scopeRefreshPending ? 'Refreshing scope…' : 'Refresh file scope'}
               </Button>
             </>
           ) : (
@@ -563,6 +576,7 @@ export function ContextPage() {
   } | null>(null);
   const [cloudApprovalPending, setCloudApprovalPending] = React.useState(false);
   const [cloudApprovalSaved, setCloudApprovalSaved] = React.useState(false);
+  const [scopeRefreshPending, setScopeRefreshPending] = React.useState(false);
   const [summaryModelRouteId, setSummaryModelRouteId] = React.useState('');
   const [summaryModelEffort, setSummaryModelEffort] = React.useState<EffortLabel>('auto');
   const [summaryMode, setSummaryMode] = React.useState<SiyuanSummaryMode>('selected');
@@ -590,6 +604,11 @@ export function ContextPage() {
   const lastAppliedFileRef = React.useRef('');
   const generationAbortRef = React.useRef<AbortController | null>(null);
   const cloudApprovalPendingRef = React.useRef(false);
+  const forceScopeReconcileRef = React.useRef<{
+    projectId: string;
+    mapId: string;
+    requestId: string;
+  } | null>(null);
   const indexControlRef = React.useRef<ReturnType<typeof createSiyuanIndexJobControl> | null>(null);
 
   const applyPersistenceState = React.useCallback(
@@ -1091,8 +1110,48 @@ export function ContextPage() {
     summaryModelEffort,
   ]);
 
+  const refreshCloudSummaryScope = React.useCallback(async () => {
+    if (!projectId || !selectedMap || scopeRefreshPending || forceScopeReconcileRef.current) return;
+    setScopeRefreshPending(true);
+    try {
+      const job = await readSiyuanIndexJob(projectId, selectedMap.id);
+      const manifest = readSiyuanMapManifest(projectId, selectedMap.id);
+      if (
+        !job ||
+        !manifest ||
+        job.status !== 'paused' ||
+        job.phase !== 'summarizing' ||
+        !hasSiyuanMapJobAuthority(selectedMap, manifest, job, accountId)
+      ) {
+        throw new Error('siyuan_cloud_summary_scope_refresh_not_safe');
+      }
+      forceScopeReconcileRef.current = {
+        projectId,
+        mapId: selectedMap.id,
+        requestId: crypto.randomUUID(),
+      };
+      setIndexResumeNonce((value) => value + 1);
+      setStatus('Preparing a read-only file-scope refresh before cloud approval…');
+    } catch (error) {
+      forceScopeReconcileRef.current = null;
+      setStatus('File scope refresh needs review. The summary job remains safe.');
+      toast.error(
+        'File scope not refreshed',
+        error instanceof Error ? error.message : 'The saved map authority changed.',
+      );
+    } finally {
+      if (!forceScopeReconcileRef.current) setScopeRefreshPending(false);
+    }
+  }, [accountId, projectId, scopeRefreshPending, selectedMap]);
+
   React.useEffect(() => {
     if (!SIYUAN_CONTEXT_VAULT_ENABLED || !projectId || !selectedMap || generating) return;
+    const refreshIntent = forceScopeReconcileRef.current;
+    const forceReconcile = Boolean(
+      refreshIntent &&
+      refreshIntent.projectId === projectId &&
+      refreshIntent.mapId === selectedMap.id,
+    );
     let active = true;
     const controller = new AbortController();
     const control = createSiyuanIndexJobControl();
@@ -1100,7 +1159,21 @@ export function ContextPage() {
     setStatus('Reading this Context Map from SiYuan...');
     void readSiyuanIndexJob(projectId, selectedMap.id)
       .then(async (job) => {
-        if (job && ['paused', 'cancelled', 'failed'].includes(job.status)) {
+        if (job?.status === 'paused' && forceReconcile) {
+          const manifest = readSiyuanMapManifest(projectId, selectedMap.id);
+          if (!hasSiyuanMapJobAuthority(selectedMap, manifest, job, accountId)) {
+            throw new Error('siyuan_cloud_summary_scope_refresh_not_safe');
+          }
+          job = await updateSiyuanIndexJobStatus(projectId, selectedMap.id, 'running');
+          if (!job) throw new Error('siyuan_cloud_summary_scope_refresh_not_started');
+          if (active) {
+            setIndexJobSnapshot(job);
+            setStatus('Refreshing the read-only file scope before cloud approval…');
+          }
+        } else if (job && ['paused', 'cancelled', 'failed'].includes(job.status)) {
+          if (forceReconcile) {
+            throw new Error('siyuan_cloud_summary_scope_refresh_terminal');
+          }
           if (active) {
             setIndexJobSnapshot(job);
             setStatus(
@@ -1123,12 +1196,23 @@ export function ContextPage() {
             setIndexJobSnapshot(failed ?? job);
             setStatus('SiYuan indexing needs repair before this map can resume.');
           }
+          if (forceReconcile) {
+            throw new Error('siyuan_cloud_summary_scope_refresh_authority_changed');
+          }
           return null;
         }
-        if (!active) return null;
-        const existing = await productionSiyuanContextMaps.read(projectId, selectedMap);
+        if (!active) {
+          if (forceReconcile) throw new Error('siyuan_cloud_summary_scope_refresh_detached');
+          return null;
+        }
+        const existing = forceReconcile
+          ? null
+          : await productionSiyuanContextMaps.read(projectId, selectedMap);
         if (existing && job?.status !== 'running') return existing;
         if (job?.status === 'completed') {
+          if (forceReconcile) {
+            throw new Error('siyuan_cloud_summary_scope_refresh_terminal');
+          }
           setStatus('SiYuan Context Map needs repair before it can reopen.');
           return null;
         }
@@ -1138,6 +1222,7 @@ export function ContextPage() {
         return productionSiyuanContextMaps.sync(projectId, selectedMap, {
           accountId,
           workspaceId,
+          forceReconcile,
           signal: controller.signal,
           control,
           onIndexProgress: ({ indexed, excluded, unreadable }) => {
@@ -1149,13 +1234,42 @@ export function ContextPage() {
         });
       })
       .then((snapshot) => {
+        if (
+          forceReconcile &&
+          forceScopeReconcileRef.current?.requestId === refreshIntent?.requestId
+        ) {
+          forceScopeReconcileRef.current = null;
+          setScopeRefreshPending(false);
+        }
         if (!active || !snapshot) return;
         setSiyuanTree(snapshot.tree);
         setStatus('SiYuan Context Map ready.');
       })
-      .catch((error) => {
+      .catch(async (error) => {
+        let refreshIntentCleared = false;
+        let durableJob = await readSiyuanIndexJob(projectId, selectedMap.id).catch(() => null);
+        if (forceReconcile && durableJob?.status === 'running') {
+          durableJob = await updateSiyuanIndexJobStatus(projectId, selectedMap.id, 'paused').catch(
+            () => durableJob,
+          );
+        }
+        if (
+          forceReconcile &&
+          durableJob &&
+          durableJob.status !== 'running' &&
+          forceScopeReconcileRef.current?.requestId === refreshIntent?.requestId
+        ) {
+          forceScopeReconcileRef.current = null;
+          refreshIntentCleared = true;
+        }
+        if (!forceReconcile || refreshIntentCleared) setScopeRefreshPending(false);
         if (!active) return;
         if (controller.signal.aborted) return;
+        if (durableJob) setIndexJobSnapshot(durableJob);
+        if (durableJob?.status === 'paused') {
+          setStatus('File scope refreshed. Review the exact cloud summary scope to continue.');
+          return;
+        }
         setStatus('SiYuan could not read this Context Map.');
         toast.error(
           'SiYuan Context Map unavailable',
@@ -2287,8 +2401,10 @@ export function ContextPage() {
                   summaryModelEffort={summaryModelEffort}
                   onSummaryModelChange={selectSummaryModel}
                   onApproveCloud={() => void approveCloudSummaries()}
+                  onRefreshScope={() => void refreshCloudSummaryScope()}
                   cloudApprovalPending={cloudApprovalPending}
                   cloudApprovalSaved={cloudApprovalSaved}
+                  scopeRefreshPending={scopeRefreshPending}
                   onPause={() => {
                     indexControlRef.current?.pause();
                     void productionSiyuanContextMaps
