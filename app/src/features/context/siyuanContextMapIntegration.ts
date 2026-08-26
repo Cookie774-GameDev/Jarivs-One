@@ -1,5 +1,6 @@
 import { devConsole } from '@/features/dev-console';
 import {
+  createProductionSiyuanRlmPort,
   getProductionSiyuanRlmPort,
   type ProductionSiyuanRlmPort,
   type SiyuanManagedDocument,
@@ -35,6 +36,7 @@ import {
   readSiyuanIndexJob,
   replaceSiyuanIndexEntries,
   updateSiyuanIndexJobStatus,
+  type SiyuanIndexJobArchive,
   type SiyuanIndexJobRecord,
 } from './siyuan/siyuanIndexJobStore';
 import {
@@ -118,6 +120,95 @@ function nodeDocumentMarkdown(
   return `${lines.join('\n')}\n`;
 }
 
+export async function clearArchivedSiyuanSummaryDocuments(
+  projectId: string,
+  mapId: string,
+  archive: SiyuanIndexJobArchive,
+  port: ProductionSiyuanRlmPort = createProductionSiyuanRlmPort(),
+  options: Readonly<{
+    operationTimeoutMs?: number;
+    onProgress?: (progress: {
+      phase: 'validating' | 'rewriting';
+      completed: number;
+      total: number;
+    }) => void;
+  }> = {},
+): Promise<void> {
+  if (archive.job.projectId !== projectId || archive.job.mapId !== mapId) {
+    throw new Error('siyuan_summary_archive_scope_mismatch');
+  }
+  const manifest = readSiyuanMapManifest(projectId, mapId);
+  if (!manifest?.rootDocumentId) throw new Error('siyuan_summary_root_document_missing');
+  const bindings = await readSiyuanNodeBindings(projectId, mapId);
+  const summarizedEntries = archive.entries.filter((entry) => Boolean(entry.summary));
+  const operationTimeoutMs = Math.max(1, options.operationTimeoutMs ?? 15_000);
+  const boundedOperation = async <T>(operation: Promise<T>, label: string): Promise<T> => {
+    let timer: ReturnType<typeof globalThis.setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        operation,
+        new Promise<never>((_resolve, reject) => {
+          timer = globalThis.setTimeout(
+            () => reject(new Error(`siyuan_summary_native_operation_timeout:${label}`)),
+            operationTimeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) globalThis.clearTimeout(timer);
+    }
+  };
+  const reportProgress = (phase: 'validating' | 'rewriting', completed: number, total: number) => {
+    options.onProgress?.({ phase, completed, total });
+    if (completed === total || completed % 25 === 0) {
+      devConsole.log({
+        channel: 'ai',
+        level: 'info',
+        message: 'SiYuan cloud summary reset progress',
+        detail: { projectId, mapId, phase, completed, total },
+      });
+    }
+  };
+  for (const entry of summarizedEntries) {
+    if (!bindings[entry.nodeId]) throw new Error('siyuan_summary_binding_missing');
+  }
+  const rewrites: Array<{
+    current: SiyuanManagedDocument;
+    markdown: string;
+  }> = [];
+  for (const [index, entry] of summarizedEntries.entries()) {
+    const documentId = bindings[entry.nodeId]!;
+    const current = await boundedOperation(
+      port.getBlock(projectId, documentId),
+      `read:${index + 1}`,
+    );
+    if (!current.markdown.includes(nodeMarker(mapId, entry.nodeId))) {
+      throw new Error('siyuan_summary_binding_authority_mismatch');
+    }
+    const parentDocumentId = entry.parentNodeId
+      ? bindings[entry.parentNodeId]
+      : manifest.rootDocumentId;
+    if (!parentDocumentId) throw new Error('siyuan_summary_parent_binding_missing');
+    const { summaryState: _summaryState, ...withoutSummaryState } = entry;
+    const markdown = nodeDocumentMarkdown(
+      mapId,
+      { ...withoutSummaryState, summary: null },
+      parentDocumentId,
+    );
+    rewrites.push({ current, markdown });
+    reportProgress('validating', index + 1, summarizedEntries.length);
+  }
+  for (const [index, { current, markdown }] of rewrites.entries()) {
+    if (current.markdown !== markdown) {
+      await boundedOperation(
+        port.updateManagedDocument(projectId, current.id, current.markdown, markdown),
+        `write:${index + 1}`,
+      );
+    }
+    reportProgress('rewriting', index + 1, rewrites.length);
+  }
+}
+
 function encodeTree(tree: ProjectContextTree): string {
   const bytes = new TextEncoder().encode(JSON.stringify(tree));
   let binary = '';
@@ -184,6 +275,7 @@ export interface SiyuanContextMapSnapshot {
 
 export interface SiyuanContextMapSyncOptions {
   accountId?: string | null;
+  workspaceId?: string | null;
   summaryPolicy?: Readonly<Partial<SiyuanSummaryPolicy>>;
   sourcePolicy?: Readonly<Partial<SiyuanSourcePolicy>>;
   signal?: AbortSignal;
@@ -379,7 +471,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
     let activeNodeIds = new Set(index.entries.map((entry) => entry.nodeId));
     const documentPromises = new Map<string, Promise<string>>();
     for (let cursor = 0; cursor < index.entries.length; cursor += SIYUAN_NODE_WRITE_CONCURRENCY) {
-      await options.control?.checkpoint();
+      await options.control?.checkpoint(options.signal);
       if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
       const batch = index.entries.slice(cursor, cursor + SIYUAN_NODE_WRITE_CONCURRENCY);
       const tasks = batch.map((entry) => {
@@ -458,7 +550,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
       }
     }
     if (durableJob && needsResumeReconciliation) {
-      await options.control?.checkpoint();
+      await options.control?.checkpoint(options.signal);
       if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
       const freshIndex = await scanSiyuanFilesystemIndex(record, manifest.summaryPolicy, {
         signal: options.signal,
@@ -515,7 +607,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
         }
 
         for (const entry of changedEntries) {
-          await options.control?.checkpoint();
+          await options.control?.checkpoint(options.signal);
           if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
           const parentDocumentId = entry.parentNodeId
             ? (bindings[entry.parentNodeId] ?? rootDocument.id)
@@ -641,6 +733,15 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
         job: durableJob,
         identity: summaryIdentity,
         generator: summaryGenerator,
+        requestScope:
+          options.accountId && options.workspaceId
+            ? {
+                accountId: options.accountId,
+                workspaceId: options.workspaceId,
+                projectId,
+                workingDirectory: record.rootDir,
+              }
+            : undefined,
         control: options.control,
         signal: options.signal,
         onCompleted: async (entry) => {
@@ -665,7 +766,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
     }
     const removedNodeIds: string[] = [];
     for (const [nodeId, documentId] of Object.entries(bindings)) {
-      await options.control?.checkpoint();
+      await options.control?.checkpoint(options.signal);
       if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
       if (activeNodeIds.has(nodeId)) continue;
       try {
@@ -713,7 +814,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
             : { kind: 'none' },
       status: 'ready',
     });
-    await options.control?.checkpoint();
+    await options.control?.checkpoint(options.signal);
     if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
     if (durableJob) {
       const latestJob = await readSiyuanIndexJob(projectId, record.id);
@@ -909,13 +1010,15 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
               'siyuan_cloud_summary_approval_scope_drift',
               'siyuan_cloud_summary_restart_required',
             ].includes(error.message);
-          const durablePaused = error instanceof Error && error.message === 'siyuan_index_paused';
+          const currentJob = await readSiyuanIndexJob(exactProjectId, record.id);
+          const durablePaused =
+            (error instanceof Error && error.message === 'siyuan_index_paused') ||
+            currentJob?.status === 'paused';
           const interrupted =
             effectiveOptions.signal?.aborted ||
             (error instanceof Error && error.message === 'siyuan_index_cancelled');
           if (!userCancelled && !summaryPaused && !interrupted) {
-            const durableJob = await readSiyuanIndexJob(exactProjectId, record.id);
-            if (durableJob?.status === 'running') {
+            if (currentJob?.status === 'running') {
               await updateSiyuanIndexJobStatus(exactProjectId, record.id, 'failed');
             }
           }
@@ -954,6 +1057,21 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
         options.signal?.removeEventListener('abort', relayAbort);
         if (synchronizing.get(syncKey) === task) synchronizing.delete(syncKey);
         if (syncControllers.get(syncKey) === syncController) syncControllers.delete(syncKey);
+      }
+    },
+
+    async pause(projectId: string, mapId: string): Promise<void> {
+      const exactProjectId = projectId.trim();
+      const exactMapId = mapId.trim();
+      if (!exactProjectId || !exactMapId) throw new Error('siyuan_context_map_scope_invalid');
+      const key = documentKey(exactProjectId, exactMapId);
+      await updateSiyuanIndexJobStatus(exactProjectId, exactMapId, 'paused');
+      syncControllers.get(key)?.abort('siyuan_index_paused');
+      await synchronizing.get(key)?.catch(() => undefined);
+      await updateSiyuanIndexJobStatus(exactProjectId, exactMapId, 'paused');
+      const manifest = readSiyuanMapManifest(exactProjectId, exactMapId);
+      if (manifest) {
+        writeSiyuanMapManifest(updateSiyuanMapManifest(manifest, { status: 'paused' }));
       }
     },
 

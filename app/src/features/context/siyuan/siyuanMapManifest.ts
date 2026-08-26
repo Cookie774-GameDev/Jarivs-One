@@ -1,4 +1,5 @@
 import type { ContextMapRecord } from '../tree';
+import type { EffortLabel } from '@/lib/ai/catalog/modelVariants';
 import { canonicalSiyuanAuthorityRoot } from './siyuanPathAuthority';
 
 export const SIYUAN_MAP_MANIFEST_VERSION = 1 as const;
@@ -27,6 +28,7 @@ export interface SiyuanCloudSummaryApproval {
   providerId: string;
   connectionId: string;
   modelId: string;
+  effort?: EffortLabel;
   sourceRoot: string;
   summaryPolicyFingerprint: string;
   eligibleFileCount: number;
@@ -213,6 +215,8 @@ export function isValidSiyuanCloudSummaryApproval(
     SAFE_ROUTE_VALUE.test(value.connectionId) &&
     typeof value.modelId === 'string' &&
     SAFE_ROUTE_VALUE.test(value.modelId) &&
+    (value.effort === undefined ||
+      ['auto', 'minimal', 'low', 'medium', 'high', 'ultra', 'max'].includes(value.effort)) &&
     typeof value.sourceRoot === 'string' &&
     value.sourceRoot.length > 0 &&
     value.sourceRoot.length <= 4_096 &&
@@ -236,6 +240,7 @@ function normalizeSiyuanCloudSummaryApproval(approval: unknown): SiyuanCloudSumm
     providerId: approval.providerId,
     connectionId: approval.connectionId,
     modelId: approval.modelId,
+    effort: approval.effort ?? 'auto',
     sourceRoot: approval.sourceRoot,
     summaryPolicyFingerprint: approval.summaryPolicyFingerprint,
     eligibleFileCount: approval.eligibleFileCount,

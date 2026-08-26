@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { ProductionSiyuanRlmPort } from './siyuanRlmProduction';
-import { createSiyuanContextMapIntegration } from './siyuanContextMapIntegration';
+import {
+  clearArchivedSiyuanSummaryDocuments,
+  createSiyuanContextMapIntegration,
+} from './siyuanContextMapIntegration';
 import type { ContextMapRecord } from './tree';
 import {
   createSiyuanMapManifest,
@@ -11,7 +14,11 @@ import {
   updateSiyuanMapManifest,
   writeSiyuanMapManifest,
 } from './siyuan/siyuanMapManifest';
-import { clearSiyuanNodeBindings, readSiyuanNodeBindings } from './siyuan/siyuanBindingStore';
+import {
+  clearSiyuanNodeBindings,
+  readSiyuanNodeBindings,
+  writeSiyuanNodeBindings,
+} from './siyuan/siyuanBindingStore';
 import { createSiyuanIndexJobControl } from './siyuan/siyuanSafeIndex';
 import { siyuanIndexPolicyFingerprint } from './siyuan/siyuanSafeIndex';
 import {
@@ -134,6 +141,240 @@ describe('SiYuan Context Map integration', () => {
     const integration = createSiyuanContextMapIntegration(nativePort);
     await Promise.all([integration.prewarm('project-1'), integration.prewarm('project-1')]);
     expect(nativePort.searchBlocks).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes archived summaries in place before an exact model restart', async () => {
+    const record = map();
+    const manifest = updateSiyuanMapManifest(
+      createSiyuanMapManifest(record, 'project-1'),
+      { notebookId: 'notebook-1', rootDocumentId: 'root-document' },
+      100,
+    );
+    writeSiyuanMapManifest(manifest);
+    await writeSiyuanNodeBindings('project-1', 'map-1', { 'file-node': 'doc-1' });
+    const nativePort = port({
+      markdown:
+        '<!-- vibespace-context-node:v1 map=map-1 node=file-node -->\n# index.ts\n\n## Summary\n\nGenerated locally.\n',
+    });
+    const job = {
+      ...createSiyuanIndexJob({
+        projectId: 'project-1',
+        mapId: 'map-1',
+        canonicalRoot: record.rootDir,
+        policyFingerprint: 'policy-a',
+      }),
+      phase: 'summarizing' as const,
+      status: 'paused' as const,
+      pauseReason: 'user' as const,
+      summarized: 1,
+    };
+    const progress = vi.fn();
+
+    await clearArchivedSiyuanSummaryDocuments(
+      'project-1',
+      'map-1',
+      {
+        scope: job.scope,
+        archivedAt: 200,
+        job,
+        entries: [
+          {
+            nodeId: 'file-node',
+            parentNodeId: null,
+            title: 'index.ts',
+            kind: 'file',
+            relativePath: 'index.ts',
+            sourcePointer: `${record.rootDir}\\index.ts`,
+            summary: 'Generated locally.',
+            summaryState: 'completed',
+            sizeBytes: 42,
+            modifiedAt: 1,
+          },
+        ],
+        frontier: [],
+        summaryUsage: [],
+      },
+      nativePort,
+      { onProgress: progress },
+    );
+
+    expect(nativePort.updateManagedDocument).toHaveBeenCalledOnce();
+    expect(vi.mocked(nativePort.updateManagedDocument).mock.calls[0]?.[1]).toBe('doc-1');
+    expect(vi.mocked(nativePort.updateManagedDocument).mock.calls[0]?.[3]).not.toContain(
+      '## Summary',
+    );
+    expect(nativePort.createManagedDocument).not.toHaveBeenCalled();
+    expect(nativePort.deleteManagedDocument).not.toHaveBeenCalled();
+    expect(progress.mock.calls).toEqual([
+      [{ phase: 'validating', completed: 1, total: 1 }],
+      [{ phase: 'rewriting', completed: 1, total: 1 }],
+    ]);
+  });
+
+  it('times out a stalled native summary rewrite without repinning the durable job', async () => {
+    const record = map();
+    writeSiyuanMapManifest(
+      updateSiyuanMapManifest(
+        createSiyuanMapManifest(record, 'project-1'),
+        { notebookId: 'notebook-1', rootDocumentId: 'root-document' },
+        100,
+      ),
+    );
+    await writeSiyuanNodeBindings('project-1', 'map-1', { 'file-node': 'doc-stalled' });
+    const nativePort = port();
+    vi.mocked(nativePort.getBlock).mockImplementationOnce(() => new Promise(() => undefined));
+    const job = {
+      ...createSiyuanIndexJob({
+        projectId: 'project-1',
+        mapId: 'map-1',
+        canonicalRoot: record.rootDir,
+        policyFingerprint: 'policy-a',
+      }),
+      phase: 'summarizing' as const,
+      status: 'paused' as const,
+      pauseReason: 'user' as const,
+      summarized: 1,
+    };
+
+    await expect(
+      clearArchivedSiyuanSummaryDocuments(
+        'project-1',
+        'map-1',
+        {
+          scope: job.scope,
+          archivedAt: 200,
+          job,
+          entries: [
+            {
+              nodeId: 'file-node',
+              parentNodeId: null,
+              title: 'index.ts',
+              kind: 'file',
+              relativePath: 'index.ts',
+              sourcePointer: `${record.rootDir}\\index.ts`,
+              summary: 'Generated locally.',
+              summaryState: 'completed',
+              sizeBytes: 42,
+              modifiedAt: 1,
+            },
+          ],
+          frontier: [],
+          summaryUsage: [],
+        },
+        nativePort,
+        { operationTimeoutMs: 5 },
+      ),
+    ).rejects.toThrow('siyuan_summary_native_operation_timeout:read:1');
+    expect(nativePort.updateManagedDocument).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when a summarized node has lost its structural parent binding', async () => {
+    const record = map();
+    writeSiyuanMapManifest(
+      updateSiyuanMapManifest(
+        createSiyuanMapManifest(record, 'project-1'),
+        { notebookId: 'notebook-1', rootDocumentId: 'root-document' },
+        100,
+      ),
+    );
+    await writeSiyuanNodeBindings('project-1', 'map-1', { 'file-node': 'doc-1' });
+    const nativePort = port({
+      markdown:
+        '<!-- vibespace-context-node:v1 map=map-1 node=file-node -->\n# index.ts\n\n## Summary\n\nGenerated locally.\n',
+    });
+    const job = createSiyuanIndexJob({
+      projectId: 'project-1',
+      mapId: 'map-1',
+      canonicalRoot: record.rootDir,
+      policyFingerprint: 'policy-a',
+    });
+
+    await expect(
+      clearArchivedSiyuanSummaryDocuments(
+        'project-1',
+        'map-1',
+        {
+          scope: job.scope,
+          archivedAt: 200,
+          job,
+          entries: [
+            {
+              nodeId: 'file-node',
+              parentNodeId: 'missing-parent',
+              title: 'index.ts',
+              kind: 'file',
+              relativePath: 'index.ts',
+              sourcePointer: `${record.rootDir}\\index.ts`,
+              summary: 'Generated locally.',
+              summaryState: 'completed',
+              sizeBytes: 42,
+              modifiedAt: 1,
+            },
+          ],
+          frontier: [],
+          summaryUsage: [],
+        },
+        nativePort,
+      ),
+    ).rejects.toThrow('siyuan_summary_parent_binding_missing');
+    expect(nativePort.updateManagedDocument).not.toHaveBeenCalled();
+  });
+
+  it('uses an isolated production queue so a timeout cannot poison shared RLM work', () => {
+    const source = readFileSync(
+      resolve('src/features/context/siyuanContextMapIntegration.ts'),
+      'utf8',
+    );
+    expect(source).toContain('port: ProductionSiyuanRlmPort = createProductionSiyuanRlmPort()');
+    expect(source).not.toContain('port: ProductionSiyuanRlmPort = getProductionSiyuanRlmPort()');
+  });
+
+  it('fails closed before rewriting when an archived summary binding is not authoritative', async () => {
+    const record = map();
+    writeSiyuanMapManifest(
+      updateSiyuanMapManifest(
+        createSiyuanMapManifest(record, 'project-1'),
+        { notebookId: 'notebook-1', rootDocumentId: 'root-document' },
+        100,
+      ),
+    );
+    await writeSiyuanNodeBindings('project-1', 'map-1', { 'file-node': 'doc-1' });
+    const nativePort = port({ markdown: '<!-- unrelated -->\n# Other document\n' });
+    const job = createSiyuanIndexJob({
+      projectId: 'project-1',
+      mapId: 'map-1',
+      canonicalRoot: record.rootDir,
+      policyFingerprint: 'policy-a',
+    });
+    await expect(
+      clearArchivedSiyuanSummaryDocuments(
+        'project-1',
+        'map-1',
+        {
+          scope: job.scope,
+          archivedAt: 200,
+          job,
+          entries: [
+            {
+              nodeId: 'file-node',
+              parentNodeId: null,
+              title: 'index.ts',
+              kind: 'file',
+              relativePath: 'index.ts',
+              sourcePointer: `${record.rootDir}\\index.ts`,
+              summary: 'Generated locally.',
+              summaryState: 'completed',
+              sizeBytes: 42,
+              modifiedAt: 1,
+            },
+          ],
+          frontier: [],
+          summaryUsage: [],
+        },
+        nativePort,
+      ),
+    ).rejects.toThrow('siyuan_summary_binding_authority_mismatch');
+    expect(nativePort.updateManagedDocument).not.toHaveBeenCalled();
   });
 
   it('creates a managed SiYuan document containing the real Context tree', async () => {
@@ -675,6 +916,51 @@ describe('SiYuan Context Map integration', () => {
         list,
       });
       expect(list).toHaveBeenCalledOnce();
+    } finally {
+      if (previousInternals === undefined) {
+        delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      } else {
+        (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = previousInternals;
+      }
+    }
+  });
+
+  it('pauses the authoritative active sync and prevents later native completion', async () => {
+    const record = { ...map(), id: 'map-active-pause' };
+    const previousInternals = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    const integration = createSiyuanContextMapIntegration(port());
+    let markListStarted!: () => void;
+    const listStarted = new Promise<void>((resolve) => {
+      markListStarted = resolve;
+    });
+    let releaseList!: () => void;
+    const listReleased = new Promise<void>((resolve) => {
+      releaseList = resolve;
+    });
+    try {
+      const running = integration
+        .sync('project-1', record, {
+          accountId: 'account-1',
+          summaryPolicy: { mode: 'none', selectedExtensions: [], selectedPaths: [] },
+          list: async (path) => {
+            markListStarted();
+            await listReleased;
+            return { ok: true, path, entries: [] };
+          },
+        })
+        .catch((error: unknown) => error);
+      await listStarted;
+      const pausing = integration.pause('project-1', record.id);
+      releaseList();
+      await pausing;
+      await expect(running).resolves.toMatchObject({ message: 'siyuan_index_cancelled' });
+      expect(await readSiyuanIndexJob('project-1', record.id)).toMatchObject({
+        status: 'paused',
+        pauseReason: 'user',
+        completedAt: null,
+      });
+      expect(readSiyuanMapManifest('project-1', record.id)?.status).toBe('paused');
     } finally {
       if (previousInternals === undefined) {
         delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;

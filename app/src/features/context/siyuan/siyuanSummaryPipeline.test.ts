@@ -9,6 +9,7 @@ import {
   readSiyuanIndexJob,
   readSiyuanSummaryUsage,
   replaceSiyuanIndexJob,
+  updateSiyuanIndexJobStatus,
 } from './siyuanIndexJobStore';
 import {
   approvedCloudSiyuanSummaryIdentity,
@@ -17,7 +18,8 @@ import {
   resolveSiyuanSummaryIdentityForJob,
   runSiyuanSummaryPipeline,
 } from './siyuanSummaryPipeline';
-import type { SiyuanSafeIndexEntry } from './siyuanSafeIndex';
+import { createSiyuanIndexJobControl, type SiyuanSafeIndexEntry } from './siyuanSafeIndex';
+import { resetSiyuanSummaryBatchStoreForTests } from './siyuanSummaryBatchStore';
 
 const identity = {
   providerId: 'ollama',
@@ -84,44 +86,68 @@ async function resetDatabase(): Promise<void> {
 }
 
 describe('durable SiYuan summary pipeline', () => {
-  beforeEach(resetDatabase);
+  beforeEach(async () => {
+    await resetDatabase();
+    await resetSiyuanSummaryBatchStoreForTests();
+  });
   beforeEach(() => routerMocks.runAgent.mockReset());
 
   it('routes an approved cloud summary through the exact connection and rejects substitution', async () => {
     routerMocks.runAgent.mockResolvedValueOnce({
       text: 'Approved summary.',
-      provider: 'deepseek',
-      model: 'deepseek-chat',
+      provider: 'opencode',
+      model: 'opencode-go/deepseek-v4-flash-vision-exp',
       usage: { input_tokens: 10, output_tokens: 3, cost_usd: 0 },
     });
     const generated = await generateSiyuanSummaryWithApprovedCloudModel({
       entry: entries()[1]!,
       content: 'source',
+      scope: {
+        accountId: 'account-1',
+        workspaceId: 'workspace-1',
+        projectId: 'project-1',
+        workingDirectory: 'C:/repo',
+      },
       identity: {
-        providerId: 'deepseek',
-        connectionId: 'deepseek-api',
-        modelId: 'deepseek-chat',
+        providerId: 'opencode',
+        connectionId: 'opencode-cli',
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        effort: 'high',
       },
     });
     expect(routerMocks.runAgent).toHaveBeenCalledWith(
       expect.objectContaining({
-        connectionId: 'deepseek-api',
+        connectionId: 'opencode-cli',
+        accountId: 'account-1',
+        workspaceId: 'workspace-1',
+        projectId: 'project-1',
+        workingDirectory: 'C:/repo',
+        provider_options: { reasoning_effort: 'high' },
+        runtimeSettings: {
+          effort: 'high',
+          fastMode: 'auto',
+          performance: 'quality',
+          rlmEnabled: false,
+        },
         tools: {},
         explicitReadSynthesis: true,
         interactionMode: 'ask',
         accessLevel: 'read-only',
       }),
     );
+    expect(routerMocks.runAgent.mock.calls[0]?.[0]).not.toHaveProperty('chatId');
     expect(generated).toMatchObject({
-      providerId: 'deepseek',
-      connectionId: 'deepseek-api',
-      modelId: 'deepseek-chat',
+      providerId: 'opencode',
+      connectionId: 'opencode-cli',
+      modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+      effort: 'high',
+      effortProvenance: 'requested',
       tokenProvenance: 'estimated',
     });
 
     routerMocks.runAgent.mockResolvedValueOnce({
       text: 'Substituted.',
-      provider: 'deepseek',
+      provider: 'opencode',
       model: 'different-model',
       usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
     });
@@ -129,13 +155,67 @@ describe('durable SiYuan summary pipeline', () => {
       generateSiyuanSummaryWithApprovedCloudModel({
         entry: entries()[1]!,
         content: 'source',
+        scope: {
+          accountId: 'account-1',
+          workspaceId: 'workspace-1',
+          projectId: 'project-1',
+          workingDirectory: 'C:/repo',
+        },
         identity: {
-          providerId: 'deepseek',
-          connectionId: 'deepseek-api',
-          modelId: 'deepseek-chat',
+          providerId: 'opencode',
+          connectionId: 'opencode-cli',
+          modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
         },
       }),
     ).rejects.toThrow('siyuan_summary_model_identity_mismatch');
+  });
+
+  it('fails closed before dispatch when exact OpenCode summary scope is absent', async () => {
+    await expect(
+      generateSiyuanSummaryWithApprovedCloudModel({
+        entry: entries()[1]!,
+        content: 'source',
+        identity: {
+          providerId: 'opencode',
+          connectionId: 'opencode-cli',
+          modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+          effort: 'high',
+        },
+      }),
+    ).rejects.toThrow('siyuan_summary_request_scope_missing');
+    expect(routerMocks.runAgent).not.toHaveBeenCalled();
+  });
+
+  it('rejects cloud summary authority drift before reading or generating', async () => {
+    const record = { ...(await job()), accountId: 'account-1' };
+    const generator = vi.fn();
+    const read = vi.fn();
+    await expect(
+      runSiyuanSummaryPipeline({
+        projectId: 'project-1',
+        mapId: 'map-1',
+        root: 'C:/repo',
+        policy: { mode: 'all', selectedExtensions: [], selectedPaths: [] },
+        entries: entries(),
+        job: record,
+        identity: {
+          providerId: 'opencode',
+          connectionId: 'opencode-cli',
+          modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+          effort: 'high',
+        },
+        requestScope: {
+          accountId: 'different-account',
+          workspaceId: 'workspace-1',
+          projectId: 'project-1',
+          workingDirectory: 'C:/repo',
+        },
+        generator,
+        read,
+      }),
+    ).rejects.toThrow('siyuan_summary_request_scope_mismatch');
+    expect(read).not.toHaveBeenCalled();
+    expect(generator).not.toHaveBeenCalled();
   });
 
   it('recomputes exact cloud disclosure scope and rejects drift before model selection', async () => {
@@ -144,7 +224,7 @@ describe('durable SiYuan summary pipeline', () => {
     expect(computeSiyuanCloudSummaryScope(entries(), 'C:/repo', policy)).toEqual({
       eligibleFileCount: 1,
       eligibleSourceBytes: 20,
-      estimatedMaxSentBytes: 48 * 1024,
+      estimatedMaxSentBytes: 256 * 1024,
     });
     const approval = {
       providerId: 'opencode-go',
@@ -154,7 +234,7 @@ describe('durable SiYuan summary pipeline', () => {
       summaryPolicyFingerprint: record.policyFingerprint,
       eligibleFileCount: 1,
       eligibleSourceBytes: 20,
-      estimatedMaxSentBytes: 48 * 1024,
+      estimatedMaxSentBytes: 256 * 1024,
       privacyAcknowledged: true as const,
       approvedAt: 200,
     };
@@ -170,6 +250,7 @@ describe('durable SiYuan summary pipeline', () => {
       providerId: approval.providerId,
       connectionId: approval.connectionId,
       modelId: approval.modelId,
+      effort: 'auto',
     });
     for (const drifted of [
       { ...approval, sourceRoot: 'C:/other' },
@@ -292,6 +373,135 @@ describe('durable SiYuan summary pipeline', () => {
     ]);
   });
 
+  it('propagates a native AbortError without converting the durable job to failed', async () => {
+    const record = await job();
+
+    await expect(
+      runSiyuanSummaryPipeline({
+        projectId: 'project-1',
+        mapId: 'map-1',
+        root: 'C:/repo',
+        policy: { mode: 'all', selectedExtensions: [], selectedPaths: [] },
+        entries: entries(),
+        job: record,
+        identity,
+        generator: vi.fn(async () => {
+          throw new DOMException('The request was aborted.', 'AbortError');
+        }),
+        read: vi.fn(async () => ({ ok: true as const, content: 'source' })),
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(await readSiyuanIndexJob('project-1', 'map-1')).toMatchObject({
+      status: 'running',
+      summarized: 0,
+      failed: 0,
+    });
+  });
+
+  it('halts an in-flight summary at a durable pause boundary without committing it', async () => {
+    let releaseGeneration!: () => void;
+    let markGenerationStarted!: () => void;
+    const generationStarted = new Promise<void>((resolve) => {
+      markGenerationStarted = resolve;
+    });
+    const generationReleased = new Promise<void>((resolve) => {
+      releaseGeneration = resolve;
+    });
+    const control = createSiyuanIndexJobControl();
+    const onCompleted = vi.fn(async () => undefined);
+    const running = runSiyuanSummaryPipeline({
+      projectId: 'project-1',
+      mapId: 'map-1',
+      root: 'C:/repo',
+      policy: { mode: 'all', selectedExtensions: [], selectedPaths: [] },
+      entries: entries(),
+      job: await job(),
+      identity,
+      control,
+      generator: async () => {
+        markGenerationStarted();
+        await generationReleased;
+        return {
+          summary: 'Must not commit after pause.',
+          ...identity,
+          inputTokens: 2,
+          outputTokens: 1,
+          tokenProvenance: 'reported',
+        };
+      },
+      read: async () => ({ ok: true, content: 'source' }),
+      onCompleted,
+    });
+
+    await generationStarted;
+    await updateSiyuanIndexJobStatus('project-1', 'map-1', 'paused');
+    releaseGeneration();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(onCompleted).not.toHaveBeenCalled();
+    expect(await readSiyuanSummaryUsage('project-1', 'map-1')).toEqual([]);
+    expect(await readSiyuanIndexJob('project-1', 'map-1')).toMatchObject({
+      status: 'paused',
+      summarized: 0,
+    });
+
+    await updateSiyuanIndexJobStatus('project-1', 'map-1', 'cancelled');
+    await expect(running).rejects.toThrow('siyuan_index_cancelled');
+  });
+
+  it('resumes a durable high-effort job without losing or rejecting its exact effort', async () => {
+    const highIdentity = {
+      providerId: 'opencode',
+      connectionId: 'opencode-cli',
+      modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+      effort: 'high' as const,
+    };
+    const resumedJob = {
+      ...(await job()),
+      accountId: 'account-1',
+      summaryProviderId: highIdentity.providerId,
+      summaryConnectionId: highIdentity.connectionId,
+      summaryModelId: highIdentity.modelId,
+      summaryEffort: highIdentity.effort,
+    };
+    const result = await runSiyuanSummaryPipeline({
+      projectId: 'project-1',
+      mapId: 'map-1',
+      root: 'C:/repo',
+      policy: { mode: 'all', selectedExtensions: [], selectedPaths: [] },
+      entries: entries(),
+      job: resumedJob,
+      identity: highIdentity,
+      requestScope: {
+        accountId: 'account-1',
+        workspaceId: 'workspace-1',
+        projectId: 'project-1',
+        workingDirectory: 'C:/repo',
+      },
+      generator: async () => ({
+        summary: 'Exact high-effort summary.',
+        ...highIdentity,
+        effortProvenance: 'requested',
+        inputTokens: 2,
+        outputTokens: 1,
+        tokenProvenance: 'reported',
+      }),
+      read: async () => ({ ok: true, content: 'source' }),
+    });
+    expect(result.job).toMatchObject({
+      status: 'running',
+      phase: 'reconciling',
+      summaryProviderId: highIdentity.providerId,
+      summaryConnectionId: highIdentity.connectionId,
+      summaryModelId: highIdentity.modelId,
+      summaryEffort: 'high',
+    });
+    expect(await readSiyuanSummaryUsage('project-1', 'map-1')).toEqual([
+      expect.objectContaining({ effort: 'high', effortProvenance: 'requested' }),
+    ]);
+  });
+
   it('rejects a silent provider or model substitution', async () => {
     await expect(
       runSiyuanSummaryPipeline({
@@ -373,7 +583,10 @@ describe('durable SiYuan summary pipeline', () => {
       summaryConnectionId: identity.connectionId,
       summaryModelId: identity.modelId,
     };
-    expect(resolveSiyuanSummaryIdentityForJob(pinnedJob)).toEqual(identity);
+    expect(resolveSiyuanSummaryIdentityForJob(pinnedJob)).toEqual({
+      ...identity,
+      effort: 'minimal',
+    });
     const generator = vi.fn();
     await expect(
       runSiyuanSummaryPipeline({

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   archiveAndReplaceSiyuanIndexJob,
   archiveAndRestartSiyuanSummaryJobForCloud,
+  archiveSiyuanSummaryJobForCloudRestart,
   canResumeSiyuanIndexJob,
   accountForSiyuanRendererOfflineTime,
   checkpointSiyuanIndexJob,
@@ -365,9 +366,70 @@ describe('durable SiYuan index jobs', () => {
         summaryProviderId: 'ollama',
       },
     });
+
+    const partialCloudJob = {
+      ...restarted,
+      status: 'paused' as const,
+      pauseReason: 'cloud_approval_required' as const,
+      summarized: 1,
+      inputTokens: 4,
+      outputTokens: 2,
+      totalTokens: 6,
+      tokenProvenance: 'estimated' as const,
+    };
+    await checkpointSiyuanIndexJob({
+      job: partialCloudJob,
+      appendedEntries: [
+        {
+          nodeId: 'cloud-summary',
+          parentNodeId: null,
+          title: 'cloud.ts',
+          kind: 'file',
+          relativePath: 'cloud.ts',
+          sourcePointer: 'C:/root/cloud.ts',
+          summary: 'New cloud summary.',
+          summaryState: 'completed',
+          sizeBytes: 20,
+          modifiedAt: 2,
+        },
+      ],
+      summaryUsage: {
+        nodeId: 'cloud-summary',
+        sourceModifiedAt: 2,
+        sourceSizeBytes: 20,
+        providerId: 'deepseek',
+        connectionId: 'deepseek-api',
+        modelId: 'deepseek-chat',
+        effort: 'high',
+        effortProvenance: 'requested',
+        inputTokens: 4,
+        outputTokens: 2,
+        totalTokens: 6,
+        provenance: 'estimated',
+        completedAt: 250,
+      },
+    });
+    const cleanupSnapshot = await archiveSiyuanSummaryJobForCloudRestart('project-1', 'map-1', 300);
+    expect(cleanupSnapshot).toMatchObject({
+      archivedAt: 300,
+      job: { summarized: 1, summaryProviderId: 'deepseek' },
+      entries: expect.arrayContaining([
+        expect.objectContaining({ nodeId: 'cloud-summary', summaryState: 'completed' }),
+      ]),
+      summaryUsage: [expect.objectContaining({ nodeId: 'cloud-summary', totalTokens: 6 })],
+    });
+    expect(await readSiyuanIndexJobArchive('project-1', 'map-1')).toMatchObject({
+      archivedAt: 200,
+      job: {
+        summarized: 0,
+        pauseReason: 'local_model_unavailable',
+        summaryProviderId: 'ollama',
+      },
+      summaryUsage: [],
+    });
   });
 
-  it('refuses cloud repinning after any local summary work', async () => {
+  it('archives partial local summaries and restarts only summary work on an exact cloud route', async () => {
     const job = {
       ...createSiyuanIndexJob({
         projectId: 'project-1',
@@ -377,7 +439,231 @@ describe('durable SiYuan index jobs', () => {
       }),
       phase: 'summarizing' as const,
       status: 'paused' as const,
-      pauseReason: 'local_model_unavailable' as const,
+      pauseReason: 'user' as const,
+      indexed: 2,
+      createdNodes: 2,
+      summaryEligible: 2,
+      summarized: 1,
+      skipped: 1,
+      failed: 1,
+      inputTokens: 7,
+      outputTokens: 3,
+      totalTokens: 10,
+      tokenProvenance: 'estimated' as const,
+      summaryProviderId: 'ollama',
+      summaryConnectionId: 'ollama-local',
+      summaryModelId: 'llama3.2:latest',
+    };
+    await replaceSiyuanIndexJob(job, {
+      path: 'C:/root',
+      relativePath: '',
+      parentNodeId: null,
+    });
+    await checkpointSiyuanIndexJob({
+      job,
+      appendedEntries: [
+        {
+          nodeId: 'completed-file',
+          parentNodeId: null,
+          title: 'completed.ts',
+          kind: 'file',
+          relativePath: 'completed.ts',
+          sourcePointer: 'C:/root/completed.ts',
+          summary: 'Generated locally.',
+          summaryState: 'completed',
+          sizeBytes: 10,
+          modifiedAt: 1,
+        },
+        {
+          nodeId: 'skipped-file',
+          parentNodeId: null,
+          title: 'skipped.ts',
+          kind: 'file',
+          relativePath: 'skipped.ts',
+          sourcePointer: 'C:/root/skipped.ts',
+          summary: null,
+          summaryState: 'skipped',
+          sizeBytes: 20,
+          modifiedAt: 2,
+        },
+      ],
+      summaryUsage: {
+        nodeId: 'completed-file',
+        sourceModifiedAt: 1,
+        sourceSizeBytes: 10,
+        providerId: 'ollama',
+        connectionId: 'ollama-local',
+        modelId: 'llama3.2:latest',
+        inputTokens: 7,
+        outputTokens: 3,
+        totalTokens: 10,
+        provenance: 'estimated',
+        completedAt: 150,
+      },
+    });
+
+    const restarted = await archiveAndRestartSiyuanSummaryJobForCloud(
+      'project-1',
+      'map-1',
+      {
+        providerId: 'opencode',
+        connectionId: 'opencode-cli',
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        effort: 'high',
+      },
+      200,
+    );
+
+    expect(restarted).toMatchObject({
+      status: 'running',
+      phase: 'summarizing',
+      indexed: 2,
+      createdNodes: 2,
+      summaryEligible: 2,
+      summarized: 0,
+      skipped: 0,
+      failed: 0,
+      totalTokens: 0,
+      tokenProvenance: 'none',
+      summaryProviderId: 'opencode',
+      summaryConnectionId: 'opencode-cli',
+      summaryModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+      summaryEffort: 'high',
+    });
+    const resetEntries = await readSiyuanIndexEntries('project-1', 'map-1');
+    expect(resetEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ nodeId: 'completed-file', summary: null }),
+        expect.objectContaining({ nodeId: 'skipped-file', summary: null }),
+      ]),
+    );
+    expect(resetEntries.every((entry) => !Object.hasOwn(entry, 'summaryState'))).toBe(true);
+    expect(await readSiyuanSummaryUsage('project-1', 'map-1')).toEqual([]);
+    expect(await readSiyuanIndexJobArchive('project-1', 'map-1')).toMatchObject({
+      job: { summarized: 1, summaryProviderId: 'ollama' },
+      entries: expect.arrayContaining([
+        expect.objectContaining({
+          nodeId: 'completed-file',
+          summary: 'Generated locally.',
+          summaryState: 'completed',
+        }),
+      ]),
+      summaryUsage: [expect.objectContaining({ modelId: 'llama3.2:latest' })],
+    });
+  });
+
+  it('accepts the fail-closed cloud approval pause for archive and exact restart', async () => {
+    const job = {
+      ...createSiyuanIndexJob({
+        projectId: 'project-1',
+        mapId: 'map-1',
+        canonicalRoot: 'C:/root',
+        policyFingerprint: 'policy-a',
+      }),
+      phase: 'summarizing' as const,
+      status: 'paused' as const,
+      pauseReason: 'cloud_approval_required' as const,
+      indexed: 2,
+      createdNodes: 2,
+      summaryEligible: 1,
+      summaryProviderId: 'opencode',
+      summaryConnectionId: 'opencode-cli',
+      summaryModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+      summaryEffort: 'high' as const,
+    };
+    await replaceSiyuanIndexJob(job, {
+      path: 'C:/root',
+      relativePath: '',
+      parentNodeId: null,
+    });
+
+    const archive = await archiveSiyuanSummaryJobForCloudRestart('project-1', 'map-1', 150);
+    expect(archive).toMatchObject({
+      archivedAt: 150,
+      job: {
+        status: 'paused',
+        pauseReason: 'cloud_approval_required',
+        canonicalRoot: 'C:/root',
+        policyFingerprint: 'policy-a',
+      },
+    });
+
+    const restarted = await archiveAndRestartSiyuanSummaryJobForCloud(
+      'project-1',
+      'map-1',
+      {
+        providerId: 'opencode',
+        connectionId: 'opencode-cli',
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        effort: 'high',
+      },
+      200,
+    );
+    expect(restarted).toMatchObject({
+      status: 'running',
+      phase: 'summarizing',
+      pauseReason: null,
+      canonicalRoot: 'C:/root',
+      policyFingerprint: 'policy-a',
+      summaryProviderId: 'opencode',
+      summaryConnectionId: 'opencode-cli',
+      summaryModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+      summaryEffort: 'high',
+    });
+    expect(await readSiyuanIndexJobArchive('project-1', 'map-1')).toMatchObject({
+      archivedAt: 150,
+      job: {
+        status: 'paused',
+        pauseReason: 'cloud_approval_required',
+        canonicalRoot: 'C:/root',
+        policyFingerprint: 'policy-a',
+      },
+    });
+  });
+
+  it.each(['running', 'cancelled'] as const)(
+    'rejects unsafe %s jobs from both cloud archive operations',
+    async (status) => {
+      const job = {
+        ...createSiyuanIndexJob({
+          projectId: 'project-1',
+          mapId: 'map-1',
+          canonicalRoot: 'C:/root',
+          policyFingerprint: 'policy-a',
+        }),
+        phase: 'summarizing' as const,
+        status,
+        pauseReason: status === 'running' ? null : ('cloud_approval_required' as const),
+      };
+      await replaceSiyuanIndexJob(job, {
+        path: 'C:/root',
+        relativePath: '',
+        parentNodeId: null,
+      });
+
+      await expect(archiveSiyuanSummaryJobForCloudRestart('project-1', 'map-1')).rejects.toThrow(
+        'siyuan_cloud_summary_restart_not_safe',
+      );
+      await expect(
+        archiveAndRestartSiyuanSummaryJobForCloud('project-1', 'map-1', {
+          providerId: 'opencode',
+          connectionId: 'opencode-cli',
+          modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+          effort: 'high',
+        }),
+      ).rejects.toThrow('siyuan_cloud_summary_restart_not_safe');
+    },
+  );
+
+  it('refuses a partial-summary route switch until the running job is paused', async () => {
+    const job = {
+      ...createSiyuanIndexJob({
+        projectId: 'project-1',
+        mapId: 'map-1',
+        canonicalRoot: 'C:/root',
+        policyFingerprint: 'policy-a',
+      }),
+      phase: 'summarizing' as const,
       summarized: 1,
       totalTokens: 10,
     };
@@ -388,12 +674,11 @@ describe('durable SiYuan index jobs', () => {
     });
     await expect(
       archiveAndRestartSiyuanSummaryJobForCloud('project-1', 'map-1', {
-        providerId: 'deepseek',
-        connectionId: 'deepseek-api',
-        modelId: 'deepseek-chat',
+        providerId: 'opencode',
+        connectionId: 'opencode-cli',
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
       }),
     ).rejects.toThrow('siyuan_cloud_summary_restart_not_safe');
-    expect((await readSiyuanIndexJob('project-1', 'map-1'))?.status).toBe('paused');
   });
 
   it('durably records startup auto-resume and clears it on manual lifecycle changes', async () => {

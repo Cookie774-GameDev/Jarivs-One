@@ -38,6 +38,7 @@ import type {
   ProviderConnection,
   ProviderEvent,
   ProviderRequest,
+  UsageSnapshot,
 } from './adapters/types';
 import { CONNECTION_MODEL_OPTIONS, getProviderConnectionDescriptor } from './adapters/catalog';
 import { openCodePersistentAdapter } from './adapters/opencodePersistent';
@@ -192,6 +193,38 @@ function usageNumber(value: { value?: number } | undefined): number {
   return typeof value?.value === 'number' && Number.isFinite(value.value) ? value.value : 0;
 }
 
+function mergeUsageSnapshots(
+  current: UsageSnapshot | undefined,
+  next: UsageSnapshot,
+): UsageSnapshot {
+  return {
+    ...current,
+    ...next,
+    capturedAt: Math.max(current?.capturedAt ?? 0, next.capturedAt),
+    inputTokens: next.inputTokens ?? current?.inputTokens,
+    outputTokens: next.outputTokens ?? current?.outputTokens,
+    totalTokens: next.totalTokens ?? current?.totalTokens,
+    cacheReadTokens: next.cacheReadTokens ?? current?.cacheReadTokens,
+    cacheWriteTokens: next.cacheWriteTokens ?? current?.cacheWriteTokens,
+    reasoningTokens: next.reasoningTokens ?? current?.reasoningTokens,
+    costUsd: next.costUsd ?? current?.costUsd,
+    quota: next.quota ?? current?.quota,
+    resetsAt: next.resetsAt ?? current?.resetsAt,
+  };
+}
+
+export interface ProviderCompletionEvidence {
+  observedAt: number;
+  requestId: string;
+  sessionId: string;
+  providerId: string;
+  connectionId: string;
+  modelId: string;
+  reasoningEffort: string | null;
+  usage: UsageSnapshot;
+  finishReason?: string;
+}
+
 function normalizedRuntimeProviderId(providerId: string): string {
   if (providerId === 'local') return 'ollama';
   if (providerId === 'bedrock') return 'amazon-bedrock';
@@ -280,6 +313,9 @@ export interface RunAgentRequest {
   onHarnessSessionBound?: (binding: { sessionId: string; parentSessionId?: string }) =>
     | void
     | Promise<void>;
+  onProviderCompletionEvidence?: (
+    evidence: Readonly<ProviderCompletionEvidence>,
+  ) => void | Promise<void>;
   protectedAttempt?: Readonly<{
     accountId: string;
     runId: string;
@@ -444,6 +480,8 @@ async function executePersistentOpenCode(
     let first = true;
     let finishReason: string | undefined;
     let usage: Extract<ProviderEvent, { type: 'usage' }>['usage'] | undefined;
+    let observedSessionId: string | undefined;
+    let terminalDoneObserved = false;
     let completedReadOnlyFilesystem = false;
     let anyToolObserved = false;
     let rootInventoryObserved = false;
@@ -473,7 +511,16 @@ async function executePersistentOpenCode(
       tools: req.tools,
       signal: req.signal,
       onApprovalRequested: req.onApprovalRequested,
-      onSessionBound: req.onHarnessSessionBound,
+      onSessionBound: async (binding) => {
+        if (
+          (req.expectedSessionId && req.expectedSessionId !== binding.sessionId) ||
+          (observedSessionId && observedSessionId !== binding.sessionId)
+        ) {
+          throw new Error('provider_completion_session_mismatch');
+        }
+        observedSessionId = binding.sessionId;
+        await req.onHarnessSessionBound?.(binding);
+      },
       onResponseObservation: hooks?.onResponseObservation,
       onActionDispatch: hooks?.onActionDispatch,
     };
@@ -494,7 +541,15 @@ async function executePersistentOpenCode(
           first = false;
         } else if (event.type === 'usage') {
           diagnosticCode = 'router_usage_event';
-          usage = event.usage;
+          usage = mergeUsageSnapshots(usage, event.usage);
+        } else if (event.type === 'session') {
+          if (
+            (req.expectedSessionId && req.expectedSessionId !== event.sessionId) ||
+            (observedSessionId && observedSessionId !== event.sessionId)
+          ) {
+            throw new Error('provider_completion_session_mismatch');
+          }
+          observedSessionId = event.sessionId;
         } else if (event.type === 'tool') {
           anyToolObserved = true;
           if (req.explicitReadSynthesis) {
@@ -523,6 +578,7 @@ async function executePersistentOpenCode(
           throw new Error(event.message);
         } else if (event.type === 'done') {
           diagnosticCode = 'router_done_event';
+          terminalDoneObserved = true;
           finishReason = event.finishReason;
         }
       }
@@ -531,6 +587,21 @@ async function executePersistentOpenCode(
     }
     if (req.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
     diagnosticCode = 'router_completion';
+    if (req.onProviderCompletionEvidence) {
+      if (!terminalDoneObserved) throw new Error('provider_completion_terminal_missing');
+      if (!observedSessionId) throw new Error('provider_completion_session_missing');
+      await req.onProviderCompletionEvidence({
+        observedAt: Date.now(),
+        requestId,
+        sessionId: observedSessionId,
+        providerId: selection.providerId,
+        connectionId: connection.id,
+        modelId: selection.modelId,
+        reasoningEffort: variant ?? null,
+        usage: usage ?? { capturedAt: Date.now() },
+        ...(finishReason ? { finishReason } : {}),
+      });
+    }
     req.onChunk?.({ delta: '', done: true });
     return {
       text,

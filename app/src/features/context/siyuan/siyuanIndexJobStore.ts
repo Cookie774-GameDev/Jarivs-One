@@ -1,4 +1,5 @@
 import type { SiyuanSafeIndexEntry } from './siyuanSafeIndex';
+import type { EffortLabel } from '@/lib/ai/catalog/modelVariants';
 import { canonicalSiyuanAuthorityRoot } from './siyuanPathAuthority';
 
 const DATABASE_NAME = 'vibespace-siyuan-index-jobs';
@@ -53,6 +54,7 @@ export interface SiyuanIndexJobRecord {
   summaryProviderId: string | null;
   summaryConnectionId: string | null;
   summaryModelId: string | null;
+  summaryEffort?: EffortLabel | null;
   phaseStartedAt: number;
   rateSamples: Array<{ at: number; processed: number }>;
   discoverySamples: Array<{
@@ -91,12 +93,29 @@ export interface SiyuanIndexCheckpoint {
 }
 
 export interface SiyuanSummaryUsageBatch {
+  /** Present for the new multi-file executor; one aggregate receipt per batch. */
+  batchId?: string;
+  requestId?: string;
+  sessionId?: string;
+  nodeCount?: number;
+  policyFingerprint?: string;
+  lane?: number;
+  attempt?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  cacheProvenance?: 'reported' | 'unavailable';
+  costUsd?: number | null;
+  costProvenance?: 'reported' | 'unavailable';
+  dispatchedAt?: number;
+  durationMs?: number;
   nodeId: string;
   sourceModifiedAt: number | null;
   sourceSizeBytes: number | null;
   providerId: string;
   connectionId: string;
   modelId: string;
+  effort?: EffortLabel;
+  effortProvenance?: 'requested';
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
@@ -118,12 +137,185 @@ interface StoredSummaryUsage extends SiyuanSummaryUsageBatch {
   scope: string;
 }
 
+export async function checkpointSiyuanSummaryBatchNode(input: {
+  projectId: string;
+  mapId: string;
+  entry: SiyuanSafeIndexEntry;
+  batchUsage?: SiyuanSummaryUsageBatch;
+  now?: number;
+}): Promise<SiyuanIndexJobRecord> {
+  const database = await openDatabase();
+  if (!database) throw new Error('siyuan_index_job_storage_unavailable');
+  const scope = siyuanIndexJobScope(input.projectId, input.mapId);
+  const now = input.now ?? Date.now();
+  if (!Number.isSafeInteger(now) || now < 0) throw new Error('siyuan_summary_batch_now_invalid');
+  if (input.entry.summaryState !== 'completed' || !input.entry.summary?.trim()) {
+    throw new Error('siyuan_summary_batch_entry_invalid');
+  }
+  try {
+    const transaction = database.transaction(
+      [JOB_STORE, ENTRY_STORE, SUMMARY_USAGE_STORE],
+      'readwrite',
+    );
+    const done = transactionDone(transaction);
+    const jobStore = transaction.objectStore(JOB_STORE);
+    const entryStore = transaction.objectStore(ENTRY_STORE);
+    const usageStore = transaction.objectStore(SUMMARY_USAGE_STORE);
+    const current = (await requestResult(jobStore.get(scope))) as SiyuanIndexJobRecord | undefined;
+    if (!current) throw new Error('siyuan_index_job_not_found');
+    if (current.status === 'paused') throw new Error('siyuan_index_paused');
+    if (current.status === 'cancelled') throw new Error('siyuan_index_cancelled');
+    if (current.status !== 'running' || current.phase !== 'summarizing') {
+      throw new Error('siyuan_summary_batch_job_state_invalid');
+    }
+    if (now < current.updatedAt) throw new Error('siyuan_summary_batch_clock_regression');
+    const storedEntry = (await requestResult(
+      entryStore.get(entryKey(scope, input.entry.nodeId)),
+    )) as StoredEntry | undefined;
+    const isNewCompletion = storedEntry?.summaryState !== 'completed';
+    let addInput = 0;
+    let addOutput = 0;
+    let addTotal = 0;
+    let nextProvenance = current.tokenProvenance;
+    if (input.batchUsage) {
+      if (!input.batchUsage.batchId) throw new Error('siyuan_summary_batch_id_missing');
+      if (!input.batchUsage.requestId?.trim() || !input.batchUsage.sessionId?.trim()) {
+        throw new Error('siyuan_summary_batch_completion_evidence_missing');
+      }
+      if (input.batchUsage.policyFingerprint !== current.policyFingerprint) {
+        throw new Error('siyuan_summary_batch_policy_mismatch');
+      }
+      if (
+        input.batchUsage.providerId !== current.summaryProviderId ||
+        input.batchUsage.connectionId !== current.summaryConnectionId ||
+        input.batchUsage.modelId !== current.summaryModelId ||
+        (input.batchUsage.effort ?? 'minimal') !== (current.summaryEffort ?? 'minimal')
+      ) {
+        throw new Error('siyuan_summary_model_identity_mismatch');
+      }
+      for (const [field, value] of [
+        ['input_tokens', input.batchUsage.inputTokens],
+        ['output_tokens', input.batchUsage.outputTokens],
+        ['total_tokens', input.batchUsage.totalTokens],
+        ['node_count', input.batchUsage.nodeCount],
+        ['lane', input.batchUsage.lane],
+        ['attempt', input.batchUsage.attempt],
+        ['cache_read_tokens', input.batchUsage.cacheReadTokens],
+        ['cache_write_tokens', input.batchUsage.cacheWriteTokens],
+        ['dispatched_at', input.batchUsage.dispatchedAt],
+        ['duration_ms', input.batchUsage.durationMs],
+        ['completed_at', input.batchUsage.completedAt],
+      ] as const) {
+        if (!Number.isSafeInteger(value) || (value ?? -1) < 0) {
+          throw new Error(`siyuan_summary_batch_${field}_invalid`);
+        }
+      }
+      if (
+        input.batchUsage.nodeCount === 0 ||
+        input.batchUsage.lane! > 4 ||
+        !['reported', 'estimated'].includes(input.batchUsage.provenance) ||
+        !['reported', 'unavailable'].includes(input.batchUsage.cacheProvenance ?? '') ||
+        !['reported', 'unavailable'].includes(input.batchUsage.costProvenance ?? '') ||
+        (input.batchUsage.cacheProvenance === 'unavailable' &&
+          (input.batchUsage.cacheReadTokens !== 0 || input.batchUsage.cacheWriteTokens !== 0)) ||
+        (input.batchUsage.costProvenance === 'reported') !==
+          (typeof input.batchUsage.costUsd === 'number' &&
+            Number.isFinite(input.batchUsage.costUsd) &&
+            input.batchUsage.costUsd >= 0) ||
+        input.batchUsage.dispatchedAt! > input.batchUsage.completedAt ||
+        input.batchUsage.completedAt > now ||
+        input.batchUsage.durationMs !==
+          input.batchUsage.completedAt - input.batchUsage.dispatchedAt!
+      ) {
+        throw new Error('siyuan_summary_batch_usage_metadata_invalid');
+      }
+      const usageKey = `${scope}\u0000batch\u0000${input.batchUsage.batchId}`;
+      const existingUsage = (await requestResult(usageStore.get(usageKey))) as
+        | StoredSummaryUsage
+        | undefined;
+      if (!existingUsage) {
+        addInput = input.batchUsage.inputTokens;
+        addOutput = input.batchUsage.outputTokens;
+        addTotal = input.batchUsage.totalTokens;
+        if (addInput + addOutput !== addTotal) {
+          throw new Error('siyuan_summary_batch_total_tokens_invalid');
+        }
+        if (
+          current.tokenProvenance !== 'none' &&
+          current.tokenProvenance !== input.batchUsage.provenance
+        ) {
+          throw new Error('siyuan_summary_token_provenance_mismatch');
+        }
+        nextProvenance = input.batchUsage.provenance;
+        usageStore.put({
+          ...input.batchUsage,
+          key: usageKey,
+          scope,
+        } satisfies StoredSummaryUsage);
+      }
+    }
+    const nextInput = current.inputTokens + addInput;
+    const nextOutput = current.outputTokens + addOutput;
+    const nextTotal = current.totalTokens + addTotal;
+    if (![nextInput, nextOutput, nextTotal].every(Number.isSafeInteger)) {
+      throw new Error('siyuan_summary_batch_usage_overflow');
+    }
+    const updated: SiyuanIndexJobRecord = {
+      ...current,
+      summarized: current.summarized + (isNewCompletion ? 1 : 0),
+      failed: Math.max(
+        0,
+        current.failed - (isNewCompletion && storedEntry?.summaryState === 'failed' ? 1 : 0),
+      ),
+      inputTokens: nextInput,
+      outputTokens: nextOutput,
+      totalTokens: nextTotal,
+      tokenProvenance: nextProvenance,
+      updatedAt: Math.max(current.updatedAt, now),
+      rateSamples: isNewCompletion
+        ? [...current.rateSamples, { at: now, processed: current.summarized + 1 }].slice(-20)
+        : current.rateSamples,
+      estimatedPercent: Math.max(
+        current.estimatedPercent ?? 0,
+        current.summaryEligible > 0
+          ? 90 + ((current.summarized + (isNewCompletion ? 1 : 0)) / current.summaryEligible) * 8
+          : 90,
+      ),
+    };
+    entryStore.put({
+      ...input.entry,
+      key: entryKey(scope, input.entry.nodeId),
+      scope,
+    } satisfies StoredEntry);
+    jobStore.put(updated);
+    await done;
+    return updated;
+  } finally {
+    database.close();
+  }
+}
+
+export function resetSiyuanSummaryEntry(entry: SiyuanSafeIndexEntry): SiyuanSafeIndexEntry {
+  const { summaryState: _summaryState, ...withoutSummaryState } = entry;
+  return { ...withoutSummaryState, summary: null };
+}
+
 function normalizeSiyuanPauseReason(value: unknown): SiyuanIndexJobRecord['pauseReason'] {
   return value === 'user' ||
     value === 'local_model_unavailable' ||
     value === 'cloud_approval_required'
     ? value
     : null;
+}
+
+function isSafeCloudSummaryRestartPauseReason(
+  reason: SiyuanIndexJobRecord['pauseReason'],
+): boolean {
+  return (
+    reason === 'user' ||
+    reason === 'local_model_unavailable' ||
+    reason === 'cloud_approval_required'
+  );
 }
 
 export function siyuanIndexJobScope(projectId: string, mapId: string): string {
@@ -352,9 +544,23 @@ export async function archiveAndReplaceSiyuanIndexJob(
 export async function archiveAndRestartSiyuanSummaryJobForCloud(
   projectId: string,
   mapId: string,
-  identity: Readonly<{ providerId: string; connectionId: string; modelId: string }>,
+  identity: Readonly<{
+    providerId: string;
+    connectionId: string;
+    modelId: string;
+    effort?: EffortLabel;
+  }>,
   now = Date.now(),
 ): Promise<SiyuanIndexJobRecord> {
+  if (
+    !identity.providerId ||
+    !identity.connectionId ||
+    !identity.modelId ||
+    identity.providerId === 'ollama' ||
+    identity.providerId === 'local'
+  ) {
+    throw new Error('siyuan_cloud_summary_identity_invalid');
+  }
   const database = await openDatabase();
   if (!database) throw new Error('siyuan_index_job_storage_unavailable');
   try {
@@ -363,38 +569,50 @@ export async function archiveAndRestartSiyuanSummaryJobForCloud(
       [JOB_STORE, ENTRY_STORE, FRONTIER_STORE, SUMMARY_USAGE_STORE, ARCHIVE_STORE],
       'readwrite',
     );
-    const [storedJob, storedEntries, storedFrontier, storedUsage] = await Promise.all([
-      requestResult(transaction.objectStore(JOB_STORE).get(scope)),
-      requestResult(transaction.objectStore(ENTRY_STORE).index(SCOPE_INDEX).getAll(scope)),
-      requestResult(transaction.objectStore(FRONTIER_STORE).index(SCOPE_INDEX).getAll(scope)),
-      requestResult(transaction.objectStore(SUMMARY_USAGE_STORE).index(SCOPE_INDEX).getAll(scope)),
-    ]);
+    const [storedJob, storedEntries, storedFrontier, storedUsage, storedArchive] =
+      await Promise.all([
+        requestResult(transaction.objectStore(JOB_STORE).get(scope)),
+        requestResult(transaction.objectStore(ENTRY_STORE).index(SCOPE_INDEX).getAll(scope)),
+        requestResult(transaction.objectStore(FRONTIER_STORE).index(SCOPE_INDEX).getAll(scope)),
+        requestResult(
+          transaction.objectStore(SUMMARY_USAGE_STORE).index(SCOPE_INDEX).getAll(scope),
+        ),
+        requestResult(transaction.objectStore(ARCHIVE_STORE).get(scope)),
+      ]);
     const job = storedJob as SiyuanIndexJobRecord | undefined;
     if (!job) throw new Error('siyuan_index_job_missing');
     if (
       job.status !== 'paused' ||
-      job.pauseReason !== 'local_model_unavailable' ||
-      job.summarized !== 0 ||
-      job.totalTokens !== 0 ||
-      job.failed !== 0
+      job.phase !== 'summarizing' ||
+      !isSafeCloudSummaryRestartPauseReason(job.pauseReason)
     ) {
       throw new Error('siyuan_cloud_summary_restart_not_safe');
     }
-    transaction.objectStore(ARCHIVE_STORE).put({
-      scope,
-      archivedAt: now,
-      job,
-      entries: (storedEntries as StoredEntry[]).map(
-        ({ key: _key, scope: _scope, ...entry }) => entry,
-      ),
-      frontier: (storedFrontier as StoredDirectory[])
-        .sort((left, right) => left.position - right.position)
-        .map(({ key: _key, scope: _scope, position: _position, ...directory }) => directory),
-      summaryUsage: (storedUsage as StoredSummaryUsage[]).map(
-        ({ key: _key, scope: _scope, ...usage }) => usage,
-      ),
-    } satisfies SiyuanIndexJobArchive);
+    if (!storedArchive) {
+      transaction.objectStore(ARCHIVE_STORE).put({
+        scope,
+        archivedAt: now,
+        job,
+        entries: (storedEntries as StoredEntry[]).map(
+          ({ key: _key, scope: _scope, ...entry }) => entry,
+        ),
+        frontier: (storedFrontier as StoredDirectory[])
+          .sort((left, right) => left.position - right.position)
+          .map(({ key: _key, scope: _scope, position: _position, ...directory }) => directory),
+        summaryUsage: (storedUsage as StoredSummaryUsage[]).map(
+          ({ key: _key, scope: _scope, ...usage }) => usage,
+        ),
+      } satisfies SiyuanIndexJobArchive);
+    }
     await clearScopeInTransaction(transaction, SUMMARY_USAGE_STORE, scope);
+    for (const stored of storedEntries as StoredEntry[]) {
+      const { key, scope: entryScope, ...entry } = stored;
+      transaction.objectStore(ENTRY_STORE).put({
+        ...resetSiyuanSummaryEntry(entry),
+        key,
+        scope: entryScope,
+      } satisfies StoredEntry);
+    }
     const restarted: SiyuanIndexJobRecord = {
       ...job,
       status: 'running',
@@ -403,6 +621,10 @@ export async function archiveAndRestartSiyuanSummaryJobForCloud(
       summaryProviderId: identity.providerId,
       summaryConnectionId: identity.connectionId,
       summaryModelId: identity.modelId,
+      summaryEffort: identity.effort ?? 'auto',
+      summarized: 0,
+      skipped: 0,
+      failed: 0,
       inputTokens: 0,
       outputTokens: 0,
       totalTokens: 0,
@@ -417,6 +639,60 @@ export async function archiveAndRestartSiyuanSummaryJobForCloud(
     transaction.objectStore(JOB_STORE).put(restarted);
     await transactionDone(transaction);
     return restarted;
+  } finally {
+    database.close();
+  }
+}
+
+export async function archiveSiyuanSummaryJobForCloudRestart(
+  projectId: string,
+  mapId: string,
+  now = Date.now(),
+): Promise<SiyuanIndexJobArchive> {
+  const database = await openDatabase();
+  if (!database) throw new Error('siyuan_index_job_storage_unavailable');
+  try {
+    const scope = siyuanIndexJobScope(projectId, mapId);
+    const transaction = database.transaction(
+      [JOB_STORE, ENTRY_STORE, FRONTIER_STORE, SUMMARY_USAGE_STORE, ARCHIVE_STORE],
+      'readwrite',
+    );
+    const [storedJob, storedEntries, storedFrontier, storedUsage, storedArchive] =
+      await Promise.all([
+        requestResult(transaction.objectStore(JOB_STORE).get(scope)),
+        requestResult(transaction.objectStore(ENTRY_STORE).index(SCOPE_INDEX).getAll(scope)),
+        requestResult(transaction.objectStore(FRONTIER_STORE).index(SCOPE_INDEX).getAll(scope)),
+        requestResult(
+          transaction.objectStore(SUMMARY_USAGE_STORE).index(SCOPE_INDEX).getAll(scope),
+        ),
+        requestResult(transaction.objectStore(ARCHIVE_STORE).get(scope)),
+      ]);
+    const job = storedJob as SiyuanIndexJobRecord | undefined;
+    if (
+      !job ||
+      job.status !== 'paused' ||
+      job.phase !== 'summarizing' ||
+      !isSafeCloudSummaryRestartPauseReason(job.pauseReason)
+    ) {
+      throw new Error('siyuan_cloud_summary_restart_not_safe');
+    }
+    const cleanupSnapshot: SiyuanIndexJobArchive = {
+      scope,
+      archivedAt: now,
+      job,
+      entries: (storedEntries as StoredEntry[]).map(
+        ({ key: _key, scope: _scope, ...entry }) => entry,
+      ),
+      frontier: (storedFrontier as StoredDirectory[])
+        .sort((left, right) => left.position - right.position)
+        .map(({ key: _key, scope: _scope, position: _position, ...directory }) => directory),
+      summaryUsage: (storedUsage as StoredSummaryUsage[]).map(
+        ({ key: _key, scope: _scope, ...usage }) => usage,
+      ),
+    };
+    if (!storedArchive) transaction.objectStore(ARCHIVE_STORE).put(cleanupSnapshot);
+    await transactionDone(transaction);
+    return cleanupSnapshot;
   } finally {
     database.close();
   }
@@ -472,6 +748,7 @@ export async function readSiyuanIndexJob(
       summaryProviderId: stored.summaryProviderId ?? null,
       summaryConnectionId: stored.summaryConnectionId ?? null,
       summaryModelId: stored.summaryModelId ?? null,
+      summaryEffort: stored.summaryEffort ?? null,
       phaseStartedAt: stored.phaseStartedAt ?? stored.updatedAt,
       rateSamples: stored.rateSamples ?? [],
       discoverySamples: stored.discoverySamples ?? [],
@@ -514,6 +791,7 @@ export async function listSiyuanIndexJobs(projectId?: string): Promise<SiyuanInd
         summaryProviderId: stored.summaryProviderId ?? null,
         summaryConnectionId: stored.summaryConnectionId ?? null,
         summaryModelId: stored.summaryModelId ?? null,
+        summaryEffort: stored.summaryEffort ?? null,
         phaseStartedAt: stored.phaseStartedAt ?? stored.updatedAt,
         rateSamples: stored.rateSamples ?? [],
         discoverySamples: stored.discoverySamples ?? [],

@@ -20,6 +20,7 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(source).toMatch(/cloud use always asks before sending\s+anything/u);
     expect(source).not.toContain('complete allowed folder structure is indexed');
     expect(source).toContain('onPause={() =>');
+    expect(source).toContain('.pause(projectId, indexJobSnapshot.mapId)');
     expect(source).toContain('onResume={() =>');
     expect(source).toContain('updateSiyuanIndexJobStatus(');
     expect(source).toContain("abort('user_cancelled')");
@@ -55,12 +56,13 @@ describe('ContextPage SiYuan creation contract', () => {
 
   it('shows an accessible reduced-motion-safe animation while a Context Map is working', () => {
     expect(source).toContain('data-testid="siyuan-working-animation"');
-    expect(source).toContain('aria-label="SiYuan map creation progress"');
+    expect(source).toContain('label="SiYuan map creation progress"');
     expect(source).toContain('aria-hidden="true"');
     expect(source).toContain('motion-reduce:animate-none');
-    expect(source).toContain('aria-valuenow={exactPercent === null ? undefined');
+    expect(source).toContain('progress={exactPercent}');
+    expect(source).toContain("paused={job.status !== 'running'}");
     expect(source).toContain("? 'Estimating time…'");
-    expect(source).toContain("'Approximately '");
+    expect(source).toContain("`${job.phase === 'completed' ? '' : '≈ '}");
   });
 
   it('offers an explicit safe restart only for terminal failed or cancelled jobs', () => {

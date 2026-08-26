@@ -138,11 +138,13 @@ export function classifySiyuanStartupMaps(input: {
 
 export function SiyuanIndexJobHost() {
   const accountId = useAuthStore((state) => resolveAccountIdentity(state)?.accountId ?? null);
+  const workspaceId = useAuthStore((state) => state.workspaceId);
   const projectId = useAuthStore((state) => state.projectId);
 
   React.useEffect(() => {
     if (
       !accountId ||
+      !workspaceId ||
       !projectId ||
       typeof window === 'undefined' ||
       !('__TAURI_INTERNALS__' in window)
@@ -178,6 +180,7 @@ export function SiyuanIndexJobHost() {
                 run: () =>
                   productionSiyuanContextMaps.sync(projectId, map, {
                     accountId,
+                    workspaceId,
                     signal: controller.signal,
                     control: createDurableSiyuanIndexJobControl(projectId, map.id),
                   }),
@@ -217,7 +220,7 @@ export function SiyuanIndexJobHost() {
       disposed = true;
       controllers.forEach((controller) => controller.abort('siyuan_job_host_scope_changed'));
     };
-  }, [accountId, projectId]);
+  }, [accountId, projectId, workspaceId]);
 
   return null;
 }

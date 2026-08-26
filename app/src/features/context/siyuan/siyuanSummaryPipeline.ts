@@ -2,14 +2,28 @@ import { readTextFileSample } from '@/lib/fs';
 import { applySecretPolicy } from '@/lib/security/secretDetector';
 import { useAuthStore } from '@/stores/auth';
 import type { Agent } from '@/types';
+import type { EffortLabel } from '@/lib/ai/catalog/modelVariants';
+import { resolveReasoningPolicy } from '@/lib/ai/reasoningControls';
 import type { SiyuanCloudSummaryApproval, SiyuanSummaryPolicy } from './siyuanMapManifest';
-import type { SiyuanIndexJobControl, SiyuanSafeIndexEntry } from './siyuanSafeIndex';
-import { checkpointSiyuanIndexJob, type SiyuanIndexJobRecord } from './siyuanIndexJobStore';
+import {
+  createDurableSiyuanIndexJobControl,
+  type SiyuanIndexJobControl,
+  type SiyuanSafeIndexEntry,
+} from './siyuanSafeIndex';
+import {
+  checkpointSiyuanIndexJob,
+  checkpointSiyuanSummaryBatchNode,
+  type SiyuanIndexJobRecord,
+} from './siyuanIndexJobStore';
+import { prepareSiyuanSummaryContent, SIYUAN_SUMMARY_READ_BYTES } from './siyuanSummaryContent';
+import { executeSiyuanSummaryBatches } from './siyuanSummaryBatchExecutor';
+import { generateSiyuanSummaryBatch } from './siyuanSummaryBatchGenerator';
 
 export interface SiyuanSummaryModelIdentity {
   providerId: string;
   connectionId: string;
   modelId: string;
+  effort?: EffortLabel;
 }
 
 export interface SiyuanSummaryGeneration extends SiyuanSummaryModelIdentity {
@@ -17,16 +31,67 @@ export interface SiyuanSummaryGeneration extends SiyuanSummaryModelIdentity {
   inputTokens: number;
   outputTokens: number;
   tokenProvenance: 'reported' | 'estimated';
+  effortProvenance?: 'requested';
+}
+
+export interface SiyuanSummaryRequestScope {
+  accountId: string;
+  workspaceId: string;
+  projectId: string;
+  workingDirectory: string;
 }
 
 export type SiyuanSummaryGenerator = (input: {
   entry: SiyuanSafeIndexEntry;
   content: string;
   identity: SiyuanSummaryModelIdentity;
+  scope?: SiyuanSummaryRequestScope;
   signal?: AbortSignal;
 }) => Promise<SiyuanSummaryGeneration>;
 
-export const SIYUAN_SUMMARY_SAMPLE_BYTES = 48 * 1024;
+export const SIYUAN_SUMMARY_SAMPLE_BYTES = SIYUAN_SUMMARY_READ_BYTES;
+
+function isSummaryControlInterruption(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { name?: unknown; message?: unknown };
+  return (
+    candidate.name === 'AbortError' ||
+    candidate.message === 'siyuan_index_cancelled' ||
+    candidate.message === 'siyuan_index_paused'
+  );
+}
+
+function exactSummaryRuntimeControls(identity: SiyuanSummaryModelIdentity): {
+  providerOptions: Record<string, unknown>;
+  runtimeSettings: {
+    effort: EffortLabel;
+    fastMode: 'auto';
+    performance: 'quality';
+    rlmEnabled: false;
+  };
+} {
+  const effort = identity.effort ?? 'auto';
+  if (effort === 'auto') {
+    return {
+      providerOptions: {},
+      runtimeSettings: { effort, fastMode: 'auto', performance: 'quality', rlmEnabled: false },
+    };
+  }
+  const isOpenCodeRoute = identity.connectionId.toLocaleLowerCase('en-US').includes('opencode');
+  const providerOptions = isOpenCodeRoute
+    ? { reasoning_effort: effort === 'ultra' ? 'xhigh' : effort }
+    : resolveReasoningPolicy({
+        selection: identity,
+        preference: { mode: 'normal', effortOverride: effort },
+      }).providerOptions;
+  if (Object.keys(providerOptions).length === 0) {
+    throw new Error('siyuan_summary_effort_unsupported');
+  }
+  return {
+    providerOptions,
+    runtimeSettings: { effort, fastMode: 'auto', performance: 'quality', rlmEnabled: false },
+  };
+}
 
 export interface SiyuanCloudSummaryScope {
   eligibleFileCount: number;
@@ -37,7 +102,12 @@ export interface SiyuanCloudSummaryScope {
 export function registeredLocalSiyuanSummaryIdentity(): SiyuanSummaryModelIdentity {
   const modelId = useAuthStore.getState().defaultLocalModel.trim();
   if (!modelId) throw new Error('local_model_unavailable');
-  return Object.freeze({ providerId: 'ollama', connectionId: 'ollama-local', modelId });
+  return Object.freeze({
+    providerId: 'ollama',
+    connectionId: 'ollama-local',
+    modelId,
+    effort: 'minimal' as const,
+  });
 }
 
 export function resolveSiyuanSummaryIdentityForJob(
@@ -49,6 +119,7 @@ export function resolveSiyuanSummaryIdentityForJob(
       providerId: job.summaryProviderId!,
       connectionId: job.summaryConnectionId!,
       modelId: job.summaryModelId!,
+      effort: job.summaryEffort ?? 'minimal',
     });
   }
   if (persisted.some((value) => Boolean(value))) {
@@ -75,7 +146,6 @@ export const generateSiyuanSummaryWithRegisteredLocalModel: SiyuanSummaryGenerat
     max_output_tokens: 160,
     capabilities: ['writing'],
     builtin: true,
-    effort: 'minimal',
     source: 'builtin',
     created_at: now,
     updated_at: now,
@@ -119,7 +189,16 @@ export const generateSiyuanSummaryWithRegisteredLocalModel: SiyuanSummaryGenerat
 export const generateSiyuanSummaryWithApprovedCloudModel: SiyuanSummaryGenerator = async (
   input,
 ) => {
+  if (
+    !input.scope?.accountId.trim() ||
+    !input.scope.workspaceId.trim() ||
+    !input.scope.projectId.trim() ||
+    !input.scope.workingDirectory.trim()
+  ) {
+    throw new Error('siyuan_summary_request_scope_missing');
+  }
   const { runAgent } = await import('@/lib/ai/router');
+  const controls = exactSummaryRuntimeControls(input.identity);
   const now = Date.now();
   const agent = {
     id: 'siyuan-cloud-summary' as Agent['id'],
@@ -138,7 +217,6 @@ export const generateSiyuanSummaryWithApprovedCloudModel: SiyuanSummaryGenerator
     max_output_tokens: 160,
     capabilities: ['writing'],
     builtin: true,
-    effort: 'minimal',
     source: 'builtin',
     created_at: now,
     updated_at: now,
@@ -147,6 +225,10 @@ export const generateSiyuanSummaryWithApprovedCloudModel: SiyuanSummaryGenerator
     agent,
     purpose: 'chat',
     connectionId: input.identity.connectionId,
+    accountId: input.scope.accountId,
+    workspaceId: input.scope.workspaceId,
+    projectId: input.scope.projectId,
+    workingDirectory: input.scope.workingDirectory,
     messages: [
       {
         role: 'user',
@@ -160,6 +242,8 @@ export const generateSiyuanSummaryWithApprovedCloudModel: SiyuanSummaryGenerator
     explicitReadSynthesis: true,
     interactionMode: 'ask',
     accessLevel: 'read-only',
+    provider_options: controls.providerOptions,
+    runtimeSettings: controls.runtimeSettings,
   });
   if (
     response.provider !== input.identity.providerId ||
@@ -172,11 +256,13 @@ export const generateSiyuanSummaryWithApprovedCloudModel: SiyuanSummaryGenerator
     providerId: response.provider,
     connectionId: input.identity.connectionId,
     modelId: response.model,
+    effort: input.identity.effort,
     inputTokens: response.usage.input_tokens,
     outputTokens: response.usage.output_tokens,
     // The shared router does not currently expose receipt provenance, so the
     // exact counts remain conservatively labelled estimated here.
     tokenProvenance: 'estimated',
+    effortProvenance: 'requested',
   };
 };
 
@@ -276,7 +362,8 @@ export function approvedCloudSiyuanSummaryIdentity(input: {
     persistedIdentity.some(Boolean) &&
     (input.job.summaryProviderId !== approval.providerId ||
       input.job.summaryConnectionId !== approval.connectionId ||
-      input.job.summaryModelId !== approval.modelId)
+      input.job.summaryModelId !== approval.modelId ||
+      (input.job.summaryEffort ?? 'auto') !== (approval.effort ?? 'auto'))
   ) {
     throw new Error('siyuan_cloud_summary_restart_required');
   }
@@ -295,6 +382,7 @@ export function approvedCloudSiyuanSummaryIdentity(input: {
     providerId: approval.providerId,
     connectionId: approval.connectionId,
     modelId: approval.modelId,
+    effort: approval.effort ?? 'auto',
   });
 }
 
@@ -312,7 +400,8 @@ function sameIdentity(
   return (
     actual.providerId === expected.providerId &&
     actual.connectionId === expected.connectionId &&
-    actual.modelId === expected.modelId
+    actual.modelId === expected.modelId &&
+    (actual.effort ?? 'minimal') === (expected.effort ?? 'minimal')
   );
 }
 
@@ -325,11 +414,27 @@ export async function runSiyuanSummaryPipeline(input: {
   job: SiyuanIndexJobRecord;
   identity: SiyuanSummaryModelIdentity;
   generator: SiyuanSummaryGenerator;
+  requestScope?: SiyuanSummaryRequestScope;
   read?: (path: string, root: string) => Promise<SummaryReadResult>;
   control?: SiyuanIndexJobControl;
   signal?: AbortSignal;
   onCompleted?: (entry: SiyuanSafeIndexEntry) => Promise<void>;
 }): Promise<{ entries: SiyuanSafeIndexEntry[]; job: SiyuanIndexJobRecord }> {
+  const cloudRoute =
+    input.identity.providerId !== 'ollama' && input.identity.providerId !== 'local';
+  if (cloudRoute) {
+    const scope = input.requestScope;
+    if (
+      !scope?.accountId.trim() ||
+      !scope.workspaceId.trim() ||
+      scope.projectId !== input.projectId ||
+      canonical(scope.workingDirectory).toLocaleLowerCase('en-US') !==
+        canonical(input.root).toLocaleLowerCase('en-US') ||
+      input.job.accountId !== scope.accountId
+    ) {
+      throw new Error('siyuan_summary_request_scope_mismatch');
+    }
+  }
   const persistedIdentity = [
     input.job.summaryProviderId,
     input.job.summaryConnectionId,
@@ -343,6 +448,7 @@ export async function runSiyuanSummaryPipeline(input: {
           providerId: input.job.summaryProviderId ?? '',
           connectionId: input.job.summaryConnectionId ?? '',
           modelId: input.job.summaryModelId ?? '',
+          effort: input.job.summaryEffort ?? 'minimal',
         },
         input.identity,
       ))
@@ -374,6 +480,7 @@ export async function runSiyuanSummaryPipeline(input: {
     summaryProviderId: input.identity.providerId,
     summaryConnectionId: input.identity.connectionId,
     summaryModelId: input.identity.modelId,
+    summaryEffort: input.identity.effort ?? 'minimal',
     summaryEligible,
     phaseStartedAt: Date.now(),
     rateSamples: [{ at: Date.now(), processed: input.job.summarized }],
@@ -384,9 +491,140 @@ export async function runSiyuanSummaryPipeline(input: {
   await checkpointSiyuanIndexJob({ job });
   const entries = [...input.entries];
   if (input.policy.mode === 'none') return { entries, job };
+  const durableControl = createDurableSiyuanIndexJobControl(input.projectId, input.mapId);
+
+  if (cloudRoute && input.generator === generateSiyuanSummaryWithApprovedCloudModel) {
+    const prepared: Array<{
+      entry: SiyuanSafeIndexEntry;
+      content: string;
+      contentBytes: number;
+    }> = [];
+    const dispatchPrepared = async () => {
+      if (prepared.length === 0) return;
+      const files = prepared.splice(0, prepared.length);
+      await executeSiyuanSummaryBatches({
+        projectId: input.projectId,
+        mapId: input.mapId,
+        policyFingerprint: input.job.policyFingerprint,
+        identity: {
+          providerId: input.identity.providerId,
+          connectionId: input.identity.connectionId,
+          modelId: input.identity.modelId,
+          effort: input.identity.effort ?? 'minimal',
+        },
+        files,
+        laneCount: 3,
+        control: input.control,
+        durableControl,
+        signal: input.signal,
+        generate: (batch, signal) =>
+          generateSiyuanSummaryBatch({
+            batch,
+            identity: {
+              providerId: input.identity.providerId,
+              connectionId: input.identity.connectionId,
+              modelId: input.identity.modelId,
+              effort: input.identity.effort ?? 'minimal',
+            },
+            scope: input.requestScope!,
+            signal,
+          }),
+        apply: async ({ entry, batchId, batchNodeCount, batchLane, batchAttempt, usage }) => {
+          await input.onCompleted?.(entry);
+          job = await checkpointSiyuanSummaryBatchNode({
+            projectId: input.projectId,
+            mapId: input.mapId,
+            entry,
+            batchUsage: {
+              batchId,
+              requestId: usage.requestId,
+              sessionId: usage.sessionId,
+              nodeCount: batchNodeCount,
+              policyFingerprint: input.job.policyFingerprint,
+              lane: batchLane,
+              attempt: batchAttempt,
+              nodeId: `batch:${batchId}`,
+              sourceModifiedAt: null,
+              sourceSizeBytes: null,
+              providerId: usage.identity.providerId,
+              connectionId: usage.identity.connectionId,
+              modelId: usage.identity.modelId,
+              effort: usage.identity.effort,
+              effortProvenance: 'requested',
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+              totalTokens: usage.totalTokens,
+              provenance: usage.tokenProvenance,
+              cacheReadTokens: usage.cacheReadTokens,
+              cacheWriteTokens: usage.cacheWriteTokens,
+              cacheProvenance: usage.cacheProvenance,
+              costUsd: usage.costUsd,
+              costProvenance: usage.costProvenance,
+              dispatchedAt: usage.dispatchedAt,
+              durationMs: usage.durationMs,
+              completedAt: usage.completedAt,
+            },
+          });
+          const target = entries.findIndex((candidate) => candidate.nodeId === entry.nodeId);
+          if (target >= 0) entries[target] = entry;
+        },
+      });
+    };
+    try {
+      for (let index = 0; index < entries.length; index += 1) {
+        await input.control?.checkpoint(input.signal);
+        await durableControl.checkpoint(input.signal);
+        const entry = entries[index]!;
+        if (!isSiyuanSummaryEligible(entry, input.root, input.policy)) continue;
+        const source = await read(entry.sourcePointer!, input.root);
+        if (!source.ok) {
+          const skipped = { ...entry, summaryState: 'skipped' as const };
+          entries[index] = skipped;
+          job = { ...job, skipped: job.skipped + 1, updatedAt: Date.now() };
+          await checkpointSiyuanIndexJob({ job, appendedEntries: [skipped] });
+          continue;
+        }
+        const preparedContent = prepareSiyuanSummaryContent(source.content, entry.sizeBytes);
+        const safeInput = applySecretPolicy(preparedContent.content, 'exclude');
+        if (safeInput.decision !== 'allowed' || !safeInput.text?.trim()) {
+          const skipped = { ...entry, summaryState: 'skipped' as const };
+          entries[index] = skipped;
+          job = { ...job, skipped: job.skipped + 1, updatedAt: Date.now() };
+          await checkpointSiyuanIndexJob({ job, appendedEntries: [skipped] });
+          continue;
+        }
+        prepared.push({
+          entry,
+          content: safeInput.text,
+          contentBytes: new TextEncoder().encode(safeInput.text).byteLength,
+        });
+        // Three lanes × eight files keeps memory bounded and starts provider
+        // work without waiting for the full eligible corpus to be read.
+        if (prepared.length >= 24) await dispatchPrepared();
+      }
+      await dispatchPrepared();
+    } catch (error) {
+      if (isSummaryControlInterruption(error)) throw error;
+      job = { ...job, status: 'failed', updatedAt: Date.now() };
+      await checkpointSiyuanIndexJob({ job });
+      throw error;
+    }
+    job = {
+      ...job,
+      phase: 'reconciling',
+      phaseStartedAt: Date.now(),
+      rateSamples: [{ at: Date.now(), processed: job.summarized }],
+      estimatedPercent: Math.max(job.estimatedPercent ?? 0, 99),
+      estimatedEtaSeconds: null,
+      updatedAt: Date.now(),
+    };
+    await checkpointSiyuanIndexJob({ job });
+    return { entries, job };
+  }
 
   for (let index = 0; index < entries.length; index += 1) {
-    await input.control?.checkpoint();
+    await input.control?.checkpoint(input.signal);
+    await durableControl.checkpoint(input.signal);
     if (input.signal?.aborted) throw new Error('siyuan_index_cancelled');
     const entry = entries[index]!;
     if (!isSiyuanSummaryEligible(entry, input.root, input.policy)) continue;
@@ -398,7 +636,8 @@ export async function runSiyuanSummaryPipeline(input: {
       await checkpointSiyuanIndexJob({ job, appendedEntries: [skipped] });
       continue;
     }
-    const safeInput = applySecretPolicy(source.content, 'exclude');
+    const preparedContent = prepareSiyuanSummaryContent(source.content, entry.sizeBytes);
+    const safeInput = applySecretPolicy(preparedContent.content, 'exclude');
     if (safeInput.decision !== 'allowed' || !safeInput.text?.trim()) {
       const skipped = { ...entry, summaryState: 'skipped' as const };
       entries[index] = skipped;
@@ -411,8 +650,16 @@ export async function runSiyuanSummaryPipeline(input: {
         entry,
         content: safeInput.text,
         identity: input.identity,
+        scope: input.requestScope,
         signal: input.signal,
       });
+      // The UI control can be replaced while a single-flight sync is already
+      // running. Re-check both the caller control and the durable job after
+      // inference so a persisted pause can never commit a stale in-memory
+      // completion or dispatch the next file.
+      await input.control?.checkpoint(input.signal);
+      await durableControl.checkpoint(input.signal);
+      if (input.signal?.aborted) throw new Error('siyuan_index_cancelled');
       if (!sameIdentity(generated, input.identity)) {
         throw new Error('siyuan_summary_model_identity_mismatch');
       }
@@ -461,6 +708,10 @@ export async function runSiyuanSummaryPipeline(input: {
           providerId: generated.providerId,
           connectionId: generated.connectionId,
           modelId: generated.modelId,
+          effort: generated.effort,
+          effortProvenance: generated.effort
+            ? (generated.effortProvenance ?? 'requested')
+            : undefined,
           inputTokens,
           outputTokens,
           totalTokens: inputTokens + outputTokens,
@@ -470,9 +721,13 @@ export async function runSiyuanSummaryPipeline(input: {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (isSummaryControlInterruption(error)) {
+        throw error;
+      }
       if (
         message === 'siyuan_summary_model_identity_mismatch' ||
-        message === 'siyuan_summary_token_provenance_mismatch'
+        message === 'siyuan_summary_token_provenance_mismatch' ||
+        message.startsWith('siyuan_summary_request_scope_')
       ) {
         job = { ...job, status: 'failed', updatedAt: Date.now() };
         await checkpointSiyuanIndexJob({ job });

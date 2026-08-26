@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { ContextMapRecord } from '../tree';
 import { createSiyuanIndexJob } from './siyuanIndexJobStore';
 import { createSiyuanMapManifest } from './siyuanMapManifest';
@@ -54,6 +56,17 @@ function runningJob(mapRecord: ContextMapRecord) {
 }
 
 describe('SiYuan durable startup host', () => {
+  it('threads the active workspace into automatic summary resume authority', () => {
+    const source = readFileSync(
+      resolve('src/features/context/siyuan/SiyuanIndexJobHost.tsx'),
+      'utf8',
+    );
+    expect(source).toContain('const workspaceId = useAuthStore((state) => state.workspaceId)');
+    expect(source).toContain('!workspaceId ||');
+    expect(source).toContain('workspaceId,');
+    expect(source).toContain('}, [accountId, projectId, workspaceId]);');
+  });
+
   it('retries a transient startup failure while the durable job remains running', async () => {
     const run = vi
       .fn()

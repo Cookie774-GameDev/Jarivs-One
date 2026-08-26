@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   BrainCircuit,
   Boxes,
+  ChevronDown,
   ChevronRight,
   Clock3,
   Database,
@@ -28,7 +29,7 @@ import {
   Trash2,
   Zap,
 } from 'lucide-react';
-import { Button, Input, toast } from '@/components/ui';
+import { Button, Input, Popover, PopoverContent, PopoverTrigger, toast } from '@/components/ui';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { cn } from '@/lib/utils';
@@ -36,6 +37,15 @@ import { formatUserDateTime } from '@/lib/timeFormat';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { notifyDone } from '@/lib/notifications';
 import { devConsole } from '@/features/dev-console';
+import {
+  useAccessibleChatModels,
+  type ModelPickerGroup,
+  type ModelPickerOption,
+} from '@/lib/ai/useAccessibleChatModels';
+import { isLocalProvider } from '@/lib/ai/providerRegistry';
+import type { EffortLabel } from '@/lib/ai/catalog/modelVariants';
+import { ModelPickerTypeahead } from '@/features/chat/ModelPickerTypeahead';
+import { WarmHexProgress } from '@/components/progress/WarmHexProgress';
 import { basename, chooseProjectFolder, chooseProjectFiles } from '@/features/files/projectFiles';
 import { startRightClickDrag } from '@/lib/rightClickDrag';
 import {
@@ -104,7 +114,10 @@ import { buildGitHubProjectContextTree } from './githubContextTree';
 import { getStoredContextSourceRoot, setStoredContextSourceRoot } from './contextSourceRoot';
 import { SIYUAN_CONTEXT_VAULT_ENABLED } from './siyuan/siyuanContracts';
 import { SiyuanVaultSurface } from './siyuan/SiyuanVaultSurface';
-import { productionSiyuanContextMaps } from './siyuanContextMapIntegration';
+import {
+  clearArchivedSiyuanSummaryDocuments,
+  productionSiyuanContextMaps,
+} from './siyuanContextMapIntegration';
 import {
   DEFAULT_SIYUAN_SUMMARY_EXTENSIONS,
   readSiyuanMapManifest,
@@ -119,14 +132,22 @@ import {
 import {
   archiveAndReplaceSiyuanIndexJob,
   archiveAndRestartSiyuanSummaryJobForCloud,
+  archiveSiyuanSummaryJobForCloudRestart,
   createSiyuanIndexJob,
   readSiyuanIndexEntries,
   readSiyuanIndexJob,
+  resetSiyuanSummaryEntry,
   updateSiyuanIndexJobStatus,
   type SiyuanIndexJobRecord,
 } from './siyuan/siyuanIndexJobStore';
 import { formatSiyuanJobEta, siyuanOverallProgressPercent } from './siyuan/siyuanProgress';
 import { computeSiyuanCloudSummaryScope } from './siyuan/siyuanSummaryPipeline';
+import {
+  readSiyuanSummaryRoutePreference,
+  matchesSiyuanSummaryRoutePreference,
+  writeAutomaticSiyuanSummaryRoutePreference,
+  writeSiyuanSummaryRoutePreference,
+} from './siyuan/siyuanSummaryRoutePreference';
 import {
   canOpenPartialSiyuanSurface,
   hasSiyuanMapJobAuthority,
@@ -162,6 +183,10 @@ function SiyuanIndexProgressCard({
   onRetry,
   onRestart,
   cloudDisclosure,
+  summaryModelGroups,
+  summaryModelRouteId,
+  summaryModelEffort,
+  onSummaryModelChange,
   onApproveCloud,
   cloudApprovalPending,
 }: {
@@ -176,10 +201,15 @@ function SiyuanIndexProgressCard({
     providerId: string;
     connectionId: string;
     modelId: string;
+    effort: EffortLabel;
     eligibleFileCount: number;
     eligibleSourceBytes: number;
     estimatedMaxSentBytes: number;
   }> | null;
+  summaryModelGroups: readonly ModelPickerGroup[];
+  summaryModelRouteId: string;
+  summaryModelEffort: EffortLabel;
+  onSummaryModelChange: (routeId: string, effort: EffortLabel) => void;
   onApproveCloud: () => void;
   cloudApprovalPending: boolean;
 }) {
@@ -253,27 +283,14 @@ function SiyuanIndexProgressCard({
             : `${job.phase === 'completed' ? '' : '≈ '}${Math.round(exactPercent)}%`}
         </span>
       </div>
-      <div
-        className="mt-2 h-2 overflow-hidden rounded-full bg-paper/70"
-        role="progressbar"
-        aria-label="SiYuan map creation progress"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={exactPercent === null ? undefined : Math.round(exactPercent)}
-        aria-valuetext={
-          exactPercent === null
-            ? 'Estimating time…'
-            : `${job.phase === 'completed' ? '' : 'Approximately '}${Math.round(exactPercent)}%`
-        }
-      >
-        <div
-          className={cn(
-            'h-full rounded-full bg-accent transition-[width] duration-500',
-            exactPercent === null && 'w-1/3 animate-pulse motion-reduce:animate-none',
-          )}
-          style={exactPercent === null ? undefined : { width: `${exactPercent}%` }}
-        />
-      </div>
+      <WarmHexProgress
+        className="mt-2"
+        progress={exactPercent}
+        label="SiYuan map creation progress"
+        detail={`${phaseLabel[job.phase]} · ${job.status}`}
+        mode="compact"
+        paused={job.status !== 'running'}
+      />
       <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-metadata text-muted-foreground sm:grid-cols-4">
         <div>
           <dt>Indexed</dt>
@@ -319,16 +336,34 @@ function SiyuanIndexProgressCard({
         <p className="mt-1 text-metadata text-muted-foreground">
           Summary model: {job.summaryProviderId} / {job.summaryModelId} · connection{' '}
           {job.summaryConnectionId}
+          {job.summaryEffort ? ` · effort ${job.summaryEffort}` : ''}
         </p>
       ) : null}
-      {job.pauseReason === 'local_model_unavailable' ? (
+      <div
+        data-siyuan-summary-model-picker
+        className="mt-3 rounded-lg border border-border/80 bg-paper/55 p-3"
+      >
+        <p className="text-secondary font-medium text-foreground">Summary model</p>
+        <p className="mt-1 text-metadata text-muted-foreground">
+          Local-first automatic stays private. Choose an exact connected cloud route only when you
+          want to replace the summary pass; VibeSpace will show scope and ask before sending.
+        </p>
+        <SiyuanSummaryModelPicker
+          groups={summaryModelGroups}
+          selectedRouteId={summaryModelRouteId}
+          selectedEffort={summaryModelEffort}
+          onChange={onSummaryModelChange}
+          disabled={cloudApprovalPending}
+        />
+      </div>
+      {job.status === 'paused' && job.phase === 'summarizing' ? (
         <div className="mt-3 rounded-lg border border-accent-copper/30 bg-paper/70 p-3">
           <p className="text-secondary font-medium text-foreground">Approve cloud summaries</p>
           {cloudDisclosure ? (
             <>
               <p className="mt-1 text-metadata text-muted-foreground">
                 Exact route: {cloudDisclosure.providerId} / {cloudDisclosure.modelId} · connection{' '}
-                {cloudDisclosure.connectionId}
+                {cloudDisclosure.connectionId} · effort {cloudDisclosure.effort}
               </p>
               <p className="mt-1 text-metadata text-muted-foreground">
                 {cloudDisclosure.eligibleFileCount.toLocaleString()} eligible files ·{' '}
@@ -365,7 +400,7 @@ function SiyuanIndexProgressCard({
               Pause
             </Button>
           ) : null}
-          {job.status === 'paused' ? (
+          {job.status === 'paused' && !(job.phase === 'summarizing' && cloudDisclosure) ? (
             <Button size="sm" variant="secondary" onClick={onResume}>
               Resume
             </Button>
@@ -390,6 +425,93 @@ function SiyuanIndexProgressCard({
     </section>
   );
 }
+
+function SiyuanSummaryModelPicker({
+  groups,
+  selectedRouteId,
+  selectedEffort,
+  onChange,
+  disabled,
+}: {
+  groups: readonly ModelPickerGroup[];
+  selectedRouteId: string;
+  selectedEffort: EffortLabel;
+  onChange: (routeId: string, effort: EffortLabel) => void;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const options = React.useMemo(
+    () =>
+      groups.flatMap((group) =>
+        group.options.flatMap((option) => [option, ...(option.alternativeRoutes ?? [])]),
+      ),
+    [groups],
+  );
+  const selected = options.find((option) => option.id === selectedRouteId) ?? null;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-2 h-9 w-full justify-between border-border bg-paper/80 px-2 text-secondary font-normal"
+          disabled={disabled}
+          aria-label="Choose summary model"
+        >
+          <span className="truncate">
+            {selected ? `${selected.label} · ${selected.modelId}` : 'Local-first automatic'}
+          </span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      {open ? (
+        <PopoverContent
+          side="bottom"
+          align="start"
+          sideOffset={6}
+          collisionPadding={12}
+          sticky="always"
+          className="z-[120] max-h-[calc(100vh-24px)] w-auto overflow-y-auto border-0 bg-transparent p-0 shadow-none"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
+          <div className="rounded-[20px] border border-border/70 bg-paper/95 p-2 shadow-xl backdrop-blur-xl">
+            <Button
+              type="button"
+              variant="ghost"
+              className="mb-1 h-8 w-full justify-start text-secondary"
+              onClick={() => {
+                onChange('', 'auto');
+                setOpen(false);
+              }}
+            >
+              Local-first automatic
+            </Button>
+            <ModelPickerTypeahead
+              groups={[...groups]}
+              selectedId={selectedRouteId}
+              initialEffort={selectedEffort}
+              activeProvider={selected?.provider}
+              activeModel={selected?.modelId}
+              onSelect={(provider, modelId, connection, effort) => {
+                const route = options.find(
+                  (option) =>
+                    option.provider === provider &&
+                    option.modelId === modelId &&
+                    option.connectionId === connection?.id,
+                );
+                if (!route) return;
+                onChange(route.id, effort);
+                setOpen(false);
+              }}
+              compact
+            />
+          </div>
+        </PopoverContent>
+      ) : null}
+    </Popover>
+  );
+}
 const MAX_CONTEXT_MAP_LAYOUT_NODES = 100_000;
 const MAX_CONTEXT_MAP_LAYOUT_EDGES = 500_000;
 const DEFAULT_VIEW = centeredView(3000, 2100);
@@ -402,8 +524,9 @@ const contextSearchIndexPopulation = createContextSearchIndexPopulationPort();
 
 export function ContextPage() {
   const projectId = useAuthStore((s) => s.projectId);
+  const workspaceId = useAuthStore((s) => s.workspaceId);
   const accountId = useAuthStore((s) => resolveAccountIdentity(s)?.accountId ?? null);
-  const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
+  const accessibleSummaryModels = useAccessibleChatModels();
   const setRoute = useUIStore((s) => s.setRoute);
   const [rootDraft, setRootDraft] = React.useState(() =>
     getStoredContextSourceRoot(accountId, projectId),
@@ -420,11 +543,14 @@ export function ContextPage() {
     providerId: string;
     connectionId: string;
     modelId: string;
+    effort: EffortLabel;
     eligibleFileCount: number;
     eligibleSourceBytes: number;
     estimatedMaxSentBytes: number;
   } | null>(null);
   const [cloudApprovalPending, setCloudApprovalPending] = React.useState(false);
+  const [summaryModelRouteId, setSummaryModelRouteId] = React.useState('');
+  const [summaryModelEffort, setSummaryModelEffort] = React.useState<EffortLabel>('auto');
   const [summaryMode, setSummaryMode] = React.useState<SiyuanSummaryMode>('selected');
   const [summaryPathDraft, setSummaryPathDraft] = React.useState('');
   const [summarySelectedPaths, setSummarySelectedPaths] = React.useState<string[]>([]);
@@ -513,7 +639,7 @@ export function ContextPage() {
     return () => {
       active = false;
     };
-  }, [accountId, applyPersistenceState, projectId]);
+  }, [accountId, applyPersistenceState, projectId, workspaceId]);
 
   React.useEffect(() => {
     const onUpdated = (event: Event) => {
@@ -534,6 +660,89 @@ export function ContextPage() {
       maps.find((map) => map.status === 'active') ??
       null,
     [maps, selectedMapId],
+  );
+  const summaryModelGroups = React.useMemo<readonly ModelPickerGroup[]>(
+    () =>
+      accessibleSummaryModels.groups
+        .map((group) => ({
+          ...group,
+          options: group.options.filter(
+            (option) =>
+              option.available !== false &&
+              (Boolean(option.connectionId) ||
+                Boolean(option.alternativeRoutes?.some((route) => route.connectionId))),
+          ),
+        }))
+        .filter((group) => group.options.length > 0),
+    [accessibleSummaryModels.groups],
+  );
+  const summaryModelOptions = React.useMemo<readonly ModelPickerOption[]>(
+    () =>
+      summaryModelGroups.flatMap((group) =>
+        group.options.flatMap((option) => [option, ...(option.alternativeRoutes ?? [])]),
+      ),
+    [summaryModelGroups],
+  );
+  const selectedSummaryModel = React.useMemo(
+    () => summaryModelOptions.find((option) => option.id === summaryModelRouteId) ?? null,
+    [summaryModelOptions, summaryModelRouteId],
+  );
+
+  React.useEffect(() => {
+    if (!selectedMap || !accountId || !projectId || typeof window === 'undefined') {
+      setSummaryModelRouteId('');
+      setSummaryModelEffort('auto');
+      return;
+    }
+    const saved = readSiyuanSummaryRoutePreference(
+      window.localStorage,
+      accountId,
+      projectId,
+      selectedMap.id,
+    );
+    const candidateId =
+      saved?.mode === 'automatic'
+        ? ''
+        : saved?.mode === 'route'
+          ? `${saved.connectionId}:${saved.modelId}`
+          : '';
+    const candidate = summaryModelOptions.find(
+      (option) =>
+        option.id === candidateId &&
+        (saved?.mode !== 'route' ||
+          (option.provider === saved.providerId &&
+            option.connectionId === saved.connectionId &&
+            option.modelId === saved.modelId)),
+    );
+    setSummaryModelRouteId(candidate?.id ?? '');
+    setSummaryModelEffort(candidate && saved?.mode === 'route' ? saved.effort : 'auto');
+  }, [accountId, projectId, selectedMap, summaryModelOptions]);
+
+  const selectSummaryModel = React.useCallback(
+    (routeId: string, effort: EffortLabel) => {
+      setSummaryModelRouteId(routeId);
+      setSummaryModelEffort(effort);
+      setCloudSummaryDisclosure(null);
+      if (!selectedMap || !accountId || !projectId || typeof window === 'undefined') return;
+      if (!routeId) {
+        writeAutomaticSiyuanSummaryRoutePreference(
+          window.localStorage,
+          accountId,
+          projectId,
+          selectedMap.id,
+        );
+        return;
+      }
+      const option = summaryModelOptions.find((candidate) => candidate.id === routeId);
+      if (!option?.connectionId) return;
+      writeSiyuanSummaryRoutePreference(window.localStorage, accountId, projectId, selectedMap.id, {
+        providerId: option.provider,
+        connectionId: option.connectionId,
+        modelId: option.modelId,
+        effort,
+      });
+    },
+    [accountId, projectId, selectedMap, summaryModelOptions],
   );
 
   React.useEffect(() => {
@@ -572,31 +781,42 @@ export function ContextPage() {
     if (
       !projectId ||
       !selectedMap ||
-      indexJobSnapshot?.pauseReason !== 'local_model_unavailable' ||
-      chatModelSelection.mode !== 'single' ||
-      !('connectionId' in chatModelSelection) ||
-      !chatModelSelection.connectionId ||
-      chatModelSelection.providerId === 'ollama' ||
-      chatModelSelection.providerId === 'local'
+      indexJobSnapshot?.status !== 'paused' ||
+      indexJobSnapshot.phase !== 'summarizing' ||
+      !selectedSummaryModel?.connectionId ||
+      isLocalProvider(selectedSummaryModel.provider)
     ) {
       setCloudSummaryDisclosure(null);
       return;
     }
+    const selectedCloudModel = selectedSummaryModel;
     let active = true;
     void readSiyuanIndexEntries(projectId, selectedMap.id).then((entries) => {
       const manifest = readSiyuanMapManifest(projectId, selectedMap.id);
       if (!active || !manifest) return;
       setCloudSummaryDisclosure({
-        providerId: chatModelSelection.providerId,
-        connectionId: chatModelSelection.connectionId,
-        modelId: chatModelSelection.modelId,
-        ...computeSiyuanCloudSummaryScope(entries, selectedMap.rootDir, manifest.summaryPolicy),
+        providerId: selectedCloudModel.provider,
+        connectionId: selectedCloudModel.connectionId!,
+        modelId: selectedCloudModel.modelId,
+        effort: summaryModelEffort,
+        ...computeSiyuanCloudSummaryScope(
+          entries.map(resetSiyuanSummaryEntry),
+          selectedMap.rootDir,
+          manifest.summaryPolicy,
+        ),
       });
     });
     return () => {
       active = false;
     };
-  }, [chatModelSelection, indexJobSnapshot?.pauseReason, projectId, selectedMap]);
+  }, [
+    selectedSummaryModel,
+    summaryModelEffort,
+    indexJobSnapshot?.phase,
+    indexJobSnapshot?.status,
+    projectId,
+    selectedMap,
+  ]);
 
   const approveCloudSummaries = React.useCallback(async () => {
     if (!projectId || !selectedMap || !cloudSummaryDisclosure || cloudApprovalPendingRef.current) {
@@ -606,16 +826,61 @@ export function ContextPage() {
     setCloudApprovalPending(true);
     let approvalSaved = false;
     try {
+      const initialJob = await readSiyuanIndexJob(projectId, selectedMap.id);
+      if (
+        !initialJob ||
+        initialJob.status !== 'paused' ||
+        initialJob.phase !== 'summarizing' ||
+        !['user', 'local_model_unavailable', 'cloud_approval_required'].includes(
+          initialJob.pauseReason ?? '',
+        )
+      ) {
+        throw new Error('siyuan_cloud_summary_approval_state_changed');
+      }
+      generationAbortRef.current?.abort('cloud_summary_route_transition');
+      const writerStopDeadline = Date.now() + 10_000;
+      while (generationAbortRef.current && Date.now() < writerStopDeadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, 20));
+      }
+      if (generationAbortRef.current) {
+        throw new Error('siyuan_summary_writer_stop_timeout');
+      }
       const [job, entries] = await Promise.all([
         readSiyuanIndexJob(projectId, selectedMap.id),
         readSiyuanIndexEntries(projectId, selectedMap.id),
       ]);
       const manifest = readSiyuanMapManifest(projectId, selectedMap.id);
-      if (!job || !manifest || job.pauseReason !== 'local_model_unavailable') {
+      const selectedPreference = readSiyuanSummaryRoutePreference(
+        window.localStorage,
+        accountId,
+        projectId,
+        selectedMap.id,
+      );
+      if (
+        !job ||
+        !manifest ||
+        job.status !== 'paused' ||
+        job.phase !== 'summarizing' ||
+        !['user', 'local_model_unavailable', 'cloud_approval_required'].includes(
+          job.pauseReason ?? '',
+        )
+      ) {
         throw new Error('siyuan_cloud_summary_approval_state_changed');
       }
+      if (
+        !matchesSiyuanSummaryRoutePreference(selectedPreference, cloudSummaryDisclosure) ||
+        selectedSummaryModel?.provider !== cloudSummaryDisclosure.providerId ||
+        selectedSummaryModel.connectionId !== cloudSummaryDisclosure.connectionId ||
+        selectedSummaryModel.modelId !== cloudSummaryDisclosure.modelId ||
+        summaryModelEffort !== cloudSummaryDisclosure.effort
+      ) {
+        throw new Error('siyuan_cloud_summary_route_changed');
+      }
+      if (!hasSiyuanMapJobAuthority(selectedMap, manifest, job, accountId)) {
+        throw new Error('siyuan_cloud_summary_authority_changed');
+      }
       const currentScope = computeSiyuanCloudSummaryScope(
-        entries,
+        entries.map(resetSiyuanSummaryEntry),
         selectedMap.rootDir,
         manifest.summaryPolicy,
       );
@@ -642,6 +907,17 @@ export function ContextPage() {
       );
       writeSiyuanMapManifest(approvedManifest);
       approvalSaved = true;
+      const archive = await archiveSiyuanSummaryJobForCloudRestart(
+        projectId,
+        selectedMap.id,
+        approvedAt,
+      );
+      await clearArchivedSiyuanSummaryDocuments(projectId, selectedMap.id, archive, undefined, {
+        onProgress: ({ phase, completed, total }) =>
+          setStatus(
+            `${phase === 'validating' ? 'Checking' : 'Clearing'} saved summaries ${completed.toLocaleString()} / ${total.toLocaleString()}…`,
+          ),
+      });
       const restarted = await archiveAndRestartSiyuanSummaryJobForCloud(
         projectId,
         selectedMap.id,
@@ -665,7 +941,14 @@ export function ContextPage() {
       cloudApprovalPendingRef.current = false;
       setCloudApprovalPending(false);
     }
-  }, [cloudSummaryDisclosure, projectId, selectedMap]);
+  }, [
+    accountId,
+    cloudSummaryDisclosure,
+    projectId,
+    selectedMap,
+    selectedSummaryModel,
+    summaryModelEffort,
+  ]);
 
   React.useEffect(() => {
     if (!SIYUAN_CONTEXT_VAULT_ENABLED || !projectId || !selectedMap || generating) return;
@@ -703,7 +986,7 @@ export function ContextPage() {
         }
         if (!active) return null;
         const existing = await productionSiyuanContextMaps.read(projectId, selectedMap);
-        if (existing) return existing;
+        if (existing && job?.status !== 'running') return existing;
         if (job?.status === 'completed') {
           setStatus('SiYuan Context Map needs repair before it can reopen.');
           return null;
@@ -713,6 +996,7 @@ export function ContextPage() {
         setSiyuanIndexing(true);
         return productionSiyuanContextMaps.sync(projectId, selectedMap, {
           accountId,
+          workspaceId,
           signal: controller.signal,
           control,
           onIndexProgress: ({ indexed, excluded, unreadable }) => {
@@ -748,7 +1032,7 @@ export function ContextPage() {
       // detach React state updates; explicit Pause/Cancel and authority-scope
       // changes remain the operations that stop native indexing work.
     };
-  }, [accountId, generating, indexResumeNonce, projectId, selectedMap]);
+  }, [accountId, generating, indexResumeNonce, projectId, selectedMap, workspaceId]);
   const activeMapCount = React.useMemo(
     () => maps.filter((map) => map.status === 'active').length,
     [maps],
@@ -985,7 +1269,10 @@ export function ContextPage() {
             }
             const snapshot =
               existing ??
-              (await productionSiyuanContextMaps.sync(projectId, record, { accountId }));
+              (await productionSiyuanContextMaps.sync(projectId, record, {
+                accountId,
+                workspaceId,
+              }));
             setSiyuanTree(snapshot.tree);
             setStatus('SiYuan Context Map ready.');
           }
@@ -1001,7 +1288,7 @@ export function ContextPage() {
       setCenterMode('graph');
       setFocusedMap(true);
     },
-    [accountId, maps, projectId, selectMap],
+    [accountId, maps, projectId, selectMap, workspaceId],
   );
 
   const closeFocusedMap = React.useCallback(() => {
@@ -1067,7 +1354,7 @@ export function ContextPage() {
           if (restored) {
             await updateSiyuanIndexJobStatus(projectId, mapId, 'running');
             await productionSiyuanContextMaps
-              .sync(projectId, restored, { accountId })
+              .sync(projectId, restored, { accountId, workspaceId })
               .catch((error) => {
                 toast.warning(
                   'Context Map restored; SiYuan is still rebuilding it',
@@ -1089,7 +1376,7 @@ export function ContextPage() {
         );
       }
     },
-    [accountId, applyPersistenceState, maps, projectId],
+    [accountId, applyPersistenceState, maps, projectId, workspaceId],
   );
 
   const openFolderPicker = async () => {
@@ -1205,6 +1492,8 @@ export function ContextPage() {
         );
         if (projectId && persistedMap) {
           const snapshot = await productionSiyuanContextMaps.sync(projectId, persistedMap, {
+            accountId,
+            workspaceId,
             sourcePolicy: { readOnly: true, excludedPaths: customExclusions },
             summaryPolicy: {
               mode: summaryMode,
@@ -1242,6 +1531,7 @@ export function ContextPage() {
       githubBusy,
       githubInstallationId,
       projectId,
+      workspaceId,
       summaryMode,
       summarySelectedPaths,
       customExclusions,
@@ -1290,6 +1580,7 @@ export function ContextPage() {
         controller.signal.aborted ||
         generationAbortRef.current !== controller ||
         resolveAccountIdentity(persistenceAuth)?.accountId !== accountId ||
+        (persistenceAuth.workspaceId ?? null) !== (workspaceId ?? null) ||
         (persistenceAuth.projectId ?? null) !== (projectId ?? null)
       ) {
         setStructuralPreview(null);
@@ -1324,6 +1615,7 @@ export function ContextPage() {
         setSiyuanIndexing(true);
         const snapshot = await productionSiyuanContextMaps.sync(projectId, generatedMap, {
           accountId,
+          workspaceId,
           sourcePolicy: { readOnly: true, excludedPaths: customExclusions },
           summaryPolicy: {
             mode: summaryMode,
@@ -1362,6 +1654,7 @@ export function ContextPage() {
         controller.signal.aborted ||
         generationAbortRef.current !== controller ||
         resolveAccountIdentity(indexedAuth)?.accountId !== accountId ||
+        (indexedAuth.workspaceId ?? null) !== (workspaceId ?? null) ||
         (indexedAuth.projectId ?? null) !== (projectId ?? null)
       ) {
         setStructuralPreview(null);
@@ -1390,6 +1683,7 @@ export function ContextPage() {
       const auth = useAuthStore.getState();
       if (
         resolveAccountIdentity(auth)?.accountId !== accountId ||
+        (auth.workspaceId ?? null) !== (workspaceId ?? null) ||
         (auth.projectId ?? null) !== (projectId ?? null)
       ) {
         return;
@@ -1409,6 +1703,7 @@ export function ContextPage() {
       if (
         generationAbortRef.current === controller &&
         resolveAccountIdentity(auth)?.accountId === accountId &&
+        (auth.workspaceId ?? null) === (workspaceId ?? null) &&
         (auth.projectId ?? null) === (projectId ?? null)
       ) {
         generationAbortRef.current = null;
@@ -1423,6 +1718,7 @@ export function ContextPage() {
     applyPersistenceState,
     customExclusions,
     projectId,
+    workspaceId,
     rootDraft,
     summaryMode,
     summarySelectedPaths,
@@ -1845,15 +2141,18 @@ export function ContextPage() {
                   job={indexJobSnapshot}
                   summaryScope={indexSummaryScope}
                   cloudDisclosure={cloudSummaryDisclosure}
+                  summaryModelGroups={summaryModelGroups}
+                  summaryModelRouteId={summaryModelRouteId}
+                  summaryModelEffort={summaryModelEffort}
+                  onSummaryModelChange={selectSummaryModel}
                   onApproveCloud={() => void approveCloudSummaries()}
                   cloudApprovalPending={cloudApprovalPending}
                   onPause={() => {
                     indexControlRef.current?.pause();
-                    void updateSiyuanIndexJobStatus(
-                      projectId,
-                      indexJobSnapshot.mapId,
-                      'paused',
-                    ).then((job) => job && setIndexJobSnapshot(job));
+                    void productionSiyuanContextMaps
+                      .pause(projectId, indexJobSnapshot.mapId)
+                      .then(() => readSiyuanIndexJob(projectId, indexJobSnapshot.mapId))
+                      .then((job) => job && setIndexJobSnapshot(job));
                     setStatus('SiYuan indexing paused safely.');
                   }}
                   onResume={() => {

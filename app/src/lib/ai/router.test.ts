@@ -147,7 +147,7 @@ describe('canonical OpenCode AI routing', () => {
         accessLevel: 'read-only',
         tools,
         onApprovalRequested,
-        onSessionBound: onHarnessSessionBound,
+        onSessionBound: expect.any(Function),
       }),
     );
   });
@@ -599,6 +599,90 @@ describe('canonical OpenCode AI routing', () => {
     });
     expect(onApprovalRequested).toHaveBeenCalledWith(approval);
     expect(onHarnessSessionBound).toHaveBeenCalledWith({ sessionId: 'session-1' });
+  });
+
+  it('emits one exact completion receipt with merged partial provider usage', async () => {
+    const onProviderCompletionEvidence = vi.fn();
+    openCodeSend.mockImplementationOnce((request) =>
+      (async function* () {
+        await request.onSessionBound?.({ sessionId: 'session-evidence-1' });
+        yield { type: 'session', sessionId: 'session-evidence-1' } as const;
+        yield {
+          type: 'usage',
+          usage: {
+            capturedAt: 10,
+            inputTokens: { value: 100, provenance: 'provider-reported' as const },
+            cacheReadTokens: { value: 30, provenance: 'provider-reported' as const },
+          },
+        } as const;
+        yield {
+          type: 'usage',
+          usage: {
+            capturedAt: 20,
+            outputTokens: { value: 20, provenance: 'provider-reported' as const },
+            cacheWriteTokens: { value: 4, provenance: 'provider-reported' as const },
+            costUsd: { value: 0.01, provenance: 'provider-reported' as const },
+          },
+        } as const;
+        yield { type: 'done', finishReason: 'stop' } as const;
+      })(),
+    );
+
+    await runAgent({
+      agent: openaiAgent,
+      connectionId: 'opencode-cli',
+      requestId: 'request-evidence-1',
+      messages: [{ role: 'user', content: 'summarize' }],
+      provider_options: { reasoning_effort: 'high' },
+      runtimeSettings: {
+        effort: 'high',
+        fastMode: 'auto',
+        performance: 'quality',
+        rlmEnabled: false,
+      },
+      onProviderCompletionEvidence,
+    });
+
+    expect(onProviderCompletionEvidence).toHaveBeenCalledOnce();
+    expect(onProviderCompletionEvidence).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: 'request-evidence-1',
+        sessionId: 'session-evidence-1',
+        providerId: 'openai',
+        connectionId: 'opencode-cli',
+        modelId: 'gpt-protected',
+        reasoningEffort: 'high',
+        finishReason: 'stop',
+        usage: expect.objectContaining({
+          inputTokens: { value: 100, provenance: 'provider-reported' },
+          outputTokens: { value: 20, provenance: 'provider-reported' },
+          cacheReadTokens: { value: 30, provenance: 'provider-reported' },
+          cacheWriteTokens: { value: 4, provenance: 'provider-reported' },
+          costUsd: { value: 0.01, provenance: 'provider-reported' },
+        }),
+      }),
+    );
+  });
+
+  it('does not issue completion evidence when the provider stream ends without done', async () => {
+    const onProviderCompletionEvidence = vi.fn();
+    openCodeSend.mockImplementationOnce((request) =>
+      (async function* () {
+        await request.onSessionBound?.({ sessionId: 'session-incomplete' });
+        yield { type: 'text', delta: 'partial' } as const;
+      })(),
+    );
+
+    await expect(
+      runAgent({
+        agent: openaiAgent,
+        connectionId: 'opencode-cli',
+        requestId: 'request-incomplete',
+        messages: [{ role: 'user', content: 'summarize' }],
+        onProviderCompletionEvidence,
+      }),
+    ).rejects.toThrow('provider_completion_terminal_missing');
+    expect(onProviderCompletionEvidence).not.toHaveBeenCalled();
   });
 
   it('tracks active routing until the persistent OpenCode stream completes', async () => {

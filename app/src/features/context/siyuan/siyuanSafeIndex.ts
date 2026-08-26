@@ -46,7 +46,27 @@ export interface SiyuanIndexJobControl {
   pause(): void;
   resume(): void;
   cancel(): void;
-  checkpoint(): Promise<void>;
+  checkpoint(signal?: AbortSignal): Promise<void>;
+}
+
+function cancelledError(): Error {
+  return new Error('siyuan_index_cancelled');
+}
+
+function abortableDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(cancelledError());
+  return new Promise<void>((resolve, reject) => {
+    const timer = globalThis.setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, milliseconds);
+    const onAbort = () => {
+      globalThis.clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      reject(cancelledError());
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 export function createSiyuanIndexJobControl(): SiyuanIndexJobControl {
@@ -74,12 +94,26 @@ export function createSiyuanIndexJobControl(): SiyuanIndexJobControl {
       state = 'cancelled';
       release();
     },
-    async checkpoint() {
+    async checkpoint(signal?: AbortSignal) {
       if (isCancelled()) throw new Error('siyuan_index_cancelled');
+      if (signal?.aborted) throw cancelledError();
       if (state === 'paused') {
-        await new Promise<void>((resolve) => resumeWaiters.push(resolve));
+        await new Promise<void>((resolve, reject) => {
+          const onResume = () => {
+            signal?.removeEventListener('abort', onAbort);
+            resolve();
+          };
+          const onAbort = () => {
+            resumeWaiters = resumeWaiters.filter((waiter) => waiter !== onResume);
+            signal?.removeEventListener('abort', onAbort);
+            reject(cancelledError());
+          };
+          resumeWaiters.push(onResume);
+          signal?.addEventListener('abort', onAbort, { once: true });
+        });
       }
       if (isCancelled()) throw new Error('siyuan_index_cancelled');
+      if (signal?.aborted) throw cancelledError();
     },
   });
 }
@@ -102,19 +136,24 @@ export function createDurableSiyuanIndexJobControl(
     cancel() {
       state = 'cancelled';
     },
-    async checkpoint() {
+    async checkpoint(signal?: AbortSignal) {
       while (true) {
+        if (signal?.aborted) throw cancelledError();
         const job = await readSiyuanIndexJob(projectId, mapId);
         if (!job || job.status === 'cancelled') {
           state = 'cancelled';
           throw new Error('siyuan_index_cancelled');
+        }
+        if (job.status === 'failed' || job.status === 'completed') {
+          state = 'cancelled';
+          throw cancelledError();
         }
         if (job.status !== 'paused') {
           state = 'running';
           return;
         }
         state = 'paused';
-        await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 250));
+        await abortableDelay(250, signal);
       }
     },
   };
@@ -476,7 +515,7 @@ export async function scanSiyuanFilesystemIndex(
   }
 
   while (cursor < queue.length) {
-    await options.control?.checkpoint();
+    await options.control?.checkpoint(options.signal);
     if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
     const directories = queue.slice(cursor, cursor + DIRECTORY_SCAN_CONCURRENCY);
     cursor += directories.length;

@@ -15,7 +15,21 @@ describe('OllamaConnectionHost lifecycle', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
     vi.clearAllMocks();
+  });
+
+  it('does not schedule or invoke Ollama bootstrap when explicitly disabled', async () => {
+    vi.stubEnv('VITE_DISABLE_OLLAMA_BOOTSTRAP', 'true');
+    const view = render(<OllamaConnectionHost />);
+
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+
+    expect(bootstrapOllamaConnection).not.toHaveBeenCalled();
+    view.unmount();
   });
 
   it('aborts an in-flight bootstrap when the host unmounts', async () => {

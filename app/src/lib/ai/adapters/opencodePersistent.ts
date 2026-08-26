@@ -764,7 +764,9 @@ function normalizeToolEvent(
   };
 }
 
-function normalizeUsage(event: OpenCodeRawEvent): UsageSnapshot | undefined {
+export function normalizePersistentOpenCodeUsage(
+  event: OpenCodeRawEvent,
+): UsageSnapshot | undefined {
   if (event.type !== 'message.updated') return undefined;
   const info = recordOf(event.properties?.info ?? event.properties?.message);
   const tokens = recordOf(info?.tokens ?? info?.usage);
@@ -773,6 +775,10 @@ function normalizeUsage(event: OpenCodeRawEvent): UsageSnapshot | undefined {
     typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
   const input = number(tokens?.input ?? tokens?.inputTokens ?? tokens?.input_tokens);
   const output = number(tokens?.output ?? tokens?.outputTokens ?? tokens?.output_tokens);
+  const cache = recordOf(tokens?.cache);
+  const cacheRead = number(cache?.read ?? tokens?.cacheRead ?? tokens?.cache_read);
+  const cacheWrite = number(cache?.write ?? tokens?.cacheWrite ?? tokens?.cache_write);
+  const reasoning = number(tokens?.reasoning ?? tokens?.reasoningTokens ?? tokens?.reasoning_tokens);
   const cost = number(info?.cost ?? tokens?.cost);
   return {
     capturedAt: Date.now(),
@@ -782,6 +788,15 @@ function normalizeUsage(event: OpenCodeRawEvent): UsageSnapshot | undefined {
     ...(output === undefined
       ? {}
       : { outputTokens: { value: output, provenance: 'provider-reported' as const } }),
+    ...(cacheRead === undefined
+      ? {}
+      : { cacheReadTokens: { value: cacheRead, provenance: 'provider-reported' as const } }),
+    ...(cacheWrite === undefined
+      ? {}
+      : { cacheWriteTokens: { value: cacheWrite, provenance: 'provider-reported' as const } }),
+    ...(reasoning === undefined
+      ? {}
+      : { reasoningTokens: { value: reasoning, provenance: 'provider-reported' as const } }),
     ...(cost === undefined
       ? {}
       : { costUsd: { value: cost, provenance: 'provider-reported' as const } }),
@@ -1500,7 +1515,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         }
         yield tool;
       }
-      const usage = normalizeUsage(event);
+      const usage = normalizePersistentOpenCodeUsage(event);
       if (usage) yield { type: 'usage', usage };
       if (event.type === 'session.error') {
         reportPersistentTurnFailure('provider_reported');

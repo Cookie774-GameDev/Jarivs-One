@@ -309,6 +309,15 @@ describe('SiYuan safe read-only index', () => {
     await expect(control.checkpoint()).rejects.toThrow('siyuan_index_cancelled');
   });
 
+  it('releases a paused in-memory checkpoint when its renderer signal aborts', async () => {
+    const control = createSiyuanIndexJobControl();
+    const controller = new AbortController();
+    control.pause();
+    const waiting = control.checkpoint(controller.signal);
+    controller.abort('renderer_reload');
+    await expect(waiting).rejects.toThrow('siyuan_index_cancelled');
+  });
+
   it('enumerates independent directories with bounded concurrency', async () => {
     let active = 0;
     let maximum = 0;
@@ -444,5 +453,26 @@ describe('SiYuan safe read-only index', () => {
     await updateSiyuanIndexJobStatus('project-1', 'map-1', 'cancelled');
     await expect(control.checkpoint()).rejects.toThrow('siyuan_index_cancelled');
     expect(control.state).toBe('cancelled');
+  });
+
+  it('releases a durable paused checkpoint when its renderer signal aborts', async () => {
+    const job = createSiyuanIndexJob({
+      accountId: 'account-1',
+      projectId: 'project-1',
+      mapId: 'map-abort',
+      canonicalRoot: 'C:/Users/viper',
+      policyFingerprint: 'policy',
+    });
+    await replaceSiyuanIndexJob(job, {
+      path: 'C:/Users/viper',
+      relativePath: '',
+      parentNodeId: null,
+    });
+    await updateSiyuanIndexJobStatus('project-1', 'map-abort', 'paused');
+    const control = createDurableSiyuanIndexJobControl('project-1', 'map-abort');
+    const controller = new AbortController();
+    const waiting = control.checkpoint(controller.signal);
+    controller.abort('renderer_reload');
+    await expect(waiting).rejects.toThrow('siyuan_index_cancelled');
   });
 });

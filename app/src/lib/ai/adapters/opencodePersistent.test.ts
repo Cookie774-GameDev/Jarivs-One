@@ -11,6 +11,7 @@ import {
   createPersistentOpenCodeRuntimeSupervisor,
   filterOpenCodeModelsToConnectedProviders,
   managedOpenCodeAuthResult,
+  normalizePersistentOpenCodeUsage,
   openCodePersistentAdapter,
   parseOpenCodeLiveModels,
   parseConnectedOpenCodeProviderIds,
@@ -51,6 +52,82 @@ const liveModels = parseOpenCodeLiveModels({
 });
 
 describe('persistent OpenCode live authority', () => {
+  it('normalizes the full OpenCode usage receipt with provider provenance', () => {
+    const usage = normalizePersistentOpenCodeUsage({
+      type: 'message.updated',
+      properties: {
+        info: {
+          role: 'assistant',
+          tokens: {
+            input: 120,
+            output: 30,
+            reasoning: 11,
+            cache: { read: 80, write: 6 },
+          },
+          cost: 0.012,
+        },
+      },
+    });
+
+    expect(usage).toEqual({
+      capturedAt: expect.any(Number),
+      inputTokens: { value: 120, provenance: 'provider-reported' },
+      outputTokens: { value: 30, provenance: 'provider-reported' },
+      cacheReadTokens: { value: 80, provenance: 'provider-reported' },
+      cacheWriteTokens: { value: 6, provenance: 'provider-reported' },
+      reasoningTokens: { value: 11, provenance: 'provider-reported' },
+      costUsd: { value: 0.012, provenance: 'provider-reported' },
+    });
+  });
+
+  it('keeps a partial OpenCode usage receipt limited to fields the provider observed', () => {
+    const usage = normalizePersistentOpenCodeUsage({
+      type: 'message.updated',
+      properties: {
+        info: {
+          role: 'assistant',
+          tokens: { input: 42, cache: { read: 21 } },
+        },
+      },
+    });
+
+    expect(usage).toEqual({
+      capturedAt: expect.any(Number),
+      inputTokens: { value: 42, provenance: 'provider-reported' },
+      cacheReadTokens: { value: 21, provenance: 'provider-reported' },
+    });
+    expect(usage).not.toHaveProperty('outputTokens');
+    expect(usage).not.toHaveProperty('cacheWriteTokens');
+    expect(usage).not.toHaveProperty('reasoningTokens');
+    expect(usage).not.toHaveProperty('costUsd');
+  });
+
+  it('omits invalid usage fields instead of converting them into zero', () => {
+    const usage = normalizePersistentOpenCodeUsage({
+      type: 'message.updated',
+      properties: {
+        info: {
+          role: 'assistant',
+          tokens: {
+            input: -1,
+            output: Number.NaN,
+            reasoning: Number.POSITIVE_INFINITY,
+            cache: { read: -2, write: '7' },
+          },
+          cost: -0.01,
+        },
+      },
+    });
+
+    expect(usage).toEqual({ capturedAt: expect.any(Number) });
+    expect(
+      normalizePersistentOpenCodeUsage({
+        type: 'message.updated',
+        properties: { info: { role: 'assistant' } },
+      }),
+    ).toBeUndefined();
+  });
+
   it('surfaces the sanitized provider reason for registered-command failures', () => {
     expect(
       persistentOpenCodeSessionErrorMessage(

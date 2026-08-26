@@ -6,12 +6,18 @@ const BACKGROUND_PROBE_MS = 45_000;
 const RETRY_MS = [0, 2_000, 4_000, 8_000, 12_000, 20_000, 30_000, 45_000, 60_000];
 let lastFocusBootstrapAt = 0;
 
+export function isOllamaBootstrapDisabled(): boolean {
+  return import.meta.env.VITE_DISABLE_OLLAMA_BOOTSTRAP === 'true';
+}
+
 /**
  * Keeps Ollama connected in the background: launch bootstrap, retry until the
  * daemon responds on loopback /api/version, and re-check on focus + interval.
  */
 export function OllamaConnectionHost() {
   useEffect(() => {
+    if (isOllamaBootstrapDisabled()) return;
+
     let cancelled = false;
     const controller = new AbortController();
     const timers: number[] = [];

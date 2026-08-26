@@ -51,6 +51,9 @@ export interface UsageSnapshot {
   inputTokens?: UsageValue<number>;
   outputTokens?: UsageValue<number>;
   totalTokens?: UsageValue<number>;
+  cacheReadTokens?: UsageValue<number>;
+  cacheWriteTokens?: UsageValue<number>;
+  reasoningTokens?: UsageValue<number>;
   costUsd?: UsageValue<number>;
   quota?: UsageValue<number>;
   resetsAt?: UsageValue<string>;

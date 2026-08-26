@@ -124,6 +124,7 @@ describe('Context Map focused user-testing repairs', () => {
     expect(terminalStatusGuard).toBeLessThan(authorityCheck);
     expect(authorityCheck).toBeLessThan(sync);
     expect(source).toContain("durableJob.status === 'running'");
+    expect(source).toContain("if (existing && job?.status !== 'running') return existing;");
   });
 
   it('requires explicit exact-route cloud approval with recomputed scope disclosure', () => {
@@ -132,11 +133,58 @@ describe('Context Map focused user-testing repairs', () => {
     expect(source).toContain('Approve cloud summaries');
     expect(source).toContain('Privacy warning: approved file samples leave this device');
     expect(source).toContain('No provider or model substitution is allowed.');
+    expect(source).toContain('cloudDisclosure.connectionId} · effort {cloudDisclosure.effort}');
+    expect(source).toContain('{open ? (');
     expect(source).toContain('computeSiyuanCloudSummaryScope(');
     expect(source).toContain('summaryPolicyFingerprint: job.policyFingerprint');
     expect(source).toContain('archiveAndRestartSiyuanSummaryJobForCloud(');
     expect(source).toContain('cloudApprovalPendingRef.current');
     expect(source).toContain('disabled={cloudApprovalPending}');
+    expect(
+      source.match(/\['user', 'local_model_unavailable', 'cloud_approval_required'\]\.includes/gu),
+    ).toHaveLength(2);
     expect(source).toContain('Cloud approval was saved safely, but resume needs review.');
+    const approvalStart = source.indexOf('const approveCloudSummaries');
+    const writerSettled = source.indexOf('siyuan_summary_writer_stop_timeout', approvalStart);
+    const approvalHandoff = source.slice(approvalStart, writerSettled);
+    expect(approvalHandoff).toContain(
+      "generationAbortRef.current?.abort('cloud_summary_route_transition')",
+    );
+    expect(approvalHandoff).not.toContain('indexControlRef.current?.cancel()');
+    const authority = source.indexOf('hasSiyuanMapJobAuthority(', writerSettled);
+    const saveApproval = source.indexOf('writeSiyuanMapManifest(approvedManifest)', authority);
+    const archive = source.indexOf('archiveSiyuanSummaryJobForCloudRestart(', saveApproval);
+    const clearNative = source.indexOf('clearArchivedSiyuanSummaryDocuments(', archive);
+    const repin = source.indexOf('archiveAndRestartSiyuanSummaryJobForCloud(', clearNative);
+    expect(writerSettled).toBeGreaterThan(approvalStart);
+    expect(authority).toBeGreaterThan(writerSettled);
+    expect(saveApproval).toBeGreaterThan(authority);
+    expect(archive).toBeGreaterThan(saveApproval);
+    expect(clearNative).toBeGreaterThan(archive);
+    expect(repin).toBeGreaterThan(clearNative);
+  });
+
+  it('uses the shared Chat model picker and catalog for Context summary selection', () => {
+    const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
+
+    expect(source).toContain("from '@/features/chat/ModelPickerTypeahead'");
+    expect(source).toContain('const accessibleSummaryModels = useAccessibleChatModels()');
+    expect(source).toContain('<ModelPickerTypeahead');
+    expect(source).toContain('initialEffort={selectedEffort}');
+    expect(source).toContain('onChange(route.id, effort)');
+  });
+
+  it('threads active account and workspace authority into every Context sync', () => {
+    const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
+    expect(source).toContain('const workspaceId = useAuthStore((s) => s.workspaceId)');
+    const syncCalls = source.match(/productionSiyuanContextMaps\.sync\(/gu) ?? [];
+    const workspaceBindings = source.match(/workspaceId[,}]/gu) ?? [];
+    expect(syncCalls).toHaveLength(4);
+    expect(source).toContain('.sync(projectId, restored, { accountId, workspaceId })');
+    expect(workspaceBindings.length).toBeGreaterThanOrEqual(syncCalls.length);
+    expect(source).toContain('[accountId, applyPersistenceState, projectId, workspaceId]');
+    expect(source).toContain('[accountId, maps, projectId, selectMap, workspaceId]');
+    expect(source).toContain('[accountId, applyPersistenceState, maps, projectId, workspaceId]');
+    expect(source).toContain('(auth.workspaceId ?? null) === (workspaceId ?? null)');
   });
 });
