@@ -115,6 +115,7 @@ import { getStoredContextSourceRoot, setStoredContextSourceRoot } from './contex
 import { SIYUAN_CONTEXT_VAULT_ENABLED } from './siyuan/siyuanContracts';
 import { SiyuanVaultSurface } from './siyuan/SiyuanVaultSurface';
 import {
+  assertSiyuanCloudApprovalPreflightReady,
   clearArchivedSiyuanSummaryDocuments,
   productionSiyuanContextMaps,
 } from './siyuanContextMapIntegration';
@@ -946,6 +947,92 @@ export function ContextPage() {
     summaryModelEffort,
   ]);
 
+  const reconcileCloudSummaryScopeBeforeApproval = React.useCallback(
+    async (expectedDisclosure: NonNullable<typeof cloudSummaryDisclosure>) => {
+      if (!projectId || !selectedMap) {
+        throw new Error('siyuan_cloud_summary_approval_context_missing');
+      }
+      const initialJob = await readSiyuanIndexJob(projectId, selectedMap.id);
+      const initialManifest = readSiyuanMapManifest(projectId, selectedMap.id);
+      if (
+        !initialJob ||
+        !initialManifest ||
+        initialJob.status !== 'paused' ||
+        !['creating_nodes', 'summarizing'].includes(initialJob.phase) ||
+        !hasSiyuanMapJobAuthority(selectedMap, initialManifest, initialJob, accountId)
+      ) {
+        throw new Error('siyuan_cloud_summary_approval_state_changed');
+      }
+
+      const runningJob = await updateSiyuanIndexJobStatus(projectId, selectedMap.id, 'running');
+      if (!runningJob) throw new Error('siyuan_cloud_summary_approval_reconcile_not_started');
+      setIndexJobSnapshot(runningJob);
+      setStatus('Refreshing the exact read-only file scope before approval…');
+
+      const controller = new AbortController();
+      const control = createSiyuanIndexJobControl();
+      generationAbortRef.current = controller;
+      indexControlRef.current = control;
+      setSiyuanIndexing(true);
+      try {
+        await productionSiyuanContextMaps.sync(projectId, selectedMap, {
+          accountId,
+          workspaceId,
+          forceReconcile: true,
+          approvalPreflight: true,
+          signal: controller.signal,
+          control,
+        });
+        throw new Error('siyuan_cloud_summary_approval_reconcile_incomplete');
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== 'siyuan_cloud_summary_scope_ready') {
+          const current = await readSiyuanIndexJob(projectId, selectedMap.id).catch(() => null);
+          if (current?.status === 'running') {
+            await updateSiyuanIndexJobStatus(projectId, selectedMap.id, 'paused').catch(() => null);
+          }
+          throw error;
+        }
+      } finally {
+        if (generationAbortRef.current === controller) generationAbortRef.current = null;
+        if (indexControlRef.current === control) indexControlRef.current = null;
+        setSiyuanIndexing(false);
+      }
+
+      const [job, entries] = await Promise.all([
+        readSiyuanIndexJob(projectId, selectedMap.id),
+        readSiyuanIndexEntries(projectId, selectedMap.id),
+      ]);
+      const manifest = readSiyuanMapManifest(projectId, selectedMap.id);
+      assertSiyuanCloudApprovalPreflightReady(job, controller.signal);
+      if (!manifest || !hasSiyuanMapJobAuthority(selectedMap, manifest, job, accountId)) {
+        throw new Error('siyuan_cloud_summary_approval_reconcile_changed');
+      }
+      const exactScope = computeSiyuanCloudSummaryScope(
+        entries,
+        selectedMap.rootDir,
+        manifest.summaryPolicy,
+      );
+      if (
+        exactScope.eligibleFileCount !== expectedDisclosure.eligibleFileCount ||
+        exactScope.eligibleSourceBytes !== expectedDisclosure.eligibleSourceBytes ||
+        exactScope.estimatedMaxSentBytes !== expectedDisclosure.estimatedMaxSentBytes
+      ) {
+        setCloudSummaryDisclosure({ ...expectedDisclosure, ...exactScope });
+        setCloudApprovalSaved(false);
+        setIndexJobSnapshot(job);
+        setStatus('File scope changed safely. Review the refreshed totals before approval.');
+        toast.info(
+          'Cloud summary scope refreshed',
+          'No files were sent. Review the exact updated count and size, then approve again.',
+        );
+        return null;
+      }
+      setIndexJobSnapshot(job);
+      return { job, entries, manifest };
+    },
+    [accountId, cloudSummaryDisclosure, projectId, selectedMap, workspaceId],
+  );
+
   const approveCloudSummaries = React.useCallback(async () => {
     if (!projectId || !selectedMap || !cloudSummaryDisclosure || cloudApprovalPendingRef.current) {
       return;
@@ -973,11 +1060,10 @@ export function ContextPage() {
       if (generationAbortRef.current) {
         throw new Error('siyuan_summary_writer_stop_timeout');
       }
-      const [job, entries] = await Promise.all([
-        readSiyuanIndexJob(projectId, selectedMap.id),
-        readSiyuanIndexEntries(projectId, selectedMap.id),
-      ]);
-      const manifest = readSiyuanMapManifest(projectId, selectedMap.id);
+      const reconciledApprovalScope =
+        await reconcileCloudSummaryScopeBeforeApproval(cloudSummaryDisclosure);
+      if (!reconciledApprovalScope) return;
+      const { job, entries, manifest } = reconciledApprovalScope;
       const selectedPreference = readSiyuanSummaryRoutePreference(
         window.localStorage,
         accountId,
@@ -1125,6 +1211,7 @@ export function ContextPage() {
     accountId,
     cloudSummaryDisclosure,
     projectId,
+    reconcileCloudSummaryScopeBeforeApproval,
     resumeApprovedCloudSummaries,
     selectedMap,
     selectedSummaryModel,

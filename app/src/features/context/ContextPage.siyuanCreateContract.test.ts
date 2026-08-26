@@ -93,7 +93,7 @@ describe('ContextPage SiYuan creation contract', () => {
       'const resumeApprovedCloudSummaries = React.useCallback(async () => {',
     );
     const recoveryEnd = source.indexOf(
-      'const approveCloudSummaries = React.useCallback(async () => {',
+      'const reconcileCloudSummaryScopeBeforeApproval = React.useCallback(',
       recoveryStart,
     );
     const recovery = source.slice(recoveryStart, recoveryEnd);
@@ -138,7 +138,26 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(source).not.toMatch(
       /computeSiyuanCloudSummaryScope\(\s*entries\.map\(resetSiyuanSummaryEntry\)/gu,
     );
-    expect(source.match(/computeSiyuanCloudSummaryScope\(\s*entries,/gu)).toHaveLength(2);
+    expect(source.match(/computeSiyuanCloudSummaryScope\(\s*entries,/gu)).toHaveLength(3);
+  });
+
+  it('reconciles durable entries before persisting a fresh cloud approval', () => {
+    const approvalStart = source.indexOf(
+      'const approveCloudSummaries = React.useCallback(async () => {',
+    );
+    const approvalEnd = source.indexOf(
+      'const refreshCloudSummaryScope = React.useCallback(async () => {',
+      approvalStart,
+    );
+    const approval = source.slice(approvalStart, approvalEnd);
+    const preflight = approval.indexOf('await reconcileCloudSummaryScopeBeforeApproval(');
+    const approvalWrite = approval.indexOf('const approvedAt = Date.now();');
+
+    expect(preflight).toBeGreaterThan(-1);
+    expect(approvalWrite).toBeGreaterThan(preflight);
+    expect(approval).toContain('if (!reconciledApprovalScope) return;');
+    expect(approval).toContain('const { job, entries, manifest } = reconciledApprovalScope;');
+    expect(source).toContain('assertSiyuanCloudApprovalPreflightReady(job, controller.signal);');
   });
 
   it('refreshes changed file membership without approving or dispatching summaries', () => {

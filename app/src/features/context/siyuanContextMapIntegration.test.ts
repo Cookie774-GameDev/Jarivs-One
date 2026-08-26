@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { ProductionSiyuanRlmPort } from './siyuanRlmProduction';
 import {
+  assertSiyuanCloudApprovalPreflightReady,
   clearArchivedSiyuanSummaryDocuments,
   createSiyuanContextMapIntegration,
 } from './siyuanContextMapIntegration';
@@ -24,6 +25,7 @@ import { siyuanIndexPolicyFingerprint } from './siyuan/siyuanSafeIndex';
 import {
   checkpointSiyuanIndexJob,
   createSiyuanIndexJob,
+  readSiyuanIndexEntries,
   readSiyuanIndexJob,
   replaceSiyuanIndexJob,
 } from './siyuan/siyuanIndexJobStore';
@@ -109,6 +111,30 @@ describe('SiYuan Context Map integration', () => {
   beforeEach(async () => {
     localStorage.clear();
     await clearSiyuanNodeBindings('project-1', 'map-1');
+  });
+
+  it('rejects a user pause or abort after approval reconciliation', () => {
+    const ready = {
+      ...createSiyuanIndexJob({
+        accountId: 'account-1',
+        projectId: 'project-1',
+        mapId: 'map-preflight-ready',
+        canonicalRoot: 'C:/Work/Example',
+        policyFingerprint: 'policy',
+      }),
+      status: 'paused' as const,
+      phase: 'summarizing' as const,
+      pauseReason: 'cloud_approval_required' as const,
+    };
+    expect(() => assertSiyuanCloudApprovalPreflightReady(ready)).not.toThrow();
+    expect(() =>
+      assertSiyuanCloudApprovalPreflightReady({ ...ready, pauseReason: 'user' }),
+    ).toThrow('siyuan_cloud_summary_approval_reconcile_interrupted');
+    const controller = new AbortController();
+    controller.abort('user_cancelled');
+    expect(() => assertSiyuanCloudApprovalPreflightReady(ready, controller.signal)).toThrow(
+      'siyuan_cloud_summary_approval_reconcile_interrupted',
+    );
   });
 
   it('accounts for renderer-offline time before discovery can overwrite the checkpoint', () => {
@@ -902,6 +928,93 @@ describe('SiYuan Context Map integration', () => {
         summarized: 0,
         totalTokens: 0,
       });
+      expect(readSiyuanMapManifest('project-1', record.id)?.status).toBe('paused');
+    } finally {
+      if (previousInternals === undefined) {
+        delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      } else {
+        (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = previousInternals;
+      }
+    }
+  });
+
+  it('refreshes and pauses an approval preflight before any summary dispatch', async () => {
+    const record = { ...map(), id: 'map-approval-preflight' };
+    const policy = { mode: 'all' as const, selectedExtensions: [], selectedPaths: [] };
+    const fingerprint = siyuanIndexPolicyFingerprint(record.rootDir, policy, []);
+    const job = {
+      ...createSiyuanIndexJob({
+        accountId: 'account-1',
+        projectId: 'project-1',
+        mapId: record.id,
+        canonicalRoot: record.rootDir,
+        policyFingerprint: fingerprint,
+      }),
+      phase: 'summarizing' as const,
+      status: 'running' as const,
+      indexed: 1,
+      summaryProviderId: 'deepseek',
+      summaryConnectionId: 'deepseek-api',
+      summaryModelId: 'deepseek-chat',
+      summaryEffort: 'high' as const,
+    };
+    await replaceSiyuanIndexJob(job, {
+      path: record.rootDir,
+      relativePath: '',
+      parentNodeId: null,
+    });
+    await checkpointSiyuanIndexJob({
+      job,
+      appendedEntries: [
+        {
+          nodeId: 'path:index.ts',
+          parentNodeId: null,
+          title: 'index.ts',
+          kind: 'file',
+          relativePath: 'index.ts',
+          sourcePointer: `${record.rootDir}\\index.ts`,
+          summary: null,
+          sizeBytes: 42,
+          modifiedAt: 2,
+        },
+      ],
+    });
+    writeSiyuanMapManifest(createSiyuanMapManifest(record, 'project-1', policy));
+    const previousInternals = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    try {
+      await expect(
+        createSiyuanContextMapIntegration(port()).sync('project-1', record, {
+          accountId: 'account-1',
+          workspaceId: 'workspace-1',
+          summaryPolicy: policy,
+          forceReconcile: true,
+          approvalPreflight: true,
+          list: async (path) => ({
+            ok: true,
+            path,
+            entries: [
+              {
+                name: 'index.ts',
+                path: `${record.rootDir}\\index.ts`,
+                isDir: false,
+                size: 43,
+                modifiedMs: 3,
+              },
+            ],
+          }),
+        }),
+      ).rejects.toThrow('siyuan_cloud_summary_scope_ready');
+      expect(await readSiyuanIndexJob('project-1', record.id)).toMatchObject({
+        status: 'paused',
+        phase: 'summarizing',
+        pauseReason: 'cloud_approval_required',
+        summarized: 0,
+        totalTokens: 0,
+      });
+      expect(await readSiyuanIndexEntries('project-1', record.id)).toEqual([
+        expect.objectContaining({ relativePath: 'index.ts', sizeBytes: 43, modifiedAt: 3 }),
+      ]);
       expect(readSiyuanMapManifest('project-1', record.id)?.status).toBe('paused');
     } finally {
       if (previousInternals === undefined) {

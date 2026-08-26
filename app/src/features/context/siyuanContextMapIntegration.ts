@@ -283,6 +283,7 @@ export interface SiyuanContextMapSyncOptions {
   control?: SiyuanIndexJobControl;
   list?: SiyuanDirectoryLister;
   forceReconcile?: boolean;
+  approvalPreflight?: boolean;
   onIndexProgress?: (
     counts: Readonly<{
       indexed: number;
@@ -290,6 +291,21 @@ export interface SiyuanContextMapSyncOptions {
       unreadable: number;
     }>,
   ) => void;
+}
+
+export function assertSiyuanCloudApprovalPreflightReady(
+  job: SiyuanIndexJobRecord | null,
+  signal?: AbortSignal,
+): asserts job is SiyuanIndexJobRecord {
+  if (
+    signal?.aborted ||
+    !job ||
+    job.status !== 'paused' ||
+    job.phase !== 'summarizing' ||
+    job.pauseReason !== 'cloud_approval_required'
+  ) {
+    throw new Error('siyuan_cloud_summary_approval_reconcile_interrupted');
+  }
 }
 
 function parseContextMapMarkdown(
@@ -815,6 +831,23 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
       };
       await checkpointSiyuanIndexJob({ job: durableJob });
     }
+    if (
+      durableJob &&
+      manifest.summaryPolicy.mode !== 'none' &&
+      options.approvalPreflight === true
+    ) {
+      durableJob = {
+        ...durableJob,
+        phase: 'summarizing',
+        status: 'paused',
+        pauseReason: 'cloud_approval_required',
+        updatedAt: Date.now(),
+        phaseStartedAt: Date.now(),
+        rateSamples: [{ at: Date.now(), processed: durableJob.summarized }],
+      };
+      await checkpointSiyuanIndexJob({ job: durableJob }, { forceStatus: true });
+      throw new Error('siyuan_cloud_summary_scope_ready');
+    }
     if (durableJob && manifest.summaryPolicy.mode !== 'none') {
       let summaryIdentity;
       let summaryGenerator = generateSiyuanSummaryWithRegisteredLocalModel;
@@ -1125,6 +1158,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
               'siyuan_cloud_summary_approval_required',
               'siyuan_cloud_summary_approval_scope_drift',
               'siyuan_cloud_summary_restart_required',
+              'siyuan_cloud_summary_scope_ready',
             ].includes(error.message);
           const currentJob = await readSiyuanIndexJob(exactProjectId, record.id);
           const durablePaused =
