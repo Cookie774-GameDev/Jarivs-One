@@ -369,6 +369,14 @@ const BINARY_SUMMARY_EXTENSIONS = new Set([
   'zip',
 ]);
 
+const RUNTIME_SUMMARY_ROOTS = new Set(['.agent-coordination.lock', '.vibespace']);
+
+function isRuntimeSummaryPath(value: string): boolean {
+  const relative = canonical(value).replace(/^(?:\.\/)+/u, '');
+  const firstSegment = relative.split('/')[0]?.toLocaleLowerCase('en-US') ?? '';
+  return RUNTIME_SUMMARY_ROOTS.has(firstSegment);
+}
+
 export function isSiyuanSummaryEligible(
   entry: SiyuanSafeIndexEntry,
   root: string,
@@ -378,6 +386,7 @@ export function isSiyuanSummaryEligible(
   if (entry.summaryState === 'completed' || entry.summaryState === 'skipped' || entry.summary) {
     return false;
   }
+  if (isRuntimeSummaryPath(entry.relativePath)) return false;
   // A selected folder controls summary scope, not file decoding authority.
   // Known binary formats always remain searchable metadata/preview nodes. An
   // explicitly selected custom extension may be text, but still passes the

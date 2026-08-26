@@ -345,6 +345,36 @@ describe('durable SiYuan summary pipeline', () => {
     });
   });
 
+  it('keeps live coordination and VibeSpace runtime files metadata-only', () => {
+    const runtimeEntries = [
+      {
+        ...entries()[1]!,
+        nodeId: 'path:.agent-coordination.lock/active.txt',
+        title: 'active.txt',
+        relativePath: '.agent-coordination.lock/active.txt',
+        sourcePointer: 'C:/repo/.agent-coordination.lock/active.txt',
+      },
+      {
+        ...entries()[1]!,
+        nodeId: 'path:.vibespace/runtime.log',
+        title: 'runtime.log',
+        relativePath: './.vibespace/runtime.log',
+        sourcePointer: 'C:/repo/.vibespace/runtime.log',
+      },
+    ];
+    expect(
+      computeSiyuanCloudSummaryScope(runtimeEntries, 'C:/repo', {
+        mode: 'selected',
+        selectedExtensions: ['txt', 'log'],
+        selectedPaths: ['.'],
+      }),
+    ).toEqual({
+      eligibleFileCount: 0,
+      eligibleSourceBytes: 0,
+      estimatedMaxSentBytes: 0,
+    });
+  });
+
   it('skips a binary payload disguised with a text extension without invoking the model', async () => {
     const record = await job();
     const generator = vi.fn();
