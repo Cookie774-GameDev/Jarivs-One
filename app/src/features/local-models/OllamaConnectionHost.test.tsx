@@ -19,8 +19,7 @@ describe('OllamaConnectionHost lifecycle', () => {
     vi.clearAllMocks();
   });
 
-  it('does not schedule or invoke Ollama bootstrap when explicitly disabled', async () => {
-    vi.stubEnv('VITE_DISABLE_OLLAMA_BOOTSTRAP', 'true');
+  it('never starts Ollama from mount, focus, or background time', async () => {
     const view = render(<OllamaConnectionHost />);
 
     await act(async () => {
@@ -32,60 +31,33 @@ describe('OllamaConnectionHost lifecycle', () => {
     view.unmount();
   });
 
-  it('aborts an in-flight bootstrap when the host unmounts', async () => {
+  it('stays inert after repeated focus and visibility lifecycle events', async () => {
     const view = render(<OllamaConnectionHost />);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(0);
+      for (let index = 0; index < 10; index += 1) {
+        window.dispatchEvent(new Event('focus'));
+        document.dispatchEvent(new Event('visibilitychange'));
+      }
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
     });
 
-    expect(bootstrapOllamaConnection).toHaveBeenCalledTimes(1);
-    const signal = vi.mocked(bootstrapOllamaConnection).mock.calls[0]?.[0]?.signal;
-    expect(signal).toBeInstanceOf(AbortSignal);
-    expect(signal?.aborted).toBe(false);
-
+    expect(bootstrapOllamaConnection).not.toHaveBeenCalled();
     view.unmount();
-
-    expect(signal?.aborted).toBe(true);
   });
 
-  it('does not report an expected unmount abort as a background failure', async () => {
+  it('does not emit background warnings because it owns no implicit bootstrap', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    vi.mocked(bootstrapOllamaConnection)
-      .mockResolvedValueOnce({
-        ready: true,
-        status: {
-          ready: true,
-          apiReachable: true,
-          installed: true,
-          phase: 'ready',
-          detail: 'Ollama API is reachable.',
-          statusMsg: 'Ollama ready',
-        },
-        modelCount: 1,
-      })
-      .mockImplementationOnce(
-        ({ signal } = {}) =>
-          new Promise((_, reject) => {
-            signal?.addEventListener(
-              'abort',
-              () => reject(new DOMException('Aborted by user', 'AbortError')),
-              { once: true },
-            );
-          }),
-      );
     const view = render(<OllamaConnectionHost />);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(45_000);
+      window.dispatchEvent(new Event('focus'));
+      await vi.advanceTimersByTimeAsync(120_000);
     });
-    expect(bootstrapOllamaConnection).toHaveBeenCalledTimes(2);
 
     view.unmount();
-    await act(async () => {
-      await Promise.resolve();
-    });
 
+    expect(bootstrapOllamaConnection).not.toHaveBeenCalled();
     expect(warn).not.toHaveBeenCalled();
   });
 });

@@ -1043,6 +1043,53 @@ describe('SiYuan Context Map integration', () => {
     }
   });
 
+  it('rebuilds a restored map but pauses before local model identity or inference', async () => {
+    const record = { ...map(), id: 'map-restored-no-implicit-model' };
+    const policy = { mode: 'all' as const, selectedExtensions: [], selectedPaths: [] };
+    const previousInternals = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    try {
+      await expect(
+        createSiyuanContextMapIntegration(port()).sync('project-1', record, {
+          accountId: 'account-1',
+          workspaceId: 'workspace-1',
+          summaryPolicy: policy,
+          pauseBeforeSummaries: true,
+          list: async (path) => ({
+            ok: true,
+            path,
+            entries: [
+              {
+                name: 'restored.ts',
+                path: `${record.rootDir}\\restored.ts`,
+                isDir: false,
+                size: 42,
+                modifiedMs: 2,
+              },
+            ],
+          }),
+        }),
+      ).rejects.toThrow('siyuan_summary_paused_before_run');
+      expect(await readSiyuanIndexJob('project-1', record.id)).toMatchObject({
+        status: 'paused',
+        phase: 'summarizing',
+        pauseReason: 'user',
+        summarized: 0,
+        totalTokens: 0,
+      });
+      expect(await readSiyuanIndexEntries('project-1', record.id)).toEqual([
+        expect.objectContaining({ relativePath: 'restored.ts', summary: null }),
+      ]);
+      expect(readSiyuanMapManifest('project-1', record.id)?.status).toBe('paused');
+    } finally {
+      if (previousInternals === undefined) {
+        delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      } else {
+        (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = previousInternals;
+      }
+    }
+  });
+
   it('repairs a pending changed bound node after reconciliation restarts', async () => {
     const record = { ...map(), id: 'map-pending-bound-repair' };
     const policy = { mode: 'none' as const, selectedExtensions: [], selectedPaths: [] };

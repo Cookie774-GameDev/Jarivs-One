@@ -1722,8 +1722,18 @@ export function ContextPage() {
           if (restored) {
             await updateSiyuanIndexJobStatus(projectId, mapId, 'running');
             await productionSiyuanContextMaps
-              .sync(projectId, restored, { accountId, workspaceId })
+              .sync(projectId, restored, {
+                accountId,
+                workspaceId,
+                pauseBeforeSummaries: true,
+              })
               .catch((error) => {
+                if (
+                  error instanceof Error &&
+                  error.message === 'siyuan_summary_paused_before_run'
+                ) {
+                  return;
+                }
                 toast.warning(
                   'Context Map restored; SiYuan is still rebuilding it',
                   error instanceof Error ? error.message : 'Unknown local vault error',

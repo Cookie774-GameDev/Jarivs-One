@@ -284,6 +284,8 @@ export interface SiyuanContextMapSyncOptions {
   list?: SiyuanDirectoryLister;
   forceReconcile?: boolean;
   approvalPreflight?: boolean;
+  /** Rebuild structure on restore, then require an explicit user resume before any model runs. */
+  pauseBeforeSummaries?: boolean;
   onIndexProgress?: (
     counts: Readonly<{
       indexed: number;
@@ -884,19 +886,22 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
     if (
       durableJob &&
       manifest.summaryPolicy.mode !== 'none' &&
-      options.approvalPreflight === true
+      (options.approvalPreflight === true || options.pauseBeforeSummaries === true)
     ) {
+      const approvalPreflight = options.approvalPreflight === true;
       durableJob = {
         ...durableJob,
         phase: 'summarizing',
         status: 'paused',
-        pauseReason: 'cloud_approval_required',
+        pauseReason: approvalPreflight ? 'cloud_approval_required' : 'user',
         updatedAt: Date.now(),
         phaseStartedAt: Date.now(),
         rateSamples: [{ at: Date.now(), processed: durableJob.summarized }],
       };
       await checkpointSiyuanIndexJob({ job: durableJob }, { forceStatus: true });
-      throw new Error('siyuan_cloud_summary_scope_ready');
+      throw new Error(
+        approvalPreflight ? 'siyuan_cloud_summary_scope_ready' : 'siyuan_summary_paused_before_run',
+      );
     }
     if (durableJob && manifest.summaryPolicy.mode !== 'none') {
       let summaryIdentity;
@@ -1212,6 +1217,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
               'siyuan_cloud_summary_approval_scope_drift',
               'siyuan_cloud_summary_restart_required',
               'siyuan_cloud_summary_scope_ready',
+              'siyuan_summary_paused_before_run',
             ].includes(error.message);
           const currentJob = await readSiyuanIndexJob(exactProjectId, record.id);
           const durablePaused =

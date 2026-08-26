@@ -114,15 +114,15 @@ describe('Context Map focused user-testing repairs', () => {
     const selectedMapEffect = source.indexOf(
       "setStatus('Reading this Context Map from SiYuan...')",
     );
-    const terminalStatusGuard = source.indexOf(
-      "['paused', 'cancelled', 'failed']",
-      selectedMapEffect,
-    );
-    const authorityCheck = source.indexOf('hasSiyuanMapJobAuthority(', selectedMapEffect);
     const sync = source.indexOf('productionSiyuanContextMaps.sync(', selectedMapEffect);
-    expect(authorityCheck).toBeGreaterThan(selectedMapEffect);
-    expect(terminalStatusGuard).toBeLessThan(authorityCheck);
-    expect(authorityCheck).toBeLessThan(sync);
+    const selectedMapFlow = source.slice(selectedMapEffect, sync);
+    const terminalStatusGuard = selectedMapFlow.indexOf("['paused', 'cancelled', 'failed']");
+    const authorityCheck = selectedMapFlow.indexOf(
+      'hasSiyuanMapJobAuthority(',
+      terminalStatusGuard,
+    );
+    expect(terminalStatusGuard).toBeGreaterThan(-1);
+    expect(authorityCheck).toBeGreaterThan(terminalStatusGuard);
     expect(source).toContain("durableJob.status === 'running'");
     expect(source).toContain("if (existing && job?.status !== 'running') return existing;");
   });
@@ -177,10 +177,15 @@ describe('Context Map focused user-testing repairs', () => {
   it('threads active account and workspace authority into every Context sync', () => {
     const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
     expect(source).toContain('const workspaceId = useAuthStore((s) => s.workspaceId)');
-    const syncCalls = source.match(/productionSiyuanContextMaps\.sync\(/gu) ?? [];
+    const syncCalls = source.match(/productionSiyuanContextMaps\s*\.sync\(/gu) ?? [];
     const workspaceBindings = source.match(/workspaceId[,}]/gu) ?? [];
-    expect(syncCalls).toHaveLength(4);
-    expect(source).toContain('.sync(projectId, restored, { accountId, workspaceId })');
+    expect(syncCalls).toHaveLength(6);
+    expect(source).toContain('pauseBeforeSummaries: true');
+    const restoreStart = source.indexOf('const restoreMap');
+    const restoreEnd = source.indexOf('const openFolderPicker', restoreStart);
+    const restoreFlow = source.slice(restoreStart, restoreEnd);
+    expect(restoreFlow).toContain('.sync(projectId, restored, {');
+    expect(restoreFlow).toContain("error.message === 'siyuan_summary_paused_before_run'");
     expect(workspaceBindings.length).toBeGreaterThanOrEqual(syncCalls.length);
     expect(source).toContain('[accountId, applyPersistenceState, projectId, workspaceId]');
     expect(source).toContain('[accountId, maps, projectId, selectMap, workspaceId]');
