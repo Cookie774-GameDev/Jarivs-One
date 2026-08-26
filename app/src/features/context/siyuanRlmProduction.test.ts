@@ -107,7 +107,7 @@ describe('production SiYuan RLM port', () => {
       createBridge: () => bridge,
     });
 
-    await expect(port.listInboundBacklinks('project-a', 'block-project-a')).resolves.toEqual([
+    await expect(port.listInboundBacklinks!('project-a', 'block-project-a')).resolves.toEqual([
       'source-project-a',
     ]);
     expect(events).toEqual(['start:project-a', 'inbound:project-a:block-project-a']);

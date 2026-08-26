@@ -212,7 +212,7 @@ describe('SiYuan RLM repository', () => {
         content: 'unrelated',
       },
     ]);
-    vi.mocked(native.listInboundBacklinks).mockResolvedValue([
+    vi.mocked(native.listInboundBacklinks!).mockResolvedValue([
       'target-block',
       'missing-block',
       'backlink-block',
@@ -251,7 +251,7 @@ describe('SiYuan RLM repository', () => {
 
   it('fails closed when the typed relation route is unavailable', async () => {
     const native = port();
-    vi.mocked(native.listInboundBacklinks).mockRejectedValue(
+    vi.mocked(native.listInboundBacklinks!).mockRejectedValue(
       new Error('siyuan_transport_unavailable'),
     );
     const repository = createSiyuanRlmRepository(native);
@@ -268,7 +268,7 @@ describe('SiYuan RLM repository', () => {
 
   it('skips stale roots, verifies 21 records, and reports a 20-item service page as truncated', async () => {
     const native = port();
-    vi.mocked(native.listInboundBacklinks).mockResolvedValue([
+    vi.mocked(native.listInboundBacklinks!).mockResolvedValue([
       ...Array.from({ length: 5 }, (_, index) => `missing-${index}`),
       ...Array.from({ length: 25 }, (_, index) => `target-${index}`),
     ]);
