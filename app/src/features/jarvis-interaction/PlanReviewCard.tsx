@@ -151,7 +151,7 @@ export function PlanReviewCard({ part, messageId, chatId }: PlanReviewCardProps)
       )}
       <div className="mt-3 flex flex-wrap gap-2">
         <Button type="button" size="sm" variant="accent" disabled={busy || plan.status !== 'pending'} onClick={handleBuild}>
-          {canExecute ? 'Build Plan' : 'Done'}
+          {canExecute ? (busy ? 'Implementing…' : 'Implement Plan') : 'Done'}
         </Button>
         <Button type="button" size="sm" variant="secondary" disabled={busy || plan.status !== 'pending'} onClick={() => setRedoOpen((open) => !open)}>
           <RotateCcw className="h-3 w-3" />

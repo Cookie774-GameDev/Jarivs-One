@@ -55,11 +55,12 @@ describe('PlanReviewCard', () => {
     repo.create.mockResolvedValue({});
   });
 
-  it('builds a plan by switching to Agent Mode and dispatching execution context', async () => {
+  it('implements an approved plan by switching to Agent Mode and dispatching execution context', async () => {
     useJarvisInteractionStore.getState().setChatMode('chat_1' as never, 'plan');
     render(<PlanReviewCard part={planPart} messageId={'msg_1' as never} chatId="chat_1" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Build Plan/i }));
+    const implementButton = screen.getByRole('button', { name: 'Implement Plan' });
+    fireEvent.click(implementButton);
 
     await waitFor(() => expect(repo.update).toHaveBeenCalledTimes(1));
     expect(useJarvisInteractionStore.getState().modeForChat('chat_1' as never)).toBe('agent');

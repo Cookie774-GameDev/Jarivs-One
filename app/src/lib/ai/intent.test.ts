@@ -31,6 +31,19 @@ describe('classifyJarvisIntent', () => {
     });
   });
 
+  it('keeps an explicit plan-only request visible without authorizing implementation', () => {
+    expect(
+      classifyJarvisIntent({
+        text: 'Create a concise three-step plan for a welcome banner. Do not implement anything.',
+      }),
+    ).toMatchObject({
+      kind: 'plan-only',
+      needsVisiblePlan: true,
+      needsImplementationApproval: false,
+      canProceedReadOnly: true,
+    });
+  });
+
   it('does not let structured output bypass destructive safeguards', () => {
     expect(classifyJarvisIntent({ text: 'Deploy this.', structuredKind: 'informational' })).toMatchObject({
       kind: 'destructive', needsQuestions: true, needsImplementationApproval: true,

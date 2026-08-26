@@ -47,7 +47,11 @@ function result(kind: JarvisIntentKind, patch: Partial<JarvisIntent> = {}): Jarv
   return {
     kind,
     needsQuestions: false,
-    needsVisiblePlan: kind === 'project-build' || kind === 'implementation' || kind === 'destructive',
+    needsVisiblePlan:
+      kind === 'plan-only' ||
+      kind === 'project-build' ||
+      kind === 'implementation' ||
+      kind === 'destructive',
     needsImplementationApproval: mutating,
     canProceedReadOnly: !mutating,
     confidence: 0.72,

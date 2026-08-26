@@ -1,7 +1,7 @@
 import type { Part } from '@/types/chat';
 import type { JarvisPlanReview } from './types';
 
-const PLAN_FENCE_RE = /```jarvis_plan\s*([\s\S]*?)```/gi;
+const PLAN_FENCE_RE = /```(?:jarvis_plan|json)\s*([\s\S]*?)```/gi;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;

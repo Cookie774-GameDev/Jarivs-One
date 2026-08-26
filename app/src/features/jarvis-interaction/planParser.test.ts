@@ -45,6 +45,28 @@ describe('parseJarvisPlanBlocks', () => {
     });
   });
 
+  it('accepts validated plan-shaped JSON from providers that omit the jarvis_plan fence name', () => {
+    const parsed = parseJarvisPlanBlocks(`Here is the requested plan.\n\n\`\`\`json\n{
+  "title": "Harmless welcome banner",
+  "summary": "Add a static welcome message without changing runtime behavior.",
+  "steps": ["Define copy", "Reuse theme tokens", "Verify in the native app"],
+  "risks": ["Minor layout drift"]
+}\n\`\`\``);
+
+    expect(parsed.hasPlanBlocks).toBe(true);
+    expect(parsed.parts).toEqual([
+      { kind: 'text', text: 'Here is the requested plan.' },
+      expect.objectContaining({
+        kind: 'plan_review',
+        plan: expect.objectContaining({
+          title: 'Harmless welcome banner',
+          steps: ['Define copy', 'Reuse theme tokens', 'Verify in the native app'],
+          status: 'pending',
+        }),
+      }),
+    ]);
+  });
+
   it('can force a plan card from prose when Plan Mode response has no JSON block', () => {
     const parsed = parseJarvisPlanBlocks('1. Inspect files\n2. Add tests', { force: true });
 
