@@ -306,6 +306,65 @@ describe('durable SiYuan summary batch executor', () => {
       }),
     ).resolves.toEqual({ completedBatches: 1, completedFiles: 1 });
 
+    const pausedSignal = new AbortController();
+    const pausedSignalInput = {
+      ...executorInput([prepared('pause-signal')]),
+      mapId: 'map-pause-signal-release',
+      signal: pausedSignal.signal,
+    };
+    await expect(
+      executeSiyuanSummaryBatches({
+        ...pausedSignalInput,
+        generate: vi.fn(async () => {
+          pausedSignal.abort('siyuan_index_paused');
+          throw new DOMException('The request was aborted.', 'AbortError');
+        }),
+        apply: vi.fn(async () => undefined),
+      }),
+    ).rejects.toThrow('The request was aborted.');
+    await expect(
+      listSiyuanSummaryBatches('project-1\u0000map-pause-signal-release'),
+    ).resolves.toEqual([
+      expect.objectContaining({ state: 'failed', failureReason: 'pause_released' }),
+    ]);
+
+    const dispatchedPause = new AbortController();
+    const dispatchedPauseInput = {
+      ...executorInput([prepared('dispatched-pause')]),
+      mapId: 'map-dispatched-pause-retained',
+      signal: dispatchedPause.signal,
+    };
+    await expect(
+      executeSiyuanSummaryBatches({
+        ...dispatchedPauseInput,
+        generate: vi.fn(async (_batch, _signal, markDispatched) => {
+          await markDispatched(Date.now());
+          dispatchedPause.abort('siyuan_index_paused');
+          throw new DOMException('The request was aborted.', 'AbortError');
+        }),
+        apply: vi.fn(async () => undefined),
+      }),
+    ).rejects.toThrow('The request was aborted.');
+    await expect(
+      listSiyuanSummaryBatches('project-1\u0000map-dispatched-pause-retained'),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        state: 'failed',
+        failureReason: 'provider_failed',
+        dispatchStartedAt: expect.any(Number),
+      }),
+    ]);
+    const forbiddenPauseRepay = vi.fn(async (batch) => generation(batch.files));
+    await expect(
+      executeSiyuanSummaryBatches({
+        ...dispatchedPauseInput,
+        signal: undefined,
+        generate: forbiddenPauseRepay,
+        apply: vi.fn(async () => undefined),
+      }),
+    ).rejects.toThrow('siyuan_summary_batch_claim_conflict');
+    expect(forbiddenPauseRepay).not.toHaveBeenCalled();
+
     const cancellation = new AbortController();
     const cancelInput = {
       ...executorInput([prepared('cancel')]),

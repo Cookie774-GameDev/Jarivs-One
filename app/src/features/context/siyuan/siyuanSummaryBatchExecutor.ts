@@ -6,6 +6,7 @@ import {
   claimSiyuanSummaryBatch,
   completeSiyuanSummaryBatch,
   listSiyuanSummaryBatches,
+  markSiyuanSummaryBatchDispatched,
   markSiyuanSummaryBatchNodeApplied,
   releaseSiyuanSummaryBatch,
   renewSiyuanSummaryBatchLease,
@@ -45,7 +46,9 @@ function releaseReason(
   executorSignal: AbortSignal,
 ): 'pause' | 'cancel' | 'failure' {
   const message = error instanceof Error ? error.message : String(error);
-  if (message === 'siyuan_index_paused') return 'pause';
+  if (message === 'siyuan_index_paused' || inputSignal?.reason === 'siyuan_index_paused') {
+    return 'pause';
+  }
   if (message === 'siyuan_index_cancelled' || inputSignal?.aborted) return 'cancel';
   if (executorSignal.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
     return 'failure';
@@ -66,6 +69,7 @@ export async function executeSiyuanSummaryBatches(input: {
   generate: (
     batch: ReturnType<typeof planSiyuanSummaryBatches>[number],
     signal: AbortSignal,
+    markDispatched: (at: number) => Promise<void>,
   ) => Promise<SiyuanSummaryBatchGeneration>;
   apply: (input: {
     entry: SiyuanSafeIndexEntry;
@@ -234,6 +238,9 @@ export async function executeSiyuanSummaryBatches(input: {
         completedFiles += record.files.length;
         return;
       }
+      if (record.state === 'failed') {
+        throw new Error('siyuan_summary_batch_terminal_claim');
+      }
       if (!record.receipt) {
         await checkpoint();
         let heartbeatError: unknown = null;
@@ -252,7 +259,14 @@ export async function executeSiyuanSummaryBatches(input: {
         );
         let generation: SiyuanSummaryBatchGeneration;
         try {
-          generation = await input.generate(effectiveBatch, executionSignal);
+          generation = await input.generate(effectiveBatch, executionSignal, async (at) => {
+            record = await markSiyuanSummaryBatchDispatched({
+              jobScope: scope,
+              batchId,
+              ownerId,
+              now: at,
+            });
+          });
         } finally {
           globalThis.clearInterval(heartbeat);
           await heartbeatWork;

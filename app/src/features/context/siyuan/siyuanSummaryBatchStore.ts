@@ -64,6 +64,7 @@ export interface SiyuanSummaryBatchRecord {
   ownerId: string | null;
   leaseDurationMs: number;
   leaseExpiresAt: number | null;
+  dispatchStartedAt: number | null;
   receipt: SiyuanSummaryBatchReceipt | null;
   appliedNodeRevisionKeys: string[];
   failureReason: 'lease_expired' | 'pause_released' | 'cancel_released' | 'provider_failed' | null;
@@ -192,7 +193,18 @@ function claimKey(jobScope: string, nodeRevisionKey: string): string {
 
 function publicBatch(batch: StoredBatch): SiyuanSummaryBatchRecord {
   const { key: _key, ...record } = batch;
-  return record;
+  return { ...record, dispatchStartedAt: batch.dispatchStartedAt ?? null };
+}
+
+function hasProvenNoDispatch(batch: StoredBatch): boolean {
+  return (
+    Object.prototype.hasOwnProperty.call(batch, 'dispatchStartedAt') &&
+    batch.dispatchStartedAt === null
+  );
+}
+
+function mayHaveDispatched(batch: StoredBatch): boolean {
+  return !hasProvenNoDispatch(batch);
 }
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
@@ -341,6 +353,24 @@ export async function claimSiyuanSummaryBatch(
             : { conflictingNodeRevisionKeys: [...existing.nodeRevisionKeys] }),
         } as SiyuanSummaryBatchClaimResult;
       }
+      if (
+        existing.state === 'claimed' &&
+        existing.receipt === null &&
+        (existing.leaseExpiresAt ?? Number.POSITIVE_INFINITY) <= input.now &&
+        mayHaveDispatched(existing)
+      ) {
+        const retained: StoredBatch = {
+          ...existing,
+          state: 'failed',
+          ownerId: null,
+          leaseExpiresAt: null,
+          failureReason: 'provider_failed',
+          updatedAt: input.now,
+        };
+        batchStore.put(retained);
+        await done;
+        return { kind: 'existing', batch: publicBatch(retained) };
+      }
       const resumed: StoredBatch = {
         ...existing,
         ownerId: input.ownerId,
@@ -360,6 +390,7 @@ export async function claimSiyuanSummaryBatch(
 
     const conflicts: string[] = [];
     const expiredBatchKeys = new Set<string>();
+    const uncertainExpiredBatchKeys = new Set<string>();
     for (const nodeRevisionKey of input.nodeRevisionKeys) {
       const occupied = (await requestResult(
         claimStore.get(claimKey(input.jobScope, nodeRevisionKey)),
@@ -378,14 +409,30 @@ export async function claimSiyuanSummaryBatch(
         ownerBatch.leaseExpiresAt !== null &&
         ownerBatch.leaseExpiresAt <= input.now
       ) {
-        expiredBatchKeys.add(ownerBatch.key);
-        continue;
+        if (hasProvenNoDispatch(ownerBatch)) {
+          expiredBatchKeys.add(ownerBatch.key);
+          continue;
+        }
+        uncertainExpiredBatchKeys.add(ownerBatch.key);
       }
       conflicts.push(nodeRevisionKey);
     }
     if (conflicts.length > 0) {
-      transaction.abort();
-      await done.catch(() => undefined);
+      for (const uncertainKey of uncertainExpiredBatchKeys) {
+        const uncertain = (await requestResult(batchStore.get(uncertainKey))) as
+          | StoredBatch
+          | undefined;
+        if (!uncertain) continue;
+        batchStore.put({
+          ...uncertain,
+          state: 'failed',
+          ownerId: null,
+          leaseExpiresAt: null,
+          failureReason: 'provider_failed',
+          updatedAt: input.now,
+        } satisfies StoredBatch);
+      }
+      await done;
       return { kind: 'conflict', conflictingNodeRevisionKeys: conflicts };
     }
     for (const expiredKey of expiredBatchKeys) {
@@ -415,6 +462,7 @@ export async function claimSiyuanSummaryBatch(
       ownerId: input.ownerId,
       leaseDurationMs: input.leaseMs,
       leaseExpiresAt: input.leaseExpiresAt,
+      dispatchStartedAt: null,
       receipt: null,
       appliedNodeRevisionKeys: [],
       failureReason: null,
@@ -434,6 +482,47 @@ export async function claimSiyuanSummaryBatch(
     }
     await done;
     return { kind: 'claimed', batch: publicBatch(record) };
+  } finally {
+    database.close();
+  }
+}
+
+export async function markSiyuanSummaryBatchDispatched(input: {
+  jobScope: string;
+  batchId: string;
+  ownerId: string;
+  now?: number;
+}): Promise<SiyuanSummaryBatchRecord> {
+  const jobScope = requiredJobScope(input.jobScope);
+  const batchId = requiredString(input.batchId, 'batch_id', 2_048);
+  const ownerId = requiredString(input.ownerId, 'owner_id', 2_048);
+  const now = finiteTimestamp(input.now ?? Date.now(), 'now');
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction(BATCH_STORE, 'readwrite');
+    const done = transactionDone(transaction);
+    const store = transaction.objectStore(BATCH_STORE);
+    const existing = (await requestResult(store.get(batchKey(jobScope, batchId)))) as
+      | StoredBatch
+      | undefined;
+    if (!existing) throw new Error('siyuan_summary_batch_not_found');
+    assertMonotonicTime(existing, now);
+    assertOwned(existing, ownerId, now);
+    if (existing.state !== 'claimed' || existing.receipt) {
+      throw new Error('siyuan_summary_batch_state_invalid');
+    }
+    if (existing.dispatchStartedAt !== undefined && existing.dispatchStartedAt !== null) {
+      await done;
+      return publicBatch(existing);
+    }
+    const dispatched: StoredBatch = {
+      ...existing,
+      dispatchStartedAt: now,
+      updatedAt: now,
+    };
+    store.put(dispatched);
+    await done;
+    return publicBatch(dispatched);
   } finally {
     database.close();
   }
@@ -770,13 +859,15 @@ export async function releaseSiyuanSummaryBatch(input: {
       await done;
       return publicBatch(retained);
     }
+    const dispatchMayHaveStarted = mayHaveDispatched(existing);
     const released: StoredBatch = {
       ...existing,
       state: 'failed',
       ownerId: null,
       leaseExpiresAt: null,
-      failureReason:
-        input.reason === 'pause'
+      failureReason: dispatchMayHaveStarted
+        ? 'provider_failed'
+        : input.reason === 'pause'
           ? 'pause_released'
           : input.reason === 'cancel'
             ? 'cancel_released'
@@ -787,7 +878,9 @@ export async function releaseSiyuanSummaryBatch(input: {
     // A provider/protocol failure may already have incurred cost. Keep its
     // revision claims as a terminal repair boundary so automatic restart
     // cannot silently repay the full batch.
-    if (input.reason !== 'failure') await deleteClaimsForBatch(claimStore, existing.key);
+    if (input.reason !== 'failure' && !dispatchMayHaveStarted) {
+      await deleteClaimsForBatch(claimStore, existing.key);
+    }
     await done;
     return publicBatch(released);
   } finally {
@@ -831,16 +924,19 @@ export async function recoverExpiredSiyuanSummaryBatchClaims(
         } satisfies StoredBatch);
         resumable += 1;
       } else {
+        const uncertainDispatch = mayHaveDispatched(batch);
         store.put({
           ...batch,
           state: 'failed',
           ownerId: null,
           leaseExpiresAt: null,
-          failureReason: 'lease_expired',
+          failureReason: uncertainDispatch ? 'provider_failed' : 'lease_expired',
           updatedAt: now,
         } satisfies StoredBatch);
-        await deleteClaimsForBatch(claimStore, batch.key);
-        released += 1;
+        if (!uncertainDispatch) {
+          await deleteClaimsForBatch(claimStore, batch.key);
+          released += 1;
+        }
       }
     }
     await done;

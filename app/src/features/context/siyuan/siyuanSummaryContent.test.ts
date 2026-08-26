@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isSafeSiyuanSummaryText,
   prepareSiyuanSummaryContent,
   SIYUAN_SUMMARY_LARGE_FILE_SEND_BYTES,
   SIYUAN_SUMMARY_READ_BYTES,
 } from './siyuanSummaryContent';
 
 describe('SiYuan summary content preparation', () => {
+  it('rejects lossy or control-bearing binary samples while allowing normal text', () => {
+    expect(isSafeSiyuanSummaryText('export const ready = true;\n')).toBe(true);
+    expect(isSafeSiyuanSummaryText('')).toBe(false);
+    expect(isSafeSiyuanSummaryText('binary\u0000payload')).toBe(false);
+    expect(isSafeSiyuanSummaryText('lossy\ufffdpayload')).toBe(false);
+    expect(isSafeSiyuanSummaryText('control\u001fpayload')).toBe(false);
+  });
+
   it('keeps complete small files without inventing truncation', () => {
     expect(prepareSiyuanSummaryContent('hello', 5)).toEqual({
       content: 'hello',

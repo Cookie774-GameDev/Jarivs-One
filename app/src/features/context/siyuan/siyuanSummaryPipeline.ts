@@ -1,4 +1,5 @@
 import { readTextFileSample } from '@/lib/fs';
+import { isPopularTextFile } from '@/features/files/projectFiles';
 import { applySecretPolicy } from '@/lib/security/secretDetector';
 import { useAuthStore } from '@/stores/auth';
 import type { Agent } from '@/types';
@@ -15,7 +16,11 @@ import {
   checkpointSiyuanSummaryBatchNode,
   type SiyuanIndexJobRecord,
 } from './siyuanIndexJobStore';
-import { prepareSiyuanSummaryContent, SIYUAN_SUMMARY_READ_BYTES } from './siyuanSummaryContent';
+import {
+  isSafeSiyuanSummaryText,
+  prepareSiyuanSummaryContent,
+  SIYUAN_SUMMARY_READ_BYTES,
+} from './siyuanSummaryContent';
 import { executeSiyuanSummaryBatches } from './siyuanSummaryBatchExecutor';
 import { generateSiyuanSummaryBatch } from './siyuanSummaryBatchGenerator';
 
@@ -293,6 +298,77 @@ function extension(value: string): string {
   return /\.([A-Za-z0-9_-]{1,32})$/u.exec(value)?.[1]?.toLocaleLowerCase('en-US') ?? '';
 }
 
+const BINARY_SUMMARY_EXTENSIONS = new Set([
+  '7z',
+  'aac',
+  'avi',
+  'avif',
+  'bin',
+  'bmp',
+  'bz2',
+  'class',
+  'dat',
+  'db',
+  'dll',
+  'doc',
+  'docx',
+  'dylib',
+  'eot',
+  'exe',
+  'flac',
+  'gif',
+  'gz',
+  'heic',
+  'heif',
+  'ico',
+  'jar',
+  'jpeg',
+  'jpg',
+  'lib',
+  'm4a',
+  'm4v',
+  'mkv',
+  'mov',
+  'mp3',
+  'mp4',
+  'mpeg',
+  'mpg',
+  'o',
+  'obj',
+  'ogg',
+  'otf',
+  'p12',
+  'pdb',
+  'pdf',
+  'pfx',
+  'png',
+  'ppt',
+  'pptx',
+  'pyc',
+  'pyo',
+  'rar',
+  'raw',
+  'so',
+  'sqlite',
+  'sqlite3',
+  'tar',
+  'tgz',
+  'tif',
+  'tiff',
+  'ttf',
+  'wav',
+  'wasm',
+  'webm',
+  'webp',
+  'wma',
+  'woff',
+  'woff2',
+  'xls',
+  'xlsx',
+  'xz',
+  'zip',
+]);
+
 export function isSiyuanSummaryEligible(
   entry: SiyuanSafeIndexEntry,
   root: string,
@@ -302,12 +378,19 @@ export function isSiyuanSummaryEligible(
   if (entry.summaryState === 'completed' || entry.summaryState === 'skipped' || entry.summary) {
     return false;
   }
+  // A selected folder controls summary scope, not file decoding authority.
+  // Known binary formats always remain searchable metadata/preview nodes. An
+  // explicitly selected custom extension may be text, but still passes the
+  // strict post-read content check before any prompt is assembled.
+  const ext = extension(entry.title);
+  if (BINARY_SUMMARY_EXTENSIONS.has(ext)) return false;
+  const explicitlySelected =
+    ext !== '' &&
+    policy.selectedExtensions.some((value) => value.toLocaleLowerCase('en-US') === ext);
+  if (!isPopularTextFile(entry.relativePath) && !explicitlySelected) return false;
   if (policy.mode === 'none') return false;
   if (policy.mode === 'all') return true;
-  const ext = extension(entry.title);
-  if (ext && policy.selectedExtensions.some((value) => value.toLocaleLowerCase('en-US') === ext)) {
-    return true;
-  }
+  if (explicitlySelected) return true;
   const relative = canonical(entry.relativePath).toLocaleLowerCase('en-US');
   return policy.selectedPaths.some((value) => {
     const selected = normalizedRelativeSelection(root, value);
@@ -518,7 +601,7 @@ export async function runSiyuanSummaryPipeline(input: {
         control: input.control,
         durableControl,
         signal: input.signal,
-        generate: (batch, signal) =>
+        generate: (batch, signal, markDispatched) =>
           generateSiyuanSummaryBatch({
             batch,
             identity: {
@@ -529,6 +612,7 @@ export async function runSiyuanSummaryPipeline(input: {
             },
             scope: input.requestScope!,
             signal,
+            onDispatchStarted: markDispatched,
           }),
         apply: async ({ entry, batchId, batchNodeCount, batchLane, batchAttempt, usage }) => {
           await input.onCompleted?.(entry);
@@ -585,6 +669,13 @@ export async function runSiyuanSummaryPipeline(input: {
           await checkpointSiyuanIndexJob({ job, appendedEntries: [skipped] });
           continue;
         }
+        if (!isSafeSiyuanSummaryText(source.content)) {
+          const skipped = { ...entry, summaryState: 'skipped' as const };
+          entries[index] = skipped;
+          job = { ...job, skipped: job.skipped + 1, updatedAt: Date.now() };
+          await checkpointSiyuanIndexJob({ job, appendedEntries: [skipped] });
+          continue;
+        }
         const preparedContent = prepareSiyuanSummaryContent(source.content, entry.sizeBytes);
         const safeInput = applySecretPolicy(preparedContent.content, 'exclude');
         if (safeInput.decision !== 'allowed' || !safeInput.text?.trim()) {
@@ -631,6 +722,13 @@ export async function runSiyuanSummaryPipeline(input: {
     if (!isSiyuanSummaryEligible(entry, input.root, input.policy)) continue;
     const source = await read(entry.sourcePointer!, input.root);
     if (!source.ok) {
+      const skipped = { ...entry, summaryState: 'skipped' as const };
+      entries[index] = skipped;
+      job = { ...job, skipped: job.skipped + 1, updatedAt: Date.now() };
+      await checkpointSiyuanIndexJob({ job, appendedEntries: [skipped] });
+      continue;
+    }
+    if (!isSafeSiyuanSummaryText(source.content)) {
       const skipped = { ...entry, summaryState: 'skipped' as const };
       entries[index] = skipped;
       job = { ...job, skipped: job.skipped + 1, updatedAt: Date.now() };

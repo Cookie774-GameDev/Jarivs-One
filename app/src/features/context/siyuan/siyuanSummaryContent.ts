@@ -11,6 +11,17 @@ export interface SiyuanPreparedSummaryContent {
   strategy: 'complete' | 'bounded_sections';
 }
 
+/**
+ * Native samples are decoded lossily for broad file-viewing compatibility.
+ * Summary prompts must be stricter: replacement characters and non-text
+ * controls indicate binary or corrupt content and must remain metadata-only.
+ */
+export function isSafeSiyuanSummaryText(value: string): boolean {
+  return (
+    value.trim().length > 0 && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\ufffd]/u.test(value)
+  );
+}
+
 function byteLength(value: string): number {
   return encoder.encode(value).byteLength;
 }

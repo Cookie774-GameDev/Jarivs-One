@@ -4,6 +4,7 @@ import {
   claimSiyuanSummaryBatch,
   completeSiyuanSummaryBatch,
   listSiyuanSummaryBatches,
+  markSiyuanSummaryBatchDispatched,
   markSiyuanSummaryBatchNodeApplied,
   readSiyuanSummaryBatch,
   recoverExpiredSiyuanSummaryBatchClaims,
@@ -343,6 +344,92 @@ describe('durable SiYuan summary batch store', () => {
     await expect(
       claimSiyuanSummaryBatch(claim('expired-staged', 'lane-3', [file('node-b')], { now: 1_300 })),
     ).resolves.toMatchObject({ kind: 'existing', batch: { state: 'staged', ownerId: 'lane-3' } });
+  });
+
+  it('retains expired dispatched and legacy-unknown claims as terminal repair boundaries', async () => {
+    await claimSiyuanSummaryBatch(
+      claim('expired-dispatched', 'lane-1', [file('node-dispatched')], {
+        now: 1_000,
+        leaseMs: 100,
+      }),
+    );
+    await markSiyuanSummaryBatchDispatched({
+      jobScope: 'project-1\u0000map-1',
+      batchId: 'expired-dispatched',
+      ownerId: 'lane-1',
+      now: 1_050,
+    });
+    await expect(
+      claimSiyuanSummaryBatch(
+        claim('expired-dispatched', 'lane-2', [file('node-dispatched')], { now: 1_200 }),
+      ),
+    ).resolves.toMatchObject({
+      kind: 'existing',
+      batch: { state: 'failed', failureReason: 'provider_failed', ownerId: null },
+    });
+    await expect(
+      claimSiyuanSummaryBatch(
+        claim('replacement-dispatched', 'lane-3', [file('node-dispatched')], { now: 1_300 }),
+      ),
+    ).resolves.toMatchObject({ kind: 'conflict' });
+
+    await claimSiyuanSummaryBatch(
+      claim('recover-dispatched', 'lane-1', [file('node-recover')], {
+        now: 1_000,
+        leaseMs: 100,
+      }),
+    );
+    await markSiyuanSummaryBatchDispatched({
+      jobScope: 'project-1\u0000map-1',
+      batchId: 'recover-dispatched',
+      ownerId: 'lane-1',
+      now: 1_050,
+    });
+    await expect(
+      recoverExpiredSiyuanSummaryBatchClaims('project-1\u0000map-1', 1_200),
+    ).resolves.toEqual({ released: 0, resumable: 0 });
+    await expect(
+      readSiyuanSummaryBatch('project-1\u0000map-1', 'recover-dispatched'),
+    ).resolves.toMatchObject({ state: 'failed', failureReason: 'provider_failed' });
+
+    await claimSiyuanSummaryBatch(
+      claim('legacy-unknown', 'lane-1', [file('node-legacy')], { now: 2_000, leaseMs: 100 }),
+    );
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('vibespace-siyuan-summary-batches', 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction('batches', 'readwrite');
+      const store = transaction.objectStore('batches');
+      const key = JSON.stringify(['project-1\u0000map-1', 'legacy-unknown']);
+      const request = store.get(key);
+      request.onsuccess = () => {
+        const legacy = request.result as Record<string, unknown>;
+        delete legacy.dispatchStartedAt;
+        store.put(legacy);
+      };
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+    database.close();
+    await expect(
+      recoverExpiredSiyuanSummaryBatchClaims('project-1\u0000map-1', 2_200),
+    ).resolves.toEqual({ released: 0, resumable: 0 });
+    await expect(
+      readSiyuanSummaryBatch('project-1\u0000map-1', 'legacy-unknown'),
+    ).resolves.toMatchObject({
+      state: 'failed',
+      failureReason: 'provider_failed',
+      dispatchStartedAt: null,
+    });
+    await expect(
+      claimSiyuanSummaryBatch(
+        claim('replacement-legacy', 'lane-4', [file('node-legacy')], { now: 2_300 }),
+      ),
+    ).resolves.toMatchObject({ kind: 'conflict' });
   });
 
   it('recovers a staged partially-applied crash without losing receipt or apply markers', async () => {

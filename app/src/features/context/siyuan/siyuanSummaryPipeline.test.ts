@@ -271,6 +271,100 @@ describe('durable SiYuan summary pipeline', () => {
     }
   });
 
+  it('keeps binary and image files metadata-only even when their folder or all content is selected', () => {
+    const candidates: SiyuanSafeIndexEntry[] = [
+      entries()[1]!,
+      {
+        ...entries()[1]!,
+        nodeId: 'path:assets/hero.webp',
+        title: 'hero.webp',
+        relativePath: 'assets/hero.webp',
+        sourcePointer: 'C:/repo/assets/hero.webp',
+        sizeBytes: 512,
+      },
+      {
+        ...entries()[1]!,
+        nodeId: 'path:assets/archive.zip',
+        title: 'archive.zip',
+        relativePath: 'assets/archive.zip',
+        sourcePointer: 'C:/repo/assets/archive.zip',
+        sizeBytes: 1024,
+      },
+    ];
+
+    for (const policy of [
+      { mode: 'all' as const, selectedExtensions: [], selectedPaths: [] },
+      { mode: 'selected' as const, selectedExtensions: [], selectedPaths: ['.'] },
+    ]) {
+      expect(computeSiyuanCloudSummaryScope(candidates, 'C:/repo', policy)).toEqual({
+        eligibleFileCount: 1,
+        eligibleSourceBytes: 20,
+        estimatedMaxSentBytes: 256 * 1024,
+      });
+    }
+    expect(
+      computeSiyuanCloudSummaryScope(candidates, 'C:/repo', {
+        mode: 'selected',
+        selectedExtensions: [],
+        selectedPaths: ['assets'],
+      }),
+    ).toEqual({
+      eligibleFileCount: 0,
+      eligibleSourceBytes: 0,
+      estimatedMaxSentBytes: 0,
+    });
+  });
+
+  it('honors explicitly selected custom text extensions but never explicit binary formats', () => {
+    const customText = {
+      ...entries()[1]!,
+      nodeId: 'path:schema/service.proto',
+      title: 'service.proto',
+      relativePath: 'schema/service.proto',
+      sourcePointer: 'C:/repo/schema/service.proto',
+      sizeBytes: 40,
+    };
+    const image = {
+      ...entries()[1]!,
+      nodeId: 'path:assets/hero.webp',
+      title: 'hero.webp',
+      relativePath: 'assets/hero.webp',
+      sourcePointer: 'C:/repo/assets/hero.webp',
+      sizeBytes: 500,
+    };
+    expect(
+      computeSiyuanCloudSummaryScope([customText, image], 'C:/repo', {
+        mode: 'selected',
+        selectedExtensions: ['proto', 'webp'],
+        selectedPaths: [],
+      }),
+    ).toEqual({
+      eligibleFileCount: 1,
+      eligibleSourceBytes: 40,
+      estimatedMaxSentBytes: 256 * 1024,
+    });
+  });
+
+  it('skips a binary payload disguised with a text extension without invoking the model', async () => {
+    const record = await job();
+    const generator = vi.fn();
+    const result = await runSiyuanSummaryPipeline({
+      projectId: 'project-1',
+      mapId: 'map-1',
+      root: 'C:/repo',
+      policy: { mode: 'all', selectedExtensions: [], selectedPaths: [] },
+      entries: entries(),
+      job: record,
+      identity,
+      read: vi.fn(async () => ({ ok: true as const, content: 'PK\u0000\ufffdarchive' })),
+      generator,
+    });
+
+    expect(generator).not.toHaveBeenCalled();
+    expect(result.entries[1]).toMatchObject({ summary: null, summaryState: 'skipped' });
+    expect(result.job.skipped).toBe(1);
+  });
+
   it('accepts an approved exact same cloud route after durable historical summary work', async () => {
     const pendingEntries = entries();
     const completedEntry: SiyuanSafeIndexEntry = {

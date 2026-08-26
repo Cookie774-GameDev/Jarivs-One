@@ -98,6 +98,7 @@ export async function generateSiyuanSummaryBatch(input: {
   identity: SiyuanBatchModelIdentity;
   scope: SiyuanBatchRequestScope;
   signal?: AbortSignal;
+  onDispatchStarted?: (at: number) => void | Promise<void>;
 }): Promise<SiyuanSummaryBatchGeneration> {
   if (
     !input.scope.accountId.trim() ||
@@ -139,6 +140,8 @@ export async function generateSiyuanSummaryBatch(input: {
   let completionEvidence: Readonly<ProviderCompletionEvidence> | null = null;
   const prompt = buildSiyuanSummaryBatchPrompt(input.batch);
   const dispatchedAt = Date.now();
+  await input.onDispatchStarted?.(dispatchedAt);
+  if (input.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
   const response = await runAgent({
     agent,
     purpose: 'chat',

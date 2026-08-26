@@ -81,7 +81,15 @@ describe('SiYuan batch summary generation', () => {
         costUsd: { value: 0.01, provenance: 'provider-reported' },
       },
     );
-    const result = await generateSiyuanSummaryBatch({ batch, identity, scope });
+    const onDispatchStarted = vi.fn(async (_at: number) => undefined);
+    const result = await generateSiyuanSummaryBatch({
+      batch,
+      identity,
+      scope,
+      onDispatchStarted,
+    });
+    expect(onDispatchStarted).toHaveBeenCalledTimes(1);
+    expect(onDispatchStarted).toHaveBeenCalledWith(expect.any(Number));
     expect(routerMocks.runAgent).toHaveBeenCalledTimes(1);
     expect(routerMocks.runAgent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -112,6 +120,7 @@ describe('SiYuan batch summary generation', () => {
       finishReason: 'stop',
     });
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
+    expect(onDispatchStarted.mock.calls[0]?.[0]).toBe(result.dispatchedAt);
   });
 
   it('rejects provider substitution and incomplete results', async () => {
