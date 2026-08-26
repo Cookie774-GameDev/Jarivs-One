@@ -12,7 +12,7 @@ const SURFACE_LABEL: &str = "siyuan-context-vault";
 const MAIN_WEBVIEW_ADDITIONAL_BROWSER_ARGS: &str = "--js-flags=--max-old-space-size=1536";
 const SIYUAN_CHILD_CDP_PORT_ENV: &str = "VIBESPACE_SIYUAN_CHILD_CDP_PORT";
 const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
-((targetDocumentId, graphMode) => {
+((targetDocumentId, targetNotebookId, graphMode) => {
   if (
     window.top !== window ||
     window.location.protocol !== "http:" ||
@@ -29,6 +29,7 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
   const graphSelector = local ? ".sy__graph" : ".sy__globalGraph";
   const fullscreenSelector = '[data-type="fullscreen"]';
   let documentRequested = !local;
+  let browserTargetPromise;
   let dockRequested = false;
   let timer;
 
@@ -37,6 +38,95 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
       window.clearInterval(timer);
       timer = undefined;
     }
+  };
+
+  const waitFor = async (read) => {
+    while (Date.now() < deadline) {
+      const value = read();
+      if (value) {
+        return value;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+    }
+    throw new Error("siyuan_graph_target_timeout");
+  };
+
+  const findTreeNode = (nodeId) => {
+    const tree = Array.from(document.querySelectorAll("ul[data-url]")).find(
+      (candidate) => candidate.dataset.url === targetNotebookId,
+    );
+    return tree?.querySelector(`[data-node-id="${nodeId}"]`);
+  };
+
+  const openBrowserTarget = async () => {
+    const response = await fetch("/api/block/getBlockInfo", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: targetDocumentId }),
+      signal: AbortSignal.timeout(5000),
+    });
+    const payload = await response.json();
+    const notebookId = payload?.code === 0 ? payload.data?.box : undefined;
+    const rootId = payload?.code === 0 ? payload.data?.rootID : undefined;
+    const path = payload?.code === 0 ? payload.data?.path : undefined;
+    const nodeIdPattern = /^\d{14}-[a-z0-9]{7}$/u;
+    if (
+      !response.ok ||
+      notebookId !== targetNotebookId ||
+      typeof rootId !== "string" ||
+      !nodeIdPattern.test(rootId) ||
+      typeof path !== "string" ||
+      path.length > 4096
+    ) {
+      throw new Error("siyuan_graph_target_unavailable");
+    }
+
+    const pathIds = path
+      .split("/")
+      .filter(Boolean)
+      .map((part) => part.replace(/\.sy$/u, ""));
+    if (
+      pathIds.length === 0 ||
+      pathIds.length > 128 ||
+      pathIds[pathIds.length - 1] !== rootId ||
+      pathIds.some((nodeId) => !nodeIdPattern.test(nodeId))
+    ) {
+      throw new Error("siyuan_graph_target_unavailable");
+    }
+
+    const fileDock = await waitFor(() =>
+      document.querySelector('.dock__item[data-type="file"]'),
+    );
+    if (!fileDock.classList.contains("dock__item--active")) {
+      fileDock.click();
+    }
+    const tree = await waitFor(() =>
+      Array.from(document.querySelectorAll("ul[data-url]")).find(
+        (candidate) => candidate.dataset.url === targetNotebookId,
+      ),
+    );
+    const notebookRoot = tree.querySelector(':scope > li[data-type="navigation-root"]');
+    const notebookArrow = notebookRoot?.querySelector(".b3-list-item__arrow");
+    if (notebookRoot && !notebookArrow?.classList.contains("b3-list-item__arrow--open")) {
+      notebookRoot.querySelector(".b3-list-item__toggle")?.click();
+    }
+
+    for (const [index, nodeId] of pathIds.entries()) {
+      const node = await waitFor(() => findTreeNode(nodeId));
+      if (index === pathIds.length - 1) {
+        node.querySelector(".b3-list-item__text")?.click();
+        break;
+      }
+      const arrow = node.querySelector(".b3-list-item__arrow");
+      if (!arrow?.classList.contains("b3-list-item__arrow--open")) {
+        node.querySelector(".b3-list-item__toggle")?.click();
+      }
+    }
+    await waitFor(() =>
+      Array.from(document.querySelectorAll(".protyle [data-node-id]")).find(
+        (candidate) => candidate.dataset.nodeId === rootId,
+      ),
+    );
   };
 
   const tick = () => {
@@ -49,7 +139,18 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
       if (!documentRequested) {
         const api = window.require?.("siyuan");
         const app = window.siyuan?.ws?.app;
-        if (!api?.openTab || !app || !targetDocumentId) {
+        if (!targetDocumentId || !targetNotebookId) {
+          stop();
+          return;
+        }
+        if (!api?.openTab || !app) {
+          if (!browserTargetPromise) {
+            browserTargetPromise = openBrowserTarget()
+              .then(() => {
+                documentRequested = true;
+              })
+              .catch(stop);
+          }
           return;
         }
         documentRequested = true;
@@ -91,7 +192,7 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
   timer = window.setInterval(tick, 200);
   window.addEventListener("pagehide", stop, { once: true });
   tick();
-})(__TARGET_DOCUMENT_ID__, __GRAPH_MODE__);
+})(__TARGET_DOCUMENT_ID__, __TARGET_NOTEBOOK_ID__, __GRAPH_MODE__);
 "#;
 const MIN_SURFACE_WIDTH: f64 = 320.0;
 const MIN_SURFACE_HEIGHT: f64 = 240.0;
@@ -163,6 +264,7 @@ fn validate_siyuan_node_id(value: &str) -> Result<(), String> {
 
 fn graph_initialization_script(
     graph_mode: &str,
+    notebook_id: Option<&str>,
     root_document_id: Option<&str>,
 ) -> Result<String, String> {
     if !matches!(graph_mode, "local" | "global") {
@@ -170,17 +272,26 @@ fn graph_initialization_script(
     }
     if graph_mode == "local" {
         validate_siyuan_node_id(
+            notebook_id.ok_or_else(|| public_error("siyuan_surface_target_invalid"))?,
+        )?;
+        validate_siyuan_node_id(
             root_document_id.ok_or_else(|| public_error("siyuan_surface_target_invalid"))?,
         )?;
     } else if let Some(value) = root_document_id {
         validate_siyuan_node_id(value)?;
     }
+    if let Some(value) = notebook_id {
+        validate_siyuan_node_id(value)?;
+    }
+    let notebook = serde_json::to_string(&notebook_id)
+        .map_err(|_| public_error("siyuan_surface_target_invalid"))?;
     let target = serde_json::to_string(&root_document_id)
         .map_err(|_| public_error("siyuan_surface_target_invalid"))?;
     let mode = serde_json::to_string(graph_mode)
         .map_err(|_| public_error("siyuan_surface_graph_mode_invalid"))?;
     Ok(SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE
         .replace("__TARGET_DOCUMENT_ID__", &target)
+        .replace("__TARGET_NOTEBOOK_ID__", &notebook)
         .replace("__GRAPH_MODE__", &mode))
 }
 
@@ -320,8 +431,11 @@ pub async fn siyuan_surface_open(
     if graph_mode == "local" && notebook_id.is_none() {
         return Err(public_error("siyuan_surface_target_invalid"));
     }
-    let initialization_script =
-        graph_initialization_script(&graph_mode, root_document_id.as_deref())?;
+    let initialization_script = graph_initialization_script(
+        &graph_mode,
+        notebook_id.as_deref(),
+        root_document_id.as_deref(),
+    )?;
     let runtime = state.inner().clone();
     let project_for_runtime = project_id.clone();
     let authority = tauri::async_runtime::spawn_blocking(move || {
@@ -675,8 +789,12 @@ mod tests {
 
     #[test]
     fn graph_first_initialization_uses_only_official_bounded_dom_actions() {
-        let script = graph_initialization_script("local", Some("20260824010102-abcdefg"))
-            .expect("valid local graph target");
+        let script = graph_initialization_script(
+            "local",
+            Some("20260824010101-abcdefg"),
+            Some("20260824010102-abcdefg"),
+        )
+        .expect("valid local graph target");
 
         for required in [
             r#".dock__item[data-type="graph"]"#,
@@ -685,6 +803,15 @@ mod tests {
             ".sy__globalGraph",
             r#"window.require?.("siyuan")"#,
             "window.siyuan?.ws?.app",
+            r#"fetch("/api/block/getBlockInfo""#,
+            "AbortSignal.timeout(5000)",
+            "notebookId !== targetNotebookId",
+            "path.length > 4096",
+            "pathIds.length > 128",
+            r#"/^\d{14}-[a-z0-9]{7}$/u"#,
+            "ul[data-url]",
+            "b3-list-item__toggle",
+            "b3-list-item__text",
             "api.openTab({ app, doc: { id: targetDocumentId } })",
             "20260824010102-abcdefg",
             r#"[data-type="fullscreen"]"#,
@@ -706,8 +833,6 @@ mod tests {
         }
 
         for forbidden in [
-            "fetch(",
-            "/api/",
             "Authorization",
             "token",
             "cookie",
@@ -721,7 +846,9 @@ mod tests {
                 "forbidden graph-first authority: {forbidden}"
             );
         }
-        assert_eq!(script.matches(".click()").count(), 2);
+        assert_eq!(script.matches("fetch(").count(), 1);
+        assert_eq!(script.matches("/api/").count(), 1);
+        assert_eq!(script.matches(".click()").count(), 6);
     }
 
     #[test]
@@ -734,17 +861,27 @@ mod tests {
 
     #[test]
     fn graph_target_validation_fails_closed() {
-        assert!(graph_initialization_script("local", Some("20260824010102-abcdefg")).is_ok());
-        assert!(graph_initialization_script("global", None).is_ok());
+        assert!(graph_initialization_script(
+            "local",
+            Some("20260824010101-abcdefg"),
+            Some("20260824010102-abcdefg")
+        )
+        .is_ok());
+        assert!(graph_initialization_script("global", None, None).is_ok());
         assert_eq!(
-            graph_initialization_script("local", None),
+            graph_initialization_script("local", Some("20260824010101-abcdefg"), None),
             Err("siyuan_surface_target_invalid".to_owned())
         );
         assert_eq!(
-            graph_initialization_script("other", None),
+            graph_initialization_script("other", None, None),
             Err("siyuan_surface_graph_mode_invalid".to_owned())
         );
-        assert!(graph_initialization_script("local", Some("bad');fetch('/api');")).is_err());
+        assert!(graph_initialization_script(
+            "local",
+            Some("20260824010101-abcdefg"),
+            Some("bad');fetch('/api');")
+        )
+        .is_err());
     }
 
     #[test]
