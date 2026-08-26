@@ -1,5 +1,6 @@
 use std::{path::PathBuf, sync::Mutex};
 
+use async_lock::Mutex as AsyncMutex;
 use serde::{Deserialize, Serialize};
 use tauri::{
     webview::{Cookie, NewWindowResponse, WebviewBuilder},
@@ -11,8 +12,9 @@ use super::SiyuanRuntimeState;
 const SURFACE_LABEL: &str = "siyuan-context-vault";
 const MAIN_WEBVIEW_ADDITIONAL_BROWSER_ARGS: &str = "--js-flags=--max-old-space-size=1536";
 const SIYUAN_CHILD_CDP_PORT_ENV: &str = "VIBESPACE_SIYUAN_CHILD_CDP_PORT";
+const GRAPH_REPORT_PREFIX: &str = "__VIBESPACE_SIYUAN_GRAPH__";
 const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
-((targetDocumentId, targetNotebookId, graphMode) => {
+((targetDocumentId, targetNotebookId, graphMode, reportNonce) => {
   if (
     window.top !== window ||
     window.location.protocol !== "http:" ||
@@ -31,14 +33,30 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
   let documentRequested = !local;
   let browserTargetPromise;
   let dockRequested = false;
+  let fullscreenRequested = false;
   let timer;
+  let finished = false;
 
-  const stop = () => {
+  const stop = (state, error = "") => {
     if (timer !== undefined) {
       window.clearInterval(timer);
       timer = undefined;
     }
+    if (!state || finished) {
+      return;
+    }
+    finished = true;
+    window.__vibespaceGraphPreviousTitle = document.title;
+    const reportTitle = `__VIBESPACE_SIYUAN_GRAPH__:${reportNonce}:${state}:${error}`;
+    window.__vibespaceGraphReportTitle = reportTitle;
+    document.title = reportTitle;
   };
+
+  const fail = (error) => stop("failed", [
+    "siyuan_graph_target_timeout",
+    "siyuan_graph_target_unavailable",
+    "siyuan_graph_target_invalid",
+  ].includes(error) ? error : "siyuan_graph_unavailable");
 
   const waitFor = async (read) => {
     while (Date.now() < deadline) {
@@ -132,7 +150,7 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
   const tick = () => {
     try {
       if (Date.now() >= deadline) {
-        stop();
+        fail("siyuan_graph_target_timeout");
         return;
       }
 
@@ -140,7 +158,7 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
         const api = window.require?.("siyuan");
         const app = window.siyuan?.ws?.app;
         if (!targetDocumentId || !targetNotebookId) {
-          stop();
+          fail("siyuan_graph_target_invalid");
           return;
         }
         if (!api?.openTab || !app) {
@@ -149,7 +167,7 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
               .then(() => {
                 documentRequested = true;
               })
-              .catch(stop);
+              .catch((error) => fail(error?.message));
           }
           return;
         }
@@ -173,7 +191,7 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
       }
 
       if (graph.classList.contains("fullscreen")) {
-        stop();
+        stop("ready");
         return;
       }
 
@@ -182,17 +200,19 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
         return;
       }
 
-      fullscreen.click();
-      stop();
+      if (!fullscreenRequested) {
+        fullscreenRequested = true;
+        fullscreen.click();
+      }
     } catch (_error) {
-      stop();
+      fail("siyuan_graph_unavailable");
     }
   };
 
   timer = window.setInterval(tick, 200);
   window.addEventListener("pagehide", stop, { once: true });
   tick();
-})(__TARGET_DOCUMENT_ID__, __TARGET_NOTEBOOK_ID__, __GRAPH_MODE__);
+})(__TARGET_DOCUMENT_ID__, __TARGET_NOTEBOOK_ID__, __GRAPH_MODE__, __REPORT_NONCE__);
 "#;
 const MIN_SURFACE_WIDTH: f64 = 320.0;
 const MIN_SURFACE_HEIGHT: f64 = 240.0;
@@ -217,6 +237,8 @@ pub struct SiyuanSurfaceStatus {
     notebook_id: Option<String>,
     root_document_id: Option<String>,
     graph_mode: Option<String>,
+    graph_state: Option<String>,
+    graph_error: Option<String>,
 }
 
 struct SurfaceRecord {
@@ -226,9 +248,58 @@ struct SurfaceRecord {
     root_document_id: Option<String>,
     graph_mode: String,
     visible: bool,
+    graph_state: String,
+    graph_error: Option<String>,
+    report_nonce: String,
+    origin: String,
+    operation_id: String,
 }
 
 static SURFACE_STATE: Mutex<Option<SurfaceRecord>> = Mutex::new(None);
+static SURFACE_OPERATION: Mutex<Option<String>> = Mutex::new(None);
+static SURFACE_MUTATION: AsyncMutex<()> = AsyncMutex::new(());
+
+fn operation_ownership_matches(
+    current_operation: Option<&str>,
+    installed_operation: Option<&str>,
+    requested_operation: &str,
+    require_installed: bool,
+) -> bool {
+    current_operation == Some(requested_operation)
+        && (!require_installed || installed_operation == Some(requested_operation))
+}
+
+fn operation_is_current(operation_id: &str) -> bool {
+    SURFACE_OPERATION.lock().ok().is_some_and(|value| {
+        operation_ownership_matches(value.as_deref(), None, operation_id, false)
+    })
+}
+
+fn clear_current_operation(operation_id: &str) {
+    if let Ok(mut operation) = SURFACE_OPERATION.lock() {
+        if operation.as_deref() == Some(operation_id) {
+            *operation = None;
+        }
+    }
+}
+
+fn retire_failed_open_locked(app: &AppHandle, operation_id: &str) {
+    if !operation_is_current(operation_id) {
+        return;
+    }
+    if let Some(webview) = app.get_webview(SURFACE_LABEL) {
+        let _ = retire_surface_window(&webview);
+    }
+    if let Ok(mut state) = SURFACE_STATE.lock() {
+        *state = None;
+    }
+    clear_current_operation(operation_id);
+}
+
+async fn retire_failed_open(app: &AppHandle, operation_id: &str) {
+    let _mutation = SURFACE_MUTATION.lock().await;
+    retire_failed_open_locked(app, operation_id);
+}
 
 fn public_error(code: &'static str) -> String {
     code.to_owned()
@@ -266,6 +337,7 @@ fn graph_initialization_script(
     graph_mode: &str,
     notebook_id: Option<&str>,
     root_document_id: Option<&str>,
+    report_nonce: &str,
 ) -> Result<String, String> {
     if !matches!(graph_mode, "local" | "global") {
         return Err(public_error("siyuan_surface_graph_mode_invalid"));
@@ -289,10 +361,32 @@ fn graph_initialization_script(
         .map_err(|_| public_error("siyuan_surface_target_invalid"))?;
     let mode = serde_json::to_string(graph_mode)
         .map_err(|_| public_error("siyuan_surface_graph_mode_invalid"))?;
+    let nonce = serde_json::to_string(report_nonce)
+        .map_err(|_| public_error("siyuan_surface_target_invalid"))?;
     Ok(SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE
         .replace("__TARGET_DOCUMENT_ID__", &target)
         .replace("__TARGET_NOTEBOOK_ID__", &notebook)
-        .replace("__GRAPH_MODE__", &mode))
+        .replace("__GRAPH_MODE__", &mode)
+        .replace("__REPORT_NONCE__", &nonce))
+}
+
+fn parse_graph_report(title: &str, nonce: &str) -> Option<(&'static str, Option<&'static str>)> {
+    let prefix = format!("{GRAPH_REPORT_PREFIX}:{nonce}:");
+    let payload = title.strip_prefix(&prefix)?;
+    match payload {
+        "ready:" => Some(("ready", None)),
+        "failed:siyuan_graph_target_timeout" => {
+            Some(("failed", Some("siyuan_graph_target_timeout")))
+        }
+        "failed:siyuan_graph_target_unavailable" => {
+            Some(("failed", Some("siyuan_graph_target_unavailable")))
+        }
+        "failed:siyuan_graph_target_invalid" => {
+            Some(("failed", Some("siyuan_graph_target_invalid")))
+        }
+        "failed:siyuan_graph_unavailable" => Some(("failed", Some("siyuan_graph_unavailable"))),
+        _ => None,
+    }
 }
 
 fn siyuan_session_cookie_for_deletion() -> Cookie<'static> {
@@ -408,12 +502,15 @@ fn status(app: &AppHandle) -> SiyuanSurfaceStatus {
         notebook_id: record.and_then(|value| value.notebook_id.clone()),
         root_document_id: record.and_then(|value| value.root_document_id.clone()),
         graph_mode: record.map(|value| value.graph_mode.clone()),
+        graph_state: record.map(|value| value.graph_state.clone()),
+        graph_error: record.and_then(|value| value.graph_error.clone()),
     }
 }
 
 #[tauri::command]
 pub async fn siyuan_surface_open(
     app: AppHandle,
+    operation_id: String,
     project_id: String,
     map_id: String,
     notebook_id: Option<String>,
@@ -423,6 +520,7 @@ pub async fn siyuan_surface_open(
     state: State<'_, SiyuanRuntimeState>,
 ) -> Result<SiyuanSurfaceStatus, String> {
     validate_bounds(&bounds)?;
+    validate_identifier(&operation_id, "siyuan_surface_operation_invalid")?;
     validate_identifier(&project_id, "siyuan_project_id_invalid")?;
     validate_identifier(&map_id, "siyuan_map_id_invalid")?;
     if let Some(value) = notebook_id.as_deref() {
@@ -431,20 +529,36 @@ pub async fn siyuan_surface_open(
     if graph_mode == "local" && notebook_id.is_none() {
         return Err(public_error("siyuan_surface_target_invalid"));
     }
-    let initialization_script = graph_initialization_script(
-        &graph_mode,
-        notebook_id.as_deref(),
-        root_document_id.as_deref(),
-    )?;
+    {
+        let _mutation = SURFACE_MUTATION.lock().await;
+        *SURFACE_OPERATION
+            .lock()
+            .map_err(|_| public_error("siyuan_surface_state_unavailable"))? =
+            Some(operation_id.clone());
+    }
     let runtime = state.inner().clone();
     let project_for_runtime = project_id.clone();
-    let authority = tauri::async_runtime::spawn_blocking(move || {
+    let authority = match tauri::async_runtime::spawn_blocking(move || {
         runtime
             .surface_session_with_recovery(&project_for_runtime)
             .map_err(|error| error.to_string())
     })
     .await
-    .map_err(|_| public_error("siyuan_surface_state_unavailable"))??;
+    {
+        Ok(Ok(value)) => value,
+        Ok(Err(error)) => {
+            retire_failed_open(&app, &operation_id).await;
+            return Err(error);
+        }
+        Err(_) => {
+            retire_failed_open(&app, &operation_id).await;
+            return Err(public_error("siyuan_surface_state_unavailable"));
+        }
+    };
+    let _mutation = SURFACE_MUTATION.lock().await;
+    if !operation_is_current(&operation_id) {
+        return Err(public_error("siyuan_surface_open_cancelled"));
+    }
     let (origin, cookie_value) = authority.into_parts();
     if origin.scheme() != "http"
         || origin.host_str() != Some("127.0.0.1")
@@ -452,10 +566,18 @@ pub async fn siyuan_surface_open(
         || origin.username() != ""
         || origin.password().is_some()
     {
+        retire_failed_open_locked(&app, &operation_id);
         return Err(public_error("siyuan_surface_origin_invalid"));
     }
 
-    let main = main_window(&app)?;
+    let main = match main_window(&app) {
+        Ok(value) => value,
+        Err(error) => {
+            retire_failed_open_locked(&app, &operation_id);
+            return Err(error);
+        }
+    };
+    let origin_key = origin.as_str().to_owned();
     if let Some(existing) = app.get_webview(SURFACE_LABEL) {
         let same_target = SURFACE_STATE
             .lock()
@@ -467,35 +589,46 @@ pub async fn siyuan_surface_open(
                     && record.notebook_id == notebook_id
                     && record.root_document_id == root_document_id
                     && record.graph_mode == graph_mode
+                    && record.origin == origin_key
             });
         if same_target {
-            existing
-                .set_cookie(
-                    Cookie::build(("siyuan", cookie_value))
-                        .domain("127.0.0.1")
-                        .path("/")
-                        .http_only(true)
-                        .build(),
-                )
-                .map_err(|_| public_error("siyuan_surface_session_unavailable"))?;
-            existing
-                .navigate(origin)
-                .map_err(|_| public_error("siyuan_surface_navigation_unavailable"))?;
-            apply_bounds(&existing, &bounds)?;
-            existing
-                .show()
-                .map_err(|_| public_error("siyuan_surface_window_unavailable"))?;
-            *SURFACE_STATE
+            if let Some(record) = SURFACE_STATE
                 .lock()
-                .map_err(|_| public_error("siyuan_surface_state_unavailable"))? =
-                Some(SurfaceRecord {
-                    project_id,
-                    map_id,
-                    notebook_id,
-                    root_document_id,
-                    graph_mode,
-                    visible: true,
-                });
+                .map_err(|_| public_error("siyuan_surface_state_unavailable"))?
+                .as_mut()
+            {
+                record.visible = true;
+                record.graph_state = "loading".to_owned();
+                record.graph_error = None;
+                record.operation_id = operation_id.clone();
+            }
+            let setup_result = (|| -> Result<(), String> {
+                existing
+                    .set_cookie(
+                        Cookie::build(("siyuan", cookie_value))
+                            .domain("127.0.0.1")
+                            .path("/")
+                            .http_only(true)
+                            .build(),
+                    )
+                    .map_err(|_| public_error("siyuan_surface_session_unavailable"))?;
+                existing
+                    .navigate(origin)
+                    .map_err(|_| public_error("siyuan_surface_navigation_unavailable"))?;
+                apply_bounds(&existing, &bounds)?;
+                existing
+                    .show()
+                    .map_err(|_| public_error("siyuan_surface_window_unavailable"))?;
+                Ok(())
+            })();
+            if let Err(error) = setup_result {
+                let _ = retire_surface_window(&existing);
+                if let Ok(mut state) = SURFACE_STATE.lock() {
+                    *state = None;
+                }
+                clear_current_operation(&operation_id);
+                return Err(error);
+            }
             return Ok(status(&app));
         }
         let _ = retire_surface_window(&existing);
@@ -506,40 +639,75 @@ pub async fn siyuan_surface_open(
 
     let blank = url::Url::parse("about:blank")
         .map_err(|_| public_error("siyuan_surface_origin_invalid"))?;
+    let report_nonce = nanoid::nanoid!(24);
+    let initialization_script = match graph_initialization_script(
+        &graph_mode,
+        notebook_id.as_deref(),
+        root_document_id.as_deref(),
+        &report_nonce,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            retire_failed_open_locked(&app, &operation_id);
+            return Err(error);
+        }
+    };
     let allowed_origin = origin.clone();
+    let report_nonce_for_handler = report_nonce.clone();
     let (position, size) = child_geometry(&bounds)?;
     let mut builder = WebviewBuilder::new(SURFACE_LABEL, WebviewUrl::External(blank))
         .focused(true)
         .additional_browser_args(MAIN_WEBVIEW_ADDITIONAL_BROWSER_ARGS)
         .initialization_script(&initialization_script)
+        .on_document_title_changed(move |webview, title| {
+            let Some((graph_state, graph_error)) =
+                parse_graph_report(&title, &report_nonce_for_handler)
+            else {
+                return;
+            };
+            if let Ok(mut state) = SURFACE_STATE.lock() {
+                if let Some(record) = state.as_mut() {
+                    if record.report_nonce == report_nonce_for_handler {
+                        record.graph_state = graph_state.to_owned();
+                        record.graph_error = graph_error.map(str::to_owned);
+                    }
+                }
+            }
+            let _ = webview.eval(
+                r#"if (window.__vibespaceGraphReportTitle === document.title) {
+                  document.title = window.__vibespaceGraphPreviousTitle || "";
+                  delete window.__vibespaceGraphReportTitle;
+                  delete window.__vibespaceGraphPreviousTitle;
+                }"#,
+            );
+        })
         .on_navigation(move |candidate| navigation_allowed(&allowed_origin, candidate))
         .on_new_window(|_, _| NewWindowResponse::Deny)
         .on_download(|_, _| false);
-    if let Some((data_directory, browser_args)) = child_cdp_configuration(&app)? {
+    let child_cdp = match child_cdp_configuration(&app) {
+        Ok(value) => value,
+        Err(error) => {
+            retire_failed_open_locked(&app, &operation_id);
+            return Err(error);
+        }
+    };
+    if let Some((data_directory, browser_args)) = child_cdp {
         builder = builder
             .data_directory(data_directory)
             .additional_browser_args(&browser_args);
     }
 
-    let webview = main
-        .add_child(builder, position, size)
-        .map_err(|_| public_error("siyuan_surface_webview_unavailable"))?;
-    webview
-        .set_cookie(
-            Cookie::build(("siyuan", cookie_value))
-                .domain("127.0.0.1")
-                .path("/")
-                .http_only(true)
-                .build(),
-        )
-        .map_err(|_| public_error("siyuan_surface_session_unavailable"))?;
-    webview
-        .navigate(origin)
-        .map_err(|_| public_error("siyuan_surface_navigation_unavailable"))?;
-    apply_bounds(&webview, &bounds)?;
-    webview
-        .show()
-        .map_err(|_| public_error("siyuan_surface_window_unavailable"))?;
+    let webview = match main.add_child(builder, position, size) {
+        Ok(value) => value,
+        Err(_) => {
+            clear_current_operation(&operation_id);
+            return Err(public_error("siyuan_surface_webview_unavailable"));
+        }
+    };
+    if !operation_is_current(&operation_id) {
+        let _ = retire_surface_window(&webview);
+        return Err(public_error("siyuan_surface_open_cancelled"));
+    }
     *SURFACE_STATE
         .lock()
         .map_err(|_| public_error("siyuan_surface_state_unavailable"))? = Some(SurfaceRecord {
@@ -549,16 +717,65 @@ pub async fn siyuan_surface_open(
         root_document_id,
         graph_mode,
         visible: true,
+        graph_state: "loading".to_owned(),
+        graph_error: None,
+        report_nonce,
+        origin: origin_key,
+        operation_id: operation_id.clone(),
     });
+    let setup_result = (|| -> Result<(), String> {
+        webview
+            .set_cookie(
+                Cookie::build(("siyuan", cookie_value))
+                    .domain("127.0.0.1")
+                    .path("/")
+                    .http_only(true)
+                    .build(),
+            )
+            .map_err(|_| public_error("siyuan_surface_session_unavailable"))?;
+        webview
+            .navigate(origin)
+            .map_err(|_| public_error("siyuan_surface_navigation_unavailable"))?;
+        apply_bounds(&webview, &bounds)?;
+        webview
+            .show()
+            .map_err(|_| public_error("siyuan_surface_window_unavailable"))?;
+        Ok(())
+    })();
+    if let Err(error) = setup_result {
+        let _ = retire_surface_window(&webview);
+        if let Ok(mut state) = SURFACE_STATE.lock() {
+            if state
+                .as_ref()
+                .is_some_and(|record| record.operation_id == operation_id)
+            {
+                *state = None;
+            }
+        }
+        clear_current_operation(&operation_id);
+        return Err(error);
+    }
     Ok(status(&app))
 }
 
 #[tauri::command]
-pub fn siyuan_surface_set_bounds(
+pub async fn siyuan_surface_set_bounds(
     app: AppHandle,
+    operation_id: String,
     bounds: SiyuanSurfaceBounds,
 ) -> Result<bool, String> {
     validate_bounds(&bounds)?;
+    validate_identifier(&operation_id, "siyuan_surface_operation_invalid")?;
+    let _mutation = SURFACE_MUTATION.lock().await;
+    if !operation_is_current(&operation_id)
+        || !SURFACE_STATE
+            .lock()
+            .map_err(|_| public_error("siyuan_surface_state_unavailable"))?
+            .as_ref()
+            .is_some_and(|record| record.operation_id == operation_id)
+    {
+        return Ok(false);
+    }
     let Some(webview) = app.get_webview(SURFACE_LABEL) else {
         return Ok(false);
     };
@@ -567,7 +784,18 @@ pub fn siyuan_surface_set_bounds(
 }
 
 #[tauri::command]
-pub fn siyuan_surface_hide(app: AppHandle) -> Result<bool, String> {
+pub async fn siyuan_surface_hide(app: AppHandle, operation_id: String) -> Result<bool, String> {
+    validate_identifier(&operation_id, "siyuan_surface_operation_invalid")?;
+    let _mutation = SURFACE_MUTATION.lock().await;
+    if !operation_is_current(&operation_id)
+        || !SURFACE_STATE
+            .lock()
+            .map_err(|_| public_error("siyuan_surface_state_unavailable"))?
+            .as_ref()
+            .is_some_and(|record| record.operation_id == operation_id)
+    {
+        return Ok(false);
+    }
     let Some(webview) = app.get_webview(SURFACE_LABEL) else {
         return Ok(false);
     };
@@ -585,7 +813,18 @@ pub fn siyuan_surface_hide(app: AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub fn siyuan_surface_reload(app: AppHandle) -> Result<bool, String> {
+pub async fn siyuan_surface_reload(app: AppHandle, operation_id: String) -> Result<bool, String> {
+    validate_identifier(&operation_id, "siyuan_surface_operation_invalid")?;
+    let _mutation = SURFACE_MUTATION.lock().await;
+    if !operation_is_current(&operation_id)
+        || !SURFACE_STATE
+            .lock()
+            .map_err(|_| public_error("siyuan_surface_state_unavailable"))?
+            .as_ref()
+            .is_some_and(|record| record.operation_id == operation_id)
+    {
+        return Ok(false);
+    }
     let Some(webview) = app.get_webview(SURFACE_LABEL) else {
         return Ok(false);
     };
@@ -596,15 +835,21 @@ pub fn siyuan_surface_reload(app: AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub fn siyuan_surface_close(app: AppHandle) -> Result<bool, String> {
+pub async fn siyuan_surface_close(app: AppHandle, operation_id: String) -> Result<bool, String> {
+    validate_identifier(&operation_id, "siyuan_surface_operation_invalid")?;
+    let _mutation = SURFACE_MUTATION.lock().await;
+    if !operation_is_current(&operation_id) {
+        return Ok(false);
+    }
+    *SURFACE_STATE
+        .lock()
+        .map_err(|_| public_error("siyuan_surface_state_unavailable"))? = None;
+    clear_current_operation(&operation_id);
     let Some(webview) = app.get_webview(SURFACE_LABEL) else {
         return Ok(false);
     };
     retire_surface_window(&webview)
         .map_err(|_| public_error("siyuan_surface_window_unavailable"))?;
-    *SURFACE_STATE
-        .lock()
-        .map_err(|_| public_error("siyuan_surface_state_unavailable"))? = None;
     Ok(true)
 }
 
@@ -614,11 +859,17 @@ pub fn siyuan_surface_status(app: AppHandle) -> SiyuanSurfaceStatus {
 }
 
 pub fn shutdown_surface(app: &AppHandle) {
+    let Some(_mutation) = SURFACE_MUTATION.try_lock() else {
+        return;
+    };
     if let Some(webview) = app.get_webview(SURFACE_LABEL) {
         let _ = retire_surface_window(&webview);
     }
     if let Ok(mut state) = SURFACE_STATE.lock() {
         *state = None;
+    }
+    if let Ok(mut operation) = SURFACE_OPERATION.lock() {
+        *operation = None;
     }
 }
 
@@ -699,6 +950,8 @@ mod tests {
             notebook_id: Some("20260824010101-abcdefg".to_owned()),
             root_document_id: Some("20260824010102-abcdefg".to_owned()),
             graph_mode: Some("local".to_owned()),
+            graph_state: Some("ready".to_owned()),
+            graph_error: None,
         })
         .unwrap();
         assert_eq!(
@@ -711,6 +964,8 @@ mod tests {
                 "notebookId": "20260824010101-abcdefg",
                 "rootDocumentId": "20260824010102-abcdefg",
                 "graphMode": "local",
+                "graphState": "ready",
+                "graphError": null,
             })
         );
         let rendered = value.to_string().to_ascii_lowercase();
@@ -774,6 +1029,78 @@ mod tests {
     }
 
     #[test]
+    fn renderer_surface_mutations_are_operation_bound_and_serialized() {
+        let source = include_str!("surface.rs");
+        for command in [
+            "pub async fn siyuan_surface_set_bounds(",
+            "pub async fn siyuan_surface_hide(",
+            "pub async fn siyuan_surface_reload(",
+        ] {
+            let start = source.find(command).expect("surface command is registered");
+            let remaining = &source[start..];
+            let end = remaining
+                .find("\n}\n")
+                .expect("surface command has a bounded body");
+            let body = &remaining[..end];
+            assert!(
+                body.contains("operation_id: String"),
+                "{command} is unbound"
+            );
+            assert!(
+                body.contains("SURFACE_MUTATION"),
+                "{command} is not serialized"
+            );
+            assert!(
+                body.contains("record.operation_id == operation_id"),
+                "{command} does not verify record ownership"
+            );
+        }
+        let close_start = source
+            .find("pub async fn siyuan_surface_close(")
+            .expect("close command is registered");
+        let close_remaining = &source[close_start..];
+        let close_end = close_remaining
+            .find("\n}\n")
+            .expect("close command has a bounded body");
+        let close_body = &close_remaining[..close_end];
+        assert!(close_body.contains("operation_id: String"));
+        assert!(close_body.contains("SURFACE_MUTATION"));
+        assert!(close_body.contains("operation_is_current(&operation_id)"));
+        assert!(!close_body.contains("record.operation_id == operation_id"));
+        assert!(close_body.contains("clear_current_operation(&operation_id)"));
+        assert!(source.contains("retire_failed_open(&app, &operation_id)"));
+        assert!(source.contains("retire_failed_open_locked(&app, &operation_id)"));
+    }
+
+    #[test]
+    fn pending_close_and_stale_close_use_exact_operation_ownership() {
+        assert!(operation_ownership_matches(
+            Some("operation-b"),
+            None,
+            "operation-b",
+            false
+        ));
+        assert!(!operation_ownership_matches(
+            Some("operation-b"),
+            Some("operation-a"),
+            "operation-a",
+            false
+        ));
+        assert!(!operation_ownership_matches(
+            Some("operation-b"),
+            None,
+            "operation-b",
+            true
+        ));
+        assert!(operation_ownership_matches(
+            Some("operation-b"),
+            Some("operation-b"),
+            "operation-b",
+            true
+        ));
+    }
+
+    #[test]
     fn child_geometry_is_parent_relative_and_logical() {
         let (position, size) = child_geometry(&SiyuanSurfaceBounds {
             x: 120.5,
@@ -793,6 +1120,7 @@ mod tests {
             "local",
             Some("20260824010101-abcdefg"),
             Some("20260824010102-abcdefg"),
+            "report-nonce",
         )
         .expect("valid local graph target");
 
@@ -864,24 +1192,52 @@ mod tests {
         assert!(graph_initialization_script(
             "local",
             Some("20260824010101-abcdefg"),
-            Some("20260824010102-abcdefg")
+            Some("20260824010102-abcdefg"),
+            "report-nonce"
         )
         .is_ok());
-        assert!(graph_initialization_script("global", None, None).is_ok());
+        assert!(graph_initialization_script("global", None, None, "report-nonce").is_ok());
         assert_eq!(
-            graph_initialization_script("local", Some("20260824010101-abcdefg"), None),
+            graph_initialization_script(
+                "local",
+                Some("20260824010101-abcdefg"),
+                None,
+                "report-nonce"
+            ),
             Err("siyuan_surface_target_invalid".to_owned())
         );
         assert_eq!(
-            graph_initialization_script("other", None, None),
+            graph_initialization_script("other", None, None, "report-nonce"),
             Err("siyuan_surface_graph_mode_invalid".to_owned())
         );
         assert!(graph_initialization_script(
             "local",
             Some("20260824010101-abcdefg"),
-            Some("bad');fetch('/api');")
+            Some("bad');fetch('/api');"),
+            "report-nonce"
         )
         .is_err());
+    }
+
+    #[test]
+    fn graph_reports_are_nonce_bound_and_fixed_code_only() {
+        assert_eq!(
+            parse_graph_report("__VIBESPACE_SIYUAN_GRAPH__:nonce-1:ready:", "nonce-1"),
+            Some(("ready", None))
+        );
+        assert_eq!(
+            parse_graph_report(
+                "__VIBESPACE_SIYUAN_GRAPH__:nonce-1:failed:siyuan_graph_target_timeout",
+                "nonce-1"
+            ),
+            Some(("failed", Some("siyuan_graph_target_timeout")))
+        );
+        assert!(parse_graph_report("__VIBESPACE_SIYUAN_GRAPH__:other:ready:", "nonce-1").is_none());
+        assert!(parse_graph_report(
+            "__VIBESPACE_SIYUAN_GRAPH__:nonce-1:failed:secret-detail",
+            "nonce-1"
+        )
+        .is_none());
     }
 
     #[test]
@@ -893,7 +1249,7 @@ mod tests {
         let cookie = siyuan_session_cookie_for_deletion();
 
         assert!(!source.contains(&profile_wide_clear));
-        assert_eq!(source.matches(&retirement_call).count(), 4);
+        assert!(source.matches(&retirement_call).count() >= 5);
         assert_eq!(cookie.name(), "siyuan");
         assert_eq!(cookie.value(), "");
         assert_eq!(cookie.domain(), Some("127.0.0.1"));

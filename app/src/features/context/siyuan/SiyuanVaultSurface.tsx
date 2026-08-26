@@ -8,6 +8,13 @@ import {
   type SiyuanSurfaceBridge,
 } from './siyuanSurface';
 
+let surfaceOperationSequence = 0;
+
+function nextSurfaceOperationId(): string {
+  surfaceOperationSequence += 1;
+  return `siyuan-open-${Date.now()}-${surfaceOperationSequence}`;
+}
+
 export function SiyuanVaultSurface({
   projectId,
   mapId,
@@ -24,33 +31,65 @@ export function SiyuanVaultSurface({
   bridge?: SiyuanSurfaceBridge;
 }) {
   const surfaceRef = React.useRef<HTMLDivElement>(null);
+  const openGenerationRef = React.useRef(0);
+  const operationIdRef = React.useRef<string | null>(null);
   const [state, setState] = React.useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = React.useState('');
 
   const open = React.useCallback(async () => {
     const element = surfaceRef.current;
     if (!element) return;
+    const generation = ++openGenerationRef.current;
+    const operationId = nextSurfaceOperationId();
+    operationIdRef.current = operationId;
+    const isCurrent = () => openGenerationRef.current === generation;
     setState('loading');
     setError('');
     try {
-      const status = await bridge.open(
+      let status = await bridge.open(
+        operationId,
         projectId,
         { mapId, notebookId, rootDocumentId, graphMode: 'local' },
         measureSiyuanSurfaceBounds(element),
       );
-      if (
-        !status.created ||
-        !status.visible ||
-        status.projectId !== projectId ||
-        status.mapId !== mapId ||
-        status.notebookId !== notebookId ||
-        status.rootDocumentId !== rootDocumentId ||
-        status.graphMode !== 'local'
-      ) {
-        throw new Error('siyuan_surface_status_invalid');
+      if (!isCurrent()) {
+        await bridge.close(operationId).catch(() => false);
+        return;
       }
-      setState('ready');
+      const assertTarget = () => {
+        if (
+          !status.created ||
+          !status.visible ||
+          status.projectId !== projectId ||
+          status.mapId !== mapId ||
+          status.notebookId !== notebookId ||
+          status.rootDocumentId !== rootDocumentId ||
+          status.graphMode !== 'local' ||
+          status.graphState === null
+        ) {
+          throw new Error('siyuan_surface_status_invalid');
+        }
+      };
+      assertTarget();
+      const deadline = Date.now() + 12_000;
+      while (status.graphState === 'loading' && Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, 150));
+        if (!isCurrent()) return;
+        status = await bridge.status();
+        if (!isCurrent()) return;
+        assertTarget();
+      }
+      if (status.graphState === 'failed') {
+        throw new Error(status.graphError ?? 'siyuan_graph_unavailable');
+      }
+      if (status.graphState !== 'ready') {
+        throw new Error('siyuan_graph_target_timeout');
+      }
+      if (isCurrent()) setState('ready');
     } catch (cause) {
+      if (!isCurrent()) return;
+      await bridge.close(operationId).catch(() => false);
+      if (!isCurrent()) return;
       setError(redactSiyuanSurfaceError(cause));
       setState('error');
     }
@@ -59,12 +98,15 @@ export function SiyuanVaultSurface({
   React.useEffect(() => {
     void open();
     return () => {
+      openGenerationRef.current += 1;
+      const operationId = operationIdRef.current;
+      operationIdRef.current = null;
       // A retained child webview keeps the native window in multi-webview
       // mode even while hidden. Commands that legitimately require the
       // ordinary main WebviewWindow would then fail before reaching their
       // authority checks. Retire the child whenever focused-map mode exits;
       // reopening remains fast because the supervised SiYuan kernel stays up.
-      void bridge.close();
+      if (operationId) void bridge.close(operationId);
     };
   }, [bridge, open]);
 
@@ -72,13 +114,24 @@ export function SiyuanVaultSurface({
     const element = surfaceRef.current;
     if (!element) return;
     let lastBounds = '';
+    let pendingBounds = '';
     const sync = () => {
       try {
         const bounds = measureSiyuanSurfaceBounds(element);
         const serialized = `${bounds.x}:${bounds.y}:${bounds.width}:${bounds.height}`;
-        if (serialized === lastBounds) return;
-        lastBounds = serialized;
-        void bridge.setBounds(bounds);
+        if (serialized === lastBounds || serialized === pendingBounds) return;
+        const operationId = operationIdRef.current;
+        if (!operationId) return;
+        pendingBounds = serialized;
+        void bridge
+          .setBounds(operationId, bounds)
+          .then((applied) => {
+            if (applied && operationIdRef.current === operationId) lastBounds = serialized;
+          })
+          .catch(() => false)
+          .finally(() => {
+            if (pendingBounds === serialized) pendingBounds = '';
+          });
       } catch {
         // The open/retry state remains the user-facing authority.
       }
@@ -96,7 +149,10 @@ export function SiyuanVaultSurface({
   }, [bridge]);
 
   const close = async () => {
-    await bridge.close().catch(() => false);
+    openGenerationRef.current += 1;
+    const operationId = operationIdRef.current;
+    operationIdRef.current = null;
+    if (operationId) await bridge.close(operationId).catch(() => false);
     onClose();
   };
 
@@ -120,7 +176,7 @@ export function SiyuanVaultSurface({
           type="button"
           size="sm"
           variant="ghost"
-          onClick={() => void bridge.reload()}
+          onClick={() => void open()}
           disabled={state !== 'ready'}
         >
           <RefreshCw className="h-4 w-4" /> Reload

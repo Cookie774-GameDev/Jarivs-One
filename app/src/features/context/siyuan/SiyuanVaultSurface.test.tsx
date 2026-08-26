@@ -21,6 +21,8 @@ function bridge(overrides: Partial<SiyuanSurfaceBridge> = {}): SiyuanSurfaceBrid
     projectId: 'project-1',
     ...targetProps,
     graphMode: 'local' as const,
+    graphState: 'ready' as const,
+    graphError: null,
   };
   return {
     open: vi.fn(async () => status),
@@ -52,7 +54,7 @@ describe('SiYuan Context Vault surface', () => {
   it('opens over the reserved rectangle and clears the native surface on close', async () => {
     const native = bridge();
     const onClose = vi.fn();
-    render(
+    const rendered = render(
       <SiyuanVaultSurface
         projectId="project-1"
         {...targetProps}
@@ -63,17 +65,23 @@ describe('SiYuan Context Vault surface', () => {
 
     await waitFor(() =>
       expect(native.open).toHaveBeenCalledWith(
+        expect.stringMatching(/^siyuan-open-/u),
         'project-1',
         { ...targetProps, graphMode: 'local' },
         { x: 400, y: 80, width: 1_200, height: 800 },
       ),
     );
+    const operationId = vi.mocked(native.open).mock.calls[0]?.[0];
+    expect(operationId).toMatch(/^siyuan-open-/u);
     expect(screen.getByTestId('siyuan-vault-surface').getAttribute('data-siyuan-map-id')).toBe(
       'map-1',
     );
     fireEvent.click(screen.getByRole('button', { name: /close/iu }));
-    await waitFor(() => expect(native.close).toHaveBeenCalled());
+    await waitFor(() => expect(native.close).toHaveBeenCalledWith(operationId));
     expect(onClose).toHaveBeenCalled();
+    rendered.unmount();
+    expect(native.close).toHaveBeenCalledTimes(1);
+    expect(native.close).not.toHaveBeenCalledWith(undefined);
   });
 
   it('shows a stable redacted error and retries without exposing an origin', async () => {
@@ -86,6 +94,8 @@ describe('SiYuan Context Vault surface', () => {
         projectId: 'project-1',
         ...targetProps,
         graphMode: 'local',
+        graphState: 'ready',
+        graphError: null,
       });
     const native = bridge({ open });
     render(
@@ -107,6 +117,39 @@ describe('SiYuan Context Vault surface', () => {
     await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
   });
 
+  it('waits for the official graph and surfaces a fixed native failure code', async () => {
+    const loading = {
+      created: true,
+      visible: true,
+      projectId: 'project-1',
+      ...targetProps,
+      graphMode: 'local' as const,
+      graphState: 'loading' as const,
+      graphError: null,
+    };
+    const native = bridge({
+      open: vi.fn(async () => loading),
+      status: vi.fn(async () => ({
+        ...loading,
+        graphState: 'failed' as const,
+        graphError: 'siyuan_graph_target_unavailable',
+      })),
+    });
+    render(
+      <SiyuanVaultSurface
+        projectId="project-1"
+        {...targetProps}
+        bridge={native}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'siyuan_graph_target_unavailable',
+    );
+    expect(native.status).toHaveBeenCalled();
+  });
+
   it('retires the child webview when focused-map mode unmounts', async () => {
     const native = bridge();
     const rendered = render(
@@ -118,8 +161,45 @@ describe('SiYuan Context Vault surface', () => {
       />,
     );
     await waitFor(() => expect(native.open).toHaveBeenCalled());
+    const operationId = vi.mocked(native.open).mock.calls[0]?.[0];
     rendered.unmount();
-    await waitFor(() => expect(native.close).toHaveBeenCalled());
+    await waitFor(() => expect(native.close).toHaveBeenCalledWith(operationId));
+    expect(native.close).not.toHaveBeenCalledWith(undefined);
     expect(native.hide).not.toHaveBeenCalled();
+  });
+
+  it('cancels an exact pending open before it can install an orphan surface', async () => {
+    let resolveOpen!: (value: Awaited<ReturnType<SiyuanSurfaceBridge['open']>>) => void;
+    const pendingOpen = new Promise<Awaited<ReturnType<SiyuanSurfaceBridge['open']>>>((resolve) => {
+      resolveOpen = resolve;
+    });
+    const native = bridge({ open: vi.fn(() => pendingOpen) });
+    const rendered = render(
+      <SiyuanVaultSurface
+        projectId="project-1"
+        {...targetProps}
+        bridge={native}
+        onClose={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(native.open).toHaveBeenCalledTimes(1));
+    const operationId = vi.mocked(native.open).mock.calls[0]?.[0];
+
+    rendered.unmount();
+    await waitFor(() => expect(native.close).toHaveBeenCalledWith(operationId));
+    resolveOpen({
+      created: true,
+      visible: true,
+      projectId: 'project-1',
+      ...targetProps,
+      graphMode: 'local',
+      graphState: 'ready',
+      graphError: null,
+    });
+    await act(async () => pendingOpen);
+
+    expect(native.close).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(native.close).mock.calls.every(([value]) => value === operationId)).toBe(true);
+    expect(native.close).not.toHaveBeenCalledWith(undefined);
   });
 });

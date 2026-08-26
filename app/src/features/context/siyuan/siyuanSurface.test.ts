@@ -21,11 +21,14 @@ describe('SiYuan restricted surface bridge', () => {
       notebookId: '20260824010101-abcdefg',
       rootDocumentId: '20260824010102-abcdefg',
       graphMode: 'local' as const,
+      graphState: 'ready' as const,
+      graphError: null,
     };
     const invoke = vi.fn(async () => status);
     const bridge = createSiyuanSurfaceBridge(invoke);
     await expect(
       bridge.open(
+        'operation-1',
         'project-1',
         {
           mapId: 'map-1',
@@ -38,6 +41,7 @@ describe('SiYuan restricted surface bridge', () => {
     ).resolves.toEqual(status);
     expect(invoke).toHaveBeenCalledWith(SIYUAN_SURFACE_COMMANDS.open, {
       projectId: 'project-1',
+      operationId: 'operation-1',
       mapId: 'map-1',
       notebookId: '20260824010101-abcdefg',
       rootDocumentId: '20260824010102-abcdefg',
@@ -45,6 +49,25 @@ describe('SiYuan restricted surface bridge', () => {
       bounds: { x: 400, y: 80, width: 1_200, height: 800 },
     });
     expect(JSON.stringify(invoke.mock.calls)).not.toMatch(/cookie|token|origin|port|url/iu);
+  });
+
+  it('binds every renderer mutation to the exact open operation', async () => {
+    const invoke = vi.fn(async () => true);
+    const bridge = createSiyuanSurfaceBridge(invoke);
+    const operationId = 'operation-1';
+    const bounds = { x: 400, y: 80, width: 1_200, height: 800 };
+
+    await bridge.setBounds(operationId, bounds);
+    await bridge.hide(operationId);
+    await bridge.reload(operationId);
+    await bridge.close(operationId);
+
+    expect(invoke.mock.calls).toEqual([
+      [SIYUAN_SURFACE_COMMANDS.setBounds, { operationId, bounds }],
+      [SIYUAN_SURFACE_COMMANDS.hide, { operationId }],
+      [SIYUAN_SURFACE_COMMANDS.reload, { operationId }],
+      [SIYUAN_SURFACE_COMMANDS.close, { operationId }],
+    ]);
   });
 
   it('rejects secret-bearing or extra response fields and unsafe geometry', () => {
@@ -57,7 +80,22 @@ describe('SiYuan restricted surface bridge', () => {
         notebookId: '20260824010101-abcdefg',
         rootDocumentId: '20260824010102-abcdefg',
         graphMode: 'local',
+        graphState: 'ready',
+        graphError: null,
         token: 'forbidden',
+      }),
+    ).toThrow('siyuan_surface_status_invalid');
+    expect(() =>
+      parseSiyuanSurfaceStatus({
+        created: true,
+        visible: true,
+        projectId: 'project-1',
+        mapId: 'map-1',
+        notebookId: '20260824010101-abcdefg',
+        rootDocumentId: '20260824010102-abcdefg',
+        graphMode: 'local',
+        graphState: 'ready',
+        graphError: 'siyuan_graph_target_unavailable',
       }),
     ).toThrow('siyuan_surface_status_invalid');
     expect(() => assertSiyuanSurfaceBounds({ x: 0, y: 0, width: 319, height: 800 })).toThrow(

@@ -24,6 +24,8 @@ export interface SiyuanSurfaceStatus {
   notebookId: string | null;
   rootDocumentId: string | null;
   graphMode: 'local' | 'global' | null;
+  graphState: 'loading' | 'ready' | 'failed' | null;
+  graphError: string | null;
 }
 
 export interface SiyuanSurfaceTarget {
@@ -49,6 +51,13 @@ function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+const SIYUAN_GRAPH_ERRORS = new Set([
+  'siyuan_graph_target_timeout',
+  'siyuan_graph_target_unavailable',
+  'siyuan_graph_target_invalid',
+  'siyuan_graph_unavailable',
+]);
+
 export function redactSiyuanSurfaceError(value: unknown): string {
   const message = typeof value === 'string' ? value : value instanceof Error ? value.message : '';
   return /^siyuan_[a-z0-9_]{1,96}$/u.test(message) ? message : 'siyuan_surface_unavailable';
@@ -58,14 +67,22 @@ export function parseSiyuanSurfaceStatus(value: unknown): SiyuanSurfaceStatus {
   const status = record(value);
   if (
     Object.keys(status).sort().join(',') !==
-      'created,graphMode,mapId,notebookId,projectId,rootDocumentId,visible' ||
+      'created,graphError,graphMode,graphState,mapId,notebookId,projectId,rootDocumentId,visible' ||
     typeof status.created !== 'boolean' ||
     typeof status.visible !== 'boolean' ||
     (status.projectId !== null && typeof status.projectId !== 'string') ||
     (status.mapId !== null && typeof status.mapId !== 'string') ||
     (status.notebookId !== null && typeof status.notebookId !== 'string') ||
     (status.rootDocumentId !== null && typeof status.rootDocumentId !== 'string') ||
-    (status.graphMode !== null && status.graphMode !== 'local' && status.graphMode !== 'global')
+    (status.graphMode !== null && status.graphMode !== 'local' && status.graphMode !== 'global') ||
+    (status.graphState !== null &&
+      status.graphState !== 'loading' &&
+      status.graphState !== 'ready' &&
+      status.graphState !== 'failed') ||
+    (status.graphError !== null &&
+      (typeof status.graphError !== 'string' || !SIYUAN_GRAPH_ERRORS.has(status.graphError))) ||
+    (status.graphState === 'failed' && status.graphError === null) ||
+    (status.graphState !== 'failed' && status.graphError !== null)
   ) {
     throw new Error('siyuan_surface_status_invalid');
   }
@@ -82,6 +99,8 @@ export function parseSiyuanSurfaceStatus(value: unknown): SiyuanSurfaceStatus {
     rootDocumentId:
       status.rootDocumentId === null ? null : assertSiyuanNodeId(status.rootDocumentId),
     graphMode: status.graphMode as SiyuanSurfaceStatus['graphMode'],
+    graphState: status.graphState as SiyuanSurfaceStatus['graphState'],
+    graphError: status.graphError as string | null,
   });
 }
 
@@ -132,44 +151,64 @@ export function measureSiyuanSurfaceBounds(element: HTMLElement): SiyuanSurfaceB
 
 export interface SiyuanSurfaceBridge {
   open(
+    operationId: string,
     projectId: string,
     target: SiyuanSurfaceTarget,
     bounds: SiyuanSurfaceBounds,
   ): Promise<SiyuanSurfaceStatus>;
-  setBounds(bounds: SiyuanSurfaceBounds): Promise<boolean>;
-  hide(): Promise<boolean>;
-  reload(): Promise<boolean>;
-  close(): Promise<boolean>;
+  setBounds(operationId: string, bounds: SiyuanSurfaceBounds): Promise<boolean>;
+  hide(operationId: string): Promise<boolean>;
+  reload(operationId: string): Promise<boolean>;
+  close(operationId: string): Promise<boolean>;
   status(): Promise<SiyuanSurfaceStatus>;
 }
 
 export function createSiyuanSurfaceBridge(invoke: SiyuanSurfaceInvoker): SiyuanSurfaceBridge {
   return Object.freeze<SiyuanSurfaceBridge>({
-    async open(projectId: string, target: SiyuanSurfaceTarget, bounds: SiyuanSurfaceBounds) {
+    async open(
+      operationId: string,
+      projectId: string,
+      target: SiyuanSurfaceTarget,
+      bounds: SiyuanSurfaceBounds,
+    ) {
       const safeTarget = assertSiyuanSurfaceTarget(target);
       return parseSiyuanSurfaceStatus(
         await invoke(SIYUAN_SURFACE_COMMANDS.open, {
+          operationId: assertSiyuanIdentifier(operationId, 'siyuan_surface_operation_invalid'),
           projectId: assertSiyuanIdentifier(projectId, 'siyuan_project_id_invalid'),
           ...safeTarget,
           bounds: assertSiyuanSurfaceBounds(bounds),
         }),
       );
     },
-    async setBounds(bounds: SiyuanSurfaceBounds) {
+    async setBounds(operationId: string, bounds: SiyuanSurfaceBounds) {
       return (
         (await invoke(SIYUAN_SURFACE_COMMANDS.setBounds, {
+          operationId: assertSiyuanIdentifier(operationId, 'siyuan_surface_operation_invalid'),
           bounds: assertSiyuanSurfaceBounds(bounds),
         })) === true
       );
     },
-    async hide() {
-      return (await invoke(SIYUAN_SURFACE_COMMANDS.hide)) === true;
+    async hide(operationId: string) {
+      return (
+        (await invoke(SIYUAN_SURFACE_COMMANDS.hide, {
+          operationId: assertSiyuanIdentifier(operationId, 'siyuan_surface_operation_invalid'),
+        })) === true
+      );
     },
-    async reload() {
-      return (await invoke(SIYUAN_SURFACE_COMMANDS.reload)) === true;
+    async reload(operationId: string) {
+      return (
+        (await invoke(SIYUAN_SURFACE_COMMANDS.reload, {
+          operationId: assertSiyuanIdentifier(operationId, 'siyuan_surface_operation_invalid'),
+        })) === true
+      );
     },
-    async close() {
-      return (await invoke(SIYUAN_SURFACE_COMMANDS.close)) === true;
+    async close(operationId: string) {
+      return (
+        (await invoke(SIYUAN_SURFACE_COMMANDS.close, {
+          operationId: assertSiyuanIdentifier(operationId, 'siyuan_surface_operation_invalid'),
+        })) === true
+      );
     },
     async status() {
       return parseSiyuanSurfaceStatus(await invoke(SIYUAN_SURFACE_COMMANDS.status));
