@@ -2,6 +2,7 @@ import {
   SIYUAN_CONTEXT_VAULT_ENABLED,
   SIYUAN_NATIVE_COMMANDS,
   SiyuanContractError,
+  assertSiyuanAppendBlockInputs,
   assertSiyuanDocumentPath,
   assertSiyuanIdentifier,
   assertSiyuanMarkdown,
@@ -10,6 +11,7 @@ import {
   assertSiyuanSearchLimit,
   assertSiyuanSnapshotMemo,
   parseSiyuanBlock,
+  parseSiyuanBatchAppendBlocks,
   parseSiyuanBlockRelationIds,
   parseSiyuanDocumentMutation,
   parseSiyuanMutationResult,
@@ -20,6 +22,7 @@ import {
   parseSiyuanVersion,
   type SiyuanBlock,
   type SiyuanBlockSummary,
+  type SiyuanAppendBlockInput,
   type SiyuanDocumentMutation,
   type SiyuanMutationResult,
   type SiyuanNotebook,
@@ -47,12 +50,22 @@ export interface SiyuanNativeBridge {
     path: string,
     markdown: string,
   ): Promise<SiyuanDocumentMutation>;
+  batchAppendBlocks(
+    notebookId: string,
+    mapRootId: string,
+    blocks: readonly SiyuanAppendBlockInput[],
+  ): Promise<string[]>;
   updateBlock(
+    mapRootId: string,
     id: string,
     expectedMarkdown: string,
     markdown: string,
   ): Promise<SiyuanMutationResult>;
-  deleteBlock(id: string, expectedMarkdown: string): Promise<SiyuanMutationResult>;
+  deleteBlock(
+    mapRootId: string,
+    id: string,
+    expectedMarkdown: string,
+  ): Promise<SiyuanMutationResult>;
   createDailyNote(notebookId: string): Promise<SiyuanDocumentMutation>;
   createSnapshot(memo: string): Promise<SiyuanMutationResult>;
 }
@@ -171,11 +184,30 @@ export function createSiyuanNativeBridge(
       );
     },
 
-    async updateBlock(id: string, expectedMarkdown: string, markdown: string) {
+    async batchAppendBlocks(
+      notebookId: string,
+      mapRootId: string,
+      blocks: readonly SiyuanAppendBlockInput[],
+    ) {
+      if (!featureEnabled) return featureDisabled();
+      const validatedBlocks = assertSiyuanAppendBlockInputs(blocks);
+      return parseSiyuanBatchAppendBlocks(
+        await invokeNative(SIYUAN_NATIVE_COMMANDS.batchAppendBlocks, {
+          ...projectArguments(),
+          notebookId: assertSiyuanIdentifier(notebookId, 'siyuan_notebook_id_invalid'),
+          mapRootId: assertSiyuanIdentifier(mapRootId, 'siyuan_map_root_id_invalid'),
+          blocks: validatedBlocks,
+        }),
+        validatedBlocks.length,
+      );
+    },
+
+    async updateBlock(mapRootId: string, id: string, expectedMarkdown: string, markdown: string) {
       if (!featureEnabled) return featureDisabled();
       return parseSiyuanMutationResult(
         await invokeNative(SIYUAN_NATIVE_COMMANDS.updateBlock, {
           ...projectArguments(),
+          mapRootId: assertSiyuanIdentifier(mapRootId, 'siyuan_map_root_id_invalid'),
           id: assertSiyuanIdentifier(id, 'siyuan_block_id_invalid'),
           expectedMarkdown: assertSiyuanMarkdown(expectedMarkdown),
           markdown: assertSiyuanMarkdown(markdown),
@@ -183,11 +215,12 @@ export function createSiyuanNativeBridge(
       );
     },
 
-    async deleteBlock(id: string, expectedMarkdown: string) {
+    async deleteBlock(mapRootId: string, id: string, expectedMarkdown: string) {
       if (!featureEnabled) return featureDisabled();
       return parseSiyuanMutationResult(
         await invokeNative(SIYUAN_NATIVE_COMMANDS.deleteBlock, {
           ...projectArguments(),
+          mapRootId: assertSiyuanIdentifier(mapRootId, 'siyuan_map_root_id_invalid'),
           id: assertSiyuanIdentifier(id, 'siyuan_block_id_invalid'),
           expectedMarkdown: assertSiyuanMarkdown(expectedMarkdown),
         }),

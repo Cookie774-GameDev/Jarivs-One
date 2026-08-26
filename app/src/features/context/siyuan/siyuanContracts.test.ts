@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   SIYUAN_CONTEXT_VAULT_ENABLED,
+  SIYUAN_MAX_BATCH_BLOCK_TOTAL_BYTES,
   SiyuanContractError,
+  assertSiyuanAppendBlockInputs,
   assertSiyuanDocumentPath,
   assertSiyuanIdentifier,
   assertSiyuanMarkdown,
@@ -9,6 +11,7 @@ import {
   assertSiyuanQuery,
   assertSiyuanSnapshotMemo,
   parseSiyuanBlock,
+  parseSiyuanBatchAppendBlocks,
   parseSiyuanBlockRelationIds,
   parseSiyuanDocumentMutation,
   parseSiyuanMutationResult,
@@ -64,6 +67,44 @@ describe('SiYuan renderer contracts', () => {
     ).toEqual({ id: 'notebook-1', name: 'VibeSpace Project Vault', closed: false });
     expect(() => parseSiyuanMutationResult({ applied: true, token: 'forbidden' })).toThrow(
       /siyuan_mutation_response_keys_invalid/u,
+    );
+  });
+
+  it('validates bounded append batches and preserves ordered native IDs', () => {
+    expect(
+      assertSiyuanAppendBlockInputs([
+        { parentId: 'parent-2', markdown: '# Second' },
+        { parentId: 'parent-1', markdown: '# First' },
+      ]),
+    ).toEqual([
+      { parentId: 'parent-2', markdown: '# Second' },
+      { parentId: 'parent-1', markdown: '# First' },
+    ]);
+    expect(parseSiyuanBatchAppendBlocks({ ids: ['block-2', 'block-1'] }, 2)).toEqual([
+      'block-2',
+      'block-1',
+    ]);
+    expect(() => assertSiyuanAppendBlockInputs([])).toThrow(/siyuan_batch_blocks_invalid/u);
+    expect(() =>
+      assertSiyuanAppendBlockInputs([{ parentId: '../escape', markdown: '# Unsafe' }]),
+    ).toThrow(/siyuan_parent_block_id_invalid/u);
+    expect(SIYUAN_MAX_BATCH_BLOCK_TOTAL_BYTES).toBe(256 * 1024);
+    expect(() =>
+      assertSiyuanAppendBlockInputs([
+        { parentId: 'parent-1', markdown: 'x'.repeat(SIYUAN_MAX_BATCH_BLOCK_TOTAL_BYTES + 1) },
+      ]),
+    ).toThrow(/siyuan_batch_blocks_too_large/u);
+  });
+
+  it('fails closed on mismatched, duplicate, or widened append-batch responses', () => {
+    expect(() => parseSiyuanBatchAppendBlocks({ ids: ['block-1'] }, 2)).toThrow(
+      /siyuan_batch_blocks_response_invalid/u,
+    );
+    expect(() => parseSiyuanBatchAppendBlocks({ ids: ['block-1', 'block-1'] }, 2)).toThrow(
+      /siyuan_batch_blocks_response_invalid/u,
+    );
+    expect(() => parseSiyuanBatchAppendBlocks({ ids: ['block-1'], token: 'forbidden' }, 1)).toThrow(
+      /siyuan_batch_blocks_response_keys_invalid/u,
     );
   });
 

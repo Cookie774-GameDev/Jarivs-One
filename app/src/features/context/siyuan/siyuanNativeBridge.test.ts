@@ -27,10 +27,15 @@ describe('SiYuan native bridge boundary', () => {
     await expect(bridge.createDocument('notebook-1', '/Note', '# Note')).rejects.toThrow(
       /siyuan_feature_disabled/u,
     );
-    await expect(bridge.updateBlock('block-1', '# Before', '# After')).rejects.toThrow(
-      /siyuan_feature_disabled/u,
-    );
-    await expect(bridge.deleteBlock('block-1', '# Expected')).rejects.toThrow(
+    await expect(
+      bridge.batchAppendBlocks('notebook-1', 'map-root-1', [
+        { parentId: 'parent-1', markdown: '# Note' },
+      ]),
+    ).rejects.toThrow(/siyuan_feature_disabled/u);
+    await expect(
+      bridge.updateBlock('map-root-1', 'block-1', '# Before', '# After'),
+    ).rejects.toThrow(/siyuan_feature_disabled/u);
+    await expect(bridge.deleteBlock('map-root-1', 'block-1', '# Expected')).rejects.toThrow(
       /siyuan_feature_disabled/u,
     );
     await expect(bridge.createDailyNote('notebook-1')).rejects.toThrow(/siyuan_feature_disabled/u);
@@ -88,7 +93,20 @@ describe('SiYuan native bridge boundary', () => {
     await expect(bridge.createDocument('notebook-1', '/Note', '')).rejects.toThrow(
       /siyuan_content_invalid/u,
     );
-    await expect(bridge.updateBlock('block-1', '# Before', '\u0000')).rejects.toThrow(
+    await expect(bridge.batchAppendBlocks('notebook-1', 'map-root-1', [])).rejects.toThrow(
+      /siyuan_batch_blocks_invalid/u,
+    );
+    await expect(
+      bridge.batchAppendBlocks('notebook-1', 'map-root-1', [
+        { parentId: '../escape', markdown: '# Note' },
+      ]),
+    ).rejects.toThrow(/siyuan_parent_block_id_invalid/u);
+    await expect(
+      bridge.batchAppendBlocks('notebook-1', 'map-root-1', [
+        { parentId: 'parent-1', markdown: '' },
+      ]),
+    ).rejects.toThrow(/siyuan_content_invalid/u);
+    await expect(bridge.updateBlock('map-root-1', 'block-1', '# Before', '\u0000')).rejects.toThrow(
       /siyuan_content_invalid/u,
     );
     await expect(bridge.createSnapshot('line\nbreak')).rejects.toThrow(/siyuan_content_invalid/u);
@@ -130,10 +148,14 @@ describe('SiYuan native bridge boundary', () => {
     await expect(bridge.createDocument('notebook-1', '/Decision', '# Before')).resolves.toEqual({
       id: 'document-1',
     });
-    await expect(bridge.updateBlock('document-1', '# Before', '# After')).resolves.toEqual({
+    await expect(
+      bridge.updateBlock('map-root-1', 'document-1', '# Before', '# After'),
+    ).resolves.toEqual({
       applied: true,
     });
-    await expect(bridge.deleteBlock('document-1', '# After')).resolves.toEqual({ applied: true });
+    await expect(bridge.deleteBlock('map-root-1', 'document-1', '# After')).resolves.toEqual({
+      applied: true,
+    });
     await expect(bridge.createDailyNote('notebook-1')).resolves.toEqual({ id: 'daily-1' });
     await expect(bridge.createSnapshot('Before managed update')).resolves.toEqual({
       applied: true,
@@ -147,12 +169,14 @@ describe('SiYuan native bridge boundary', () => {
     });
     expect(invokeNative).toHaveBeenNthCalledWith(2, SIYUAN_NATIVE_COMMANDS.updateBlock, {
       projectId: 'project-1',
+      mapRootId: 'map-root-1',
       id: 'document-1',
       expectedMarkdown: '# Before',
       markdown: '# After',
     });
     expect(invokeNative).toHaveBeenNthCalledWith(3, SIYUAN_NATIVE_COMMANDS.deleteBlock, {
       projectId: 'project-1',
+      mapRootId: 'map-root-1',
       id: 'document-1',
       expectedMarkdown: '# After',
     });
@@ -164,6 +188,54 @@ describe('SiYuan native bridge boundary', () => {
       projectId: 'project-1',
       memo: 'Before managed update',
     });
+  });
+
+  it('appends a bounded block batch through one exact project-scoped command', async () => {
+    const invokeNative = vi.fn<SiyuanNativeInvoker>().mockResolvedValue({
+      ids: ['block-2', 'block-1'],
+    });
+    const bridge = createSiyuanNativeBridge(invokeNative, {
+      featureEnabled: true,
+      projectId: 'project-1',
+    });
+
+    await expect(
+      bridge.batchAppendBlocks('notebook-1', 'map-root-1', [
+        { parentId: 'parent-2', markdown: '# Second' },
+        { parentId: 'parent-1', markdown: '# First' },
+      ]),
+    ).resolves.toEqual(['block-2', 'block-1']);
+    expect(invokeNative).toHaveBeenCalledExactlyOnceWith(SIYUAN_NATIVE_COMMANDS.batchAppendBlocks, {
+      projectId: 'project-1',
+      notebookId: 'notebook-1',
+      mapRootId: 'map-root-1',
+      blocks: [
+        { parentId: 'parent-2', markdown: '# Second' },
+        { parentId: 'parent-1', markdown: '# First' },
+      ],
+    });
+  });
+
+  it('fails closed on incomplete or duplicate native batch IDs', async () => {
+    const invokeNative = vi
+      .fn<SiyuanNativeInvoker>()
+      .mockResolvedValueOnce({ ids: ['block-1'] })
+      .mockResolvedValueOnce({ ids: ['block-1', 'block-1'] });
+    const bridge = createSiyuanNativeBridge(invokeNative, {
+      featureEnabled: true,
+      projectId: 'project-1',
+    });
+    const blocks = [
+      { parentId: 'parent-1', markdown: '# One' },
+      { parentId: 'parent-2', markdown: '# Two' },
+    ];
+
+    await expect(bridge.batchAppendBlocks('notebook-1', 'map-root-1', blocks)).rejects.toThrow(
+      /siyuan_batch_blocks_response_invalid/u,
+    );
+    await expect(bridge.batchAppendBlocks('notebook-1', 'map-root-1', blocks)).rejects.toThrow(
+      /siyuan_batch_blocks_response_invalid/u,
+    );
   });
 
   it('creates a project notebook through one exact typed command', async () => {

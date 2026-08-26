@@ -20,6 +20,22 @@ export interface SiyuanManagedDocumentLookup {
   marker: string;
 }
 
+export interface SiyuanManagedDocumentCreateInput {
+  path: string;
+  markdown: string;
+}
+
+export interface SiyuanManagedBlockAppendInput {
+  parentId: string;
+  markdown: string;
+}
+
+export type SiyuanManagedDocumentCreateResult =
+  | Readonly<{ ok: true; document: SiyuanManagedDocument }>
+  | Readonly<{ ok: false; error: unknown }>;
+
+const SIYUAN_MANAGED_CREATE_BATCH_LIMIT = 4;
+
 export interface ProductionSiyuanRlmPort extends SiyuanRlmPort {
   readManagedDocument(
     projectId: string,
@@ -30,13 +46,28 @@ export interface ProductionSiyuanRlmPort extends SiyuanRlmPort {
     path: string,
     markdown: string,
   ): Promise<SiyuanManagedDocument>;
+  createManagedDocuments?(
+    projectId: string,
+    inputs: readonly SiyuanManagedDocumentCreateInput[],
+  ): Promise<readonly SiyuanManagedDocumentCreateResult[]>;
+  appendManagedBlocks?(
+    projectId: string,
+    mapRootId: string,
+    inputs: readonly SiyuanManagedBlockAppendInput[],
+  ): Promise<readonly string[]>;
   updateManagedDocument(
     projectId: string,
     id: string,
     expectedMarkdown: string,
     markdown: string,
+    mapRootId?: string,
   ): Promise<SiyuanManagedDocument>;
-  deleteManagedDocument(projectId: string, id: string, expectedMarkdown: string): Promise<void>;
+  deleteManagedDocument(
+    projectId: string,
+    id: string,
+    expectedMarkdown: string,
+    mapRootId?: string,
+  ): Promise<void>;
   createManagedSnapshot(projectId: string, memo: string): Promise<void>;
   stopActive(): Promise<void>;
 }
@@ -168,17 +199,59 @@ export function createProductionSiyuanRlmPort(
         return document;
       });
     },
-    updateManagedDocument(projectId, id, expectedMarkdown, markdown) {
+    createManagedDocuments(projectId, inputs) {
+      if (inputs.length === 0 || inputs.length > SIYUAN_MANAGED_CREATE_BATCH_LIMIT) {
+        return Promise.reject(new Error('siyuan_managed_document_batch_invalid'));
+      }
+      if (new Set(inputs.map((input) => input.path)).size !== inputs.length) {
+        return Promise.reject(new Error('siyuan_managed_document_batch_duplicate'));
+      }
       return enqueue(projectId, async (bridge) => {
-        await bridge.updateBlock(id, expectedMarkdown, markdown);
+        const notebook = await exactNotebook(bridge, true);
+        if (!notebook) throw new Error('siyuan_managed_notebook_unavailable');
+        const settled = await Promise.allSettled(
+          inputs.map(async (input) => {
+            const mutation = await bridge.createDocument(notebook.id, input.path, input.markdown);
+            const document = await bridge.getBlock(mutation.id);
+            if (document.notebookId !== notebook.id) {
+              throw new Error('siyuan_managed_document_authority_invalid');
+            }
+            return document;
+          }),
+        );
+        if (
+          settled.every(
+            (result) => result.status === 'rejected' && isTransportUnavailable(result.reason),
+          )
+        ) {
+          throw (settled[0] as PromiseRejectedResult).reason;
+        }
+        return settled.map(
+          (result): SiyuanManagedDocumentCreateResult =>
+            result.status === 'fulfilled'
+              ? Object.freeze({ ok: true, document: result.value })
+              : Object.freeze({ ok: false, error: result.reason }),
+        );
+      });
+    },
+    appendManagedBlocks(projectId, mapRootId, inputs) {
+      return enqueue(projectId, async (bridge) => {
+        const notebook = await exactNotebook(bridge, true);
+        if (!notebook) throw new Error('siyuan_managed_notebook_unavailable');
+        return bridge.batchAppendBlocks(notebook.id, mapRootId, inputs);
+      });
+    },
+    updateManagedDocument(projectId, id, expectedMarkdown, markdown, mapRootId = id) {
+      return enqueue(projectId, async (bridge) => {
+        await bridge.updateBlock(mapRootId, id, expectedMarkdown, markdown);
         const document = await bridge.getBlock(id);
         if (document.id !== id) throw new Error('siyuan_managed_document_authority_invalid');
         return document;
       });
     },
-    deleteManagedDocument(projectId, id, expectedMarkdown) {
+    deleteManagedDocument(projectId, id, expectedMarkdown, mapRootId = id) {
       return enqueue(projectId, async (bridge) => {
-        await bridge.deleteBlock(id, expectedMarkdown);
+        await bridge.deleteBlock(mapRootId, id, expectedMarkdown);
       });
     },
     createManagedSnapshot(projectId, memo) {

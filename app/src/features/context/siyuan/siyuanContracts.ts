@@ -11,6 +11,7 @@ export const SIYUAN_NATIVE_COMMANDS = Object.freeze({
   getBlock: 'siyuan_get_block',
   listInboundBacklinks: 'siyuan_list_inbound_backlinks',
   createDocument: 'siyuan_create_document',
+  batchAppendBlocks: 'siyuan_batch_append_blocks',
   updateBlock: 'siyuan_update_block',
   deleteBlock: 'siyuan_delete_block',
   createDailyNote: 'siyuan_create_daily_note',
@@ -24,6 +25,10 @@ export const SIYUAN_MAX_RELATION_RESULTS = 100;
 export const SIYUAN_MAX_BLOCK_CONTENT_LENGTH = 1_048_576;
 export const SIYUAN_MAX_DOCUMENT_PATH_LENGTH = 4_096;
 export const SIYUAN_MAX_SNAPSHOT_MEMO_LENGTH = 256;
+export const SIYUAN_MAX_BATCH_BLOCKS = 64;
+// Leave bounded headroom for SiYuan's rendered transaction DOM, which can be
+// larger than the submitted markdown in the single capped native response.
+export const SIYUAN_MAX_BATCH_BLOCK_TOTAL_BYTES = 262_144;
 
 export type SiyuanRuntimeState =
   | 'disabled'
@@ -70,6 +75,11 @@ export interface SiyuanBlockRelationIds {
 
 export interface SiyuanDocumentMutation {
   id: string;
+}
+
+export interface SiyuanAppendBlockInput {
+  parentId: string;
+  markdown: string;
 }
 
 export interface SiyuanMutationResult {
@@ -322,6 +332,41 @@ export function parseSiyuanDocumentMutation(value: unknown): SiyuanDocumentMutat
   const response = record(value, 'siyuan_document_response_invalid');
   exactKeys(response, ['id'], 'siyuan_document_response_keys_invalid');
   return { id: assertSiyuanIdentifier(response.id, 'siyuan_block_id_invalid') };
+}
+
+export function assertSiyuanAppendBlockInputs(
+  value: readonly SiyuanAppendBlockInput[],
+): readonly SiyuanAppendBlockInput[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > SIYUAN_MAX_BATCH_BLOCKS) {
+    fail('siyuan_batch_blocks_invalid');
+  }
+  let totalBytes = 0;
+  const inputs = value.map((input) => {
+    const exact = record(input, 'siyuan_batch_block_invalid');
+    exactKeys(exact, ['parentId', 'markdown'], 'siyuan_batch_block_keys_invalid');
+    const markdown = assertSiyuanMarkdown(exact.markdown);
+    totalBytes += new TextEncoder().encode(markdown).byteLength;
+    return {
+      parentId: assertSiyuanIdentifier(exact.parentId, 'siyuan_parent_block_id_invalid'),
+      markdown,
+    };
+  });
+  if (totalBytes > SIYUAN_MAX_BATCH_BLOCK_TOTAL_BYTES) fail('siyuan_batch_blocks_too_large');
+  return inputs;
+}
+
+export function parseSiyuanBatchAppendBlocks(value: unknown, expected: number): string[] {
+  if (!Number.isSafeInteger(expected) || expected < 1 || expected > SIYUAN_MAX_BATCH_BLOCKS) {
+    fail('siyuan_batch_blocks_invalid');
+  }
+  const response = record(value, 'siyuan_batch_blocks_response_invalid');
+  exactKeys(response, ['ids'], 'siyuan_batch_blocks_response_keys_invalid');
+  if (!Array.isArray(response.ids) || response.ids.length !== expected) {
+    fail('siyuan_batch_blocks_response_invalid');
+  }
+  const ids = response.ids.map((id) => assertSiyuanIdentifier(id, 'siyuan_block_id_invalid'));
+  if (new Set(ids).size !== ids.length) fail('siyuan_batch_blocks_response_invalid');
+  return ids;
 }
 
 export function parseSiyuanMutationResult(value: unknown): SiyuanMutationResult {

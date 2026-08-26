@@ -2,7 +2,10 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { ProductionSiyuanRlmPort } from './siyuanRlmProduction';
+import type {
+  ProductionSiyuanRlmPort,
+  SiyuanManagedDocumentCreateInput,
+} from './siyuanRlmProduction';
 import {
   assertSiyuanCloudApprovalPreflightReady,
   clearArchivedSiyuanSummaryDocuments,
@@ -105,6 +108,47 @@ function port(existing: { markdown: string } | null = null): ProductionSiyuanRlm
     createManagedSnapshot: vi.fn(),
     stopActive: vi.fn(),
   };
+}
+
+async function seedPendingNativeFileRecovery(record: ContextMapRecord) {
+  const policy = { mode: 'none' as const, selectedExtensions: [], selectedPaths: [] };
+  const job = {
+    ...createSiyuanIndexJob({
+      accountId: 'account-1',
+      projectId: 'project-1',
+      mapId: record.id,
+      canonicalRoot: record.rootDir,
+      policyFingerprint: siyuanIndexPolicyFingerprint(record.rootDir, policy, []),
+    }),
+    phase: 'creating_nodes' as const,
+    status: 'running' as const,
+    indexed: 1,
+    reconciledAt: Date.now() + 60_000,
+    pendingNativeNodeIds: ['path:index.ts'],
+  };
+  await replaceSiyuanIndexJob(job, {
+    path: record.rootDir,
+    relativePath: '',
+    parentNodeId: null,
+  });
+  await checkpointSiyuanIndexJob({
+    job,
+    appendedEntries: [
+      {
+        nodeId: 'path:index.ts',
+        parentNodeId: null,
+        title: 'index.ts',
+        kind: 'file',
+        relativePath: 'index.ts',
+        sourcePointer: `${record.rootDir}\\index.ts`,
+        summary: null,
+        sizeBytes: 43,
+        modifiedAt: 3,
+      },
+    ],
+  });
+  writeSiyuanMapManifest(createSiyuanMapManifest(record, 'project-1', policy));
+  return policy;
 }
 
 describe('SiYuan Context Map integration', () => {
@@ -522,6 +566,240 @@ describe('SiYuan Context Map integration', () => {
     expect((await readSiyuanIndexJob('project-1', 'map-1'))?.status).toBe('failed');
   });
 
+  it('overlaps a bounded group of idempotent native node creates', async () => {
+    const nativePort = port();
+    const originalCreate = vi.mocked(nativePort.createManagedDocument).getMockImplementation()!;
+    let activeNodeCreates = 0;
+    let peakNodeCreates = 0;
+    vi.mocked(nativePort.createManagedDocument).mockImplementation(
+      async (projectId, path, markdown) => {
+        if (markdown.includes('vibespace-context-node:v1')) {
+          activeNodeCreates += 1;
+          peakNodeCreates = Math.max(peakNodeCreates, activeNodeCreates);
+          await new Promise((resolveDelay) => setTimeout(resolveDelay, 10));
+          activeNodeCreates -= 1;
+        }
+        return originalCreate(projectId, path, markdown);
+      },
+    );
+    const record = map();
+    const root = record.tree.nodes[0]!;
+    const siblings = Array.from({ length: 15 }, (_, index) => ({
+      id: `area-${index}`,
+      title: `area-${index}`,
+      kind: 'area' as const,
+      summary: '',
+      children: [],
+    }));
+    const wideRecord: ContextMapRecord = {
+      ...record,
+      tree: {
+        ...record.tree,
+        fileCount: siblings.length,
+        nodes: [{ ...root, children: siblings }],
+      },
+    };
+
+    await createSiyuanContextMapIntegration(nativePort).sync('project-1', wideRecord);
+
+    expect(peakNodeCreates).toBeGreaterThan(1);
+    expect(peakNodeCreates).toBeLessThanOrEqual(8);
+    expect(nativePort.createManagedDocument).toHaveBeenCalledTimes(17);
+  });
+
+  it('uses bounded managed-document batches when the production port provides them', async () => {
+    const nativePort = port();
+    let sequence = 100;
+    nativePort.createManagedDocuments = vi.fn(
+      async (_projectId, inputs: readonly SiyuanManagedDocumentCreateInput[]) =>
+        inputs.map((input) => ({
+          ok: true as const,
+          document: {
+            id: `batch-${(sequence += 1)}`,
+            notebookId: 'notebook-1',
+            path: input.path,
+            markdown: input.markdown,
+          },
+        })),
+    );
+    const record = map();
+    const root = record.tree.nodes[0]!;
+    const siblings = Array.from({ length: 10 }, (_, index) => ({
+      id: `batch-area-${index}`,
+      title: `batch-area-${index}`,
+      kind: 'area' as const,
+      summary: '',
+      children: [],
+    }));
+    const wideRecord: ContextMapRecord = {
+      ...record,
+      tree: {
+        ...record.tree,
+        fileCount: siblings.length,
+        nodes: [{ ...root, children: siblings }],
+      },
+    };
+
+    const result = await createSiyuanContextMapIntegration(nativePort).sync(
+      'project-1',
+      wideRecord,
+    );
+
+    const batches = vi.mocked(nativePort.createManagedDocuments).mock.calls;
+    expect(batches.map((call) => call[1].length)).toEqual([1, 4, 4, 2]);
+    expect(batches.every((call) => call[1].length <= 4)).toBe(true);
+    expect(result.manifest?.counts.indexed).toBe(11);
+    expect(nativePort.createManagedDocument).toHaveBeenCalledOnce();
+  });
+
+  it('appends file nodes in bounded ordered SiYuan block batches', async () => {
+    const nativePort = port();
+    let sequence = 0;
+    nativePort.appendManagedBlocks = vi.fn(async (_projectId, _mapRootId, inputs) =>
+      inputs.map(() => `block-${(sequence += 1)}`),
+    );
+    const record = map();
+    const root = record.tree.nodes[0]!;
+    const siblings = Array.from({ length: 129 }, (_, index) => ({
+      id: `batch-file-${index}`,
+      title: `batch-file-${index}.txt`,
+      kind: 'file' as const,
+      summary: '',
+      path: `batch-file-${index}.txt`,
+    }));
+    const wideRecord: ContextMapRecord = {
+      ...record,
+      tree: {
+        ...record.tree,
+        fileCount: siblings.length,
+        nodes: [{ ...root, children: siblings }],
+      },
+    };
+
+    const result = await createSiyuanContextMapIntegration(nativePort).sync(
+      'project-1',
+      wideRecord,
+    );
+
+    const batches = vi.mocked(nativePort.appendManagedBlocks).mock.calls;
+    expect(batches.map((call) => call[2].length)).toEqual([64, 64, 1]);
+    expect(
+      batches
+        .flatMap((call) => call[2])
+        .every((input) => input.markdown.includes('vibespace-context-node:v1')),
+    ).toBe(true);
+    expect(new Set(batches.flatMap((call) => call[2].map((input) => input.parentId)))).toEqual(
+      new Set(['created-2']),
+    );
+    expect(result.manifest?.counts.indexed).toBe(130);
+    expect(nativePort.createManagedDocument).toHaveBeenCalledTimes(2);
+  });
+
+  it('durably checkpoints every file batch before native append and clears it after binding', async () => {
+    const record = { ...map(), id: 'map-batch-checkpoint' };
+    const nativePort = port();
+    let sequence = 0;
+    const pendingSizes: number[] = [];
+    nativePort.appendManagedBlocks = vi.fn(async (_projectId, _mapRootId, inputs) => {
+      pendingSizes.push(
+        (await readSiyuanIndexJob('project-1', record.id))?.pendingNativeNodeIds.length ?? 0,
+      );
+      return inputs.map(() => `block-${(sequence += 1)}`);
+    });
+    const previousInternals = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    try {
+      await createSiyuanContextMapIntegration(nativePort).sync('project-1', record, {
+        accountId: 'account-1',
+        summaryPolicy: { mode: 'none', selectedExtensions: [], selectedPaths: [] },
+        list: async (path) => ({
+          ok: true,
+          path,
+          entries: Array.from({ length: 70 }, (_, index) => ({
+            name: `file-${index}.txt`,
+            path: `${record.rootDir}\\file-${index}.txt`,
+            isDir: false,
+            size: 10,
+            modifiedMs: index + 1,
+          })),
+        }),
+      });
+
+      expect(pendingSizes).toEqual([64, 6]);
+      expect(await readSiyuanIndexJob('project-1', record.id)).toMatchObject({
+        status: 'completed',
+        pendingNativeNodeIds: [],
+        createdNodes: 70,
+      });
+    } finally {
+      if (previousInternals === undefined) {
+        delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      } else {
+        (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = previousInternals;
+      }
+    }
+  });
+
+  it('never re-appends a pending file when post-crash marker recovery is stale', async () => {
+    const record = { ...map(), id: 'map-batch-crash-stale-search' };
+    const policy = await seedPendingNativeFileRecovery(record);
+    const nativePort = port();
+    nativePort.appendManagedBlocks = vi.fn(async () => ['duplicate-block']);
+    const previousInternals = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    try {
+      await expect(
+        createSiyuanContextMapIntegration(nativePort).sync('project-1', record, {
+          accountId: 'account-1',
+          summaryPolicy: policy,
+        }),
+      ).rejects.toThrow('siyuan_native_block_recovery_inconclusive');
+      expect(nativePort.appendManagedBlocks).not.toHaveBeenCalled();
+      expect(await readSiyuanIndexJob('project-1', record.id)).toMatchObject({
+        pendingNativeNodeIds: ['path:index.ts'],
+      });
+    } finally {
+      if (previousInternals === undefined) {
+        delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      } else {
+        (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = previousInternals;
+      }
+    }
+  });
+
+  it('never re-appends a pending file when marker recovery is ambiguous', async () => {
+    const record = { ...map(), id: 'map-batch-crash-duplicate-markers' };
+    const policy = await seedPendingNativeFileRecovery(record);
+    const nativePort = port();
+    nativePort.appendManagedBlocks = vi.fn(async () => ['duplicate-block']);
+    vi.mocked(nativePort.readManagedDocument).mockImplementation(async (_projectId, lookup) => {
+      if (lookup.marker.includes('vibespace-context-node:v1')) {
+        throw new Error('siyuan_managed_document_ambiguous');
+      }
+      return null;
+    });
+    const previousInternals = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    try {
+      await expect(
+        createSiyuanContextMapIntegration(nativePort).sync('project-1', record, {
+          accountId: 'account-1',
+          summaryPolicy: policy,
+        }),
+      ).rejects.toThrow('siyuan_managed_document_ambiguous');
+      expect(nativePort.appendManagedBlocks).not.toHaveBeenCalled();
+      expect(await readSiyuanIndexJob('project-1', record.id)).toMatchObject({
+        pendingNativeNodeIds: ['path:index.ts'],
+      });
+    } finally {
+      if (previousInternals === undefined) {
+        delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      } else {
+        (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = previousInternals;
+      }
+    }
+  });
+
   it('repairs duplicate owned documents deterministically before updating SiYuan', async () => {
     const owned = '<!-- vibespace-context-map:v1 map=map-1 -->\nold';
     let documents = [
@@ -554,12 +832,18 @@ describe('SiYuan Context Map integration', () => {
     const result = await createSiyuanContextMapIntegration(nativePort).sync('project-1', map());
 
     expect(result.document.id).toBe('doc-a');
-    expect(nativePort.deleteManagedDocument).toHaveBeenCalledWith('project-1', 'doc-b', owned);
+    expect(nativePort.deleteManagedDocument).toHaveBeenCalledWith(
+      'project-1',
+      'doc-b',
+      owned,
+      'doc-b',
+    );
     expect(nativePort.updateManagedDocument).toHaveBeenCalledWith(
       'project-1',
       'doc-a',
       owned,
       expect.stringContaining('payload='),
+      'doc-a',
     );
   });
 
@@ -633,18 +917,17 @@ describe('SiYuan Context Map integration', () => {
       async (projectId, id, expectedMarkdown) => {
         deletions += 1;
         if (deletions === 2) throw new Error('simulated_retire_failure');
-        return originalDelete(projectId, id, expectedMarkdown);
+        return originalDelete(projectId, id, expectedMarkdown, record.id);
       },
     );
 
     await expect(integration.retire('project-1', record)).rejects.toThrow(
       'simulated_retire_failure',
     );
-    expect(await readSiyuanNodeBindings('project-1', record.id)).toEqual({});
+    expect(await readSiyuanNodeBindings('project-1', record.id)).not.toEqual({});
     expect(readSiyuanMapManifest('project-1', record.id)).toMatchObject({
       status: 'recycled',
-      rootDocumentId: null,
-      nodeBindings: {},
+      rootDocumentId: expect.any(String),
     });
 
     vi.mocked(nativePort.deleteManagedDocument).mockImplementation(originalDelete);
@@ -669,6 +952,7 @@ describe('SiYuan Context Map integration', () => {
       'project-1',
       'created-3',
       expect.stringContaining('vibespace-context-node:v1 map=map-1 node=file'),
+      expect.any(String),
     );
   });
 
@@ -1164,6 +1448,7 @@ describe('SiYuan Context Map integration', () => {
         stale.id,
         expect.stringContaining('# stale'),
         expect.stringContaining('node=path%3Aindex.ts'),
+        expect.any(String),
       );
       expect(await readSiyuanIndexJob('project-1', record.id)).toMatchObject({
         status: 'completed',
@@ -1257,6 +1542,7 @@ describe('SiYuan Context Map integration', () => {
         'project-1',
         'created-1',
         expect.stringContaining('node=path%3Aold.txt'),
+        expect.any(String),
       );
       expect(list).toHaveBeenCalledOnce();
     } finally {

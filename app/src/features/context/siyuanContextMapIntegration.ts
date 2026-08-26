@@ -49,9 +49,13 @@ import {
 } from './siyuan/siyuanSummaryPipeline';
 
 const MAX_MARKDOWN_BYTES = 900_000;
-// Native managed writes are already serialized by the production broker.
-// Checkpoint one node at a time so a later failure cannot hide completed work.
-const SIYUAN_NODE_WRITE_CONCURRENCY = 1;
+// SiYuan's official create-document endpoint is idempotent for a stable path,
+// so a bounded group can safely overlap native HTTP work.  Checkpoint every
+// fulfilled member before surfacing a sibling failure; replay then recovers
+// the same paths without duplicating documents.
+const SIYUAN_NODE_WRITE_CONCURRENCY = 4;
+const SIYUAN_FILE_BLOCK_BATCH_LIMIT = 64;
+const SIYUAN_FILE_BLOCK_BATCH_BYTES = 262_144;
 
 function sameSiyuanEntryRevision(left: SiyuanSafeIndexEntry, right: SiyuanSafeIndexEntry): boolean {
   return (
@@ -119,6 +123,36 @@ function nodeDocumentMarkdown(
   if (entry.modifiedAt !== null) lines.push(`Modified: ${entry.modifiedAt}`);
   if (entry.summary) lines.push('', '## Summary', '', safeText(entry.summary, 4_000));
   return `${lines.join('\n')}\n`;
+}
+
+function nodeFileBlockMarkdown(
+  mapId: string,
+  entry: SiyuanSafeIndexEntry,
+  parentDocumentId: string,
+): string {
+  const fields = [
+    `**${safeText(entry.title)}**`,
+    'Read-only VibeSpace source index · file',
+    `Parent: ((${parentDocumentId} "Parent"))`,
+  ];
+  if (entry.relativePath) fields.push(`Path: \`${inlineText(entry.relativePath, 2_000)}\``);
+  if (entry.sourcePointer)
+    fields.push(`Evidence pointer: \`${inlineText(entry.sourcePointer, 4_000)}\``);
+  if (entry.sizeBytes !== null) fields.push(`Size: ${entry.sizeBytes} bytes`);
+  if (entry.modifiedAt !== null) fields.push(`Modified: ${entry.modifiedAt}`);
+  if (entry.summary) fields.push(`Summary: ${safeText(entry.summary, 4_000)}`);
+  fields.push(`\`${nodeMarker(mapId, entry.nodeId)}\``);
+  return fields.join(' · ');
+}
+
+function nodeManagedMarkdown(
+  mapId: string,
+  entry: SiyuanSafeIndexEntry,
+  parentDocumentId: string,
+): string {
+  return entry.kind === 'file'
+    ? nodeFileBlockMarkdown(mapId, entry, parentDocumentId)
+    : nodeDocumentMarkdown(mapId, entry, parentDocumentId);
 }
 
 export async function clearArchivedSiyuanSummaryDocuments(
@@ -191,7 +225,7 @@ export async function clearArchivedSiyuanSummaryDocuments(
       : manifest.rootDocumentId;
     if (!parentDocumentId) throw new Error('siyuan_summary_parent_binding_missing');
     const { summaryState: _summaryState, ...withoutSummaryState } = entry;
-    const markdown = nodeDocumentMarkdown(
+    const markdown = nodeManagedMarkdown(
       mapId,
       { ...withoutSummaryState, summary: null },
       parentDocumentId,
@@ -202,7 +236,13 @@ export async function clearArchivedSiyuanSummaryDocuments(
   for (const [index, { current, markdown }] of rewrites.entries()) {
     if (current.markdown !== markdown) {
       await boundedOperation(
-        port.updateManagedDocument(projectId, current.id, current.markdown, markdown),
+        port.updateManagedDocument(
+          projectId,
+          current.id,
+          current.markdown,
+          markdown,
+          manifest.rootDocumentId ?? current.id,
+        ),
         `write:${index + 1}`,
       );
     }
@@ -401,7 +441,7 @@ async function readManagedDocumentWithDuplicateRecovery(
   );
   if (!canonical) throw new Error('siyuan_managed_document_ambiguous');
   for (const duplicate of duplicates) {
-    await port.deleteManagedDocument(projectId, duplicate.id, duplicate.markdown);
+    await port.deleteManagedDocument(projectId, duplicate.id, duplicate.markdown, duplicate.id);
   }
   devConsole.log({
     channel: 'ai',
@@ -561,59 +601,13 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
     let activeNodeIds = new Set(index.entries.map((entry) => entry.nodeId));
     const documentPromises = new Map<string, Promise<string>>();
     const unboundEntries = index.entries.filter((entry) => !bindings[entry.nodeId]);
-    for (let cursor = 0; cursor < unboundEntries.length; cursor += SIYUAN_NODE_WRITE_CONCURRENCY) {
-      await options.control?.checkpoint(options.signal);
-      if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
-      const batch = unboundEntries.slice(cursor, cursor + SIYUAN_NODE_WRITE_CONCURRENCY);
-      const tasks = batch.map((entry) => {
-        const parentPromise = entry.parentNodeId
-          ? (documentPromises.get(entry.parentNodeId) ??
-            Promise.resolve(bindings[entry.parentNodeId] ?? rootDocument.id))
-          : Promise.resolve(rootDocument.id);
-        const task = (async (): Promise<readonly [string, string]> => {
-          const parentDocumentId = await parentPromise;
-          if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
-          const markdown = nodeDocumentMarkdown(record.id, entry, parentDocumentId);
-          let document: SiyuanManagedDocument;
-          try {
-            // A stable SiYuan path makes the normal first-index path one
-            // native mutation instead of a serialized search plus mutation.
-            // If a crash occurred after SiYuan committed but before our
-            // IndexedDB binding checkpoint, recover the exact marker below.
-            document = await port.createManagedDocument(
-              projectId,
-              `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
-              markdown,
-            );
-          } catch (createError) {
-            const existing = await port.readManagedDocument(projectId, {
-              query: entry.nodeId,
-              marker: nodeMarker(record.id, entry.nodeId),
-            });
-            if (!existing) throw createError;
-            document =
-              existing.markdown === markdown
-                ? existing
-                : await port.updateManagedDocument(
-                    projectId,
-                    existing.id,
-                    existing.markdown,
-                    markdown,
-                  );
-          }
-          return [entry.nodeId, document.id] as const;
-        })();
-        if (entry.kind !== 'file') {
-          documentPromises.set(
-            entry.nodeId,
-            task.then(([, documentId]) => documentId),
-          );
-        }
-        return task;
-      });
-      const completedBatch = Object.fromEntries(await Promise.all(tasks));
+    const unboundDocumentEntries = unboundEntries.filter((entry) => entry.kind !== 'file');
+    const unboundFileEntries = unboundEntries.filter((entry) => entry.kind === 'file');
+    const checkpointCompletedNodes = async (completedBatch: Record<string, string>) => {
       Object.assign(bindings, completedBatch);
-      await writeSiyuanNodeBindings(projectId, record.id, completedBatch);
+      if (Object.keys(completedBatch).length > 0) {
+        await writeSiyuanNodeBindings(projectId, record.id, completedBatch);
+      }
       if (durableJob) {
         const sampledAt = Date.now();
         const completedNodeIds = new Set(Object.keys(completedBatch));
@@ -637,6 +631,214 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
         };
         await checkpointSiyuanIndexJob({ job: durableJob });
       }
+    };
+    const recoverCreatedNode = async (entry: SiyuanSafeIndexEntry, markdown: string) => {
+      const existing = await port.readManagedDocument(projectId, {
+        query: entry.nodeId,
+        marker: nodeMarker(record.id, entry.nodeId),
+      });
+      if (!existing) return null;
+      return existing.markdown === markdown
+        ? existing
+        : await port.updateManagedDocument(
+            projectId,
+            existing.id,
+            existing.markdown,
+            markdown,
+            rootDocument.id,
+          );
+    };
+    if (port.createManagedDocuments) {
+      const pendingEntries = new Map(unboundDocumentEntries.map((entry) => [entry.nodeId, entry]));
+      while (pendingEntries.size > 0) {
+        await options.control?.checkpoint(options.signal);
+        if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+        const batch = [...pendingEntries.values()]
+          .filter((entry) => !entry.parentNodeId || Boolean(bindings[entry.parentNodeId]))
+          .slice(0, SIYUAN_NODE_WRITE_CONCURRENCY);
+        if (batch.length === 0) throw new Error('siyuan_node_parent_binding_unavailable');
+        const requests = batch.map((entry) => ({
+          path: `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
+          markdown: nodeDocumentMarkdown(
+            record.id,
+            entry,
+            entry.parentNodeId ? bindings[entry.parentNodeId]! : rootDocument.id,
+          ),
+        }));
+        const results = await port.createManagedDocuments(projectId, requests);
+        if (results.length !== batch.length) {
+          throw new Error('siyuan_managed_document_batch_response_invalid');
+        }
+        const completedBatch: Record<string, string> = {};
+        let firstError: unknown;
+        for (let index = 0; index < batch.length; index += 1) {
+          const entry = batch[index]!;
+          const request = requests[index]!;
+          const result = results[index]!;
+          if (result.ok) {
+            completedBatch[entry.nodeId] = result.document.id;
+            continue;
+          }
+          try {
+            const recovered = await recoverCreatedNode(entry, request.markdown);
+            if (recovered) completedBatch[entry.nodeId] = recovered.id;
+            else firstError ??= result.error;
+          } catch (recoveryError) {
+            firstError ??= recoveryError;
+          }
+        }
+        await checkpointCompletedNodes(completedBatch);
+        for (const nodeId of Object.keys(completedBatch)) pendingEntries.delete(nodeId);
+        if (firstError !== undefined) throw firstError;
+      }
+    } else {
+      for (
+        let cursor = 0;
+        cursor < unboundDocumentEntries.length;
+        cursor += SIYUAN_NODE_WRITE_CONCURRENCY
+      ) {
+        await options.control?.checkpoint(options.signal);
+        if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+        const batch = unboundDocumentEntries.slice(cursor, cursor + SIYUAN_NODE_WRITE_CONCURRENCY);
+        const tasks = batch.map((entry) => {
+          const parentPromise = entry.parentNodeId
+            ? (documentPromises.get(entry.parentNodeId) ??
+              Promise.resolve(bindings[entry.parentNodeId] ?? rootDocument.id))
+            : Promise.resolve(rootDocument.id);
+          const task = (async (): Promise<readonly [string, string]> => {
+            const parentDocumentId = await parentPromise;
+            if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+            const markdown = nodeDocumentMarkdown(record.id, entry, parentDocumentId);
+            let document: SiyuanManagedDocument;
+            try {
+              // A stable SiYuan path makes the normal first-index path one
+              // native mutation instead of a serialized search plus mutation.
+              // If a crash occurred after SiYuan committed but before our
+              // IndexedDB binding checkpoint, recover the exact marker below.
+              document = await port.createManagedDocument(
+                projectId,
+                `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
+                markdown,
+              );
+            } catch (createError) {
+              const existing = await recoverCreatedNode(entry, markdown);
+              if (!existing) throw createError;
+              document = existing;
+            }
+            return [entry.nodeId, document.id] as const;
+          })();
+          if (entry.kind !== 'file') {
+            documentPromises.set(
+              entry.nodeId,
+              task.then(([, documentId]) => documentId),
+            );
+          }
+          return task;
+        });
+        const settledBatch = await Promise.allSettled(tasks);
+        const completedBatch = Object.fromEntries(
+          settledBatch.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : [])),
+        );
+        await checkpointCompletedNodes(completedBatch);
+        const failedTask = settledBatch.find(
+          (result): result is PromiseRejectedResult => result.status === 'rejected',
+        );
+        if (failedTask) throw failedTask.reason;
+      }
+    }
+    if (port.appendManagedBlocks) {
+      const pendingAtResume = new Set(durableJob?.pendingNativeNodeIds ?? []);
+      for (const entry of unboundFileEntries.filter((candidate) =>
+        pendingAtResume.has(candidate.nodeId),
+      )) {
+        await options.control?.checkpoint(options.signal);
+        if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+        const parentDocumentId = entry.parentNodeId
+          ? bindings[entry.parentNodeId]
+          : rootDocument.id;
+        if (!parentDocumentId) throw new Error('siyuan_node_parent_binding_unavailable');
+        const markdown = nodeFileBlockMarkdown(record.id, entry, parentDocumentId);
+        const recovered = await recoverCreatedNode(entry, markdown);
+        if (!recovered) throw new Error('siyuan_native_block_recovery_inconclusive');
+        await checkpointCompletedNodes({ [entry.nodeId]: recovered.id });
+      }
+
+      const remainingFiles = unboundFileEntries.filter((entry) => !bindings[entry.nodeId]);
+      let fileCursor = 0;
+      while (fileCursor < remainingFiles.length) {
+        await options.control?.checkpoint(options.signal);
+        if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+        const batch: Array<{
+          entry: SiyuanSafeIndexEntry;
+          parentId: string;
+          markdown: string;
+        }> = [];
+        let batchBytes = 0;
+        while (fileCursor < remainingFiles.length && batch.length < SIYUAN_FILE_BLOCK_BATCH_LIMIT) {
+          const entry = remainingFiles[fileCursor]!;
+          const parentId = entry.parentNodeId ? bindings[entry.parentNodeId] : rootDocument.id;
+          if (!parentId) throw new Error('siyuan_node_parent_binding_unavailable');
+          const markdown = nodeFileBlockMarkdown(record.id, entry, parentId);
+          const markdownBytes = new TextEncoder().encode(markdown).byteLength;
+          if (markdownBytes > SIYUAN_FILE_BLOCK_BATCH_BYTES) {
+            throw new Error('siyuan_file_block_too_large');
+          }
+          if (batch.length > 0 && batchBytes + markdownBytes > SIYUAN_FILE_BLOCK_BATCH_BYTES) break;
+          batch.push({ entry, parentId, markdown });
+          batchBytes += markdownBytes;
+          fileCursor += 1;
+        }
+        if (batch.length === 0) throw new Error('siyuan_file_block_batch_empty');
+        if (durableJob) {
+          durableJob = {
+            ...durableJob,
+            updatedAt: Date.now(),
+            pendingNativeNodeIds: [
+              ...new Set([
+                ...durableJob.pendingNativeNodeIds,
+                ...batch.map(({ entry }) => entry.nodeId),
+              ]),
+            ],
+          };
+          await checkpointSiyuanIndexJob({ job: durableJob });
+        }
+        await options.control?.checkpoint(options.signal);
+        if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+        const ids = await port.appendManagedBlocks(
+          projectId,
+          rootDocument.id,
+          batch.map(({ parentId, markdown }) => ({ parentId, markdown })),
+        );
+        if (ids.length !== batch.length || new Set(ids).size !== ids.length) {
+          throw new Error('siyuan_managed_block_batch_response_invalid');
+        }
+        await checkpointCompletedNodes(
+          Object.fromEntries(batch.map(({ entry }, index) => [entry.nodeId, ids[index]!])),
+        );
+      }
+    } else {
+      for (const entry of unboundFileEntries) {
+        await options.control?.checkpoint(options.signal);
+        if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+        const parentDocumentId = entry.parentNodeId
+          ? bindings[entry.parentNodeId]
+          : rootDocument.id;
+        if (!parentDocumentId) throw new Error('siyuan_node_parent_binding_unavailable');
+        const markdown = nodeDocumentMarkdown(record.id, entry, parentDocumentId);
+        let document: SiyuanManagedDocument;
+        try {
+          document = await port.createManagedDocument(
+            projectId,
+            `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
+            markdown,
+          );
+        } catch (createError) {
+          const existing = await recoverCreatedNode(entry, markdown);
+          if (!existing) throw createError;
+          document = existing;
+        }
+        await checkpointCompletedNodes({ [entry.nodeId]: document.id });
+      }
     }
     const pendingNativeNodeIds = new Set(durableJob?.pendingNativeNodeIds ?? []);
     for (const entry of index.entries.filter(
@@ -650,11 +852,17 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
       const parentDocumentId = entry.parentNodeId
         ? (bindings[entry.parentNodeId] ?? rootDocument.id)
         : rootDocument.id;
-      const markdown = nodeDocumentMarkdown(record.id, entry, parentDocumentId);
+      const markdown = nodeManagedMarkdown(record.id, entry, parentDocumentId);
       try {
         const current = await port.getBlock(projectId, documentId);
         if (current.markdown !== markdown) {
-          await port.updateManagedDocument(projectId, current.id, current.markdown, markdown);
+          await port.updateManagedDocument(
+            projectId,
+            current.id,
+            current.markdown,
+            markdown,
+            rootDocument.id,
+          );
         }
       } catch (error) {
         if (!(error instanceof Error) || error.message !== 'siyuan_block_not_found') throw error;
@@ -662,11 +870,19 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
         await deleteSiyuanNodeBindings(projectId, record.id, [entry.nodeId]);
         let recovered;
         try {
-          recovered = await port.createManagedDocument(
-            projectId,
-            `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
-            markdown,
-          );
+          if (entry.kind === 'file' && port.appendManagedBlocks) {
+            const ids = await port.appendManagedBlocks(projectId, rootDocument.id, [
+              { parentId: parentDocumentId, markdown },
+            ]);
+            if (ids.length !== 1) throw new Error('siyuan_managed_block_batch_response_invalid');
+            recovered = await port.getBlock(projectId, ids[0]!);
+          } else {
+            recovered = await port.createManagedDocument(
+              projectId,
+              `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
+              markdown,
+            );
+          }
         } catch (createError) {
           const existing = await port.readManagedDocument(projectId, {
             query: entry.nodeId,
@@ -681,6 +897,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
                   existing.id,
                   existing.markdown,
                   markdown,
+                  rootDocument.id,
                 );
         }
         bindings[entry.nodeId] = recovered.id;
@@ -773,13 +990,19 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
           const parentDocumentId = entry.parentNodeId
             ? (bindings[entry.parentNodeId] ?? rootDocument.id)
             : rootDocument.id;
-          const markdown = nodeDocumentMarkdown(record.id, entry, parentDocumentId);
+          const markdown = nodeManagedMarkdown(record.id, entry, parentDocumentId);
           let documentId: string | undefined = bindings[entry.nodeId];
           if (documentId) {
             try {
               const current = await port.getBlock(projectId, documentId);
               if (current.markdown !== markdown) {
-                await port.updateManagedDocument(projectId, current.id, current.markdown, markdown);
+                await port.updateManagedDocument(
+                  projectId,
+                  current.id,
+                  current.markdown,
+                  markdown,
+                  rootDocument.id,
+                );
               }
             } catch (error) {
               if (!(error instanceof Error) || error.message !== 'siyuan_block_not_found') {
@@ -792,12 +1015,22 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
           }
           if (!documentId) {
             try {
-              const created = await port.createManagedDocument(
-                projectId,
-                `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
-                markdown,
-              );
-              documentId = created.id;
+              if (entry.kind === 'file' && port.appendManagedBlocks) {
+                const ids = await port.appendManagedBlocks(projectId, rootDocument.id, [
+                  { parentId: parentDocumentId, markdown },
+                ]);
+                if (ids.length !== 1) {
+                  throw new Error('siyuan_managed_block_batch_response_invalid');
+                }
+                documentId = ids[0]!;
+              } else {
+                const created = await port.createManagedDocument(
+                  projectId,
+                  `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
+                  markdown,
+                );
+                documentId = created.id;
+              }
             } catch (createError) {
               const existing = await port.readManagedDocument(projectId, {
                 query: entry.nodeId,
@@ -811,6 +1044,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
                   existing.id,
                   existing.markdown,
                   markdown,
+                  rootDocument.id,
                 );
               }
             }
@@ -846,7 +1080,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
         marker,
       });
       if (stale?.markdown.includes(marker)) {
-        await port.deleteManagedDocument(projectId, stale.id, stale.markdown);
+        await port.deleteManagedDocument(projectId, stale.id, stale.markdown, rootDocument.id);
       }
     }
     const removedNodeIds: string[] = [];
@@ -857,7 +1091,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
       try {
         const stale = await port.getBlock(projectId, documentId);
         if (stale.markdown.includes(nodeMarker(record.id, nodeId))) {
-          await port.deleteManagedDocument(projectId, stale.id, stale.markdown);
+          await port.deleteManagedDocument(projectId, stale.id, stale.markdown, rootDocument.id);
           delete bindings[nodeId];
           removedNodeIds.push(nodeId);
         }
@@ -973,9 +1207,15 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
           const parentDocumentId = entry.parentNodeId
             ? (bindings[entry.parentNodeId] ?? rootDocument.id)
             : rootDocument.id;
-          const markdown = nodeDocumentMarkdown(record.id, entry, parentDocumentId);
+          const markdown = nodeManagedMarkdown(record.id, entry, parentDocumentId);
           if (current.markdown !== markdown) {
-            await port.updateManagedDocument(projectId, current.id, current.markdown, markdown);
+            await port.updateManagedDocument(
+              projectId,
+              current.id,
+              current.markdown,
+              markdown,
+              rootDocument.id,
+            );
           }
         },
       });
@@ -1164,10 +1404,8 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
             effectiveOptions.sourcePolicy,
           );
         if (manifest.status === 'recycled') {
-          // A recycled manifest is the cross-store tombstone. Retry clearing
-          // durable bindings before restore so a prior IndexedDB failure can
-          // never resurrect document IDs that native retirement removed.
-          await clearSiyuanNodeBindings(exactProjectId, record.id);
+          // Retained bindings are the durable retirement journal. Restore
+          // reconciles survivors and recreates only blocks already deleted.
           managedDocumentIds.delete(documentKey(exactProjectId, record.id));
         }
         manifest = updateSiyuanMapManifest(manifest, { status: 'indexing' });
@@ -1184,6 +1422,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
                 existing.id,
                 existing.markdown,
                 markdown,
+                existing.id,
               )
           : await port.createManagedDocument(
               exactProjectId,
@@ -1301,18 +1540,10 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
           ...(current.rootDocumentId ? [current.rootDocumentId] : []),
         ]),
       ];
-      const recycledManifest = updateSiyuanMapManifest(current, {
-        notebookId: null,
-        rootDocumentId: null,
-        nodeBindings: {},
-        counts: { indexed: 0, summarized: 0 },
-        status: 'recycled',
-      });
-      // Retire VibeSpace's authority pointers before native deletion. If the
-      // process or SiYuan fails mid-loop, restore recovers any remaining owned
-      // documents by stable marker and recreates only those already deleted.
+      let recycledManifest = updateSiyuanMapManifest(current, { status: 'recycled' });
+      // The manifest root and IndexedDB bindings form a durable retirement
+      // journal. Remove each pointer only after its native delete is terminal.
       writeSiyuanMapManifest(recycledManifest);
-      await clearSiyuanNodeBindings(exactProjectId, record.id);
       managedDocumentIds.delete(documentKey(exactProjectId, record.id));
       for (const id of ownedIds) {
         try {
@@ -1321,12 +1552,43 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
             document.markdown.includes(marker(record.id)) ||
             document.markdown.includes(`vibespace-context-node:v1 map=${safeText(record.id, 200)}`);
           if (owned) {
-            await port.deleteManagedDocument(exactProjectId, id, document.markdown);
+            await port.deleteManagedDocument(
+              exactProjectId,
+              id,
+              document.markdown,
+              current.rootDocumentId ?? id,
+            );
           }
         } catch (error) {
           if (!(error instanceof Error) || error.message !== 'siyuan_block_not_found') throw error;
         }
+        const retiredNodeIds = Object.entries(persistedBindings)
+          .filter(([, documentId]) => documentId === id)
+          .map(([nodeId]) => nodeId);
+        if (retiredNodeIds.length > 0) {
+          await deleteSiyuanNodeBindings(exactProjectId, record.id, retiredNodeIds);
+        }
+        recycledManifest = updateSiyuanMapManifest(recycledManifest, {
+          rootDocumentId:
+            recycledManifest.rootDocumentId === id ? null : recycledManifest.rootDocumentId,
+          nodeBindings: Object.fromEntries(
+            Object.entries(recycledManifest.nodeBindings).filter(
+              ([, documentId]) => documentId !== id,
+            ),
+          ),
+        });
+        writeSiyuanMapManifest(recycledManifest);
       }
+      await clearSiyuanNodeBindings(exactProjectId, record.id);
+      writeSiyuanMapManifest(
+        updateSiyuanMapManifest(recycledManifest, {
+          notebookId: null,
+          rootDocumentId: null,
+          nodeBindings: {},
+          counts: { indexed: 0, summarized: 0 },
+          status: 'recycled',
+        }),
+      );
     },
   });
 }

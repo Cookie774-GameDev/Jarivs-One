@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { SiyuanAppendBlockInput } from './siyuan/siyuanContracts';
 import type { SiyuanNativeBridge } from './siyuan/siyuanNativeBridge';
 import { createProductionSiyuanRlmPort } from './siyuanRlmProduction';
 
@@ -61,11 +62,17 @@ function mockBridge(projectId: string, events: string[]): SiyuanNativeBridge {
       events.push(`create-document:${projectId}:${path}`);
       return { id: `document-${projectId}` };
     }),
-    updateBlock: vi.fn(async (id) => {
+    batchAppendBlocks: vi.fn(
+      async (_notebookId, _mapRootId, blocks: readonly SiyuanAppendBlockInput[]) => {
+        events.push(`batch-append:${projectId}:${blocks.length}`);
+        return blocks.map((_, index: number) => `block-${projectId}-${index}`);
+      },
+    ),
+    updateBlock: vi.fn(async (_mapRootId, id) => {
       events.push(`update:${projectId}:${id}`);
       return { applied: true as const };
     }),
-    deleteBlock: vi.fn(async (id) => {
+    deleteBlock: vi.fn(async (_mapRootId, id) => {
       events.push(`delete:${projectId}:${id}`);
       return { applied: true as const };
     }),
@@ -221,5 +228,73 @@ describe('production SiYuan RLM port', () => {
       'get:project-a:document-project-a',
       'delete:project-a:document-project-a',
     ]);
+  });
+
+  it('creates a bounded same-project document batch under one notebook lookup', async () => {
+    const events: string[] = [];
+    const bridge = mockBridge('project-a', events);
+    vi.mocked(bridge.listNotebooks).mockResolvedValue([
+      { id: 'notebook-project-a', name: 'VibeSpace Project Vault', closed: false },
+    ]);
+    let active = 0;
+    let peak = 0;
+    vi.mocked(bridge.createDocument).mockImplementation(async (_notebookId, path) => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 10));
+      active -= 1;
+      return { id: `document-${path.slice(1)}` };
+    });
+    const port = createProductionSiyuanRlmPort({
+      featureEnabled: true,
+      createBridge: () => bridge,
+    });
+    const inputs = Array.from({ length: 4 }, (_, index) => ({
+      path: `/node-${index}`,
+      markdown: `# Node ${index}`,
+    }));
+
+    const results = await port.createManagedDocuments!('project-a', inputs);
+
+    expect(results).toHaveLength(4);
+    expect(results.every((result) => result.ok)).toBe(true);
+    expect(peak).toBe(4);
+    expect(bridge.listNotebooks).toHaveBeenCalledOnce();
+    expect(bridge.createDocument).toHaveBeenCalledTimes(4);
+    expect(bridge.getBlock).toHaveBeenCalledTimes(4);
+    await expect(port.createManagedDocuments!('project-a', [])).rejects.toThrow(
+      'siyuan_managed_document_batch_invalid',
+    );
+    await expect(
+      port.createManagedDocuments!('project-a', [inputs[0]!, inputs[0]!]),
+    ).rejects.toThrow('siyuan_managed_document_batch_duplicate');
+  });
+
+  it('appends an ordered file-node batch through one notebook lookup and one bridge call', async () => {
+    const events: string[] = [];
+    const bridge = mockBridge('project-a', events);
+    vi.mocked(bridge.listNotebooks).mockResolvedValue([
+      { id: 'notebook-project-a', name: 'VibeSpace Project Vault', closed: false },
+    ]);
+    vi.mocked(bridge.batchAppendBlocks).mockResolvedValue(['block-2', 'block-1']);
+    const port = createProductionSiyuanRlmPort({
+      featureEnabled: true,
+      createBridge: () => bridge,
+    });
+    const inputs = [
+      { parentId: 'parent-2', markdown: 'Second' },
+      { parentId: 'parent-1', markdown: 'First' },
+    ];
+
+    await expect(port.appendManagedBlocks!('project-a', 'map-root-1', inputs)).resolves.toEqual([
+      'block-2',
+      'block-1',
+    ]);
+    expect(bridge.listNotebooks).toHaveBeenCalledOnce();
+    expect(bridge.batchAppendBlocks).toHaveBeenCalledExactlyOnceWith(
+      'notebook-project-a',
+      'map-root-1',
+      inputs,
+    );
   });
 });

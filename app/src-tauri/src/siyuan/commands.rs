@@ -2,11 +2,12 @@
 //! supervisor reports both feature and packaged-payload readiness for the requested project.
 
 use super::client::{
-    Block, BlockSummary, ClientError, Notebook, RuntimeStatus, RuntimeVersion, SiyuanClient,
+    AppendBlockInput, Block, BlockSummary, ClientError, Notebook, RuntimeStatus, RuntimeVersion,
+    SiyuanClient,
 };
 use super::manifest::{SIYUAN_UPSTREAM_COMMIT, SIYUAN_UPSTREAM_TAG};
 use super::supervisor::{SiyuanRuntimeState, SupervisorError};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
@@ -43,6 +44,19 @@ pub struct SiyuanBlockRelationIdsResponse {
 #[serde(rename_all = "camelCase")]
 pub struct SiyuanDocumentResponse {
     id: String,
+}
+
+#[derive(Debug, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SiyuanAppendBlockRequest {
+    parent_id: String,
+    markdown: String,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiyuanBatchAppendBlocksResponse {
+    ids: Vec<String>,
 }
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
@@ -205,8 +219,38 @@ pub async fn siyuan_create_document(
 }
 
 #[tauri::command]
+pub async fn siyuan_batch_append_blocks(
+    project_id: String,
+    notebook_id: String,
+    map_root_id: String,
+    blocks: Vec<SiyuanAppendBlockRequest>,
+    state: State<'_, SiyuanRuntimeState>,
+) -> Result<SiyuanBatchAppendBlocksResponse, String> {
+    let runtime = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let transport = runtime
+            .runtime_transport(&project_id)
+            .map_err(public_error)?;
+        let blocks = blocks
+            .into_iter()
+            .map(|block| AppendBlockInput {
+                parent_id: block.parent_id,
+                markdown: block.markdown,
+            })
+            .collect::<Vec<_>>();
+        SiyuanClient::new(true, transport)
+            .batch_append_blocks(&notebook_id, &map_root_id, &blocks)
+            .map(|ids| SiyuanBatchAppendBlocksResponse { ids })
+            .map_err(client_error)
+    })
+    .await
+    .map_err(|_| "siyuan_state_unavailable".to_owned())?
+}
+
+#[tauri::command]
 pub async fn siyuan_update_block(
     project_id: String,
+    map_root_id: String,
     id: String,
     expected_markdown: String,
     markdown: String,
@@ -218,7 +262,7 @@ pub async fn siyuan_update_block(
             .runtime_transport(&project_id)
             .map_err(public_error)?;
         SiyuanClient::new(true, transport)
-            .update_block(&id, &expected_markdown, &markdown)
+            .update_block(&map_root_id, &id, &expected_markdown, &markdown)
             .map(|_| SiyuanMutationResponse { applied: true })
             .map_err(client_error)
     })
@@ -229,6 +273,7 @@ pub async fn siyuan_update_block(
 #[tauri::command]
 pub async fn siyuan_delete_block(
     project_id: String,
+    map_root_id: String,
     id: String,
     expected_markdown: String,
     state: State<'_, SiyuanRuntimeState>,
@@ -239,7 +284,7 @@ pub async fn siyuan_delete_block(
             .runtime_transport(&project_id)
             .map_err(public_error)?;
         SiyuanClient::new(true, transport)
-            .delete_block(&id, &expected_markdown)
+            .delete_block(&map_root_id, &id, &expected_markdown)
             .map(|_| SiyuanMutationResponse { applied: true })
             .map_err(client_error)
     })
@@ -323,6 +368,69 @@ mod tests {
         assert!(command.contains("tauri::async_runtime::spawn_blocking"));
         assert!(command.contains("runtime_transport(&project_id)"));
         assert!(command.contains("list_inbound_backlinks(&id)"));
+    }
+
+    #[test]
+    fn batch_append_command_is_closed_ordered_and_offloads_blocking_http() {
+        let source = include_str!("commands.rs");
+        let command = source
+            .split("pub async fn siyuan_batch_append_blocks")
+            .nth(1)
+            .and_then(|remainder| remainder.split("pub async fn siyuan_update_block").next())
+            .expect("batch append command must remain async and bounded");
+        assert!(command.contains("tauri::async_runtime::spawn_blocking"));
+        assert!(command.contains("runtime_transport(&project_id)"));
+        assert!(command.contains("map_root_id: String"));
+        assert!(command.contains("batch_append_blocks(&notebook_id, &map_root_id, &blocks)"));
+        assert!(command.contains("SiyuanBatchAppendBlocksResponse { ids }"));
+
+        let update = source
+            .split("pub async fn siyuan_update_block")
+            .nth(1)
+            .and_then(|remainder| remainder.split("pub async fn siyuan_delete_block").next())
+            .expect("update command must remain map-root bound");
+        assert!(update.contains("map_root_id: String"));
+        assert!(update.contains("update_block(&map_root_id, &id, &expected_markdown, &markdown)"));
+        let delete = source
+            .split("pub async fn siyuan_delete_block")
+            .nth(1)
+            .and_then(|remainder| {
+                remainder
+                    .split("pub async fn siyuan_create_daily_note")
+                    .next()
+            })
+            .expect("delete command must remain map-root bound");
+        assert!(delete.contains("map_root_id: String"));
+        assert!(delete.contains("delete_block(&map_root_id, &id, &expected_markdown)"));
+
+        let first: SiyuanAppendBlockRequest = serde_json::from_value(serde_json::json!({
+            "parentId": "parent-1",
+            "markdown": "# First",
+        }))
+        .unwrap();
+        let second: SiyuanAppendBlockRequest = serde_json::from_value(serde_json::json!({
+            "parentId": "parent-2",
+            "markdown": "# Second",
+        }))
+        .unwrap();
+        assert_eq!(first.parent_id, "parent-1");
+        assert_eq!(second.parent_id, "parent-2");
+        assert!(
+            serde_json::from_value::<SiyuanAppendBlockRequest>(serde_json::json!({
+                "parentId": "parent-1",
+                "markdown": "# First",
+                "endpoint": "/api/query/sql",
+            }))
+            .is_err()
+        );
+
+        let response = SiyuanBatchAppendBlocksResponse {
+            ids: vec!["child-1".to_owned(), "child-2".to_owned()],
+        };
+        assert_eq!(
+            serde_json::to_value(response).unwrap(),
+            serde_json::json!({ "ids": ["child-1", "child-2"] })
+        );
     }
 
     #[test]

@@ -19,6 +19,8 @@ pub const MAX_RELATION_RESULTS: usize = 100;
 pub const MAX_BLOCK_CONTENT_BYTES: usize = 1_048_576;
 pub const MAX_DOCUMENT_PATH_BYTES: usize = 4_096;
 pub const MAX_SNAPSHOT_MEMO_BYTES: usize = 256;
+pub const MAX_BATCH_BLOCKS: usize = 64;
+pub const MAX_BATCH_BLOCK_TOTAL_BYTES: usize = 262_144;
 const MAX_HTTP_RESPONSE_BYTES: u64 = 1_100_000;
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
 const SEARCH_HTTP_TIMEOUT: Duration = Duration::from_secs(45);
@@ -64,6 +66,12 @@ pub struct Block {
     pub markdown: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppendBlockInput {
+    pub parent_id: String,
+    pub markdown: String,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BrokerRequest<'a> {
     Status,
@@ -86,12 +94,19 @@ pub enum BrokerRequest<'a> {
         path: &'a str,
         markdown: &'a str,
     },
+    BatchAppendBlocks {
+        notebook_id: &'a str,
+        map_root_id: &'a str,
+        blocks: &'a [AppendBlockInput],
+    },
     UpdateBlock {
+        map_root_id: &'a str,
         id: &'a str,
         expected_markdown: &'a str,
         markdown: &'a str,
     },
     DeleteBlock {
+        map_root_id: &'a str,
         id: &'a str,
         expected_markdown: &'a str,
     },
@@ -112,6 +127,7 @@ pub enum BrokerResponse {
     Block(Block),
     BlockRelationIds(Vec<String>),
     Identifier(String),
+    Identifiers(Vec<String>),
     MutationApplied,
 }
 
@@ -218,12 +234,28 @@ struct BlockInfoData {
     #[serde(rename = "box")]
     notebook_id: String,
     path: String,
+    #[serde(rename = "rootID")]
+    root_id: String,
 }
 
 #[derive(Deserialize)]
 struct BlockKramdownData {
     id: String,
     kramdown: String,
+}
+
+#[derive(Deserialize)]
+struct TransactionWire {
+    #[serde(rename = "doOperations")]
+    do_operations: Vec<OperationWire>,
+}
+
+#[derive(Deserialize)]
+struct OperationWire {
+    action: String,
+    id: String,
+    #[serde(rename = "parentID")]
+    parent_id: String,
 }
 
 #[derive(Deserialize)]
@@ -513,22 +545,66 @@ impl HttpSiyuanTransport {
     }
 
     fn block(&self, id: &str) -> Result<Block, ClientError> {
+        let info = self.block_info(id)?;
+        let markdown = self.block_markdown(id)?;
+        Ok(Block {
+            id: id.to_owned(),
+            notebook_id: info.notebook_id,
+            path: info.path,
+            markdown,
+        })
+    }
+
+    fn block_info(&self, id: &str) -> Result<BlockInfoData, ClientError> {
         let info: BlockInfoData = self.post("/api/block/getBlockInfo", json!({ "id": id }))?;
+        validate_identifier(&info.notebook_id)?;
+        validate_identifier(&info.root_id)?;
+        if info.path.len() > MAX_DOCUMENT_PATH_BYTES {
+            return Err(ClientError::ResponseTooLarge);
+        }
+        if info.path.is_empty() || info.path.contains('\0') {
+            return Err(ClientError::ResponseTypeMismatch);
+        }
+        Ok(info)
+    }
+
+    fn map_root_info(&self, map_root_id: &str) -> Result<BlockInfoData, ClientError> {
+        let root = self.block_info(map_root_id)?;
+        if root.root_id != map_root_id {
+            return Err(ClientError::ResponseTypeMismatch);
+        }
+        Ok(root)
+    }
+
+    fn block_markdown(&self, id: &str) -> Result<String, ClientError> {
         let content: BlockKramdownData =
             self.post("/api/block/getBlockKramdown", json!({ "id": id }))?;
         if content.id != id {
             return Err(ClientError::ResponseTypeMismatch);
         }
-        validate_identifier(&info.notebook_id)?;
-        if info.path.len() > 4_096 || content.kramdown.len() > MAX_BLOCK_CONTENT_BYTES {
+        if content.kramdown.len() > MAX_BLOCK_CONTENT_BYTES {
             return Err(ClientError::ResponseTooLarge);
         }
-        Ok(Block {
-            id: content.id,
-            notebook_id: info.notebook_id,
-            path: info.path,
-            markdown: content.kramdown,
-        })
+        Ok(content.kramdown)
+    }
+
+    fn require_same_map(root: &BlockInfoData, target: &BlockInfoData) -> Result<(), ClientError> {
+        if target.notebook_id != root.notebook_id
+            || target.path != root.path
+            || target.root_id != root.root_id
+        {
+            return Err(ClientError::ResponseTypeMismatch);
+        }
+        Ok(())
+    }
+
+    fn require_map_target(&self, map_root_id: &str, target_id: &str) -> Result<(), ClientError> {
+        let root = self.map_root_info(map_root_id)?;
+        if target_id != map_root_id {
+            let target = self.block_info(target_id)?;
+            Self::require_same_map(&root, &target)?;
+        }
+        Ok(())
     }
 
     fn inbound_backlinks(&self, id: &str) -> Result<Vec<String>, ClientError> {
@@ -578,13 +654,72 @@ impl HttpSiyuanTransport {
         )
     }
 
+    fn batch_append_blocks(
+        &self,
+        notebook_id: &str,
+        map_root_id: &str,
+        blocks: &[AppendBlockInput],
+    ) -> Result<Vec<String>, ClientError> {
+        let root = self.map_root_info(map_root_id)?;
+        if root.notebook_id != notebook_id {
+            return Err(ClientError::ResponseTypeMismatch);
+        }
+        let mut verified_parents = HashSet::new();
+        for block in blocks {
+            if verified_parents.insert(block.parent_id.as_str()) && block.parent_id != map_root_id {
+                let info = self.block_info(&block.parent_id)?;
+                Self::require_same_map(&root, &info)?;
+            }
+        }
+        let transactions: Vec<TransactionWire> = self.post(
+            "/api/block/batchAppendBlock",
+            json!({
+                "blocks": blocks
+                    .iter()
+                    .map(|block| json!({
+                        "data": block.markdown,
+                        "dataType": "markdown",
+                        "parentID": block.parent_id,
+                    }))
+                    .collect::<Vec<_>>()
+            }),
+        )?;
+        if transactions.len() != blocks.len() {
+            return Err(ClientError::ResponseTypeMismatch);
+        }
+        transactions
+            .into_iter()
+            .zip(blocks)
+            .map(|(transaction, input)| {
+                if transaction.do_operations.len() != 1 {
+                    return Err(ClientError::ResponseTypeMismatch);
+                }
+                let operation = transaction
+                    .do_operations
+                    .into_iter()
+                    .next()
+                    .ok_or(ClientError::ResponseTypeMismatch)?;
+                validate_identifier(&operation.id)?;
+                // SiYuan normalizes the internal `appendInsert` transaction
+                // action to the public API response action `insert` after
+                // PerformTransactions assigns the final block ID.
+                if operation.action != "insert" || operation.parent_id != input.parent_id {
+                    return Err(ClientError::ResponseTypeMismatch);
+                }
+                Ok(operation.id)
+            })
+            .collect()
+    }
+
     fn update_block(
         &self,
+        map_root_id: &str,
         id: &str,
         expected_markdown: &str,
         markdown: &str,
     ) -> Result<(), ClientError> {
-        if self.block(id)?.markdown != expected_markdown {
+        self.require_map_target(map_root_id, id)?;
+        if self.block_markdown(id)? != expected_markdown {
             return Err(ClientError::Conflict);
         }
         let _: Value = self.post(
@@ -594,8 +729,14 @@ impl HttpSiyuanTransport {
         Ok(())
     }
 
-    fn delete_block(&self, id: &str, expected_markdown: &str) -> Result<(), ClientError> {
-        if self.block(id)?.markdown != expected_markdown {
+    fn delete_block(
+        &self,
+        map_root_id: &str,
+        id: &str,
+        expected_markdown: &str,
+    ) -> Result<(), ClientError> {
+        self.require_map_target(map_root_id, id)?;
+        if self.block_markdown(id)? != expected_markdown {
             return Err(ClientError::Conflict);
         }
         let _: Value = self.post("/api/block/deleteBlock", json!({ "id": id }))?;
@@ -644,18 +785,27 @@ impl SiyuanTransport for HttpSiyuanTransport {
             } => self
                 .create_document(notebook_id, path, markdown)
                 .map(BrokerResponse::Identifier),
+            BrokerRequest::BatchAppendBlocks {
+                notebook_id,
+                map_root_id,
+                blocks,
+            } => self
+                .batch_append_blocks(notebook_id, map_root_id, blocks)
+                .map(BrokerResponse::Identifiers),
             BrokerRequest::UpdateBlock {
+                map_root_id,
                 id,
                 expected_markdown,
                 markdown,
             } => self
-                .update_block(id, expected_markdown, markdown)
+                .update_block(map_root_id, id, expected_markdown, markdown)
                 .map(|_| BrokerResponse::MutationApplied),
             BrokerRequest::DeleteBlock {
+                map_root_id,
                 id,
                 expected_markdown,
             } => self
-                .delete_block(id, expected_markdown)
+                .delete_block(map_root_id, id, expected_markdown)
                 .map(|_| BrokerResponse::MutationApplied),
             BrokerRequest::CreateDailyNote { notebook_id } => self
                 .create_daily_note(notebook_id)
@@ -796,17 +946,63 @@ impl<T: SiyuanTransport> SiyuanClient<T> {
         }
     }
 
+    pub fn batch_append_blocks(
+        &self,
+        notebook_id: &str,
+        map_root_id: &str,
+        blocks: &[AppendBlockInput],
+    ) -> Result<Vec<String>, ClientError> {
+        self.require_enabled()?;
+        validate_identifier(notebook_id)?;
+        validate_identifier(map_root_id)?;
+        if blocks.is_empty() || blocks.len() > MAX_BATCH_BLOCKS {
+            return Err(ClientError::InvalidLimit);
+        }
+        let mut total_bytes = 0usize;
+        for block in blocks {
+            validate_identifier(&block.parent_id)?;
+            validate_markdown(&block.markdown)?;
+            total_bytes = total_bytes
+                .checked_add(block.markdown.len())
+                .ok_or(ClientError::InvalidContent)?;
+        }
+        if total_bytes > MAX_BATCH_BLOCK_TOTAL_BYTES {
+            return Err(ClientError::InvalidContent);
+        }
+        match self.transport.send(BrokerRequest::BatchAppendBlocks {
+            notebook_id,
+            map_root_id,
+            blocks,
+        })? {
+            BrokerResponse::Identifiers(ids) if ids.len() == blocks.len() => {
+                let mut seen = HashSet::new();
+                for id in &ids {
+                    validate_identifier(id)?;
+                    if !seen.insert(id) {
+                        return Err(ClientError::ResponseTypeMismatch);
+                    }
+                }
+                Ok(ids)
+            }
+            BrokerResponse::Identifiers(_) => Err(ClientError::ResponseTypeMismatch),
+            _ => Err(ClientError::ResponseTypeMismatch),
+        }
+    }
+
     pub fn update_block(
         &self,
+        map_root_id: &str,
         id: &str,
         expected_markdown: &str,
         markdown: &str,
     ) -> Result<(), ClientError> {
         self.require_enabled()?;
+        validate_identifier(map_root_id)?;
         validate_identifier(id)?;
         validate_markdown(expected_markdown)?;
         validate_markdown(markdown)?;
         match self.transport.send(BrokerRequest::UpdateBlock {
+            map_root_id,
             id,
             expected_markdown,
             markdown,
@@ -816,11 +1012,18 @@ impl<T: SiyuanTransport> SiyuanClient<T> {
         }
     }
 
-    pub fn delete_block(&self, id: &str, expected_markdown: &str) -> Result<(), ClientError> {
+    pub fn delete_block(
+        &self,
+        map_root_id: &str,
+        id: &str,
+        expected_markdown: &str,
+    ) -> Result<(), ClientError> {
         self.require_enabled()?;
+        validate_identifier(map_root_id)?;
         validate_identifier(id)?;
         validate_markdown(expected_markdown)?;
         match self.transport.send(BrokerRequest::DeleteBlock {
+            map_root_id,
             id,
             expected_markdown,
         })? {
@@ -979,15 +1182,26 @@ mod tests {
                     path,
                     markdown,
                 } => format!("create:{notebook_id}:{path}:{}", markdown.len()),
+                BrokerRequest::BatchAppendBlocks {
+                    notebook_id,
+                    map_root_id,
+                    blocks,
+                } => format!("batch_append:{notebook_id}:{map_root_id}:{}", blocks.len()),
                 BrokerRequest::UpdateBlock {
+                    map_root_id,
                     id,
                     expected_markdown,
                     markdown,
-                } => format!("update:{id}:{}:{}", expected_markdown.len(), markdown.len()),
+                } => format!(
+                    "update:{map_root_id}:{id}:{}:{}",
+                    expected_markdown.len(),
+                    markdown.len()
+                ),
                 BrokerRequest::DeleteBlock {
+                    map_root_id,
                     id,
                     expected_markdown,
-                } => format!("delete:{id}:{}", expected_markdown.len()),
+                } => format!("delete:{map_root_id}:{id}:{}", expected_markdown.len()),
                 BrokerRequest::CreateDailyNote { notebook_id } => {
                     format!("daily_note:{notebook_id}")
                 }
@@ -1171,20 +1385,25 @@ mod tests {
 
         let update = SiyuanClient::new(true, MockTransport::new(BrokerResponse::MutationApplied));
         update
-            .update_block("20260820-document", "# before", "# after")
+            .update_block(
+                "20260820-document",
+                "20260820-document",
+                "# before",
+                "# after",
+            )
             .unwrap();
         assert_eq!(
             update.transport.requests.borrow().as_slice(),
-            ["update:20260820-document:8:7"]
+            ["update:20260820-document:20260820-document:8:7"]
         );
 
         let delete = SiyuanClient::new(true, MockTransport::new(BrokerResponse::MutationApplied));
         delete
-            .delete_block("20260820-document", "# expected")
+            .delete_block("20260820-document", "20260820-document", "# expected")
             .unwrap();
         assert_eq!(
             delete.transport.requests.borrow().as_slice(),
-            ["delete:20260820-document:10"]
+            ["delete:20260820-document:20260820-document:10"]
         );
 
         let daily = SiyuanClient::new(
@@ -1230,6 +1449,104 @@ mod tests {
             Err(ClientError::InvalidContent)
         );
         assert!(snapshot.transport.requests.borrow().is_empty());
+    }
+
+    #[test]
+    fn batch_append_bounds_and_duplicate_response_ids_fail_closed() {
+        assert_eq!(MAX_BATCH_BLOCK_TOTAL_BYTES, 262_144);
+        let blocks = vec![
+            AppendBlockInput {
+                parent_id: "parent-1".to_owned(),
+                markdown: "# First".to_owned(),
+            },
+            AppendBlockInput {
+                parent_id: "parent-2".to_owned(),
+                markdown: "# Second".to_owned(),
+            },
+        ];
+        let ordered = SiyuanClient::new(
+            true,
+            MockTransport::new(BrokerResponse::Identifiers(vec![
+                "child-1".to_owned(),
+                "child-2".to_owned(),
+            ])),
+        );
+        assert_eq!(
+            ordered
+                .batch_append_blocks("20260820-notebook", "map-root", &blocks)
+                .unwrap(),
+            ["child-1", "child-2"]
+        );
+        assert_eq!(
+            ordered.transport.requests.borrow().as_slice(),
+            ["batch_append:20260820-notebook:map-root:2"]
+        );
+
+        let invalid_count = SiyuanClient::new(
+            true,
+            MockTransport::new(BrokerResponse::Identifiers(Vec::new())),
+        );
+        assert_eq!(
+            invalid_count.batch_append_blocks("20260820-notebook", "map-root", &[]),
+            Err(ClientError::InvalidLimit)
+        );
+        let too_many = (0..=MAX_BATCH_BLOCKS)
+            .map(|index| AppendBlockInput {
+                parent_id: format!("parent-{index}"),
+                markdown: "x".to_owned(),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            invalid_count.batch_append_blocks("20260820-notebook", "map-root", &too_many),
+            Err(ClientError::InvalidLimit)
+        );
+        assert!(invalid_count.transport.requests.borrow().is_empty());
+
+        let exact_limit = SiyuanClient::new(
+            true,
+            MockTransport::new(BrokerResponse::Identifiers(vec!["child-limit".to_owned()])),
+        );
+        assert_eq!(
+            exact_limit
+                .batch_append_blocks(
+                    "20260820-notebook",
+                    "map-root",
+                    &[AppendBlockInput {
+                        parent_id: "map-root".to_owned(),
+                        markdown: "x".repeat(MAX_BATCH_BLOCK_TOTAL_BYTES),
+                    }],
+                )
+                .unwrap(),
+            ["child-limit"]
+        );
+
+        let oversized = SiyuanClient::new(
+            true,
+            MockTransport::new(BrokerResponse::Identifiers(vec!["unused".to_owned()])),
+        );
+        assert_eq!(
+            oversized.batch_append_blocks(
+                "20260820-notebook",
+                "map-root",
+                &[AppendBlockInput {
+                    parent_id: "parent-1".to_owned(),
+                    markdown: "x".repeat(MAX_BATCH_BLOCK_TOTAL_BYTES + 1),
+                }],
+            ),
+            Err(ClientError::InvalidContent)
+        );
+        assert!(oversized.transport.requests.borrow().is_empty());
+
+        for response in [
+            BrokerResponse::Identifiers(vec!["child-1".to_owned()]),
+            BrokerResponse::Identifiers(vec!["child-1".to_owned(), "child-1".to_owned()]),
+        ] {
+            let malformed = SiyuanClient::new(true, MockTransport::new(response));
+            assert_eq!(
+                malformed.batch_append_blocks("20260820-notebook", "map-root", &blocks),
+                Err(ClientError::ResponseTypeMismatch)
+            );
+        }
     }
 
     #[test]
@@ -1424,7 +1741,7 @@ mod tests {
         let token = "f".repeat(32);
         let (port, requests, server) = mock_http_server(vec![
             r#"{"code":0,"msg":"","data":null}"#.to_owned(),
-            r#"{"code":0,"msg":"","data":{"box":"20260820-book","path":"/spec.sy"}}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-book","path":"/spec.sy","rootID":"20260820-block"}}"#.to_owned(),
             r##"{"code":0,"msg":"","data":{"id":"20260820-block","kramdown":"# Spec"}}"##
                 .to_owned(),
         ]);
@@ -1462,13 +1779,9 @@ mod tests {
         let inbound = requests.recv().unwrap();
         assert!(login.starts_with("POST /api/system/loginAuth HTTP/1.1"));
         assert!(inbound.starts_with("POST /api/ref/getBacklink2 HTTP/1.1"));
-        let body: Value = serde_json::from_str(
-            inbound
-                .split("\r\n\r\n")
-                .nth(1)
-                .expect("captured request body"),
-        )
-        .unwrap();
+        let body: Value =
+            serde_json::from_str(&inbound[inbound.find('{').expect("captured request body")..])
+                .unwrap();
         let mut keys = body
             .as_object()
             .expect("JSON object body")
@@ -1566,12 +1879,12 @@ mod tests {
             r#"{"code":0,"msg":"","data":"20260820-document"}"#.to_owned(),
             r#"{"code":0,"msg":"","data":{"id":"20260820-daily"}}"#.to_owned(),
             r#"{"code":0,"msg":"","data":null}"#.to_owned(),
-            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/decision.sy"}}"#
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/decision.sy","rootID":"20260820-document"}}"#
                 .to_owned(),
             r##"{"code":0,"msg":"","data":{"id":"20260820-document","kramdown":"# Before"}}"##
                 .to_owned(),
             r#"{"code":0,"msg":"","data":[]}"#.to_owned(),
-            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/decision.sy"}}"#
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/decision.sy","rootID":"20260820-document"}}"#
                 .to_owned(),
             r##"{"code":0,"msg":"","data":{"id":"20260820-document","kramdown":"# After"}}"##
                 .to_owned(),
@@ -1599,9 +1912,16 @@ mod tests {
         );
         client.create_snapshot("Before managed update").unwrap();
         client
-            .update_block("20260820-document", "# Before", "# After")
+            .update_block(
+                "20260820-document",
+                "20260820-document",
+                "# Before",
+                "# After",
+            )
             .unwrap();
-        client.delete_block("20260820-document", "# After").unwrap();
+        client
+            .delete_block("20260820-document", "20260820-document", "# After")
+            .unwrap();
 
         let captured: Vec<String> = (0..11).map(|_| requests.recv().unwrap()).collect();
         assert!(captured[0].starts_with("POST /api/system/loginAuth HTTP/1.1"));
@@ -1630,18 +1950,269 @@ mod tests {
     }
 
     #[test]
+    fn native_batch_append_authenticates_once_verifies_unique_parents_and_preserves_order() {
+        let token = "b".repeat(48);
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/one.sy","rootID":"parent-1"}}"#
+                .to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/one.sy","rootID":"parent-1"}}"#
+                .to_owned(),
+            r#"{"code":0,"msg":"","data":[{"doOperations":[{"action":"insert","id":"child-1","parentID":"parent-1"}]},{"doOperations":[{"action":"insert","id":"child-2","parentID":"parent-1"}]},{"doOperations":[{"action":"insert","id":"child-3","parentID":"parent-2"}]}]}"#
+                .to_owned(),
+        ]);
+        let client =
+            SiyuanClient::new(true, HttpSiyuanTransport::new(port, token.clone()).unwrap());
+        let ids = client
+            .batch_append_blocks(
+                "20260820-notebook",
+                "parent-1",
+                &[
+                    AppendBlockInput {
+                        parent_id: "parent-1".to_owned(),
+                        markdown: "# First".to_owned(),
+                    },
+                    AppendBlockInput {
+                        parent_id: "parent-1".to_owned(),
+                        markdown: "# Second".to_owned(),
+                    },
+                    AppendBlockInput {
+                        parent_id: "parent-2".to_owned(),
+                        markdown: "# Third".to_owned(),
+                    },
+                ],
+            )
+            .unwrap();
+        assert_eq!(ids, ["child-1", "child-2", "child-3"]);
+
+        let captured = (0..4).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(captured[0].starts_with("POST /api/system/loginAuth HTTP/1.1"));
+        assert!(captured[1].starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
+        assert!(captured[2].starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
+        assert!(captured[3].starts_with("POST /api/block/batchAppendBlock HTTP/1.1"));
+        assert_eq!(
+            captured
+                .iter()
+                .filter(|request| request.contains("/api/system/loginAuth"))
+                .count(),
+            1
+        );
+        assert_eq!(
+            captured
+                .iter()
+                .filter(|request| request.contains("/api/block/getBlockInfo"))
+                .count(),
+            2
+        );
+        assert_eq!(
+            captured
+                .iter()
+                .filter(|request| request.contains("/api/block/batchAppendBlock"))
+                .count(),
+            1
+        );
+        let first_parent: Value = serde_json::from_str(
+            &captured[1][captured[1].find('{').expect("first parent request body")..],
+        )
+        .unwrap();
+        let second_parent: Value = serde_json::from_str(
+            &captured[2][captured[2].find('{').expect("second parent request body")..],
+        )
+        .unwrap();
+        assert_eq!(first_parent, json!({ "id": "parent-1" }));
+        assert_eq!(second_parent, json!({ "id": "parent-2" }));
+        let batch: Value = serde_json::from_str(
+            &captured[3][captured[3].find('{').expect("batch request body")..],
+        )
+        .unwrap();
+        assert_eq!(
+            batch,
+            json!({
+                "blocks": [
+                    { "data": "# First", "dataType": "markdown", "parentID": "parent-1" },
+                    { "data": "# Second", "dataType": "markdown", "parentID": "parent-1" },
+                    { "data": "# Third", "dataType": "markdown", "parentID": "parent-2" },
+                ]
+            })
+        );
+        for request in captured.iter().skip(1) {
+            assert!(request
+                .to_ascii_lowercase()
+                .contains("cookie: siyuan=vibespace-native-session"));
+            assert!(!request.contains(&token));
+            assert!(!request.to_ascii_lowercase().contains("authorization:"));
+        }
+        server.join().unwrap();
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
+    fn native_batch_append_rejects_parent_outside_the_verified_notebook_before_write() {
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"other-notebook","path":"/one.sy","rootID":"parent-1"}}"#.to_owned(),
+        ]);
+        let client = SiyuanClient::new(
+            true,
+            HttpSiyuanTransport::new(port, "v".repeat(48)).unwrap(),
+        );
+        assert_eq!(
+            client.batch_append_blocks(
+                "20260820-notebook",
+                "parent-1",
+                &[AppendBlockInput {
+                    parent_id: "parent-1".to_owned(),
+                    markdown: "# First".to_owned(),
+                }],
+            ),
+            Err(ClientError::ResponseTypeMismatch)
+        );
+        let captured = (0..2).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(captured[1].starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
+        assert!(captured
+            .iter()
+            .all(|request| !request.contains("/api/block/batchAppendBlock")));
+        server.join().unwrap();
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
+    fn native_batch_append_rejects_a_non_root_authority_id_before_write() {
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/map.sy","rootID":"actual-map-root"}}"#
+                .to_owned(),
+        ]);
+        let client = SiyuanClient::new(
+            true,
+            HttpSiyuanTransport::new(port, "r".repeat(48)).unwrap(),
+        );
+        assert_eq!(
+            client.batch_append_blocks(
+                "20260820-notebook",
+                "map-child",
+                &[AppendBlockInput {
+                    parent_id: "map-child".to_owned(),
+                    markdown: "# Must not write".to_owned(),
+                }],
+            ),
+            Err(ClientError::ResponseTypeMismatch)
+        );
+        let captured = (0..2).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(captured
+            .iter()
+            .all(|request| !request.contains("/api/block/batchAppendBlock")));
+        server.join().unwrap();
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
+    fn native_batch_append_rejects_same_notebook_parent_from_a_different_map() {
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/map-one.sy","rootID":"map-root"}}"#
+                .to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/map-two.sy","rootID":"other-map-root"}}"#
+                .to_owned(),
+        ]);
+        let client = SiyuanClient::new(
+            true,
+            HttpSiyuanTransport::new(port, "m".repeat(48)).unwrap(),
+        );
+        assert_eq!(
+            client.batch_append_blocks(
+                "20260820-notebook",
+                "map-root",
+                &[AppendBlockInput {
+                    parent_id: "other-map-parent".to_owned(),
+                    markdown: "# Must not write".to_owned(),
+                }],
+            ),
+            Err(ClientError::ResponseTypeMismatch)
+        );
+        let captured = (0..3).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(captured
+            .iter()
+            .all(|request| !request.contains("/api/block/batchAppendBlock")));
+        server.join().unwrap();
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
+    fn native_update_rejects_same_notebook_target_from_a_different_map() {
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/map-one.sy","rootID":"map-root"}}"#
+                .to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/map-two.sy","rootID":"other-map-root"}}"#
+                .to_owned(),
+        ]);
+        let client = SiyuanClient::new(
+            true,
+            HttpSiyuanTransport::new(port, "u".repeat(48)).unwrap(),
+        );
+        assert_eq!(
+            client.update_block(
+                "map-root",
+                "other-map-block",
+                "# Expected",
+                "# Must not write",
+            ),
+            Err(ClientError::ResponseTypeMismatch)
+        );
+        let captured = (0..3).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(captured
+            .iter()
+            .all(|request| !request.contains("/api/block/getBlockKramdown")
+                && !request.contains("/api/block/updateBlock")));
+        server.join().unwrap();
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
+    fn native_delete_rejects_same_notebook_target_from_a_different_map() {
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/map-one.sy","rootID":"map-root"}}"#
+                .to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/map-two.sy","rootID":"other-map-root"}}"#
+                .to_owned(),
+        ]);
+        let client = SiyuanClient::new(
+            true,
+            HttpSiyuanTransport::new(port, "d".repeat(48)).unwrap(),
+        );
+        assert_eq!(
+            client.delete_block("map-root", "other-map-block", "# Expected"),
+            Err(ClientError::ResponseTypeMismatch)
+        );
+        let captured = (0..3).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(captured
+            .iter()
+            .all(|request| !request.contains("/api/block/getBlockKramdown")
+                && !request.contains("/api/block/deleteBlock")));
+        server.join().unwrap();
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
     fn native_update_conflict_never_emits_a_mutation_request() {
         let token = "c".repeat(48);
         let (port, requests, server) = mock_http_server(vec![
             r#"{"code":0,"msg":"","data":null}"#.to_owned(),
-            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/decision.sy"}}"#
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/decision.sy","rootID":"20260820-document"}}"#
                 .to_owned(),
             r##"{"code":0,"msg":"","data":{"id":"20260820-document","kramdown":"# User edit"}}"##
                 .to_owned(),
         ]);
         let client = SiyuanClient::new(true, HttpSiyuanTransport::new(port, token).unwrap());
         assert_eq!(
-            client.update_block("20260820-document", "# Expected", "# Replacement"),
+            client.update_block(
+                "20260820-document",
+                "20260820-document",
+                "# Expected",
+                "# Replacement",
+            ),
             Err(ClientError::Conflict)
         );
         let captured: Vec<String> = (0..3).map(|_| requests.recv().unwrap()).collect();
