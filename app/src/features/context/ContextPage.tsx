@@ -1025,23 +1025,32 @@ export function ContextPage() {
         manifest.cloudSummaryApproval.modelId === cloudSummaryDisclosure.modelId &&
         (manifest.cloudSummaryApproval.effort ?? 'auto') === cloudSummaryDisclosure.effort;
       if (persistedApprovalMatchesSelectedRoute) {
-        const approvedIdentity = approvedCloudSiyuanSummaryIdentity({
-          approval: manifest.cloudSummaryApproval,
-          job,
-          entries,
-          root: selectedMap.rootDir,
-          policy: manifest.summaryPolicy,
-        });
-        if (
-          approvedIdentity.providerId !== cloudSummaryDisclosure.providerId ||
-          approvedIdentity.connectionId !== cloudSummaryDisclosure.connectionId ||
-          approvedIdentity.modelId !== cloudSummaryDisclosure.modelId ||
-          (approvedIdentity.effort ?? 'auto') !== cloudSummaryDisclosure.effort
-        ) {
-          throw new Error('siyuan_cloud_summary_route_changed');
+        try {
+          const approvedIdentity = approvedCloudSiyuanSummaryIdentity({
+            approval: manifest.cloudSummaryApproval,
+            job,
+            entries,
+            root: selectedMap.rootDir,
+            policy: manifest.summaryPolicy,
+          });
+          if (
+            approvedIdentity.providerId !== cloudSummaryDisclosure.providerId ||
+            approvedIdentity.connectionId !== cloudSummaryDisclosure.connectionId ||
+            approvedIdentity.modelId !== cloudSummaryDisclosure.modelId ||
+            (approvedIdentity.effort ?? 'auto') !== cloudSummaryDisclosure.effort
+          ) {
+            throw new Error('siyuan_cloud_summary_route_changed');
+          }
+          await resumeApprovedCloudSummaries();
+          return;
+        } catch (error) {
+          if (
+            !(error instanceof Error) ||
+            error.message !== 'siyuan_cloud_summary_approval_scope_drift'
+          ) {
+            throw error;
+          }
         }
-        await resumeApprovedCloudSummaries();
-        return;
       }
       const approvedAt = Date.now();
       const approvedManifest = updateSiyuanMapManifest(

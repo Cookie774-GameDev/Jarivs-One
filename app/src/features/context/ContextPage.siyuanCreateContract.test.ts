@@ -129,6 +129,9 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(approvalBeforeWrite).toContain('const persistedApprovalMatchesSelectedRoute =');
     expect(approvalBeforeWrite).toContain('approvedCloudSiyuanSummaryIdentity({');
     expect(approvalBeforeWrite).toContain('await resumeApprovedCloudSummaries();');
+    expect(approvalBeforeWrite).toContain(
+      "error.message !== 'siyuan_cloud_summary_approval_scope_drift'",
+    );
   });
 
   it('discloses and approves only remaining persisted summary work', () => {
