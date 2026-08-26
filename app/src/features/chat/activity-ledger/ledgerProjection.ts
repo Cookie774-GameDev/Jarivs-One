@@ -85,6 +85,8 @@ function toolKind(tool: string): LedgerReceiptKind {
 function activityKind(event: ChatActivityEvent): LedgerReceiptKind {
   if (event.kind === 'diff') return 'edit';
   if (event.kind === 'url') return 'search';
+  if (event.kind === 'subagent') return 'subagent';
+  if (event.kind === 'file') return 'read';
   if (event.kind === 'tool' && event.category === 'file') return 'read';
   if (event.kind === 'tool' && event.category === 'writing') return 'edit';
   return 'other';
@@ -292,23 +294,24 @@ export function projectAssistantActivityLedger(
   ].sort((left, right) => left.ts - right.ts || left.id.localeCompare(right.id));
   const editedFiles = new Set<string>();
   const subagents = new Set<string>();
+  const completedReads = new Set<string>();
   let actionsTotal = 0;
-  let readsTotal = 0;
   let searchesTotal = 0;
   let commandsTotal = 0;
   let verifiedChecksTotal = 0;
   let failedChecksTotal = 0;
   for (const receipt of allReceipts) {
     if (receipt.countsAsAction) actionsTotal += 1;
-    if (receipt.kind === 'read') readsTotal += 1;
+    if (receipt.kind === 'read' && receipt.status === 'done')
+      completedReads.add(receipt.filePath ?? receipt.id);
     if (receipt.kind === 'search') searchesTotal += 1;
     if (receipt.kind === 'command') commandsTotal += 1;
     if (receipt.kind === 'edit' && receipt.filePath) editedFiles.add(receipt.filePath);
     if (receipt.kind === 'edit' && !receipt.filePath) editedFiles.add(receipt.id);
     if (receipt.kind === 'check' && receipt.status === 'done') verifiedChecksTotal += 1;
     if (receipt.kind === 'check' && receipt.status === 'error') failedChecksTotal += 1;
-    if (receipt.kind === 'subagent' && receipt.status === 'done')
-      subagents.add(receipt.agentSlug ?? receipt.id);
+    if (receipt.kind === 'subagent' && (receipt.status === 'running' || receipt.status === 'done'))
+      subagents.add(receipt.id);
   }
   const running = allReceipts
     .filter((receipt) => receipt.status === 'running' || receipt.status === 'pending')
@@ -334,18 +337,14 @@ export function projectAssistantActivityLedger(
     event.endedAt === undefined ? [] : [event.endedAt],
   );
   const terminal = status === 'done' || status === 'cancelled' || status === 'error';
-  const terminalEndedAt = !terminal
-    ? undefined
-    : message.usage
-      ? message.updated_at
-      : evidenceEnds.length
-        ? Math.max(...evidenceEnds)
-        : undefined;
+  const terminalEndCandidates = [...(message.usage ? [message.updated_at] : []), ...evidenceEnds];
+  const terminalEndedAt =
+    terminal && terminalEndCandidates.length ? Math.max(...terminalEndCandidates) : undefined;
   return {
     status,
     ...(running ? { currentOperation: running.label } : {}),
     actionsTotal,
-    readsTotal,
+    readsTotal: completedReads.size,
     searchesTotal,
     commandsTotal,
     editedFilesTotal: editedFiles.size,

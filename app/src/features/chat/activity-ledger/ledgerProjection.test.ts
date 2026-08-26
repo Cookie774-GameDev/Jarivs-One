@@ -136,17 +136,79 @@ describe('projectAssistantActivityLedger', () => {
       events,
     );
     expect(ledger).toMatchObject({
-      actionsTotal: 6,
+      actionsTotal: 7,
       readsTotal: 1,
       searchesTotal: 1,
       editedFilesTotal: 1,
       verifiedChecksTotal: 1,
       failedChecksTotal: 1,
-      subagentsTotal: 1,
+      subagentsTotal: 2,
     });
     expect(ledger.receipts.find((receipt) => receipt.id === 'activity:read-1')?.status).toBe(
       'done',
     );
+  });
+
+  it('honors explicit file and subagent event kinds without requiring optional categories', () => {
+    const ledger = projectAssistantActivityLedger(assistant([]), [
+      event({
+        id: 'explicit-file',
+        kind: 'file',
+        title: 'Opaque file activity',
+        filePath: 'src/feature.ts',
+      }),
+      event({
+        id: 'explicit-subagent',
+        kind: 'subagent',
+        title: 'Opaque delegated activity',
+        agentSlug: 'worker-one',
+      }),
+    ]);
+
+    expect(ledger).toMatchObject({
+      actionsTotal: 2,
+      readsTotal: 1,
+      subagentsTotal: 1,
+    });
+    expect(ledger.receipts.map((receipt) => receipt.kind)).toEqual(['read', 'subagent']);
+  });
+
+  it('counts unique completed files and distinct started subagent executions', () => {
+    const ledger = projectAssistantActivityLedger(assistant([]), [
+      event({ id: 'read-a', kind: 'file', filePath: 'src/a.ts', status: 'done' }),
+      event({ id: 'read-b', kind: 'file', filePath: 'src/a.ts', status: 'done' }),
+      event({ id: 'read-running', kind: 'file', filePath: 'src/b.ts', status: 'running' }),
+      event({ id: 'read-failed', kind: 'file', filePath: 'src/c.ts', status: 'error' }),
+      event({
+        id: 'sub-running',
+        kind: 'subagent',
+        agentSlug: 'worker',
+        status: 'running',
+      }),
+      event({ id: 'sub-done', kind: 'subagent', agentSlug: 'worker', status: 'done' }),
+      event({ id: 'sub-failed', kind: 'subagent', agentSlug: 'other', status: 'error' }),
+    ]);
+
+    expect(ledger.readsTotal).toBe(1);
+    expect(ledger.subagentsTotal).toBe(2);
+  });
+
+  it('uses the latest authoritative terminal end when exact usage and correlated evidence coexist', () => {
+    const ledger = projectAssistantActivityLedger(
+      assistant([], { input_tokens: 10, output_tokens: 2 }),
+      [
+        event({
+          id: 'later-search',
+          kind: 'url',
+          startedAt: 100,
+          endedAt: 61_100,
+          status: 'done',
+        }),
+      ],
+    );
+
+    expect(ledger.endedAt).toBe(61_100);
+    expect(ledger.durationMs).toBe(61_000);
   });
 
   it('keeps provider usage exact, optimizer-only input estimated, and missing output unavailable', () => {

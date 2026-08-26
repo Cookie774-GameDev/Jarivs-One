@@ -335,7 +335,7 @@ describe('AgenticConsole', () => {
     expect(
       screen.getByText('Reasoning').closest('details')?.querySelector('[data-agent-motion]'),
     ).toBeNull();
-    expect(screen.getByRole('button', { name: 'Show activity details' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /show activity details/i })).toBeTruthy();
     expect(document.body.textContent).not.toContain('npm test');
     expect(
       [...rendered.container.querySelectorAll('[data-agent-motion]')].map((motion) =>
@@ -462,7 +462,7 @@ describe('AgenticConsole', () => {
     });
     expect(document.body.textContent).not.toContain('README.md');
     expect(document.body.textContent).not.toContain('tool output');
-    fireEvent.click(screen.getByRole('button', { name: 'Show activity details' }));
+    fireEvent.click(screen.getByRole('button', { name: /show activity details/i }));
     expect(screen.getByText('Read file')).toBeTruthy();
     expect(document.body.textContent).not.toContain('README.md');
     expect(document.body.textContent).not.toContain('tool output');

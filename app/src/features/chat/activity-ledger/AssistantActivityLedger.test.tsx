@@ -57,6 +57,68 @@ describe('AssistantActivityLedger', () => {
     expect(document.body.textContent).not.toContain('secret-command');
   });
 
+  it('shows the terminal duration and total actions in the continuous-response summary', () => {
+    render(
+      <AssistantActivityLedger
+        message={assistant([
+          {
+            kind: 'tool_call',
+            call_id: 'read-one',
+            tool: 'read_file',
+            args: { path: 'private-path.ts' },
+          },
+          { kind: 'tool_result', call_id: 'read-one', result: { exitCode: 0 } },
+        ])}
+        correlatedEvents={[
+          {
+            id: 'search-one',
+            chatId: 'chat-ledger-ui',
+            kind: 'url',
+            status: 'done',
+            title: 'Opaque search activity',
+            ts: 100,
+            startedAt: 100,
+            endedAt: 61_100,
+          },
+        ]}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Show activity details Worked for 1m 1s · 2 actions',
+      }),
+    ).toBeTruthy();
+    expect(document.body.textContent).not.toContain('private-path.ts');
+  });
+
+  it('keeps an authoritative active turn live during a quiet gap between receipts', () => {
+    render(
+      <AssistantActivityLedger
+        active
+        message={assistant([])}
+        correlatedEvents={[
+          {
+            id: 'completed-read',
+            chatId: 'chat-ledger-ui',
+            kind: 'file',
+            status: 'done',
+            title: 'Opaque file activity',
+            filePath: 'src/a.ts',
+            ts: 100,
+            startedAt: 100,
+            endedAt: 1_100,
+          },
+        ]}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Show activity details Working · 1 action' }),
+    ).toBeTruthy();
+    expect(document.body.textContent).not.toContain('Worked for');
+  });
+
   it('provides keyboard-accessible filters and bounds mounted detail rows', () => {
     const events: ChatActivityEvent[] = Array.from(
       { length: DETAIL_PAGE_SIZE + 12 },

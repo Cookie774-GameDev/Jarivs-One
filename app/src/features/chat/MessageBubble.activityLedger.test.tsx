@@ -42,7 +42,7 @@ describe('MessageBubble assistant activity ledger', () => {
 
     expect(screen.getAllByText('Assistant')).toHaveLength(1);
     expect(screen.getByText('I checked the project.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Show activity details' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /show activity details/i })).toBeTruthy();
     expect(document.body.textContent).not.toContain('private-command');
     expect(document.body.textContent).not.toContain('private-output');
   });
@@ -72,8 +72,8 @@ describe('MessageBubble assistant activity ledger', () => {
         />
       </TooltipProvider>,
     );
-    expect(screen.getByRole('button', { name: 'Show activity details' })).toBeTruthy();
-    expect(screen.getByText('Activity')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /show activity details/i })).toBeTruthy();
+    expect(screen.getByText('Activity · 1 action')).toBeTruthy();
     expect(document.body.textContent).not.toContain('hidden-payload');
     expect(document.body.textContent).not.toContain('hidden-result');
   });

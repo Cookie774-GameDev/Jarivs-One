@@ -39,6 +39,18 @@ function metric(label: string, value: number): string {
   return `${label} ${formatCount(value)}`;
 }
 
+function formatDuration(durationMs: number): string {
+  const seconds = Math.max(0, Math.round(durationMs / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return remainingSeconds === 0 ? `${minutes}m` : `${minutes}m ${remainingSeconds}s`;
+}
+
+function actionLabel(value: number): string {
+  return `${formatCount(value)} ${value === 1 ? 'action' : 'actions'}`;
+}
+
 function commandMetric(value: number): string {
   return `Ran ${formatCount(value)} ${value === 1 ? 'command' : 'commands'}`;
 }
@@ -97,6 +109,7 @@ export function AssistantActivityLedger({
   const [previewPath, setPreviewPath] = React.useState<string | null>(null);
   const [inspectorHeight, setInspectorHeight] = React.useState<number | undefined>();
   const controlLabelId = React.useId();
+  const titleId = React.useId();
   const metricsId = React.useId();
   const resizeHelpId = React.useId();
   const hasUsage = ledger.usage.input.value !== null || ledger.usage.output.value !== null;
@@ -133,7 +146,12 @@ export function AssistantActivityLedger({
   const runningReceipt = [...ledger.receipts]
     .reverse()
     .find((receipt) => receipt.status === 'running' || receipt.status === 'pending');
-  const live = active && ledger.status === 'running';
+  const live = active;
+  const continuousResponseTitle = live
+    ? `${ledger.currentOperation ?? 'Working'} · ${actionLabel(ledger.actionsTotal)}`
+    : ledger.durationMs !== undefined
+      ? `Worked for ${formatDuration(ledger.durationMs)} · ${actionLabel(ledger.actionsTotal)}`
+      : `Activity · ${actionLabel(ledger.actionsTotal)}`;
   const motion = resolveAgentMotion({
     status: live ? 'running' : 'done',
     activityKind:
@@ -153,7 +171,7 @@ export function AssistantActivityLedger({
         type="button"
         className="assistant-activity-ledger__disclosure"
         aria-expanded={expanded}
-        aria-labelledby={controlLabelId}
+        aria-labelledby={`${controlLabelId} ${titleId}`}
         aria-describedby={metricsId}
         onClick={() => setExpanded((value) => !value)}
       >
@@ -161,8 +179,8 @@ export function AssistantActivityLedger({
           {expanded ? 'Hide activity details' : 'Show activity details'}
         </span>
         <PerceptibleAgentMotionIndicator motion={motion} compact />
-        <span className="assistant-activity-ledger__title">
-          {live ? (ledger.currentOperation ?? 'Working') : 'Activity'}
+        <span id={titleId} className="assistant-activity-ledger__title">
+          {continuousResponseTitle}
         </span>
         <span id={metricsId} className="assistant-activity-ledger__metrics">
           {ledger.readsTotal > 0 ? <span>{metric('Read', ledger.readsTotal)}</span> : null}
