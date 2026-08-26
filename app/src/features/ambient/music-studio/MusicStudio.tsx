@@ -12,8 +12,11 @@ import {
   Plus,
   RotateCcw,
   Save,
+  Scissors,
   Search,
   Trash2,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,7 +32,12 @@ import { toast } from '@/components/ui/toast';
 import { useUIStore } from '@/stores/ui';
 import { AmbientAudioEngine, type AmbientPlaybackProgress } from '../ambientAudio';
 import { shouldAmbientMusicPlay } from '../ambientPlayback';
-import { MUSIC_LIBRARY, MUSIC_LIBRARY_TOTAL_BYTES, type MusicLibraryTrack } from './catalog';
+import {
+  findMusicTrack,
+  MUSIC_STUDIO_LIBRARY,
+  MUSIC_STUDIO_TOTAL_BYTES,
+  type MusicLibraryTrack,
+} from './catalog';
 import { TrackArtwork } from './TrackArtwork';
 import {
   MUSIC_SPEEDS,
@@ -51,6 +59,18 @@ function formatTime(seconds: number): string {
   return `${minutes}:${Math.floor(safe % 60)
     .toString()
     .padStart(2, '0')}`;
+}
+
+function waveformHeights(seed: string): number[] {
+  let value = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    value ^= seed.charCodeAt(index);
+    value = Math.imul(value, 16777619);
+  }
+  return Array.from({ length: 18 }, (_, index) => {
+    value = Math.imul(value ^ (index + 1), 2246822519);
+    return 22 + (Math.abs(value) % 70);
+  });
 }
 
 function restoreAmbientProject(): void {
@@ -96,9 +116,21 @@ export function MusicStudio({
     () => clips[0]?.id ?? null,
   );
   const [draggedClipId, setDraggedClipId] = React.useState<string | null>(null);
+  const [timelineZoom, setTimelineZoom] = React.useState(1);
   const previewTimer = React.useRef<number | null>(null);
   const fileInput = React.useRef<HTMLInputElement>(null);
   const selectedClip = clips.find((clip) => clip.id === selectedClipId) ?? clips[0] ?? null;
+  const cloudContentInMix = React.useMemo(
+    () =>
+      new Set(
+        clips.flatMap((clip) => {
+          if (clip.source !== 'cloud') return [];
+          const digest = findMusicTrack(clip.trackId ?? '')?.sha256;
+          return digest ? [digest] : [];
+        }),
+      ),
+    [clips],
+  );
   const selectedIndex = selectedClip ? clips.findIndex((clip) => clip.id === selectedClip.id) : -1;
   const selectedPreviewActive = Boolean(
     selectedClip &&
@@ -112,6 +144,7 @@ export function MusicStudio({
     previewStart,
     Math.min(playbackProgress.currentTime, previewEnd),
   );
+  const timelineClipWidth = Math.round(144 * timelineZoom);
 
   const stopPreview = React.useCallback(() => {
     if (previewTimer.current !== null) window.clearTimeout(previewTimer.current);
@@ -179,8 +212,8 @@ export function MusicStudio({
   const filtered = React.useMemo(() => {
     const needle = query.trim().toLowerCase();
     return needle
-      ? MUSIC_LIBRARY.filter((track) => track.name.toLowerCase().includes(needle))
-      : MUSIC_LIBRARY;
+      ? MUSIC_STUDIO_LIBRARY.filter((track) => track.name.toLowerCase().includes(needle))
+      : MUSIC_STUDIO_LIBRARY;
   }, [query]);
 
   const remove = (clip: MusicClip) => {
@@ -226,8 +259,8 @@ export function MusicStudio({
             <Music2 className="h-5 w-5 text-accent-copper" /> VibeSpace Music Studio
           </DialogTitle>
           <DialogDescription>
-            Build one continuous ambience mix from 64 cloud tracks or your own device audio. Local
-            files never upload automatically.
+            Build one continuous ambience mix from {MUSIC_STUDIO_LIBRARY.length} unique cloud songs
+            or your own device audio. Local files never upload automatically.
           </DialogDescription>
         </DialogHeader>
 
@@ -243,13 +276,13 @@ export function MusicStudio({
                   aria-label="Search cloud music"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search 64 songs"
+                  placeholder={`Search ${MUSIC_STUDIO_LIBRARY.length} songs`}
                   className="h-9 w-full rounded-md border border-border bg-background pl-9 pr-3 text-sm"
                 />
               </div>
               <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                <span>{MUSIC_LIBRARY.length} cloud songs</span>
-                <span>{formatBytes(MUSIC_LIBRARY_TOTAL_BYTES)}</span>
+                <span>{MUSIC_STUDIO_LIBRARY.length} unique cloud songs</span>
+                <span>{formatBytes(MUSIC_STUDIO_TOTAL_BYTES)}</span>
               </div>
               <input
                 ref={fileInput}
@@ -277,36 +310,42 @@ export function MusicStudio({
               </Button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-2">
-              {filtered.map((track) => (
-                <div
-                  key={track.id}
-                  className="mb-1 flex items-center gap-1 rounded-lg border border-transparent p-1 hover:border-border hover:bg-background"
-                >
-                  <TrackArtwork seed={track.id} name={track.name} className="h-10 w-10" />
-                  <button
-                    type="button"
-                    className="min-w-0 flex-1 px-2 py-1.5 text-left"
-                    onClick={() => preview(track)}
-                    aria-label={`${previewingId === track.id ? 'Pause' : 'Preview'} ${track.name}`}
+              {filtered.map((track) => {
+                const alreadyInMix = cloudContentInMix.has(track.sha256);
+                return (
+                  <div
+                    key={track.id}
+                    className="mb-1 flex items-center gap-1 rounded-lg border border-transparent p-1 hover:border-border hover:bg-background"
                   >
-                    <span className="block truncate text-xs font-medium text-foreground">
-                      {track.name}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {formatBytes(track.bytes)} · click to preview
-                    </span>
-                  </button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    aria-label={`Add ${track.name} to mix`}
-                    onClick={() => useMusicProjectStore.getState().addCloudTrack(track.id)}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
+                    <TrackArtwork seed={track.id} name={track.name} className="h-10 w-10" />
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 px-2 py-1.5 text-left"
+                      onClick={() => preview(track)}
+                      aria-label={`${previewingId === track.id ? 'Pause' : 'Preview'} ${track.name}`}
+                    >
+                      <span className="block truncate text-xs font-medium text-foreground">
+                        {track.name}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {formatBytes(track.bytes)} · click to preview
+                      </span>
+                    </button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      aria-label={
+                        alreadyInMix ? `${track.name} already in mix` : `Add ${track.name} to mix`
+                      }
+                      disabled={alreadyInMix}
+                      onClick={() => useMusicProjectStore.getState().addCloudTrack(track.id)}
+                    >
+                      {alreadyInMix ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
           </section>
 
@@ -378,73 +417,172 @@ export function MusicStudio({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="overflow-hidden rounded-xl border border-border bg-paper-soft shadow-inner">
-                    <div className="flex h-7 min-w-max items-end gap-2 border-b border-border/70 bg-background/40 px-3 pb-1 text-[9px] text-muted-foreground">
-                      {clips.map((clip, index) => (
-                        <span key={clip.id} className="w-36 shrink-0">
-                          {index + 1}
-                        </span>
-                      ))}
+                  <div className="overflow-hidden rounded-xl border border-border bg-[#111318] shadow-inner">
+                    <div className="flex h-10 items-center gap-2 border-b border-white/10 px-3 text-[10px] text-white/65">
+                      <Scissors className="h-3.5 w-3.5 text-accent-copper" />
+                      <span className="font-semibold uppercase tracking-[0.16em] text-white/85">
+                        Timeline
+                      </span>
+                      <span>1 audio lane</span>
+                      <div className="ml-auto flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          aria-label="Zoom timeline out"
+                          onClick={() => setTimelineZoom((value) => Math.max(0.65, value - 0.1))}
+                          className="grid h-6 w-6 place-items-center rounded text-white/70 hover:bg-white/10 hover:text-white"
+                        >
+                          <ZoomOut className="h-3.5 w-3.5" />
+                        </button>
+                        <input
+                          type="range"
+                          aria-label="Music timeline zoom"
+                          min="0.65"
+                          max="1.8"
+                          step="0.05"
+                          value={timelineZoom}
+                          onChange={(event) => setTimelineZoom(Number(event.target.value))}
+                          className="h-1 w-24 cursor-pointer accent-accent-copper"
+                        />
+                        <button
+                          type="button"
+                          aria-label="Zoom timeline in"
+                          onClick={() => setTimelineZoom((value) => Math.min(1.8, value + 0.1))}
+                          className="grid h-6 w-6 place-items-center rounded text-white/70 hover:bg-white/10 hover:text-white"
+                        >
+                          <ZoomIn className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="overflow-x-auto p-3">
-                      <ol
-                        className="flex min-w-max items-stretch gap-2"
-                        aria-label="Mix clips timeline"
-                      >
-                        {clips.map((clip, index) => {
-                          const selected = clip.id === selectedClip?.id;
-                          return (
-                            <li
-                              key={clip.id}
-                              data-testid="music-timeline-clip"
-                              draggable
-                              onDragStart={() => setDraggedClipId(clip.id)}
-                              onDragEnd={() => setDraggedClipId(null)}
-                              onDragOver={(event) => event.preventDefault()}
-                              onDrop={(event) => {
-                                event.preventDefault();
-                                if (draggedClipId)
-                                  useMusicProjectStore.getState().moveClipTo(draggedClipId, index);
-                                setDraggedClipId(null);
-                              }}
-                              className={`relative w-36 shrink-0 rounded-xl border-2 p-1.5 transition-colors ${
-                                selected
-                                  ? 'border-accent-copper bg-accent-copper/10 shadow-[inset_0_0_0_1px_hsl(var(--accent-copper))]'
-                                  : 'border-border bg-paper hover:border-accent-copper/60'
-                              }`}
-                            >
-                              <GripVertical
-                                aria-hidden="true"
-                                className="absolute left-1 top-1 z-10 h-4 w-4 text-white/80 drop-shadow"
-                              />
-                              {selected ? (
-                                <span className="absolute right-2 top-2 z-10 flex items-center gap-0.5 rounded-full bg-accent-copper px-1.5 py-0.5 text-[9px] font-bold text-black shadow">
-                                  <Check className="h-2.5 w-2.5" /> Selected
-                                </span>
-                              ) : null}
-                              <button
-                                type="button"
-                                aria-label={`Edit ${clip.name}`}
-                                aria-pressed={selected}
-                                onClick={() => selectAndPreviewClip(clip)}
-                                className="block w-full rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-accent-copper focus-visible:ring-offset-2"
+                    <div className="overflow-x-auto">
+                      <div className="min-w-max">
+                        <div className="flex h-7 items-end border-b border-white/10 bg-black/20 pb-1 text-[9px] text-white/45">
+                          <span className="sticky left-0 z-20 w-14 shrink-0 bg-[#111318] px-2">
+                            Track
+                          </span>
+                          <div className="flex gap-1 px-2">
+                            {clips.map((clip, index) => (
+                              <span
+                                key={clip.id}
+                                className="shrink-0 border-l border-white/15 pl-1"
+                                style={{ width: timelineClipWidth }}
                               >
-                                <TrackArtwork
-                                  seed={clip.trackId ?? clip.id}
-                                  name={clip.name}
-                                  className="aspect-square w-full"
-                                />
-                                <span className="mt-1.5 block truncate px-0.5 text-xs font-semibold text-foreground">
-                                  {clip.name}
-                                </span>
-                                <span className="block px-0.5 text-[9px] text-muted-foreground">
-                                  {clip.speed}× · {clip.trimStart}s → {clip.trimEnd ?? 'full'}
-                                </span>
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ol>
+                                {String(index + 1).padStart(2, '0')}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex min-h-24 items-stretch bg-[linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[length:18px_100%] py-2">
+                          <div className="sticky left-0 z-20 grid w-14 shrink-0 place-items-center border-r border-white/10 bg-[#15181e] text-[10px] font-bold tracking-widest text-accent-copper">
+                            A1
+                          </div>
+                          <ol
+                            className="flex min-w-max items-stretch gap-1 px-2"
+                            aria-label="Mix clips timeline"
+                          >
+                            {clips.map((clip, index) => {
+                              const selected = clip.id === selectedClip?.id;
+                              const active =
+                                previewingId === 'mix' &&
+                                playbackProgress.clipId === clip.id &&
+                                playbackProgress.duration > 0;
+                              const playheadPercent = active
+                                ? Math.max(
+                                    0,
+                                    Math.min(
+                                      100,
+                                      (playbackProgress.currentTime / playbackProgress.duration) *
+                                        100,
+                                    ),
+                                  )
+                                : 0;
+                              return (
+                                <li
+                                  key={clip.id}
+                                  data-testid="music-timeline-clip"
+                                  data-zoom={timelineZoom}
+                                  draggable
+                                  onDragStart={() => setDraggedClipId(clip.id)}
+                                  onDragEnd={() => setDraggedClipId(null)}
+                                  onDragOver={(event) => event.preventDefault()}
+                                  onDrop={(event) => {
+                                    event.preventDefault();
+                                    if (draggedClipId)
+                                      useMusicProjectStore
+                                        .getState()
+                                        .moveClipTo(draggedClipId, index);
+                                    setDraggedClipId(null);
+                                  }}
+                                  style={{ width: timelineClipWidth }}
+                                  className={`relative h-20 shrink-0 overflow-hidden rounded-md border transition-[width,border-color,background-color] ${
+                                    selected
+                                      ? 'border-accent-copper bg-accent-copper/20 shadow-[inset_0_0_0_1px_hsl(var(--accent-copper))]'
+                                      : 'border-white/15 bg-[#252a33] hover:border-accent-copper/60'
+                                  }`}
+                                >
+                                  <GripVertical
+                                    aria-hidden="true"
+                                    className="absolute left-1 top-1 z-10 h-3.5 w-3.5 text-white/60"
+                                  />
+                                  {selected ? (
+                                    <span className="absolute right-1.5 top-1.5 z-10 flex items-center gap-0.5 rounded bg-accent-copper px-1 py-0.5 text-[8px] font-bold text-black">
+                                      <Check className="h-2 w-2" /> Selected
+                                    </span>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    aria-label={`Edit ${clip.name}`}
+                                    aria-pressed={selected}
+                                    onClick={() => selectAndPreviewClip(clip)}
+                                    className="flex h-full w-full flex-col p-1.5 pt-6 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-copper"
+                                  >
+                                    <span className="flex min-w-0 items-center gap-1.5">
+                                      <TrackArtwork
+                                        seed={clip.trackId ?? clip.id}
+                                        name={clip.name}
+                                        className="h-7 w-7 shrink-0 rounded"
+                                      />
+                                      <span className="min-w-0">
+                                        <span className="block truncate text-[10px] font-semibold text-white">
+                                          {clip.name}
+                                        </span>
+                                        <span className="block truncate text-[8px] text-white/55">
+                                          {clip.speed}× · {clip.trimStart}s →{' '}
+                                          {clip.trimEnd ?? 'full'}
+                                        </span>
+                                      </span>
+                                    </span>
+                                    <span
+                                      data-testid="music-clip-waveform"
+                                      aria-hidden="true"
+                                      className="mt-auto flex h-4 items-center gap-px overflow-hidden"
+                                    >
+                                      {waveformHeights(clip.trackId ?? clip.id).map(
+                                        (height, barIndex) => (
+                                          <span
+                                            key={barIndex}
+                                            className="min-w-px flex-1 rounded-full bg-accent-copper/70"
+                                            style={{ height: `${height}%` }}
+                                          />
+                                        ),
+                                      )}
+                                    </span>
+                                  </button>
+                                  {active ? (
+                                    <span
+                                      data-testid="music-timeline-playhead"
+                                      aria-label={`Playhead for ${clip.name}`}
+                                      style={{ left: `${playheadPercent}%` }}
+                                      className="pointer-events-none absolute inset-y-0 z-20 w-px bg-white shadow-[0_0_5px_rgba(255,255,255,0.9)]"
+                                    >
+                                      <span className="absolute -left-1 -top-0.5 h-2 w-2 rotate-45 bg-white" />
+                                    </span>
+                                  ) : null}
+                                </li>
+                              );
+                            })}
+                          </ol>
+                        </div>
+                      </div>
                     </div>
                   </div>
 

@@ -18,6 +18,16 @@ export const MUSIC_LIBRARY: readonly MusicLibraryTrack[] = MUSIC_LIBRARY_TRACKS.
   url: `${MUSIC_DELIVERY_BASE}/${encodeURIComponent(track.objectKey.split('/').at(-1)!)}`,
 }));
 
+export const MUSIC_STUDIO_LIBRARY: readonly MusicLibraryTrack[] = MUSIC_LIBRARY.filter(
+  (track, index, tracks) =>
+    tracks.findIndex((candidate) => candidate.sha256 === track.sha256) === index,
+);
+
+export const MUSIC_STUDIO_TOTAL_BYTES = MUSIC_STUDIO_LIBRARY.reduce(
+  (total, track) => total + track.bytes,
+  0,
+);
+
 export { MUSIC_LIBRARY_TOTAL_BYTES };
 
 export function findMusicTrack(id: string): MusicLibraryTrack | undefined {

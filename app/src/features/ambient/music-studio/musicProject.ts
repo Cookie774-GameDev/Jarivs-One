@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
-import { findMusicTrack, MUSIC_LIBRARY } from './catalog';
+import { findMusicTrack, MUSIC_STUDIO_LIBRARY } from './catalog';
 
 export const MUSIC_PROJECT_MAX_CLIPS = 100;
 export const MUSIC_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
@@ -27,7 +27,7 @@ export interface MusicProjectSnapshot {
 }
 
 export function createDefaultMusicMix(): MusicClip[] {
-  return MUSIC_LIBRARY.map((track) => ({
+  return MUSIC_STUDIO_LIBRARY.map((track) => ({
     id: `default-${track.id}`,
     source: 'cloud' as const,
     trackId: track.id,
@@ -38,15 +38,25 @@ export function createDefaultMusicMix(): MusicClip[] {
   }));
 }
 
+export function dedupeMusicClips(clips: readonly MusicClip[]): MusicClip[] {
+  const cloudContent = new Set<string>();
+  return clips.filter((clip) => {
+    if (clip.source !== 'cloud') return true;
+    const digest = findMusicTrack(clip.trackId ?? '')?.sha256;
+    if (!digest || cloudContent.has(digest)) return false;
+    cloudContent.add(digest);
+    return true;
+  });
+}
+
 export function restoreMusicProjectSnapshot(
   persisted: Partial<MusicProjectSnapshot> | undefined,
   current: MusicProjectSnapshot,
 ): MusicProjectSnapshot {
   const restoredClips = Array.isArray(persisted?.clips)
-    ? persisted.clips
-        .map(normalizeMusicClip)
-        .filter((clip): clip is MusicClip => Boolean(clip))
-        .slice(0, MUSIC_PROJECT_MAX_CLIPS)
+    ? dedupeMusicClips(
+        persisted.clips.map(normalizeMusicClip).filter((clip): clip is MusicClip => Boolean(clip)),
+      ).slice(0, MUSIC_PROJECT_MAX_CLIPS)
     : current.clips;
   const untouchedEmpty = restoredClips.length === 0 && persisted?.savedAt == null;
   return {
@@ -119,7 +129,16 @@ export const useMusicProjectStore = create<MusicProjectState>()(
       savedAt: null,
       addCloudTrack: (trackId) => {
         const track = findMusicTrack(trackId);
-        if (!track || get().clips.length >= MUSIC_PROJECT_MAX_CLIPS) return false;
+        if (
+          !track ||
+          get().clips.length >= MUSIC_PROJECT_MAX_CLIPS ||
+          get().clips.some(
+            (clip) =>
+              clip.source === 'cloud' &&
+              findMusicTrack(clip.trackId ?? '')?.sha256 === track.sha256,
+          )
+        )
+          return false;
         set((state) => ({
           clips: [
             ...state.clips,

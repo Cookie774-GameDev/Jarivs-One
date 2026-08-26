@@ -41,17 +41,46 @@ describe('music project', () => {
     expect(useMusicProjectStore.getState().savedAt).toEqual(expect.any(Number));
   });
 
-  it('starts an untouched mix with all 64 cloud songs in catalog order', () => {
+  it('starts an untouched mix with every unique cloud song once in catalog order', () => {
     const defaults = createDefaultMusicMix();
-    expect(defaults).toHaveLength(64);
-    expect(defaults.map((clip) => clip.trackId)).toEqual(MUSIC_LIBRARY.map((track) => track.id));
-    expect(new Set(defaults.map((clip) => clip.id)).size).toBe(64);
+    expect(defaults).toHaveLength(63);
+    expect(new Set(defaults.map((clip) => musicClipUrl(clip))).size).toBe(63);
+    expect(new Set(defaults.map((clip) => clip.id)).size).toBe(63);
 
     const restored = restoreMusicProjectSnapshot(
       { clips: [], savedAt: null },
       { name: 'My Vibe Mix', clips: defaults, loop: true, enabledForAmbient: false, savedAt: null },
     );
-    expect(restored.clips).toHaveLength(64);
+    expect(restored.clips).toHaveLength(63);
+  });
+
+  it('keeps the first edited clip while removing restored byte-identical cloud duplicates', () => {
+    const copies = MUSIC_LIBRARY.filter((track) => track.name.startsWith('Play No Games'));
+    const persisted = copies.map((track, index) => ({
+      id: `copy-${index}`,
+      source: 'cloud' as const,
+      trackId: track.id,
+      name: track.name,
+      trimStart: index === 0 ? 7 : 0,
+      trimEnd: null,
+      speed: 1,
+    }));
+
+    const restored = restoreMusicProjectSnapshot(
+      { clips: persisted, savedAt: 123 },
+      { name: 'My Vibe Mix', clips: [], loop: true, enabledForAmbient: false, savedAt: null },
+    );
+
+    expect(restored.clips).toHaveLength(1);
+    expect(restored.clips[0]).toMatchObject({ id: 'copy-0', trimStart: 7 });
+  });
+
+  it('does not append the same cloud recording twice, including alias object IDs', () => {
+    const copies = MUSIC_LIBRARY.filter((track) => track.name.startsWith('Play No Games'));
+    expect(useMusicProjectStore.getState().addCloudTrack(copies[0]!.id)).toBe(true);
+    expect(useMusicProjectStore.getState().addCloudTrack(copies[0]!.id)).toBe(false);
+    expect(useMusicProjectStore.getState().addCloudTrack(copies[1]!.id)).toBe(false);
+    expect(useMusicProjectStore.getState().clips).toHaveLength(1);
   });
 
   it('preserves an intentional saved clear instead of recreating the default mix', () => {

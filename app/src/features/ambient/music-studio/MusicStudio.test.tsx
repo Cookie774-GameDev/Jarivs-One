@@ -46,7 +46,7 @@ describe('MusicStudio', () => {
 
   it('searches, previews, adds, edits, reorders, and saves a cloud track', () => {
     render(<MusicStudio open onOpenChange={vi.fn()} />);
-    expect(screen.getByText('64 cloud songs')).toBeTruthy();
+    expect(screen.getByText('63 unique cloud songs')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Search cloud music'), {
       target: { value: "Ain't No Time" },
     });
@@ -73,14 +73,20 @@ describe('MusicStudio', () => {
     useMusicProjectStore.setState({ clips: createDefaultMusicMix(), savedAt: null });
     render(<MusicStudio open onOpenChange={vi.fn()} />);
 
-    expect(screen.getByText('64 clips in one continuous track')).toBeTruthy();
+    expect(screen.getByText('63 clips in one continuous track')).toBeTruthy();
     const first = screen.getByRole('button', { name: /Edit Ain't No Time Like Now/ });
     fireEvent.click(first);
     expect(audio.playProject).toHaveBeenCalled();
     expect(screen.getByRole('heading', { name: "Ain't No Time Like Now - BLAEKER" })).toBeTruthy();
     expect(screen.getByLabelText('Selected clip start (seconds)')).toBeTruthy();
     const timeline = screen.getAllByTestId('music-timeline-clip');
-    expect(timeline).toHaveLength(64);
+    expect(timeline).toHaveLength(63);
+    expect(screen.getByText('A1')).toBeTruthy();
+    expect(screen.getAllByTestId('music-clip-waveform')).toHaveLength(63);
+    const zoom = screen.getByLabelText('Music timeline zoom');
+    expect(zoom.getAttribute('value')).toBe('1');
+    fireEvent.change(zoom, { target: { value: '1.5' } });
+    expect(timeline[0]!.getAttribute('data-zoom')).toBe('1.5');
     expect(within(timeline[0]!).getByText('Selected')).toBeTruthy();
     expect(first.getAttribute('aria-pressed')).toBe('true');
 
@@ -95,6 +101,21 @@ describe('MusicStudio', () => {
         .map((clip) => clip.id),
     ).toEqual([originalIds[1], originalIds[2], originalIds[0]]);
   }, 20_000);
+
+  it('shows a bounded playhead on the active mix clip', () => {
+    useMusicProjectStore.setState({ clips: createDefaultMusicMix().slice(0, 2), savedAt: null });
+    render(<MusicStudio open onOpenChange={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Play mix' }));
+    const first = useMusicProjectStore.getState().clips[0]!;
+    act(() => {
+      audio.progressListener?.({ clipId: first.id, currentTime: 30, duration: 120 });
+    });
+
+    const playhead = screen.getByTestId('music-timeline-playhead');
+    expect(playhead.getAttribute('style')).toContain('left: 25%');
+    expect(playhead.getAttribute('aria-label')).toContain(first.name);
+  });
 
   it('shows a seekable start-to-finish timeline only for a selected-song preview', () => {
     useMusicProjectStore.setState({ clips: createDefaultMusicMix().slice(0, 1), savedAt: null });
