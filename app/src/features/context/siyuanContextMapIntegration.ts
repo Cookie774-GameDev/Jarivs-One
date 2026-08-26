@@ -33,6 +33,7 @@ import {
 import {
   accountForSiyuanRendererOfflineTime,
   checkpointSiyuanIndexJob,
+  readSiyuanIndexEntries,
   readSiyuanIndexJob,
   replaceSiyuanIndexEntries,
   updateSiyuanIndexJobStatus,
@@ -434,20 +435,76 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
         await checkpointSiyuanIndexJob({ job: durableJob });
       }
     }
+    const previousEntriesForForcedReconciliation =
+      nativeFilesystemAvailable && durableJob && options.forceReconcile === true
+        ? await readSiyuanIndexEntries(projectId, record.id)
+        : null;
     let index = nativeFilesystemAvailable
       ? await scanSiyuanFilesystemIndex(record, manifest.summaryPolicy, {
           signal: options.signal,
           control: options.control,
           excludedPaths: manifest.sourcePolicy.excludedPaths,
           onProgress: options.onIndexProgress,
-          durableJob: { accountId: options.accountId ?? null, projectId, mapId: record.id },
+          durableJob:
+            options.forceReconcile === true
+              ? undefined
+              : { accountId: options.accountId ?? null, projectId, mapId: record.id },
           list: options.list,
         })
       : buildSiyuanSafeIndex(record, manifest.summaryPolicy, manifest.sourcePolicy.excludedPaths);
+    let forcedChangedEntries: SiyuanSafeIndexEntry[] = [];
+    if (durableJob && previousEntriesForForcedReconciliation) {
+      await options.control?.checkpoint(options.signal);
+      if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+      const previousById = new Map(
+        previousEntriesForForcedReconciliation.map((entry) => [entry.nodeId, entry]),
+      );
+      const reconciledEntries = index.entries.map((entry) => {
+        const previous = previousById.get(entry.nodeId);
+        return previous && sameSiyuanEntryRevision(previous, entry)
+          ? { ...entry, summary: previous.summary, summaryState: previous.summaryState }
+          : entry;
+      });
+      forcedChangedEntries = reconciledEntries.filter((entry) => {
+        const previous = previousById.get(entry.nodeId);
+        return !previous || !sameSiyuanEntryRevision(previous, entry);
+      });
+      index = Object.freeze({
+        ...index,
+        entries: Object.freeze(reconciledEntries) as SiyuanSafeIndexEntry[],
+        summarized: reconciledEntries.filter((entry) => entry.summaryState === 'completed').length,
+      });
+      const reconciledJob: SiyuanIndexJobRecord = {
+        ...durableJob,
+        phase: 'creating_nodes',
+        indexed: reconciledEntries.length,
+        excluded: index.excluded,
+        unreadable: index.unreadable,
+        summarized: index.summarized,
+        updatedAt: Date.now(),
+        completedAt: null,
+        reconciledAt: Date.now(),
+      };
+      await options.control?.checkpoint(options.signal);
+      if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+      const persistedReconciledJob = await replaceSiyuanIndexEntries(
+        projectId,
+        record.id,
+        reconciledEntries,
+        reconciledJob,
+      );
+      durableJob = persistedReconciledJob ?? reconciledJob;
+      if (durableJob.status !== 'running') {
+        throw new Error(
+          durableJob.status === 'cancelled' ? 'siyuan_index_cancelled' : 'siyuan_index_paused',
+        );
+      }
+    }
     const bindings: Record<string, string> = {
       ...manifest.nodeBindings,
       ...(await readSiyuanNodeBindings(projectId, record.id)),
     };
+    const previouslyBoundNodeIds = new Set(Object.keys(bindings));
     durableJob = nativeFilesystemAvailable ? await readSiyuanIndexJob(projectId, record.id) : null;
     if (durableJob) {
       const resumeNow = Date.now();
@@ -546,7 +603,54 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
         await checkpointSiyuanIndexJob({ job: durableJob });
       }
     }
-    if (durableJob && needsResumeReconciliation) {
+    for (const entry of forcedChangedEntries.filter((candidate) =>
+      previouslyBoundNodeIds.has(candidate.nodeId),
+    )) {
+      await options.control?.checkpoint(options.signal);
+      if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+      const documentId = bindings[entry.nodeId];
+      if (!documentId) continue;
+      const parentDocumentId = entry.parentNodeId
+        ? (bindings[entry.parentNodeId] ?? rootDocument.id)
+        : rootDocument.id;
+      const markdown = nodeDocumentMarkdown(record.id, entry, parentDocumentId);
+      try {
+        const current = await port.getBlock(projectId, documentId);
+        if (current.markdown !== markdown) {
+          await port.updateManagedDocument(projectId, current.id, current.markdown, markdown);
+        }
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== 'siyuan_block_not_found') throw error;
+        delete bindings[entry.nodeId];
+        await deleteSiyuanNodeBindings(projectId, record.id, [entry.nodeId]);
+        let recovered;
+        try {
+          recovered = await port.createManagedDocument(
+            projectId,
+            `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
+            markdown,
+          );
+        } catch (createError) {
+          const existing = await port.readManagedDocument(projectId, {
+            query: entry.nodeId,
+            marker: nodeMarker(record.id, entry.nodeId),
+          });
+          if (!existing) throw createError;
+          recovered =
+            existing.markdown === markdown
+              ? existing
+              : await port.updateManagedDocument(
+                  projectId,
+                  existing.id,
+                  existing.markdown,
+                  markdown,
+                );
+        }
+        bindings[entry.nodeId] = recovered.id;
+        await writeSiyuanNodeBindings(projectId, record.id, { [entry.nodeId]: recovered.id });
+      }
+    }
+    if (durableJob && needsResumeReconciliation && options.forceReconcile !== true) {
       await options.control?.checkpoint(options.signal);
       if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
       const freshIndex = await scanSiyuanFilesystemIndex(record, manifest.summaryPolicy, {
@@ -662,6 +766,39 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
         await checkpointSiyuanIndexJob({ job: durableJob });
       }
     }
+    const removedUnboundCandidate = previousEntriesForForcedReconciliation?.find(
+      (entry) => !activeNodeIds.has(entry.nodeId) && !bindings[entry.nodeId],
+    );
+    if (removedUnboundCandidate) {
+      await options.control?.checkpoint(options.signal);
+      if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+      const marker = nodeMarker(record.id, removedUnboundCandidate.nodeId);
+      const stale = await port.readManagedDocument(projectId, {
+        query: removedUnboundCandidate.nodeId,
+        marker,
+      });
+      if (stale?.markdown.includes(marker)) {
+        await port.deleteManagedDocument(projectId, stale.id, stale.markdown);
+      }
+    }
+    const removedNodeIds: string[] = [];
+    for (const [nodeId, documentId] of Object.entries(bindings)) {
+      await options.control?.checkpoint(options.signal);
+      if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+      if (activeNodeIds.has(nodeId)) continue;
+      try {
+        const stale = await port.getBlock(projectId, documentId);
+        if (stale.markdown.includes(nodeMarker(record.id, nodeId))) {
+          await port.deleteManagedDocument(projectId, stale.id, stale.markdown);
+          delete bindings[nodeId];
+          removedNodeIds.push(nodeId);
+        }
+      } catch {
+        // Preserve the binding so a transient runtime/permission failure is
+        // retried instead of orphaning managed SiYuan evidence.
+      }
+    }
+    await deleteSiyuanNodeBindings(projectId, record.id, removedNodeIds);
     if (durableJob) {
       durableJob = {
         ...durableJob,
@@ -761,24 +898,6 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
         summarized: summaryResult.job.summarized,
       });
     }
-    const removedNodeIds: string[] = [];
-    for (const [nodeId, documentId] of Object.entries(bindings)) {
-      await options.control?.checkpoint(options.signal);
-      if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
-      if (activeNodeIds.has(nodeId)) continue;
-      try {
-        const stale = await port.getBlock(projectId, documentId);
-        if (stale.markdown.includes(nodeMarker(record.id, nodeId))) {
-          await port.deleteManagedDocument(projectId, stale.id, stale.markdown);
-          delete bindings[nodeId];
-          removedNodeIds.push(nodeId);
-        }
-      } catch {
-        // Preserve the binding so a transient runtime/permission failure is
-        // retried instead of orphaning managed SiYuan evidence.
-      }
-    }
-    await deleteSiyuanNodeBindings(projectId, record.id, removedNodeIds);
     const compactBindingCache = Object.fromEntries(
       index.entries
         .filter((entry) => entry.kind !== 'file')

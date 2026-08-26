@@ -801,7 +801,7 @@ describe('SiYuan Context Map integration', () => {
       expect(nodeCreates[0]?.[1]).toContain('file-1');
       expect(nativePort.getBlock).not.toHaveBeenCalled();
       expect(nativePort.updateManagedDocument).not.toHaveBeenCalled();
-      expect(checkpoint).toHaveBeenCalledTimes(3);
+      expect(checkpoint).toHaveBeenCalledTimes(5);
     } finally {
       if (previousInternals === undefined) {
         delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
@@ -951,35 +951,48 @@ describe('SiYuan Context Map integration', () => {
     const previousInternals = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
     (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
     const nativePort = port();
+    await nativePort.createManagedDocument(
+      'project-1',
+      '/stale-old',
+      '<!-- vibespace-context-node:v1 map=map-native-reconcile node=path%3Aold.txt -->\n# old.txt\n',
+    );
+    vi.mocked(nativePort.createManagedDocument).mockClear();
+    const list = vi.fn(async (path: string) => ({
+      ok: true as const,
+      path,
+      entries: [
+        {
+          name: 'new.txt',
+          path: `${record.rootDir}\\new.txt`,
+          isDir: false,
+          size: 2,
+          modifiedMs: 2,
+        },
+      ],
+    }));
     try {
       const result = await createSiyuanContextMapIntegration(nativePort).sync('project-1', record, {
         accountId: 'account-1',
         summaryPolicy: policy,
         forceReconcile: true,
-        list: async (path) => ({
-          ok: true,
-          path,
-          entries: [
-            {
-              name: 'new.txt',
-              path: `${record.rootDir}\\new.txt`,
-              isDir: false,
-              size: 2,
-              modifiedMs: 2,
-            },
-          ],
-        }),
+        list,
       });
       expect(result.manifest).toMatchObject({ status: 'ready', counts: { indexed: 1 } });
       expect((await readSiyuanIndexJob('project-1', record.id))?.status).toBe('completed');
       expect(await readSiyuanNodeBindings('project-1', record.id)).toEqual({
         'path:new.txt': expect.any(String),
       });
+      expect(nativePort.createManagedDocument).not.toHaveBeenCalledWith(
+        'project-1',
+        expect.stringContaining('old.txt'),
+        expect.any(String),
+      );
       expect(nativePort.deleteManagedDocument).toHaveBeenCalledWith(
         'project-1',
-        expect.any(String),
+        'created-1',
         expect.stringContaining('node=path%3Aold.txt'),
       );
+      expect(list).toHaveBeenCalledOnce();
     } finally {
       if (previousInternals === undefined) {
         delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;

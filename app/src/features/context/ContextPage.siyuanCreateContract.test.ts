@@ -145,8 +145,11 @@ describe('ContextPage SiYuan creation contract', () => {
     const effectStart = source.indexOf('React.useEffect(() => {', refreshStart);
     const refresh = source.slice(refreshStart, effectStart);
     expect(source).toContain('Refresh file scope');
+    expect(source).toContain("job.phase === 'creating_nodes'");
+    expect(source).toContain("!['creating_nodes', 'summarizing'].includes(job.phase)");
     expect(refreshStart).toBeGreaterThan(-1);
     expect(refresh).toContain('hasSiyuanMapJobAuthority(selectedMap, manifest, job, accountId)');
+    expect(refresh).toContain("!['creating_nodes', 'summarizing'].includes(job.phase)");
     expect(refresh).toContain('forceScopeReconcileRef.current = {');
     expect(refresh).toContain('mapId: selectedMap.id,');
     expect(refresh).toContain('requestId: crypto.randomUUID(),');

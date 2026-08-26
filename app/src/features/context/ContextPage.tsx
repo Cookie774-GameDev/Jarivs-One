@@ -426,7 +426,19 @@ function SiyuanIndexProgressCard({
               Pause
             </Button>
           ) : null}
-          {job.status === 'paused' && !(job.phase === 'summarizing' && cloudDisclosure) ? (
+          {job.status === 'paused' && job.phase === 'creating_nodes' ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={onRefreshScope}
+              disabled={scopeRefreshPending}
+            >
+              {scopeRefreshPending ? 'Refreshing scope…' : 'Refresh file scope'}
+            </Button>
+          ) : null}
+          {job.status === 'paused' &&
+          job.phase !== 'creating_nodes' &&
+          !(job.phase === 'summarizing' && cloudDisclosure) ? (
             <Button size="sm" variant="secondary" onClick={onResume}>
               Resume
             </Button>
@@ -976,7 +988,7 @@ export function ContextPage() {
         !job ||
         !manifest ||
         job.status !== 'paused' ||
-        job.phase !== 'summarizing' ||
+        !['creating_nodes', 'summarizing'].includes(job.phase) ||
         !['user', 'local_model_unavailable', 'cloud_approval_required'].includes(
           job.pauseReason ?? '',
         )
@@ -1120,7 +1132,7 @@ export function ContextPage() {
         !job ||
         !manifest ||
         job.status !== 'paused' ||
-        job.phase !== 'summarizing' ||
+        !['creating_nodes', 'summarizing'].includes(job.phase) ||
         !hasSiyuanMapJobAuthority(selectedMap, manifest, job, accountId)
       ) {
         throw new Error('siyuan_cloud_summary_scope_refresh_not_safe');
