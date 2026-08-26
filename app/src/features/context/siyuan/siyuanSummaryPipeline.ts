@@ -350,14 +350,15 @@ export function approvedCloudSiyuanSummaryIdentity(input: {
   if (!approval || approval.privacyAcknowledged !== true) {
     throw new Error('siyuan_cloud_summary_approval_required');
   }
-  if (input.job.summarized > 0 || input.job.totalTokens > 0) {
-    throw new Error('siyuan_cloud_summary_restart_required');
-  }
   const persistedIdentity = [
     input.job.summaryProviderId,
     input.job.summaryConnectionId,
     input.job.summaryModelId,
   ];
+  const hasHistoricalUsage = input.job.summarized > 0 || input.job.totalTokens > 0;
+  if (hasHistoricalUsage && persistedIdentity.some((value) => !value)) {
+    throw new Error('siyuan_cloud_summary_restart_required');
+  }
   if (
     persistedIdentity.some(Boolean) &&
     (input.job.summaryProviderId !== approval.providerId ||

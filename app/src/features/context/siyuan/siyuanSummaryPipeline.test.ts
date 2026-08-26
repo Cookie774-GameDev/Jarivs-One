@@ -271,6 +271,59 @@ describe('durable SiYuan summary pipeline', () => {
     }
   });
 
+  it('accepts an approved exact same cloud route after durable historical summary work', async () => {
+    const pendingEntries = entries();
+    const completedEntry: SiyuanSafeIndexEntry = {
+      nodeId: 'path:README.md',
+      parentNodeId: null,
+      title: 'README.md',
+      kind: 'file',
+      relativePath: 'README.md',
+      sourcePointer: 'C:/repo/README.md',
+      summary: 'Previously summarized without replay.',
+      summaryState: 'completed',
+      sizeBytes: 40,
+      modifiedAt: 1,
+    };
+    const record = {
+      ...(await job()),
+      summarized: 1,
+      totalTokens: 321,
+      summaryProviderId: 'opencode-go',
+      summaryConnectionId: 'opencode-go-primary',
+      summaryModelId: 'deepseek-v4-flash-vision-exp',
+      summaryEffort: 'high' as const,
+    };
+    const approval = {
+      providerId: record.summaryProviderId,
+      connectionId: record.summaryConnectionId,
+      modelId: record.summaryModelId,
+      effort: record.summaryEffort,
+      sourceRoot: 'C:/repo',
+      summaryPolicyFingerprint: record.policyFingerprint,
+      eligibleFileCount: 1,
+      eligibleSourceBytes: 20,
+      estimatedMaxSentBytes: 256 * 1024,
+      privacyAcknowledged: true as const,
+      approvedAt: 200,
+    };
+
+    expect(
+      approvedCloudSiyuanSummaryIdentity({
+        approval,
+        job: record,
+        entries: [...pendingEntries, completedEntry],
+        root: 'C:/repo',
+        policy: { mode: 'all', selectedExtensions: [], selectedPaths: [] },
+      }),
+    ).toEqual({
+      providerId: 'opencode-go',
+      connectionId: 'opencode-go-primary',
+      modelId: 'deepseek-v4-flash-vision-exp',
+      effort: 'high',
+    });
+  });
+
   it('never switches a partially summarized local job to cloud without an archived restart', async () => {
     const record = { ...(await job()), summarized: 1, totalTokens: 10 };
     expect(() =>
