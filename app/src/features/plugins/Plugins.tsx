@@ -49,6 +49,7 @@ import { PluginLogo } from './PluginLogo';
 import { McpConnections } from '@/features/settings/sections/McpConnections';
 import { PLUGIN_COMPATIBILITY_BY_ID } from './compatibilityMatrix';
 import { PLUGIN_CONNECTION_ADAPTERS } from './connectionFramework';
+import { OPEN_MCP_MANAGER_EVENT, consumePendingMcpManagerOpenRequest } from './openMcpManager';
 
 type Filter = 'all' | 'available' | 'connected' | 'planned';
 type AuthorizationPanel = Readonly<{
@@ -124,6 +125,16 @@ export function Plugins() {
     React.useState<AuthorizationPanel | null>(null);
   const [mcpOpen, setMcpOpen] = React.useState(false);
   const management = usePluginManagementCapability();
+
+  React.useEffect(() => {
+    if (consumePendingMcpManagerOpenRequest()) setMcpOpen(true);
+    const openMcpManager = () => {
+      consumePendingMcpManagerOpenRequest();
+      setMcpOpen(true);
+    };
+    window.addEventListener(OPEN_MCP_MANAGER_EVENT, openMcpManager);
+    return () => window.removeEventListener(OPEN_MCP_MANAGER_EVENT, openMcpManager);
+  }, []);
 
   async function startProviderAuthorization(plugin: PluginManifest) {
     setAuthorizationPanel({ plugin, phase: 'opening' });

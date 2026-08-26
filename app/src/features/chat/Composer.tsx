@@ -16,6 +16,7 @@ import { extractPluginMentions } from '@/features/plugins/mentions';
 import { PluginLogo } from '@/features/plugins/PluginLogo';
 import { selectPluginConnectionsForAccount, usePluginStore } from '@/features/plugins/store';
 import type { PluginConnection } from '@/features/plugins/types';
+import { requestOpenMcpManager } from '@/features/plugins/openMcpManager';
 import {
   Button,
   Hint,
@@ -144,6 +145,7 @@ import {
   resolveSlashCommandSelection,
   findSlashCommandDef,
   isChatAttachSlashCmd,
+  isImmediateLocalSlashCommand,
   normalizeSlashCmd,
   slashCmdMatchScore,
   type SlashCommandDef,
@@ -1696,12 +1698,12 @@ export function Composer({
 
     const canonicalCmd = normalizeSlashCmd(cmd.cmd);
 
-    // Doctor is an executable local command, not an argument prompt. Selecting
-    // it with Enter runs immediately and never reaches provider dispatch.
-    if (canonicalCmd === 'doctor') {
+    // Immediate local commands are actions, not decorative confirmed chips.
+    // Selecting one with Enter runs locally and never reaches provider dispatch.
+    if (isImmediateLocalSlashCommand(canonicalCmd)) {
       setText(before + after);
       setSlashCtx(null);
-      requestAnimationFrame(() => void handleSend('/doctor'));
+      requestAnimationFrame(() => void handleSend(`/${canonicalCmd}`));
       return;
     }
 
@@ -2480,6 +2482,15 @@ export function Composer({
       await addSystem('VibeSpace Doctor is checking supported systems…');
       const report = await runVibeSpaceDoctor();
       await addSystem(report.text);
+      return true;
+    }
+    if (cmd === 'mcp') {
+      if (rest) {
+        await addSystem('Use /mcp to open MCP connections and custom server management.');
+        return true;
+      }
+      setText('');
+      requestOpenMcpManager();
       return true;
     }
     if (cmd === 'appearance') {

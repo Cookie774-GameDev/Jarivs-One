@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Plugins } from './Plugins';
 import { usePluginStore } from './store';
 import { PluginManagementCapabilityProvider } from './managementContext';
 import type { PluginManagementCapability } from './runtime';
 import { useAuthStore } from '@/stores/auth';
+import { OPEN_MCP_MANAGER_EVENT, requestOpenMcpManager } from './openMcpManager';
 
 const { openExternal } = vi.hoisted(() => ({
   openExternal: vi.fn<(url: string) => Promise<void>>(),
@@ -92,6 +93,22 @@ describe('Plugins settings page', () => {
     expect(screen.getByText('Linear')).toBeTruthy();
     expect(screen.queryByText('GitHub')).toBeNull();
   }, 15_000);
+
+  it('opens the existing MCP manager when Chat requests /mcp', async () => {
+    renderPlugins();
+    expect(screen.queryByRole('heading', { name: 'VibeSpace MCP Gateway' })).toBeNull();
+
+    act(() => window.dispatchEvent(new CustomEvent(OPEN_MCP_MANAGER_EVENT)));
+
+    expect(await screen.findByRole('heading', { name: 'VibeSpace MCP Gateway' })).toBeTruthy();
+  });
+
+  it('preserves an MCP-open request while the lazy Plugins page mounts', async () => {
+    requestOpenMcpManager();
+    renderPlugins();
+
+    expect(await screen.findByRole('heading', { name: 'VibeSpace MCP Gateway' })).toBeTruthy();
+  });
 
   it('connects and disconnects the local mock connector', async () => {
     renderPlugins();

@@ -4,6 +4,7 @@ import {
   SLASH_COMMANDS,
   findSlashCommandDef,
   isChatAttachSlashCmd,
+  isImmediateLocalSlashCommand,
   normalizeSlashCmd,
   orderSlashCommandsForDisplay,
   resolveSlashCommandSelection,
@@ -117,6 +118,17 @@ describe('orderSlashCommandsForDisplay', () => {
       category: 'utility',
       takesArg: true,
     });
+  });
+
+  it('registers /mcp as a local connection-manager command', () => {
+    expect(findSlashCommandDef('mcp')).toMatchObject({
+      cmd: 'mcp',
+      category: 'utility',
+      hasOptions: false,
+    });
+    expect(isImmediateLocalSlashCommand('mcp')).toBe(true);
+    expect(isImmediateLocalSlashCommand('doctor')).toBe(true);
+    expect(isImmediateLocalSlashCommand('usage')).toBe(false);
   });
 
   it('keeps picker-selected /usage executable instead of converting it to a decorative chip', () => {

@@ -74,6 +74,10 @@ export function isChatAttachSlashCmd(cmd: string): boolean {
   return CHAT_ATTACH_SLASH_CMDS.has(normalizeSlashCmd(cmd));
 }
 
+export function isImmediateLocalSlashCommand(cmd: string): boolean {
+  return ['doctor', 'mcp'].includes(normalizeSlashCmd(cmd));
+}
+
 export function findSlashCommandDef(cmd: string): SlashCommandDef | undefined {
   const canonical = normalizeSlashCmd(cmd);
   const def = SLASH_COMMANDS.find((entry) => entry.cmd === canonical);
@@ -363,6 +367,13 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     category: 'utility',
     takesArg: true,
     argPlaceholder: '[run]',
+  },
+  {
+    cmd: 'mcp',
+    description: 'Open MCP connections and custom server management',
+    icon: Plug,
+    category: 'utility',
+    hasOptions: false,
   },
   {
     cmd: 'theme',
