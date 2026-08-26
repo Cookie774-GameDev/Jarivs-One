@@ -2515,11 +2515,24 @@ export function ContextPage() {
                   scopeRefreshPending={scopeRefreshPending}
                   onPause={() => {
                     indexControlRef.current?.pause();
+                    generationAbortRef.current?.abort('siyuan_index_paused');
+                    setStatus('Pausing the SiYuan index safely…');
                     void productionSiyuanContextMaps
                       .pause(projectId, indexJobSnapshot.mapId)
                       .then(() => readSiyuanIndexJob(projectId, indexJobSnapshot.mapId))
-                      .then((job) => job && setIndexJobSnapshot(job));
-                    setStatus('SiYuan indexing paused safely.');
+                      .then((job) => {
+                        if (job) setIndexJobSnapshot(job);
+                        setStatus('SiYuan indexing paused safely.');
+                      })
+                      .catch((error) => {
+                        setStatus('SiYuan pause needs review. No new work was authorized.');
+                        toast.error(
+                          'SiYuan pause not confirmed',
+                          error instanceof Error
+                            ? error.message
+                            : 'The durable pause did not finish.',
+                        );
+                      });
                   }}
                   onResume={() => {
                     void updateSiyuanIndexJobStatus(

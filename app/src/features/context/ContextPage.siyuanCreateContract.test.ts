@@ -21,6 +21,8 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(source).not.toContain('complete allowed folder structure is indexed');
     expect(source).toContain('onPause={() =>');
     expect(source).toContain('.pause(projectId, indexJobSnapshot.mapId)');
+    expect(source).toContain("generationAbortRef.current?.abort('siyuan_index_paused')");
+    expect(source).toContain("setStatus('Pausing the SiYuan index safely…')");
     expect(source).toContain('onResume={() =>');
     expect(source).toContain('updateSiyuanIndexJobStatus(');
     expect(source).toContain("abort('user_cancelled')");

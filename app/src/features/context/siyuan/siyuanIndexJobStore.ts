@@ -66,6 +66,7 @@ export interface SiyuanIndexJobRecord {
   estimatedPercent: number | null;
   estimatedEtaSeconds: number | null;
   reconciledAt: number | null;
+  pendingNativeNodeIds: string[];
   startupDisposition: 'auto_resumed' | 'needs_repair' | null;
   startupDispositionAt: number | null;
   pausedMs: number;
@@ -432,6 +433,7 @@ export function createSiyuanIndexJob(input: {
     estimatedPercent: null,
     estimatedEtaSeconds: null,
     reconciledAt: null,
+    pendingNativeNodeIds: [],
     startupDisposition: null,
     startupDispositionAt: null,
     pausedMs: 0,
@@ -734,7 +736,7 @@ export async function archiveSiyuanSummaryJobForCloudRestart(
     const cleanupSnapshot: SiyuanIndexJobArchive = {
       scope,
       archivedAt: now,
-      job,
+      job: { ...job, pendingNativeNodeIds: job.pendingNativeNodeIds ?? [] },
       entries: (storedEntries as StoredEntry[]).map(
         ({ key: _key, scope: _scope, ...entry }) => entry,
       ),
@@ -765,7 +767,16 @@ export async function readSiyuanIndexJobArchive(
       transaction.objectStore(ARCHIVE_STORE).get(siyuanIndexJobScope(projectId, mapId)),
     );
     await transactionDone(transaction);
-    return (archive as SiyuanIndexJobArchive | undefined) ?? null;
+    const stored = archive as SiyuanIndexJobArchive | undefined;
+    return stored
+      ? {
+          ...stored,
+          job: {
+            ...stored.job,
+            pendingNativeNodeIds: stored.job.pendingNativeNodeIds ?? [],
+          },
+        }
+      : null;
   } finally {
     database.close();
   }
@@ -810,6 +821,7 @@ export async function readSiyuanIndexJob(
       estimatedPercent: stored.estimatedPercent ?? null,
       estimatedEtaSeconds: stored.estimatedEtaSeconds ?? null,
       reconciledAt: stored.reconciledAt ?? null,
+      pendingNativeNodeIds: stored.pendingNativeNodeIds ?? [],
       startupDisposition: stored.startupDisposition ?? null,
       startupDispositionAt: stored.startupDispositionAt ?? null,
       pausedMs: stored.pausedMs ?? 0,
@@ -853,6 +865,7 @@ export async function listSiyuanIndexJobs(projectId?: string): Promise<SiyuanInd
         estimatedPercent: stored.estimatedPercent ?? null,
         estimatedEtaSeconds: stored.estimatedEtaSeconds ?? null,
         reconciledAt: stored.reconciledAt ?? null,
+        pendingNativeNodeIds: stored.pendingNativeNodeIds ?? [],
         startupDisposition: stored.startupDisposition ?? null,
         startupDispositionAt: stored.startupDispositionAt ?? null,
         pausedMs: stored.pausedMs ?? 0,
@@ -958,6 +971,42 @@ export async function replaceSiyuanIndexEntries(
       store.put({ ...entry, key: entryKey(scope, entry.nodeId), scope } satisfies StoredEntry);
     }
     if (persistedJob) transaction.objectStore(JOB_STORE).put(persistedJob);
+    await transactionDone(transaction);
+    return persistedJob;
+  } finally {
+    database.close();
+  }
+}
+
+export async function reconcileSiyuanIndexEntries(
+  projectId: string,
+  mapId: string,
+  upsertedEntries: readonly SiyuanSafeIndexEntry[],
+  removedNodeIds: readonly string[],
+  job: SiyuanIndexJobRecord,
+): Promise<SiyuanIndexJobRecord | null> {
+  const scope = siyuanIndexJobScope(projectId, mapId);
+  if (job.scope !== scope || job.projectId !== projectId || job.mapId !== mapId) {
+    throw new Error('siyuan_index_reconciliation_scope_mismatch');
+  }
+  const database = await openDatabase();
+  if (!database) return null;
+  try {
+    const transaction = database.transaction([ENTRY_STORE, JOB_STORE], 'readwrite');
+    const persistedJob = protectSiyuanJobLifecycle(
+      (await requestResult(transaction.objectStore(JOB_STORE).get(scope))) as
+        | SiyuanIndexJobRecord
+        | undefined,
+      job,
+    );
+    const store = transaction.objectStore(ENTRY_STORE);
+    for (const nodeId of new Set(removedNodeIds)) {
+      store.delete(entryKey(scope, nodeId));
+    }
+    for (const entry of upsertedEntries) {
+      store.put({ ...entry, key: entryKey(scope, entry.nodeId), scope } satisfies StoredEntry);
+    }
+    transaction.objectStore(JOB_STORE).put(persistedJob);
     await transactionDone(transaction);
     return persistedJob;
   } finally {

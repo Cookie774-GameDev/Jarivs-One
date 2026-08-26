@@ -14,10 +14,12 @@ import {
   readSiyuanIndexJob,
   readSiyuanIndexJobArchive,
   readSiyuanSummaryUsage,
+  reconcileSiyuanIndexEntries,
   replaceSiyuanIndexEntries,
   replaceSiyuanIndexJob,
   resumeSiyuanSummaryJobWithSameCloudRoute,
   setSiyuanIndexJobStartupDisposition,
+  siyuanIndexJobScope,
   updateSiyuanIndexJobStatus,
 } from './siyuanIndexJobStore';
 
@@ -214,6 +216,131 @@ describe('durable SiYuan index jobs', () => {
       phase: paused!.phase,
       updatedAt: 200,
     });
+  });
+
+  it('atomically reconciles only changed and removed entries while preserving a winning pause', async () => {
+    const job = createSiyuanIndexJob({
+      projectId: 'project-1',
+      mapId: 'map-1',
+      canonicalRoot: 'C:/root',
+      policyFingerprint: 'policy-a',
+      now: 100,
+    });
+    await replaceSiyuanIndexJob(job, {
+      path: 'C:/root',
+      relativePath: '',
+      parentNodeId: null,
+    });
+    const unchanged = {
+      nodeId: 'unchanged',
+      parentNodeId: null,
+      title: 'unchanged.txt',
+      kind: 'file' as const,
+      relativePath: 'unchanged.txt',
+      sourcePointer: 'C:/root/unchanged.txt',
+      summary: 'Completed summary',
+      summaryState: 'completed' as const,
+      sizeBytes: 1,
+      modifiedAt: 1,
+    };
+    const removed = { ...unchanged, nodeId: 'removed', relativePath: 'removed.txt' };
+    await checkpointSiyuanIndexJob({
+      job: {
+        ...job,
+        indexed: 2,
+        summarized: 1,
+        inputTokens: 2,
+        outputTokens: 1,
+        totalTokens: 3,
+        tokenProvenance: 'reported',
+      },
+      appendedEntries: [unchanged, removed],
+      summaryUsage: {
+        nodeId: unchanged.nodeId,
+        sourceModifiedAt: unchanged.modifiedAt,
+        sourceSizeBytes: unchanged.sizeBytes,
+        providerId: 'deepseek',
+        connectionId: 'deepseek-api',
+        modelId: 'deepseek-chat',
+        inputTokens: 2,
+        outputTokens: 1,
+        totalTokens: 3,
+        provenance: 'reported',
+        completedAt: 150,
+      },
+    });
+    const paused = await updateSiyuanIndexJobStatus('project-1', 'map-1', 'paused', 200);
+    const changed = {
+      ...unchanged,
+      nodeId: 'changed',
+      relativePath: 'changed.txt',
+      sizeBytes: 3,
+      modifiedAt: 3,
+    };
+    const incoming = {
+      ...job,
+      phase: 'creating_nodes' as const,
+      status: 'running' as const,
+      indexed: 2,
+      summarized: 1,
+      inputTokens: 2,
+      outputTokens: 1,
+      totalTokens: 3,
+      tokenProvenance: 'reported' as const,
+      reconciledAt: 300,
+      updatedAt: 300,
+    };
+    const persisted = await reconcileSiyuanIndexEntries(
+      'project-1',
+      'map-1',
+      [changed],
+      ['removed'],
+      incoming,
+    );
+    expect(persisted).toMatchObject({ status: 'paused', updatedAt: 200 });
+    expect(await readSiyuanIndexEntries('project-1', 'map-1')).toEqual(
+      expect.arrayContaining([unchanged, changed]),
+    );
+    expect(await readSiyuanIndexEntries('project-1', 'map-1')).toHaveLength(2);
+    expect(await readSiyuanIndexJob('project-1', 'map-1')).toMatchObject({
+      status: 'paused',
+      phase: paused!.phase,
+      updatedAt: 200,
+    });
+    expect(await readSiyuanSummaryUsage('project-1', 'map-1')).toEqual([
+      expect.objectContaining({ nodeId: 'unchanged', totalTokens: 3 }),
+    ]);
+  });
+
+  it('rejects reconciliation scope mismatch before changing any store', async () => {
+    const job = createSiyuanIndexJob({
+      projectId: 'project-1',
+      mapId: 'map-1',
+      canonicalRoot: 'C:/root',
+      policyFingerprint: 'policy-a',
+    });
+    await replaceSiyuanIndexJob(job, {
+      path: 'C:/root',
+      relativePath: '',
+      parentNodeId: null,
+    });
+    await expect(
+      reconcileSiyuanIndexEntries('project-1', 'map-1', [], [], {
+        ...job,
+        scope: siyuanIndexJobScope('project-2', 'map-2'),
+        projectId: 'project-2',
+        mapId: 'map-2',
+      }),
+    ).rejects.toThrow('siyuan_index_reconciliation_scope_mismatch');
+    expect(await readSiyuanIndexJob('project-1', 'map-1')).toMatchObject({
+      scope: job.scope,
+      projectId: 'project-1',
+      mapId: 'map-1',
+      status: 'running',
+      pendingNativeNodeIds: [],
+    });
+    expect(await readSiyuanIndexEntries('project-1', 'map-1')).toEqual([]);
+    expect(await readSiyuanIndexJob('project-2', 'map-2')).toBeNull();
   });
 
   it('archives the last safe checkpoint before an explicit restart from source', async () => {

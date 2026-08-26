@@ -137,6 +137,24 @@ describe('SiYuan Context Map integration', () => {
     );
   });
 
+  it('aborts an active sync before waiting on the durable pause write', () => {
+    const source = readFileSync(
+      resolve('src/features/context/siyuanContextMapIntegration.ts'),
+      'utf8',
+    );
+    const pauseStart = source.indexOf('async pause(projectId: string, mapId: string)');
+    const pauseEnd = source.indexOf('async retire(', pauseStart);
+    const pause = source.slice(pauseStart, pauseEnd);
+    const abort = pause.indexOf("syncControllers.get(key)?.abort('siyuan_index_paused')");
+    const waitForSync = pause.indexOf('await synchronizing.get(key)?.catch');
+    const durablePause = pause.indexOf(
+      "await updateSiyuanIndexJobStatus(exactProjectId, exactMapId, 'paused')",
+    );
+    expect(abort).toBeGreaterThan(-1);
+    expect(waitForSync).toBeGreaterThan(abort);
+    expect(durablePause).toBeGreaterThan(waitForSync);
+  });
+
   it('accounts for renderer-offline time before discovery can overwrite the checkpoint', () => {
     const source = readFileSync(
       resolve('src/features/context/siyuanContextMapIntegration.ts'),
@@ -1016,6 +1034,94 @@ describe('SiYuan Context Map integration', () => {
         expect.objectContaining({ relativePath: 'index.ts', sizeBytes: 43, modifiedAt: 3 }),
       ]);
       expect(readSiyuanMapManifest('project-1', record.id)?.status).toBe('paused');
+    } finally {
+      if (previousInternals === undefined) {
+        delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      } else {
+        (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = previousInternals;
+      }
+    }
+  });
+
+  it('repairs a pending changed bound node after reconciliation restarts', async () => {
+    const record = { ...map(), id: 'map-pending-bound-repair' };
+    const policy = { mode: 'none' as const, selectedExtensions: [], selectedPaths: [] };
+    const job = {
+      ...createSiyuanIndexJob({
+        accountId: 'account-1',
+        projectId: 'project-1',
+        mapId: record.id,
+        canonicalRoot: record.rootDir,
+        policyFingerprint: siyuanIndexPolicyFingerprint(record.rootDir, policy, []),
+      }),
+      phase: 'creating_nodes' as const,
+      status: 'running' as const,
+      indexed: 1,
+      reconciledAt: Date.now() + 60_000,
+      pendingNativeNodeIds: ['path:index.ts'],
+    };
+    await replaceSiyuanIndexJob(job, {
+      path: record.rootDir,
+      relativePath: '',
+      parentNodeId: null,
+    });
+    await checkpointSiyuanIndexJob({
+      job,
+      appendedEntries: [
+        {
+          nodeId: 'path:index.ts',
+          parentNodeId: null,
+          title: 'index.ts',
+          kind: 'file',
+          relativePath: 'index.ts',
+          sourcePointer: `${record.rootDir}\\index.ts`,
+          summary: null,
+          sizeBytes: 43,
+          modifiedAt: 3,
+        },
+      ],
+    });
+    writeSiyuanMapManifest(createSiyuanMapManifest(record, 'project-1', policy));
+    const nativePort = port();
+    const stale = await nativePort.createManagedDocument(
+      'project-1',
+      '/stale-bound',
+      '<!-- vibespace-context-node:v1 map=map-pending-bound-repair node=path%3Aindex.ts -->\n# stale\n',
+    );
+    await writeSiyuanNodeBindings('project-1', record.id, {
+      'path:index.ts': stale.id,
+    });
+    vi.mocked(nativePort.updateManagedDocument).mockClear();
+    const previousInternals = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    try {
+      await createSiyuanContextMapIntegration(nativePort).sync('project-1', record, {
+        accountId: 'account-1',
+        summaryPolicy: policy,
+        list: async (path) => ({
+          ok: true,
+          path,
+          entries: [
+            {
+              name: 'index.ts',
+              path: `${record.rootDir}\\index.ts`,
+              isDir: false,
+              size: 43,
+              modifiedMs: 3,
+            },
+          ],
+        }),
+      });
+      expect(nativePort.updateManagedDocument).toHaveBeenCalledWith(
+        'project-1',
+        stale.id,
+        expect.stringContaining('# stale'),
+        expect.stringContaining('node=path%3Aindex.ts'),
+      );
+      expect(await readSiyuanIndexJob('project-1', record.id)).toMatchObject({
+        status: 'completed',
+        pendingNativeNodeIds: [],
+      });
     } finally {
       if (previousInternals === undefined) {
         delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
