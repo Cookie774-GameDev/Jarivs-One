@@ -17,7 +17,6 @@ import {
   Search,
   Settings2,
   Sparkles,
-  TerminalSquare,
   Wrench,
 } from 'lucide-react';
 import { Button, toast } from '@/components/ui';
@@ -25,6 +24,7 @@ import { cn } from '@/lib/utils';
 import type { Message } from '@/types';
 import type { JarvisCreatorKind } from '@/features/jarvis-creator/contracts';
 import { MessageBubble } from '../MessageBubble';
+import { AssistantActivityLedger } from '../activity-ledger/AssistantActivityLedger';
 import type { ChatActivityEvent, ChatActivityStatus } from '../activity/types';
 import {
   MAX_MOUNTED_BLOCKS,
@@ -483,64 +483,6 @@ function DiffView({
   );
 }
 
-function CommandView({ block }: { block: Extract<TranscriptBlock, { kind: 'command' }> }) {
-  return (
-    <article className="agentic-command" aria-label={`Command ${block.command}`}>
-      <div className="agentic-block-head">
-        <span>
-          <TerminalSquare aria-hidden="true" />
-          <strong>{block.tool}</strong>
-          {block.cwd ? <small>{block.cwd}</small> : null}
-        </span>
-        <span className="agentic-block-head__metrics">
-          {block.exitCode != null ? (
-            <b className={block.exitCode === 0 ? 'is-add' : 'is-remove'}>exit {block.exitCode}</b>
-          ) : null}
-          {block.durationMs != null ? <small>{formatDuration(block.durationMs)}</small> : null}
-          <button type="button" aria-label="Copy command" onClick={() => copyText(block.command)}>
-            <Copy aria-hidden="true" />
-          </button>
-        </span>
-      </div>
-      <pre>
-        <code>
-          <span aria-hidden="true">$ </span>
-          {block.command}
-        </code>
-      </pre>
-      {block.output || block.error ? (
-        <pre className={cn('agentic-command__output', block.error && 'is-error')}>
-          <code>{block.error ?? block.output}</code>
-        </pre>
-      ) : null}
-    </article>
-  );
-}
-
-function ToolView({ block }: { block: Extract<TranscriptBlock, { kind: 'tool' }> }) {
-  return (
-    <details className="agentic-tool">
-      <summary>
-        <Wrench aria-hidden="true" />
-        <strong>{block.tool}</strong>
-        <span>{block.error ? 'Failed' : block.output ? 'Complete' : 'Requested'}</span>
-      </summary>
-      <div>
-        <small>Arguments</small>
-        <pre>{block.args}</pre>
-        {block.output || block.error ? (
-          <>
-            <small>{block.error ? 'Error' : 'Result'}</small>
-            <pre className={block.error ? 'is-error' : undefined}>
-              {block.error ?? block.output}
-            </pre>
-          </>
-        ) : null}
-      </div>
-    </details>
-  );
-}
-
 function BlockView({
   block,
   finalAnswerId,
@@ -600,8 +542,10 @@ function BlockView({
     );
   }
   if (block.kind === 'diff') return <DiffView block={block} compact={compact} />;
-  if (block.kind === 'command') return <CommandView block={block} />;
-  if (block.kind === 'tool') return <ToolView block={block} />;
+  // Persisted command/tool payloads are represented by the privacy-safe
+  // AssistantActivityLedger at their message boundary. Never expose their
+  // arguments, command text, stdout, stderr, environment, or raw results here.
+  if (block.kind === 'command' || block.kind === 'tool') return null;
   return (
     <div className="agentic-legacy" data-agentic-fallback="structured-message">
       <MessageBubble
@@ -639,6 +583,18 @@ export function AgenticConsole({
   );
   const finalAnswerId = [...blocks].reverse().find((block) => block.kind === 'answer')?.id;
   const loadCount = Math.min(TRANSCRIPT_PAGE_SIZE, transcriptWindow.remaining);
+  const messagesBySource = React.useMemo(
+    () =>
+      new Map<string, Message>(
+        messages.map((message) => [`message:${String(message.id)}`, message] as const),
+      ),
+    [messages],
+  );
+  const lastVisibleIndexBySource = React.useMemo(() => {
+    const indexes = new Map<string, number>();
+    blocks.forEach((block, index) => indexes.set(block.sourceId, index));
+    return indexes;
+  }, [blocks]);
 
   React.useEffect(() => {
     document.documentElement.dataset.agenticConsoleCaret =
@@ -771,15 +727,29 @@ export function AgenticConsole({
               Load {loadCount} older events
             </button>
           ) : null}
-          {blocks.map((block) => (
-            <BlockView
-              key={block.id}
-              block={block}
-              finalAnswerId={finalAnswerId}
-              compact={compact}
-              creatorDraftKind={creatorDraftKind}
-            />
-          ))}
+          {blocks.map((block, index) => {
+            const sourceMessage = messagesBySource.get(block.sourceId);
+            const showLedger =
+              block.kind !== 'legacy' &&
+              sourceMessage?.role === 'assistant' &&
+              lastVisibleIndexBySource.get(block.sourceId) === index &&
+              sourceMessage.parts.some(
+                (part) => part.kind === 'tool_call' || part.kind === 'tool_result',
+              );
+            return (
+              <React.Fragment key={block.id}>
+                <BlockView
+                  block={block}
+                  finalAnswerId={finalAnswerId}
+                  compact={compact}
+                  creatorDraftKind={creatorDraftKind}
+                />
+                {showLedger ? (
+                  <AssistantActivityLedger message={sourceMessage} compact={compact} />
+                ) : null}
+              </React.Fragment>
+            );
+          })}
         </div>
       ) : null}
     </section>

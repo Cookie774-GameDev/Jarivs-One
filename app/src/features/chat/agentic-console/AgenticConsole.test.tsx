@@ -301,7 +301,7 @@ describe('AgenticConsole', () => {
     expect(rendered.container.querySelector('[data-agent-motion]')).toBeNull();
   });
 
-  it('keeps statusless historical commands and reasoning still during later live work', () => {
+  it('keeps statusless historical tool evidence private and reasoning still during later live work', () => {
     const rendered = renderConsole({
       chatId: 'chat-console',
       messages: [
@@ -335,11 +335,8 @@ describe('AgenticConsole', () => {
     expect(
       screen.getByText('Reasoning').closest('details')?.querySelector('[data-agent-motion]'),
     ).toBeNull();
-    expect(
-      screen
-        .getByRole('article', { name: 'Command npm test' })
-        .querySelector('[data-agent-motion]'),
-    ).toBeNull();
+    expect(screen.getByRole('button', { name: 'Show activity details' })).toBeTruthy();
+    expect(document.body.textContent).not.toContain('npm test');
     expect(
       [...rendered.container.querySelectorAll('[data-agent-motion]')].map((motion) =>
         motion.getAttribute('data-agent-motion'),
@@ -452,7 +449,7 @@ describe('AgenticConsole', () => {
     expect(screen.getByRole('button', { name: 'Export session' })).toBeTruthy();
   });
 
-  it('toggles transcript details with Ctrl+T while the console is active', () => {
+  it('keeps raw tool payloads private and expands the safe ledger explicitly', () => {
     renderConsole({
       chatId: 'chat-console',
       messages: [
@@ -463,12 +460,12 @@ describe('AgenticConsole', () => {
       ],
       activity: [],
     });
-    const detail = document.querySelector<HTMLDetailsElement>('details');
-    expect(detail?.open).toBe(false);
-    fireEvent.keyDown(window, { key: 't', ctrlKey: true });
-    expect(detail?.open).toBe(true);
-    fireEvent.keyDown(window, { key: 't', ctrlKey: true });
-    expect(detail?.open).toBe(false);
+    expect(document.body.textContent).not.toContain('README.md');
+    expect(document.body.textContent).not.toContain('tool output');
+    fireEvent.click(screen.getByRole('button', { name: 'Show activity details' }));
+    expect(screen.getByText('Read file')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('README.md');
+    expect(document.body.textContent).not.toContain('tool output');
   });
 
   it('pages older history without mounting the entire canonical transcript', () => {

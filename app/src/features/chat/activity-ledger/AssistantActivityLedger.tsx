@@ -78,11 +78,14 @@ export function AssistantActivityLedger({
   correlatedEvents = [],
   projectRoot,
   compact = false,
+  active = false,
 }: {
   message: Message;
   correlatedEvents?: readonly ChatActivityEvent[];
   projectRoot?: string;
   compact?: boolean;
+  /** Persisted message evidence is historical unless a caller owns live turn correlation. */
+  active?: boolean;
 }) {
   const ledger = React.useMemo(
     () => projectAssistantActivityLedger(message, correlatedEvents),
@@ -130,8 +133,9 @@ export function AssistantActivityLedger({
   const runningReceipt = [...ledger.receipts]
     .reverse()
     .find((receipt) => receipt.status === 'running' || receipt.status === 'pending');
+  const live = active && ledger.status === 'running';
   const motion = resolveAgentMotion({
-    status: ledger.status === 'running' ? 'running' : 'done',
+    status: live ? 'running' : 'done',
     activityKind:
       runningReceipt?.kind === 'subagent'
         ? 'subagent'
@@ -158,7 +162,7 @@ export function AssistantActivityLedger({
         </span>
         <PerceptibleAgentMotionIndicator motion={motion} compact />
         <span className="assistant-activity-ledger__title">
-          {ledger.status === 'running' ? (ledger.currentOperation ?? 'Working') : 'Activity'}
+          {live ? (ledger.currentOperation ?? 'Working') : 'Activity'}
         </span>
         <span id={metricsId} className="assistant-activity-ledger__metrics">
           {ledger.readsTotal > 0 ? <span>{metric('Read', ledger.readsTotal)}</span> : null}
