@@ -72,4 +72,19 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(source).toContain('await archiveAndReplaceSiyuanIndexJob(restarted');
     expect(source).toContain('existing managed SiYuan nodes will be reused');
   });
+
+  it('resumes an approved identical cloud route without clearing completed summary work', () => {
+    const sameRouteResume = source.indexOf(
+      'const resumed = await resumeSiyuanSummaryJobWithSameCloudRoute(',
+    );
+    const destructiveArchive = source.indexOf(
+      'const archive = await archiveSiyuanSummaryJobForCloudRestart(',
+      sameRouteResume,
+    );
+
+    expect(source).toContain('const samePinnedRoute =');
+    expect(source).toContain('Approved the same exact route. Resuming pending summaries');
+    expect(sameRouteResume).toBeGreaterThan(-1);
+    expect(destructiveArchive).toBeGreaterThan(sameRouteResume);
+  });
 });

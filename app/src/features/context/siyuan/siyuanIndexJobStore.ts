@@ -240,13 +240,11 @@ export async function checkpointSiyuanSummaryBatchNode(input: {
         if (addInput + addOutput !== addTotal) {
           throw new Error('siyuan_summary_batch_total_tokens_invalid');
         }
-        if (
-          current.tokenProvenance !== 'none' &&
-          current.tokenProvenance !== input.batchUsage.provenance
-        ) {
+        if (current.tokenProvenance === 'reported' && input.batchUsage.provenance === 'estimated') {
           throw new Error('siyuan_summary_token_provenance_mismatch');
         }
-        nextProvenance = input.batchUsage.provenance;
+        nextProvenance =
+          current.tokenProvenance === 'estimated' ? 'estimated' : input.batchUsage.provenance;
         usageStore.put({
           ...input.batchUsage,
           key: usageKey,
@@ -639,6 +637,63 @@ export async function archiveAndRestartSiyuanSummaryJobForCloud(
     transaction.objectStore(JOB_STORE).put(restarted);
     await transactionDone(transaction);
     return restarted;
+  } finally {
+    database.close();
+  }
+}
+
+export async function resumeSiyuanSummaryJobWithSameCloudRoute(
+  projectId: string,
+  mapId: string,
+  identity: Readonly<{
+    providerId: string;
+    connectionId: string;
+    modelId: string;
+    effort?: EffortLabel;
+  }>,
+  now = Date.now(),
+): Promise<SiyuanIndexJobRecord> {
+  const database = await openDatabase();
+  if (!database) throw new Error('siyuan_index_job_storage_unavailable');
+  try {
+    const scope = siyuanIndexJobScope(projectId, mapId);
+    const transaction = database.transaction([JOB_STORE], 'readwrite');
+    const store = transaction.objectStore(JOB_STORE);
+    const job = (await requestResult(store.get(scope))) as SiyuanIndexJobRecord | undefined;
+    if (
+      !job ||
+      job.status !== 'paused' ||
+      job.phase !== 'summarizing' ||
+      !isSafeCloudSummaryRestartPauseReason(job.pauseReason)
+    ) {
+      throw new Error('siyuan_cloud_summary_resume_not_safe');
+    }
+    if (
+      job.summaryProviderId !== identity.providerId ||
+      job.summaryConnectionId !== identity.connectionId ||
+      job.summaryModelId !== identity.modelId ||
+      (job.summaryEffort ?? 'auto') !== (identity.effort ?? 'auto')
+    ) {
+      throw new Error('siyuan_cloud_summary_resume_identity_mismatch');
+    }
+    if (!Number.isSafeInteger(now) || now < job.updatedAt) {
+      throw new Error('siyuan_summary_batch_clock_regression');
+    }
+    const resumed: SiyuanIndexJobRecord = {
+      ...job,
+      status: 'running',
+      pauseReason: null,
+      startupDisposition: null,
+      startupDispositionAt: null,
+      phaseStartedAt: now,
+      pausedMs: job.pausedMs + Math.max(0, now - job.updatedAt),
+      estimatedEtaSeconds: null,
+      updatedAt: now,
+      completedAt: null,
+    };
+    store.put(resumed);
+    await transactionDone(transaction);
+    return resumed;
   } finally {
     database.close();
   }

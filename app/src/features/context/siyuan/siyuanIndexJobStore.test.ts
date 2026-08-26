@@ -7,6 +7,7 @@ import {
   canResumeSiyuanIndexJob,
   accountForSiyuanRendererOfflineTime,
   checkpointSiyuanIndexJob,
+  checkpointSiyuanSummaryBatchNode,
   createSiyuanIndexJob,
   readSiyuanIndexEntries,
   readSiyuanIndexFrontier,
@@ -15,6 +16,7 @@ import {
   readSiyuanSummaryUsage,
   replaceSiyuanIndexEntries,
   replaceSiyuanIndexJob,
+  resumeSiyuanSummaryJobWithSameCloudRoute,
   setSiyuanIndexJobStartupDisposition,
   updateSiyuanIndexJobStatus,
 } from './siyuanIndexJobStore';
@@ -618,6 +620,399 @@ describe('durable SiYuan index jobs', () => {
         canonicalRoot: 'C:/root',
         policyFingerprint: 'policy-a',
       },
+    });
+  });
+
+  it('resumes an exact paused summary route without clearing completed work or usage history', async () => {
+    const job = {
+      ...createSiyuanIndexJob({
+        projectId: 'project-1',
+        mapId: 'map-1',
+        canonicalRoot: 'C:/root',
+        policyFingerprint: 'policy-a',
+        now: 100,
+      }),
+      phase: 'summarizing' as const,
+      status: 'paused' as const,
+      pauseReason: 'user' as const,
+      indexed: 2,
+      createdNodes: 2,
+      summaryEligible: 2,
+      summarized: 1,
+      skipped: 1,
+      failed: 1,
+      inputTokens: 7,
+      outputTokens: 3,
+      totalTokens: 10,
+      tokenProvenance: 'estimated' as const,
+      summaryProviderId: 'opencode',
+      summaryConnectionId: 'opencode-cli',
+      summaryModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+      summaryEffort: 'high' as const,
+      pausedMs: 25,
+      updatedAt: 150,
+    };
+    await replaceSiyuanIndexJob(job, {
+      path: 'C:/root',
+      relativePath: '',
+      parentNodeId: null,
+    });
+    await checkpointSiyuanIndexJob({
+      job,
+      appendedEntries: [
+        {
+          nodeId: 'completed-file',
+          parentNodeId: null,
+          title: 'completed.ts',
+          kind: 'file',
+          relativePath: 'completed.ts',
+          sourcePointer: 'C:/root/completed.ts',
+          summary: 'Already summarized.',
+          summaryState: 'completed',
+          sizeBytes: 10,
+          modifiedAt: 1,
+        },
+      ],
+      summaryUsage: {
+        nodeId: 'completed-file',
+        sourceModifiedAt: 1,
+        sourceSizeBytes: 10,
+        providerId: 'opencode',
+        connectionId: 'opencode-cli',
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        effort: 'high',
+        effortProvenance: 'requested',
+        inputTokens: 7,
+        outputTokens: 3,
+        totalTokens: 10,
+        provenance: 'estimated',
+        completedAt: 150,
+      },
+    });
+
+    const resumed = await resumeSiyuanSummaryJobWithSameCloudRoute(
+      'project-1',
+      'map-1',
+      {
+        providerId: 'opencode',
+        connectionId: 'opencode-cli',
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        effort: 'high',
+      },
+      200,
+    );
+
+    expect(resumed).toMatchObject({
+      status: 'running',
+      phase: 'summarizing',
+      pauseReason: null,
+      summarized: 1,
+      skipped: 1,
+      failed: 1,
+      inputTokens: 7,
+      outputTokens: 3,
+      totalTokens: 10,
+      tokenProvenance: 'estimated',
+      pausedMs: 75,
+      summaryProviderId: 'opencode',
+      summaryConnectionId: 'opencode-cli',
+      summaryModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+      summaryEffort: 'high',
+    });
+    await expect(readSiyuanIndexEntries('project-1', 'map-1')).resolves.toEqual([
+      expect.objectContaining({
+        nodeId: 'completed-file',
+        summary: 'Already summarized.',
+        summaryState: 'completed',
+      }),
+    ]);
+    await expect(readSiyuanSummaryUsage('project-1', 'map-1')).resolves.toEqual([
+      expect.objectContaining({
+        nodeId: 'completed-file',
+        totalTokens: 10,
+        provenance: 'estimated',
+      }),
+    ]);
+  });
+
+  it.each([
+    [{ providerId: 'other' }, 'siyuan_cloud_summary_resume_identity_mismatch'],
+    [{ connectionId: 'other' }, 'siyuan_cloud_summary_resume_identity_mismatch'],
+    [{ modelId: 'other' }, 'siyuan_cloud_summary_resume_identity_mismatch'],
+    [{ effort: 'low' }, 'siyuan_cloud_summary_resume_identity_mismatch'],
+  ] as const)('rejects same-route resume identity drift %o', async (override, error) => {
+    const job = {
+      ...createSiyuanIndexJob({
+        projectId: 'project-1',
+        mapId: 'map-1',
+        canonicalRoot: 'C:/root',
+        policyFingerprint: 'policy-a',
+        now: 100,
+      }),
+      phase: 'summarizing' as const,
+      status: 'paused' as const,
+      pauseReason: 'user' as const,
+      summaryProviderId: 'opencode',
+      summaryConnectionId: 'opencode-cli',
+      summaryModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+      summaryEffort: 'high' as const,
+    };
+    await replaceSiyuanIndexJob(job, {
+      path: 'C:/root',
+      relativePath: '',
+      parentNodeId: null,
+    });
+
+    await expect(
+      resumeSiyuanSummaryJobWithSameCloudRoute('project-1', 'map-1', {
+        providerId: 'opencode',
+        connectionId: 'opencode-cli',
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        effort: 'high',
+        ...override,
+      }),
+    ).rejects.toThrow(error);
+  });
+
+  it.each(['running', 'cancelled'] as const)(
+    'rejects same-route summary resume from unsafe %s state',
+    async (status) => {
+      const job = {
+        ...createSiyuanIndexJob({
+          projectId: 'project-1',
+          mapId: 'map-1',
+          canonicalRoot: 'C:/root',
+          policyFingerprint: 'policy-a',
+          now: 100,
+        }),
+        phase: 'summarizing' as const,
+        status,
+        pauseReason: status === 'running' ? null : ('user' as const),
+        summaryProviderId: 'opencode',
+        summaryConnectionId: 'opencode-cli',
+        summaryModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        summaryEffort: 'high' as const,
+      };
+      await replaceSiyuanIndexJob(job, {
+        path: 'C:/root',
+        relativePath: '',
+        parentNodeId: null,
+      });
+
+      await expect(
+        resumeSiyuanSummaryJobWithSameCloudRoute('project-1', 'map-1', {
+          providerId: 'opencode',
+          connectionId: 'opencode-cli',
+          modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+          effort: 'high',
+        }),
+      ).rejects.toThrow('siyuan_cloud_summary_resume_not_safe');
+    },
+  );
+
+  it('keeps an estimated aggregate conservative when a reported batch is appended', async () => {
+    const job = {
+      ...createSiyuanIndexJob({
+        projectId: 'project-1',
+        mapId: 'map-1',
+        canonicalRoot: 'C:/root',
+        policyFingerprint: 'policy-a',
+        now: 100,
+      }),
+      phase: 'summarizing' as const,
+      summaryEligible: 2,
+      summarized: 1,
+      inputTokens: 7,
+      outputTokens: 3,
+      totalTokens: 10,
+      tokenProvenance: 'estimated' as const,
+      summaryProviderId: 'opencode',
+      summaryConnectionId: 'opencode-cli',
+      summaryModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+      summaryEffort: 'high' as const,
+      updatedAt: 150,
+    };
+    await replaceSiyuanIndexJob(job, {
+      path: 'C:/root',
+      relativePath: '',
+      parentNodeId: null,
+    });
+    await checkpointSiyuanIndexJob({
+      job,
+      appendedEntries: [
+        {
+          nodeId: 'reported-file',
+          parentNodeId: null,
+          title: 'reported.ts',
+          kind: 'file',
+          relativePath: 'reported.ts',
+          sourcePointer: 'C:/root/reported.ts',
+          summary: null,
+          sizeBytes: 20,
+          modifiedAt: 2,
+        },
+      ],
+    });
+
+    const updated = await checkpointSiyuanSummaryBatchNode({
+      projectId: 'project-1',
+      mapId: 'map-1',
+      entry: {
+        nodeId: 'reported-file',
+        parentNodeId: null,
+        title: 'reported.ts',
+        kind: 'file',
+        relativePath: 'reported.ts',
+        sourcePointer: 'C:/root/reported.ts',
+        summary: 'Provider-reported summary.',
+        summaryState: 'completed',
+        sizeBytes: 20,
+        modifiedAt: 2,
+      },
+      batchUsage: {
+        batchId: 'reported-batch',
+        requestId: 'request-reported',
+        sessionId: 'session-reported',
+        nodeCount: 1,
+        policyFingerprint: 'policy-a',
+        lane: 0,
+        attempt: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        cacheProvenance: 'unavailable',
+        costUsd: null,
+        costProvenance: 'unavailable',
+        dispatchedAt: 180,
+        durationMs: 20,
+        nodeId: 'reported-file',
+        sourceModifiedAt: 2,
+        sourceSizeBytes: 20,
+        providerId: 'opencode',
+        connectionId: 'opencode-cli',
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        effort: 'high',
+        effortProvenance: 'requested',
+        inputTokens: 5,
+        outputTokens: 2,
+        totalTokens: 7,
+        provenance: 'reported',
+        completedAt: 200,
+      },
+      now: 200,
+    });
+
+    expect(updated).toMatchObject({
+      inputTokens: 12,
+      outputTokens: 5,
+      totalTokens: 17,
+      tokenProvenance: 'estimated',
+    });
+    await expect(readSiyuanSummaryUsage('project-1', 'map-1')).resolves.toEqual([
+      expect.objectContaining({
+        batchId: 'reported-batch',
+        totalTokens: 7,
+        provenance: 'reported',
+      }),
+    ]);
+  });
+
+  it('rejects an estimated batch from entering a provider-reported aggregate', async () => {
+    const job = {
+      ...createSiyuanIndexJob({
+        projectId: 'project-1',
+        mapId: 'map-1',
+        canonicalRoot: 'C:/root',
+        policyFingerprint: 'policy-a',
+        now: 100,
+      }),
+      phase: 'summarizing' as const,
+      summaryEligible: 2,
+      summarized: 1,
+      inputTokens: 7,
+      outputTokens: 3,
+      totalTokens: 10,
+      tokenProvenance: 'reported' as const,
+      summaryProviderId: 'opencode',
+      summaryConnectionId: 'opencode-cli',
+      summaryModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+      summaryEffort: 'high' as const,
+      updatedAt: 150,
+    };
+    await replaceSiyuanIndexJob(job, {
+      path: 'C:/root',
+      relativePath: '',
+      parentNodeId: null,
+    });
+    await checkpointSiyuanIndexJob({
+      job,
+      appendedEntries: [
+        {
+          nodeId: 'estimated-file',
+          parentNodeId: null,
+          title: 'estimated.ts',
+          kind: 'file',
+          relativePath: 'estimated.ts',
+          sourcePointer: 'C:/root/estimated.ts',
+          summary: null,
+          sizeBytes: 20,
+          modifiedAt: 2,
+        },
+      ],
+    });
+
+    await expect(
+      checkpointSiyuanSummaryBatchNode({
+        projectId: 'project-1',
+        mapId: 'map-1',
+        entry: {
+          nodeId: 'estimated-file',
+          parentNodeId: null,
+          title: 'estimated.ts',
+          kind: 'file',
+          relativePath: 'estimated.ts',
+          sourcePointer: 'C:/root/estimated.ts',
+          summary: 'Estimated summary.',
+          summaryState: 'completed',
+          sizeBytes: 20,
+          modifiedAt: 2,
+        },
+        batchUsage: {
+          batchId: 'estimated-batch',
+          requestId: 'request-estimated',
+          sessionId: 'session-estimated',
+          nodeCount: 1,
+          policyFingerprint: 'policy-a',
+          lane: 0,
+          attempt: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          cacheProvenance: 'unavailable',
+          costUsd: null,
+          costProvenance: 'unavailable',
+          dispatchedAt: 180,
+          durationMs: 20,
+          nodeId: 'estimated-file',
+          sourceModifiedAt: 2,
+          sourceSizeBytes: 20,
+          providerId: 'opencode',
+          connectionId: 'opencode-cli',
+          modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+          effort: 'high',
+          effortProvenance: 'requested',
+          inputTokens: 5,
+          outputTokens: 2,
+          totalTokens: 7,
+          provenance: 'estimated',
+          completedAt: 200,
+        },
+        now: 200,
+      }),
+    ).rejects.toThrow('siyuan_summary_token_provenance_mismatch');
+    await expect(readSiyuanSummaryUsage('project-1', 'map-1')).resolves.toEqual([]);
+    await expect(readSiyuanIndexJob('project-1', 'map-1')).resolves.toMatchObject({
+      summarized: 1,
+      totalTokens: 10,
+      tokenProvenance: 'reported',
     });
   });
 

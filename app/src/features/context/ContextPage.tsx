@@ -137,6 +137,7 @@ import {
   readSiyuanIndexEntries,
   readSiyuanIndexJob,
   resetSiyuanSummaryEntry,
+  resumeSiyuanSummaryJobWithSameCloudRoute,
   updateSiyuanIndexJobStatus,
   type SiyuanIndexJobRecord,
 } from './siyuan/siyuanIndexJobStore';
@@ -907,6 +908,25 @@ export function ContextPage() {
       );
       writeSiyuanMapManifest(approvedManifest);
       approvalSaved = true;
+      const samePinnedRoute =
+        job.summaryProviderId === cloudSummaryDisclosure.providerId &&
+        job.summaryConnectionId === cloudSummaryDisclosure.connectionId &&
+        job.summaryModelId === cloudSummaryDisclosure.modelId &&
+        (job.summaryEffort ?? 'auto') === cloudSummaryDisclosure.effort;
+      if (samePinnedRoute) {
+        const resumed = await resumeSiyuanSummaryJobWithSameCloudRoute(
+          projectId,
+          selectedMap.id,
+          cloudSummaryDisclosure,
+          approvedAt,
+        );
+        setIndexJobSnapshot(resumed);
+        setIndexResumeNonce((value) => value + 1);
+        setStatus(
+          'Approved the same exact route. Resuming pending summaries without repeating completed files…',
+        );
+        return;
+      }
       const archive = await archiveSiyuanSummaryJobForCloudRestart(
         projectId,
         selectedMap.id,
