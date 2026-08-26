@@ -27,6 +27,18 @@ function jobScope(projectId: string, mapId: string): string {
   return `${projectId}\u0000${mapId}`;
 }
 
+function sameBatchIdentity(
+  left: SiyuanSummaryBatchIdentity,
+  right: SiyuanSummaryBatchIdentity,
+): boolean {
+  return (
+    left.providerId === right.providerId &&
+    left.connectionId === right.connectionId &&
+    left.modelId === right.modelId &&
+    left.effort === right.effort
+  );
+}
+
 function releaseReason(
   error: unknown,
   inputSignal: AbortSignal | undefined,
@@ -100,8 +112,45 @@ export async function executeSiyuanSummaryBatches(input: {
       'en-US',
     ),
   );
+  const preparedByRevision = new Map(
+    prepared.map((item) => [siyuanSummaryNodeRevisionKey(item.revision), item]),
+  );
+  const retainedPaidBatches = (await listSiyuanSummaryBatches(scope)).filter(
+    (candidate) =>
+      candidate.receipt !== null &&
+      ['staged', 'applying'].includes(candidate.state) &&
+      candidate.policyFingerprint === input.policyFingerprint &&
+      sameBatchIdentity(candidate.identity, input.identity),
+  );
+  const retainedRevisionKeys = new Set<string>();
+  const recoveryBatches = retainedPaidBatches.map((record) => {
+    for (const key of record.nodeRevisionKeys) {
+      if (retainedRevisionKeys.has(key)) {
+        throw new Error('siyuan_summary_batch_paid_revision_conflict');
+      }
+      retainedRevisionKeys.add(key);
+    }
+    const pendingFiles = record.nodeRevisionKeys
+      .filter((key) => !record.appliedNodeRevisionKeys.includes(key))
+      .map((key) => {
+        const pending = preparedByRevision.get(key);
+        if (!pending) throw new Error('siyuan_summary_batch_paid_revision_missing');
+        return pending.file;
+      });
+    return {
+      record,
+      batch: Object.freeze({
+        id: record.batchId,
+        lane: 0,
+        files: Object.freeze(pendingFiles),
+        totalContentBytes: pendingFiles.reduce((total, file) => total + file.contentBytes, 0),
+      }),
+    };
+  });
   const batches = planSiyuanSummaryBatches(
-    prepared.map(({ file }) => file),
+    prepared
+      .filter(({ revision }) => !retainedRevisionKeys.has(siyuanSummaryNodeRevisionKey(revision)))
+      .map(({ file }) => file),
     { laneCount: input.laneCount ?? 3 },
   );
   const preparedByNode = new Map(prepared.map((item) => [item.file.entry.nodeId, item]));
@@ -128,35 +177,45 @@ export async function executeSiyuanSummaryBatches(input: {
     }
   };
 
-  const runBatch = async (batch: (typeof batches)[number]) => {
+  const runBatch = async (
+    batch: (typeof batches)[number],
+    retainedPaidBatch?: SiyuanSummaryBatchRecord,
+  ) => {
     await checkpoint();
     const ownerId = globalThis.crypto.randomUUID();
-    const revisions = batch.files.map((file) => preparedByNode.get(file.entry.nodeId)!.revision);
+    const revisions =
+      retainedPaidBatch?.files ??
+      batch.files.map((file) => preparedByNode.get(file.entry.nodeId)!.revision);
     let record: SiyuanSummaryBatchRecord | null = null;
     let effectiveBatch = batch;
     try {
-      const revisionDigest = await sha256Text(
-        [
-          input.policyFingerprint,
-          input.identity.providerId,
-          input.identity.connectionId,
-          input.identity.modelId,
-          input.identity.effort === 'ultra' ? 'xhigh' : input.identity.effort,
-          ...revisions.map((revision) => siyuanSummaryNodeRevisionKey(revision)),
-        ].join('\n'),
-      );
-      const baseBatchId = `${batch.id}-${revisionDigest.slice('sha256:'.length, 'sha256:'.length + 16)}`;
-      const priorAttempts = (await listSiyuanSummaryBatches(scope)).filter(
-        (candidate) =>
-          candidate.batchId === baseBatchId ||
-          candidate.batchId.startsWith(`${baseBatchId}-retry-`),
-      );
-      const resumable = priorAttempts.find((candidate) =>
-        ['claimed', 'staged', 'applying', 'completed'].includes(candidate.state),
-      );
-      const batchId =
-        resumable?.batchId ??
-        (priorAttempts.length === 0 ? baseBatchId : `${baseBatchId}-retry-${priorAttempts.length}`);
+      let batchId = retainedPaidBatch?.batchId;
+      if (!batchId) {
+        const revisionDigest = await sha256Text(
+          [
+            input.policyFingerprint,
+            input.identity.providerId,
+            input.identity.connectionId,
+            input.identity.modelId,
+            input.identity.effort === 'ultra' ? 'xhigh' : input.identity.effort,
+            ...revisions.map((revision) => siyuanSummaryNodeRevisionKey(revision)),
+          ].join('\n'),
+        );
+        const baseBatchId = `${batch.id}-${revisionDigest.slice('sha256:'.length, 'sha256:'.length + 16)}`;
+        const priorAttempts = (await listSiyuanSummaryBatches(scope)).filter(
+          (candidate) =>
+            candidate.batchId === baseBatchId ||
+            candidate.batchId.startsWith(`${baseBatchId}-retry-`),
+        );
+        const resumable = priorAttempts.find((candidate) =>
+          ['claimed', 'staged', 'applying', 'completed'].includes(candidate.state),
+        );
+        batchId =
+          resumable?.batchId ??
+          (priorAttempts.length === 0
+            ? baseBatchId
+            : `${baseBatchId}-retry-${priorAttempts.length}`);
+      }
       const batchAttempt = Number(/-retry-(\d+)$/u.exec(batchId)?.[1] ?? 0);
       effectiveBatch = Object.freeze({ ...batch, id: batchId });
       const claim = await claimSiyuanSummaryBatch({
@@ -256,11 +315,12 @@ export async function executeSiyuanSummaryBatches(input: {
       await checkpoint();
       const receipt = record.receipt;
       if (!receipt) throw new Error('siyuan_summary_batch_receipt_missing');
-      for (const [index, revision] of revisions.entries()) {
+      for (const revision of revisions) {
         const key = siyuanSummaryNodeRevisionKey(revision);
         if (record.appliedNodeRevisionKeys.includes(key)) continue;
         await checkpoint();
-        const original = batch.files[index]!.entry;
+        const original = preparedByRevision.get(key)?.file.entry;
+        if (!original) throw new Error('siyuan_summary_batch_paid_revision_missing');
         const summary = receipt.summaries[key];
         if (!summary) throw new Error('siyuan_summary_batch_missing_node');
         await serializeApply(async () => {
@@ -324,6 +384,10 @@ export async function executeSiyuanSummaryBatches(input: {
       throw error;
     }
   };
+
+  for (const recovery of recoveryBatches) {
+    await runBatch(recovery.batch as (typeof batches)[number], recovery.record);
+  }
 
   const laneCount = input.laneCount ?? 3;
   const lanes = Array.from({ length: laneCount }, (_, lane) =>

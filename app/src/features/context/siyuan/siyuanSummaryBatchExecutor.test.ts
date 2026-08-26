@@ -144,6 +144,51 @@ describe('durable SiYuan summary batch executor', () => {
     ]);
   });
 
+  it('recovers a paid partial receipt after the completed file is filtered from resumed input', async () => {
+    const files = [prepared('one'), prepared('two')];
+    let applyAttempt = 0;
+    await expect(
+      executeSiyuanSummaryBatches({
+        ...executorInput(files),
+        generate: vi.fn(async () => generation(files)),
+        apply: vi.fn(async () => {
+          applyAttempt += 1;
+          if (applyAttempt === 2) throw new Error('simulated_apply_crash');
+        }),
+      }),
+    ).rejects.toThrow('simulated_apply_crash');
+
+    const [staged] = await listSiyuanSummaryBatches('project-1\u0000map-1');
+    expect(staged).toMatchObject({
+      state: 'staged',
+      ownerId: null,
+      receipt: expect.objectContaining({ identity }),
+      appliedNodeRevisionKeys: [expect.stringContaining('one')],
+    });
+
+    const resumeGenerate = vi.fn(async (batch) => generation(batch.files));
+    const resumedEntries: string[] = [];
+    await expect(
+      executeSiyuanSummaryBatches({
+        ...executorInput([files[1]!]),
+        generate: resumeGenerate,
+        apply: vi.fn(async ({ entry }) => {
+          resumedEntries.push(entry.nodeId);
+        }),
+      }),
+    ).resolves.toEqual({ completedBatches: 1, completedFiles: 2 });
+
+    expect(resumeGenerate).not.toHaveBeenCalled();
+    expect(resumedEntries).toEqual(['two']);
+    await expect(listSiyuanSummaryBatches('project-1\u0000map-1')).resolves.toEqual([
+      expect.objectContaining({
+        batchId: staged!.batchId,
+        state: 'completed',
+        appliedNodeRevisionKeys: staged!.nodeRevisionKeys,
+      }),
+    ]);
+  });
+
   it('resumes a paid partial batch deterministically after input order changes', async () => {
     const originalOrder = [prepared('three'), prepared('one'), prepared('two')];
     const successfullyApplied: string[] = [];
