@@ -353,11 +353,11 @@ describe('SiYuan safe read-only index', () => {
     expect(index.entries.map((entry) => entry.relativePath)).toEqual(['One', 'Two']);
   });
 
-  it('lists 65 nested directories through at most four ordered batches of 32', async () => {
+  it('lists 129 nested directories through bounded ordered batches of 64', async () => {
     const root = 'C:/Users/viper';
-    const directories = Array.from({ length: 65 }, (_, index) => ({
-      name: `Dir-${String(index).padStart(2, '0')}`,
-      path: `${root}/Dir-${String(index).padStart(2, '0')}`,
+    const directories = Array.from({ length: 129 }, (_, index) => ({
+      name: `Dir-${String(index).padStart(3, '0')}`,
+      path: `${root}/Dir-${String(index).padStart(3, '0')}`,
       isDir: true,
     }));
     const requestedBatches: string[][] = [];
@@ -378,10 +378,10 @@ describe('SiYuan safe read-only index', () => {
       },
     );
 
-    expect(requestedBatches.map((batch) => batch.length)).toEqual([1, 32, 32, 1]);
+    expect(requestedBatches.map((batch) => batch.length)).toEqual([1, 64, 64, 1]);
     expect(requestedBatches).toHaveLength(4);
-    expect(requestedBatches.flat()).toHaveLength(66);
-    expect(new Set(requestedBatches.flat()).size).toBe(66);
+    expect(requestedBatches.flat()).toHaveLength(130);
+    expect(new Set(requestedBatches.flat()).size).toBe(130);
     expect(index.entries.map((entry) => entry.relativePath)).toEqual(
       directories.map((directory) => directory.name),
     );

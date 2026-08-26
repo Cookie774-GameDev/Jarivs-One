@@ -208,7 +208,7 @@ const EXCLUDED_SEGMENTS = new Set([
 const SECRET_FILE =
   /^(?:\.env(?:\..*)?|\.git-credentials|\.netrc|\.npmrc|\.pypirc|auth(?:entication)?\.json|credentials?(?:\..*)?|id_(?:rsa|ecdsa|ed25519)|secrets?(?:\..*)?|tokens?(?:\..*)?|.*\.(?:key|pem|p12|pfx))$/iu;
 const MAX_ENTRIES = 500_000;
-const DIRECTORY_SCAN_BATCH_SIZE = 32;
+const DIRECTORY_SCAN_BATCH_SIZE = 64;
 
 function canonical(value: string): string {
   return value

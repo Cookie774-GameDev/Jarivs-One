@@ -982,6 +982,11 @@ export function ContextPage() {
           approvalPreflight: true,
           signal: controller.signal,
           control,
+          onIndexProgress: ({ indexed, excluded, unreadable }) => {
+            setStatus(
+              `Refreshing exact scope · ${indexed.toLocaleString()} indexed · ${excluded.toLocaleString()} excluded · ${unreadable.toLocaleString()} unreadable`,
+            );
+          },
         });
         throw new Error('siyuan_cloud_summary_approval_reconcile_incomplete');
       } catch (error) {
