@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::{path::PathBuf, sync::Mutex};
 
 use serde::{Deserialize, Serialize};
 use tauri::{
@@ -10,6 +10,7 @@ use super::SiyuanRuntimeState;
 
 const SURFACE_LABEL: &str = "siyuan-context-vault";
 const MAIN_WEBVIEW_ADDITIONAL_BROWSER_ARGS: &str = "--js-flags=--max-old-space-size=1536";
+const SIYUAN_CHILD_CDP_PORT_ENV: &str = "VIBESPACE_SIYUAN_CHILD_CDP_PORT";
 const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
 ((targetDocumentId, graphMode) => {
   if (
@@ -218,6 +219,38 @@ fn main_window(app: &AppHandle) -> Result<Window, String> {
         .ok_or_else(|| public_error("siyuan_surface_main_window_unavailable"))
 }
 
+fn debug_child_cdp_port(value: Option<&str>, debug_build: bool) -> Option<u16> {
+    if !debug_build {
+        return None;
+    }
+    value?
+        .trim()
+        .parse::<u16>()
+        .ok()
+        .filter(|port| *port >= 1024)
+}
+
+fn child_cdp_configuration(app: &AppHandle) -> Result<Option<(PathBuf, String)>, String> {
+    let port = debug_child_cdp_port(
+        std::env::var(SIYUAN_CHILD_CDP_PORT_ENV).ok().as_deref(),
+        cfg!(debug_assertions),
+    );
+    let Some(port) = port else {
+        return Ok(None);
+    };
+    let data_directory = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|_| public_error("siyuan_surface_webview_unavailable"))?
+        .join("webview-data")
+        .join("siyuan-child-cdp")
+        .join(port.to_string());
+    let browser_args = format!(
+        "{MAIN_WEBVIEW_ADDITIONAL_BROWSER_ARGS} --remote-debugging-address=127.0.0.1 --remote-debugging-port={port}"
+    );
+    Ok(Some((data_directory, browser_args)))
+}
+
 fn child_geometry(
     bounds: &SiyuanSurfaceBounds,
 ) -> Result<(LogicalPosition<f64>, LogicalSize<f64>), String> {
@@ -361,13 +394,18 @@ pub async fn siyuan_surface_open(
         .map_err(|_| public_error("siyuan_surface_origin_invalid"))?;
     let allowed_origin = origin.clone();
     let (position, size) = child_geometry(&bounds)?;
-    let builder = WebviewBuilder::new(SURFACE_LABEL, WebviewUrl::External(blank))
+    let mut builder = WebviewBuilder::new(SURFACE_LABEL, WebviewUrl::External(blank))
         .focused(true)
         .additional_browser_args(MAIN_WEBVIEW_ADDITIONAL_BROWSER_ARGS)
         .initialization_script(&initialization_script)
         .on_navigation(move |candidate| navigation_allowed(&allowed_origin, candidate))
         .on_new_window(|_, _| NewWindowResponse::Deny)
         .on_download(|_, _| false);
+    if let Some((data_directory, browser_args)) = child_cdp_configuration(&app)? {
+        builder = builder
+            .data_directory(data_directory)
+            .additional_browser_args(&browser_args);
+    }
 
     let webview = main
         .add_child(builder, position, size)
@@ -582,6 +620,25 @@ mod tests {
             main_window["additionalBrowserArgs"].as_str(),
             Some(MAIN_WEBVIEW_ADDITIONAL_BROWSER_ARGS)
         );
+    }
+
+    #[test]
+    fn child_cdp_port_is_debug_only_and_validated() {
+        assert_eq!(debug_child_cdp_port(Some(" 9334 "), true), Some(9334));
+        assert_eq!(debug_child_cdp_port(Some("9334"), false), None);
+        assert_eq!(debug_child_cdp_port(Some("0"), true), None);
+        assert_eq!(debug_child_cdp_port(Some("1023"), true), None);
+        assert_eq!(debug_child_cdp_port(Some("not-a-port"), true), None);
+        assert_eq!(debug_child_cdp_port(None, true), None);
+    }
+
+    #[test]
+    fn child_cdp_configuration_is_isolated_and_loopback_only() {
+        let source = include_str!("surface.rs");
+        assert!(source.contains("cfg!(debug_assertions)"));
+        assert!(source.contains(".data_directory(data_directory)"));
+        assert!(source.contains("--remote-debugging-address=127.0.0.1"));
+        assert!(source.contains("--remote-debugging-port={port}"));
     }
 
     #[test]
