@@ -169,6 +169,7 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
     ref,
   ) {
     const listRef = useRef<HTMLDivElement>(null);
+    const surfaceRef = useRef<HTMLDivElement>(null);
     const pickerId = useId();
     const reducedMotion = useReducedMotion();
     const dropdownTransition = useThemeMotionTransition(LEGACY_DROPDOWN_TRANSITION);
@@ -418,15 +419,59 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
       scrollPickerItemIntoView(listRef.current, `[data-value="${selectedId}"]`);
     }, [selectedId]);
 
+    useEffect(() => {
+      const surface = surfaceRef.current;
+      const content = surface?.parentElement?.closest<HTMLElement>('[data-state]');
+      if (!surface || !content) return;
+      const contentHadInert = content.hasAttribute('inert');
+      const contentAriaHidden = content.getAttribute('aria-hidden');
+      const restoreContentState = () => {
+        content.removeAttribute('data-model-picker-exit-closed');
+        content.toggleAttribute('inert', contentHadInert);
+        if (contentAriaHidden === null) content.removeAttribute('aria-hidden');
+        else content.setAttribute('aria-hidden', contentAriaHidden);
+      };
+
+      const syncExitState = () => {
+        const closed = content.dataset.state === 'closed';
+        surface.toggleAttribute('inert', closed);
+        if (!closed) {
+          surface.removeAttribute('data-exit-closed');
+          surface.removeAttribute('aria-hidden');
+          restoreContentState();
+          return;
+        }
+
+        surface.setAttribute('data-exit-closed', 'true');
+        surface.setAttribute('aria-hidden', 'true');
+        content.setAttribute('data-model-picker-exit-closed', 'true');
+        content.setAttribute('inert', '');
+        content.setAttribute('aria-hidden', 'true');
+        const trigger = Array.from(document.querySelectorAll<HTMLElement>('[aria-controls]')).find(
+          (candidate) => candidate.getAttribute('aria-controls') === content.id,
+        );
+        trigger?.focus({ preventScroll: true });
+      };
+
+      syncExitState();
+      const observer = new MutationObserver(syncExitState);
+      observer.observe(content, { attributes: true, attributeFilter: ['data-state'] });
+      return () => {
+        observer.disconnect();
+        restoreContentState();
+      };
+    }, []);
+
     return (
       <motion.div
+        ref={surfaceRef}
         {...dropdownMotion}
         initial={false}
         role="dialog"
         aria-label="Choose AI model"
         data-pet-scaled-picker={compact ? 'true' : undefined}
         className={cn(
-          'jarvis-slash-dropdown overflow-hidden rounded-[14px] border border-border-mid/80',
+          'model-picker-typeahead jarvis-slash-dropdown overflow-hidden rounded-[14px] border border-border-mid/80',
           compact ? 'w-[min(280px,88vw)] rounded-[10px]' : 'w-[338px]',
           'bg-elevated/95 text-foreground backdrop-blur-xl',
           'shadow-[0_18px_50px_rgba(0,0,0,0.52),inset_0_1px_0_hsl(var(--foreground)/0.05),0_0_30px_hsl(var(--accent-copper)/0.1)]',
@@ -670,6 +715,12 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                     aria-controls={optionsId}
                     aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${group.label}`}
                     onClick={() => toggleGroup(groupId)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      toggleGroup(groupId);
+                    }}
                     className="flex w-full items-center gap-2 px-4 pb-1 pt-0.5 text-left text-[11px] uppercase tracking-[0.2em] text-accent-copper/70 transition-colors hover:text-accent-copper focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent-copper/60"
                   >
                     <span className="min-w-0 flex-1 truncate">{group.label}</span>

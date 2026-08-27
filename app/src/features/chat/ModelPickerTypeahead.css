@@ -1,3 +1,13 @@
+.model-picker-typeahead[data-exit-closed='true'] {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+[data-model-picker-exit-closed='true'] {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 .vibespace-effort-row[aria-pressed='true'] .vibespace-effort-glyph {
   animation: vibespace-effort-breathe 1.8s ease-in-out infinite;
 }

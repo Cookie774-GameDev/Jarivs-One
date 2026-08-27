@@ -1,5 +1,5 @@
 import { createRef } from 'react';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ProviderConnection } from '@/lib/ai/adapters/types';
@@ -140,6 +140,52 @@ describe('ModelPickerTypeahead smoke transports', () => {
     const surface = container.querySelector<HTMLElement>('.jarvis-slash-dropdown');
     expect(surface).not.toBeNull();
     expect(surface?.style.opacity).not.toBe('0');
+  });
+
+  it('immediately hides and disables a retained closed picker while restoring trigger focus', async () => {
+    const { rerender } = render(
+      <>
+        <button type="button" aria-controls="retained-picker-content">
+          Choose model
+        </button>
+        <div id="retained-picker-content" data-state="open">
+          <ModelPickerTypeahead groups={[]} selectedId="" onSelect={vi.fn()} />
+        </div>
+      </>,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Choose model' });
+    const content = document.getElementById('retained-picker-content')!;
+    const picker = screen.getByRole('dialog', { name: 'Choose AI model' });
+    content.setAttribute('data-state', 'closed');
+
+    await waitFor(() => expect(picker.getAttribute('data-exit-closed')).toBe('true'));
+    expect(picker.hasAttribute('inert')).toBe(true);
+    expect(picker.getAttribute('aria-hidden')).toBe('true');
+    expect(content.getAttribute('data-model-picker-exit-closed')).toBe('true');
+    expect(content.hasAttribute('inert')).toBe(true);
+    expect(content.getAttribute('aria-hidden')).toBe('true');
+    expect(document.activeElement).toBe(trigger);
+
+    content.setAttribute('data-state', 'open');
+    await waitFor(() => expect(picker.hasAttribute('data-exit-closed')).toBe(false));
+    expect(content.hasAttribute('data-model-picker-exit-closed')).toBe(false);
+    expect(content.hasAttribute('inert')).toBe(false);
+    expect(content.hasAttribute('aria-hidden')).toBe(false);
+
+    content.setAttribute('data-state', 'closed');
+    await waitFor(() => expect(content.hasAttribute('inert')).toBe(true));
+    rerender(
+      <>
+        <button type="button" aria-controls="retained-picker-content">
+          Choose model
+        </button>
+        <div id="retained-picker-content" data-state="closed" />
+      </>,
+    );
+    expect(content.hasAttribute('data-model-picker-exit-closed')).toBe(false);
+    expect(content.hasAttribute('inert')).toBe(false);
+    expect(content.hasAttribute('aria-hidden')).toBe(false);
   });
 
   it('shows truthful live free pricing without disabling selection', () => {
@@ -752,7 +798,19 @@ describe('ModelPickerTypeahead smoke transports', () => {
     expect(screen.getByText('GPT-5.6')).not.toBeNull();
     expect(screen.queryByText('Qwen 3.7 Plus')).toBeNull();
 
-    fireEvent.click(alibabaHeading);
+    const bubbledKeyDown = vi.fn();
+    window.addEventListener('keydown', bubbledKeyDown);
+    alibabaHeading.focus();
+    fireEvent.keyDown(alibabaHeading, { key: 'Enter' });
+    const expandedByEnter = screen.getByRole('button', { name: 'Collapse Alibaba' });
+    expandedByEnter.focus();
+    fireEvent.keyDown(expandedByEnter, { key: ' ' });
+    expect(screen.queryByText('Qwen 3.7 Plus')).toBeNull();
+    const collapsedBySpace = screen.getByRole('button', { name: 'Expand Alibaba' });
+    collapsedBySpace.focus();
+    fireEvent.keyDown(collapsedBySpace, { key: ' ' });
+    window.removeEventListener('keydown', bubbledKeyDown);
+    expect(bubbledKeyDown).not.toHaveBeenCalled();
     const expandedAlibabaHeading = screen.getByRole('button', { name: 'Collapse Alibaba' });
     expect(screen.getByText('Qwen 3.7 Plus')).not.toBeNull();
 
