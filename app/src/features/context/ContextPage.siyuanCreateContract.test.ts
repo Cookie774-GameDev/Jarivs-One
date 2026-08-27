@@ -63,6 +63,9 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(source).toContain('motion-reduce:animate-none');
     expect(source).toContain('progress={exactPercent}');
     expect(source).toContain("paused={job.status !== 'running'}");
+    expect(source).toContain("estimated={job.phase !== 'completed'}");
+    expect(source).toContain('data-testid="siyuan-paused-timing"');
+    expect(source).toContain('ETA ${eta} · elapsed ${elapsed}');
     expect(source).toContain("? 'Estimating time…'");
     expect(source).toContain("`${job.phase === 'completed' ? '' : '≈ '}");
   });

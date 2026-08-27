@@ -11,6 +11,7 @@ export interface WarmHexProgressProps {
   detail?: string;
   mode?: 'compact' | 'full';
   paused?: boolean;
+  estimated?: boolean;
   reducedMotion?: boolean;
   className?: string;
 }
@@ -127,6 +128,7 @@ export function WarmHexProgress({
   detail,
   mode = 'full',
   paused = false,
+  estimated = false,
   reducedMotion: reducedMotionOverride,
   className,
 }: WarmHexProgressProps) {
@@ -195,10 +197,13 @@ export function WarmHexProgress({
       aria-valuemax={100}
       aria-valuenow={indeterminate ? undefined : exactProgress}
       aria-valuetext={
-        indeterminate ? 'Estimating time…' : `${displayedProgress}%${paused ? ', paused' : ''}`
+        indeterminate
+          ? 'Estimating time…'
+          : `${estimated ? 'Approximately ' : ''}${displayedProgress}%${paused ? ', paused' : ''}`
       }
       data-motion={reducedMotion ? 'reduced' : 'full'}
       data-paused={paused ? 'true' : 'false'}
+      data-estimated={estimated ? 'true' : 'false'}
       data-indeterminate={indeterminate ? 'true' : 'false'}
     >
       <canvas ref={canvasRef} className="warm-hex-progress__canvas" aria-hidden="true" />
@@ -209,7 +214,9 @@ export function WarmHexProgress({
           {detail ? <span className="warm-hex-progress__detail">{detail}</span> : null}
         </div>
         <span className="warm-hex-progress__value">
-          {displayedProgress === null ? 'Estimating…' : `${displayedProgress}%`}
+          {displayedProgress === null
+            ? 'Estimating…'
+            : `${estimated ? '≈ ' : ''}${displayedProgress}%`}
         </span>
       </div>
     </div>

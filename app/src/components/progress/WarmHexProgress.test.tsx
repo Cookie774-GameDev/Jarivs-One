@@ -95,6 +95,14 @@ describe('WarmHexProgress', () => {
     expect(requestFrame).not.toHaveBeenCalled();
   });
 
+  it('labels estimated progress visibly and accessibly without presenting it as exact', () => {
+    render(<WarmHexProgress progress={41.6} label="Indexing" mode="compact" paused estimated />);
+
+    const progressbar = screen.getByRole('progressbar', { name: 'Indexing' });
+    expect(progressbar.getAttribute('aria-valuetext')).toBe('Approximately 42%, paused');
+    expect(screen.getByText('≈ 42%')).toBeTruthy();
+  });
+
   it('renders unknown work as indeterminate without inventing a percentage', () => {
     const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(41);
     render(<WarmHexProgress progress={null} label="Discovering files" />);

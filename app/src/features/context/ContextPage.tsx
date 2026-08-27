@@ -286,6 +286,15 @@ function SiyuanIndexProgressCard({
                         ? 'Estimating time…'
                         : `≈ ${Math.round(exactPercent)}% · ${eta}${job.phase === 'discovering' ? ' for discovery' : ' remaining'} · elapsed ${elapsed}`}
           </p>
+          {job.status === 'paused' ? (
+            <p
+              data-testid="siyuan-paused-timing"
+              className="mt-1 text-metadata tabular-nums text-muted-foreground"
+            >
+              {exactPercent === null ? 'Progress recalculating…' : `≈ ${Math.round(exactPercent)}%`}
+              {` · ETA ${eta} · elapsed ${elapsed}`}
+            </p>
+          ) : null}
         </div>
         <span className="text-sm font-semibold tabular-nums text-foreground">
           {exactPercent === null
@@ -300,6 +309,7 @@ function SiyuanIndexProgressCard({
         detail={`${phaseLabel[job.phase]} · ${job.status}`}
         mode="compact"
         paused={job.status !== 'running'}
+        estimated={job.phase !== 'completed'}
       />
       <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-metadata text-muted-foreground sm:grid-cols-4">
         <div>
