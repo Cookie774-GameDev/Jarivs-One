@@ -42,6 +42,7 @@ const IMPLEMENTED_BASE: PluginManifest[] = [
       'https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps',
     credentialUrl: 'https://github.com/settings/personal-access-tokens',
     authorizationUrl: 'https://github.com/login/device',
+    providerAccessUrl: 'https://github.com/login/device',
     help: 'Authorize VibeSpace on GitHub’s provider-owned device verification page. Tokens are handled only by the trusted connection runtime and never exposed to terminals.',
     tags: ['developer tools', 'git', 'oauth', 'device authorization', 'repositories'],
     setupSteps: [
@@ -117,6 +118,7 @@ const IMPLEMENTED_BASE: PluginManifest[] = [
     status: 'implemented',
     docsUrl: 'https://www.figma.com/developers/api#access-tokens',
     credentialUrl: 'https://www.figma.com/developers/api#access-tokens',
+    providerAccessUrl: 'https://www.figma.com/developers/api#access-tokens',
     help: 'Use a Figma personal access token. The connection test reads only the current user profile.',
     tags: ['design', 'token', 'components'],
     setupSteps: [
@@ -162,6 +164,7 @@ const IMPLEMENTED_BASE: PluginManifest[] = [
     status: 'implemented',
     docsUrl: 'https://supabase.com/docs/guides/api/api-keys',
     credentialUrl: 'https://supabase.com/dashboard/project/_/settings/api-keys',
+    providerAccessUrl: 'https://supabase.com/dashboard/project/_/settings/api-keys',
     help: 'Enter the project URL and a publishable/anon API key. VibeSpace rejects privileged service-role or secret keys before calling the REST root.',
     tags: ['database', 'auth', 'storage', 'api_key'],
     setupSteps: [
@@ -208,6 +211,7 @@ const IMPLEMENTED_BASE: PluginManifest[] = [
     docsUrl:
       'https://shopify.dev/docs/apps/build/authentication-authorization/access-tokens/generate-app-access-tokens-admin',
     credentialUrl: 'https://admin.shopify.com/store/settings/apps/development',
+    providerAccessUrl: 'https://admin.shopify.com/store/settings/apps/development',
     help: 'Enter the permanent myshopify.com domain and a custom-app Admin API token.',
     tags: ['ecommerce', 'token', 'orders'],
     setupSteps: [
@@ -248,6 +252,7 @@ const IMPLEMENTED_BASE: PluginManifest[] = [
     status: 'implemented',
     docsUrl: 'https://api.slack.com/authentication/token-types',
     credentialUrl: 'https://api.slack.com/apps',
+    providerAccessUrl: 'https://api.slack.com/apps',
     help: 'Enter a Slack bot or user token. VibeSpace validates it with auth.test.',
     tags: ['messaging', 'collaboration', 'token'],
     setupSteps: [
@@ -494,6 +499,19 @@ export function validatePluginCatalog(catalog = PLUGIN_CATALOG): string[] {
     }
     if (plugin.status === 'implemented' && plugin.tools.length === 0) {
       errors.push(`${plugin.id}: implemented plugin has no tools`);
+    }
+    if (plugin.authType !== 'none') {
+      try {
+        const accessUrl = new URL(plugin.providerAccessUrl ?? '');
+        if (accessUrl.protocol !== 'https:' || accessUrl.username || accessUrl.password) {
+          errors.push(`${plugin.id}: invalid provider access URL`);
+        }
+      } catch {
+        errors.push(`${plugin.id}: invalid provider access URL`);
+      }
+      if (plugin.authorizationUrl && plugin.providerAccessUrl !== plugin.authorizationUrl) {
+        errors.push(`${plugin.id}: OAuth access page must be the authorization endpoint`);
+      }
     }
     if (plugin.status === 'planned') {
       errors.push(`${plugin.id}: legacy planned status is not allowed`);

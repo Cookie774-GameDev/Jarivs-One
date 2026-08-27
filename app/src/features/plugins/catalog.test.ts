@@ -14,6 +14,21 @@ describe('plugin catalog', () => {
     expect(new Set(PLUGIN_CATALOG.map((plugin) => plugin.id)).size).toBe(PLUGIN_CATALOG.length);
   });
 
+  it('gives every external connector one exact HTTPS provider access page', () => {
+    const external = PLUGIN_CATALOG.filter((plugin) => plugin.authType !== 'none');
+    expect(external).toHaveLength(111);
+    for (const plugin of external) {
+      expect(plugin.providerAccessUrl, plugin.id).toMatch(/^https:\/\//);
+      const access = new URL(plugin.providerAccessUrl!);
+      expect(access.username, plugin.id).toBe('');
+      expect(access.password, plugin.id).toBe('');
+      if (plugin.authorizationUrl) {
+        expect(plugin.providerAccessUrl, plugin.id).toBe(plugin.authorizationUrl);
+        expect(plugin.providerAccessUrl, plugin.id).not.toBe(plugin.credentialUrl);
+      }
+    }
+  });
+
   it('only labels connectors with declared runtime tools as implemented', () => {
     const implemented = PLUGIN_CATALOG.filter((plugin) => plugin.status === 'implemented');
     expect(implemented.map((plugin) => plugin.id)).toEqual(

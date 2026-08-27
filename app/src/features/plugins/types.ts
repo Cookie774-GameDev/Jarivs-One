@@ -60,6 +60,12 @@ export type PluginManifest = {
   credentialUrl?: string;
   /** Provider authorization endpoint. Never substitute credentialUrl for this value. */
   authorizationUrl?: string;
+  /**
+   * Official external page opened beside the in-app connection UI. OAuth entries
+   * must use their authorization endpoint; credential connectors use the signed-in
+   * provider account/configuration page.
+   */
+  providerAccessUrl?: string;
   help: string;
   tools: PluginTool[];
   tags: string[];

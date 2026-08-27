@@ -150,12 +150,24 @@ export function Plugins() {
     try {
       const result = await management.beginAuthorization({ accountId, pluginId: plugin.id });
       if (!result.ok) {
-        setAuthorizationPanel({
+        const recoveryPanel: AuthorizationPanel = {
           plugin,
           phase: 'error',
           error: result.error,
           setupUrl: result.setupUrl,
-        });
+          authorizationUrl: plugin.providerAccessUrl,
+        };
+        setAuthorizationPanel(recoveryPanel);
+        if (plugin.providerAccessUrl) {
+          try {
+            await openExternal(plugin.providerAccessUrl);
+          } catch {
+            setAuthorizationPanel({
+              ...recoveryPanel,
+              error: `${result.error} The ${plugin.provider} page did not open automatically.`,
+            });
+          }
+        }
         return;
       }
       const nextPanel: AuthorizationPanel = {
@@ -185,6 +197,17 @@ export function Plugins() {
         error: `Could not start the ${plugin.provider} authorization flow.`,
       });
     }
+  }
+
+  function openManualProviderSetup(plugin: PluginManifest) {
+    setSelected(plugin);
+    if (!plugin.providerAccessUrl) return;
+    void openExternal(plugin.providerAccessUrl).catch(() => {
+      toast.warning(
+        `${plugin.provider} page did not open`,
+        'Use the official provider-page button in the connection panel.',
+      );
+    });
   }
 
   const visible = React.useMemo(() => {
@@ -385,7 +408,7 @@ export function Plugins() {
                       } else if (usesProviderAuthorization(plugin.id)) {
                         void startProviderAuthorization(plugin);
                       } else {
-                        setSelected(plugin);
+                        openManualProviderSetup(plugin);
                       }
                     }}
                   >
@@ -975,6 +998,31 @@ function PluginSetupDialog({
                     <ExternalLink className="h-4 w-4" />
                   )}
                   {providerConnectLabel}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {!usesProviderAuthorization && activePlugin.providerAccessUrl && (
+            <div className="rounded-xl border border-accent-cyan/20 bg-accent-cyan/5 p-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-secondary font-medium text-foreground">
+                    Official provider account page
+                  </p>
+                  <p className="text-metadata text-muted-foreground">
+                    Sign in or create your {activePlugin.provider} account on the provider-owned
+                    page. Keep this panel open to finish the supported credential fallback.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void openExternal(activePlugin.providerAccessUrl!)}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open {activePlugin.name} account page
                 </Button>
               </div>
             </div>

@@ -203,6 +203,32 @@ describe('Plugins settings page', () => {
     });
   }, 15_000);
 
+  it.each([
+    ['Supabase', 'supabase', 'https://supabase.com/dashboard/project/_/settings/api-keys'],
+    ['Stripe', 'stripe', 'https://dashboard.stripe.com/apikeys'],
+    ['Cloudflare', 'cloudflare', 'https://dash.cloudflare.com/profile/api-tokens'],
+  ])(
+    'opens the official %s account page with the in-app manual fallback',
+    async (name, pluginId, expectedUrl) => {
+      renderPlugins();
+      fireEvent.change(screen.getByLabelText('Search plugins'), { target: { value: name } });
+      const card = screen.getByTestId(`plugin-card-${pluginId}`);
+      fireEvent.click(within(card).getByRole('button', { name: /^install$/i }));
+      fireEvent.click(within(card).getByRole('button', { name: /^connect$/i }));
+
+      await waitFor(() => expect(openExternal).toHaveBeenCalledWith(expectedUrl));
+      expect(screen.getByText(/official provider account page/i)).toBeTruthy();
+      expect(
+        screen.getByRole('button', { name: new RegExp(`open ${name} account page`, 'i') }),
+      ).toBeTruthy();
+      expect(management.beginAuthorization).not.toHaveBeenCalledWith({
+        accountId: 'account-a',
+        pluginId,
+      });
+    },
+    15_000,
+  );
+
   it('keeps a compact recovery panel when provider registration is unavailable', async () => {
     vi.mocked(management.beginAuthorization).mockResolvedValueOnce({
       ok: false,
@@ -221,7 +247,8 @@ describe('Plugins settings page', () => {
     );
     expect(screen.getByRole('button', { name: /view provider requirements/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /continue with github/i })).toBeNull();
-    expect(openExternal).not.toHaveBeenCalled();
+    expect(openExternal).toHaveBeenCalledWith('https://github.com/login/device');
+    expect(screen.getByRole('button', { name: /open github authorization/i })).toBeTruthy();
   }, 15_000);
 
   it('shows exact required OAuth scopes in the compact recovery panel', async () => {

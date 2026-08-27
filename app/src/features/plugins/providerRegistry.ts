@@ -20,6 +20,7 @@ type RegistryPartial = {
   docsUrl?: string;
   credentialUrl?: string;
   authorizationUrl?: string;
+  providerAccessUrl?: string;
   help?: string;
   tags?: string[];
   setupSteps?: string[];
@@ -1724,6 +1725,7 @@ function mergeManifest(
   const fields = base.fields ?? GENERIC_DEFAULT.fields ?? [];
   const docsUrl = base.docsUrl;
   const credentialUrl = base.credentialUrl ?? docsUrl;
+  const providerAccessUrl = base.providerAccessUrl ?? base.authorizationUrl ?? credentialUrl;
   const setupSteps = base.setupSteps ?? GENERIC_DEFAULT.setupSteps ?? [];
   const tags = [...new Set([...(base.tags ?? []), category.toLowerCase(), authType])];
   const tools = base.tools ?? [readTool('capability_context', `${name} capability metadata.`)];
@@ -1750,6 +1752,7 @@ function mergeManifest(
     docsUrl,
     credentialUrl,
     authorizationUrl: base.authorizationUrl,
+    providerAccessUrl,
     help,
     tools,
     tags,
