@@ -22,6 +22,16 @@ const INSPECTOR_DEFAULT_HEIGHT = 320;
 const INSPECTOR_MAX_HEIGHT = 420;
 type Filter = 'all' | LedgerReceiptKind | 'usage';
 
+const EMPTY_CATEGORY_MESSAGES: Partial<Record<Filter, string>> = {
+  read: 'No read activity for this turn.',
+  search: 'No search activity for this turn.',
+  command: 'No command activity for this turn.',
+  edit: 'No edit activity for this turn.',
+  check: 'No check activity for this turn.',
+  subagent: 'No subagent activity for this turn.',
+  other: 'No other activity for this turn.',
+};
+
 function formatCount(value: number): string {
   return value.toLocaleString();
 }
@@ -147,6 +157,7 @@ export function AssistantActivityLedger({
     : categoryFiltered;
   const visible = filtered.slice(0, visibleCount);
   const remaining = Math.max(0, filtered.length - visible.length);
+  const emptyCategoryMessage = EMPTY_CATEGORY_MESSAGES[filter];
   const counts: Record<Exclude<Filter, 'usage'>, number> = {
     all: ledger.receipts.length,
     read: ledger.receipts.filter((receipt) => receipt.kind === 'read').length,
@@ -349,6 +360,9 @@ export function AssistantActivityLedger({
               ))}
               {filtered.length === 0 && normalizedQuery ? (
                 <p className="assistant-activity-ledger__notice">No matching activity receipts.</p>
+              ) : null}
+              {filtered.length === 0 && !normalizedQuery && emptyCategoryMessage ? (
+                <p className="assistant-activity-ledger__notice">{emptyCategoryMessage}</p>
               ) : null}
               {remaining > 0 ? (
                 <button

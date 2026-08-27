@@ -184,6 +184,33 @@ describe('AssistantActivityLedger', () => {
     expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(readsTab.id);
   });
 
+  it('distinguishes an empty selected category from an empty search result', () => {
+    render(
+      <AssistantActivityLedger
+        message={assistant([
+          {
+            kind: 'tool_call',
+            call_id: 'command-only',
+            tool: 'terminal.exec',
+            args: { command: 'private command' },
+          },
+          { kind: 'tool_result', call_id: 'command-only', result: { exitCode: 0 } },
+        ])}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /activity details/i }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Reads 0' }));
+
+    expect(screen.getByText('No read activity for this turn.')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('private command');
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search activity' }), {
+      target: { value: 'missing' },
+    });
+    expect(screen.getByText('No matching activity receipts.')).toBeTruthy();
+    expect(screen.queryByText('No read activity for this turn.')).toBeNull();
+  });
+
   it('searches only the bounded privacy-safe receipt projection and resets paging', () => {
     const events: ChatActivityEvent[] = [
       {
