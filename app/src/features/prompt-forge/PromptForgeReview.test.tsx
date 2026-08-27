@@ -80,13 +80,14 @@ describe('Prompt Forge inline review', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByText('Upgraded prompt ready')).toBeTruthy();
     expect(screen.getByText(/Qwen 3 8B/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Accept upgraded prompt' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Retry prompt upgrade' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Prompt upgrade review actions' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Keep upgraded prompt' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Regenerate prompt upgrade' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Add context to prompt upgrade' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Restore original prompt' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Cancel prompt upgrade' })).toBeTruthy();
   });
 
-  it('keeps accept, retry, contextual retry, and restore explicit', () => {
+  it('keeps, regenerates, adds context, and cancels through distinct explicit actions', () => {
     const handlers = {
       onAccept: vi.fn(),
       onRegenerate: vi.fn(),
@@ -96,11 +97,15 @@ describe('Prompt Forge inline review', () => {
     };
     render(<PromptForgeReview open job={readyJob()} {...handlers} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Accept upgraded prompt' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep upgraded prompt' }));
     expect(handlers.onAccept).toHaveBeenCalledOnce();
+    expect(handlers.onRegenerate).not.toHaveBeenCalled();
+    expect(handlers.onRestoreOriginal).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retry prompt upgrade' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate prompt upgrade' }));
     expect(handlers.onRegenerate).toHaveBeenCalledOnce();
+    expect(handlers.onAccept).toHaveBeenCalledOnce();
+    expect(handlers.onRestoreOriginal).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Add context to prompt upgrade' }));
     fireEvent.change(screen.getByLabelText('Additional prompt context'), {
@@ -111,8 +116,10 @@ describe('Prompt Forge inline review', () => {
       'Keep the result under 200 words.',
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Restore original prompt' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel prompt upgrade' }));
     expect(handlers.onRestoreOriginal).toHaveBeenCalledOnce();
+    expect(handlers.onAccept).toHaveBeenCalledOnce();
+    expect(handlers.onRegenerate).toHaveBeenCalledOnce();
   });
 
   it('does not render when review is closed', () => {

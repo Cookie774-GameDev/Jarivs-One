@@ -99,12 +99,16 @@ export function PromptForgeReview({
         </div>
       ) : null}
 
-      <div className={cn('mt-2 flex flex-wrap items-center gap-1.5', compact && 'mt-1.5 gap-1')}>
+      <div
+        role="group"
+        aria-label="Prompt upgrade review actions"
+        className={cn('mt-2 flex flex-wrap items-center gap-1.5', compact && 'mt-1.5 gap-1')}
+      >
         <Button
           type="button"
           size="sm"
           variant="accent"
-          aria-label="Accept upgraded prompt"
+          aria-label="Keep upgraded prompt"
           className={cn('h-7 px-2.5', compact && 'h-6 px-1.5 text-[10px]')}
           onClick={() => {
             onAccept();
@@ -112,13 +116,13 @@ export function PromptForgeReview({
           }}
         >
           <Check />
-          Accept
+          Keep
         </Button>
         <Button
           type="button"
           size="sm"
           variant="ghost"
-          aria-label="Retry prompt upgrade"
+          aria-label="Regenerate prompt upgrade"
           className={cn('h-7 px-2.5', compact && 'h-6 px-1.5 text-[10px]')}
           onClick={() => {
             onRegenerate();
@@ -126,7 +130,7 @@ export function PromptForgeReview({
           }}
         >
           <RefreshCw />
-          Retry
+          Regenerate
         </Button>
         <Button
           type="button"
@@ -144,7 +148,7 @@ export function PromptForgeReview({
           type="button"
           size="sm"
           variant="ghost"
-          aria-label="Restore original prompt"
+          aria-label="Cancel prompt upgrade"
           className={cn(
             'ml-auto h-7 px-2.5 text-muted-foreground',
             compact && 'ml-0 h-6 px-1.5 text-[10px]',
@@ -155,7 +159,7 @@ export function PromptForgeReview({
           }}
         >
           <RotateCcw />
-          Original
+          Cancel
         </Button>
       </div>
     </section>
