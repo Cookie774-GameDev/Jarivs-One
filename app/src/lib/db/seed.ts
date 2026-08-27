@@ -52,6 +52,16 @@ async function restoreAuthFromExistingWorkspace(force = false): Promise<void> {
 export async function seedIfEmpty(): Promise<SeedResult> {
   await openDb();
 
+  const persistedAuth = useAuthStore.getState();
+  if (persistedAuth.localUserId && persistedAuth.workspaceId && persistedAuth.projectId) {
+    // A complete persisted scope may belong to a project that is restored by
+    // cloud/local reconciliation after bootstrap. Allocating a fresh Inbox in
+    // this window would replace that authority and hide its surviving chats,
+    // maps, and jobs. Only a genuine first launch with no complete scope may
+    // claim new active workspace/project IDs below.
+    return { seeded: false };
+  }
+
   const existing = await db.workspaces.count();
   if (existing > 0) {
     // Already seeded. Make sure the auth store has an active workspace though,

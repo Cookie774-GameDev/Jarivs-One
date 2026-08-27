@@ -191,6 +191,28 @@ describe('seedIfEmpty canonical built-ins', () => {
     expect(seedHarness.agentsTable.bulkAdd).toHaveBeenCalledTimes(1);
   });
 
+  it('does not replace a complete persisted scope when local workspace rows are temporarily absent', async () => {
+    useAuthStore.setState({
+      localUserId: 'usr_persisted_scope',
+      workspaceId: 'wsp_persisted_scope' as WorkspaceId,
+      projectId: 'prj_persisted_scope' as ProjectId,
+    });
+
+    await expect(seedIfEmpty()).resolves.toEqual({ seeded: false });
+
+    expect(seedHarness.workspacesTable.count).not.toHaveBeenCalled();
+    expect(seedHarness.workspacesTable.add).not.toHaveBeenCalled();
+    expect(seedHarness.projectsTable.add).not.toHaveBeenCalled();
+    expect(seedHarness.agentsTable.bulkAdd).not.toHaveBeenCalled();
+    expect(idHarness.newWorkspaceId).not.toHaveBeenCalled();
+    expect(idHarness.newProjectId).not.toHaveBeenCalled();
+    expect(useAuthStore.getState()).toMatchObject({
+      localUserId: 'usr_persisted_scope',
+      workspaceId: 'wsp_persisted_scope',
+      projectId: 'prj_persisted_scope',
+    });
+  });
+
   it('rechecks freshness inside the transaction and adopts a concurrent seed winner', async () => {
     const workspace = {
       id: 'wsp_concurrent_winner' as WorkspaceId,
