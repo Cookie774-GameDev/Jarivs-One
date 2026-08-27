@@ -136,10 +136,52 @@ describe('AssistantActivityLedger', () => {
     render(<AssistantActivityLedger message={assistant([])} correlatedEvents={events} />);
     fireEvent.click(screen.getByRole('button', { name: /activity details/i }));
 
-    expect(screen.getByRole('button', { name: `Reads ${DETAIL_PAGE_SIZE + 12}` })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: `Reads ${DETAIL_PAGE_SIZE + 12}` })).toBeTruthy();
     expect(screen.getAllByTestId('activity-ledger-receipt')).toHaveLength(DETAIL_PAGE_SIZE);
     expect(screen.getByRole('button', { name: /show 12 more/i })).toBeTruthy();
-    expect(screen.getByRole('separator', { name: 'Resize activity details' })).toBeTruthy();
+    const resizeHandle = screen.getByRole('separator', { name: 'Resize activity details' });
+    expect(resizeHandle.getAttribute('aria-valuemax')).toBe('420');
+    for (let index = 0; index < 10; index += 1) {
+      fireEvent.keyDown(resizeHandle, { key: 'ArrowDown' });
+    }
+    expect(resizeHandle.getAttribute('aria-valuenow')).toBe('420');
+    expect(screen.getByRole('region', { name: 'Assistant activity details' }).style.height).toBe(
+      '420px',
+    );
+  });
+
+  it('uses a roving keyboard tablist for the bounded inspector categories', () => {
+    render(
+      <AssistantActivityLedger
+        message={assistant([])}
+        correlatedEvents={[
+          {
+            id: 'read-keyboard',
+            chatId: 'chat-ledger-ui',
+            kind: 'file',
+            status: 'done',
+            title: 'Read file',
+            filePath: 'src/keyboard.ts',
+            ts: 100,
+          },
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /activity details/i }));
+
+    const allTab = screen.getByRole('tab', { name: 'All 1' });
+    const readsTab = screen.getByRole('tab', { name: 'Reads 1' });
+    expect(allTab.getAttribute('aria-selected')).toBe('true');
+    expect(allTab.getAttribute('tabindex')).toBe('0');
+    expect(readsTab.getAttribute('tabindex')).toBe('-1');
+
+    allTab.focus();
+    fireEvent.keyDown(allTab, { key: 'ArrowRight' });
+
+    expect(readsTab.getAttribute('aria-selected')).toBe('true');
+    expect(readsTab.getAttribute('tabindex')).toBe('0');
+    expect(document.activeElement).toBe(readsTab);
+    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(readsTab.id);
   });
 
   it('searches only the bounded privacy-safe receipt projection and resets paging', () => {
@@ -210,7 +252,7 @@ describe('AssistantActivityLedger', () => {
     );
     expect(screen.getByText('In ≈15').getAttribute('title')).toBe('Estimated locally');
     fireEvent.click(screen.getByRole('button', { name: /activity details/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Usage' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Usage' }));
     expect(screen.getByText('Output usage unavailable')).toBeTruthy();
   });
 });

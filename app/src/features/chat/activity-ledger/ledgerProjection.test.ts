@@ -309,6 +309,45 @@ describe('projectAssistantActivityLedger', () => {
     expect(ledger.omittedReceipts).toBe(25);
   });
 
+  it('projects a 250,000-event restored turn within the bounded render budget', () => {
+    const events = Array.from({ length: 250_000 }, (_, index) =>
+      event({
+        id: `large-read-${index}`,
+        kind: 'file',
+        title: 'Opaque file activity',
+        filePath: `fixture/f-${index}.ts`,
+        ts: index,
+      }),
+    );
+
+    const startedAt = performance.now();
+    const ledger = projectAssistantActivityLedger(assistant([]), events);
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(ledger.actionsTotal).toBe(250_000);
+    expect(ledger.readsTotal).toBe(250_000);
+    expect(ledger.receipts).toHaveLength(MAX_LEDGER_RECEIPTS);
+    expect(ledger.omittedReceipts).toBe(250_000 - MAX_LEDGER_RECEIPTS);
+    expect(elapsedMs).toBeLessThan(750);
+  });
+
+  it('preserves an omitted running receipt and the newest out-of-order detail truth', () => {
+    const events = [
+      event({ id: 'running-old', status: 'running', ts: 1 }),
+      ...Array.from({ length: MAX_LEDGER_RECEIPTS + 20 }, (_, index) =>
+        event({ id: `done-${index}`, status: 'done', ts: index + 10 }),
+      ),
+      event({ id: 'late-arriving-middle', status: 'done', ts: 50 }),
+    ];
+
+    const ledger = projectAssistantActivityLedger(assistant([]), events);
+
+    expect(ledger.status).toBe('running');
+    expect(ledger.currentOperation).toBe('Activity running');
+    expect(ledger.receipts.some((receipt) => receipt.id === 'activity:done-519')).toBe(true);
+    expect(ledger.receipts.some((receipt) => receipt.id === 'activity:running-old')).toBe(false);
+  });
+
   it('keeps an unknown persisted message tool as a safe generic action without exposing payloads', () => {
     const ledger = projectAssistantActivityLedger(
       assistant([

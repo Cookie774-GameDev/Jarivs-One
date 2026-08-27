@@ -17,6 +17,9 @@ import {
 import './activity-ledger.css';
 
 export const DETAIL_PAGE_SIZE = 40;
+const INSPECTOR_MIN_HEIGHT = 128;
+const INSPECTOR_DEFAULT_HEIGHT = 320;
+const INSPECTOR_MAX_HEIGHT = 420;
 type Filter = 'all' | LedgerReceiptKind | 'usage';
 
 function formatCount(value: number): string {
@@ -113,6 +116,8 @@ export function AssistantActivityLedger({
   const titleId = React.useId();
   const metricsId = React.useId();
   const resizeHelpId = React.useId();
+  const filterTabId = React.useId();
+  const filterPanelId = React.useId();
   const hasUsage = ledger.usage.input.value !== null || ledger.usage.output.value !== null;
   if (ledger.actionsTotal === 0 && !hasUsage) return null;
 
@@ -184,6 +189,33 @@ export function AssistantActivityLedger({
                 : 'tool',
         },
   );
+  const selectFilter = (nextFilter: Filter) => {
+    setFilter(nextFilter);
+    setVisibleCount(DETAIL_PAGE_SIZE);
+  };
+  const handleFilterKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    filterIndex: number,
+  ) => {
+    let nextIndex: number | undefined;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+      nextIndex = (filterIndex + 1) % filters.length;
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+      nextIndex = (filterIndex - 1 + filters.length) % filters.length;
+    } else if (event.key === 'Home') {
+      nextIndex = 0;
+    } else if (event.key === 'End') {
+      nextIndex = filters.length - 1;
+    }
+    if (nextIndex === undefined) return;
+
+    event.preventDefault();
+    const nextFilter = filters[nextIndex];
+    selectFilter(nextFilter);
+    event.currentTarget.parentElement
+      ?.querySelector<HTMLButtonElement>(`[data-activity-filter="${nextFilter}"]`)
+      ?.focus();
+  };
 
   return (
     <section
@@ -244,16 +276,23 @@ export function AssistantActivityLedger({
           aria-label="Assistant activity details"
           style={inspectorHeight === undefined ? undefined : { height: inspectorHeight }}
         >
-          <div className="assistant-activity-ledger__tabs" aria-label="Activity filters">
-            {filters.map((item) => (
+          <div
+            className="assistant-activity-ledger__tabs"
+            aria-label="Activity filters"
+            role="tablist"
+          >
+            {filters.map((item, index) => (
               <button
                 type="button"
-                aria-pressed={filter === item}
+                role="tab"
+                id={`${filterTabId}-${item}`}
+                aria-controls={filterPanelId}
+                aria-selected={filter === item}
+                tabIndex={filter === item ? 0 : -1}
+                data-activity-filter={item}
                 key={item}
-                onClick={() => {
-                  setFilter(item);
-                  setVisibleCount(DETAIL_PAGE_SIZE);
-                }}
+                onClick={() => selectFilter(item)}
+                onKeyDown={(event) => handleFilterKeyDown(event, index)}
               >
                 {filterLabel(item, item === 'usage' ? undefined : counts[item])}
               </button>
@@ -279,12 +318,22 @@ export function AssistantActivityLedger({
             </label>
           ) : null}
           {filter === 'usage' ? (
-            <div className="assistant-activity-ledger__usage">
+            <div
+              id={filterPanelId}
+              role="tabpanel"
+              aria-labelledby={`${filterTabId}-${filter}`}
+              className="assistant-activity-ledger__usage"
+            >
               <UsageLine label="Input" usage={ledger.usage.input} />
               <UsageLine label="Output" usage={ledger.usage.output} />
             </div>
           ) : (
-            <div className="assistant-activity-ledger__receipts">
+            <div
+              id={filterPanelId}
+              role="tabpanel"
+              aria-labelledby={`${filterTabId}-${filter}`}
+              className="assistant-activity-ledger__receipts"
+            >
               {ledger.omittedReceipts > 0 && filter === 'all' && !normalizedQuery ? (
                 <p className="assistant-activity-ledger__notice">
                   {formatCount(ledger.omittedReceipts)} older receipts are summarized in the totals.
@@ -325,9 +374,9 @@ export function AssistantActivityLedger({
             tabIndex={0}
             aria-label="Resize activity details"
             aria-orientation="horizontal"
-            aria-valuemin={128}
-            aria-valuemax={560}
-            aria-valuenow={inspectorHeight ?? 320}
+            aria-valuemin={INSPECTOR_MIN_HEIGHT}
+            aria-valuemax={INSPECTOR_MAX_HEIGHT}
+            aria-valuenow={inspectorHeight ?? INSPECTOR_DEFAULT_HEIGHT}
             aria-describedby={resizeHelpId}
             className="assistant-activity-ledger__resize-handle"
             onKeyDown={(event) => {
@@ -335,7 +384,10 @@ export function AssistantActivityLedger({
               event.preventDefault();
               const direction = event.key === 'ArrowUp' ? -24 : 24;
               setInspectorHeight((height) =>
-                Math.min(560, Math.max(128, (height ?? 320) + direction)),
+                Math.min(
+                  INSPECTOR_MAX_HEIGHT,
+                  Math.max(INSPECTOR_MIN_HEIGHT, (height ?? INSPECTOR_DEFAULT_HEIGHT) + direction),
+                ),
               );
             }}
           />

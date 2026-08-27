@@ -214,42 +214,65 @@ function messageReceipts(message: Message): AssistantActivityReceipt[] {
   });
 }
 
-function eventReceipts(
-  events: readonly ChatActivityEvent[],
-  messageHasCommand: boolean,
-): AssistantActivityReceipt[] {
+function latestEvents(events: readonly ChatActivityEvent[]): Map<string, ChatActivityEvent> {
   const latestById = new Map<string, ChatActivityEvent>();
   for (const event of events) {
     const current = latestById.get(event.id);
     if (!current || event.ts >= current.ts) latestById.set(event.id, event);
   }
-  const receipts: AssistantActivityReceipt[] = [];
-  for (const event of latestById.values()) {
-    const kind = activityKind(event);
-    if (kind === 'command' && messageHasCommand) continue;
-    const durationMs =
-      event.endedAt !== undefined
-        ? Math.max(0, event.endedAt - (event.startedAt ?? event.ts))
-        : undefined;
-    receipts.push({
-      id: `activity:${event.id}`,
-      kind,
-      label: eventReceiptLabel(event, kind),
-      status: event.status,
-      ts: event.ts,
-      ...(durationMs === undefined ? {} : { durationMs }),
-      ...(event.filePath
-        ? { filePath: event.filePath, fileLabel: safeFileLabel(event.filePath) }
-        : {}),
-      ...(event.agentSlug ? { agentSlug: safeText(event.agentSlug, 256) } : {}),
-      // Each explicitly correlated lifecycle identity is a truthful action in
-      // the session ledger, even when the producer cannot classify it more
-      // narrowly than `other`. Lifecycle updates with the same id are already
-      // deduplicated above, so this does not count status transitions twice.
-      countsAsAction: true,
-    });
+  return latestById;
+}
+
+function compareEvents(left: ChatActivityEvent, right: ChatActivityEvent): number {
+  return left.ts - right.ts || left.id.localeCompare(right.id);
+}
+
+function pushRecentEvent(heap: ChatActivityEvent[], event: ChatActivityEvent): void {
+  if (heap.length < MAX_LEDGER_RECEIPTS) {
+    heap.push(event);
+    let index = heap.length - 1;
+    while (index > 0) {
+      const parent = Math.floor((index - 1) / 2);
+      if (compareEvents(heap[parent], heap[index]) <= 0) break;
+      [heap[parent], heap[index]] = [heap[index], heap[parent]];
+      index = parent;
+    }
+    return;
   }
-  return receipts;
+  if (compareEvents(event, heap[0]) <= 0) return;
+  heap[0] = event;
+  let index = 0;
+  while (true) {
+    const left = index * 2 + 1;
+    const right = left + 1;
+    let smallest = index;
+    if (left < heap.length && compareEvents(heap[left], heap[smallest]) < 0) smallest = left;
+    if (right < heap.length && compareEvents(heap[right], heap[smallest]) < 0) smallest = right;
+    if (smallest === index) break;
+    [heap[index], heap[smallest]] = [heap[smallest], heap[index]];
+    index = smallest;
+  }
+}
+
+function eventReceipt(event: ChatActivityEvent): AssistantActivityReceipt {
+  const kind = activityKind(event);
+  const durationMs =
+    event.endedAt !== undefined
+      ? Math.max(0, event.endedAt - (event.startedAt ?? event.ts))
+      : undefined;
+  return {
+    id: `activity:${event.id}`,
+    kind,
+    label: eventReceiptLabel(event, kind),
+    status: event.status,
+    ts: event.ts,
+    ...(durationMs === undefined ? {} : { durationMs }),
+    ...(event.filePath
+      ? { filePath: event.filePath, fileLabel: safeFileLabel(event.filePath) }
+      : {}),
+    ...(event.agentSlug ? { agentSlug: safeText(event.agentSlug, 256) } : {}),
+    countsAsAction: true,
+  };
 }
 
 function usage(message: Message): AssistantActivityLedgerProjection['usage'] {
@@ -309,13 +332,11 @@ export function projectAssistantActivityLedger(
     };
   }
   const fromMessage = messageReceipts(message);
-  const allReceipts = [
-    ...fromMessage,
-    ...eventReceipts(
-      explicitlyCorrelatedEvents,
-      fromMessage.some((receipt) => receipt.kind === 'command'),
-    ),
-  ].sort((left, right) => left.ts - right.ts || left.id.localeCompare(right.id));
+  const messageHasCommand = fromMessage.some((receipt) => receipt.kind === 'command');
+  const eventsById = latestEvents(explicitlyCorrelatedEvents);
+  let recentEvents: ChatActivityEvent[] = [];
+  let eventsAreChronological = true;
+  let previousEvent: ChatActivityEvent | undefined;
   const editedFiles = new Set<string>();
   const subagents = new Set<string>();
   const completedReads = new Set<string>();
@@ -324,7 +345,54 @@ export function projectAssistantActivityLedger(
   let commandsTotal = 0;
   let verifiedChecksTotal = 0;
   let failedChecksTotal = 0;
-  for (const receipt of allReceipts) {
+  let eventReceiptCount = 0;
+  let startedAt = message.created_at;
+  let latestEvidenceEnd: number | undefined;
+  let latestRunningEvent: ChatActivityEvent | undefined;
+  let hasEventError = false;
+  let hasEventCancelled = false;
+  for (const event of eventsById.values()) {
+    const kind = activityKind(event);
+    if (kind === 'command' && messageHasCommand) continue;
+    eventReceiptCount += 1;
+    actionsTotal += 1;
+    if (kind === 'read' && event.status === 'done') completedReads.add(event.filePath ?? event.id);
+    if (kind === 'search') searchesTotal += 1;
+    if (kind === 'command') commandsTotal += 1;
+    if (kind === 'edit') editedFiles.add(event.filePath ?? event.id);
+    if (kind === 'check' && event.status === 'done') verifiedChecksTotal += 1;
+    if (kind === 'check' && event.status === 'error') failedChecksTotal += 1;
+    if (kind === 'subagent' && (event.status === 'running' || event.status === 'done'))
+      subagents.add(`activity:${event.id}`);
+    if (
+      (event.status === 'running' || event.status === 'pending') &&
+      (!latestRunningEvent || compareEvents(event, latestRunningEvent) > 0)
+    ) {
+      latestRunningEvent = event;
+    }
+    hasEventError ||= event.status === 'error';
+    hasEventCancelled ||= event.status === 'cancelled';
+    startedAt = Math.min(startedAt, event.startedAt ?? event.ts);
+    if (event.endedAt !== undefined) {
+      latestEvidenceEnd = Math.max(latestEvidenceEnd ?? event.endedAt, event.endedAt);
+    }
+    if (eventsAreChronological && (!previousEvent || compareEvents(previousEvent, event) <= 0)) {
+      recentEvents.push(event);
+      if (recentEvents.length >= MAX_LEDGER_RECEIPTS * 2) {
+        recentEvents = recentEvents.slice(-MAX_LEDGER_RECEIPTS);
+      }
+    } else {
+      if (eventsAreChronological) {
+        const chronologicalTail = recentEvents.slice(-MAX_LEDGER_RECEIPTS);
+        recentEvents = [];
+        for (const retainedEvent of chronologicalTail) pushRecentEvent(recentEvents, retainedEvent);
+        eventsAreChronological = false;
+      }
+      pushRecentEvent(recentEvents, event);
+    }
+    previousEvent = event;
+  }
+  for (const receipt of fromMessage) {
     if (receipt.countsAsAction) actionsTotal += 1;
     if (receipt.kind === 'read' && receipt.status === 'done')
       completedReads.add(receipt.filePath ?? receipt.id);
@@ -337,36 +405,51 @@ export function projectAssistantActivityLedger(
     if (receipt.kind === 'subagent' && (receipt.status === 'running' || receipt.status === 'done'))
       subagents.add(receipt.id);
   }
+  const allReceipts = [
+    ...fromMessage,
+    ...(eventsAreChronological ? recentEvents.slice(-MAX_LEDGER_RECEIPTS) : recentEvents)
+      .sort(compareEvents)
+      .map(eventReceipt),
+  ]
+    .sort((left, right) => left.ts - right.ts || left.id.localeCompare(right.id))
+    .slice(-MAX_LEDGER_RECEIPTS);
   const running = allReceipts
     .filter((receipt) => receipt.status === 'running' || receipt.status === 'pending')
     .at(-1);
-  const hasError = allReceipts.some((receipt) => receipt.status === 'error');
-  const hasCancelled = allReceipts.some((receipt) => receipt.status === 'cancelled');
+  const hasError = hasEventError || fromMessage.some((receipt) => receipt.status === 'error');
+  const hasCancelled =
+    hasEventCancelled || fromMessage.some((receipt) => receipt.status === 'cancelled');
   const hasAnswer = message.parts.some(
     (part) => part.kind === 'text' && part.text.trim().length > 0,
   );
-  const status = running
-    ? 'running'
-    : hasError
-      ? 'error'
-      : hasCancelled
-        ? 'cancelled'
-        : hasAnswer || allReceipts.length
-          ? 'done'
-          : 'idle';
-  const retained = allReceipts.slice(-MAX_LEDGER_RECEIPTS);
-  const evidenceStarts = explicitlyCorrelatedEvents.map((event) => event.startedAt ?? event.ts);
-  const startedAt = Math.min(message.created_at, ...evidenceStarts);
-  const evidenceEnds = explicitlyCorrelatedEvents.flatMap((event) =>
-    event.endedAt === undefined ? [] : [event.endedAt],
-  );
+  const status =
+    running || latestRunningEvent
+      ? 'running'
+      : hasError
+        ? 'error'
+        : hasCancelled
+          ? 'cancelled'
+          : hasAnswer || allReceipts.length
+            ? 'done'
+            : 'idle';
   const terminal = status === 'done' || status === 'cancelled' || status === 'error';
-  const terminalEndCandidates = [...(message.usage ? [message.updated_at] : []), ...evidenceEnds];
-  const terminalEndedAt =
-    terminal && terminalEndCandidates.length ? Math.max(...terminalEndCandidates) : undefined;
+  const terminalEndedAt = terminal
+    ? message.usage
+      ? Math.max(message.updated_at, latestEvidenceEnd ?? message.updated_at)
+      : latestEvidenceEnd
+    : undefined;
   return {
     status,
-    ...(running ? { currentOperation: running.label } : {}),
+    ...(running
+      ? { currentOperation: running.label }
+      : latestRunningEvent
+        ? {
+            currentOperation: eventReceiptLabel(
+              latestRunningEvent,
+              activityKind(latestRunningEvent),
+            ),
+          }
+        : {}),
     actionsTotal,
     readsTotal: completedReads.size,
     searchesTotal,
@@ -380,7 +463,7 @@ export function projectAssistantActivityLedger(
     ...(terminalEndedAt === undefined
       ? {}
       : { endedAt: terminalEndedAt, durationMs: Math.max(0, terminalEndedAt - startedAt) }),
-    receipts: retained,
-    omittedReceipts: Math.max(0, allReceipts.length - retained.length),
+    receipts: allReceipts,
+    omittedReceipts: Math.max(0, fromMessage.length + eventReceiptCount - allReceipts.length),
   };
 }

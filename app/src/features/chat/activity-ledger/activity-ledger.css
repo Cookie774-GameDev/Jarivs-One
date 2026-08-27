@@ -73,7 +73,7 @@
 
 .assistant-activity-ledger__inspector {
   min-height: 8rem;
-  max-height: 24rem;
+  max-height: 420px;
   resize: vertical;
   overflow: auto;
   border: 1px solid hsl(var(--border) / 0.7);
@@ -104,7 +104,7 @@
   color: hsl(var(--muted-foreground));
 }
 
-.assistant-activity-ledger__tabs button[aria-pressed='true'] {
+.assistant-activity-ledger__tabs button[aria-selected='true'] {
   background: hsl(var(--accent-copper) / 0.16);
   color: hsl(var(--foreground));
 }
