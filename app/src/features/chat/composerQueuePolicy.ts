@@ -37,6 +37,25 @@ export function shouldAutoSendQueuedOnRunStatus(status: string | undefined): boo
 }
 
 /**
+ * An accepted explicit steer owns dispatch while its cancellation handoff is pending.
+ * Terminal state from the interrupted run must not also release the FIFO queue.
+ */
+export function shouldScheduleQueuedRunFlush(
+  status: string | undefined,
+  explicitSteerInFlight: boolean,
+): boolean {
+  return !explicitSteerInFlight && shouldAutoSendQueuedOnRunStatus(status);
+}
+
+/** Revalidates the handoff at execution time in case a previously scheduled timer fires. */
+export function shouldDispatchNextQueuedMessage(
+  sending: boolean,
+  explicitSteerInFlight: boolean,
+): boolean {
+  return !sending && !explicitSteerInFlight;
+}
+
+/**
  * After-tool heads flush when a tool finishes (terminal status), not when a new tool starts.
  */
 export function shouldFlushOnToolTerminal(

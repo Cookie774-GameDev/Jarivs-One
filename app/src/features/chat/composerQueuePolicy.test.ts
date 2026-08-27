@@ -3,6 +3,8 @@ import {
   createQueuedMessage,
   describeQueueToast,
   queueFlushModeLabel,
+  shouldDispatchNextQueuedMessage,
+  shouldScheduleQueuedRunFlush,
   shouldFlushOnRunStatus,
   shouldFlushOnToolTerminal,
   takeNextQueuedMessage,
@@ -39,6 +41,21 @@ describe('composerQueuePolicy', () => {
     expect(shouldFlushOnRunStatus(tool, 'done')).toBe(true);
     expect(shouldFlushOnRunStatus(run, 'cancelled')).toBe(true);
     expect(shouldFlushOnRunStatus(run, 'running')).toBe(false);
+  });
+
+  it('does not auto-flush a terminal run while an explicit steer is in flight', () => {
+    expect(shouldScheduleQueuedRunFlush('done', false)).toBe(true);
+    expect(shouldScheduleQueuedRunFlush('error', false)).toBe(true);
+    expect(shouldScheduleQueuedRunFlush('cancelled', false)).toBe(true);
+    expect(shouldScheduleQueuedRunFlush('cancelled', true)).toBe(false);
+    expect(shouldScheduleQueuedRunFlush('done', true)).toBe(false);
+    expect(shouldScheduleQueuedRunFlush('running', true)).toBe(false);
+  });
+
+  it('does not execute an already-scheduled queue flush during a steer handoff', () => {
+    expect(shouldDispatchNextQueuedMessage(false, false)).toBe(true);
+    expect(shouldDispatchNextQueuedMessage(true, false)).toBe(false);
+    expect(shouldDispatchNextQueuedMessage(false, true)).toBe(false);
   });
 
   it('pops FIFO and labels modes for UI', () => {

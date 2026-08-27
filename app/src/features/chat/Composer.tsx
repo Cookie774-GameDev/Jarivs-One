@@ -323,7 +323,6 @@ import {
   buildQueuedMultitaskCommand,
   dispatchQueuedMessageAfterAcceptance,
   QueuedMessagesBar,
-  shouldAutoSendQueuedOnRunStatus,
   takeNextQueuedMessage,
   type QueuedChatMessage,
   type QueueFlushMode,
@@ -331,6 +330,8 @@ import {
 import {
   createQueuedMessage,
   describeQueueToast,
+  shouldDispatchNextQueuedMessage,
+  shouldScheduleQueuedRunFlush,
   shouldFlushOnToolTerminal,
 } from './composerQueuePolicy';
 import {
@@ -1025,7 +1026,6 @@ export function Composer({
       }
       setJarvisRunning(false);
       activeCancellationKeyRef.current = null;
-      queuedInterruptInFlightRef.current = null;
       // Esc×3 cancel: keep the queue for resume/resend (do not auto-drain).
       if (status === 'cancelled' && suppressQueueFlushOnUserCancelRef.current) {
         suppressQueueFlushOnUserCancelRef.current = false;
@@ -1035,7 +1035,13 @@ export function Composer({
       setStoppedRequest(false);
       // When the previous full reply finishes (or fails/cancels), send the next
       // queued message automatically — FIFO order.
-      if (!shouldAutoSendQueuedOnRunStatus(status)) return;
+      if (
+        !shouldScheduleQueuedRunFlush(
+          status,
+          queuedInterruptInFlightRef.current !== null,
+        )
+      )
+        return;
       if (flushTimer) clearTimeout(flushTimer);
       flushTimer = setTimeout(() => {
         flushTimer = null;
@@ -3414,7 +3420,13 @@ export function Composer({
 
   // Keep auto-flush bound to latest handleSend + queue (after handleSend is defined).
   flushNextQueuedRef.current = () => {
-    if (sendingRef.current) return;
+    if (
+      !shouldDispatchNextQueuedMessage(
+        sendingRef.current,
+        queuedInterruptInFlightRef.current !== null,
+      )
+    )
+      return;
     const { next } = takeNextQueuedMessage(queuedMessagesRef.current);
     if (!next) return;
     dispatchQueuedMessage(next);
