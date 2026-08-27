@@ -174,4 +174,37 @@ describe('promptUpgradeEngine', () => {
       expect(result.originalDraft).toBe('hello');
     }
   });
+
+  it('fails closed before creating a job when persisted effort is stale for the exact route', async () => {
+    const repository = {
+      create: vi.fn(),
+      save: vi.fn(),
+      get: vi.fn(),
+      listRecoverable: vi.fn(),
+      remove: vi.fn(),
+    };
+    const result = await runPromptUpgrade({
+      accountId: 'acc',
+      chatId: 'chat',
+      projectId: null,
+      originalDraft: 'Upgrade this exact prompt.',
+      modelSelection: {
+        mode: 'single',
+        providerId: 'ollama',
+        modelId: 'qwen3:8b',
+        connectionId: 'ollama-local',
+        effort: 'high',
+      },
+      modelOptions: [localModel],
+      currentChatSelection: { mode: 'none' },
+      offlineMode: false,
+      defaultLocalModel: 'qwen3:8b',
+      privacyMode: 'local_only',
+      allowPublicResearch: false,
+      repository,
+    });
+
+    expect(result).toMatchObject({ ok: false, errorCode: 'effort_unavailable' });
+    expect(repository.create).not.toHaveBeenCalled();
+  });
 });

@@ -1,5 +1,9 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  clearChatReasoningPreferences,
+  writeChatReasoningEffort,
+} from '@/features/chat/reasoningSlashStore';
 import type { ChatImageAttachment } from '@/lib/ai/vision';
 import { syntheticCredentialFixture } from '@/test/syntheticCredentialFixture';
 import type { PromptForgeExecutionResult } from './promptForgeExecutor';
@@ -64,6 +68,82 @@ const execution: PromptForgeExecutionResult = Object.freeze({
 });
 
 describe('usePromptForgeComposer', () => {
+  afterEach(() => {
+    clearChatReasoningPreferences();
+  });
+
+  it('carries the current chat exact effort into Prompt Forge execution', async () => {
+    const { repository } = memoryRepository();
+    const execute = vi.fn(async () => execution);
+    writeChatReasoningEffort('chat-current-effort', 'high');
+    const { result } = renderHook(() =>
+      usePromptForgeComposer({
+        accountId: 'account-1',
+        chatId: 'chat-current-effort',
+        projectId: 'project-1',
+        draft: 'Refine this exact request.',
+        setDraft: vi.fn(),
+        originalAttachments: [],
+        contextAttachments: [],
+        additionalSources: [],
+        modelSelection: { mode: 'current_chat_model' },
+        modelOptions: [
+          {
+            id: 'openai-codex:gpt-5.6-sol',
+            providerId: 'openai',
+            modelId: 'gpt-5.6-sol',
+            label: 'GPT-5.6 Sol',
+            connectionId: 'openai-codex',
+            connectionMode: 'external-cli',
+            variants: ['high', 'max'],
+            localOnly: false,
+            available: true,
+          },
+        ],
+        currentChatSelection: {
+          mode: 'single',
+          providerId: 'openai',
+          modelId: 'gpt-5.6-sol',
+          connectionId: 'openai-codex',
+        },
+        offlineMode: false,
+        defaultLocalModel: '',
+        repository,
+        executor: { execute },
+        retrieveContext: async () => ({
+          queryId: 'query-current-effort',
+          mapRevisions: {},
+          items: [],
+          relatedEntities: [],
+          omittedCount: 0,
+          staleItems: [],
+          warnings: [],
+          builtAt: 100,
+          sourceLabels: {},
+          evidenceKinds: {},
+        }),
+        now: () => 100,
+        createJobId: () => 'forge-job-current-effort',
+        recordActivity: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: expect.objectContaining({
+          providerId: 'openai',
+          modelId: 'gpt-5.6-sol',
+          connectionId: 'openai-codex',
+          effort: 'high',
+        }),
+      }),
+    );
+  });
+
   it('previews the upgrade in the composer, then supports accept and undo', async () => {
     const { jobs, repository } = memoryRepository();
     const setDraft = vi.fn();

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { PromptForgeModelOption } from './modelSelection';
 import {
+  buildPromptForgeModelPickerGroups,
   PromptForgeModelSelectionError,
   pickFastPromptUpgradeFallback,
+  promptForgePickerSelectedId,
   resolvePromptForgeModelSelection,
 } from './modelSelection';
 
@@ -24,6 +26,7 @@ const options: readonly PromptForgeModelOption[] = Object.freeze([
     label: 'GPT-5.6 Sol',
     connectionId: 'openai-codex',
     connectionMode: 'external-cli',
+    variants: ['high', 'max'],
     localOnly: false,
     available: true,
   },
@@ -45,6 +48,7 @@ const context = {
     providerId: 'openai' as const,
     modelId: 'gpt-5.6-sol',
     connectionId: 'openai-codex',
+    effort: 'max' as const,
   },
   options,
   offlineMode: false,
@@ -52,6 +56,42 @@ const context = {
 };
 
 describe('Prompt Forge model selection', () => {
+  it('builds provider-grouped shared-picker options without losing exact route identity', () => {
+    const connection = {
+      id: 'openai-codex',
+      providerId: 'openai',
+      displayName: 'OpenCode Go',
+      mode: 'external-cli',
+    } as never;
+    const grouped = buildPromptForgeModelPickerGroups([
+      { ...options[1]!, connection, variants: ['high'] },
+      options[2]!,
+    ]);
+
+    expect(grouped).toHaveLength(1);
+    expect(grouped[0]).toMatchObject({ id: 'prompt-forge:openai', provider: 'openai' });
+    expect(grouped[0]?.options[0]).toMatchObject({
+      id: 'openai-codex:gpt-5.6-sol',
+      provider: 'openai',
+      modelId: 'gpt-5.6-sol',
+      connection,
+      connectionId: 'openai-codex',
+      variants: ['high'],
+    });
+    expect(
+      promptForgePickerSelectedId(
+        {
+          mode: 'single',
+          providerId: 'openai',
+          modelId: 'gpt-5.6-sol',
+          connectionId: 'openai-codex',
+          effort: 'high',
+        },
+        grouped,
+      ),
+    ).toBe('openai-codex:gpt-5.6-sol');
+  });
+
   it('resolves the current chat connection without changing that chat selection', () => {
     const original = structuredClone(context.currentChatSelection);
     const resolved = resolvePromptForgeModelSelection({ mode: 'current_chat_model' }, context);
@@ -60,6 +100,7 @@ describe('Prompt Forge model selection', () => {
       modelId: 'gpt-5.6-sol',
       connectionId: 'openai-codex',
       connectionMode: 'external-cli',
+      effort: 'max',
       local: false,
     });
     expect(context.currentChatSelection).toEqual(original);
@@ -83,10 +124,23 @@ describe('Prompt Forge model selection', () => {
           providerId: 'openai',
           modelId: 'gpt-5.6-sol',
           connectionId: 'openai-codex',
+          effort: 'high',
         },
         context,
       ),
-    ).toMatchObject({ connectionId: 'openai-codex' });
+    ).toMatchObject({ connectionId: 'openai-codex', effort: 'high' });
+    expect(() =>
+      resolvePromptForgeModelSelection(
+        {
+          mode: 'single',
+          providerId: 'openai',
+          modelId: 'gpt-5.6-sol',
+          connectionId: 'openai-codex',
+          effort: 'ultra',
+        },
+        context,
+      ),
+    ).toThrow(/effort.*unavailable/i);
     expect(() =>
       resolvePromptForgeModelSelection(
         { mode: 'single', providerId: 'openai', modelId: 'same-model' },

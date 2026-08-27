@@ -22,6 +22,49 @@ const models: readonly PromptForgeModelOption[] = [
     label: 'GPT-5.6 Sol',
     connectionId: 'openai-codex',
     connectionMode: 'external-cli',
+    connection: {
+      id: 'openai-codex',
+      providerId: 'openai',
+      displayName: 'OpenCode Go',
+      mode: 'external-cli',
+    } as never,
+    variants: ['high'],
+    alternativeRoutes: [
+      {
+        id: 'openai-api:gpt-5.6-sol',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        label: 'GPT-5.6 Sol via OpenAI API',
+        connectionId: 'openai-api',
+        connectionMode: 'native-api',
+        connection: {
+          id: 'openai-api',
+          providerId: 'openai',
+          displayName: 'OpenAI API',
+          mode: 'native-api',
+        } as never,
+        variants: ['high'],
+        localOnly: false,
+        available: true,
+      },
+      {
+        id: 'openai-codex:gpt-5.6-sol',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        label: 'GPT-5.6 Sol via OpenCode Go',
+        connectionId: 'openai-codex',
+        connectionMode: 'external-cli',
+        connection: {
+          id: 'openai-codex',
+          providerId: 'openai',
+          displayName: 'OpenCode Go',
+          mode: 'external-cli',
+        } as never,
+        variants: ['high'],
+        localOnly: false,
+        available: true,
+      },
+    ],
     localOnly: false,
     available: true,
   },
@@ -133,12 +176,19 @@ describe('Prompt Forge control', () => {
     expect(screen.getByText('Upgrade automatically on Send')).toBeTruthy();
     expect(screen.queryByRole('radiogroup', { name: 'Prompt Forge privacy' })).toBeNull();
     expect(screen.queryByText('Privacy for this run')).toBeNull();
-    fireEvent.click(screen.getByRole('radio', { name: /GPT-5.6 Sol/ }));
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
+    const search = screen.getByRole('searchbox', { name: 'Search providers and models' });
+    fireEvent.change(search, { target: { value: 'GPT-5.6 Sol' } });
+    expect(screen.getByRole('button', { name: /OpenAI/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole('option', { name: /GPT-5.6 Sol/ }));
+    fireEvent.click(screen.getByRole('option', { name: /GPT-5.6 Sol via OpenCode Go/ }));
+    fireEvent.click(screen.getByRole('option', { name: /high/i }));
     expect(onSelectionChange).toHaveBeenCalledWith({
       mode: 'single',
       providerId: 'openai',
       modelId: 'gpt-5.6-sol',
       connectionId: 'openai-codex',
+      effort: 'high',
     });
     expect(onPrivacyModeChange).not.toHaveBeenCalled();
   });

@@ -151,13 +151,24 @@ describe('Prompt Forge contracts', () => {
         providerId: 'openai',
         modelId: 'gpt-5.6-sol',
         connectionId: 'openai-codex',
+        effort: 'high',
       }),
     ).toEqual({
       mode: 'single',
       providerId: 'openai',
       modelId: 'gpt-5.6-sol',
       connectionId: 'openai-codex',
+      effort: 'high',
     });
+    expect(() =>
+      normalizePromptForgeModelSelection({
+        mode: 'single',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        connectionId: 'openai-codex',
+        effort: 'invented',
+      }),
+    ).toThrow(/model selection/i);
     expect(() =>
       normalizePromptForgeModelSelection({
         mode: 'single',
@@ -238,6 +249,7 @@ describe('Prompt Forge contracts', () => {
         label: 'GPT-5.6 Sol',
         connectionId: 'openai-codex',
         connectionMode: 'external-cli',
+        effort: 'high',
         local: false,
         billingClass: 'subscription_connection',
       },
@@ -263,6 +275,7 @@ describe('Prompt Forge contracts', () => {
         providerId: 'openai',
         modelId: 'gpt-5.6-sol',
         connectionId: 'openai-codex',
+        effort: 'high',
         billingClass: 'subscription_connection',
       },
       usage: {

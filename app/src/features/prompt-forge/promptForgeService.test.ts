@@ -32,6 +32,7 @@ const resolvedModel: ResolvedPromptForgeModel = Object.freeze({
   label: 'Qwen 3 8B',
   connectionId: 'ollama-local',
   connectionMode: 'local',
+  effort: 'high',
   local: true,
   billingClass: 'local_free',
 });
@@ -126,6 +127,15 @@ describe('Prompt Forge orchestration', () => {
   it('persists every truthful stage, exact model/usage, validation, and privacy-safe activity', async () => {
     const memory = memoryRepository();
     const activity: PromptForgeActivity[] = [];
+    const execute = vi.fn(async (input: PromptForgeExecutionInput) => {
+      expect(input.model).toMatchObject({
+        providerId: 'ollama',
+        modelId: 'qwen3:8b',
+        connectionId: 'ollama-local',
+        effort: 'high',
+      });
+      return executionResult();
+    });
     const service = createPromptForgeService({
       repository: memory.repository,
       now: clock(),
@@ -134,7 +144,7 @@ describe('Prompt Forge orchestration', () => {
         await stage('searching_project');
         return { resolvedModel, sourcePack, preservation, sourcesConsidered: 4 };
       },
-      executor: { execute: async () => executionResult() },
+      executor: { execute },
     });
 
     const ready = await service.start(initialJob());
@@ -155,6 +165,7 @@ describe('Prompt Forge orchestration', () => {
         providerId: 'ollama',
         modelId: 'qwen3:8b',
         connectionId: 'ollama-local',
+        effort: 'high',
         billingClass: 'local_free',
       },
       usage: {
@@ -173,6 +184,7 @@ describe('Prompt Forge orchestration', () => {
       sourcesUsed: 1,
     });
     expect(JSON.stringify(activity)).not.toContain(sourcePack.markdown);
+    expect(execute).toHaveBeenCalledOnce();
   });
 
   it('forwards image bytes ephemerally without saving them in the recoverable job', async () => {

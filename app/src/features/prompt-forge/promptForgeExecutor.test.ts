@@ -23,6 +23,7 @@ const model: ResolvedPromptForgeModel = Object.freeze({
   label: 'GPT-5.6 Sol',
   connectionId: 'openai-codex',
   connectionMode: 'external-cli',
+  effort: 'high',
   local: false,
   billingClass: 'subscription_connection',
 });
@@ -130,13 +131,22 @@ describe('Prompt Forge model execution', () => {
       workingDirectory: 'C:\\project',
       temperature: 0.2,
       max_output_tokens: 16_384,
+      runtimeSettings: {
+        effort: 'high',
+        fastMode: 'auto',
+        performance: 'quality',
+        rlmEnabled: true,
+      },
       agent: {
         slug: 'prompt-forge',
         model: { provider: 'openai', model: 'gpt-5.6-sol' },
+        effort: 'high',
         tools_allowed: [],
         memory_scope: 'project',
       },
     });
+    expect(received?.agent.effort).toBe('high');
+    expect(received?.agent.effort).not.toBe('medium');
     expect(received?.agent.system_prompt).toMatch(/untrusted source data/i);
     expect(received?.agent.system_prompt).toMatch(
       /instruct the downstream agent to perform the requested task now/i,

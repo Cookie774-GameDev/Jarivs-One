@@ -1,4 +1,5 @@
 import type { ProviderId } from '@/types';
+import type { EffortLabel } from '@/lib/ai/catalog/modelVariants';
 
 export const PROMPT_FORGE_STATUSES = Object.freeze([
   'idle',
@@ -23,6 +24,7 @@ export type PromptForgeModelSelection =
       providerId: ProviderId;
       modelId: string;
       connectionId?: string;
+      effort?: EffortLabel;
     }>;
 
 export type PromptForgePrivacyMode = 'local_only' | 'provider_allowed';
@@ -64,6 +66,7 @@ export type PromptForgeResolvedModelSnapshot = Readonly<{
   label: string;
   connectionId: string | null;
   connectionMode: 'native-api' | 'external-cli' | 'local' | null;
+  effort?: EffortLabel;
   local: boolean;
   billingClass: 'local_free' | 'subscription_connection' | 'provider_billed';
 }>;
@@ -110,6 +113,7 @@ export type PromptForgeJobScope = Readonly<{
 }>;
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/u;
+const EFFORTS = new Set<EffortLabel>(['auto', 'minimal', 'low', 'medium', 'high', 'max', 'ultra']);
 const CONTROL_AND_BIDI =
   /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/u;
 const PROMPT_CONTROL_AND_BIDI =
@@ -249,15 +253,22 @@ export function normalizePromptForgeModelSelection(value: unknown): PromptForgeM
     closedRecord(value, ['mode'], 'model selection');
     return Object.freeze({ mode: modeDescriptor.value });
   }
-  const singleKeys = keys.includes('connectionId')
-    ? ['mode', 'providerId', 'modelId', 'connectionId']
-    : ['mode', 'providerId', 'modelId'];
+  const singleKeys = [
+    'mode',
+    'providerId',
+    'modelId',
+    ...(keys.includes('connectionId') ? ['connectionId'] : []),
+    ...(keys.includes('effort') ? ['effort'] : []),
+  ];
   const record = closedRecord(value, singleKeys, 'model selection');
   if (
     record.mode !== 'single' ||
     typeof record.providerId !== 'string' ||
     !PROVIDERS.has(record.providerId as ProviderId)
   ) {
+    return fail('model selection');
+  }
+  if (record.effort !== undefined && !EFFORTS.has(record.effort as EffortLabel)) {
     return fail('model selection');
   }
   return Object.freeze({
@@ -267,6 +278,7 @@ export function normalizePromptForgeModelSelection(value: unknown): PromptForgeM
     ...(record.connectionId === undefined
       ? {}
       : { connectionId: id(record.connectionId, 'model selection') }),
+    ...(record.effort === undefined ? {} : { effort: record.effort as EffortLabel }),
   });
 }
 
@@ -316,9 +328,23 @@ function validationSnapshot(value: unknown): PromptForgeValidationSnapshot | nul
 
 function resolvedModelSnapshot(value: unknown): PromptForgeResolvedModelSnapshot | null {
   if (value === null) return null;
+  const hasEffort =
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Reflect.ownKeys(value).includes('effort');
   const record = closedRecord(
     value,
-    ['providerId', 'modelId', 'label', 'connectionId', 'connectionMode', 'local', 'billingClass'],
+    [
+      'providerId',
+      'modelId',
+      'label',
+      'connectionId',
+      'connectionMode',
+      ...(hasEffort ? ['effort'] : []),
+      'local',
+      'billingClass',
+    ],
     'resolved model',
   );
   if (
@@ -330,7 +356,8 @@ function resolvedModelSnapshot(value: unknown): PromptForgeResolvedModelSnapshot
     typeof record.billingClass !== 'string' ||
     !BILLING_CLASSES.has(
       record.billingClass as 'local_free' | 'subscription_connection' | 'provider_billed',
-    )
+    ) ||
+    (record.effort !== undefined && !EFFORTS.has(record.effort as EffortLabel))
   ) {
     return fail('resolved model');
   }
@@ -347,6 +374,7 @@ function resolvedModelSnapshot(value: unknown): PromptForgeResolvedModelSnapshot
     label: text(record.label, 500, 'resolved model'),
     connectionId: record.connectionId === null ? null : id(record.connectionId, 'resolved model'),
     connectionMode: record.connectionMode as 'native-api' | 'external-cli' | 'local' | null,
+    ...(record.effort === undefined ? {} : { effort: record.effort as EffortLabel }),
     local: record.local,
     billingClass: record.billingClass as
       | 'local_free'

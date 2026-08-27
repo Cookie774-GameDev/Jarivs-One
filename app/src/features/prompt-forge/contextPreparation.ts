@@ -187,23 +187,26 @@ export function promptForgeSourcesFromContext(
 export function promptForgeModelOptionsFromPicker(
   options: readonly ModelPickerOption[],
 ): readonly PromptForgeModelOption[] {
-  return Object.freeze(
-    options.map((option) =>
-      Object.freeze({
-        id: option.id,
-        providerId: option.provider,
-        modelId: option.modelId,
-        label: option.label,
-        ...(option.connectionId ? { connectionId: option.connectionId } : {}),
-        ...(option.connection ? { connectionMode: option.connection.mode } : {}),
-        localOnly:
-          option.connection?.mode === 'local' ||
-          option.provider === 'ollama' ||
-          option.provider === 'local',
-        available: option.available !== false,
-      }),
-    ),
-  );
+  const mapOption = (option: ModelPickerOption): PromptForgeModelOption =>
+    Object.freeze({
+      id: option.id,
+      providerId: option.provider,
+      modelId: option.modelId,
+      label: option.label,
+      ...(option.connectionId ? { connectionId: option.connectionId } : {}),
+      ...(option.connection ? { connectionMode: option.connection.mode } : {}),
+      ...(option.connection ? { connection: option.connection } : {}),
+      ...(option.variants ? { variants: Object.freeze([...option.variants]) } : {}),
+      ...(option.alternativeRoutes
+        ? { alternativeRoutes: Object.freeze(option.alternativeRoutes.map(mapOption)) }
+        : {}),
+      localOnly:
+        option.connection?.mode === 'local' ||
+        option.provider === 'ollama' ||
+        option.provider === 'local',
+      available: option.available !== false,
+    });
+  return Object.freeze(options.map(mapOption));
 }
 
 function validatePublicResearchSources(

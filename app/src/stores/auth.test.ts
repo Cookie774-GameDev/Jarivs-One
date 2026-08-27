@@ -16,7 +16,7 @@ describe('Prompt Forge model preference', () => {
     });
   });
 
-  it('defaults separately to Prefer local and never changes the chat model', () => {
+  it('persists the exact Prompt Forge provider, model, connection, and effort separately', async () => {
     expect(useAuthStore.getInitialState().promptForgeModelSelection).toEqual({
       mode: 'prefer_local',
     });
@@ -25,15 +25,28 @@ describe('Prompt Forge model preference', () => {
       providerId: 'openai',
       modelId: 'gpt-5.6-sol',
       connectionId: 'openai-codex',
+      effort: 'high',
     });
     expect(useAuthStore.getState().chatModelSelection).toEqual({ mode: 'none' });
     expect(useAuthStore.getState().promptForgeModelSelection).toMatchObject({
       mode: 'single',
       connectionId: 'openai-codex',
+      effort: 'high',
     });
-    expect(window.localStorage.getItem('jarvis-auth')).toContain(
-      '"promptForgeModelSelection":{"mode":"single"',
-    );
+    const persisted = window.localStorage.getItem('jarvis-auth') ?? '';
+    expect(persisted).toContain('"promptForgeModelSelection":{"mode":"single"');
+    expect(persisted).toContain('"effort":"high"');
+
+    useAuthStore.setState({ promptForgeModelSelection: { mode: 'prefer_local' } });
+    window.localStorage.setItem('jarvis-auth', persisted);
+    await useAuthStore.persist.rehydrate();
+    expect(useAuthStore.getState().promptForgeModelSelection).toEqual({
+      mode: 'single',
+      providerId: 'openai',
+      modelId: 'gpt-5.6-sol',
+      connectionId: 'openai-codex',
+      effort: 'high',
+    });
   });
 
   it('migrates prior state to the safe local-first default', async () => {
@@ -54,6 +67,34 @@ describe('Prompt Forge model preference', () => {
     await useAuthStore.persist.rehydrate();
     expect(useAuthStore.getState().promptForgeModelSelection).toEqual({
       mode: 'prefer_local',
+    });
+  });
+
+  it('rehydrates a legacy exact selection without fabricating an effort', async () => {
+    window.localStorage.setItem(
+      'jarvis-auth',
+      JSON.stringify({
+        state: {
+          apiKeys: {},
+          chatModelSelection: { mode: 'none' },
+          previousChatModelSelection: { mode: 'none' },
+          promptForgeModelSelection: {
+            mode: 'single',
+            providerId: 'openai',
+            modelId: 'gpt-5.6-sol',
+            connectionId: 'openai-codex',
+          },
+        },
+        version: 17,
+      }),
+    );
+
+    await useAuthStore.persist.rehydrate();
+    expect(useAuthStore.getState().promptForgeModelSelection).toEqual({
+      mode: 'single',
+      providerId: 'openai',
+      modelId: 'gpt-5.6-sol',
+      connectionId: 'openai-codex',
     });
   });
 });

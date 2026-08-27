@@ -1,5 +1,6 @@
 import type { Agent, AgentId, ProviderId } from '@/types';
 import { runAgent, type RunAgentRequest } from '@/lib/ai/router';
+import { DEFAULT_CHAT_RUNTIME_SETTINGS } from '@/features/chat/runtime/chatRuntimeCommandController';
 import type { LLMResponse, LLMStreamChunk, TokenUsage } from '@/lib/ai/types';
 import type { ChatImageAttachment } from '@/lib/ai/vision';
 import { TOOL_GATEWAY_CATALOG } from '@/lib/harness/toolGatewayProtocol';
@@ -90,6 +91,14 @@ function abortIfRequested(signal?: AbortSignal): void {
 }
 
 function createExecutionAgent(model: ResolvedPromptForgeModel, createdAt: number): Readonly<Agent> {
+  const agentEffort =
+    model.effort === 'minimal' ||
+    model.effort === 'low' ||
+    model.effort === 'medium' ||
+    model.effort === 'high' ||
+    model.effort === 'max'
+      ? model.effort
+      : undefined;
   const agent: Agent = {
     id: PROMPT_FORGE_AGENT_ID,
     slug: 'prompt-forge',
@@ -103,7 +112,7 @@ function createExecutionAgent(model: ResolvedPromptForgeModel, createdAt: number
     max_output_tokens: MAX_OUTPUT_TOKENS,
     capabilities: ['writing', 'reasoning'],
     builtin: true,
-    effort: 'medium',
+    ...(agentEffort === undefined ? {} : { effort: agentEffort }),
     source: 'builtin',
     created_at: createdAt,
     updated_at: createdAt,
@@ -193,6 +202,10 @@ export function createPromptForgeExecutor(
         requestId: `prompt-forge:${input.job.id}`,
         temperature: 0.2,
         max_output_tokens: MAX_OUTPUT_TOKENS,
+        runtimeSettings: {
+          ...DEFAULT_CHAT_RUNTIME_SETTINGS,
+          effort: input.model.effort ?? 'auto',
+        },
         tools: PROMPT_FORGE_TOOL_POLICY,
         ...(imageParts.length === 0 ? {} : { connectionRequirements: { images: true } }),
         ...(input.model.connectionId === null ? {} : { connectionId: input.model.connectionId }),

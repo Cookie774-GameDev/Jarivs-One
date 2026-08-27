@@ -114,6 +114,7 @@ const pickerOptions: readonly ModelPickerOption[] = Object.freeze([
     label: 'Qwen 3 8B',
     connectionId: 'ollama-local',
     connection: Object.freeze(localConnection),
+    variants: Object.freeze(['auto', 'high']),
     available: true,
   }),
 ]);
@@ -312,6 +313,8 @@ describe('Prompt Forge context preparation', () => {
         label: 'Qwen 3 8B',
         connectionId: 'ollama-local',
         connectionMode: 'local',
+        connection: localConnection,
+        variants: ['auto', 'high'],
         localOnly: true,
         available: true,
       },

@@ -134,6 +134,7 @@ function resolvedModelSnapshot(model: ResolvedPromptForgeModel): PromptForgeReso
     label: model.label,
     connectionId: model.connectionId,
     connectionMode: model.connectionMode,
+    effort: model.effort ?? 'auto',
     local: model.local,
     billingClass: model.billingClass,
   });
@@ -160,6 +161,7 @@ function safeFailureCode(error: unknown, phase: 'preparation' | 'execution'): st
         'current_chat_not_single',
         'model_unavailable',
         'connection_ambiguous',
+        'effort_unavailable',
         'offline_cloud_blocked',
         'empty_output',
         'model_mismatch',

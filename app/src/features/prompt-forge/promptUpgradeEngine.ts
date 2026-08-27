@@ -20,6 +20,7 @@ import {
   type PromptForgePublicResearchPort,
 } from './contextPreparation';
 import {
+  PromptForgeModelSelectionError,
   resolvePromptForgeModelSelection,
   type PromptForgeCurrentChatSelection,
   type PromptForgeModelOption,
@@ -93,7 +94,8 @@ function failureReason(job: PromptForgeJob | null, fallback: string): string {
     return 'Cloud upgrade models are blocked offline. Choose a local model.';
   if (job.errorCode === 'privacy_violation')
     return 'Local-only privacy blocked the selected cloud model.';
-  if (job.errorCode === 'provider_failed') return 'The upgrade model failed. Sending your original text.';
+  if (job.errorCode === 'provider_failed')
+    return 'The upgrade model failed. Sending your original text.';
   if (job.errorCode === 'sensitive_input')
     return 'Secrets were detected in the draft; upgrade was blocked.';
   if (job.status === 'cancelled') return 'Upgrade cancelled.';
@@ -127,13 +129,16 @@ export async function runPromptUpgrade(
       offlineMode: input.offlineMode,
       defaultLocalModel: input.defaultLocalModel,
     });
-  } catch {
+  } catch (error) {
+    const effortUnavailable =
+      error instanceof PromptForgeModelSelectionError && error.code === 'effort_unavailable';
     return {
       ok: false,
       originalDraft,
-      reason:
-        'Please assign a prompt-upgrade model in Settings. You can use Spark or Flash if one is connected.',
-      errorCode: 'model_unavailable',
+      reason: effortUnavailable
+        ? 'Choose an effort offered by this exact Prompt Forge model route.'
+        : 'Please assign a prompt-upgrade model in Settings. You can use Spark or Flash if one is connected.',
+      errorCode: effortUnavailable ? 'effort_unavailable' : 'model_unavailable',
       job: null,
     };
   }
@@ -232,10 +237,7 @@ export async function runPromptUpgrade(
     return {
       ok: false,
       originalDraft,
-      reason: failureReason(
-        completed,
-        'Prompt upgrade failed. Sending your original text.',
-      ),
+      reason: failureReason(completed, 'Prompt upgrade failed. Sending your original text.'),
       errorCode: completed.errorCode,
       job: completed,
     };

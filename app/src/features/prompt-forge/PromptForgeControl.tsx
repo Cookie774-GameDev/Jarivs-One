@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
-import { ChevronDown, Cloud, Sparkles, Square } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { ChevronDown, Sparkles, Square } from 'lucide-react';
 import { Button, Hint, Popover, PopoverContent, PopoverTrigger } from '@/components/ui';
+import { ModelPickerTypeahead } from '@/features/chat/ModelPickerTypeahead';
 import { HOTKEYS } from '@/lib/hotkeys';
 import { cn } from '@/lib/utils';
 import type {
@@ -8,7 +9,11 @@ import type {
   PromptForgePrivacyMode,
   PromptForgeStatus,
 } from './contracts';
-import type { PromptForgeModelOption } from './modelSelection';
+import {
+  buildPromptForgeModelPickerGroups,
+  promptForgePickerSelectedId,
+  type PromptForgeModelOption,
+} from './modelSelection';
 import './sakura-prompt-forge.css';
 
 export interface PromptForgeControlProps {
@@ -32,15 +37,6 @@ export interface PromptForgeControlProps {
   onAutoUpgradeOnSendChange: (enabled: boolean) => void;
   onStart: () => void | Promise<unknown>;
   onCancel: () => void | Promise<unknown>;
-}
-
-function selected(selection: PromptForgeModelSelection, option: PromptForgeModelOption): boolean {
-  return (
-    selection.mode === 'single' &&
-    selection.providerId === option.providerId &&
-    selection.modelId === option.modelId &&
-    (selection.connectionId ?? null) === (option.connectionId ?? null)
-  );
 }
 
 export function PromptForgeControl({
@@ -73,7 +69,14 @@ export function PromptForgeControl({
   void _offlineMode;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
-  const accessibleModels = modelOptions.filter((option) => option.available);
+  const pickerGroups = useMemo(
+    () => buildPromptForgeModelPickerGroups(modelOptions),
+    [modelOptions],
+  );
+  const selectedPickerId = useMemo(
+    () => promptForgePickerSelectedId(modelSelection, pickerGroups),
+    [modelSelection, pickerGroups],
+  );
   const actionLabel = isRunning
     ? 'Cancel Prompt Forge upgrade'
     : 'Upgrade prompt with Prompt Forge';
@@ -201,50 +204,36 @@ export function PromptForgeControl({
                   </span>
                 </span>
               </button>
-              {accessibleModels.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected(modelSelection, option)}
-                  data-monochrome-state={selected(modelSelection, option) ? 'selected' : 'idle'}
-                  onClick={() =>
-                    onModelSelectionChange({
-                      mode: 'single',
-                      providerId: option.providerId,
-                      modelId: option.modelId,
-                      ...(option.connectionId ? { connectionId: option.connectionId } : {}),
-                    })
-                  }
-                  className={cn(
-                    'flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-secondary outline-none',
-                    'hover:bg-muted focus-visible:ring-1 focus-visible:ring-ring',
-                    selected(modelSelection, option) && 'bg-accent-cyan/10 text-foreground',
-                    '[html[data-theme=monochrome]_&]:rounded-sm [html[data-theme=monochrome]_&]:border [html[data-theme=monochrome]_&]:border-transparent',
-                    selected(modelSelection, option) &&
-                      '[html[data-theme=monochrome]_&]:border-l-2 [html[data-theme=monochrome]_&]:border-l-accent-cyan [html[data-theme=monochrome]_&]:border-y-border [html[data-theme=monochrome]_&]:border-r-border',
-                  )}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{option.label}</span>
-                    <span className="block truncate text-metadata text-muted-foreground">
-                      {option.connectionMode === 'local'
-                        ? 'Local · no hosted AI charge'
-                        : option.connectionMode === 'external-cli'
-                          ? 'Signed-in subscription connection'
-                          : 'Provider API connection'}
-                    </span>
-                  </span>
-                  {!option.localOnly ? (
-                    <Cloud className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  ) : null}
-                </button>
-              ))}
-              {accessibleModels.length === 0 ? (
-                <p className="px-2.5 py-2 text-metadata text-muted-foreground">
-                  No other accessible models right now. Connect a provider or start a local model.
-                </p>
-              ) : null}
+            </div>
+            <div className="mt-2 overflow-hidden rounded-xl border border-border/70 bg-background/40">
+              <ModelPickerTypeahead
+                groups={pickerGroups}
+                selectedId={selectedPickerId}
+                initialEffort={modelSelection.mode === 'single' ? modelSelection.effort : 'auto'}
+                activeProvider={
+                  modelSelection.mode === 'single' ? modelSelection.providerId : undefined
+                }
+                activeModel={modelSelection.mode === 'single' ? modelSelection.modelId : undefined}
+                compact
+                onSelect={(providerId, modelId, connection, effort) => {
+                  const exactOption = modelOptions
+                    .flatMap((option) => option.alternativeRoutes ?? [option])
+                    .find(
+                      (option) =>
+                        option.providerId === providerId &&
+                        option.modelId === modelId &&
+                        (connection === undefined || option.connectionId === connection.id),
+                    );
+                  const connectionId = connection?.id ?? exactOption?.connectionId;
+                  onModelSelectionChange({
+                    mode: 'single',
+                    providerId,
+                    modelId,
+                    ...(connectionId ? { connectionId } : {}),
+                    effort,
+                  });
+                }}
+              />
             </div>
           </section>
 

@@ -3,6 +3,7 @@ import type { ContextChatAttachment } from '@/features/context/contextChatIntegr
 import type { SharedContextRetrievalResult } from '@/features/context/contextResponseIntegration';
 import type { ContextAttachment } from '@/features/context/tree';
 import { useChatActivityStore } from '@/features/chat/activity/activityStore';
+import { readChatReasoningPreference } from '@/features/chat/reasoningSlashStore';
 import { db } from '@/lib/db';
 import type { ChatImageAttachment } from '@/lib/ai/vision';
 import { hasDetectedSecret } from '@/lib/security/secretDetector';
@@ -185,6 +186,9 @@ function errorMessage(job: PromptForgeJob): string | null {
   if (job.status !== 'failed') return null;
   if (job.errorCode === 'model_unavailable')
     return 'The selected Prompt Forge model is unavailable.';
+  if (job.errorCode === 'effort_unavailable') {
+    return 'The selected Prompt Forge effort is unavailable for this exact model route.';
+  }
   if (job.errorCode === 'offline_cloud_blocked') {
     return 'Choose an available local model while VibeSpace is offline.';
   }
@@ -245,6 +249,9 @@ function modelDisabledReason(
     if (error.code === 'connection_ambiguous') {
       return 'Choose an exact provider connection for this Prompt Forge model.';
     }
+    if (error.code === 'effort_unavailable') {
+      return 'Choose an effort offered by this exact Prompt Forge model route.';
+    }
     if (error.code === 'offline_cloud_blocked') {
       return 'Choose an available local model while VibeSpace is offline.';
     }
@@ -253,6 +260,14 @@ function modelDisabledReason(
 }
 
 export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
+  const storedChatEffort = readChatReasoningPreference(options.chatId).effortOverride ?? 'auto';
+  const currentChatSelection: PromptForgeCurrentChatSelection =
+    options.currentChatSelection.mode === 'single'
+      ? {
+          ...options.currentChatSelection,
+          effort: options.currentChatSelection.effort ?? storedChatEffort,
+        }
+      : options.currentChatSelection;
   const currentScope = useMemo<PromptForgeComposerScope>(
     () => ({
       accountId: options.accountId,
@@ -318,14 +333,14 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
       modelDisabledReason(
         options.modelSelection,
         options.modelOptions,
-        options.currentChatSelection,
+        currentChatSelection,
         options.offlineMode,
         options.defaultLocalModel,
         privacyMode,
         options.imageAttachments ?? [],
       ),
     [
-      options.currentChatSelection,
+      currentChatSelection,
       options.defaultLocalModel,
       options.modelOptions,
       options.modelSelection,
@@ -341,14 +356,14 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
         : modelDisabledReason(
             recoverableJob.modelSelection,
             options.modelOptions,
-            options.currentChatSelection,
+            currentChatSelection,
             options.offlineMode,
             options.defaultLocalModel,
             recoverableJob.privacyMode,
             options.imageAttachments ?? [],
           ),
     [
-      options.currentChatSelection,
+      currentChatSelection,
       options.defaultLocalModel,
       options.modelOptions,
       options.offlineMode,
@@ -394,7 +409,7 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
       const prepare = createPromptForgeContextPreparer({
         contextAttachments: options.contextAttachments,
         modelOptions: options.modelOptions,
-        currentChatSelection: options.currentChatSelection,
+        currentChatSelection,
         offlineMode: options.offlineMode,
         defaultLocalModel: options.defaultLocalModel,
         additionalSources: options.additionalSources,
@@ -432,7 +447,7 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
       options.additionalSources,
       options.collectAdditionalSources,
       options.contextAttachments,
-      options.currentChatSelection,
+      currentChatSelection,
       options.defaultLocalModel,
       options.modelOptions,
       options.offlineMode,
