@@ -135,6 +135,19 @@ function cleanIdentifier(value: unknown, max = 512): string | undefined {
   return clean;
 }
 
+function cleanQuestionText(value: unknown, max: number, allowEmpty = false): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const clean = value.trim();
+  if (
+    (!clean && !allowEmpty) ||
+    clean.length > max ||
+    /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(clean)
+  ) {
+    return undefined;
+  }
+  return clean;
+}
+
 function withDirectory(path: string, scope: Readonly<HarnessScope>): string {
   const directory = scope.workingDirectory?.trim();
   if (!directory) return path;
@@ -733,6 +746,83 @@ export function classifyExplicitRootInventoryScope(
   return matches ? 'explicit_root_inventory' : undefined;
 }
 
+const MAX_QUESTION_COUNT = 8;
+const MAX_QUESTION_OPTION_COUNT = 8;
+
+/**
+ * Project an official OpenCode `question.asked` envelope into the append-only
+ * provider event surface. The mapper intentionally excludes arbitrary event or
+ * tool payload data; the reply transport is a separate runtime-owned boundary.
+ */
+export function normalizeQuestionEvent(
+  event: OpenCodeRawEvent,
+  expectedSessionId: string,
+): Extract<ProviderEvent, { type: 'question' }> | undefined {
+  if (event.type !== 'question.asked') return undefined;
+  const properties = event.properties;
+  const id = cleanIdentifier(properties?.id, 512);
+  const sessionId = cleanIdentifier(properties?.sessionID, 512);
+  if (!id?.startsWith('que') || !sessionId || sessionId !== expectedSessionId) return undefined;
+  if (!Array.isArray(properties?.questions)) return undefined;
+  if (properties.questions.length === 0 || properties.questions.length > MAX_QUESTION_COUNT) {
+    return undefined;
+  }
+
+  const questions = properties.questions.map((candidate) => {
+    const question = recordOf(candidate);
+    if (!question || !Array.isArray(question.options)) return undefined;
+    if (question.options.length > MAX_QUESTION_OPTION_COUNT) return undefined;
+    if (question.multiple !== undefined && typeof question.multiple !== 'boolean') return undefined;
+    if (question.custom !== undefined && typeof question.custom !== 'boolean') return undefined;
+    const header = cleanQuestionText(question.header, 64);
+    const prompt = cleanQuestionText(question.question, 2_048);
+    if (!header || !prompt) return undefined;
+
+    const options = question.options.map((candidateOption) => {
+      const option = recordOf(candidateOption);
+      if (!option) return undefined;
+      const label = cleanQuestionText(option.label, 160);
+      const description = cleanQuestionText(option.description, 512, true);
+      return label && description !== undefined ? { label, description } : undefined;
+    });
+    if (options.some((option) => option === undefined)) return undefined;
+
+    return {
+      header,
+      prompt,
+      options: options as { label: string; description: string }[],
+      multiple: question.multiple === true,
+      allowCustomAnswer: question.custom !== false,
+    };
+  });
+  if (questions.some((question) => question === undefined)) return undefined;
+
+  let tool: { messageId: string; callId: string } | undefined;
+  if (properties.tool !== undefined) {
+    const rawTool = recordOf(properties.tool);
+    const messageId = cleanIdentifier(rawTool?.messageID, 512);
+    const callId = cleanIdentifier(rawTool?.callID, 512);
+    if (!messageId || !callId) return undefined;
+    tool = { messageId, callId };
+  }
+
+  return {
+    type: 'question',
+    request: {
+      id,
+      sessionId,
+      questions: questions as {
+        header: string;
+        prompt: string;
+        options: { label: string; description: string }[];
+        multiple: boolean;
+        allowCustomAnswer: boolean;
+      }[],
+      ...(tool ? { tool } : {}),
+    },
+  };
+}
+
 export function normalizeToolEvent(
   event: OpenCodeRawEvent,
   request: Pick<ProviderRequest, 'explicitReadRoot' | 'workingDirectory'>,
@@ -780,7 +870,9 @@ export function normalizePersistentOpenCodeUsage(
   const cache = recordOf(tokens?.cache);
   const cacheRead = number(cache?.read ?? tokens?.cacheRead ?? tokens?.cache_read);
   const cacheWrite = number(cache?.write ?? tokens?.cacheWrite ?? tokens?.cache_write);
-  const reasoning = number(tokens?.reasoning ?? tokens?.reasoningTokens ?? tokens?.reasoning_tokens);
+  const reasoning = number(
+    tokens?.reasoning ?? tokens?.reasoningTokens ?? tokens?.reasoning_tokens,
+  );
   const cost = number(info?.cost ?? tokens?.cost);
   return {
     capturedAt: Date.now(),
@@ -1537,6 +1629,8 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         }
         yield tool;
       }
+      const question = normalizeQuestionEvent(event, dispatch.sessionId);
+      if (question) yield question;
       const usage = normalizePersistentOpenCodeUsage(event);
       if (usage) yield { type: 'usage', usage };
       if (event.type === 'session.error') {

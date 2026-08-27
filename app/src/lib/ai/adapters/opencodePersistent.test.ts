@@ -12,6 +12,7 @@ import {
   filterOpenCodeModelsToConnectedProviders,
   managedOpenCodeAuthResult,
   normalizePersistentOpenCodeUsage,
+  normalizeQuestionEvent,
   normalizeToolEvent,
   openCodeChecklistSnapshotsFromMessages,
   openCodePersistentAdapter,
@@ -53,7 +54,161 @@ const liveModels = parseOpenCodeLiveModels({
   ],
 });
 
+const validNativeQuestions = [
+  {
+    header: 'Choice',
+    question: 'Choose one.',
+    options: [{ label: 'One', description: 'Use option one.' }],
+  },
+];
+
 describe('persistent OpenCode live authority', () => {
+  it('maps the native question request as a bounded dedicated provider event', () => {
+    const event = normalizeQuestionEvent(
+      {
+        type: 'question.asked',
+        properties: {
+          id: 'que_01JQUESTION',
+          sessionID: 'ses_exact',
+          questions: [
+            {
+              header: 'Approach',
+              question: 'Which implementation should I use?',
+              options: [
+                { label: 'Smallest fix', description: 'Change only the failing boundary.' },
+                { label: 'Broader refactor', description: 'Rework the surrounding module.' },
+              ],
+              multiple: false,
+              custom: false,
+            },
+          ],
+          tool: { messageID: 'msg_01JASSISTANT', callID: 'call_question_1' },
+          metadata: { accessToken: 'must-not-survive' },
+        },
+      },
+      'ses_exact',
+    );
+
+    expect(event).toEqual({
+      type: 'question',
+      request: {
+        id: 'que_01JQUESTION',
+        sessionId: 'ses_exact',
+        questions: [
+          {
+            header: 'Approach',
+            prompt: 'Which implementation should I use?',
+            options: [
+              { label: 'Smallest fix', description: 'Change only the failing boundary.' },
+              { label: 'Broader refactor', description: 'Rework the surrounding module.' },
+            ],
+            multiple: false,
+            allowCustomAnswer: false,
+          },
+        ],
+        tool: { messageId: 'msg_01JASSISTANT', callId: 'call_question_1' },
+      },
+    });
+    expect(event?.type).not.toBe('tool');
+    expect(JSON.stringify(event)).not.toContain('must-not-survive');
+  });
+
+  it('preserves OpenCode custom-answer defaults without inventing tool metadata', () => {
+    const event = normalizeQuestionEvent(
+      {
+        type: 'question.asked',
+        properties: {
+          id: 'que_01JTEXT',
+          sessionID: 'ses_exact',
+          questions: [
+            {
+              header: 'Details',
+              question: 'What should the title say?',
+              options: [],
+            },
+          ],
+        },
+      },
+      'ses_exact',
+    );
+
+    expect(event).toMatchObject({
+      type: 'question',
+      request: {
+        questions: [{ multiple: false, allowCustomAnswer: true, options: [] }],
+      },
+    });
+    expect(event && 'request' in event ? event.request : undefined).not.toHaveProperty('tool');
+  });
+
+  it.each([
+    ['cross-session', { id: 'que_1', sessionID: 'ses_other', questions: validNativeQuestions }],
+    [
+      'legacy request identity',
+      { requestID: 'que_1', sessionID: 'ses_exact', questions: validNativeQuestions },
+    ],
+    [
+      'non-question identity',
+      { id: 'approval_1', sessionID: 'ses_exact', questions: validNativeQuestions },
+    ],
+    ['missing questions', { id: 'que_1', sessionID: 'ses_exact' }],
+    [
+      'malformed option',
+      {
+        id: 'que_1',
+        sessionID: 'ses_exact',
+        questions: [
+          {
+            header: 'Choice',
+            question: 'Choose one.',
+            options: [{ label: 'One', description: 42 }],
+          },
+        ],
+      },
+    ],
+    [
+      'invalid custom metadata',
+      {
+        id: 'que_1',
+        sessionID: 'ses_exact',
+        questions: [{ header: 'Choice', question: 'Choose one.', options: [], custom: 'yes' }],
+      },
+    ],
+    [
+      'excessive question count',
+      {
+        id: 'que_1',
+        sessionID: 'ses_exact',
+        questions: Array.from({ length: 9 }, (_, index) => ({
+          header: `Choice ${index}`,
+          question: 'Choose one.',
+          options: [],
+        })),
+      },
+    ],
+    [
+      'excessive option count',
+      {
+        id: 'que_1',
+        sessionID: 'ses_exact',
+        questions: [
+          {
+            header: 'Choice',
+            question: 'Choose one.',
+            options: Array.from({ length: 9 }, (_, index) => ({
+              label: `Option ${index}`,
+              description: 'A bounded option.',
+            })),
+          },
+        ],
+      },
+    ],
+  ])('fails closed for %s native question data', (_label, properties) => {
+    expect(
+      normalizeQuestionEvent({ type: 'question.asked', properties }, 'ses_exact'),
+    ).toBeUndefined();
+  });
+
   it('retains only bounded todo milestone evidence from tool updates', () => {
     const event = normalizeToolEvent(
       {

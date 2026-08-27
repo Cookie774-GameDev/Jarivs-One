@@ -59,6 +59,30 @@ export interface UsageSnapshot {
   resetsAt?: UsageValue<string>;
 }
 
+export interface ProviderQuestionOption {
+  label: string;
+  description: string;
+}
+
+export interface ProviderQuestionPrompt {
+  header: string;
+  prompt: string;
+  options: readonly ProviderQuestionOption[];
+  multiple: boolean;
+  /** OpenCode defaults omitted `custom` metadata to enabled. */
+  allowCustomAnswer: boolean;
+}
+
+export interface ProviderQuestionRequest {
+  /** Exact native OpenCode question identity used by the future reply/reject bridge. */
+  id: string;
+  /** Exact OpenCode session that owns this blocking question request. */
+  sessionId: string;
+  questions: readonly ProviderQuestionPrompt[];
+  /** Exact optional native tool-call binding; never contains tool input or output. */
+  tool?: Readonly<{ messageId: string; callId: string }>;
+}
+
 export type ProviderEvent =
   | { type: 'text'; delta: string }
   | { type: 'reasoning'; delta: string }
@@ -74,6 +98,7 @@ export type ProviderEvent =
       /** Bounded OpenCode todo evidence. Never carries generic tool input or output. */
       checklist?: import('../openCodeChecklist').OpenCodeChecklistSnapshot;
     }
+  | { type: 'question'; request: ProviderQuestionRequest }
   | { type: 'model'; modelId: string }
   | { type: 'usage'; usage: UsageSnapshot }
   | { type: 'warning'; message: string }
