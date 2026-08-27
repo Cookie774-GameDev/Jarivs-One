@@ -84,6 +84,19 @@ describe('bounded Skills 2.0 discovery', () => {
     });
   });
 
+  it('bundles the Prompt Forge upgrader package as a built-in skill', async () => {
+    const skill = (await loadAllSkills()).find(
+      (manifest) => manifest.name === 'prompt-forge-upgrader',
+    );
+
+    expect(skill).toMatchObject({
+      title: 'Prompt Forge Upgrader',
+      source: 'builtin',
+      kind: 'skill',
+    });
+    expect(skill?.body).toContain('# Prompt Forge upgrade contract');
+  });
+
   it('uses the exact project root and gives project packages precedence over trusted user packages', async () => {
     const fs = fakeFilesystem({
       directories: {

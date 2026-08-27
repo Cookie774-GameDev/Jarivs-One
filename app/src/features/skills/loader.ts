@@ -101,7 +101,7 @@ const SEVERITY_ORDER: Record<NonNullable<SkillManifest['severity']>, number> = {
 
 /* Vite glob: project-relative paths under app/.jarvis/. Eager so the data is
  * synchronously available the first time `loadAllSkills` is awaited. */
-const SKILL_FILES = import.meta.glob('/.jarvis/skills/*.md', {
+const SKILL_FILES = import.meta.glob(['/.jarvis/skills/*.md', '/.jarvis/skills/*/SKILL.md'], {
   query: '?raw',
   import: 'default',
   eager: true,
@@ -149,6 +149,10 @@ function manifestFromRaw(
 ): SkillManifest {
   const { meta, body } = parseFrontmatter(raw);
   const fallbackName = fileBaseName(filePath);
+  const displayName =
+    fallbackName.toLowerCase() === 'skill' && typeof meta.name === 'string'
+      ? meta.name
+      : fallbackName;
 
   // Tolerate strings vs string-arrays for `when` / `tools` / `tags`.
   const coerceArr = (v: unknown): string[] | undefined => {
@@ -163,7 +167,7 @@ function manifestFromRaw(
     title:
       typeof meta.title === 'string'
         ? meta.title
-        : fallbackName.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        : displayName.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
     kind: meta.kind === 'agent' || meta.kind === 'skill' ? meta.kind : defaultKind,
     trigger: meta.trigger as SkillManifest['trigger'],
     when: coerceArr(meta.when),

@@ -101,6 +101,10 @@ app/vitest.config.ts.timestamp-*.mjs
 # Local Jarvis app data (when running)
 ~/.jarvis/
 .jarvis/
+!app/.jarvis/
+!app/.jarvis/skills/
+!app/.jarvis/skills/prompt-forge-upgrader/
+!app/.jarvis/skills/prompt-forge-upgrader/SKILL.md
 
 # Python (phone-jarvis cloud)
 __pycache__/

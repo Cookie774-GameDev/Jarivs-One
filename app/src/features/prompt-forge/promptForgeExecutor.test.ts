@@ -148,6 +148,8 @@ describe('Prompt Forge model execution', () => {
     expect(received?.agent.effort).toBe('high');
     expect(received?.agent.effort).not.toBe('medium');
     expect(received?.agent.system_prompt).toMatch(/untrusted source data/i);
+    expect(received?.agent.system_prompt).toMatch(/Prompt Forge upgrade contract/i);
+    expect(received?.agent.system_prompt).toMatch(/never sent automatically/i);
     expect(received?.agent.system_prompt).toMatch(
       /instruct the downstream agent to perform the requested task now/i,
     );
