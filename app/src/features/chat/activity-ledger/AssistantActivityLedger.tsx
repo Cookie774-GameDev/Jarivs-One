@@ -21,6 +21,16 @@ const INSPECTOR_MIN_HEIGHT = 128;
 const INSPECTOR_DEFAULT_HEIGHT = 320;
 const INSPECTOR_MAX_HEIGHT = 420;
 type Filter = 'all' | LedgerReceiptKind | 'usage';
+const PRIMARY_FILTERS: readonly Filter[] = ['all', 'read', 'command', 'edit'];
+const CATEGORY_FILTERS: readonly Filter[] = [
+  'read',
+  'search',
+  'command',
+  'edit',
+  'check',
+  'subagent',
+  'usage',
+];
 
 const EMPTY_CATEGORY_MESSAGES: Partial<Record<Filter, string>> = {
   read: 'No read activity for this turn.',
@@ -53,6 +63,7 @@ function metric(label: string, value: number): string {
 }
 
 function formatDuration(durationMs: number): string {
+  if (durationMs > 0 && durationMs < 1_000) return '<1s';
   const seconds = Math.max(0, Math.round(durationMs / 1000));
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
@@ -98,12 +109,18 @@ function filterLabel(filter: Filter, count?: number): string {
   return count === undefined ? label : `${label} ${formatCount(count)}`;
 }
 
+function primaryFilterLabel(filter: Filter, count: number): string {
+  if (filter === 'read') return `Files ${formatCount(count)}`;
+  return filterLabel(filter, count);
+}
+
 export function AssistantActivityLedger({
   message,
   correlatedEvents = [],
   projectRoot,
   compact = false,
   active = false,
+  authoritativeDurationMs,
 }: {
   message: Message;
   correlatedEvents?: readonly ChatActivityEvent[];
@@ -111,6 +128,8 @@ export function AssistantActivityLedger({
   compact?: boolean;
   /** Persisted message evidence is historical unless a caller owns live turn correlation. */
   active?: boolean;
+  /** Stable duration supplied by the owning canonical run/session projection. */
+  authoritativeDurationMs?: number;
 }) {
   const ledger = React.useMemo(
     () => projectAssistantActivityLedger(message, correlatedEvents),
@@ -131,16 +150,6 @@ export function AssistantActivityLedger({
   const hasUsage = ledger.usage.input.value !== null || ledger.usage.output.value !== null;
   if (ledger.actionsTotal === 0 && !hasUsage) return null;
 
-  const filters: readonly Filter[] = [
-    'all',
-    'read',
-    'search',
-    'command',
-    'edit',
-    'check',
-    'subagent',
-    'usage',
-  ];
   const categoryFiltered =
     filter === 'all' || filter === 'usage'
       ? filter === 'usage'
@@ -175,10 +184,18 @@ export function AssistantActivityLedger({
     .reverse()
     .find((event) => event.status === 'running' || event.status === 'pending');
   const live = active;
+  const durationMs =
+    ledger.durationMs !== undefined && ledger.durationMs > 0
+      ? ledger.durationMs
+      : typeof authoritativeDurationMs === 'number' &&
+          Number.isFinite(authoritativeDurationMs) &&
+          authoritativeDurationMs >= 0
+        ? authoritativeDurationMs
+        : ledger.durationMs;
   const continuousResponseTitle = live
     ? `${ledger.currentOperation ?? 'Working'} · ${actionLabel(ledger.actionsTotal)}`
-    : ledger.durationMs !== undefined
-      ? `Worked for ${formatDuration(ledger.durationMs)} · ${actionLabel(ledger.actionsTotal)}`
+    : durationMs !== undefined
+      ? `Worked for ${formatDuration(durationMs)} · ${actionLabel(ledger.actionsTotal)}`
       : `Activity · ${actionLabel(ledger.actionsTotal)}`;
   const motion = resolveAgentMotion(
     runningEvent
@@ -210,18 +227,18 @@ export function AssistantActivityLedger({
   ) => {
     let nextIndex: number | undefined;
     if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-      nextIndex = (filterIndex + 1) % filters.length;
+      nextIndex = (filterIndex + 1) % PRIMARY_FILTERS.length;
     } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-      nextIndex = (filterIndex - 1 + filters.length) % filters.length;
+      nextIndex = (filterIndex - 1 + PRIMARY_FILTERS.length) % PRIMARY_FILTERS.length;
     } else if (event.key === 'Home') {
       nextIndex = 0;
     } else if (event.key === 'End') {
-      nextIndex = filters.length - 1;
+      nextIndex = PRIMARY_FILTERS.length - 1;
     }
     if (nextIndex === undefined) return;
 
     event.preventDefault();
-    const nextFilter = filters[nextIndex];
+    const nextFilter = PRIMARY_FILTERS[nextIndex];
     selectFilter(nextFilter);
     event.currentTarget.parentElement
       ?.querySelector<HTMLButtonElement>(`[data-activity-filter="${nextFilter}"]`)
@@ -292,7 +309,7 @@ export function AssistantActivityLedger({
             aria-label="Activity filters"
             role="tablist"
           >
-            {filters.map((item, index) => (
+            {PRIMARY_FILTERS.map((item, index) => (
               <button
                 type="button"
                 role="tab"
@@ -305,77 +322,110 @@ export function AssistantActivityLedger({
                 onClick={() => selectFilter(item)}
                 onKeyDown={(event) => handleFilterKeyDown(event, index)}
               >
-                {filterLabel(item, item === 'usage' ? undefined : counts[item])}
+                {primaryFilterLabel(item, counts[item as Exclude<Filter, 'usage'>])}
               </button>
             ))}
           </div>
-          {filter !== 'usage' ? (
-            <label className="assistant-activity-ledger__search">
-              <Search aria-hidden="true" />
-              <span className="sr-only">Search activity</span>
-              <input
-                type="search"
-                aria-label="Search activity"
-                autoComplete="off"
-                spellCheck={false}
-                maxLength={80}
-                placeholder="Search safe activity labels…"
-                value={query}
-                onChange={(event) => {
-                  setQuery(event.target.value.slice(0, 80));
-                  setVisibleCount(DETAIL_PAGE_SIZE);
-                }}
-              />
-            </label>
-          ) : null}
-          {filter === 'usage' ? (
-            <div
-              id={filterPanelId}
-              role="tabpanel"
-              aria-labelledby={`${filterTabId}-${filter}`}
-              className="assistant-activity-ledger__usage"
-            >
-              <UsageLine label="Input" usage={ledger.usage.input} />
-              <UsageLine label="Output" usage={ledger.usage.output} />
-            </div>
-          ) : (
-            <div
-              id={filterPanelId}
-              role="tabpanel"
-              aria-labelledby={`${filterTabId}-${filter}`}
-              className="assistant-activity-ledger__receipts"
-            >
-              {ledger.omittedReceipts > 0 && filter === 'all' && !normalizedQuery ? (
-                <p className="assistant-activity-ledger__notice">
-                  {formatCount(ledger.omittedReceipts)} older receipts are summarized in the totals.
-                </p>
-              ) : null}
-              {visible.map((receipt) => (
-                <ReceiptRow
-                  key={receipt.id}
-                  receipt={receipt}
-                  canPreview={Boolean(projectRoot && receipt.filePath)}
-                  onPreview={() => receipt.filePath && setPreviewPath(receipt.filePath)}
-                />
-              ))}
-              {filtered.length === 0 && normalizedQuery ? (
-                <p className="assistant-activity-ledger__notice">No matching activity receipts.</p>
-              ) : null}
-              {filtered.length === 0 && !normalizedQuery && emptyCategoryMessage ? (
-                <p className="assistant-activity-ledger__notice">{emptyCategoryMessage}</p>
-              ) : null}
-              {remaining > 0 ? (
+          <div className="assistant-activity-ledger__workspace">
+            <nav className="assistant-activity-ledger__categories" aria-label="Activity categories">
+              {CATEGORY_FILTERS.map((item) => (
                 <button
                   type="button"
-                  className="assistant-activity-ledger__more"
-                  onClick={() => setVisibleCount((count) => count + DETAIL_PAGE_SIZE)}
-                  aria-label={`Show ${Math.min(DETAIL_PAGE_SIZE, remaining)} more activity receipts`}
+                  key={item}
+                  data-activity-category={item}
+                  aria-label={
+                    item === 'usage'
+                      ? filterLabel(item)
+                      : filterLabel(item, counts[item as Exclude<Filter, 'usage'>])
+                  }
+                  aria-pressed={filter === item}
+                  onClick={() => selectFilter(item)}
                 >
-                  Show {Math.min(DETAIL_PAGE_SIZE, remaining)} more
+                  <span>{filterLabel(item)}</span>
+                  {item === 'usage' ? null : (
+                    <strong>{formatCount(counts[item as Exclude<Filter, 'usage'>])}</strong>
+                  )}
                 </button>
+              ))}
+            </nav>
+            <div className="assistant-activity-ledger__detail">
+              {filter !== 'usage' ? (
+                <label className="assistant-activity-ledger__search">
+                  <Search aria-hidden="true" />
+                  <span className="sr-only">Search activity</span>
+                  <input
+                    type="search"
+                    aria-label="Search activity"
+                    autoComplete="off"
+                    spellCheck={false}
+                    maxLength={80}
+                    placeholder="Filter actions…"
+                    value={query}
+                    onChange={(event) => {
+                      setQuery(event.target.value.slice(0, 80));
+                      setVisibleCount(DETAIL_PAGE_SIZE);
+                    }}
+                  />
+                </label>
               ) : null}
+              {filter === 'usage' ? (
+                <div
+                  id={filterPanelId}
+                  role="tabpanel"
+                  aria-label="Usage"
+                  className="assistant-activity-ledger__usage"
+                >
+                  <UsageLine label="Input" usage={ledger.usage.input} />
+                  <UsageLine label="Output" usage={ledger.usage.output} />
+                </div>
+              ) : (
+                <div
+                  id={filterPanelId}
+                  role="tabpanel"
+                  aria-labelledby={
+                    PRIMARY_FILTERS.includes(filter) ? `${filterTabId}-${filter}` : undefined
+                  }
+                  aria-label={PRIMARY_FILTERS.includes(filter) ? undefined : filterLabel(filter)}
+                  className="assistant-activity-ledger__receipts"
+                >
+                  {ledger.omittedReceipts > 0 && filter === 'all' && !normalizedQuery ? (
+                    <p className="assistant-activity-ledger__notice">
+                      {formatCount(ledger.omittedReceipts)} older receipts are summarized in the
+                      totals.
+                    </p>
+                  ) : null}
+                  <div role="list" aria-label="Activity receipts">
+                    {visible.map((receipt) => (
+                      <ReceiptRow
+                        key={receipt.id}
+                        receipt={receipt}
+                        canPreview={Boolean(projectRoot && receipt.filePath)}
+                        onPreview={() => receipt.filePath && setPreviewPath(receipt.filePath)}
+                      />
+                    ))}
+                  </div>
+                  {filtered.length === 0 && normalizedQuery ? (
+                    <p className="assistant-activity-ledger__notice">
+                      No matching activity receipts.
+                    </p>
+                  ) : null}
+                  {filtered.length === 0 && !normalizedQuery && emptyCategoryMessage ? (
+                    <p className="assistant-activity-ledger__notice">{emptyCategoryMessage}</p>
+                  ) : null}
+                  {remaining > 0 ? (
+                    <button
+                      type="button"
+                      className="assistant-activity-ledger__more"
+                      onClick={() => setVisibleCount((count) => count + DETAIL_PAGE_SIZE)}
+                      aria-label={`Show ${Math.min(DETAIL_PAGE_SIZE, remaining)} more activity receipts`}
+                    >
+                      Show {Math.min(DETAIL_PAGE_SIZE, remaining)} more
+                    </button>
+                  ) : null}
+                </div>
+              )}
             </div>
-          )}
+          </div>
           {previewPath && projectRoot ? (
             <FileAttachmentPreview
               path={previewPath}
@@ -443,18 +493,15 @@ function ReceiptRow({
       )}
     </>
   );
-  return canPreview ? (
-    <button
-      type="button"
-      data-testid="activity-ledger-receipt"
-      className="assistant-activity-ledger__receipt"
-      onClick={onPreview}
-    >
-      {content}
-    </button>
-  ) : (
-    <div data-testid="activity-ledger-receipt" className="assistant-activity-ledger__receipt">
-      {content}
+  return (
+    <div role="listitem" data-testid="activity-ledger-receipt">
+      {canPreview ? (
+        <button type="button" className="assistant-activity-ledger__receipt" onClick={onPreview}>
+          {content}
+        </button>
+      ) : (
+        <div className="assistant-activity-ledger__receipt">{content}</div>
+      )}
     </div>
   );
 }

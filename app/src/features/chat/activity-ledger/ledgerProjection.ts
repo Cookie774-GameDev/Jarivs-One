@@ -373,8 +373,13 @@ export function projectAssistantActivityLedger(
     hasEventError ||= event.status === 'error';
     hasEventCancelled ||= event.status === 'cancelled';
     startedAt = Math.min(startedAt, event.startedAt ?? event.ts);
-    if (event.endedAt !== undefined) {
-      latestEvidenceEnd = Math.max(latestEvidenceEnd ?? event.endedAt, event.endedAt);
+    const eventEnd =
+      event.endedAt ??
+      (event.status === 'done' || event.status === 'cancelled' || event.status === 'error'
+        ? event.ts
+        : undefined);
+    if (eventEnd !== undefined) {
+      latestEvidenceEnd = Math.max(latestEvidenceEnd ?? eventEnd, eventEnd);
     }
     if (eventsAreChronological && (!previousEvent || compareEvents(previousEvent, event) <= 0)) {
       recentEvents.push(event);
@@ -434,9 +439,7 @@ export function projectAssistantActivityLedger(
             : 'idle';
   const terminal = status === 'done' || status === 'cancelled' || status === 'error';
   const terminalEndedAt = terminal
-    ? message.usage
-      ? Math.max(message.updated_at, latestEvidenceEnd ?? message.updated_at)
-      : latestEvidenceEnd
+    ? Math.max(message.updated_at, latestEvidenceEnd ?? message.updated_at)
     : undefined;
   return {
     status,

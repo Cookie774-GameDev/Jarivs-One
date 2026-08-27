@@ -247,6 +247,28 @@ describe('projectAssistantActivityLedger', () => {
     expect(ledger.durationMs).toBe(61_000);
   });
 
+  it('uses authoritative terminal event timestamps when explicit endedAt is unavailable', () => {
+    const ledger = projectAssistantActivityLedger(assistant([]), [
+      event({ id: 'started', status: 'done', ts: 100, startedAt: 100 }),
+      event({ id: 'finished', status: 'done', ts: 61_100 }),
+    ]);
+
+    expect(ledger.endedAt).toBe(61_100);
+    expect(ledger.durationMs).toBe(61_000);
+  });
+
+  it('uses the stable assistant message interval when terminal receipts have no end timestamp', () => {
+    const ledger = projectAssistantActivityLedger(
+      assistant([
+        { kind: 'tool_call', call_id: 'command-duration', tool: 'terminal.exec', args: {} },
+        { kind: 'tool_result', call_id: 'command-duration', result: { exitCode: 0 } },
+      ]),
+    );
+
+    expect(ledger.endedAt).toBe(200);
+    expect(ledger.durationMs).toBe(100);
+  });
+
   it('keeps provider usage exact, optimizer-only input estimated, and missing output unavailable', () => {
     const exact = projectAssistantActivityLedger(
       assistant([], {

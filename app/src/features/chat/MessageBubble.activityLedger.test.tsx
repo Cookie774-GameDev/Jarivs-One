@@ -73,7 +73,7 @@ describe('MessageBubble assistant activity ledger', () => {
       </TooltipProvider>,
     );
     expect(screen.getByRole('button', { name: /show activity details/i })).toBeTruthy();
-    expect(screen.getByText('Activity · 1 action')).toBeTruthy();
+    expect(screen.getByText('Worked for <1s · 1 action')).toBeTruthy();
     expect(document.body.textContent).not.toContain('hidden-payload');
     expect(document.body.textContent).not.toContain('hidden-result');
   });

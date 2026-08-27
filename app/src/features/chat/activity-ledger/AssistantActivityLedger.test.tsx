@@ -92,6 +92,27 @@ describe('AssistantActivityLedger', () => {
     expect(document.body.textContent).not.toContain('private-path.ts');
   });
 
+  it('uses a stable authoritative run duration when persisted receipts lack an interval', () => {
+    render(
+      <AssistantActivityLedger
+        authoritativeDurationMs={7_000}
+        message={{ ...assistant([{ kind: 'text', text: 'Done.' }]), updated_at: 100 }}
+        correlatedEvents={[
+          {
+            id: 'terminal-same-time',
+            chatId: 'chat-ledger-ui',
+            kind: 'tool',
+            status: 'done',
+            title: 'Completed activity',
+            ts: 100,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('Worked for 7s · 1 action')).toBeTruthy();
+  });
+
   it('keeps an authoritative active turn live during a quiet gap between receipts', () => {
     render(
       <AssistantActivityLedger
@@ -136,8 +157,12 @@ describe('AssistantActivityLedger', () => {
     render(<AssistantActivityLedger message={assistant([])} correlatedEvents={events} />);
     fireEvent.click(screen.getByRole('button', { name: /activity details/i }));
 
-    expect(screen.getByRole('tab', { name: `Reads ${DETAIL_PAGE_SIZE + 12}` })).toBeTruthy();
     expect(screen.getAllByTestId('activity-ledger-receipt')).toHaveLength(DETAIL_PAGE_SIZE);
+    expect(screen.getByRole('tab', { name: `Files ${DETAIL_PAGE_SIZE + 12}` })).toBeTruthy();
+    expect(screen.getByRole('navigation', { name: 'Activity categories' })).toBeTruthy();
+    expect(screen.getByRole('list', { name: 'Activity receipts' })).toBeTruthy();
+    expect(screen.getAllByRole('listitem')).toHaveLength(DETAIL_PAGE_SIZE);
+    expect(screen.getByPlaceholderText('Filter actions…')).toBeTruthy();
     expect(screen.getByRole('button', { name: /show 12 more/i })).toBeTruthy();
     const resizeHandle = screen.getByRole('separator', { name: 'Resize activity details' });
     expect(resizeHandle.getAttribute('aria-valuemax')).toBe('420');
@@ -170,7 +195,7 @@ describe('AssistantActivityLedger', () => {
     fireEvent.click(screen.getByRole('button', { name: /activity details/i }));
 
     const allTab = screen.getByRole('tab', { name: 'All 1' });
-    const readsTab = screen.getByRole('tab', { name: 'Reads 1' });
+    const readsTab = screen.getByRole('tab', { name: 'Files 1' });
     expect(allTab.getAttribute('aria-selected')).toBe('true');
     expect(allTab.getAttribute('tabindex')).toBe('0');
     expect(readsTab.getAttribute('tabindex')).toBe('-1');
@@ -199,7 +224,7 @@ describe('AssistantActivityLedger', () => {
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: /activity details/i }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Reads 0' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reads 0' }));
 
     expect(screen.getByText('No read activity for this turn.')).toBeTruthy();
     expect(document.body.textContent).not.toContain('private command');
@@ -279,7 +304,7 @@ describe('AssistantActivityLedger', () => {
     );
     expect(screen.getByText('In ≈15').getAttribute('title')).toBe('Estimated locally');
     fireEvent.click(screen.getByRole('button', { name: /activity details/i }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Usage' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Usage' }));
     expect(screen.getByText('Output usage unavailable')).toBeTruthy();
   });
 });
