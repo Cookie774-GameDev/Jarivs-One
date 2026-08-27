@@ -4,6 +4,7 @@ import { Button, Hint, Popover, PopoverContent, PopoverTrigger } from '@/compone
 import { ModelPickerTypeahead } from '@/features/chat/ModelPickerTypeahead';
 import { HOTKEYS } from '@/lib/hotkeys';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth';
 import type {
   PromptForgeModelSelection,
   PromptForgePrivacyMode,
@@ -68,6 +69,8 @@ export function PromptForgeControl({
   void _publicResearchAvailable;
   void _offlineMode;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const useRlmContext = useAuthStore((state) => state.promptForgeUseRlmContext);
+  const setUseRlmContext = useAuthStore((state) => state.setPromptForgeUseRlmContext);
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const pickerGroups = useMemo(
     () => buildPromptForgeModelPickerGroups(modelOptions),
@@ -234,6 +237,38 @@ export function PromptForgeControl({
                   });
                 }}
               />
+            </div>
+          </section>
+
+          <section className="border-t border-border pt-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-secondary font-medium text-foreground">Use RLM context</h3>
+                <p className="mt-1 text-metadata text-muted-foreground">
+                  Retrieve relevant project evidence through Shared Context. Turn this off for a
+                  draft-only upgrade; files you explicitly attach remain available.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={useRlmContext}
+                aria-label="Use RLM context"
+                onClick={() => setUseRlmContext(!useRlmContext)}
+                className={cn(
+                  'relative mt-0.5 h-5 w-9 shrink-0 rounded-full border transition-colors',
+                  useRlmContext
+                    ? 'border-accent-cyan/60 bg-accent-cyan/30'
+                    : 'border-border bg-muted',
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute top-0.5 h-3.5 w-3.5 rounded-full bg-foreground transition-transform',
+                    useRlmContext ? 'left-4' : 'left-0.5',
+                  )}
+                />
+              </button>
             </div>
           </section>
 

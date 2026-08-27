@@ -6,6 +6,7 @@ import {
 } from '@/features/chat/reasoningSlashStore';
 import type { ChatImageAttachment } from '@/lib/ai/vision';
 import { syntheticCredentialFixture } from '@/test/syntheticCredentialFixture';
+import { useAuthStore } from '@/stores/auth';
 import type { PromptForgeExecutionResult } from './promptForgeExecutor';
 import type { PromptForgeModelOption } from './modelSelection';
 import {
@@ -70,6 +71,55 @@ const execution: PromptForgeExecutionResult = Object.freeze({
 describe('usePromptForgeComposer', () => {
   afterEach(() => {
     clearChatReasoningPreferences();
+    act(() => useAuthStore.setState({ promptForgeUseRlmContext: true }));
+  });
+
+  it('honors the durable RLM opt-out without dispatching Shared Context retrieval', async () => {
+    useAuthStore.setState({ promptForgeUseRlmContext: false });
+    const { repository } = memoryRepository();
+    const retrieveContext = vi.fn();
+    const execute = vi.fn(async () => execution);
+    const { result } = renderHook(() =>
+      usePromptForgeComposer({
+        accountId: 'account-1',
+        chatId: 'chat-rlm-disabled',
+        projectId: 'project-1',
+        draft: 'Refine this request without project retrieval.',
+        setDraft: vi.fn(),
+        originalAttachments: [],
+        contextAttachments: [],
+        additionalSources: [],
+        modelSelection: { mode: 'prefer_local' },
+        modelOptions: [
+          {
+            id: 'ollama-local:qwen3:8b',
+            providerId: 'ollama',
+            modelId: 'qwen3:8b',
+            label: 'Qwen 3 8B',
+            connectionId: 'ollama-local',
+            connectionMode: 'local',
+            localOnly: true,
+            available: true,
+          },
+        ],
+        currentChatSelection: { mode: 'none' },
+        offlineMode: false,
+        defaultLocalModel: 'qwen3:8b',
+        repository,
+        executor: { execute },
+        retrieveContext,
+        now: () => 100,
+        createJobId: () => 'forge-job-rlm-disabled',
+        recordActivity: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+
+    expect(retrieveContext).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledOnce();
   });
 
   it('carries the current chat exact effort into Prompt Forge execution', async () => {

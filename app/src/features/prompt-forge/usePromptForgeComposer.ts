@@ -7,6 +7,7 @@ import { readChatReasoningPreference } from '@/features/chat/reasoningSlashStore
 import { db } from '@/lib/db';
 import type { ChatImageAttachment } from '@/lib/ai/vision';
 import { hasDetectedSecret } from '@/lib/security/secretDetector';
+import { useAuthStore } from '@/stores/auth';
 import {
   createPromptForgeJob,
   type PromptForgeAttachmentSnapshot,
@@ -260,6 +261,7 @@ function modelDisabledReason(
 }
 
 export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
+  const useRlmContext = useAuthStore((state) => state.promptForgeUseRlmContext);
   const storedChatEffort = readChatReasoningPreference(options.chatId).effortOverride ?? 'auto';
   const currentChatSelection: PromptForgeCurrentChatSelection =
     options.currentChatSelection.mode === 'single'
@@ -412,6 +414,7 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
         currentChatSelection,
         offlineMode: options.offlineMode,
         defaultLocalModel: options.defaultLocalModel,
+        useRlmContext,
         additionalSources: options.additionalSources,
         ...(options.collectAdditionalSources === undefined
           ? {}
@@ -451,6 +454,7 @@ export function usePromptForgeComposer(options: UsePromptForgeComposerOptions) {
       options.defaultLocalModel,
       options.modelOptions,
       options.offlineMode,
+      useRlmContext,
       researchPublicSources,
       options.retrieveContext,
       recordActivity,

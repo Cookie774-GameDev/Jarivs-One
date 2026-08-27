@@ -13,7 +13,38 @@ describe('Prompt Forge model preference', () => {
     useAuthStore.setState({
       chatModelSelection: { mode: 'none' },
       promptForgeModelSelection: { mode: 'prefer_local' },
+      promptForgeUseRlmContext: true,
     });
+  });
+
+  it('defaults RLM context on and durably preserves an explicit opt-out', async () => {
+    expect(useAuthStore.getInitialState().promptForgeUseRlmContext).toBe(true);
+
+    useAuthStore.getState().setPromptForgeUseRlmContext(false);
+    const persisted = window.localStorage.getItem('jarvis-auth') ?? '';
+    expect(persisted).toContain('"promptForgeUseRlmContext":false');
+
+    useAuthStore.setState({ promptForgeUseRlmContext: true });
+    window.localStorage.setItem('jarvis-auth', persisted);
+    await useAuthStore.persist.rehydrate();
+    expect(useAuthStore.getState().promptForgeUseRlmContext).toBe(false);
+  });
+
+  it('migrates prior state to the default-on RLM context policy', async () => {
+    useAuthStore.setState({ promptForgeUseRlmContext: false });
+    window.localStorage.setItem(
+      'jarvis-auth',
+      JSON.stringify({
+        state: {
+          apiKeys: {},
+          chatModelSelection: { mode: 'none' },
+          previousChatModelSelection: { mode: 'none' },
+        },
+        version: 17,
+      }),
+    );
+    await useAuthStore.persist.rehydrate();
+    expect(useAuthStore.getState().promptForgeUseRlmContext).toBe(true);
   });
 
   it('persists the exact Prompt Forge provider, model, connection, and effort separately', async () => {

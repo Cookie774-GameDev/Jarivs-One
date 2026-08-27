@@ -170,6 +170,8 @@ interface AuthState {
   automaticModelRoutingEnabled: boolean;
   /** Prompt Forge's independent default; changing it never changes the chat model. */
   promptForgeModelSelection: PromptForgeModelSelection;
+  /** Whether Prompt Forge may retrieve project evidence through Shared Context/RLM. */
+  promptForgeUseRlmContext: boolean;
   /**
    * When true, Composer upgrades the draft with Prompt Forge before each Send
    * (falls back to the original text if upgrade fails). Manual Upgrade button remains.
@@ -219,6 +221,7 @@ interface AuthState {
   setChatModelSelection: (selection: ChatModelSelection) => void;
   setAutomaticModelRoutingEnabled: (enabled: boolean) => void;
   setPromptForgeModelSelection: (selection: PromptForgeModelSelection) => void;
+  setPromptForgeUseRlmContext: (enabled: boolean) => void;
   setPromptForgeAutoUpgradeOnSend: (enabled: boolean) => void;
   setStackCustomSteps: (steps: StackStepSpec[]) => void;
 }
@@ -309,6 +312,7 @@ export const useAuthStore = create<AuthState>()(
       previousChatModelSelection: EMPTY_CHAT_MODEL_SELECTION,
       automaticModelRoutingEnabled: false,
       promptForgeModelSelection: DEFAULT_PROMPT_FORGE_MODEL_SELECTION,
+      promptForgeUseRlmContext: true,
       promptForgeAutoUpgradeOnSend: false,
       telemetryOptIn: false,
       credentialVaultState: 'idle',
@@ -470,6 +474,7 @@ export const useAuthStore = create<AuthState>()(
       setAutomaticModelRoutingEnabled: (enabled) => set({ automaticModelRoutingEnabled: enabled }),
       setPromptForgeModelSelection: (selection) =>
         set({ promptForgeModelSelection: normalizePromptForgeModelSelection(selection) }),
+      setPromptForgeUseRlmContext: (enabled) => set({ promptForgeUseRlmContext: Boolean(enabled) }),
       setPromptForgeAutoUpgradeOnSend: (enabled) =>
         set({ promptForgeAutoUpgradeOnSend: Boolean(enabled) }),
       setStackCustomSteps: (steps) =>
@@ -535,11 +540,12 @@ export const useAuthStore = create<AuthState>()(
         previousChatModelSelection: s.previousChatModelSelection,
         automaticModelRoutingEnabled: s.automaticModelRoutingEnabled,
         promptForgeModelSelection: s.promptForgeModelSelection,
+        promptForgeUseRlmContext: s.promptForgeUseRlmContext,
         promptForgeAutoUpgradeOnSend: s.promptForgeAutoUpgradeOnSend,
         telemetryOptIn: s.telemetryOptIn,
         preferredConnectionIdByProviderFamily: s.preferredConnectionIdByProviderFamily,
       }),
-      version: 17,
+      version: 18,
       migrate: (persisted, fromVersion) => {
         if (!persisted || typeof persisted !== 'object') return persisted;
         const state = persisted as Partial<AuthState>;
@@ -683,6 +689,9 @@ export const useAuthStore = create<AuthState>()(
           typeof state.preferredConnectionIdByProviderFamily !== 'object'
         ) {
           state.preferredConnectionIdByProviderFamily = {};
+        }
+        if (fromVersion < 18 || typeof state.promptForgeUseRlmContext !== 'boolean') {
+          state.promptForgeUseRlmContext = true;
         }
         return state;
       },

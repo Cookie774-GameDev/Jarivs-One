@@ -134,7 +134,10 @@ const ATTACHMENT_KINDS = new Set<PromptForgeAttachmentKind>([
   'skill',
   'agent',
 ]);
-const PROVIDERS = new Set<ProviderId>([
+// OpenCode is a connection-owned provider family in the shared chat catalog.
+// It is intentionally accepted here even though the legacy ProviderId union
+// still models only native/BYOK provider families.
+const PROVIDERS = new Set<string>([
   'google',
   'groq',
   'openai',
@@ -146,6 +149,7 @@ const PROVIDERS = new Set<ProviderId>([
   'xai',
   'ollama',
   'local',
+  'opencode',
 ]);
 const STATUSES = new Set<PromptForgeStatus>(PROMPT_FORGE_STATUSES);
 const CONNECTION_MODES = new Set(['native-api', 'external-cli', 'local'] as const);
@@ -264,7 +268,7 @@ export function normalizePromptForgeModelSelection(value: unknown): PromptForgeM
   if (
     record.mode !== 'single' ||
     typeof record.providerId !== 'string' ||
-    !PROVIDERS.has(record.providerId as ProviderId)
+    !PROVIDERS.has(record.providerId)
   ) {
     return fail('model selection');
   }
@@ -349,7 +353,7 @@ function resolvedModelSnapshot(value: unknown): PromptForgeResolvedModelSnapshot
   );
   if (
     typeof record.providerId !== 'string' ||
-    !PROVIDERS.has(record.providerId as ProviderId) ||
+    !PROVIDERS.has(record.providerId) ||
     (record.connectionMode !== null &&
       !CONNECTION_MODES.has(record.connectionMode as 'native-api' | 'external-cli' | 'local')) ||
     typeof record.local !== 'boolean' ||

@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { useAuthStore } from '@/stores/auth';
 import type { PromptForgeModelOption } from './modelSelection';
 import { PromptForgeControl } from './PromptForgeControl';
 
@@ -287,5 +288,42 @@ describe('Prompt Forge control', () => {
     expect(screen.queryByRole('checkbox', { name: /Allow public research/i })).toBeNull();
     expect(screen.queryByText(/Privacy for this run/i)).toBeNull();
     expect(screen.queryByRole('radiogroup', { name: 'Prompt Forge privacy' })).toBeNull();
+  });
+
+  it('shows a durable default-on RLM context switch without changing model selection', () => {
+    useAuthStore.setState({ promptForgeUseRlmContext: true });
+    const onSelectionChange = vi.fn();
+    render(
+      <TooltipProvider>
+        <PromptForgeControl
+          status="idle"
+          statusMessage="Ready to upgrade"
+          isRunning={false}
+          disabledReason={null}
+          error={null}
+          compact={false}
+          modelSelection={{ mode: 'prefer_local' }}
+          modelOptions={models}
+          onModelSelectionChange={onSelectionChange}
+          privacyMode="provider_allowed"
+          onPrivacyModeChange={vi.fn()}
+          allowPublicResearch={false}
+          onAllowPublicResearchChange={vi.fn()}
+          publicResearchAvailable
+          offlineMode={false}
+          autoUpgradeOnSend={false}
+          onAutoUpgradeOnSendChange={vi.fn()}
+          onStart={vi.fn()}
+          onCancel={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Configure Prompt Forge' }));
+    const toggle = screen.getByRole('switch', { name: 'Use RLM context' });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(toggle);
+    expect(useAuthStore.getState().promptForgeUseRlmContext).toBe(false);
+    expect(onSelectionChange).not.toHaveBeenCalled();
   });
 });

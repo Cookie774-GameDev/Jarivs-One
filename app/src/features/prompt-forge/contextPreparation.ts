@@ -39,6 +39,7 @@ export interface PromptForgeContextPreparerOptions {
   currentChatSelection: PromptForgeCurrentChatSelection;
   offlineMode: boolean;
   defaultLocalModel: string;
+  useRlmContext?: boolean;
   additionalSources?: readonly PromptForgeSourceCandidate[];
   collectAdditionalSources?: PromptForgeAdditionalSourceCollector;
   excludedSourceIds?: readonly string[];
@@ -243,6 +244,7 @@ export function createPromptForgeContextPreparer(
     currentChatSelection: rawOptions.currentChatSelection,
     offlineMode: rawOptions.offlineMode,
     defaultLocalModel: rawOptions.defaultLocalModel,
+    useRlmContext: rawOptions.useRlmContext ?? true,
     additionalSources: rawOptions.additionalSources ?? [],
     excludedSourceIds: rawOptions.excludedSourceIds ?? [],
     budget: rawOptions.budget ?? DEFAULT_PROMPT_FORGE_BUDGET,
@@ -261,23 +263,29 @@ export function createPromptForgeContextPreparer(
       defaultLocalModel: options.defaultLocalModel,
     });
     const builtAt = clock();
-    await stage('searching_project');
-    abortIfRequested(signal);
-    const context = await retrieveContext({
-      projectId: job.projectId,
-      chatId: job.chatId,
-      userText: job.originalDraft,
-      attachments: options.contextAttachments,
-      now: builtAt,
-    });
-    abortIfRequested(signal);
-
-    const contextSources = promptForgeSourcesFromContext(
-      context,
-      job.projectId,
-      builtAt,
-      job.originalDraft,
-    );
+    let contextSources: readonly PromptForgeSourceCandidate[] = [];
+    let contextWarnings: readonly string[] = [];
+    let contextOmittedCount = 0;
+    if (options.useRlmContext) {
+      await stage('searching_project');
+      abortIfRequested(signal);
+      const context = await retrieveContext({
+        projectId: job.projectId,
+        chatId: job.chatId,
+        userText: job.originalDraft,
+        attachments: options.contextAttachments,
+        now: builtAt,
+      });
+      abortIfRequested(signal);
+      contextSources = promptForgeSourcesFromContext(
+        context,
+        job.projectId,
+        builtAt,
+        job.originalDraft,
+      );
+      contextWarnings = context.warnings;
+      contextOmittedCount = context.omittedCount;
+    }
     const collectedSources = collectAdditionalSources
       ? await collectAdditionalSources({ job, signal, now: builtAt })
       : [];
@@ -317,11 +325,11 @@ export function createPromptForgeContextPreparer(
       ...packed,
       warnings: [
         ...new Set([
-          ...context.warnings,
-          ...(context.omittedCount > 0
+          ...contextWarnings,
+          ...(contextOmittedCount > 0
             ? [
-                `Shared Context retrieval omitted ${context.omittedCount} additional source${
-                  context.omittedCount === 1 ? '' : 's'
+                `Shared Context retrieval omitted ${contextOmittedCount} additional source${
+                  contextOmittedCount === 1 ? '' : 's'
                 }.`,
               ]
             : []),
@@ -334,7 +342,7 @@ export function createPromptForgeContextPreparer(
       resolvedModel,
       sourcePack,
       preservation,
-      sourcesConsidered: allCandidates.length + context.omittedCount,
+      sourcesConsidered: allCandidates.length + contextOmittedCount,
     });
   };
 }

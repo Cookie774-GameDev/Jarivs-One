@@ -304,6 +304,52 @@ describe('Prompt Forge context preparation', () => {
     expect(prepared.sourcesConsidered).toBe(4);
   });
 
+  it('bypasses Shared Context/RLM retrieval when the user disables it', async () => {
+    const retrieveContext = vi.fn(async () => retrieval);
+    const stage = vi.fn(async () => undefined);
+    const preparer = createPromptForgeContextPreparer({
+      contextAttachments: [attachment],
+      modelOptions: promptForgeModelOptionsFromPicker(pickerOptions),
+      currentChatSelection: { mode: 'none' },
+      offlineMode: false,
+      defaultLocalModel: 'qwen3:8b',
+      useRlmContext: false,
+      additionalSources: [
+        {
+          id: 'explicit:user-note',
+          kind: 'project_file',
+          label: 'User note',
+          reference: 'file://user-note.txt',
+          content: 'Keep this explicit source.',
+          verified: true,
+          explicit: true,
+          projectScoped: true,
+          trust: 'user',
+          lexicalScore: 1,
+          semanticScore: null,
+          observedAt: now,
+          whySelected: 'Explicitly attached.',
+        },
+      ],
+      retrieveContext,
+      now: () => now,
+    });
+
+    const prepared = await preparer({
+      job: job(),
+      signal: new AbortController().signal,
+      stage,
+    });
+
+    expect(retrieveContext).not.toHaveBeenCalled();
+    expect(stage.mock.calls).toEqual([['building_source_pack']]);
+    expect(prepared.sourcePack.sources).toEqual([
+      expect.objectContaining({ id: 'explicit:user-note', kind: 'project_file' }),
+    ]);
+    expect(prepared.sourcePack.markdown).toContain('Keep this explicit source.');
+    expect(prepared.sourcesConsidered).toBe(1);
+  });
+
   it('maps connection-qualified picker options without losing runtime or availability identity', () => {
     expect(promptForgeModelOptionsFromPicker(pickerOptions)).toEqual([
       {

@@ -160,6 +160,21 @@ describe('Prompt Forge contracts', () => {
       connectionId: 'openai-codex',
       effort: 'high',
     });
+    expect(
+      normalizePromptForgeModelSelection({
+        mode: 'single',
+        providerId: 'opencode',
+        modelId: 'deepseek-v4-flash-vision-exp',
+        connectionId: 'opencode-go',
+        effort: 'high',
+      }),
+    ).toEqual({
+      mode: 'single',
+      providerId: 'opencode',
+      modelId: 'deepseek-v4-flash-vision-exp',
+      connectionId: 'opencode-go',
+      effort: 'high',
+    });
     expect(() =>
       normalizePromptForgeModelSelection({
         mode: 'single',
