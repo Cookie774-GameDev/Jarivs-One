@@ -121,8 +121,9 @@ export function Plugins() {
   const [query, setQuery] = React.useState('');
   const [filter, setFilter] = React.useState<Filter>('all');
   const [selected, setSelected] = React.useState<PluginManifest | null>(null);
-  const [authorizationPanel, setAuthorizationPanel] =
-    React.useState<AuthorizationPanel | null>(null);
+  const [authorizationPanel, setAuthorizationPanel] = React.useState<AuthorizationPanel | null>(
+    null,
+  );
   const [mcpOpen, setMcpOpen] = React.useState(false);
   const management = usePluginManagementCapability();
 
@@ -489,12 +490,16 @@ function PluginAuthorizationDialog({
 }) {
   const management = usePluginManagementCapability();
   const [cancelling, setCancelling] = React.useState(false);
+  const [manualDraft, setManualDraft] = React.useState<Record<string, string>>({});
+  const [savingManual, setSavingManual] = React.useState(false);
+  const [manualError, setManualError] = React.useState('');
 
   if (!panel) return null;
 
   const { plugin } = panel;
   const isOpening = panel.phase === 'opening';
   const canCancel = panel.phase === 'awaiting_approval';
+  const hasManualFallback = plugin.fields.length > 0 && Boolean(plugin.credentialUrl);
 
   async function cancel() {
     if (!management || !accountId) return;
@@ -505,6 +510,44 @@ function PluginAuthorizationDialog({
       onClose();
     } finally {
       setCancelling(false);
+    }
+  }
+
+  async function connectManually() {
+    if (!management || !accountId) return;
+    setManualError('');
+    for (const field of plugin.fields) {
+      if (field.required && !manualDraft[field.id]?.trim()) {
+        setManualError(`${field.label} is required.`);
+        return;
+      }
+    }
+    setSavingManual(true);
+    try {
+      await management.cancelAuthorization({ accountId, pluginId: plugin.id });
+      for (const field of plugin.fields) {
+        const value = manualDraft[field.id]?.trim();
+        if (value) {
+          await management.saveCredential({
+            accountId,
+            pluginId: plugin.id,
+            fieldId: field.id,
+            value,
+          });
+        }
+      }
+      const result = await management.testConnection({ accountId, pluginId: plugin.id });
+      if (!result.ok) {
+        setManualError(result.error ?? 'Connection test failed.');
+        return;
+      }
+      setManualDraft({});
+      toast.success(`${plugin.name} connected`, 'The fallback credential was verified.');
+      onClose();
+    } catch {
+      setManualError(`Could not verify the ${plugin.provider} fallback credential.`);
+    } finally {
+      setSavingManual(false);
     }
   }
 
@@ -546,7 +589,8 @@ function PluginAuthorizationDialog({
               </Button>
               {panel.userCode && (
                 <p className="text-secondary text-muted-foreground">
-                  Provider code: <strong className="font-mono text-foreground">{panel.userCode}</strong>
+                  Provider code:{' '}
+                  <strong className="font-mono text-foreground">{panel.userCode}</strong>
                 </p>
               )}
             </div>
@@ -565,6 +609,72 @@ function PluginAuthorizationDialog({
             </div>
           )}
 
+          {!isOpening && hasManualFallback && (
+            <details className="rounded-lg border border-border bg-panel/70 p-3">
+              <summary className="cursor-pointer text-secondary font-medium text-foreground">
+                Use a key instead
+              </summary>
+              <p className="mt-2 text-metadata text-muted-foreground">
+                This fallback is optional. The provider sign-in flow above is the recommended
+                connection method. Values entered here are saved to the desktop OS keychain.
+              </p>
+              <div className="mt-3 flex flex-col gap-3">
+                {plugin.fields.map((field) => (
+                  <div key={field.id} className="flex flex-col gap-1.5">
+                    <Label htmlFor={`authorization-fallback-${plugin.id}-${field.id}`}>
+                      {field.label}
+                    </Label>
+                    <Input
+                      id={`authorization-fallback-${plugin.id}-${field.id}`}
+                      type={field.secret ? 'password' : 'text'}
+                      autoComplete="off"
+                      value={manualDraft[field.id] ?? ''}
+                      placeholder={field.placeholder}
+                      onChange={(event) =>
+                        setManualDraft((current) => ({
+                          ...current,
+                          [field.id]: event.target.value,
+                        }))
+                      }
+                    />
+                    {field.help && (
+                      <p className="text-metadata text-muted-foreground">{field.help}</p>
+                    )}
+                  </div>
+                ))}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={savingManual || !management || !accountId}
+                    onClick={() => void connectManually()}
+                  >
+                    {savingManual ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <KeyRound className="h-3.5 w-3.5" />
+                    )}
+                    Save and verify key
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void openExternal(plugin.credentialUrl!)}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Open provider key page
+                  </Button>
+                </div>
+                {manualError && (
+                  <p role="alert" className="text-secondary text-destructive">
+                    {manualError}
+                  </p>
+                )}
+              </div>
+            </details>
+          )}
+
           {(plugin.requiredScopes?.length ?? 0) > 0 && (
             <details className="rounded-lg border border-border bg-panel/70 p-3">
               <summary className="cursor-pointer text-secondary font-medium text-foreground">
@@ -572,7 +682,10 @@ function PluginAuthorizationDialog({
               </summary>
               <ul className="mt-2 flex flex-col gap-1" aria-label="Permissions requested">
                 {plugin.requiredScopes?.map((scope) => (
-                  <li key={scope} className="break-all font-mono text-metadata text-muted-foreground">
+                  <li
+                    key={scope}
+                    className="break-all font-mono text-metadata text-muted-foreground"
+                  >
                     {scope}
                   </li>
                 ))}
@@ -581,7 +694,10 @@ function PluginAuthorizationDialog({
           )}
 
           {panel.error && (
-            <div role="alert" className="flex flex-col items-start gap-2 text-secondary text-destructive">
+            <div
+              role="alert"
+              className="flex flex-col items-start gap-2 text-secondary text-destructive"
+            >
               <p>{panel.error}</p>
               {panel.setupUrl && (
                 <Button

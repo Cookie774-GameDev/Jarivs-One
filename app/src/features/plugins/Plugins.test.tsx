@@ -168,7 +168,7 @@ describe('Plugins settings page', () => {
     expect(window.open).not.toHaveBeenCalled();
   }, 15_000);
 
-  it('routes GitHub through provider authorization instead of PAT setup', async () => {
+  it('routes GitHub through provider authorization with an explicit in-app PAT fallback', async () => {
     renderPlugins();
     fireEvent.change(screen.getByLabelText('Search plugins'), { target: { value: 'GitHub' } });
     const card = screen.getByTestId('plugin-card-github');
@@ -184,6 +184,23 @@ describe('Plugins settings page', () => {
     expect(openExternal).not.toHaveBeenCalledWith(
       'https://github.com/settings/personal-access-tokens',
     );
+    fireEvent.click(screen.getByText(/use a key instead/i));
+    fireEvent.change(screen.getByLabelText(/personal access token/i), {
+      target: { value: 'github_pat_private_test_value' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save and verify key/i }));
+    await waitFor(() =>
+      expect(management.saveCredential).toHaveBeenCalledWith({
+        accountId: 'account-a',
+        pluginId: 'github',
+        fieldId: 'token',
+        value: 'github_pat_private_test_value',
+      }),
+    );
+    expect(management.testConnection).toHaveBeenCalledWith({
+      accountId: 'account-a',
+      pluginId: 'github',
+    });
   }, 15_000);
 
   it('keeps a compact recovery panel when provider registration is unavailable', async () => {

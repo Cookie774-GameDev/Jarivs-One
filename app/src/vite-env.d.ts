@@ -18,6 +18,8 @@ interface ImportMetaEnv {
   readonly VITE_ACCESS_LEASE_PUBLIC_KEYS?: string;
   readonly VITE_GIT_COMMIT?: string;
   readonly VITE_GIT_BRANCH?: string;
+  /** Public client id for the registered VibeSpace GitHub OAuth app (device flow). */
+  readonly VITE_GITHUB_OAUTH_CLIENT_ID?: string;
   readonly VITE_BUILD_TIMESTAMP?: string;
   readonly VITE_FRONTEND_ASSET_VERSION?: string;
   readonly VITE_SIK_SMOKE?: string;

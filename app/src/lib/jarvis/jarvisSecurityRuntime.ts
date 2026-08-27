@@ -2,6 +2,7 @@ import type { ActionResult, RegisteredActionExecutionContext } from '@/lib/actio
 import type { JarvisRepositories } from '@/lib/db/jarvisRepositories';
 import type { JarvisEntitlementSnapshotProvider } from '@/lib/admin';
 import { createExistingPluginCredentialAdapter } from '@/features/plugins/credentials';
+import { createGitHubDeviceAuthorizationAuthority } from '@/features/plugins/githubDeviceAuthorization';
 import type {
   JarvisExistingCredentialAuthorization,
   JarvisExistingCredentialAuthorizationAuthority,
@@ -61,6 +62,8 @@ export type CreateJarvisSecurityRuntimeInput = {
   credentialGrants: PluginCredentialAccountGrantRepository;
   credentialAuthorization: JarvisExistingCredentialAuthorizationAuthority;
   pluginConnections: Pick<PluginStore, 'upsertConnection' | 'removeConnection'>;
+  /** Registered public OAuth-app identifier. This is not a credential or secret. */
+  githubOAuthClientId?: string;
   /** @internal Synchronous deep-composition handoff; never retained on the public runtime. */
   bindKernelPluginArtifacts?(capability: CanonicalPluginArtifactCapability): void;
   activeAccountId(): string | undefined;
@@ -96,12 +99,40 @@ export function createJarvisSecurityRuntime(
     bootId: input.bootId,
     randomUUID: input.randomUUID,
   });
-  const pluginRuntime = createAccountScopedPluginRuntime({
+  let pluginRuntime!: ReturnType<typeof createAccountScopedPluginRuntime>;
+  const providerAuthorization = createGitHubDeviceAuthorizationAuthority({
+    clientId: input.githubOAuthClientId ?? import.meta.env.VITE_GITHUB_OAUTH_CLIENT_ID,
+    async onConnected({ accountId, credential }) {
+      if (input.activeAccountId() !== accountId) return;
+      await pluginRuntime.management.saveCredential({
+        accountId,
+        pluginId: 'github',
+        fieldId: 'token',
+        value: credential,
+      });
+      await pluginRuntime.management.testConnection({ accountId, pluginId: 'github' });
+    },
+    async onFailed({ accountId, error }) {
+      if (input.activeAccountId() !== accountId) return;
+      input.pluginConnections.upsertConnection({
+        accountId,
+        pluginId: 'github',
+        state: 'error',
+        enabled: false,
+        enabledProjectIds: [],
+        error,
+        configuredFields: [],
+        updatedAt: input.now(),
+      });
+    },
+  });
+  pluginRuntime = createAccountScopedPluginRuntime({
     activeAccountId: input.activeAccountId,
     grants: input.credentialGrants,
     credentialAuthorization: input.credentialAuthorization,
     credentialAdapter,
     connections: input.pluginConnections,
+    authorization: providerAuthorization,
     randomUUID: input.randomUUID,
     now: input.now,
   });
