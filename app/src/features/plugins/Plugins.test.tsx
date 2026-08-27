@@ -94,6 +94,29 @@ describe('Plugins settings page', () => {
     expect(screen.queryByText('GitHub')).toBeNull();
   }, 15_000);
 
+  it('exposes the active catalog filter as a pressed button', () => {
+    renderPlugins();
+    const all = screen.getByRole('button', { name: 'All' });
+    const available = screen.getByRole('button', { name: 'Available' });
+    const connected = screen.getByRole('button', { name: 'Connected' });
+    const planned = screen.getByRole('button', { name: 'Planned' });
+
+    expect(all.getAttribute('aria-pressed')).toBe('true');
+    expect(available.getAttribute('aria-pressed')).toBe('false');
+    expect(connected.getAttribute('aria-pressed')).toBe('false');
+    expect(planned.getAttribute('aria-pressed')).toBe('false');
+
+    fireEvent.click(connected);
+
+    expect(all.getAttribute('aria-pressed')).toBe('false');
+    expect(connected.getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(planned);
+
+    expect(connected.getAttribute('aria-pressed')).toBe('false');
+    expect(planned.getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('opens the existing MCP manager when Chat requests /mcp', async () => {
     renderPlugins();
     expect(screen.queryByRole('heading', { name: 'VibeSpace MCP Gateway' })).toBeNull();

@@ -286,6 +286,7 @@ export function Plugins() {
             type="button"
             size="sm"
             variant={filter === value ? 'default' : 'outline'}
+            aria-pressed={filter === value}
             onClick={() => setFilter(value)}
           >
             {value[0].toUpperCase() + value.slice(1)}
