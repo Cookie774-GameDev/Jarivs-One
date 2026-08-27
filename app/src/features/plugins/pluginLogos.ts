@@ -119,44 +119,10 @@ export const PLUGIN_SIMPLE_ICON_SLUG: Record<string, string> = {
   plaid: 'plaid',
 };
 
-/** Domains for favicon fallback when Simple Icons does not carry the mark. */
-const PLUGIN_DOMAIN_OVERRIDES: Record<string, string> = {
-  'mock-connector': 'openapi.org',
-  shortcut: 'shortcut.com',
-  openrouter: 'openrouter.ai',
-  neon: 'neon.tech',
-  'google-search-console': 'search.google.com',
-};
-
-function domainFromUrl(url?: string): string | undefined {
-  if (!url) return undefined;
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return undefined;
-  }
-}
-
-export function getPluginLogoDomain(
-  plugin: Pick<PluginManifest, 'id' | 'credentialUrl' | 'docsUrl'>,
-): string | undefined {
-  return (
-    PLUGIN_DOMAIN_OVERRIDES[plugin.id] ??
-    domainFromUrl(plugin.credentialUrl) ??
-    domainFromUrl(plugin.docsUrl)
-  );
-}
-
-/** Ordered logo URLs — official Simple Icons first, then provider favicon. */
+/** Official mapped logo URL. Unmapped providers use the component's deterministic initials. */
 export function getPluginLogoSources(
   plugin: Pick<PluginManifest, 'id' | 'credentialUrl' | 'docsUrl'>,
 ): string[] {
-  const urls: string[] = [];
   const slug = PLUGIN_SIMPLE_ICON_SLUG[plugin.id];
-  if (slug) urls.push(`https://cdn.simpleicons.org/${slug}`);
-  const domain = getPluginLogoDomain(plugin);
-  if (domain) {
-    urls.push(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`);
-  }
-  return urls;
+  return slug ? [`https://cdn.simpleicons.org/${slug}`] : [];
 }

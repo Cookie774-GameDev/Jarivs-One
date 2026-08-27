@@ -3,10 +3,29 @@ import { PLUGIN_CATALOG } from './catalog';
 import { getPluginLogoSources } from './pluginLogos';
 
 describe('plugin logos', () => {
-  it('provides at least one logo source for every catalog plugin', () => {
-    const missing = PLUGIN_CATALOG.filter((plugin) => getPluginLogoSources(plugin).length === 0).map(
-      (plugin) => plugin.id,
-    );
-    expect(missing).toEqual([]);
+  it('uses only official Simple Icons sources for known catalog mappings', () => {
+    expect(
+      getPluginLogoSources({
+        id: 'github',
+        credentialUrl: 'https://github.com/settings/tokens',
+        docsUrl: 'https://docs.github.com/',
+      }),
+    ).toEqual(['https://cdn.simpleicons.org/github']);
+
+    const sources = PLUGIN_CATALOG.flatMap((plugin) => getPluginLogoSources(plugin));
+    expect(sources.every((source) => source.startsWith('https://cdn.simpleicons.org/'))).toBe(true);
+    expect(
+      sources.some((source) => /(^|\.)(google|gstatic)\./i.test(new URL(source).hostname)),
+    ).toBe(false);
+  });
+
+  it('uses the component fallback instead of a favicon proxy for unmapped plugins', () => {
+    expect(
+      getPluginLogoSources({
+        id: 'unmapped-provider',
+        credentialUrl: 'https://accounts.example.test/credentials',
+        docsUrl: 'https://docs.example.test/',
+      }),
+    ).toEqual([]);
   });
 });

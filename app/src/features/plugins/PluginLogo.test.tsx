@@ -40,4 +40,34 @@ describe('PluginLogo runtime isolation', () => {
     fireEvent.load(image!);
     expect(image?.getAttribute('data-loaded')).toBe('true');
   });
+
+  it('renders deterministic initials without requesting a proxy for an unmapped plugin', () => {
+    vi.stubEnv('VITE_VIBESPACE_RUNTIME_PROFILE', undefined);
+
+    const mounted = render(
+      <PluginLogo
+        plugin={{
+          id: 'acme-connector',
+          name: 'Acme Connector',
+          credentialUrl: 'https://accounts.acme.test/credentials',
+          docsUrl: 'https://docs.acme.test/',
+        }}
+      />,
+    );
+
+    expect(mounted.container.querySelector('img')).toBeNull();
+    expect(mounted.getByTestId('plugin-logo-fallback').textContent).toBe('AC');
+  });
+
+  it('keeps deterministic initials visible when a mapped logo fails to load', () => {
+    vi.stubEnv('VITE_VIBESPACE_RUNTIME_PROFILE', undefined);
+
+    const mounted = render(<PluginLogo plugin={PLUGIN} />);
+    const image = mounted.container.querySelector('img');
+
+    fireEvent.error(image!);
+
+    expect(mounted.container.querySelector('img')).toBeNull();
+    expect(mounted.getByTestId('plugin-logo-fallback').textContent).toBe('GH');
+  });
 });
