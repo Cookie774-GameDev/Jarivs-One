@@ -695,6 +695,39 @@ describe('useAccessibleChatModels', () => {
     }
   });
 
+  it('retries an authenticated empty OpenCode catalog on the short failure interval', async () => {
+    vi.useFakeTimers();
+    try {
+      isConnectionSessionChecked.mockImplementation((id) => id === 'opencode-cli');
+      listPersistentOpenCodeModels
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 'opencode-go/deepseek-live', label: 'DeepSeek Live' }]);
+      writeConnectionMetadata({
+        'opencode-cli': {
+          installation: 'installed',
+          auth: 'authenticated',
+          lastCheckedAt: 1,
+        },
+      });
+      markConnectionSessionChecked(['opencode-cli']);
+
+      const { result, unmount } = renderHook(() => useAccessibleChatModels());
+      await act(async () => Promise.resolve());
+      expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(1);
+
+      await act(async () => vi.advanceTimersByTimeAsync(15_000));
+
+      expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(2);
+      await act(async () => Promise.resolve());
+      expect(
+        result.current.flatOptions.find((option) => option.modelId === 'opencode-go/deepseek-live'),
+      ).toMatchObject({ connectionId: 'opencode-cli', available: true });
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('runs the lightweight connected-provider refresh immediately and every five minutes', async () => {
     vi.useFakeTimers();
     try {

@@ -299,6 +299,9 @@ async function loadOpenCodeModels(force = false): Promise<readonly PickerCatalog
     .then((models) => {
       const loadedAt = Date.now();
       const normalized = buildLiveOpenCodePickerModels(models, loadedAt);
+      if (normalized.length === 0) {
+        throw new Error('The authenticated OpenCode catalog is not ready yet.');
+      }
       // An older auth/refresh request must never overwrite a newer catalog.
       if (generation === openCodeCatalogGeneration) {
         openCodeModelCache = { generation, loadedAt, models: normalized };
