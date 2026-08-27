@@ -279,6 +279,18 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
         ).filter((option) => option.available),
       [pendingOption],
     );
+    const committedEffort = effortOptions.some((effort) => effort.label === initialEffort)
+      ? initialEffort
+      : effortOptions[0]?.label;
+    const activeDescendantId = pendingOption
+      ? `${pickerId}-effort-${effortOptions[effortIndex]?.label ?? 'none'}`
+      : pendingRoutes
+        ? `${pickerId}-route-${pendingRoutes.alternativeRoutes?.[routeIndex]?.id ?? 'none'}`
+        : selectedRowId === HIVE_OPTION_ID
+          ? `${pickerId}-hive`
+          : visibleOptions.some((option) => option.id === selectedRowId)
+            ? `${pickerId}-model-${selectedRowId}`
+            : undefined;
 
     const beginSelection = (option: ModelPickerOption) => {
       if (option.available === false) return;
@@ -410,6 +422,8 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
       <motion.div
         {...dropdownMotion}
         initial={false}
+        role="dialog"
+        aria-label="Choose AI model"
         data-pet-scaled-picker={compact ? 'true' : undefined}
         className={cn(
           'jarvis-slash-dropdown overflow-hidden rounded-[14px] border border-border-mid/80',
@@ -470,6 +484,16 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
 
         <div
           ref={listRef}
+          id={`${pickerId}-listbox`}
+          role="listbox"
+          aria-activedescendant={activeDescendantId}
+          aria-label={
+            pendingOption
+              ? `${pendingOption.label} effort options`
+              : pendingRoutes
+                ? `${pendingRoutes.label} route options`
+                : 'Available AI models'
+          }
           className={cn(
             'overflow-y-auto scrollbar-hidden',
             compact ? 'max-h-[min(200px,42vh)] py-1' : 'max-h-[280px] py-2',
@@ -485,6 +509,9 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                     <button
                       key={effort.label}
                       type="button"
+                      id={`${pickerId}-effort-${effort.label}`}
+                      role="option"
+                      aria-selected={effort.label === committedEffort}
                       data-effort-level={effort.label}
                       aria-pressed={selected}
                       onMouseEnter={() => setEffortIndex(index)}
@@ -532,8 +559,12 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                   <button
                     key={route.id}
                     type="button"
+                    id={`${pickerId}-route-${route.id}`}
+                    role="option"
                     data-value={route.id}
                     aria-label={`${route.label} · ${route.modelId}`}
+                    aria-selected={route.id === selectedId}
+                    aria-disabled={route.available === false}
                     aria-pressed={selected}
                     disabled={route.available === false}
                     onMouseEnter={() => route.available !== false && setRouteIndex(index)}
@@ -575,7 +606,11 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                 const isSelected = selectedId === HIVE_OPTION_ID;
                 return (
                   <div
+                    id={`${pickerId}-hive`}
                     data-value={HIVE_OPTION_ID}
+                    role="option"
+                    aria-selected={hiveActive ?? isSelected}
+                    aria-disabled={false}
                     onClick={() => onSelectHive()}
                     onMouseEnter={() => onHoverId?.(HIVE_OPTION_ID)}
                     className={cn(
@@ -646,7 +681,12 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                       )}
                     />
                   </button>
-                  <div id={optionsId} hidden={isCollapsed}>
+                  <div
+                    id={optionsId}
+                    role="group"
+                    aria-label={`${group.label} models`}
+                    hidden={isCollapsed}
+                  >
                     {!isCollapsed
                       ? group.options.map((option) => {
                           const isSelected =
@@ -660,11 +700,16 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
                               (route) =>
                                 activeProvider === route.provider && activeModel === route.modelId,
                             ) === true;
+                          const ariaSelected =
+                            activeProvider && activeModel ? isActive : isSelected;
 
                           return (
                             <div key={option.id}>
                               <div
+                                id={`${pickerId}-model-${option.id}`}
                                 data-value={option.id}
+                                role="option"
+                                aria-selected={ariaSelected}
                                 data-sik-evidence={
                                   option.connection?.id === 'vibespace-kernel-smoke-native'
                                     ? SIK_CONTROL.modelTransportNative
@@ -757,6 +802,9 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
               type="search"
               value={searchQuery}
               aria-label="Search providers and models"
+              aria-controls={`${pickerId}-listbox`}
+              aria-expanded={true}
+              aria-activedescendant={activeDescendantId}
               placeholder="Search providers or models…"
               onChange={(event) => {
                 const value = event.currentTarget.value;
