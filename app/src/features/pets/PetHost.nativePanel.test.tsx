@@ -12,8 +12,8 @@ describe('PetHost native panel boundary', () => {
 
     expect(source).toContain('React.useState(() => isTauriRuntime())');
     expect(source).toContain('const showInlineSprite = showStandalone && !tauri;');
-    expect(source).toContain('{!tauri && (');
-    expect(source).not.toContain('(!tauri || useInlineFallback) &&');
+    expect(source).toContain('{!tauri && useInlineFallback && (');
+    expect(source).not.toContain('(!tauri || useInlineFallback)');
   });
 
   it('clears a failed native panel request instead of selecting an inline fallback', () => {

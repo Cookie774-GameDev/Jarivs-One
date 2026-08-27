@@ -80,6 +80,12 @@ export type PetPanelOpenResult = {
 export const PET_OVERLAY_SHOW_EPOCH_KEY = 'vibespace-pet-overlay-show-epoch';
 export const PET_OVERLAY_SHOW_EVENT = 'vibespace:pet-overlay-show';
 let overlayShowSignalSequence = 0;
+const NATIVE_PET_INVOKE_TIMEOUT_MS = 1_500;
+type NativeInvokeOutcome<T> =
+  | { status: 'ok'; value: T }
+  | { status: 'failed' }
+  | { status: 'timeout' };
+const nativeInvokes = new Map<string, Promise<NativeInvokeOutcome<unknown>>>();
 
 function signalPetOverlayShown(): void {
   const epoch = `${Date.now()}:${++overlayShowSignalSequence}`;
@@ -95,15 +101,39 @@ function signalPetOverlayShown(): void {
   }
 }
 
-async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
-  if (!isTauriRuntime()) return null;
-  try {
-    const { invoke: inv } = await import('@tauri-apps/api/core');
-    return (await inv<T>(cmd, args)) as T;
-  } catch (err) {
-    console.warn('[pets] invoke failed', cmd, err);
-    return null;
+async function invokeWithStatus<T>(
+  cmd: string,
+  args?: Record<string, unknown>,
+): Promise<NativeInvokeOutcome<T>> {
+  if (!isTauriRuntime()) return { status: 'failed' };
+  const key = `${cmd}:${JSON.stringify(args ?? null)}`;
+  let operation = nativeInvokes.get(key);
+  if (!operation) {
+    operation = import('@tauri-apps/api/core')
+      .then(({ invoke: inv }) => inv<unknown>(cmd, args))
+      .then((value): NativeInvokeOutcome<unknown> => ({ status: 'ok', value }))
+      .catch((err): NativeInvokeOutcome<unknown> => {
+        console.warn('[pets] invoke failed', cmd, err);
+        return { status: 'failed' };
+      })
+      .finally(() => {
+        if (nativeInvokes.get(key) === operation) nativeInvokes.delete(key);
+      });
+    nativeInvokes.set(key, operation);
   }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<NativeInvokeOutcome<unknown>>((resolve) => {
+    timeoutId = setTimeout(() => resolve({ status: 'timeout' }), NATIVE_PET_INVOKE_TIMEOUT_MS);
+  });
+  const outcome = await Promise.race([operation, timeout]);
+  if (timeoutId !== undefined) clearTimeout(timeoutId);
+  return outcome as NativeInvokeOutcome<T>;
+}
+
+async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
+  const outcome = await invokeWithStatus<T>(cmd, args);
+  return outcome.status === 'ok' ? outcome.value : null;
 }
 
 function failedOverlayShow(reason: PetOverlayShowReason): PetOverlayShowResult {
@@ -200,13 +230,14 @@ export async function showPetOverlay(): Promise<PetOverlayShowResult> {
       };
     }
 
-    let response: unknown;
-    try {
-      const { invoke: inv } = await import('@tauri-apps/api/core');
-      response = await inv<unknown>('pet_show_overlay');
-    } catch {
+    const outcome = await invokeWithStatus<unknown>('pet_show_overlay');
+    if (outcome.status === 'timeout') {
+      return failedOverlayShow('visibility_timeout');
+    }
+    if (outcome.status === 'failed') {
       return failedOverlayShow('native_command_failed');
     }
+    const response = outcome.value;
 
     if (!isPetOverlayShowResult(response)) {
       return failedOverlayShow('native_result_invalid');

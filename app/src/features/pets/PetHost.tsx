@@ -34,8 +34,8 @@ import { installPetDevPerfGlobal } from './petDevPerf';
 import { createSingleFlightRunner } from '@/stability/singleFlight';
 
 // WebView2 can reject the first detached-window show while its host is still
-// attaching. Retrying a few times is enough to recover that startup race
-// without turning the Pet into a noisy background loop or a Tauri inline UI.
+// attaching. Retrying a few times recovers that startup race without turning
+// the Pet into an app-only substitute.
 const PET_OVERLAY_SHOW_RETRY_DELAYS_MS = [250, 1_000, 3_000] as const;
 const PET_OVERLAY_HEALTH_INTERVAL_MS = 5_000;
 
@@ -227,7 +227,7 @@ export function PetHost({
         scheduleRetry();
         return;
       }
-      // Tauri must remain a detached-overlay surface. A native show failure is
+      // Tauri remains a detached-overlay surface. A native show failure is
       // represented by its typed bridge result, never by an inline substitute.
       setUseInlineFallback(false);
     };

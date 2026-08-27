@@ -254,6 +254,25 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     window.removeEventListener('vibespace:pet-overlay-show', onShow);
   });
 
+  it('bounds a stalled native overlay command and coalesces later recovery attempts', async () => {
+    vi.useFakeTimers();
+    invokeMock.mockImplementation(() => new Promise(() => undefined));
+
+    const { showPetOverlay } = await import('./petTauriBridge');
+    const first = showPetOverlay();
+    const second = showPetOverlay();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    await expect(first).resolves.toMatchObject({
+      mode: 'native-overlay',
+      visible: false,
+      reason: 'visibility_timeout',
+    });
+    await expect(second).resolves.toMatchObject({ reason: 'visibility_timeout' });
+    expect(invokeCount('pet_show_overlay')).toBe(1);
+    vi.useRealTimers();
+  });
+
   it('fails closed when native returns an invalid overlay result', async () => {
     invokeMock.mockResolvedValueOnce(undefined);
     const onShow = vi.fn();

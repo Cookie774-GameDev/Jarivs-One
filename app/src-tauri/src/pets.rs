@@ -9,7 +9,6 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Mutex,
 };
-use std::time::Duration;
 use tauri::{
     AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
     WebviewWindowBuilder,
@@ -26,9 +25,6 @@ const PANEL_MIN_H: f64 = 360.0;
 const MAIN_NAV_EXCLUSION_LOGICAL_W: f64 = 240.0;
 const PET_AUTOSTART_VALUE_NAME: &str = "VibeSpace";
 const TOPMOST_WATCHDOG_INTERVAL_MS: u64 = 1000;
-const OVERLAY_SHOW_RESULT_TIMEOUT: Duration = Duration::from_secs(2);
-const STALE_WINDOW_LABEL_RETRY_INTERVAL: Duration = Duration::from_millis(25);
-const STALE_WINDOW_LABEL_RETRY_ATTEMPTS: usize = 20;
 
 #[cfg(target_os = "windows")]
 const PET_TOPMOST_POS_FLAGS: windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS =
@@ -284,6 +280,7 @@ fn panel_stays_on_top(_mode: PetPanelMode) -> bool {
     true
 }
 
+#[cfg(any(not(target_os = "windows"), test))]
 fn should_pin_pet_window(visible: bool, minimized: bool) -> bool {
     visible && !minimized
 }
@@ -835,6 +832,10 @@ fn is_pet_label(label: &str) -> bool {
     label == PET_OVERLAY_LABEL || label == PET_MINI_PANEL_LABEL
 }
 
+fn is_pet_native_title(title: &str) -> bool {
+    title == "VibeSpace Pet" || title == "VibeSpace Pet Panel"
+}
+
 /// Ensure the pet-overlay WebView paints a fully transparent chrome (Windows).
 ///
 /// On Windows 8+, WebView2 treats any non-zero alpha as opaque 255 for the
@@ -871,6 +872,80 @@ fn native_pin_hwnd_topmost_noactivate(win: &WebviewWindow) {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn native_show_pet_window(win: &WebviewWindow, title: &str, focus: bool) -> bool {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        IsWindowVisible, SetForegroundWindow, SetWindowTextW, ShowWindow, SW_SHOW,
+        SW_SHOWNOACTIVATE,
+    };
+    let Ok(raw) = win.hwnd() else { return false };
+    let hwnd = HWND(raw.0 as *mut _);
+    let title: Vec<u16> = title.encode_utf16().chain(Some(0)).collect();
+    unsafe {
+        let _ = SetWindowTextW(hwnd, PCWSTR(title.as_ptr()));
+        let _ = ShowWindow(hwnd, if focus { SW_SHOW } else { SW_SHOWNOACTIVATE });
+        if focus {
+            let _ = SetForegroundWindow(hwnd);
+        }
+        IsWindowVisible(hwnd).as_bool()
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn native_configure_pet_window(
+    win: &WebviewWindow,
+    title: &str,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    focus: bool,
+) -> bool {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        IsWindowVisible, SetForegroundWindow, SetWindowPos, SetWindowTextW, HWND_TOPMOST,
+        SWP_NOACTIVATE, SWP_SHOWWINDOW,
+    };
+    let Ok(raw) = win.hwnd() else { return false };
+    let hwnd = HWND(raw.0 as *mut _);
+    let title: Vec<u16> = title.encode_utf16().chain(Some(0)).collect();
+    let flags = if focus {
+        SWP_SHOWWINDOW
+    } else {
+        SWP_SHOWWINDOW | SWP_NOACTIVATE
+    };
+    unsafe {
+        let _ = SetWindowTextW(hwnd, PCWSTR(title.as_ptr()));
+        let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), x, y, width, height, flags);
+        if focus {
+            let _ = SetForegroundWindow(hwnd);
+        }
+        IsWindowVisible(hwnd).as_bool()
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn native_show_pet_window(win: &WebviewWindow, _title: &str, _focus: bool) -> bool {
+    win.is_visible().unwrap_or(false)
+}
+
+#[cfg(target_os = "windows")]
+fn native_pet_window_visible(win: &WebviewWindow) -> bool {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{IsIconic, IsWindowVisible};
+    let Ok(raw) = win.hwnd() else { return false };
+    let hwnd = HWND(raw.0 as *mut _);
+    unsafe { IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool() }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn native_pet_window_visible(win: &WebviewWindow) -> bool {
+    win.is_visible().unwrap_or(false) && !win.is_minimized().unwrap_or(false)
+}
+
 #[cfg(not(target_os = "windows"))]
 fn native_pin_hwnd_topmost_noactivate(_win: &WebviewWindow) {}
 
@@ -882,6 +957,7 @@ fn pin_pet_window_topmost(win: &WebviewWindow, restore_overlay_chrome: bool) {
     native_pin_hwnd_topmost_noactivate(win);
 }
 
+#[cfg(not(target_os = "windows"))]
 fn pet_window_should_stay_topmost(win: &WebviewWindow) -> bool {
     should_pin_pet_window(
         win.is_visible().unwrap_or(false),
@@ -889,15 +965,90 @@ fn pet_window_should_stay_topmost(win: &WebviewWindow) -> bool {
     )
 }
 
-pub(crate) fn pin_visible_pet_windows(app: &AppHandle) {
-    if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
-        if pet_window_should_stay_topmost(&win) {
-            pin_pet_window_topmost(&win, true);
-        }
+#[cfg(target_os = "windows")]
+fn native_pin_visible_pet_hwnds() {
+    use windows::core::BOOL;
+    use windows::Win32::Foundation::{HWND, LPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowLongPtrW, GetWindowTextLengthW, GetWindowTextW,
+        GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetWindowLongPtrW, SetWindowPos,
+        GWL_EXSTYLE, HWND_TOPMOST, WS_EX_TOPMOST,
+    };
+
+    struct Enumeration {
+        process_id: u32,
     }
-    if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
-        if pet_window_should_stay_topmost(&win) {
-            pin_pet_window_topmost(&win, false);
+
+    unsafe extern "system" fn pin_window(hwnd: HWND, state: LPARAM) -> BOOL {
+        let state = unsafe { &*(state.0 as *const Enumeration) };
+        let mut process_id = 0;
+        unsafe {
+            GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+        }
+        if process_id != state.process_id
+            || !unsafe { IsWindowVisible(hwnd).as_bool() }
+            || unsafe { IsIconic(hwnd).as_bool() }
+        {
+            return true.into();
+        }
+
+        let title_len = unsafe { GetWindowTextLengthW(hwnd) };
+        if title_len <= 0 {
+            return true.into();
+        }
+        let mut title = vec![0_u16; title_len as usize + 1];
+        let copied = unsafe { GetWindowTextW(hwnd, &mut title) };
+        if copied <= 0 || !is_pet_native_title(&String::from_utf16_lossy(&title[..copied as usize]))
+        {
+            return true.into();
+        }
+
+        let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
+        let topmost_bit = WS_EX_TOPMOST.0 as isize;
+        if ex_style & topmost_bit == 0 {
+            unsafe {
+                let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style | topmost_bit);
+            }
+        }
+        unsafe {
+            let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, PET_TOPMOST_POS_FLAGS);
+        }
+        true.into()
+    }
+
+    let state = Enumeration {
+        process_id: std::process::id(),
+    };
+    let _ = unsafe {
+        EnumWindows(
+            Some(pin_window),
+            LPARAM((&state as *const Enumeration) as isize),
+        )
+    };
+}
+
+#[cfg(not(target_os = "windows"))]
+fn native_pin_visible_pet_hwnds() {}
+
+pub(crate) fn pin_visible_pet_windows(app: &AppHandle) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = app;
+        native_pin_visible_pet_hwnds();
+        return;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
+            if pet_window_should_stay_topmost(&win) {
+                pin_pet_window_topmost(&win, true);
+            }
+        }
+        if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
+            if pet_window_should_stay_topmost(&win) {
+                pin_pet_window_topmost(&win, false);
+            }
         }
     }
 }
@@ -907,6 +1058,7 @@ pub(crate) fn ensure_pet_topmost_watchdog(app: &AppHandle) {
     if started.swap(true, Ordering::SeqCst) {
         return;
     }
+    #[cfg(not(target_os = "windows"))]
     let watchdog_app = app.clone();
     let _ = std::thread::Builder::new()
         .name("pet-topmost-watchdog".into())
@@ -914,10 +1066,10 @@ pub(crate) fn ensure_pet_topmost_watchdog(app: &AppHandle) {
             std::thread::sleep(std::time::Duration::from_millis(
                 TOPMOST_WATCHDOG_INTERVAL_MS,
             ));
-            let callback_app = watchdog_app.clone();
-            let _ = watchdog_app.run_on_main_thread(move || {
-                pin_visible_pet_windows(&callback_app);
-            });
+            #[cfg(target_os = "windows")]
+            native_pin_visible_pet_hwnds();
+            #[cfg(not(target_os = "windows"))]
+            pin_visible_pet_windows(&watchdog_app);
         });
 }
 
@@ -946,8 +1098,8 @@ fn log_pet_window_metrics(label: &str, win: &WebviewWindow) {
     eprintln!("[pets] {label}: title={title:?} visible={visible} pos={pos} size={size}");
 }
 
-fn should_reuse_pet_window<E>(visibility: Result<bool, E>) -> bool {
-    visibility.is_ok()
+fn should_reuse_pet_window<E>(_visibility: Result<bool, E>) -> bool {
+    true
 }
 
 fn overlay_acquire_failure_reason(error: &str) -> &'static str {
@@ -978,6 +1130,11 @@ fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
     #[cfg(debug_assertions)]
     eprintln!("[pets] creating pet-overlay window");
 
+    build_pet_overlay(app, true)?;
+    Ok(PetOverlayAcquire::Ready { created: true })
+}
+
+fn build_pet_overlay(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
     WebviewWindowBuilder::new(
         app,
         PET_OVERLAY_LABEL,
@@ -992,7 +1149,7 @@ fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
     .transparent(true)
     .always_on_top(true)
     .skip_taskbar(true)
-    .visible(true)
+    .visible(visible)
     .focused(false)
     .shadow(false)
     .background_color(tauri::window::Color(0, 0, 0, 0))
@@ -1000,8 +1157,7 @@ fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
         "--default-background-color=00000000 --disable-features=CalculateNativeWinOcclusion --autoplay-policy=no-user-gesture-required",
     )
     .build()
-    .map_err(|e| format!("failed to create pet-overlay window: {e}"))?;
-    Ok(PetOverlayAcquire::Ready { created: true })
+    .map_err(|e| format!("failed to create pet-overlay window: {e}"))
 }
 
 fn get_or_create_pet_panel(app: &AppHandle) -> Result<WebviewWindow, String> {
@@ -1016,6 +1172,10 @@ fn get_or_create_pet_panel(app: &AppHandle) -> Result<WebviewWindow, String> {
     #[cfg(debug_assertions)]
     eprintln!("[pets] creating pet-mini-panel window");
 
+    build_pet_panel(app, false)
+}
+
+fn build_pet_panel(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
     WebviewWindowBuilder::new(
         app,
         PET_MINI_PANEL_LABEL,
@@ -1029,7 +1189,7 @@ fn get_or_create_pet_panel(app: &AppHandle) -> Result<WebviewWindow, String> {
     .transparent(false)
     .always_on_top(true)
     .skip_taskbar(true)
-    .visible(false)
+    .visible(visible)
     .focused(false)
     .build()
     .map_err(|e| format!("failed to create pet-mini-panel window: {e}"))
@@ -1041,6 +1201,12 @@ pub async fn pet_show_overlay(app: AppHandle) -> Result<PetOverlayShowResult, St
     #[cfg(debug_assertions)]
     eprintln!("[pets] pet_show_overlay invoked");
 
+    tauri::async_runtime::spawn_blocking(move || show_pet_overlay_blocking(app))
+        .await
+        .map_err(|_| "pet overlay worker failed".to_string())?
+}
+
+fn show_pet_overlay_blocking(app: AppHandle) -> Result<PetOverlayShowResult, String> {
     let (x, y) = {
         let state = app.state::<PetWindowState>();
         let mut geo = match state.geometry.lock() {
@@ -1067,85 +1233,38 @@ pub async fn pet_show_overlay(app: AppHandle) -> Result<PetOverlayShowResult, St
         (x, y)
     };
 
-    let (result_tx, result_rx) = std::sync::mpsc::sync_channel(1);
-    if schedule_pet_overlay_acquire(app.clone(), x, y, result_tx, true).is_err() {
-        return Ok(PetOverlayShowResult::failed("main_thread_unavailable"));
-    }
-
-    match tauri::async_runtime::spawn_blocking(move || {
-        result_rx.recv_timeout(OVERLAY_SHOW_RESULT_TIMEOUT)
-    })
-    .await
-    {
-        Ok(Ok(result)) => Ok(result),
-        Ok(Err(std::sync::mpsc::RecvTimeoutError::Timeout)) => {
-            Ok(PetOverlayShowResult::failed("visibility_timeout"))
-        }
-        Ok(Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) => {
-            Ok(PetOverlayShowResult::failed("native_callback_lost"))
-        }
-        Err(_) => Ok(PetOverlayShowResult::failed("native_task_failed")),
-    }
-}
-
-fn schedule_pet_overlay_acquire(
-    app: AppHandle,
-    x: f64,
-    y: f64,
-    result_tx: std::sync::mpsc::SyncSender<PetOverlayShowResult>,
-    allow_stale_retry: bool,
-) -> tauri::Result<()> {
-    let callback_app = app.clone();
-    app.run_on_main_thread(move || match acquire_pet_overlay(&callback_app) {
-        Ok(PetOverlayAcquire::Ready { created }) => {
-            schedule_existing_pet_overlay_show(callback_app, x, y, created, result_tx);
-        }
-        Ok(PetOverlayAcquire::StaleRetired) if allow_stale_retry => {
-            let retry_app = callback_app.clone();
-            std::thread::spawn(move || {
-                for _ in 0..STALE_WINDOW_LABEL_RETRY_ATTEMPTS {
-                    if retry_app.get_webview_window(PET_OVERLAY_LABEL).is_none() {
-                        let _ = schedule_pet_overlay_acquire(retry_app, x, y, result_tx, false);
-                        return;
-                    }
-                    std::thread::sleep(STALE_WINDOW_LABEL_RETRY_INTERVAL);
-                }
-                let _ = result_tx.send(PetOverlayShowResult::failed("window_label_conflict"));
-            });
-        }
+    let created = match acquire_pet_overlay(&app) {
+        Ok(PetOverlayAcquire::Ready { created }) => created,
         Ok(PetOverlayAcquire::StaleRetired) => {
-            let _ = result_tx.send(PetOverlayShowResult::failed("window_label_conflict"));
+            // `destroy` removes the stale registration synchronously on the
+            // command/main thread. Reacquire once; the renderer already owns
+            // bounded retries if Windows has not released the label yet.
+            match acquire_pet_overlay(&app) {
+                Ok(PetOverlayAcquire::Ready { created }) => created,
+                Ok(PetOverlayAcquire::StaleRetired) => {
+                    return Ok(PetOverlayShowResult::failed("window_label_conflict"))
+                }
+                Err(error) => {
+                    return Ok(PetOverlayShowResult::failed(
+                        overlay_acquire_failure_reason(&error),
+                    ))
+                }
+            }
         }
         Err(error) => {
-            let _ = result_tx.send(PetOverlayShowResult::failed(
+            return Ok(PetOverlayShowResult::failed(
                 overlay_acquire_failure_reason(&error),
-            ));
+            ))
         }
-    })
+    };
+
+    Ok(show_existing_pet_overlay(app, x, y, created)
+        .unwrap_or_else(|reason| PetOverlayShowResult::failed_after_create(created, reason)))
 }
 
-fn schedule_existing_pet_overlay_show(
-    app: AppHandle,
-    x: f64,
-    y: f64,
-    created: bool,
-    result_tx: std::sync::mpsc::SyncSender<PetOverlayShowResult>,
-) {
-    std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(80));
-        let callback_app = app.clone();
-        let callback_result_tx = result_tx.clone();
-        if app
-            .run_on_main_thread(move || {
-                let result = show_existing_pet_overlay(callback_app, x, y, created).unwrap_or_else(
-                    |reason| PetOverlayShowResult::failed_after_create(created, reason),
-                );
-                let _ = callback_result_tx.send(result);
-            })
-            .is_err()
-        {
-            let _ = result_tx.send(PetOverlayShowResult::failed("main_thread_unavailable"));
-        }
+fn schedule_pet_overlay_restore(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let _ = pet_show_overlay(app).await;
     });
 }
 
@@ -1158,32 +1277,54 @@ fn show_existing_pet_overlay(
     let win = app
         .get_webview_window(PET_OVERLAY_LABEL)
         .ok_or("window_missing")?;
-    let overlay_size = PhysicalSize::new(OVERLAY_SIZE, OVERLAY_SIZE);
-    win.set_position(PhysicalPosition::new(x as i32, y as i32))
-        .map_err(|_| "position_failed")?;
-    win.set_min_size(Some(overlay_size))
-        .map_err(|_| "size_failed")?;
-    win.set_max_size(Some(overlay_size))
-        .map_err(|_| "size_failed")?;
-    win.set_size(overlay_size).map_err(|_| "size_failed")?;
-    win.set_always_on_top(true).map_err(|_| "topmost_failed")?;
-    pin_pet_window_topmost(&win, true);
-    win.show().map_err(|_| "show_failed")?;
-    // Windows/WebView2 can report a tiny transparent host HWND on first show.
-    // Re-assert the exact pet surface size after visibility is applied.
-    win.set_size(overlay_size).map_err(|_| "size_failed")?;
-    // Second topmost pass — some hosts drop Z-order during the first show.
-    pin_pet_window_topmost(&win, true);
-    ensure_pet_topmost_watchdog(&app);
-    if !win.is_visible().map_err(|_| "visibility_check_failed")? {
-        return Err("not_visible");
+    #[cfg(target_os = "windows")]
+    {
+        if !native_configure_pet_window(
+            &win,
+            "VibeSpace Pet",
+            x as i32,
+            y as i32,
+            OVERLAY_SIZE as i32,
+            OVERLAY_SIZE as i32,
+            false,
+        ) {
+            return Err("not_visible");
+        }
+        ensure_pet_topmost_watchdog(&app);
+        return Ok(PetOverlayShowResult::visible(created));
     }
-    Ok(PetOverlayShowResult::visible(created))
+    #[cfg(not(target_os = "windows"))]
+    {
+        let overlay_size = PhysicalSize::new(OVERLAY_SIZE, OVERLAY_SIZE);
+        win.set_position(PhysicalPosition::new(x as i32, y as i32))
+            .map_err(|_| "position_failed")?;
+        win.set_min_size(Some(overlay_size))
+            .map_err(|_| "size_failed")?;
+        win.set_max_size(Some(overlay_size))
+            .map_err(|_| "size_failed")?;
+        win.set_size(overlay_size).map_err(|_| "size_failed")?;
+        win.set_always_on_top(true).map_err(|_| "topmost_failed")?;
+        pin_pet_window_topmost(&win, true);
+        win.show().map_err(|_| "show_failed")?;
+        if !native_show_pet_window(&win, "VibeSpace Pet", false) {
+            return Err("not_visible");
+        }
+        // Windows/WebView2 can report a tiny transparent host HWND on first show.
+        // Re-assert the exact pet surface size after visibility is applied.
+        win.set_size(overlay_size).map_err(|_| "size_failed")?;
+        // Second topmost pass — some hosts drop Z-order during the first show.
+        pin_pet_window_topmost(&win, true);
+        ensure_pet_topmost_watchdog(&app);
+        // `show()` is the authoritative completion boundary here. Querying
+        // `is_visible()` synchronously from the same Windows command callback can
+        // deadlock WebView2 after the native HWND is already visible.
+        Ok(PetOverlayShowResult::visible(created))
+    }
 }
 
 /// Hide the pet overlay without destroying the webview (no duplicate on re-show).
 #[tauri::command]
-pub fn pet_hide_overlay(app: AppHandle) -> Result<(), String> {
+pub async fn pet_hide_overlay(app: AppHandle) -> Result<(), String> {
     #[cfg(debug_assertions)]
     eprintln!("[pets] pet_hide_overlay invoked");
 
@@ -1195,10 +1336,10 @@ pub fn pet_hide_overlay(app: AppHandle) -> Result<(), String> {
 
 /// Whether the pet overlay is currently visible.
 #[tauri::command]
-pub fn pet_is_overlay_visible(app: AppHandle) -> Result<bool, String> {
+pub async fn pet_is_overlay_visible(app: AppHandle) -> Result<bool, String> {
     Ok(app
         .get_webview_window(PET_OVERLAY_LABEL)
-        .and_then(|win| win.is_visible().ok())
+        .map(|win| native_pet_window_visible(&win))
         .unwrap_or(false))
 }
 
@@ -1251,7 +1392,7 @@ fn read_geometry(path: &std::path::Path) -> Option<PetGeometryState> {
 /// Reassert topmost only for pet windows that are already visible.
 /// Never shows, focuses, or activates a hidden Pet window.
 #[tauri::command]
-pub fn pet_reassert_overlay_topmost(app: AppHandle) -> Result<(), String> {
+pub async fn pet_reassert_overlay_topmost(app: AppHandle) -> Result<(), String> {
     pin_visible_pet_windows(&app);
     ensure_pet_topmost_watchdog(&app);
     Ok(())
@@ -1335,7 +1476,7 @@ pub fn schedule_visible_overlay_reconstrain(app: AppHandle) {
 /// Move pet overlay to physical position (DPI-aware path via physical coords).
 /// Always clamped so the sprite cannot be dragged fully off-screen.
 #[tauri::command]
-pub fn pet_set_overlay_position(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
+pub async fn pet_set_overlay_position(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
     let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) else {
         return Ok(());
     };
@@ -1386,7 +1527,7 @@ fn nearest_edge_position(
 
 /// Snap the visible overlay to the nearest edge of its current monitor.
 #[tauri::command]
-pub fn pet_snap_overlay_to_edge(app: AppHandle) -> Result<(), String> {
+pub async fn pet_snap_overlay_to_edge(app: AppHandle) -> Result<(), String> {
     let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) else {
         return Ok(());
     };
@@ -1440,7 +1581,20 @@ pub fn pet_snap_overlay_to_edge(app: AppHandle) -> Result<(), String> {
 /// (`pet_is_panel_visible`), so a failed panel open cannot leave the
 /// user with neither sprite nor panel.
 #[tauri::command]
-pub fn pet_open_or_focus_panel(
+pub async fn pet_open_or_focus_panel(
+    app: AppHandle,
+    near_x: Option<f64>,
+    near_y: Option<f64>,
+    panel_mode: Option<PetPanelMode>,
+) -> Result<PetPanelOpenResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        open_or_focus_pet_panel_blocking(app, near_x, near_y, panel_mode)
+    })
+    .await
+    .map_err(|_| "pet panel worker failed".to_string())?
+}
+
+fn open_or_focus_pet_panel_blocking(
     app: AppHandle,
     near_x: Option<f64>,
     near_y: Option<f64>,
@@ -1451,6 +1605,12 @@ pub fn pet_open_or_focus_panel(
         Ok(win) => win,
         Err(_) => return Ok(PetPanelOpenResult::failed(false, "window_create_failed")),
     };
+    if created {
+        // A newly created WebView2 host is registered before all native window
+        // operations are ready. Let the Windows event loop finish that handoff
+        // before applying geometry, visibility, focus, and topmost state.
+        std::thread::sleep(std::time::Duration::from_millis(120));
+    }
     let panel_mode = panel_mode.unwrap_or_default();
 
     let state = app.state::<PetWindowState>();
@@ -1510,89 +1670,93 @@ pub fn pet_open_or_focus_panel(
         recover_position(&app, None, None, w, h, geo.panel_monitor_name.as_deref())
     };
 
-    if win.set_size(PhysicalSize::new(w as u32, h as u32)).is_err() {
-        return Ok(PetPanelOpenResult::failed(created, "size_failed"));
-    }
-    if win
-        .set_min_size(Some(tauri::LogicalSize::new(PANEL_MIN_W, PANEL_MIN_H)))
-        .is_err()
+    #[cfg(target_os = "windows")]
     {
-        return Ok(PetPanelOpenResult::failed(created, "size_failed"));
-    }
-    if win
-        .set_position(PhysicalPosition::new(x as i32, y as i32))
-        .is_err()
-    {
-        return Ok(PetPanelOpenResult::failed(created, "position_failed"));
-    }
-    if win
-        .set_always_on_top(panel_stays_on_top(panel_mode))
-        .is_err()
-    {
-        return Ok(PetPanelOpenResult::failed(created, "topmost_failed"));
-    }
-    if win.unminimize().is_err() {
-        return Ok(PetPanelOpenResult::failed(created, "restore_failed"));
-    }
-    if win.show().is_err() {
-        return Ok(PetPanelOpenResult::failed(created, "show_failed"));
-    }
-    pin_pet_window_topmost(&win, false);
-    ensure_pet_topmost_watchdog(&app);
-    if win.set_focus().is_err() {
-        return Ok(PetPanelOpenResult::failed(created, "focus_failed"));
-    }
-
-    let visible = match win.is_visible() {
-        Ok(visible) => visible,
-        Err(_) => {
-            return Ok(PetPanelOpenResult::failed(
-                created,
-                "visibility_check_failed",
-            ))
+        if !native_configure_pet_window(
+            &win,
+            "VibeSpace Pet Panel",
+            x as i32,
+            y as i32,
+            w as i32,
+            h as i32,
+            true,
+        ) {
+            return Ok(PetPanelOpenResult::failed(created, "not_visible"));
         }
-    };
-    let minimized = match win.is_minimized() {
-        Ok(minimized) => minimized,
-        Err(_) => {
-            return Ok(PetPanelOpenResult::failed(
-                created,
-                "visibility_check_failed",
-            ))
+        ensure_pet_topmost_watchdog(&app);
+        geo.panel_x = Some(x);
+        geo.panel_y = Some(y);
+        geo.panel_w = Some(w);
+        geo.panel_h = Some(h);
+        save_geometry(&app, &geo);
+        *open = true;
+        return Ok(PetPanelOpenResult::visible_and_focused(created));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if win.set_size(PhysicalSize::new(w as u32, h as u32)).is_err() {
+            return Ok(PetPanelOpenResult::failed(created, "size_failed"));
         }
-    };
-    if !visible || minimized {
-        return Ok(PetPanelOpenResult::failed(created, "not_visible"));
-    }
-    let focused = match win.is_focused() {
-        Ok(focused) => focused,
-        Err(_) => return Ok(PetPanelOpenResult::failed(created, "focus_check_failed")),
-    };
-    if !focused {
-        return Ok(PetPanelOpenResult::failed(created, "not_focused"));
-    }
+        if win
+            .set_min_size(Some(tauri::LogicalSize::new(PANEL_MIN_W, PANEL_MIN_H)))
+            .is_err()
+        {
+            return Ok(PetPanelOpenResult::failed(created, "size_failed"));
+        }
+        if win
+            .set_position(PhysicalPosition::new(x as i32, y as i32))
+            .is_err()
+        {
+            return Ok(PetPanelOpenResult::failed(created, "position_failed"));
+        }
+        if win
+            .set_always_on_top(panel_stays_on_top(panel_mode))
+            .is_err()
+        {
+            return Ok(PetPanelOpenResult::failed(created, "topmost_failed"));
+        }
+        if win.unminimize().is_err() {
+            return Ok(PetPanelOpenResult::failed(created, "restore_failed"));
+        }
+        if win.show().is_err() {
+            return Ok(PetPanelOpenResult::failed(created, "show_failed"));
+        }
+        if !native_show_pet_window(&win, "VibeSpace Pet Panel", true) {
+            return Ok(PetPanelOpenResult::failed(created, "not_visible"));
+        }
+        pin_pet_window_topmost(&win, false);
+        ensure_pet_topmost_watchdog(&app);
+        if win.set_focus().is_err() {
+            return Ok(PetPanelOpenResult::failed(created, "focus_failed"));
+        }
 
-    geo.panel_x = Some(x);
-    geo.panel_y = Some(y);
-    geo.panel_w = Some(w);
-    geo.panel_h = Some(h);
-    geo.panel_monitor_name = win
-        .current_monitor()
-        .ok()
-        .flatten()
-        .and_then(|monitor| monitor.name().cloned());
-    save_geometry(&app, &geo);
-    *open = true;
-    drop(open);
-    drop(geo);
+        if !native_pet_window_visible(&win) {
+            return Ok(PetPanelOpenResult::failed(created, "not_visible"));
+        }
 
-    // Intentionally do not hide pet-overlay here — JS confirm-then-hide.
-    Ok(PetPanelOpenResult::visible_and_focused(created))
+        geo.panel_x = Some(x);
+        geo.panel_y = Some(y);
+        geo.panel_w = Some(w);
+        geo.panel_h = Some(h);
+        geo.panel_monitor_name = win
+            .current_monitor()
+            .ok()
+            .flatten()
+            .and_then(|monitor| monitor.name().cloned());
+        save_geometry(&app, &geo);
+        *open = true;
+        drop(open);
+        drop(geo);
+
+        // Intentionally do not hide pet-overlay here — JS confirm-then-hide.
+        Ok(PetPanelOpenResult::visible_and_focused(created))
+    }
 }
 
 /// Minimize panel only — sessions keep running. Restores the pet sprite.
 #[tauri::command]
-pub fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
+pub async fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
         let _ = win.minimize();
     }
@@ -1600,24 +1764,20 @@ pub fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
         *open = false;
     }
     // Bring pet sprite back
-    tauri::async_runtime::spawn(async move {
-        let _ = pet_show_overlay(app.clone()).await;
-    });
+    let _ = show_pet_overlay_blocking(app.clone());
     Ok(())
 }
 
 /// Hide panel without killing sessions (close after user confirms in UI). Restores pet.
 #[tauri::command]
-pub fn pet_hide_panel(app: AppHandle) -> Result<(), String> {
+pub async fn pet_hide_panel(app: AppHandle) -> Result<(), String> {
     let win = match app.get_webview_window(PET_MINI_PANEL_LABEL) {
         Some(win) => win,
         None => {
             if let Ok(mut open) = app.state::<PetWindowState>().panel_open.lock() {
                 *open = false;
             }
-            tauri::async_runtime::spawn(async move {
-                let _ = pet_show_overlay(app.clone()).await;
-            });
+            let _ = show_pet_overlay_blocking(app.clone());
             return Ok(());
         }
     };
@@ -1637,24 +1797,20 @@ pub fn pet_hide_panel(app: AppHandle) -> Result<(), String> {
     if let Ok(mut open) = app.state::<PetWindowState>().panel_open.lock() {
         *open = false;
     }
-    tauri::async_runtime::spawn(async move {
-        let _ = pet_show_overlay(app.clone()).await;
-    });
+    let _ = show_pet_overlay_blocking(app.clone());
     Ok(())
 }
 
 #[tauri::command]
-pub fn pet_is_panel_visible(app: AppHandle) -> Result<bool, String> {
+pub async fn pet_is_panel_visible(app: AppHandle) -> Result<bool, String> {
     let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) else {
         return Ok(false);
     };
-    let visible = win.is_visible().unwrap_or(false);
-    let minimized = win.is_minimized().unwrap_or(false);
-    Ok(visible && !minimized)
+    Ok(native_pet_window_visible(&win))
 }
 
 #[tauri::command]
-pub fn pet_save_panel_geometry(
+pub async fn pet_save_panel_geometry(
     app: AppHandle,
     x: f64,
     y: f64,
@@ -1740,6 +1896,15 @@ mod tests {
     }
 
     #[test]
+    fn native_topmost_watchdog_targets_only_pet_window_titles() {
+        assert!(is_pet_native_title("VibeSpace Pet"));
+        assert!(is_pet_native_title("VibeSpace Pet Panel"));
+        assert!(!is_pet_native_title("VibeSpace"));
+        assert!(!is_pet_native_title("Pet"));
+        assert!(!is_pet_native_title(""));
+    }
+
+    #[test]
     fn overlay_show_result_is_typed_and_does_not_claim_renderer_readiness() {
         let success = PetOverlayShowResult::visible(true);
         assert_eq!(success.mode, "native-overlay");
@@ -1757,8 +1922,8 @@ mod tests {
     }
 
     #[test]
-    fn stale_registered_pet_window_is_rebuilt_but_a_hidden_healthy_window_is_reused() {
-        assert!(!should_reuse_pet_window(Err(())));
+    fn registered_pet_windows_are_reused_during_webview_initialization() {
+        assert!(should_reuse_pet_window(Err(())));
         assert!(should_reuse_pet_window(Ok::<bool, ()>(false)));
         assert!(should_reuse_pet_window(Ok::<bool, ()>(true)));
     }
@@ -2163,9 +2328,7 @@ pub fn handle_pet_window_close(window: &tauri::Window) -> bool {
                 *open = false;
             }
         }
-        tauri::async_runtime::spawn(async move {
-            let _ = pet_show_overlay(app).await;
-        });
+        schedule_pet_overlay_restore(app);
     }
     true
 }
