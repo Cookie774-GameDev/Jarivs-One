@@ -68,6 +68,11 @@ function safeText(value: string, max = 4096): string {
   return redacted.slice(0, max);
 }
 
+function safeFileLabel(filePath: string): string {
+  const leaf = filePath.split(/[\\/]/u).filter(Boolean).at(-1) ?? '';
+  return safeText(leaf, 256) || 'File';
+}
+
 function positive(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
@@ -220,7 +225,9 @@ function eventReceipts(
       status: event.status,
       ts: event.ts,
       ...(durationMs === undefined ? {} : { durationMs }),
-      ...(event.filePath ? { filePath: event.filePath, fileLabel: safeText(event.filePath) } : {}),
+      ...(event.filePath
+        ? { filePath: event.filePath, fileLabel: safeFileLabel(event.filePath) }
+        : {}),
       ...(event.agentSlug ? { agentSlug: safeText(event.agentSlug, 256) } : {}),
       countsAsAction: kind !== 'other',
     });

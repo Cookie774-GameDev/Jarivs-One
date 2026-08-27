@@ -142,6 +142,45 @@ describe('AssistantActivityLedger', () => {
     expect(screen.getByRole('separator', { name: 'Resize activity details' })).toBeTruthy();
   });
 
+  it('searches only the bounded privacy-safe receipt projection and resets paging', () => {
+    const events: ChatActivityEvent[] = [
+      {
+        id: 'read-alpha',
+        chatId: 'chat-ledger-ui',
+        kind: 'file',
+        category: 'file',
+        status: 'done',
+        title: 'Read file',
+        filePath: 'C:\\private\\AlphaPlan.ts',
+        ts: 100,
+      },
+      {
+        id: 'edit-beta',
+        chatId: 'chat-ledger-ui',
+        kind: 'file',
+        category: 'file',
+        status: 'done',
+        title: 'Edited file',
+        filePath: 'C:\\private\\BetaBuild.ts',
+        ts: 200,
+      },
+    ];
+    render(<AssistantActivityLedger message={assistant([])} correlatedEvents={events} />);
+    fireEvent.click(screen.getByRole('button', { name: /activity details/i }));
+
+    const search = screen.getByRole('searchbox', { name: 'Search activity' });
+    expect(search.getAttribute('maxlength')).toBe('80');
+    fireEvent.change(search, { target: { value: 'beta' } });
+
+    expect(screen.getAllByTestId('activity-ledger-receipt')).toHaveLength(1);
+    expect(screen.getByText('BetaBuild.ts')).toBeTruthy();
+    expect(screen.queryByText('AlphaPlan.ts')).toBeNull();
+    expect(document.body.textContent).not.toContain('C:\\private');
+
+    fireEvent.change(search, { target: { value: 'does-not-exist' } });
+    expect(screen.getByText('No matching activity receipts.')).toBeTruthy();
+  });
+
   it('shows estimated and unavailable usage without mixing provenance', () => {
     render(
       <AssistantActivityLedger

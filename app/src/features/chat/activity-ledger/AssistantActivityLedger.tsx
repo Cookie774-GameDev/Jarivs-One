@@ -105,6 +105,7 @@ export function AssistantActivityLedger({
   );
   const [expanded, setExpanded] = React.useState(false);
   const [filter, setFilter] = React.useState<Filter>('all');
+  const [query, setQuery] = React.useState('');
   const [visibleCount, setVisibleCount] = React.useState(DETAIL_PAGE_SIZE);
   const [previewPath, setPreviewPath] = React.useState<string | null>(null);
   const [inspectorHeight, setInspectorHeight] = React.useState<number | undefined>();
@@ -125,12 +126,20 @@ export function AssistantActivityLedger({
     'subagent',
     'usage',
   ];
-  const filtered =
+  const categoryFiltered =
     filter === 'all' || filter === 'usage'
       ? filter === 'usage'
         ? []
         : ledger.receipts
       : ledger.receipts.filter((receipt) => receipt.kind === filter);
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const filtered = normalizedQuery
+    ? categoryFiltered.filter((receipt) =>
+        [receipt.label, receipt.fileLabel, receipt.agentSlug].some((value) =>
+          value?.toLocaleLowerCase().includes(normalizedQuery),
+        ),
+      )
+    : categoryFiltered;
   const visible = filtered.slice(0, visibleCount);
   const remaining = Math.max(0, filtered.length - visible.length);
   const counts: Record<Exclude<Filter, 'usage'>, number> = {
@@ -236,6 +245,25 @@ export function AssistantActivityLedger({
               </button>
             ))}
           </div>
+          {filter !== 'usage' ? (
+            <label className="assistant-activity-ledger__search">
+              <Search aria-hidden="true" />
+              <span className="sr-only">Search activity</span>
+              <input
+                type="search"
+                aria-label="Search activity"
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={80}
+                placeholder="Search safe activity labels…"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value.slice(0, 80));
+                  setVisibleCount(DETAIL_PAGE_SIZE);
+                }}
+              />
+            </label>
+          ) : null}
           {filter === 'usage' ? (
             <div className="assistant-activity-ledger__usage">
               <UsageLine label="Input" usage={ledger.usage.input} />
@@ -243,7 +271,7 @@ export function AssistantActivityLedger({
             </div>
           ) : (
             <div className="assistant-activity-ledger__receipts">
-              {ledger.omittedReceipts > 0 && filter === 'all' ? (
+              {ledger.omittedReceipts > 0 && filter === 'all' && !normalizedQuery ? (
                 <p className="assistant-activity-ledger__notice">
                   {formatCount(ledger.omittedReceipts)} older receipts are summarized in the totals.
                 </p>
@@ -256,6 +284,9 @@ export function AssistantActivityLedger({
                   onPreview={() => receipt.filePath && setPreviewPath(receipt.filePath)}
                 />
               ))}
+              {filtered.length === 0 && normalizedQuery ? (
+                <p className="assistant-activity-ledger__notice">No matching activity receipts.</p>
+              ) : null}
               {remaining > 0 ? (
                 <button
                   type="button"

@@ -25,6 +25,7 @@
 
 .assistant-activity-ledger__disclosure:focus-visible,
 .assistant-activity-ledger__tabs button:focus-visible,
+.assistant-activity-ledger__search input:focus-visible,
 .assistant-activity-ledger__receipt:focus-visible,
 .assistant-activity-ledger__more:focus-visible {
   outline: 2px solid hsl(var(--ring));
@@ -99,6 +100,38 @@
 .assistant-activity-ledger__tabs button[aria-pressed='true'] {
   background: hsl(var(--accent-copper) / 0.16);
   color: hsl(var(--foreground));
+}
+
+.assistant-activity-ledger__search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.35rem 0.4rem 0.1rem;
+  border: 1px solid hsl(var(--border) / 0.68);
+  border-radius: 0.6rem;
+  background: hsl(var(--background) / 0.44);
+  padding: 0.3rem 0.45rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.assistant-activity-ledger__search svg {
+  width: 0.78rem;
+  height: 0.78rem;
+  flex: 0 0 auto;
+}
+
+.assistant-activity-ledger__search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 0.68rem;
+  color: hsl(var(--foreground));
+}
+
+.assistant-activity-ledger__search input::placeholder {
+  color: hsl(var(--muted-foreground));
 }
 
 .assistant-activity-ledger__receipts {

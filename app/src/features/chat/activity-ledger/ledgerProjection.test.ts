@@ -173,6 +173,23 @@ describe('projectAssistantActivityLedger', () => {
     expect(ledger.receipts.map((receipt) => receipt.kind)).toEqual(['read', 'subagent']);
   });
 
+  it('projects only privacy-safe leaf file labels while retaining preview authority', () => {
+    const windowsPath = 'C:\\private\\planning\\AlphaPlan.ts';
+    const posixPath = '/private/build/BetaBuild.ts';
+    const ledger = projectAssistantActivityLedger(assistant([]), [
+      event({ id: 'windows-file', kind: 'file', filePath: windowsPath }),
+      event({ id: 'posix-file', kind: 'file', filePath: posixPath }),
+    ]);
+
+    expect(ledger.receipts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ filePath: windowsPath, fileLabel: 'AlphaPlan.ts' }),
+        expect.objectContaining({ filePath: posixPath, fileLabel: 'BetaBuild.ts' }),
+      ]),
+    );
+    expect(ledger.receipts.map((receipt) => receipt.fileLabel).join(' ')).not.toContain('private');
+  });
+
   it('counts unique completed files and distinct started subagent executions', () => {
     const ledger = projectAssistantActivityLedger(assistant([]), [
       event({ id: 'read-a', kind: 'file', filePath: 'src/a.ts', status: 'done' }),
