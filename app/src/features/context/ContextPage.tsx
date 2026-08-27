@@ -3133,7 +3133,9 @@ function ContextMapList({
                 </span>
                 <span className="shrink-0 tabular-nums">
                   {job.status === 'paused'
-                    ? 'Paused'
+                    ? compactPercent === null
+                      ? `Paused · ${compactEta ?? 'Estimating…'} · ${job.createdNodes.toLocaleString()} nodes`
+                      : `Paused · ≈${compactRounded}% · ETA ${compactEta} · ${job.createdNodes.toLocaleString()} nodes`
                     : job.status === 'cancelled'
                       ? 'Cancelled'
                       : job.status === 'failed'

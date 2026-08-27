@@ -93,6 +93,9 @@ describe('Context Map focused user-testing repairs', () => {
     expect(source).toContain(
       '`≈ ${compactRounded}% · ${compactEta} · ${job.createdNodes.toLocaleString()} nodes`',
     );
+    expect(source).toContain(
+      '`Paused · ≈${compactRounded}% · ETA ${compactEta} · ${job.createdNodes.toLocaleString()} nodes`',
+    );
     expect(source).toContain('siyuanOverallProgressPercent(job)');
     expect(source).toContain('formatSiyuanJobEta(job)');
     expect(source).toContain('role="progressbar"');

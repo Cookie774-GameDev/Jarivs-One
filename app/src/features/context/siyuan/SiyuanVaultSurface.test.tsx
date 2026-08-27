@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SiyuanSurfaceBridge } from './siyuanSurface';
@@ -49,6 +50,23 @@ describe('SiYuan Context Vault surface', () => {
       height: 800,
       toJSON: () => ({}),
     });
+  });
+
+  it('coalesces React StrictMode effect replay before invoking the native open', async () => {
+    const native = bridge();
+    render(
+      <StrictMode>
+        <SiyuanVaultSurface
+          projectId="project-1"
+          {...targetProps}
+          bridge={native}
+          onClose={vi.fn()}
+        />
+      </StrictMode>,
+    );
+
+    await waitFor(() => expect(native.open).toHaveBeenCalledOnce());
+    expect(native.close).not.toHaveBeenCalled();
   });
 
   it('opens over the reserved rectangle and clears the native surface on close', async () => {

@@ -96,8 +96,13 @@ export function SiyuanVaultSurface({
   }, [bridge, mapId, notebookId, projectId, rootDocumentId]);
 
   React.useEffect(() => {
-    void open();
+    let cancelled = false;
+    const openTimer = window.setTimeout(() => {
+      if (!cancelled) void open();
+    }, 0);
     return () => {
+      cancelled = true;
+      window.clearTimeout(openTimer);
       openGenerationRef.current += 1;
       const operationId = operationIdRef.current;
       operationIdRef.current = null;
