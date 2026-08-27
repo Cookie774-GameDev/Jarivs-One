@@ -243,10 +243,27 @@ export async function branchChatFromMessage(args: {
 }
 
 /** Rename placeholder tabs from the first user or assistant message. */
-export async function maybeRenameChat(chatId: ChatId, text: string): Promise<void> {
+const automaticRenameInflight = new Map<ChatId, Promise<void>>();
+
+export function maybeRenameChat(chatId: ChatId, text: string): Promise<void> {
   const title = deriveChatTitle(text);
-  if (!title) return;
-  const chat = await chatRepo.getById(chatId);
-  if (!chat || !isDefaultChatTitle(chat.title)) return;
-  await chatRepo.update(chatId, { title });
+  if (!title) return Promise.resolve();
+
+  const previous = automaticRenameInflight.get(chatId) ?? Promise.resolve();
+  const current = previous.then(async () => {
+    try {
+      const chat = await chatRepo.getById(chatId);
+      if (!chat || !isDefaultChatTitle(chat.title)) return;
+      await chatRepo.update(chatId, { title });
+    } catch {
+      // Automatic naming is best-effort and must never block or reject a response.
+    }
+  });
+  automaticRenameInflight.set(chatId, current);
+  void current.then(() => {
+    if (automaticRenameInflight.get(chatId) === current) {
+      automaticRenameInflight.delete(chatId);
+    }
+  });
+  return current;
 }

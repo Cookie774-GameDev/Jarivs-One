@@ -125,6 +125,48 @@ describe('maybeRenameChat', () => {
     expect(getById).toHaveBeenCalledWith(chatId);
     expect(update).not.toHaveBeenCalled();
   });
+
+  it('lets the initial useful request win concurrent agent fallback naming exactly once', async () => {
+    const chatId = 'cht_title_once' as never;
+    let storedTitle = 'New chat';
+    let releaseFirstUpdate: (() => void) | undefined;
+    const firstUpdateGate = new Promise<void>((resolve) => {
+      releaseFirstUpdate = resolve;
+    });
+    let firstUpdate = true;
+    const getById = vi.spyOn(chatRepo, 'getById').mockImplementation(async () => {
+      return { id: chatId, title: storedTitle } as never;
+    });
+    const update = vi.spyOn(chatRepo, 'update').mockImplementation(async (_id, patch) => {
+      if (firstUpdate) {
+        firstUpdate = false;
+        await firstUpdateGate;
+      }
+      storedTitle = patch.title ?? storedTitle;
+      return { id: chatId, title: storedTitle } as never;
+    });
+
+    const initialRequest = maybeRenameChat(chatId, 'Build the launch dashboard.');
+    await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    const agentFallback = maybeRenameChat(chatId, 'I finished the dashboard implementation.');
+
+    await Promise.resolve();
+    expect(getById).toHaveBeenCalledTimes(1);
+    releaseFirstUpdate?.();
+    await Promise.all([initialRequest, agentFallback]);
+
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(storedTitle).toBe('Build the launch dashboard');
+  });
+
+  it('keeps automatic naming persistence failures off the response path', async () => {
+    const chatId = 'cht_title_failure' as never;
+    vi.spyOn(chatRepo, 'getById').mockRejectedValueOnce(
+      new Error('storage temporarily unavailable'),
+    );
+
+    await expect(maybeRenameChat(chatId, 'Build the launch dashboard.')).resolves.toBeUndefined();
+  });
 });
 
 describe('formatBranchChatTitle', () => {
