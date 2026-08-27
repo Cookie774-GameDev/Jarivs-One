@@ -432,6 +432,7 @@ function ChecklistRow({
         <input
           value={item.title}
           onChange={(e) => onUpdate({ title: e.target.value })}
+          aria-label={`Task title: ${item.title}`}
           className={cn(
             'w-full bg-transparent text-secondary text-foreground outline-none',
             done && 'line-through text-muted-foreground',
@@ -455,6 +456,7 @@ function ChecklistRow({
         <input
           value={item.description ?? ''}
           onChange={(e) => onUpdate({ description: e.target.value })}
+          aria-label={`Description for ${item.title}`}
           placeholder="Description"
           className="mt-1 w-full bg-transparent text-metadata text-muted-foreground outline-none placeholder:text-muted-foreground/45"
         />

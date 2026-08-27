@@ -76,4 +76,21 @@ describe('KanbanPage add controls', () => {
     fireEvent.click(screen.getByRole('button', { name: "Add item to Today's to-do" }));
     expect(container.querySelector('[data-warm-surface="kanban-card"]')).not.toBeNull();
   });
+
+  it('names populated inline editors without relying on their current values', () => {
+    render(<KanbanPage />);
+    fireEvent.change(screen.getByRole('textbox', { name: "New item for Today's to-do" }), {
+      target: { value: 'Readable task' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: "Add item to Today's to-do" }));
+
+    expect(
+      (screen.getByRole('textbox', { name: 'Task title: Readable task' }) as HTMLInputElement)
+        .value,
+    ).toBe('Readable task');
+    expect(
+      (screen.getByRole('textbox', { name: 'Description for Readable task' }) as HTMLInputElement)
+        .value,
+    ).toBe('');
+  });
 });
