@@ -230,7 +230,7 @@ describe('AgenticConsole', () => {
     expect(screen.queryByText('The protected provider request is running.')).toBeNull();
   });
 
-  it('anchors the single session ledger beneath assistant prose and preserves safe command receipts', () => {
+  it('anchors the single turn ledger beneath assistant prose and preserves safe command receipts', () => {
     const rendered = renderConsole({
       chatId: 'chat-console',
       messages: [
@@ -265,6 +265,51 @@ describe('AgenticConsole', () => {
     fireEvent.click(screen.getByRole('button', { name: /show activity details/i }));
     expect(screen.getByText('Ran command')).toBeTruthy();
     expect(rendered.container.textContent).not.toContain('secret');
+  });
+
+  it('keeps the activity disclosure scoped to the latest user turn', () => {
+    renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('user-old', 'user', 1, [{ kind: 'text', text: 'First request.' }]),
+        message('assistant-old', 'assistant', 2, [
+          { kind: 'text', text: 'First response.' },
+          { kind: 'tool_call', call_id: 'old-command', tool: 'shell.exec', args: {} },
+          { kind: 'tool_result', call_id: 'old-command', result: { exitCode: 0 } },
+        ]),
+        message('user-new', 'user', 10, [{ kind: 'text', text: 'Second request.' }]),
+        message('assistant-new', 'assistant', 11, [{ kind: 'text', text: 'Second response.' }]),
+      ],
+      activity: [
+        {
+          id: 'old-complete',
+          chatId: 'chat-console',
+          kind: 'agent',
+          category: 'response',
+          status: 'done',
+          title: 'Old completed activity',
+          ts: 3,
+          endedAt: 4,
+        },
+        {
+          id: 'new-complete',
+          chatId: 'chat-console',
+          kind: 'agent',
+          category: 'response',
+          status: 'done',
+          title: 'New completed activity',
+          ts: 12,
+          endedAt: 13,
+        },
+      ],
+      sessionEvidence: { status: 'completed', currentOperation: 'Complete' },
+    });
+
+    expect(screen.getByRole('button', { name: /show activity details/i }).textContent).toContain(
+      '1 action',
+    );
+    fireEvent.click(screen.getByRole('button', { name: /show activity details/i }));
+    expect(screen.queryByText('Ran command')).toBeNull();
   });
 
   it('switches motion on a rapid structured activity transition and becomes still at completion', () => {

@@ -528,7 +528,7 @@ function BlockView({
   }
   if (block.kind === 'activity') {
     // Chat-level lifecycle events do not have durable assistant-message
-    // correlation. Render them once in the session activity ledger instead of
+    // correlation. Render them once in the current turn activity ledger instead of
     // manufacturing a wall of standalone assistant/status messages.
     return null;
   }
@@ -574,12 +574,26 @@ export function AgenticConsole({
     [messages, activity, sessionEvidence],
   );
   const finalAnswerId = [...blocks].reverse().find((block) => block.kind === 'answer')?.id;
-  const sessionActivityMessage = React.useMemo<Message | undefined>(() => {
-    if (activity.length === 0) return undefined;
-    const startedAt = Math.min(...activity.map((event) => event.startedAt ?? event.ts));
-    const updatedAt = Math.max(...activity.map((event) => event.endedAt ?? event.ts));
+  const latestUserTurnStartedAt = React.useMemo(
+    () =>
+      messages.reduce(
+        (latest, message) =>
+          message.role === 'user' ? Math.max(latest, message.created_at) : latest,
+        Number.NEGATIVE_INFINITY,
+      ),
+    [messages],
+  );
+  const turnActivity = React.useMemo(
+    () => activity.filter((event) => (event.startedAt ?? event.ts) >= latestUserTurnStartedAt),
+    [activity, latestUserTurnStartedAt],
+  );
+  const turnActivityMessage = React.useMemo<Message | undefined>(() => {
+    if (turnActivity.length === 0) return undefined;
+    const startedAt = Math.min(...turnActivity.map((event) => event.startedAt ?? event.ts));
+    const updatedAt = Math.max(...turnActivity.map((event) => event.endedAt ?? event.ts));
     const toolParts = messages.reduce<Message['parts']>((parts, message) => {
-      if (message.role !== 'assistant') return parts;
+      if (message.role !== 'assistant' || message.created_at < latestUserTurnStartedAt)
+        return parts;
       const prefix = `${String(message.id)}:`;
       for (const part of message.parts) {
         if (part.kind === 'tool_call') {
@@ -595,15 +609,14 @@ export function AgenticConsole({
       id: `session-activity:${chatId}` as Message['id'],
       chat_id: chatId as Message['chat_id'],
       role: 'assistant',
-      // Session-scoped activity events are not durably correlated to one
-      // assistant message. Aggregate their already-authorized tool receipts
-      // here so the single disclosure can still truthfully list commands,
-      // edits, reads, and checks without rendering raw tool payloads.
+      // Activity events are not durably correlated to one assistant message.
+      // Bound them to the latest user turn and aggregate only that turn's
+      // already-authorized tool receipts without rendering raw payloads.
       parts: toolParts,
       created_at: startedAt,
       updated_at: updatedAt,
     };
-  }, [activity, chatId, messages]);
+  }, [chatId, latestUserTurnStartedAt, messages, turnActivity]);
   const loadCount = Math.min(TRANSCRIPT_PAGE_SIZE, transcriptWindow.remaining);
   const messagesBySource = React.useMemo(
     () =>
@@ -771,10 +784,10 @@ export function AgenticConsole({
                 {showLedger ? (
                   <AssistantActivityLedger message={sourceMessage} compact={compact} />
                 ) : null}
-                {block.id === finalAnswerId && sessionActivityMessage ? (
+                {block.id === finalAnswerId && turnActivityMessage ? (
                   <AssistantActivityLedger
-                    message={sessionActivityMessage}
-                    correlatedEvents={activity}
+                    message={turnActivityMessage}
+                    correlatedEvents={turnActivity}
                     compact={compact}
                     active={
                       summary.status === 'queued' ||
@@ -787,10 +800,10 @@ export function AgenticConsole({
               </React.Fragment>
             );
           })}
-          {sessionActivityMessage && !finalAnswerId ? (
+          {turnActivityMessage && !finalAnswerId ? (
             <AssistantActivityLedger
-              message={sessionActivityMessage}
-              correlatedEvents={activity}
+              message={turnActivityMessage}
+              correlatedEvents={turnActivity}
               compact={compact}
               active={
                 summary.status === 'queued' ||
