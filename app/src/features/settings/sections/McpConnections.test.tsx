@@ -1,7 +1,12 @@
+import { StrictMode } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { VibeSpaceGatewayConnection, VibeSpaceMcpGateway } from '@/lib/mcp/vibeSpaceGateway';
+import type {
+  RestorableVibeSpaceMcpGateway,
+  VibeSpaceGatewayConnection,
+  VibeSpaceMcpRestoreResult,
+} from '@/lib/mcp/vibeSpaceGateway';
 import { useAuthStore } from '@/stores/auth';
 import type { ProjectId, WorkspaceId } from '@/types/common';
 import { McpConnections } from './McpConnections';
@@ -49,7 +54,14 @@ function runtimeHarness(initial: readonly VibeSpaceGatewayConnection[] = []) {
   const approve = vi.fn();
   const reconnect = vi.fn(async () => undefined);
   const revoke = vi.fn(async () => undefined);
-  const runtime: VibeSpaceMcpGateway = {
+  const restoreApprovedConnections = vi.fn(
+    async (): Promise<VibeSpaceMcpRestoreResult> => ({
+      restoredIds: Object.freeze([]),
+      skippedIds: Object.freeze([]),
+      failedIds: Object.freeze([]),
+    }),
+  );
+  const runtime: RestorableVibeSpaceMcpGateway = {
     getSnapshot: () => snapshot,
     subscribe: (listener) => {
       listeners.add(listener);
@@ -61,6 +73,7 @@ function runtimeHarness(initial: readonly VibeSpaceGatewayConnection[] = []) {
     approve,
     reconnect,
     revoke,
+    restoreApprovedConnections,
     getCapabilitySnapshot: () => ({
       schemaVersion: 1,
       accountId: 'account',
@@ -80,6 +93,7 @@ function runtimeHarness(initial: readonly VibeSpaceGatewayConnection[] = []) {
     approve,
     reconnect,
     revoke,
+    restoreApprovedConnections,
     publish(next: readonly VibeSpaceGatewayConnection[]) {
       snapshot = next;
       listeners.forEach((listener) => listener());
@@ -118,6 +132,71 @@ afterEach(() => {
 });
 
 describe('McpConnections', () => {
+  it('restores approved exposures once per exact gateway instance without blocking mount', async () => {
+    const first = runtimeHarness();
+    const second = runtimeHarness();
+    const view = render(
+      <StrictMode>
+        <McpConnections runtime={first.runtime} />
+      </StrictMode>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'VibeSpace MCP Gateway' })).toBeTruthy();
+    await waitFor(() => expect(first.restoreApprovedConnections).toHaveBeenCalledOnce());
+
+    view.rerender(
+      <StrictMode>
+        <McpConnections runtime={first.runtime} />
+      </StrictMode>,
+    );
+    expect(first.restoreApprovedConnections).toHaveBeenCalledOnce();
+
+    view.rerender(
+      <StrictMode>
+        <McpConnections runtime={second.runtime} />
+      </StrictMode>,
+    );
+    await waitFor(() => expect(second.restoreApprovedConnections).toHaveBeenCalledOnce());
+    expect(first.restoreApprovedConnections).toHaveBeenCalledOnce();
+  });
+
+  it('sanitizes restoration failures and ignores completion after unmount', async () => {
+    const failed = runtimeHarness();
+    failed.restoreApprovedConnections.mockResolvedValueOnce({
+      restoredIds: Object.freeze([]),
+      skippedIds: Object.freeze([]),
+      failedIds: Object.freeze(['private-server-id']),
+    });
+    const failedView = render(<McpConnections runtime={failed.runtime} />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe('Some approved MCP connections could not be restored.');
+    expect(alert.textContent).not.toContain('private-server-id');
+    failedView.unmount();
+
+    const rejected = runtimeHarness();
+    rejected.restoreApprovedConnections.mockRejectedValueOnce(
+      new Error('raw-secret-restore-detail'),
+    );
+    const rejectedView = render(<McpConnections runtime={rejected.runtime} />);
+    const rejectedAlert = await screen.findByRole('alert');
+    expect(rejectedAlert.textContent).toBe('Some approved MCP connections could not be restored.');
+    expect(rejectedAlert.textContent).not.toContain('raw-secret');
+    rejectedView.unmount();
+
+    const pending = deferred();
+    const disposed = runtimeHarness();
+    disposed.restoreApprovedConnections.mockImplementationOnce(async () => {
+      await pending.promise;
+      return { restoredIds: [], skippedIds: [], failedIds: [] };
+    });
+    const disposedView = render(<McpConnections runtime={disposed.runtime} />);
+    await waitFor(() => expect(disposed.restoreApprovedConnections).toHaveBeenCalledOnce());
+    disposedView.unmount();
+    await act(async () => pending.reject(new Error('raw-secret-restore-detail')));
+    expect(screen.queryByText(/raw-secret|restore-detail/i)).toBeNull();
+  });
+
   it('invalidates a pending connect immediately on account and project switch', async () => {
     setScope('account-a', 'project-a');
     const pending = deferred();

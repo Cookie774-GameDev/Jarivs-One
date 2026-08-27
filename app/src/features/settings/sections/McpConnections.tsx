@@ -2,11 +2,25 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 
 import { Button } from '@/components/ui/button';
 import { canonicalRemoteMcpEndpoint } from '@/lib/mcp/remoteAuthorization';
-import { getVibeSpaceMcpGateway, type VibeSpaceMcpGateway } from '@/lib/mcp/vibeSpaceGateway';
+import {
+  getVibeSpaceMcpGateway,
+  type RestorableVibeSpaceMcpGateway,
+  type VibeSpaceMcpGateway,
+} from '@/lib/mcp/vibeSpaceGateway';
 import { useAuthStore } from '@/stores/auth';
 
 const SAFE_SERVER_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/u;
 const SAFE_CONNECTION_ERROR = 'Unable to connect to this MCP server.';
+const SAFE_RESTORE_ERROR = 'Some approved MCP connections could not be restored.';
+
+function isRestorableGateway(
+  runtime: VibeSpaceMcpGateway,
+): runtime is RestorableVibeSpaceMcpGateway {
+  return (
+    typeof (runtime as Partial<RestorableVibeSpaceMcpGateway>).restoreApprovedConnections ===
+    'function'
+  );
+}
 
 export interface McpConnectionsProps {
   readonly runtime?: VibeSpaceMcpGateway;
@@ -46,6 +60,12 @@ export function McpConnections({ runtime: configuredRuntime }: McpConnectionsPro
     [accountId, configuredRuntime, projectId],
   );
   const operationScopeRef = useRef<McpOperationScope | undefined>(undefined);
+  const restorePromisesRef = useRef(
+    new WeakMap<
+      VibeSpaceMcpGateway,
+      ReturnType<RestorableVibeSpaceMcpGateway['restoreApprovedConnections']>
+    >(),
+  );
   const previousScope = operationScopeRef.current;
   if (
     !previousScope ||
@@ -76,6 +96,7 @@ export function McpConnections({ runtime: configuredRuntime }: McpConnectionsPro
   const [authorized, setAuthorized] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [restoreError, setRestoreError] = useState<string>();
 
   const operationIsCurrent = (candidate: McpOperationScope) =>
     operationScopeRef.current === candidate && !candidate.controller.signal.aborted;
@@ -95,6 +116,27 @@ export function McpConnections({ runtime: configuredRuntime }: McpConnectionsPro
       }
     };
   }, [operationScope]);
+
+  useEffect(() => {
+    if (!isRestorableGateway(runtime)) return;
+    let active = true;
+    setRestoreError(undefined);
+    let restorePromise = restorePromisesRef.current.get(runtime);
+    if (!restorePromise) {
+      restorePromise = Promise.resolve().then(() => runtime.restoreApprovedConnections());
+      restorePromisesRef.current.set(runtime, restorePromise);
+    }
+    void restorePromise
+      .then((result) => {
+        if (active && result.failedIds.length > 0) setRestoreError(SAFE_RESTORE_ERROR);
+      })
+      .catch(() => {
+        if (active) setRestoreError(SAFE_RESTORE_ERROR);
+      });
+    return () => {
+      active = false;
+    };
+  }, [runtime]);
 
   const invalidateReview = () => {
     setReviewed(undefined);
@@ -311,6 +353,12 @@ export function McpConnections({ runtime: configuredRuntime }: McpConnectionsPro
       {error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}
+        </p>
+      ) : null}
+
+      {restoreError ? (
+        <p role="alert" className="text-xs text-destructive">
+          {restoreError}
         </p>
       ) : null}
 
