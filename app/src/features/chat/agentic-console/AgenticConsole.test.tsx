@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { ChatActivityEvent } from '../activity/types';
+import { AgentChecklistBar } from '../AgentChecklistBar';
 import type { Message } from '@/types';
 import { AgenticConsole, AgenticConsoleErrorBoundary } from './AgenticConsole';
 import { DEFAULT_CONSOLE_PREFERENCES, saveConsolePreferences } from './preferences';
@@ -364,6 +365,74 @@ describe('AgenticConsole', () => {
     expect(screen.queryByText('Ran command')).toBeNull();
   });
 
+  it('uses a same-turn canonical duration when correlated event timestamps have no interval', () => {
+    renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('user', 'user', 1_000, [{ kind: 'text', text: 'Run the verified task.' }]),
+        message('assistant', 'assistant', 8_000, [{ kind: 'text', text: 'Task complete.' }]),
+      ],
+      activity: [
+        {
+          id: 'completed-at-one-timestamp',
+          chatId: 'chat-console',
+          kind: 'agent',
+          category: 'response',
+          status: 'done',
+          title: 'Completed the verified task',
+          ts: 8_000,
+          startedAt: 8_000,
+          endedAt: 8_000,
+        },
+      ],
+      sessionEvidence: {
+        status: 'completed',
+        currentOperation: 'Complete',
+        startedAt: 1_000,
+        endedAt: 8_000,
+      },
+    });
+
+    expect(screen.getByRole('button', { name: /show activity details/i }).textContent).toContain(
+      'Worked for 7s',
+    );
+  });
+
+  it('does not apply an older run duration to a later user turn', () => {
+    renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('user-old', 'user', 1_000, [{ kind: 'text', text: 'Older request.' }]),
+        message('assistant-old', 'assistant', 8_000, [{ kind: 'text', text: 'Older answer.' }]),
+        message('user-new', 'user', 10_000, [{ kind: 'text', text: 'New request.' }]),
+        message('assistant-new', 'assistant', 10_000, [{ kind: 'text', text: 'New answer.' }]),
+      ],
+      activity: [
+        {
+          id: 'new-turn-one-timestamp',
+          chatId: 'chat-console',
+          kind: 'agent',
+          category: 'response',
+          status: 'done',
+          title: 'Completed the new response',
+          ts: 10_000,
+          startedAt: 10_000,
+          endedAt: 10_000,
+        },
+      ],
+      sessionEvidence: {
+        status: 'completed',
+        currentOperation: 'Complete',
+        startedAt: 1_000,
+        endedAt: 8_000,
+      },
+    });
+
+    expect(
+      screen.getByRole('button', { name: /show activity details/i }).textContent,
+    ).not.toContain('Worked for 7s');
+  });
+
   it('switches motion on a rapid structured activity transition and becomes still at completion', () => {
     vi.useFakeTimers();
     const baseActivity: ChatActivityEvent = {
@@ -652,6 +721,23 @@ describe('AgenticConsole', () => {
     expect(header?.contains(progress)).toBe(true);
     expect(status?.nextElementSibling).toBe(progress.parentElement);
     expect(progress.parentElement?.nextElementSibling).toBe(metrics);
+  });
+
+  it('does not reserve a header progress slot when the checklist has no evidence', () => {
+    const messages = [message('user', 'user', 10, [{ kind: 'text', text: 'Say hello.' }])];
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages,
+      activity: [],
+      headerProgress: (
+        <AgentChecklistBar run={undefined} events={[]} messages={messages} embedded />
+      ),
+    });
+
+    const header = rendered.container.querySelector('[data-testid="jarvis-session-panel"]');
+    expect(header?.querySelector('.agentic-session__progress')).toBeNull();
+    expect(header?.hasAttribute('data-has-progress')).toBe(false);
+    expect(screen.queryByRole('progressbar', { name: 'Agent checklist' })).toBeNull();
   });
 
   it('keeps raw tool payloads private and expands the safe ledger explicitly', () => {

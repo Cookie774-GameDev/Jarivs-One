@@ -140,6 +140,40 @@ function statusLabel(status: AgenticSessionSummary['status']): string {
   return 'Idle';
 }
 
+function HeaderProgressSlot({
+  children,
+  present,
+  onPresenceChange,
+}: {
+  children: React.ReactNode;
+  present: boolean;
+  onPresenceChange: (present: boolean) => void;
+}) {
+  const slotRef = React.useRef<HTMLDivElement>(null);
+  const updatePresence = React.useCallback(() => {
+    onPresenceChange(Boolean(slotRef.current?.hasChildNodes()));
+  }, [onPresenceChange]);
+
+  React.useLayoutEffect(updatePresence);
+  React.useLayoutEffect(() => {
+    const slot = slotRef.current;
+    if (!slot) return;
+    const observer = new MutationObserver(updatePresence);
+    observer.observe(slot, { childList: true });
+    return () => observer.disconnect();
+  }, [updatePresence]);
+
+  return (
+    <div
+      ref={slotRef}
+      className={present ? 'agentic-session__progress' : undefined}
+      hidden={!present}
+    >
+      {children}
+    </div>
+  );
+}
+
 function SessionHeader({
   chatId,
   summary,
@@ -164,6 +198,7 @@ function SessionHeader({
   onExport: () => void;
 }) {
   const [open, setOpen] = React.useState(false);
+  const [hasHeaderProgress, setHasHeaderProgress] = React.useState(false);
   const invoke = (action: (() => void | Promise<void>) | undefined) => {
     if (!action) return;
     const report = (error: unknown) => {
@@ -180,7 +215,7 @@ function SessionHeader({
       className="agentic-session"
       aria-label="Agentic session summary"
       data-testid="jarvis-session-panel"
-      data-has-progress={headerProgress ? 'true' : undefined}
+      data-has-progress={hasHeaderProgress ? 'true' : undefined}
     >
       <div className="agentic-session__identity">
         <span className={cn('agentic-status-dot', `is-${summary.status}`)} aria-hidden="true" />
@@ -189,7 +224,9 @@ function SessionHeader({
           <span title={summary.currentOperation}>{summary.currentOperation}</span>
         </div>
       </div>
-      {headerProgress ? <div className="agentic-session__progress">{headerProgress}</div> : null}
+      <HeaderProgressSlot present={hasHeaderProgress} onPresenceChange={setHasHeaderProgress}>
+        {headerProgress}
+      </HeaderProgressSlot>
       <div className="agentic-session__metrics-row">
         <button
           type="button"
@@ -612,6 +649,13 @@ export function AgenticConsole({
     () => activity.filter((event) => (event.startedAt ?? event.ts) >= latestUserTurnStartedAt),
     [activity, latestUserTurnStartedAt],
   );
+  const turnAuthoritativeDurationMs =
+    typeof summary.durationMs === 'number' &&
+    summary.durationMs > 0 &&
+    typeof summary.startedAt === 'number' &&
+    summary.startedAt >= latestUserTurnStartedAt
+      ? summary.durationMs
+      : undefined;
   const turnActivityMessage = React.useMemo<Message | undefined>(() => {
     if (turnActivity.length === 0) return undefined;
     const startedAt = Math.min(...turnActivity.map((event) => event.startedAt ?? event.ts));
@@ -844,6 +888,7 @@ export function AgenticConsole({
                   <AssistantActivityLedger
                     message={turnActivityMessage}
                     correlatedEvents={turnActivity}
+                    authoritativeDurationMs={turnAuthoritativeDurationMs}
                     compact={compact}
                     active={
                       summary.status === 'queued' ||
@@ -876,6 +921,7 @@ export function AgenticConsole({
             <AssistantActivityLedger
               message={turnActivityMessage}
               correlatedEvents={turnActivity}
+              authoritativeDurationMs={turnAuthoritativeDurationMs}
               compact={compact}
               active={
                 summary.status === 'queued' ||
