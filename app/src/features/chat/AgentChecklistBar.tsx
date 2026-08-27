@@ -219,6 +219,7 @@ export function AgentChecklistBar({
   const progress = checklistCoverageComplete ? (settled / items.length) * 100 : null;
   const runActive =
     run?.status === 'queued' || run?.status === 'compiling' || run?.status === 'running';
+  const checklistActive = hasCanonicalHivePlan ? runActive : Boolean(active);
   const detail = checklistCoverageComplete
     ? `${completed} completed${attention ? ` · ${attention} need attention` : ''} · ${settled} of ${items.length} settled${active ? ` · ${active.label}` : ''}`
     : checklistCoverageTruncated
@@ -243,7 +244,7 @@ export function AgentChecklistBar({
           label="Agent checklist"
           detail={detail}
           mode="compact"
-          paused={!runActive}
+          paused={!checklistActive}
         />
         <button
           type="button"

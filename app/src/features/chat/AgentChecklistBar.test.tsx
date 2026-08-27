@@ -17,12 +17,19 @@ vi.mock('@/components/progress/WarmHexProgress', () => ({
     progress,
     label,
     detail,
+    paused,
   }: {
-    progress: number;
+    progress: number | null;
     label: string;
     detail?: string;
+    paused?: boolean;
   }) => (
-    <div role="progressbar" aria-label={label} aria-valuenow={progress}>
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuenow={progress ?? undefined}
+      data-paused={paused ? 'true' : 'false'}
+    >
       {detail}
     </div>
   ),
@@ -150,6 +157,36 @@ describe('AgentChecklistBar', () => {
     ]);
     render(<AgentChecklistBar run={undefined} events={[]} messages={messages} />);
     expect(screen.getByText(/1 completed · 1 of 3 settled/i)).toBeTruthy();
+    expect(
+      screen.getByRole('progressbar', { name: 'Agent checklist' }).getAttribute('data-paused'),
+    ).toBe('false');
+  });
+
+  it('pauses OpenCode checklist motion when its latest milestone snapshot has no active item', () => {
+    const messages = [
+      {
+        role: 'assistant',
+        parts: [
+          {
+            kind: 'tool_call',
+            tool: 'todowrite',
+            call_id: 'settled-plan',
+            args: {
+              todos: [
+                { content: 'Inspect the implementation', status: 'completed' },
+                { content: 'Record the blocker', status: 'blocked' },
+              ],
+            },
+          },
+        ],
+      },
+    ] as unknown as Message[];
+
+    render(<AgentChecklistBar run={undefined} events={[]} messages={messages} />);
+
+    expect(
+      screen.getByRole('progressbar', { name: 'Agent checklist' }).getAttribute('data-paused'),
+    ).toBe('true');
   });
 
   it('keeps canonical Hive plan evidence authoritative over an OpenCode todo snapshot', () => {
