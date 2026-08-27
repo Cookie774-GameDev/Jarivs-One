@@ -33,6 +33,12 @@ export function PluginDashboardPanel({ pluginId }: { pluginId?: string }) {
   }
 
   const dashboardUrl = DASHBOARD_URLS[plugin.id] ?? plugin.credentialUrl ?? plugin.docsUrl;
+  const agentAccess =
+    connection?.state !== 'connected'
+      ? 'Connection required'
+      : connection.enabled
+        ? 'Enabled'
+        : 'Disabled';
   return (
     <section className="workbench-plugin-dashboard" aria-label={`${plugin.name} dashboard`}>
       <header>
@@ -44,8 +50,14 @@ export function PluginDashboardPanel({ pluginId }: { pluginId?: string }) {
       </header>
       <p>{plugin.description}</p>
       <dl>
-        <div><dt>Terminal access</dt><dd>{connection?.enabled ? 'Enabled' : 'Disabled'}</dd></div>
-        <div><dt>Available tools</dt><dd>{plugin.tools.length}</dd></div>
+        <div>
+          <dt>Agent access</dt>
+          <dd>{agentAccess}</dd>
+        </div>
+        <div>
+          <dt>Available tools</dt>
+          <dd>{plugin.tools.length}</dd>
+        </div>
       </dl>
       {dashboardUrl && (
         <Button type="button" size="sm" onClick={() => void openExternal(dashboardUrl)}>
