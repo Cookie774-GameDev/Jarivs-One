@@ -527,26 +527,12 @@ function BlockView({
     );
   }
   if (block.kind === 'activity') {
-    const motion = resolveAgentMotion({
-      status: block.status,
-      activityCategory: block.activityCategory,
-      activityKind: block.activityKind,
-      title: block.title,
-      detail: block.detail,
-      filePath: block.filePath,
-    });
-    return (
-      <div className={cn('agentic-activity', `is-${block.status}`)}>
-        <PerceptibleAgentMotionIndicator motion={motion} compact={compact} />
-        <span className="agentic-activity__kind">{activityIcon(block.activityKind)}</span>
-        <span className="agentic-activity__status">{statusIcon(block.status)}</span>
-        <strong>{block.title}</strong>
-        {block.filePath ? <code>{block.filePath}</code> : null}
-        {block.detail ? <span>{block.detail}</span> : null}
-      </div>
-    );
+    // Chat-level lifecycle events do not have durable assistant-message
+    // correlation. Render them once in the session activity ledger instead of
+    // manufacturing a wall of standalone assistant/status messages.
+    return null;
   }
-  if (block.kind === 'diff') return <DiffView block={block} compact={compact} />;
+  if (block.kind === 'diff') return null;
   // Persisted command/tool payloads are represented by the privacy-safe
   // AssistantActivityLedger at their message boundary. Never expose their
   // arguments, command text, stdout, stderr, environment, or raw results here.
@@ -588,6 +574,36 @@ export function AgenticConsole({
     [messages, activity, sessionEvidence],
   );
   const finalAnswerId = [...blocks].reverse().find((block) => block.kind === 'answer')?.id;
+  const sessionActivityMessage = React.useMemo<Message | undefined>(() => {
+    if (activity.length === 0) return undefined;
+    const startedAt = Math.min(...activity.map((event) => event.startedAt ?? event.ts));
+    const updatedAt = Math.max(...activity.map((event) => event.endedAt ?? event.ts));
+    const toolParts = messages.reduce<Message['parts']>((parts, message) => {
+      if (message.role !== 'assistant') return parts;
+      const prefix = `${String(message.id)}:`;
+      for (const part of message.parts) {
+        if (part.kind === 'tool_call') {
+          parts.push({ ...part, call_id: `${prefix}${part.call_id}` });
+        }
+        if (part.kind === 'tool_result') {
+          parts.push({ ...part, call_id: `${prefix}${part.call_id}` });
+        }
+      }
+      return parts;
+    }, []);
+    return {
+      id: `session-activity:${chatId}` as Message['id'],
+      chat_id: chatId as Message['chat_id'],
+      role: 'assistant',
+      // Session-scoped activity events are not durably correlated to one
+      // assistant message. Aggregate their already-authorized tool receipts
+      // here so the single disclosure can still truthfully list commands,
+      // edits, reads, and checks without rendering raw tool payloads.
+      parts: toolParts,
+      created_at: startedAt,
+      updated_at: updatedAt,
+    };
+  }, [activity, chatId, messages]);
   const loadCount = Math.min(TRANSCRIPT_PAGE_SIZE, transcriptWindow.remaining);
   const messagesBySource = React.useMemo(
     () =>
@@ -737,6 +753,7 @@ export function AgenticConsole({
           {blocks.map((block, index) => {
             const sourceMessage = messagesBySource.get(block.sourceId);
             const showLedger =
+              activity.length === 0 &&
               block.kind !== 'legacy' &&
               sourceMessage?.role === 'assistant' &&
               lastVisibleIndexBySource.get(block.sourceId) === index &&
@@ -754,9 +771,35 @@ export function AgenticConsole({
                 {showLedger ? (
                   <AssistantActivityLedger message={sourceMessage} compact={compact} />
                 ) : null}
+                {block.id === finalAnswerId && sessionActivityMessage ? (
+                  <AssistantActivityLedger
+                    message={sessionActivityMessage}
+                    correlatedEvents={activity}
+                    compact={compact}
+                    active={
+                      summary.status === 'queued' ||
+                      summary.status === 'planning' ||
+                      summary.status === 'running' ||
+                      summary.status === 'recovering'
+                    }
+                  />
+                ) : null}
               </React.Fragment>
             );
           })}
+          {sessionActivityMessage && !finalAnswerId ? (
+            <AssistantActivityLedger
+              message={sessionActivityMessage}
+              correlatedEvents={activity}
+              compact={compact}
+              active={
+                summary.status === 'queued' ||
+                summary.status === 'planning' ||
+                summary.status === 'running' ||
+                summary.status === 'recovering'
+              }
+            />
+          ) : null}
         </div>
       ) : null}
     </section>

@@ -136,7 +136,7 @@ describe('projectAssistantActivityLedger', () => {
       events,
     );
     expect(ledger).toMatchObject({
-      actionsTotal: 7,
+      actionsTotal: 8,
       readsTotal: 1,
       searchesTotal: 1,
       editedFilesTotal: 1,
@@ -147,6 +147,25 @@ describe('projectAssistantActivityLedger', () => {
     expect(ledger.receipts.find((receipt) => receipt.id === 'activity:read-1')?.status).toBe(
       'done',
     );
+  });
+
+  it('distinguishes an explicitly created file from a generic edit receipt', () => {
+    const ledger = projectAssistantActivityLedger(assistant([]), [
+      event({
+        id: 'create-1',
+        kind: 'diff',
+        category: 'writing',
+        title: 'Created report.ts',
+        filePath: 'src/report.ts',
+        status: 'done',
+      }),
+    ]);
+
+    expect(ledger.receipts[0]).toMatchObject({
+      kind: 'edit',
+      label: 'Created file',
+      fileLabel: 'report.ts',
+    });
   });
 
   it('honors explicit file and subagent event kinds without requiring optional categories', () => {

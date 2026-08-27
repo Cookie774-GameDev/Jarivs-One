@@ -156,6 +156,19 @@ function receiptLabel(kind: LedgerReceiptKind, status: ChatActivityStatus): stri
   });
 }
 
+function eventReceiptLabel(event: ChatActivityEvent, kind: LedgerReceiptKind): string {
+  if (kind !== 'edit') return receiptLabel(kind, event.status);
+  const creating = /\b(?:creat(?:e|ed|ing)|new file)\b/i.test(event.title);
+  if (!creating) return receiptLabel(kind, event.status);
+  return {
+    pending: 'File creation queued',
+    running: 'Creating file',
+    done: 'Created file',
+    cancelled: 'File creation cancelled',
+    error: 'File creation failed',
+  }[event.status];
+}
+
 function resultEvidence(result: unknown): { status: ChatActivityStatus; durationMs?: number } {
   if (!result || typeof result !== 'object' || Array.isArray(result)) return { status: 'done' };
   const record = result as Record<string, unknown>;
@@ -221,7 +234,7 @@ function eventReceipts(
     receipts.push({
       id: `activity:${event.id}`,
       kind,
-      label: receiptLabel(kind, event.status),
+      label: eventReceiptLabel(event, kind),
       status: event.status,
       ts: event.ts,
       ...(durationMs === undefined ? {} : { durationMs }),
@@ -229,7 +242,11 @@ function eventReceipts(
         ? { filePath: event.filePath, fileLabel: safeFileLabel(event.filePath) }
         : {}),
       ...(event.agentSlug ? { agentSlug: safeText(event.agentSlug, 256) } : {}),
-      countsAsAction: kind !== 'other',
+      // Each explicitly correlated lifecycle identity is a truthful action in
+      // the session ledger, even when the producer cannot classify it more
+      // narrowly than `other`. Lifecycle updates with the same id are already
+      // deduplicated above, so this does not count status transitions twice.
+      countsAsAction: true,
     });
   }
   return receipts;

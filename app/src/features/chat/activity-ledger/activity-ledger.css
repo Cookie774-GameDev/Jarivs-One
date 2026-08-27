@@ -1,6 +1,6 @@
 .assistant-activity-ledger {
-  margin-top: 0.45rem;
-  width: min(100%, 52rem);
+  margin-top: 0.55rem;
+  width: 100%;
   color: hsl(var(--foreground));
 }
 
@@ -9,11 +9,12 @@
   width: 100%;
   min-width: 0;
   align-items: center;
-  gap: 0.45rem;
-  border-radius: 0.7rem;
+  gap: 0.55rem;
+  border-radius: 0.78rem;
   border: 1px solid hsl(var(--border) / 0.62);
   background: hsl(var(--panel) / 0.52);
-  padding: 0.42rem 0.6rem;
+  min-height: 3rem;
+  padding: 0.52rem 0.72rem;
   text-align: left;
   box-shadow: inset 0 1px hsl(var(--background) / 0.58);
   backdrop-filter: blur(12px);
@@ -34,7 +35,8 @@
 
 .assistant-activity-ledger__title {
   flex: 0 0 auto;
-  font-size: 0.74rem;
+  padding-right: 0.25rem;
+  font-size: 0.76rem;
   font-weight: 650;
 }
 
@@ -43,18 +45,23 @@
   min-width: 0;
   flex: 1;
   flex-wrap: wrap;
-  gap: 0.25rem 0.65rem;
+  justify-content: flex-end;
+  gap: 0.3rem;
   font-size: 0.68rem;
   color: hsl(var(--muted-foreground));
 }
 
 .assistant-activity-ledger__metrics span {
   white-space: nowrap;
+  border: 1px solid hsl(var(--border) / 0.62);
+  border-radius: 999px;
+  background: hsl(var(--background) / 0.36);
+  padding: 0.25rem 0.62rem;
 }
 
 .assistant-activity-ledger__chevron {
-  height: 0.85rem;
-  width: 0.85rem;
+  height: 0.9rem;
+  width: 0.9rem;
   flex: 0 0 auto;
   color: hsl(var(--muted-foreground));
   transition: transform 150ms ease;
@@ -72,7 +79,7 @@
   border: 1px solid hsl(var(--border) / 0.7);
   border-top: 0;
   border-radius: 0 0 0.8rem 0.8rem;
-  background: hsl(var(--panel) / 0.76);
+  background: hsl(var(--panel) / 0.82);
   backdrop-filter: blur(14px);
 }
 
@@ -229,6 +236,27 @@ button.assistant-activity-ledger__receipt:hover {
 .assistant-activity-ledger.is-compact .assistant-activity-ledger__metrics {
   max-height: 2.2rem;
   overflow: hidden;
+}
+
+@media (max-width: 760px) {
+  .assistant-activity-ledger__disclosure {
+    flex-wrap: wrap;
+  }
+
+  .assistant-activity-ledger__metrics {
+    flex-basis: 100%;
+    justify-content: flex-start;
+    padding-left: 1.45rem;
+  }
+
+  .assistant-activity-ledger__receipt {
+    grid-template-columns: 1rem minmax(6.5rem, auto) minmax(0, 1fr);
+  }
+
+  .assistant-activity-ledger__duration,
+  .assistant-activity-ledger__status {
+    grid-column: 3;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

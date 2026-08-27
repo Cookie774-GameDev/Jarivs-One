@@ -155,21 +155,35 @@ export function AssistantActivityLedger({
   const runningReceipt = [...ledger.receipts]
     .reverse()
     .find((receipt) => receipt.status === 'running' || receipt.status === 'pending');
+  const runningEvent = [...correlatedEvents]
+    .reverse()
+    .find((event) => event.status === 'running' || event.status === 'pending');
   const live = active;
   const continuousResponseTitle = live
     ? `${ledger.currentOperation ?? 'Working'} · ${actionLabel(ledger.actionsTotal)}`
     : ledger.durationMs !== undefined
       ? `Worked for ${formatDuration(ledger.durationMs)} · ${actionLabel(ledger.actionsTotal)}`
       : `Activity · ${actionLabel(ledger.actionsTotal)}`;
-  const motion = resolveAgentMotion({
-    status: live ? 'running' : 'done',
-    activityKind:
-      runningReceipt?.kind === 'subagent'
-        ? 'subagent'
-        : runningReceipt?.kind === 'read' || runningReceipt?.kind === 'edit'
-          ? 'file'
-          : 'tool',
-  });
+  const motion = resolveAgentMotion(
+    runningEvent
+      ? {
+          status: runningEvent.status,
+          activityCategory: runningEvent.category,
+          activityKind: runningEvent.kind,
+          title: runningEvent.title,
+          detail: runningEvent.detail,
+          filePath: runningEvent.filePath,
+        }
+      : {
+          status: live ? 'running' : 'done',
+          activityKind:
+            runningReceipt?.kind === 'subagent'
+              ? 'subagent'
+              : runningReceipt?.kind === 'read' || runningReceipt?.kind === 'edit'
+                ? 'file'
+                : 'tool',
+        },
+  );
 
   return (
     <section
@@ -187,6 +201,10 @@ export function AssistantActivityLedger({
         <span id={controlLabelId} className="sr-only">
           {expanded ? 'Hide activity details' : 'Show activity details'}
         </span>
+        <ChevronDown
+          className={cn('assistant-activity-ledger__chevron', expanded && 'is-open')}
+          aria-hidden="true"
+        />
         <PerceptibleAgentMotionIndicator motion={motion} compact />
         <span id={titleId} className="assistant-activity-ledger__title">
           {continuousResponseTitle}
@@ -217,10 +235,6 @@ export function AssistantActivityLedger({
             </span>
           ) : null}
         </span>
-        <ChevronDown
-          className={cn('assistant-activity-ledger__chevron', expanded && 'is-open')}
-          aria-hidden="true"
-        />
       </button>
 
       {expanded ? (
@@ -356,9 +370,11 @@ function ReceiptRow({
           {receipt.durationMs}ms
         </span>
       ) : null}
-      <span className={cn('assistant-activity-ledger__status', `is-${receipt.status}`)}>
-        {receipt.status}
-      </span>
+      {receipt.status === 'done' ? null : (
+        <span className={cn('assistant-activity-ledger__status', `is-${receipt.status}`)}>
+          {receipt.status}
+        </span>
+      )}
     </>
   );
   return canPreview ? (

@@ -88,18 +88,15 @@ describe('AgenticConsole', () => {
     ).toBe('vibespace-amber');
     expect(screen.getByLabelText('Session status').textContent).toContain('Complete');
     expect(screen.getByText('1 file')).toBeTruthy();
-    expect(screen.getAllByText('+4')).toHaveLength(2);
-    expect(screen.getAllByText('-1')).toHaveLength(2);
+    expect(screen.getAllByText('+4')).toHaveLength(1);
+    expect(screen.getAllByText('-1')).toHaveLength(1);
     expect(screen.getByText('100 tokens')).toBeTruthy();
     expect(screen.getByText('Update the chat renderer.')).toBeTruthy();
     expect(screen.getByText('The renderer is updated.')).toBeTruthy();
-    expect(screen.getByText('+new').parentElement?.className).toContain('agentic-diff-line--add');
-    expect(screen.getByText('-old').parentElement?.className).toContain(
-      'agentic-diff-line--remove',
-    );
+    expect(screen.queryByRole('article', { name: 'Diff AgenticConsole.tsx' })).toBeNull();
   });
 
-  it('routes live work through all seven structured activity motions', () => {
+  it('coalesces live work into one continuous activity disclosure', () => {
     const activity: ChatActivityEvent[] = [
       {
         id: 'think',
@@ -176,16 +173,98 @@ describe('AgenticConsole', () => {
       sessionEvidence: { status: 'running', currentOperation: 'Working' },
     });
 
-    const motions = rendered.container.querySelectorAll('[data-agent-motion]');
-    expect([...motions].map((motion) => motion.getAttribute('data-agent-motion'))).toEqual([
-      'cursor-forge',
-      'stack-shift',
-      'nine-dot-fold',
-      'code-shimmer',
-      'twin-loop',
-      'breathing-brackets',
-      'glyph-current',
-    ]);
+    const disclosure = screen.getByRole('button', { name: /show activity details/i });
+    expect(disclosure.textContent).toContain('7 actions');
+    expect(rendered.container.querySelectorAll('[data-agent-motion]')).toHaveLength(1);
+    expect(
+      rendered.container.querySelector('[data-agent-motion]')?.getAttribute('data-agent-motion'),
+    ).toBe('glyph-current');
+    expect(screen.queryByText('Jarvis status')).toBeNull();
+  });
+
+  it('does not render provider lifecycle receipts as separate transcript cards', () => {
+    const activity: ChatActivityEvent[] = [
+      {
+        id: 'compile',
+        chatId: 'chat-console',
+        kind: 'agent',
+        category: 'context',
+        status: 'done',
+        title: 'Jarvis status',
+        detail: 'The protected request is being compiled.',
+        ts: 10,
+        endedAt: 12,
+      },
+      {
+        id: 'dispatch',
+        chatId: 'chat-console',
+        kind: 'tool',
+        status: 'running',
+        title: 'Jarvis model activity',
+        detail: 'The protected provider request is running.',
+        ts: 20,
+      },
+      {
+        id: 'response',
+        chatId: 'chat-console',
+        kind: 'agent',
+        category: 'response',
+        status: 'running',
+        title: 'Jarvis is preparing the final response',
+        ts: 30,
+      },
+    ];
+
+    renderConsole({
+      chatId: 'chat-console',
+      messages: [message('user', 'user', 1, [{ kind: 'text', text: 'Build the game.' }])],
+      activity,
+      sessionEvidence: { status: 'running', currentOperation: 'Preparing the response' },
+    });
+
+    expect(screen.getByText('Build the game.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /show activity details/i })).toBeTruthy();
+    expect(screen.queryByText('Jarvis status')).toBeNull();
+    expect(screen.queryByText('Jarvis model activity')).toBeNull();
+    expect(screen.queryByText('The protected request is being compiled.')).toBeNull();
+    expect(screen.queryByText('The protected provider request is running.')).toBeNull();
+  });
+
+  it('anchors the single session ledger beneath assistant prose and preserves safe command receipts', () => {
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('user', 'user', 1, [{ kind: 'text', text: 'Run the checks.' }]),
+        message('assistant', 'assistant', 2, [
+          { kind: 'text', text: 'The focused checks are complete.' },
+          { kind: 'tool_call', call_id: 'command-1', tool: 'shell.exec', args: { secret: 'x' } },
+          { kind: 'tool_result', call_id: 'command-1', result: { exitCode: 0 } },
+        ]),
+      ],
+      activity: [
+        {
+          id: 'complete',
+          chatId: 'chat-console',
+          kind: 'agent',
+          category: 'response',
+          status: 'done',
+          title: 'Completed',
+          ts: 3,
+          endedAt: 4,
+        },
+      ],
+      sessionEvidence: { status: 'completed', currentOperation: 'Complete' },
+    });
+
+    const answer = screen.getByText('The focused checks are complete.');
+    const ledger = rendered.container.querySelector('[data-assistant-activity-ledger="true"]');
+    expect(ledger).toBeTruthy();
+    expect(
+      Boolean(answer.compareDocumentPosition(ledger as Node) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /show activity details/i }));
+    expect(screen.getByText('Ran command')).toBeTruthy();
+    expect(rendered.container.textContent).not.toContain('secret');
   });
 
   it('switches motion on a rapid structured activity transition and becomes still at completion', () => {
