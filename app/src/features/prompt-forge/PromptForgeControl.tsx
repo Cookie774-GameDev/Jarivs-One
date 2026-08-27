@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import { ChevronDown, Cloud, Sparkles, Square } from 'lucide-react';
 import { Button, Hint, Popover, PopoverContent, PopoverTrigger } from '@/components/ui';
 import { HOTKEYS } from '@/lib/hotkeys';
@@ -70,6 +71,8 @@ export function PromptForgeControl({
   void _onAllowPublicResearchChange;
   void _publicResearchAvailable;
   void _offlineMode;
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const accessibleModels = modelOptions.filter((option) => option.available);
   const actionLabel = isRunning
     ? 'Cancel Prompt Forge upgrade'
@@ -119,9 +122,10 @@ export function PromptForgeControl({
         </Button>
       </Hint>
 
-      <Popover>
+      <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
         <PopoverTrigger asChild>
           <Button
+            ref={settingsTriggerRef}
             type="button"
             size="icon-sm"
             variant="ghost"
@@ -137,6 +141,11 @@ export function PromptForgeControl({
           sideOffset={8}
           data-monochrome-surface="prompt-forge-settings"
           data-sakura-surface="prompt-forge-settings"
+          aria-label="Prompt Forge settings"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            settingsTriggerRef.current?.focus();
+          }}
           className="w-[min(360px,92vw)] space-y-4 p-3 [[data-theme=monochrome]_&]:rounded-sm [[data-theme=monochrome]_&]:border-border-mid [[data-theme=monochrome]_&]:bg-panel [[data-theme=monochrome]_&]:font-mono [[data-theme=monochrome]_&]:shadow-none"
         >
           <section>
@@ -272,7 +281,16 @@ export function PromptForgeControl({
               </button>
             </div>
           </section>
-
+          <div className="flex justify-end border-t border-border pt-3">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setSettingsOpen(false)}
+            >
+              Done
+            </Button>
+          </div>
         </PopoverContent>
       </Popover>
 

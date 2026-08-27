@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { PromptForgeModelOption } from './modelSelection';
@@ -32,6 +32,60 @@ afterEach(() => {
 });
 
 describe('Prompt Forge control', () => {
+  it('names and dismisses configuration while restoring focus to its trigger', async () => {
+    render(
+      <TooltipProvider>
+        <PromptForgeControl
+          status="idle"
+          statusMessage="Ready to upgrade"
+          isRunning={false}
+          disabledReason={null}
+          error={null}
+          compact={false}
+          modelSelection={{ mode: 'prefer_local' }}
+          modelOptions={models}
+          onModelSelectionChange={vi.fn()}
+          privacyMode="local_only"
+          onPrivacyModeChange={vi.fn()}
+          allowPublicResearch={false}
+          onAllowPublicResearchChange={vi.fn()}
+          publicResearchAvailable
+          offlineMode={false}
+          autoUpgradeOnSend={false}
+          onAutoUpgradeOnSendChange={vi.fn()}
+          onStart={vi.fn()}
+          onCancel={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Configure Prompt Forge' });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    expect(screen.getByRole('dialog', { name: 'Prompt Forge settings' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(trigger);
+
+    fireEvent.click(trigger);
+    expect(screen.getByRole('dialog', { name: 'Prompt Forge settings' })).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(trigger);
+
+    fireEvent.click(trigger);
+    expect(screen.getByRole('dialog', { name: 'Prompt Forge settings' })).toBeTruthy();
+    await act(async () => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    });
+    fireEvent.pointerDown(document.body, { button: 0, pointerType: 'mouse' });
+    fireEvent.mouseDown(document.body, { button: 0 });
+    fireEvent.click(document.body, { button: 0 });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it('starts explicitly, stays secondary to Send, and exposes model configuration without lock UI', () => {
     const onStart = vi.fn();
     const onSelectionChange = vi.fn();
