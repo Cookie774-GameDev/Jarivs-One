@@ -1,5 +1,7 @@
 import * as React from 'react';
+import { getStoredProjectRoot } from '@/features/files/projectFiles';
 import { TerminalView } from '@/features/terminals/TerminalView';
+import { useAuthStore } from '@/stores/auth';
 import type { WorkbenchPanel } from './types';
 
 interface TerminalPanelProps {
@@ -8,6 +10,11 @@ interface TerminalPanelProps {
 }
 
 export function TerminalPanel({ panel, onUpdate }: TerminalPanelProps) {
+  const projectId = useAuthStore((state) => state.projectId);
+  const projectRoot = React.useMemo(
+    () => getStoredProjectRoot(projectId).trim() || undefined,
+    [projectId],
+  );
   const panelRef = React.useRef(panel);
   const onUpdateRef = React.useRef(onUpdate);
   React.useEffect(() => {
@@ -15,25 +22,24 @@ export function TerminalPanel({ panel, onUpdate }: TerminalPanelProps) {
     onUpdateRef.current = onUpdate;
   }, [onUpdate, panel]);
 
-  const handleReady = React.useCallback(
-    (sessionId: string) => {
-      const current = panelRef.current;
-      if (current.settings.resourceId === sessionId && current.status === 'ready') return;
-      onUpdateRef.current({
-        status: 'ready',
-        settings: { ...current.settings, resourceId: sessionId },
-      });
-    },
-    [],
-  );
+  const handleReady = React.useCallback((sessionId: string) => {
+    const current = panelRef.current;
+    if (current.settings.resourceId === sessionId && current.status === 'ready') return;
+    onUpdateRef.current({
+      status: 'ready',
+      settings: { ...current.settings, resourceId: sessionId },
+    });
+  }, []);
 
   return (
     <TerminalView
       className="h-full min-h-0 rounded-none border-0 shadow-none"
       hideChrome
+      paneId={panel.id}
+      projectId={projectId}
       sessionId={panel.settings.resourceId}
       startupCommand={panel.settings.resourceId ? undefined : panel.settings.command}
-      cwd={panel.settings.cwd}
+      cwd={panel.settings.cwd || projectRoot}
       rows={24}
       cols={92}
       fontSize={10}
