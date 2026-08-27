@@ -179,7 +179,6 @@ export function TerminalCommandPalette({
   const [upgradeAddContext, setUpgradeAddContext] = React.useState('');
   const upgradeAbortRef = React.useRef<AbortController | null>(null);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
-  const upgradeTextareaRef = React.useRef<HTMLTextAreaElement | null>(null);
 
   const localUserId = useAuthStore((s) => s.localUserId);
   const cloudSession = useAuthStore((s) => s.cloudSession);
@@ -217,12 +216,6 @@ export function TerminalCommandPalette({
     upgradeAbortRef.current = null;
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [open]);
-
-  React.useEffect(() => {
-    if (detail === 'upgrade') {
-      requestAnimationFrame(() => upgradeTextareaRef.current?.focus());
-    }
-  }, [detail]);
 
   React.useEffect(() => {
     if (selectedIndex >= filtered.length) setSelectedIndex(Math.max(0, filtered.length - 1));
@@ -455,22 +448,11 @@ export function TerminalCommandPalette({
             Scope · project {projectId ?? 'none'} · session {sessionId ?? 'none'}
             {agentSlug ? ` · agent ${agentSlug}` : ''}
           </p>
-          <label
-            className="mt-3 block text-metadata text-muted-foreground"
-            htmlFor="terminal-upgrade-draft"
-          >
-            Draft from this terminal
-          </label>
-          <textarea
-            id="terminal-upgrade-draft"
-            ref={upgradeTextareaRef}
-            value={upgradeDraft}
-            onChange={(e) => setUpgradeDraft(e.target.value)}
-            rows={5}
-            placeholder="Type in the terminal first — this uses that draft automatically."
-            disabled={upgradeBusy}
-            className="mt-1 w-full resize-y rounded-md border border-border bg-paper px-3 py-2 text-body text-foreground outline-none focus:border-accent-copper disabled:opacity-60"
-          />
+          <p className="mt-3 rounded-md border border-border bg-paper-soft px-3 py-2 text-metadata text-muted-foreground">
+            {upgradeDraft
+              ? 'Using the draft already typed in this terminal.'
+              : 'Type your draft at the live terminal prompt first, then open Upgrade prompt.'}
+          </p>
           {upgradedText ? (
             <>
               <label
@@ -602,7 +584,7 @@ export function TerminalCommandPalette({
               }}
               className="rounded-md border border-border px-3 py-2 text-secondary text-muted-foreground"
             >
-              Back
+              Cancel
             </button>
           </div>
         </div>

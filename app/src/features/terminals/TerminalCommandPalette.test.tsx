@@ -32,6 +32,7 @@ const evidence = {
 describe('TerminalCommandPalette', () => {
   beforeEach(() => {
     vi.mocked(runTerminalPromptUpgrade).mockClear();
+    useTerminalTranscriptStore.setState({ sessions: {} });
   });
 
   it('preserves ordinary overlay depth while flattening MonoChrome shadow and blur', () => {
@@ -229,15 +230,17 @@ describe('TerminalCommandPalette', () => {
     );
 
     fireEvent.click(screen.getByRole('option', { name: /Upgrade prompt/i }));
-    expect(screen.getByText(/Upgrade prompt/i)).toBeTruthy();
-    expect(screen.getByLabelText(/Draft from this terminal/i)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Upgrade prompt' })).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: /Draft from this terminal/i })).toBeNull();
+    expect(screen.getByText(/Type your draft at the live terminal prompt first/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Upgrade' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Insert at prompt' })).toBeTruthy();
     // Upgrade not started — insert handler must not have been called
     expect(onInsert).not.toHaveBeenCalled();
   });
 
-  it('prefills Upgrade prompt from the live terminal draft without asking the user to retype', async () => {
+  it('consumes the live terminal draft without exposing a second editable original field', async () => {
+    const onInsert = vi.fn();
     useTerminalTranscriptStore.setState({
       sessions: {
         'pty-1': {
@@ -260,20 +263,31 @@ describe('TerminalCommandPalette', () => {
         evidence={evidence}
         onClose={vi.fn()}
         onNavigate={vi.fn()}
+        onInsertUpgradedPrompt={onInsert}
       />,
     );
 
     fireEvent.click(screen.getByRole('option', { name: /Upgrade prompt/i }));
-    expect(screen.getByLabelText(/Draft from this terminal/i)).toHaveProperty(
-      'value',
-      'hi there, please make me a HTML game',
-    );
+    expect(screen.queryByRole('textbox', { name: /Draft from this terminal/i })).toBeNull();
+    expect(screen.getByText(/Using the draft already typed in this terminal/i)).toBeTruthy();
     await waitFor(() => {
-      expect(runTerminalPromptUpgrade).toHaveBeenCalled();
+      expect(runTerminalPromptUpgrade).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originalDraft: 'hi there, please make me a HTML game',
+        }),
+      );
     });
+    expect(screen.getByRole('textbox', { name: /Upgraded prompt/i })).toHaveProperty(
+      'value',
+      'Build a polished HTML game with keyboard controls.',
+    );
     expect(await screen.findByRole('button', { name: 'Accept upgraded prompt' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry prompt upgrade' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Add context to prompt upgrade' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Insert at prompt' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
+    expect(onInsert).not.toHaveBeenCalled();
   });
 
   it('fails closed without rendering native setup error details', async () => {
