@@ -42,6 +42,32 @@ let inFlightBootstrap: OllamaBootstrapFlight | null = null;
 let lastReadyAt = 0;
 const READY_RECENT_MS = 8_000;
 
+type OllamaBootstrapDisableFlagReader = () => unknown;
+
+export function isOllamaBootstrapDisabled(
+  readFlag: OllamaBootstrapDisableFlagReader = () => import.meta.env.VITE_DISABLE_OLLAMA_BOOTSTRAP,
+): boolean {
+  const value = readFlag();
+  if (value === true) return true;
+  if (typeof value !== 'string') return false;
+  return ['true', '1', 'yes', 'on'].includes(value.trim().toLowerCase());
+}
+
+function disabledBootstrapResult(): OllamaBootstrapResult {
+  return {
+    ready: false,
+    status: {
+      ready: false,
+      apiReachable: false,
+      installed: false,
+      phase: 'disabled',
+      detail: 'Automatic Ollama startup is disabled for this VibeSpace runtime.',
+      statusMsg: 'Ollama bootstrap disabled',
+    },
+    modelCount: getDiscoveredOllamaModels().length,
+  };
+}
+
 function abortError(): DOMException {
   return new DOMException('Ollama bootstrap cancelled.', 'AbortError');
 }
@@ -190,6 +216,10 @@ export async function bootstrapOllamaConnection(
   options: OllamaBootstrapOptions = {},
 ): Promise<OllamaBootstrapResult> {
   if (options.signal?.aborted) throw abortError();
+  // This must remain ahead of endpoint repair, cache probes, invalidation,
+  // reachability checks, and native ensure/start. Cloud-only sessions can open
+  // model pickers without materializing a local runtime process.
+  if (isOllamaBootstrapDisabled()) return disabledBootstrapResult();
 
   if (
     !options.force &&

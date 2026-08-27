@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/stores/auth';
 import { getDiscoveredOllamaModels, syncDiscoveredOllamaModels } from './models';
 import {
   bootstrapOllamaConnection,
   invalidateOllamaBootstrap,
+  isOllamaBootstrapDisabled,
   sanitizeOllamaEndpointFromStore,
 } from './ollamaBootstrap';
 
@@ -41,6 +42,10 @@ describe('normalizeStoredOllamaEndpoint', () => {
 });
 
 describe('bootstrapOllamaConnection', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(() => {
     invalidateOllamaBootstrap();
     syncDiscoveredOllamaModels([]);
@@ -53,6 +58,35 @@ describe('bootstrapOllamaConnection', () => {
     vi.mocked(listOllamaModelInfo).mockReset();
     vi.mocked(refreshOpenCodeLocalModelRuntime).mockReset();
     vi.mocked(refreshOpenCodeLocalModelRuntime).mockResolvedValue(undefined);
+  });
+
+  it('fails closed before every side effect when bootstrap is explicitly disabled', async () => {
+    vi.stubEnv('VITE_DISABLE_OLLAMA_BOOTSTRAP', 'true');
+    useAuthStore.setState({ apiKeys: { ollama: 'sk-must-remain-untouched' } });
+
+    const result = await bootstrapOllamaConnection({ force: true });
+
+    expect(result).toMatchObject({
+      ready: false,
+      status: {
+        ready: false,
+        phase: 'disabled',
+        statusMsg: 'Ollama bootstrap disabled',
+      },
+    });
+    expect(useAuthStore.getState().apiKeys.ollama).toBe('sk-must-remain-untouched');
+    expect(isOllamaReachable).not.toHaveBeenCalled();
+    expect(ensureOllamaReadySilent).not.toHaveBeenCalled();
+    expect(listOllamaModelInfo).not.toHaveBeenCalled();
+    expect(refreshOpenCodeLocalModelRuntime).not.toHaveBeenCalled();
+  });
+
+  it('recognizes only explicit truthy disable values at the injected env boundary', () => {
+    expect(isOllamaBootstrapDisabled(() => 'true')).toBe(true);
+    expect(isOllamaBootstrapDisabled(() => ' TRUE ')).toBe(true);
+    expect(isOllamaBootstrapDisabled(() => true)).toBe(true);
+    expect(isOllamaBootstrapDisabled(() => 'false')).toBe(false);
+    expect(isOllamaBootstrapDisabled(() => undefined)).toBe(false);
   });
 
   it('syncs discovered models when already reachable', async () => {
