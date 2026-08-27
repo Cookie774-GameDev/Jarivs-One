@@ -2,6 +2,8 @@ import type { HarnessRuntimeState } from './types';
 
 const RUNTIME_STATE_EVENT = 'vibespace://opencode-runtime-state';
 const MAX_COPY_LENGTH = 512;
+const DEFAULT_SERVER_STATUS_TIMEOUT_MS = 3_000;
+const STATUS_PROBE_TIMED_OUT = Symbol('status-probe-timed-out');
 
 export interface NativeRuntimeDetection {
   status: 'systemCompatible' | 'managedCompatible' | 'incompatible' | 'missing';
@@ -49,6 +51,38 @@ export interface HarnessRuntimeManager {
   refresh(): Promise<void>;
   download(): Promise<void>;
   cancel(): Promise<void>;
+}
+
+type HarnessRuntimeManagerOptions = Readonly<{
+  serverStatusTimeoutMs?: number;
+}>;
+
+function boundedStatusProbe<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T | typeof STATUS_PROBE_TIMED_OUT> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve(STATUS_PROBE_TIMED_OUT);
+    }, timeoutMs);
+    void promise.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 function boundedCopy(value: unknown, fallback: string): string {
@@ -126,7 +160,12 @@ const nativeAdapter: HarnessRuntimeNativeAdapter = {
 
 export function createHarnessRuntimeManager(
   native: HarnessRuntimeNativeAdapter = nativeAdapter,
+  options: HarnessRuntimeManagerOptions = {},
 ): HarnessRuntimeManager {
+  const serverStatusTimeoutMs = Math.max(
+    1,
+    Math.floor(options.serverStatusTimeoutMs ?? DEFAULT_SERVER_STATUS_TIMEOUT_MS),
+  );
   let snapshot: HarnessRuntimeState = { kind: 'checking' };
   const subscribers = new Set<() => void>();
   let unlisten: (() => void) | undefined;
@@ -203,12 +242,12 @@ export function createHarnessRuntimeManager(
     const eventOperation = ++eventGeneration;
     if (event.kind === 'ready') {
       if (!event.generation) return;
-      void native
-        .serverStatus()
+      void boundedStatusProbe(native.serverStatus(), serverStatusTimeoutMs)
         .then((status) => {
           if (
             !lifecycleIsCurrent(generation) ||
             eventOperation !== eventGeneration ||
+            status === STATUS_PROBE_TIMED_OUT ||
             !status ||
             status.generation !== event.generation
           ) {
@@ -269,9 +308,14 @@ export function createHarnessRuntimeManager(
       if (!current()) return;
       const previous = snapshot.kind === 'ready' ? connection : undefined;
       try {
-        const status = await native.serverStatus();
+        const status = await boundedStatusProbe(native.serverStatus(), serverStatusTimeoutMs);
         if (!current()) return;
-        if (status) {
+        if (status === STATUS_PROBE_TIMED_OUT) {
+          // A wedged native status probe must not poison the manager's shared
+          // refresh flight or erase a previously authenticated generation.
+          // Live transport failures and supervisor events still fail closed.
+          if (previous) return;
+        } else if (status) {
           const ready = validatedConnection(status);
           const sameAsPrevious =
             previous &&

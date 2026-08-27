@@ -55,9 +55,7 @@ function adapter(
 }
 
 async function settle(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let index = 0; index < 8; index += 1) await Promise.resolve();
 }
 
 describe('harness runtime manager', () => {
@@ -201,6 +199,49 @@ describe('harness runtime manager', () => {
     expect(native.detect).toHaveBeenCalledTimes(1);
     expect(native.ensureServer).toHaveBeenCalledTimes(1);
     expect(manager.getSnapshot().kind).toBe('ready');
+  });
+
+  it('keeps an exact ready generation visible when a background status probe stalls', async () => {
+    vi.useFakeTimers();
+    const stalledStatus = deferred<OpenCodeServerConnection | null>();
+    const native = adapter();
+    const manager = createHarnessRuntimeManager(native, { serverStatusTimeoutMs: 25 });
+    await manager.refresh();
+    vi.mocked(native.detect).mockClear();
+    vi.mocked(native.ensureServer).mockClear();
+    vi.mocked(native.serverStatus).mockImplementationOnce(() => stalledStatus.promise);
+
+    const refreshing = manager.refresh();
+    await settle();
+    await vi.advanceTimersByTimeAsync(25);
+    await refreshing;
+
+    expect(native.detect).not.toHaveBeenCalled();
+    expect(native.ensureServer).not.toHaveBeenCalled();
+    expect(manager.getConnection()).toEqual(readyConnection);
+    expect(manager.getSnapshot()).toEqual({
+      kind: 'ready',
+      source: 'managed',
+      version: '1.18.16',
+    });
+    vi.useRealTimers();
+  });
+
+  it('falls back to trusted detection when the cold status probe stalls', async () => {
+    vi.useFakeTimers();
+    const stalledStatus = deferred<OpenCodeServerConnection | null>();
+    const native = adapter({ serverStatus: vi.fn(() => stalledStatus.promise) });
+    const manager = createHarnessRuntimeManager(native, { serverStatusTimeoutMs: 25 });
+
+    const refreshing = manager.refresh();
+    await settle();
+    await vi.advanceTimersByTimeAsync(25);
+    await refreshing;
+
+    expect(native.detect).toHaveBeenCalledTimes(1);
+    expect(native.ensureServer).toHaveBeenCalledWith(readyDetection.executableId);
+    expect(manager.getConnection()).toEqual(readyConnection);
+    vi.useRealTimers();
   });
 
   it('coalesces a StrictMode-style immediate unsubscribe and remount', async () => {
