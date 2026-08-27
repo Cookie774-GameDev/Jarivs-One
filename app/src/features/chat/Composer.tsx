@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Send,
+  Play,
+  Square,
   ChevronDown,
   Sparkles,
   Mic,
@@ -892,6 +894,7 @@ export function Composer({
   const harnessRuntimeState = useHarnessRuntimeState();
   const harnessBlocked = harnessRuntimeState.kind !== 'ready';
   const [jarvisRunning, setJarvisRunning] = useState(false);
+  const [stoppedRequest, setStoppedRequest] = useState(false);
   const [queuedMessages, setQueuedMessages] = useState<QueuedChatMessage[]>([]);
   const escapeCancelRef = useRef<EscapeCancelState>(createEscapeCancelState());
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
@@ -1017,6 +1020,7 @@ export function Composer({
       const status = detail?.status;
       if (status === 'running') {
         setJarvisRunning(true);
+        setStoppedRequest(false);
         return;
       }
       setJarvisRunning(false);
@@ -1025,8 +1029,10 @@ export function Composer({
       // Esc×3 cancel: keep the queue for resume/resend (do not auto-drain).
       if (status === 'cancelled' && suppressQueueFlushOnUserCancelRef.current) {
         suppressQueueFlushOnUserCancelRef.current = false;
+        setStoppedRequest(true);
         return;
       }
+      setStoppedRequest(false);
       // When the previous full reply finishes (or fails/cancels), send the next
       // queued message automatically — FIFO order.
       if (!shouldAutoSendQueuedOnRunStatus(status)) return;
@@ -3338,10 +3344,10 @@ export function Composer({
   };
 
   const interruptAndSendQueued = (id: string) => {
+    if (queuedInterruptInFlightRef.current) return;
     const queued = queuedMessagesRef.current.find((message) => message.id === id);
     if (!queued) return;
-    const cancellationKey = activeCancellationKeyRef.current;
-    if (!jarvisRunning || !cancellationKey) {
+    if (!jarvisRunning || !activeCancellationKeyRef.current) {
       if (!jarvisRunning) dispatchQueuedMessage(queued);
       return;
     }
@@ -3353,11 +3359,32 @@ export function Composer({
     queuedMessagesRef.current = reordered;
     setQueuedMessages(reordered);
     window.dispatchEvent(
-      new CustomEvent('jarvis:cancel', { detail: { messageId: cancellationKey } }),
+      new CustomEvent('jarvis:steer', {
+        detail: {
+          chatId: String(chatId),
+          text: queued.text,
+          onAccepted: (cancellationKey: string) => {
+            activeCancellationKeyRef.current = cancellationKey;
+            setQueuedMessages((current) => {
+              const remaining = current.filter((message) => message.id !== queued.id);
+              queuedMessagesRef.current = remaining;
+              return remaining;
+            });
+            queuedInterruptInFlightRef.current = null;
+          },
+          onRejected: () => {
+            queuedInterruptInFlightRef.current = null;
+            toast.error(
+              'Steer not sent',
+              'The active request could not accept this message. It remains queued for retry.',
+            );
+          },
+        },
+      }),
     );
     toast.info(
-      'Stopping current reply',
-      'Your queued message will send as soon as cancellation completes.',
+      'Steering current reply',
+      'The active request is stopping, then this message will continue on the same session and model.',
     );
   };
   interruptQueuedRef.current = interruptAndSendQueued;
@@ -5191,7 +5218,52 @@ export function Composer({
                       </Button>
                     </Hint>
                   )}
-                  <Hint label="Send" hotkey={HOTKEYS.SEND}>
+                  {jarvisRunning ? (
+                    <Hint label="Stop current request" hotkey="Esc ×3">
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="accent"
+                        onClick={() => {
+                          const cancellationKey = activeCancellationKeyRef.current;
+                          suppressQueueFlushOnUserCancelRef.current = true;
+                          window.dispatchEvent(
+                            new CustomEvent('jarvis:cancel', {
+                              detail: cancellationKey
+                                ? { messageId: cancellationKey }
+                                : { chatId: String(chatId) },
+                            }),
+                          );
+                        }}
+                        aria-label="Stop current request"
+                        className={cn('shrink-0', compact && 'h-6 w-6 min-h-6 min-w-6')}
+                      >
+                        <Square />
+                      </Button>
+                    </Hint>
+                  ) : stoppedRequest ? (
+                    <Hint label="Resume current request">
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant="accent"
+                        onClick={() => {
+                          const cancellationKey = crypto.randomUUID();
+                          activeCancellationKeyRef.current = cancellationKey;
+                          window.dispatchEvent(
+                            new CustomEvent('jarvis:resume', {
+                              detail: { chatId: String(chatId), cancellationKey },
+                            }),
+                          );
+                        }}
+                        aria-label="Resume current request"
+                        className={cn('shrink-0', compact && 'h-6 w-6 min-h-6 min-w-6')}
+                      >
+                        <Play />
+                      </Button>
+                    </Hint>
+                  ) : (
+                    <Hint label="Send" hotkey={HOTKEYS.SEND}>
                     <Button
                       type="button"
                       size="icon-sm"
@@ -5204,7 +5276,8 @@ export function Composer({
                     >
                       <Send />
                     </Button>
-                  </Hint>
+                    </Hint>
+                  )}
                 </div>
               </div>
             </div>

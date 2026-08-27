@@ -199,6 +199,7 @@ import {
   createCanonicalProviderEvidenceAuthority,
   createJarvisCommandCenterHostPort,
   createRuntimeCancellationTaskTracker,
+  dispatchRuntimeSteerHandoff,
   executeApprovalThenActivateTerminalHandoff,
   executeInstalledJarvisRegisteredAction,
   handleInstalledJarvisKernelClientRequest,
@@ -7991,6 +7992,59 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
         expect.objectContaining({ expectedStatus: 'running', nextStatus: 'cancelled' }),
       ),
     );
+  });
+
+  it('hands an explicit steer to the same chat and exact captured model controls once', async () => {
+    const chatId = 'chat_exact_steer' as ChatId;
+    const activeSend = {
+      chatId,
+      cancellationKey: 'msg_steer_initial_user' as MessageId,
+      text: 'Begin the long request.',
+      interactionMode: 'agent' as const,
+      modelSelectionOverride: useAuthStore.getState().chatModelSelection,
+      reasoningPreference: { mode: 'normal' as const, effortOverride: 'high' as const },
+      runtimeSettings: {
+        effort: 'high' as const,
+        performance: 'quality' as const,
+        fastMode: 'off' as const,
+        rlmEnabled: false,
+      },
+    };
+    const appendUserMessage = vi.fn(async (message) => ({
+      ...message,
+      id: 'msg_steer_replacement' as MessageId,
+      created_at: 2,
+      updated_at: 2,
+    }));
+    const dispatchSend = vi.fn();
+    const accepted = vi.fn();
+
+    await expect(
+      dispatchRuntimeSteerHandoff({
+        chatId,
+        text: 'Prioritize the renderer regression and report it first.',
+        activeSend,
+        appendUserMessage,
+        dispatchSend,
+        onAccepted: accepted,
+      }),
+    ).resolves.toBe('msg_steer_replacement');
+
+    expect(appendUserMessage).toHaveBeenCalledOnce();
+    expect(appendUserMessage).toHaveBeenCalledWith({
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'Prioritize the renderer regression and report it first.' }],
+    });
+    expect(accepted).toHaveBeenCalledOnce();
+    expect(accepted).toHaveBeenCalledWith('msg_steer_replacement');
+    expect(dispatchSend).toHaveBeenCalledOnce();
+    expect(dispatchSend).toHaveBeenCalledWith({
+      ...activeSend,
+      chatId,
+      cancellationKey: 'msg_steer_replacement',
+      text: 'Prioritize the renderer regression and report it first.',
+    });
   });
 
   it.each([

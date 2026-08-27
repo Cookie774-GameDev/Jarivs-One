@@ -2311,6 +2311,55 @@ async function recordTokenOptimizationTelemetry(input: {
 export interface CancelDetail {
   /** Exact caller-visible turn key or legacy assistant placeholder. Omit for all. */
   messageId?: MessageId;
+  /** Exact chat/session scope. Never treat an unknown chat as cancel-all. */
+  chatId?: string;
+}
+
+/** The shape of the `jarvis:resume` event detail. */
+export interface ResumeDetail {
+  /** Exact chat whose most recently user-stopped turn should continue. */
+  chatId: string;
+  /** Fresh caller-visible key for cancelling the continued turn. */
+  cancellationKey: MessageId;
+}
+
+/** The shape of a live `jarvis:steer` instruction. */
+export interface SteerDetail {
+  chatId: string;
+  text: string;
+  /** Called only after the replacement user turn is durably accepted. */
+  onAccepted?: (cancellationKey: MessageId) => void;
+  /** Called when the steer cannot be accepted without changing its exact scope. */
+  onRejected?: () => void;
+}
+
+/** @internal Exact-control handoff used by the live steer listener and focused tests. */
+export async function dispatchRuntimeSteerHandoff(input: {
+  chatId: string;
+  text: string;
+  activeSend: SendDetail;
+  appendUserMessage: RuntimeBindings['appendMessage'];
+  dispatchSend: (detail: SendDetail) => void;
+  onAccepted?: SteerDetail['onAccepted'];
+}): Promise<MessageId> {
+  const userMessage = await input.appendUserMessage({
+    chat_id: input.chatId as ChatId,
+    role: 'user',
+    parts: [{ kind: 'text', text: input.text }],
+  });
+  const nextSend: SendDetail = {
+    ...input.activeSend,
+    chatId: input.chatId,
+    cancellationKey: userMessage.id,
+    text: input.text,
+  };
+  try {
+    input.onAccepted?.(userMessage.id);
+  } catch {
+    // The durable message remains authoritative even if its UI acknowledgement unmounts.
+  }
+  input.dispatchSend(nextSend);
+  return userMessage.id;
 }
 
 export interface RuntimeOptions {
@@ -2318,6 +2367,10 @@ export interface RuntimeOptions {
   eventName?: string;
   /** Override the cancel event name (default: `jarvis:cancel`). */
   cancelEventName?: string;
+  /** Override the resume event name (default: `jarvis:resume`). */
+  resumeEventName?: string;
+  /** Override the steer event name (default: `jarvis:steer`). */
+  steerEventName?: string;
   /**
    * Throttle for streaming DB writes during chunk delivery. Default 120 ms keeps
    * visible streaming smooth without saturating the message store on long runs.
@@ -3846,11 +3899,17 @@ export function startRuntimeListener(
 ): RuntimeListenerStop {
   const sendEventName = options.eventName ?? 'jarvis:send';
   const cancelEventName = options.cancelEventName ?? 'jarvis:cancel';
+  const resumeEventName = options.resumeEventName ?? 'jarvis:resume';
+  const steerEventName = options.steerEventName ?? 'jarvis:steer';
   const flushIntervalMs = options.flushIntervalMs ?? 120;
   const stopPromptForgeContextBridge = installPromptForgeContextRetrievalBridge(window);
 
   const inFlight = new Map<MessageId, AbortController>();
   const activeControllers = new Set<AbortController>();
+  const controllersByChatId = new Map<string, Set<AbortController>>();
+  const activeSendDetails = new Map<AbortController, SendDetail>();
+  const suspendedSendDetails = new Map<string, SendDetail>();
+  const pendingSteersByChatId = new Map<string, SteerDetail & { send: SendDetail }>();
   const canonicalCancellations = new Map<MessageId, () => Promise<unknown>>();
   const canonicalCancellationOwners = new Map<AbortController, () => Promise<unknown>>();
   const activeSendTasks = new Set<Promise<void>>();
@@ -3885,12 +3944,61 @@ export function startRuntimeListener(
     controller.abort();
   };
 
+  const detachControllerFromChat = (controller: AbortController): void => {
+    const detail = activeSendDetails.get(controller);
+    activeSendDetails.delete(controller);
+    if (!detail) return;
+    const chatId = String(detail.chatId);
+    const controllers = controllersByChatId.get(chatId);
+    controllers?.delete(controller);
+    if (controllers?.size === 0) controllersByChatId.delete(chatId);
+  };
+
+  const preserveStoppedTurn = (controller: AbortController): void => {
+    const detail = activeSendDetails.get(controller);
+    if (detail) suspendedSendDetails.set(String(detail.chatId), { ...detail });
+  };
+
+  const safelyRejectSteer = (steer: Pick<SteerDetail, 'onRejected'>): void => {
+    try {
+      steer.onRejected?.();
+    } catch {
+      // UI acknowledgement callbacks are advisory and cannot change runtime authority.
+    }
+  };
+
+  const dispatchAcceptedSteer = async (chatId: string): Promise<void> => {
+    const pending = pendingSteersByChatId.get(chatId);
+    if (!pending || (controllersByChatId.get(chatId)?.size ?? 0) > 0) return;
+    pendingSteersByChatId.delete(chatId);
+    try {
+      await dispatchRuntimeSteerHandoff({
+        chatId,
+        text: pending.text,
+        activeSend: pending.send,
+        appendUserMessage: bindings.appendMessage,
+        dispatchSend: (detail) => window.dispatchEvent(new CustomEvent(sendEventName, { detail })),
+        onAccepted: pending.onAccepted,
+      });
+    } catch (error) {
+      safelyRejectSteer(pending);
+      devConsole.log({
+        channel: 'ai',
+        level: 'warn',
+        message: 'AI steer rejected before durable handoff',
+        detail: { chatId, error: safeErrorMessage(error) },
+      });
+    }
+  };
+
   const abortAllTrackedRuns = (): number => {
     const count = activeControllers.size;
     for (const requestCancellation of new Set(canonicalCancellationOwners.values())) {
       cancellationTaskTracker.request(requestCancellation);
     }
     for (const controller of activeControllers) controller.abort();
+    controllersByChatId.clear();
+    activeSendDetails.clear();
     inFlight.clear();
     canonicalCancellations.clear();
     canonicalCancellationOwners.clear();
@@ -3974,14 +4082,23 @@ export function startRuntimeListener(
     }
     const controller = new AbortController();
     activeControllers.add(controller);
+    activeSendDetails.set(controller, { ...detail });
+    const chatControllers = controllersByChatId.get(String(chatId)) ?? new Set<AbortController>();
+    chatControllers.add(controller);
+    controllersByChatId.set(String(chatId), chatControllers);
     if (cancellationKey) inFlight.set(cancellationKey, controller);
     const releaseOperationTracking = (): void => {
+      const releasedChatId = String(activeSendDetails.get(controller)?.chatId ?? '');
       if (cancellationKey && inFlight.get(cancellationKey) === controller) {
         inFlight.delete(cancellationKey);
       }
       if (cancellationKey) canonicalCancellations.delete(cancellationKey);
       canonicalCancellationOwners.delete(controller);
       activeControllers.delete(controller);
+      detachControllerFromChat(controller);
+      if (releasedChatId && (controllersByChatId.get(releasedChatId)?.size ?? 0) === 0) {
+        void dispatchAcceptedSteer(releasedChatId);
+      }
     };
     dispatchKernelSmokeRuntimeStage('accepted');
     const failEarlySetup = (stage: 'agent' | 'context' | 'model', error: unknown): void => {
@@ -6331,7 +6448,47 @@ export function startRuntimeListener(
 
   const handleCancel = (e: Event) => {
     const detail = (e as CustomEvent<CancelDetail>).detail;
-    if (!detail || !detail.messageId) {
+    if (detail?.messageId) {
+      const targetMessageId = detail.messageId;
+      const c = inFlight.get(targetMessageId);
+      if (c) {
+        preserveStoppedTurn(c);
+        abortTrackedRun(targetMessageId, c);
+        for (const [messageId, owner] of inFlight) {
+          if (owner === c) {
+            inFlight.delete(messageId);
+            canonicalCancellations.delete(messageId);
+          }
+        }
+        canonicalCancellationOwners.delete(c);
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'AI cancel',
+          detail: { messageId: detail.messageId },
+        });
+      }
+      return;
+    }
+    if (detail?.chatId) {
+      const chatId = String(detail.chatId);
+      const controllers = [...(controllersByChatId.get(chatId) ?? [])];
+      for (const controller of controllers) {
+        preserveStoppedTurn(controller);
+        cancellationTaskTracker.request(canonicalCancellationOwners.get(controller));
+        controller.abort();
+      }
+      if (controllers.length > 0) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'warn',
+          message: 'AI chat-scoped cancel',
+          detail: { chatId, count: controllers.length },
+        });
+      }
+      return;
+    }
+    if (!detail) {
       const count = abortAllTrackedRuns();
       if (count > 0) {
         devConsole.log({
@@ -6343,23 +6500,55 @@ export function startRuntimeListener(
       }
       return;
     }
-    const targetMessageId = detail.messageId;
-    const c = inFlight.get(targetMessageId);
-    if (c) {
-      abortTrackedRun(targetMessageId, c);
-      for (const [messageId, owner] of inFlight) {
-        if (owner === c) {
-          inFlight.delete(messageId);
-          canonicalCancellations.delete(messageId);
-        }
-      }
-      canonicalCancellationOwners.delete(c);
+  };
+
+  const handleResume = (e: Event) => {
+    const detail = (e as CustomEvent<ResumeDetail>).detail;
+    const chatId = String(detail?.chatId ?? '').trim();
+    if (!chatId || !detail?.cancellationKey) return;
+    const suspended = suspendedSendDetails.get(chatId);
+    if (!suspended) {
       devConsole.log({
         channel: 'ai',
         level: 'warn',
-        message: 'AI cancel',
-        detail: { messageId: detail.messageId },
+        message: 'AI resume rejected: no stopped turn',
+        detail: { chatId },
       });
+      return;
+    }
+    suspendedSendDetails.delete(chatId);
+    const resumed: SendDetail = {
+      ...suspended,
+      chatId,
+      cancellationKey: detail.cancellationKey,
+      text: 'Continue the interrupted response from the exact point already retained in this persistent session. Do not restart, repeat completed work, change model controls, or discard queued context.',
+    };
+    window.dispatchEvent(new CustomEvent(sendEventName, { detail: resumed }));
+  };
+
+  const handleSteer = (e: Event) => {
+    const detail = (e as CustomEvent<SteerDetail>).detail;
+    const chatId = String(detail?.chatId ?? '').trim();
+    const text = String(detail?.text ?? '').trim();
+    const controllers = [...(controllersByChatId.get(chatId) ?? [])];
+    const active = controllers
+      .map((controller) => activeSendDetails.get(controller))
+      .filter((send): send is SendDetail => send !== undefined);
+    if (!chatId || !text || active.length !== 1 || pendingSteersByChatId.has(chatId)) {
+      safelyRejectSteer(detail ?? {});
+      return;
+    }
+    pendingSteersByChatId.set(chatId, { ...detail, chatId, text, send: { ...active[0]! } });
+    suspendedSendDetails.delete(chatId);
+    devConsole.log({
+      channel: 'ai',
+      level: 'info',
+      message: 'AI steer accepted for the active persistent session',
+      detail: { chatId },
+    });
+    for (const controller of controllers) {
+      cancellationTaskTracker.request(canonicalCancellationOwners.get(controller));
+      controller.abort();
     }
   };
 
@@ -6383,11 +6572,17 @@ export function startRuntimeListener(
 
   window.addEventListener(sendEventName, handleSendEvent);
   window.addEventListener(cancelEventName, handleCancel as EventListener);
+  window.addEventListener(resumeEventName, handleResume as EventListener);
+  window.addEventListener(steerEventName, handleSteer as EventListener);
 
   const stop = (() => {
     window.removeEventListener(sendEventName, handleSendEvent);
     window.removeEventListener(cancelEventName, handleCancel as EventListener);
+    window.removeEventListener(resumeEventName, handleResume as EventListener);
+    window.removeEventListener(steerEventName, handleSteer as EventListener);
     stopPromptForgeContextBridge();
+    for (const pending of pendingSteersByChatId.values()) safelyRejectSteer(pending);
+    pendingSteersByChatId.clear();
     abortAllTrackedRuns();
   }) as RuntimeListenerStop;
   stop.whenIdle = async () => {
