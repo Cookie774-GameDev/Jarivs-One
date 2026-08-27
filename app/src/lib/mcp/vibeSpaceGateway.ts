@@ -29,6 +29,7 @@ const SAFE_GATEWAY_ERROR = 'Unable to connect through the VibeSpace MCP Gateway.
 const MAX_RECEIPTS = 128;
 const MAX_RESULT_CHARS = 64 * 1024;
 const MAX_IN_FLIGHT = 4;
+const DEFAULT_RESTORE_TIMEOUT_MS = 15_000;
 const SECRET_TEXT = /(bearer\s+[a-z0-9._~+/-]+|(?:api[_-]?key|token|password|secret)\s*[:=]\s*\S+)/gi;
 const FORBIDDEN_SECRET_KEY = /^(?:authorization|api[_-]?key|token|password|secret|credential)$/i;
 
@@ -129,6 +130,16 @@ export interface VibeSpaceMcpGateway {
   getReceipts(): readonly Readonly<VibeSpaceMcpInvocationReceipt>[];
 }
 
+export interface VibeSpaceMcpRestoreResult {
+  readonly restoredIds: readonly string[];
+  readonly skippedIds: readonly string[];
+  readonly failedIds: readonly string[];
+}
+
+export interface RestorableVibeSpaceMcpGateway extends VibeSpaceMcpGateway {
+  restoreApprovedConnections(): Promise<VibeSpaceMcpRestoreResult>;
+}
+
 type StoredTool = Readonly<{
   name: string;
   schemaDigest: string;
@@ -152,6 +163,7 @@ export interface VibeSpaceGatewayDependencies {
   readonly runtime?: RemoteMcpSetupRuntime;
   readonly storage?: GatewayStorage;
   readonly clock?: VibeSpaceGatewayClock;
+  readonly restoreTimeoutMs?: number;
 }
 
 function stableValue(value: unknown): unknown {
@@ -388,7 +400,7 @@ function safeResult(value: unknown): unknown {
 
 export function createVibeSpaceMcpGateway(
   dependencies: VibeSpaceGatewayDependencies,
-): VibeSpaceMcpGateway {
+): RestorableVibeSpaceMcpGateway {
   const runtime = dependencies.runtime ?? remoteMcpSetupRuntime;
   const storage = dependencies.storage ?? defaultStorage();
   const clock = dependencies.clock ?? { now: () => Date.now() };
@@ -404,7 +416,15 @@ export function createVibeSpaceMcpGateway(
   let liveCounter = 0;
   let invocationCounter = 0;
   let inFlight = 0;
+  let restorePromise: Promise<VibeSpaceMcpRestoreResult> | undefined;
   let snapshot: readonly Readonly<VibeSpaceGatewayConnection>[] = Object.freeze([]);
+  const restoreTimeoutMs = Math.max(
+    1,
+    Math.min(
+      DEFAULT_RESTORE_TIMEOUT_MS,
+      dependencies.restoreTimeoutMs ?? DEFAULT_RESTORE_TIMEOUT_MS,
+    ),
+  );
 
   const persist = () => {
     if (!storage) return;
@@ -592,7 +612,7 @@ export function createVibeSpaceMcpGateway(
     return profile;
   };
 
-  const gateway: VibeSpaceMcpGateway = {
+  const gateway: RestorableVibeSpaceMcpGateway = {
     getSnapshot: () => snapshot,
     subscribe(listener) {
       listeners.add(listener);
@@ -774,6 +794,65 @@ export function createVibeSpaceMcpGateway(
       refreshRegistry();
       rebuild();
     },
+    restoreApprovedConnections() {
+      if (restorePromise) return restorePromise;
+      const task = async (): Promise<VibeSpaceMcpRestoreResult> => {
+        const restoredIds: string[] = [];
+        const skippedIds: string[] = [];
+        const failedIds: string[] = [];
+        const pending: string[] = [];
+
+        for (const profile of [...profiles.values()].sort((left, right) =>
+          left.id.localeCompare(right.id, 'en'),
+        )) {
+          const connection = runtime.getSnapshot().find((candidate) => candidate.id === profile.id);
+          const alreadyRestored =
+            connection?.state === 'connected' &&
+            connection.endpoint === profile.endpoint &&
+            connectionSchemaDigest(connection) === profile.schemaDigest &&
+            connection.exposedTools.length === profile.exposedTools.length &&
+            profile.exposedTools.every((toolName) => connection.exposedTools.includes(toolName));
+          if (profile.exposedTools.length === 0 || alreadyRestored) {
+            skippedIds.push(profile.id);
+          } else {
+            pending.push(profile.id);
+          }
+        }
+
+        const restoreOne = async (id: string) => {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            await Promise.race([
+              gateway.reconnect(id),
+              new Promise<never>((_, reject) => {
+                timer = setTimeout(() => {
+                  void runtime.disconnect(id).catch(() => undefined);
+                  reject(new Error(SAFE_GATEWAY_ERROR));
+                }, restoreTimeoutMs);
+              }),
+            ]);
+            restoredIds.push(id);
+          } catch {
+            failedIds.push(id);
+          } finally {
+            if (timer) clearTimeout(timer);
+          }
+        };
+
+        // The gateway owns one supervisor, so a serial queue is the bounded
+        // concurrency contract and cannot replace another profile's lease.
+        for (const id of pending) await restoreOne(id);
+        return Object.freeze({
+          restoredIds: Object.freeze(restoredIds.sort()),
+          skippedIds: Object.freeze(skippedIds.sort()),
+          failedIds: Object.freeze(failedIds.sort()),
+        });
+      };
+      restorePromise = task().finally(() => {
+        restorePromise = undefined;
+      });
+      return restorePromise;
+    },
     setToolExposure(id, requested, approval) {
       const profile = profiles.get(id);
       if (!profile || pendingTrust.has(id)) {
@@ -954,9 +1033,9 @@ export function createVibeSpaceMcpGateway(
   return Object.freeze(gateway);
 }
 
-const gatewaysByScope = new Map<string, VibeSpaceMcpGateway>();
+const gatewaysByScope = new Map<string, RestorableVibeSpaceMcpGateway>();
 
-export function getVibeSpaceMcpGateway(scope: UnifiedMcpScope): VibeSpaceMcpGateway {
+export function getVibeSpaceMcpGateway(scope: UnifiedMcpScope): RestorableVibeSpaceMcpGateway {
   const key = profileStorageKey(scope);
   let gateway = gatewaysByScope.get(key);
   if (!gateway) {

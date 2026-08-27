@@ -87,6 +87,7 @@ function createHarness(options: {
   storage?: ReturnType<typeof memoryStorage>;
   runtime?: ReturnType<typeof runtimeHarness>;
   now?: number;
+  restoreTimeoutMs?: number;
 } = {}) {
   const stored = options.storage ?? memoryStorage();
   const runtime = options.runtime ?? runtimeHarness();
@@ -96,6 +97,7 @@ function createHarness(options: {
     runtime: runtime.runtime,
     storage: stored.storage,
     clock: { now: () => now },
+    restoreTimeoutMs: options.restoreTimeoutMs,
   });
   return { gateway, stored, runtime, setNow: (value: number) => void (now = value) };
 }
@@ -220,6 +222,97 @@ describe('VibeSpace MCP Gateway', () => {
       state: 'connected',
       trust: 'approved',
     });
+  });
+
+  it('restores only durably approved explicit exposure once across concurrent startup requests', async () => {
+    const first = createHarness();
+    await approve(first);
+    first.gateway.setToolExposure(
+      'reviewed-server',
+      ['repo.read'],
+      { confirmedByUser: true },
+    );
+    await first.gateway.disconnect('reviewed-server');
+
+    const restartedRuntime = runtimeHarness();
+    const restarted = createHarness({ storage: first.stored, runtime: restartedRuntime });
+    const [left, right] = await Promise.all([
+      restarted.gateway.restoreApprovedConnections(),
+      restarted.gateway.restoreApprovedConnections(),
+    ]);
+
+    expect(left).toEqual({
+      restoredIds: ['reviewed-server'],
+      skippedIds: [],
+      failedIds: [],
+    });
+    expect(right).toEqual(left);
+    expect(restartedRuntime.connect).toHaveBeenCalledTimes(1);
+    expect(restartedRuntime.setToolExposure).toHaveBeenLastCalledWith('reviewed-server', [
+      'repo.read',
+    ]);
+    expect(restarted.gateway.getSnapshot()[0]).toMatchObject({
+      state: 'connected',
+      trust: 'approved',
+      exposedTools: ['repo.read'],
+    });
+
+    expect(await restarted.gateway.restoreApprovedConnections()).toEqual({
+      restoredIds: [],
+      skippedIds: ['reviewed-server'],
+      failedIds: [],
+    });
+    expect(restartedRuntime.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reconnect approved profiles that expose no tools', async () => {
+    const first = createHarness();
+    await approve(first);
+    await first.gateway.disconnect('reviewed-server');
+
+    const restartedRuntime = runtimeHarness();
+    const restarted = createHarness({ storage: first.stored, runtime: restartedRuntime });
+
+    expect(await restarted.gateway.restoreApprovedConnections()).toEqual({
+      restoredIds: [],
+      skippedIds: ['reviewed-server'],
+      failedIds: [],
+    });
+    expect(restartedRuntime.connect).not.toHaveBeenCalled();
+  });
+
+  it('bounds a stalled approved restoration and retires its partial runtime lease', async () => {
+    vi.useFakeTimers();
+    try {
+      const first = createHarness();
+      await approve(first);
+      first.gateway.setToolExposure(
+        'reviewed-server',
+        ['repo.read'],
+        { confirmedByUser: true },
+      );
+      await first.gateway.disconnect('reviewed-server');
+
+      const stalled = runtimeHarness();
+      stalled.connect.mockImplementation(() => new Promise<void>(() => undefined));
+      const restarted = createHarness({
+        storage: first.stored,
+        runtime: stalled,
+        restoreTimeoutMs: 25,
+      });
+      const restoration = restarted.gateway.restoreApprovedConnections();
+
+      await vi.advanceTimersByTimeAsync(25);
+      await expect(restoration).resolves.toEqual({
+        restoredIds: [],
+        skippedIds: [],
+        failedIds: ['reviewed-server'],
+      });
+      expect(stalled.connect).toHaveBeenCalledTimes(1);
+      expect(stalled.disconnect).toHaveBeenCalledWith('reviewed-server');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('rejects endpoint changes and fails closed on schema changes', async () => {
