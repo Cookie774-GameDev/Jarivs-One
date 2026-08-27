@@ -267,6 +267,58 @@ describe('AgenticConsole', () => {
     expect(rendered.container.textContent).not.toContain('secret');
   });
 
+  it('keeps the single turn ledger inline before assistant context references', () => {
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('user', 'user', 1, [{ kind: 'text', text: 'Use the protected context.' }]),
+        message('assistant', 'assistant', 2, [
+          { kind: 'text', text: 'I found the relevant project evidence.' },
+          { kind: 'tool_call', call_id: 'context-read', tool: 'read', args: { path: 'private' } },
+          { kind: 'tool_result', call_id: 'context-read', result: { content: 'private' } },
+          {
+            kind: 'jarvis_source_ref',
+            source: {
+              id: 'source-private',
+              kind: 'project_file',
+              label: 'Resolved app context',
+              trust: 'app_verified',
+              sensitivity: 'restricted',
+            },
+          },
+        ]),
+      ],
+      activity: [
+        {
+          id: 'context-complete',
+          chatId: 'chat-console',
+          kind: 'agent',
+          category: 'context',
+          status: 'done',
+          title: 'Prepared project context',
+          ts: 3,
+          endedAt: 4,
+        },
+      ],
+      sessionEvidence: { status: 'completed', currentOperation: 'Complete' },
+    });
+
+    const prose = screen.getByText('I found the relevant project evidence.');
+    const source = screen.getByText('Resolved app context');
+    const ledgers = rendered.container.querySelectorAll('[data-assistant-activity-ledger="true"]');
+    expect(ledgers).toHaveLength(1);
+    const ledger = ledgers[0];
+    expect(Boolean(prose.compareDocumentPosition(ledger) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(
+      true,
+    );
+    expect(Boolean(ledger.compareDocumentPosition(source) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /show activity details/i }));
+    expect(screen.getByText('Read file')).toBeTruthy();
+    expect(rendered.container.textContent).not.toContain('private');
+  });
+
   it('keeps the activity disclosure scoped to the latest user turn', () => {
     renderConsole({
       chatId: 'chat-console',

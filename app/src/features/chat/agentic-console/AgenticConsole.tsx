@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import type { Message } from '@/types';
 import type { JarvisCreatorKind } from '@/features/jarvis-creator/contracts';
 import { MessageBubble } from '../MessageBubble';
+import { MessagePart } from '../MessagePart';
 import { AssistantActivityLedger } from '../activity-ledger/AssistantActivityLedger';
 import type { ChatActivityEvent, ChatActivityStatus } from '../activity/types';
 import {
@@ -548,6 +549,30 @@ function BlockView({
   );
 }
 
+function isInlineLedgerLegacyBlock(block: TranscriptBlock, latestUserTurnStartedAt: number) {
+  if (
+    block.kind !== 'legacy' ||
+    block.message.role !== 'assistant' ||
+    block.message.created_at < latestUserTurnStartedAt
+  ) {
+    return false;
+  }
+  const hasProse = block.message.parts.some(
+    (part) => part.kind === 'text' && part.text.trim().length > 0,
+  );
+  const hasContextReferences = block.message.parts.some(
+    (part) => part.kind === 'jarvis_source_ref',
+  );
+  const canSplitWithoutChangingInteractiveContent = block.message.parts.every(
+    (part) =>
+      part.kind === 'text' ||
+      part.kind === 'jarvis_source_ref' ||
+      part.kind === 'tool_call' ||
+      part.kind === 'tool_result',
+  );
+  return hasProse && hasContextReferences && canSplitWithoutChangingInteractiveContent;
+}
+
 export function AgenticConsole({
   chatId,
   messages,
@@ -617,6 +642,15 @@ export function AgenticConsole({
       updated_at: updatedAt,
     };
   }, [chatId, latestUserTurnStartedAt, messages, turnActivity]);
+  const inlineLedgerLegacyId = React.useMemo(
+    () =>
+      turnActivityMessage
+        ? [...blocks]
+            .reverse()
+            .find((block) => isInlineLedgerLegacyBlock(block, latestUserTurnStartedAt))?.id
+        : undefined,
+    [blocks, latestUserTurnStartedAt, turnActivityMessage],
+  );
   const loadCount = Math.min(TRANSCRIPT_PAGE_SIZE, transcriptWindow.remaining);
   const messagesBySource = React.useMemo(
     () =>
@@ -765,6 +799,13 @@ export function AgenticConsole({
           ) : null}
           {blocks.map((block, index) => {
             const sourceMessage = messagesBySource.get(block.sourceId);
+            const inlineLegacyMessage =
+              block.id === inlineLedgerLegacyId && block.kind === 'legacy'
+                ? block.message
+                : undefined;
+            const inlineContextReferences = inlineLegacyMessage?.parts.filter(
+              (part) => part.kind === 'jarvis_source_ref',
+            );
             const showLedger =
               activity.length === 0 &&
               block.kind !== 'legacy' &&
@@ -775,16 +816,31 @@ export function AgenticConsole({
               );
             return (
               <React.Fragment key={block.id}>
-                <BlockView
-                  block={block}
-                  finalAnswerId={finalAnswerId}
-                  compact={compact}
-                  creatorDraftKind={creatorDraftKind}
-                />
+                {inlineLegacyMessage ? (
+                  <div className="agentic-legacy" data-agentic-fallback="structured-message">
+                    <MessageBubble
+                      message={{
+                        ...inlineLegacyMessage,
+                        parts: inlineLegacyMessage.parts.filter((part) => part.kind === 'text'),
+                      }}
+                      compact={compact}
+                      creatorDraftKind={creatorDraftKind}
+                    />
+                  </div>
+                ) : (
+                  <BlockView
+                    block={block}
+                    finalAnswerId={finalAnswerId}
+                    compact={compact}
+                    creatorDraftKind={creatorDraftKind}
+                  />
+                )}
                 {showLedger ? (
                   <AssistantActivityLedger message={sourceMessage} compact={compact} />
                 ) : null}
-                {block.id === finalAnswerId && turnActivityMessage ? (
+                {(block.id === inlineLedgerLegacyId ||
+                  (!inlineLedgerLegacyId && block.id === finalAnswerId)) &&
+                turnActivityMessage ? (
                   <AssistantActivityLedger
                     message={turnActivityMessage}
                     correlatedEvents={turnActivity}
@@ -797,10 +853,26 @@ export function AgenticConsole({
                     }
                   />
                 ) : null}
+                {inlineLegacyMessage && inlineContextReferences?.length ? (
+                  <div
+                    className="agentic-context-references"
+                    aria-label="Assistant context references"
+                  >
+                    {inlineContextReferences.map((part, partIndex) => (
+                      <MessagePart
+                        key={`${part.source.id}:${partIndex}`}
+                        part={part}
+                        allParts={inlineLegacyMessage.parts}
+                        messageId={inlineLegacyMessage.id}
+                        chatId={inlineLegacyMessage.chat_id}
+                      />
+                    ))}
+                  </div>
+                ) : null}
               </React.Fragment>
             );
           })}
-          {turnActivityMessage && !finalAnswerId ? (
+          {turnActivityMessage && !inlineLedgerLegacyId && !finalAnswerId ? (
             <AssistantActivityLedger
               message={turnActivityMessage}
               correlatedEvents={turnActivity}
