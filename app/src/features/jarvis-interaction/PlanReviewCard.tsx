@@ -149,17 +149,42 @@ export function PlanReviewCard({ part, messageId, chatId }: PlanReviewCardProps)
           </Button>
         </div>
       )}
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Button type="button" size="sm" variant="accent" disabled={busy || plan.status !== 'pending'} onClick={handleBuild}>
-          {canExecute ? (busy ? 'Implementing…' : 'Implement Plan') : 'Done'}
+      {canExecute && plan.status === 'pending' ? (
+        <p className="mt-3 text-secondary font-medium text-foreground">Implement this plan?</p>
+      ) : null}
+      <div
+        className="mt-3 flex flex-wrap gap-2"
+        role={canExecute && plan.status === 'pending' ? 'group' : undefined}
+        aria-label={canExecute && plan.status === 'pending' ? 'Implement this plan?' : undefined}
+      >
+        <Button
+          type="button"
+          size="sm"
+          variant="accent"
+          disabled={busy || plan.status !== 'pending'}
+          onClick={handleBuild}
+        >
+          {canExecute ? (busy ? 'Implementing…' : 'Yes — Implement Plan') : 'Done'}
         </Button>
-        <Button type="button" size="sm" variant="secondary" disabled={busy || plan.status !== 'pending'} onClick={() => setRedoOpen((open) => !open)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={busy || plan.status !== 'pending'}
+          onClick={() => setRedoOpen((open) => !open)}
+        >
           <RotateCcw className="h-3 w-3" />
           Redo Plan
         </Button>
-        <Button type="button" size="sm" variant="ghost" disabled={busy || plan.status !== 'pending'} onClick={handleCancel}>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={busy || plan.status !== 'pending'}
+          onClick={handleCancel}
+        >
           <XCircle className="h-3 w-3" />
-          Cancel
+          {canExecute ? 'No — Cancel' : 'Cancel'}
         </Button>
       </div>
     </section>

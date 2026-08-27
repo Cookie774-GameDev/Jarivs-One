@@ -59,7 +59,9 @@ describe('PlanReviewCard', () => {
     useJarvisInteractionStore.getState().setChatMode('chat_1' as never, 'plan');
     render(<PlanReviewCard part={planPart} messageId={'msg_1' as never} chatId="chat_1" />);
 
-    const implementButton = screen.getByRole('button', { name: 'Implement Plan' });
+    expect(screen.getByText('Implement this plan?')).toBeTruthy();
+    const implementButton = screen.getByRole('button', { name: 'Yes — Implement Plan' });
+    expect(screen.getByRole('button', { name: 'No — Cancel' })).toBeTruthy();
     fireEvent.click(implementButton);
 
     await waitFor(() => expect(repo.update).toHaveBeenCalledTimes(1));
@@ -107,7 +109,7 @@ describe('PlanReviewCard', () => {
   it('cancels a pending plan without dispatching execution', async () => {
     render(<PlanReviewCard part={planPart} messageId={'msg_1' as never} chatId="chat_1" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Cancel/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'No — Cancel' }));
 
     await waitFor(() => expect(repo.update).toHaveBeenCalledTimes(1));
     expect(window.dispatchEvent).not.toHaveBeenCalled();
