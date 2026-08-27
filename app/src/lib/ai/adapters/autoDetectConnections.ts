@@ -163,10 +163,49 @@ export async function detectExternalConnectionStates(
     targets.map((connection) => [connection.id, dependencies.readMetadataRevision(connection.id)]),
   );
   const detectionsByAdapter = new Map<string, Promise<DetectionResult>>();
-  const inspected = await Promise.all(
+  const publishedByThisScan = new Map<string, ConnectionMetadataRecord>();
+  let lastPersisted: ConnectionMetadata = current;
+  let publishQueue: Promise<void> = Promise.resolve();
+
+  const publishCompletedInspection = (
+    id: string,
+    record: ConnectionMetadataRecord,
+  ): Promise<void> => {
+    const publication = publishQueue.then(() => {
+      const latest = dependencies.readMetadata();
+      const merged: ConnectionMetadata = { ...latest };
+
+      for (const [publishedId, publishedRecord] of publishedByThisScan) {
+        if (
+          dependencies.readMetadataRevision(publishedId) === baselineRevisions.get(publishedId) &&
+          (sameMetadataRecord(latest[publishedId], current[publishedId]) ||
+            sameMetadataRecord(latest[publishedId], publishedRecord))
+        ) {
+          merged[publishedId] = publishedRecord;
+        }
+      }
+
+      if (
+        dependencies.readMetadataRevision(id) !== baselineRevisions.get(id) ||
+        !sameMetadataRecord(latest[id], current[id])
+      ) {
+        lastPersisted = dependencies.writeMetadata(merged);
+        return;
+      }
+
+      merged[id] = record;
+      lastPersisted = dependencies.writeMetadata(merged);
+      publishedByThisScan.set(id, record);
+      dependencies.markSessionChecked([id]);
+    });
+    publishQueue = publication.catch(() => undefined);
+    return publication;
+  };
+
+  await Promise.all(
     targets.map(async (connection) => {
       const existing = current[connection.id];
-      if (existing?.disabled) return [connection.id, existing, false] as const;
+      if (existing?.disabled) return;
       const adapter = dependencies.adapters[connection.adapterId]!;
       let detection = detectionsByAdapter.get(adapter.id);
       if (!detection) {
@@ -181,35 +220,12 @@ export async function detectExternalConnectionStates(
         dependencies.inspectionTimeoutMs ?? DEFAULT_INSPECTION_TIMEOUT_MS,
         existing?.disabled,
       );
-      if (!inspection.completed) return [connection.id, existing, false] as const;
-      return [connection.id, inspection.record, true] as const;
+      if (!inspection.completed) return;
+      await publishCompletedInspection(connection.id, inspection.record);
     }),
   );
-  const latest = dependencies.readMetadata();
-  const merged: ConnectionMetadata = { ...latest };
-  const appliedConnectionIds: string[] = [];
-  for (const [id, record, completed] of inspected) {
-    if (!completed || !record) continue;
-    const latestRecord = latest[id];
-    if (
-      dependencies.readMetadataRevision(id) !== baselineRevisions.get(id) ||
-      !sameMetadataRecord(latestRecord, current[id])
-    ) {
-      if (latestRecord) merged[id] = latestRecord;
-      else delete merged[id];
-      continue;
-    }
-    merged[id] = record;
-    appliedConnectionIds.push(id);
-  }
-  const persisted = dependencies.writeMetadata(merged);
-  const checkedConnectionIds = appliedConnectionIds.filter(
-    (id) => inspected.find(([inspectedId]) => inspectedId === id)?.[2] === true,
-  );
-  if (checkedConnectionIds.length > 0) {
-    dependencies.markSessionChecked(checkedConnectionIds);
-  }
-  return persisted;
+  await publishQueue;
+  return lastPersisted;
 }
 
 export function createExternalConnectionAutoDetector(

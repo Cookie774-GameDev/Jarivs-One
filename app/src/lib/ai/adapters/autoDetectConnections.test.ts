@@ -364,6 +364,49 @@ describe('automatic external CLI connection detection', () => {
     }
   });
 
+  it('publishes a completed authenticated route without waiting for an unrelated inspection deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const hung = connection('hung-cli');
+      const openCode = connection('opencode-cli');
+      let current: ConnectionMetadata = {};
+      const markSessionChecked = vi.fn();
+      const scan = detectExternalConnectionStates(
+        dependencies({
+          connections: [hung, openCode],
+          adapters: {
+            [hung.adapterId]: {
+              id: hung.adapterId,
+              detect: vi.fn(() => new Promise<DetectionResult>(() => undefined)),
+            },
+            [openCode.adapterId]: {
+              id: openCode.adapterId,
+              detect: vi.fn(async () => ({ status: 'available' as const })),
+              probeAuth: vi.fn(async () => ({ status: 'authenticated' as const })),
+            },
+          },
+          current,
+          write: (value) => (current = value),
+          markSessionChecked,
+          inspectionTimeoutMs: 1_000,
+        }),
+      );
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(current['opencode-cli']).toMatchObject({
+        installation: 'installed',
+        auth: 'authenticated',
+      });
+      expect(markSessionChecked).toHaveBeenCalledWith(['opencode-cli']);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      await scan;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('shares an in-flight scan, caches briefly, and supports post-login invalidation', async () => {
     let release: (() => void) | undefined;
     let calls = 0;
