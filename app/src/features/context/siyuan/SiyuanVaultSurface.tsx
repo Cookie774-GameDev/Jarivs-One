@@ -111,7 +111,12 @@ export function SiyuanVaultSurface({
       // ordinary main WebviewWindow would then fail before reaching their
       // authority checks. Retire the child whenever focused-map mode exits;
       // reopening remains fast because the supervised SiYuan kernel stays up.
-      if (operationId) void bridge.close(operationId);
+      if (operationId) {
+        void bridge
+          .hide(operationId)
+          .catch(() => false)
+          .then(() => bridge.close(operationId).catch(() => false));
+      }
     };
   }, [bridge, open]);
 
@@ -157,7 +162,10 @@ export function SiyuanVaultSurface({
     openGenerationRef.current += 1;
     const operationId = operationIdRef.current;
     operationIdRef.current = null;
-    if (operationId) await bridge.close(operationId).catch(() => false);
+    if (operationId) {
+      await bridge.hide(operationId).catch(() => false);
+      await bridge.close(operationId).catch(() => false);
+    }
     onClose();
   };
 

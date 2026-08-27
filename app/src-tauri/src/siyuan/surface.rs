@@ -1,9 +1,17 @@
-use std::{path::PathBuf, sync::Mutex};
+use std::{
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, AtomicU8, Ordering},
+        Arc, Mutex,
+    },
+    thread,
+    time::Duration,
+};
 
 use async_lock::Mutex as AsyncMutex;
 use serde::{Deserialize, Serialize};
 use tauri::{
-    webview::{Cookie, NewWindowResponse, WebviewBuilder},
+    webview::{Cookie, NewWindowResponse, PageLoadEvent, WebviewBuilder},
     AppHandle, LogicalPosition, LogicalSize, Manager, State, Webview, WebviewUrl, Window,
 };
 
@@ -13,16 +21,16 @@ const SURFACE_LABEL: &str = "siyuan-context-vault";
 const MAIN_WEBVIEW_ADDITIONAL_BROWSER_ARGS: &str = "--js-flags=--max-old-space-size=1536";
 const SIYUAN_CHILD_CDP_PORT_ENV: &str = "VIBESPACE_SIYUAN_CHILD_CDP_PORT";
 const GRAPH_REPORT_PREFIX: &str = "__VIBESPACE_SIYUAN_GRAPH__";
+const GRAPH_BOOTSTRAP_RETRY_DELAYS_MS: [u64; 12] = [
+    50, 100, 150, 250, 400, 600, 800, 1_000, 1_200, 1_500, 1_750, 2_000,
+];
+const NAVIGATION_PENDING: u8 = 0;
+const NAVIGATION_ABOUT_BLANK: u8 = 1;
+const NAVIGATION_MANAGED_ORIGIN: u8 = 2;
+const NAVIGATION_UNEXPECTED: u8 = 3;
 const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
-((targetDocumentId, targetNotebookId, graphMode, reportNonce) => {
-  if (
-    window.top !== window ||
-    window.location.protocol !== "http:" ||
-    window.location.hostname !== "127.0.0.1"
-  ) {
-    return;
-  }
-
+((targetDocumentId, targetNotebookId, graphMode, reportNonce, expectedOrigin) => {
+  if (window.location.pathname === "/check-auth") return;
   const deadline = Date.now() + 10000;
   const local = graphMode === "local";
   const dockSelector = local
@@ -33,9 +41,57 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
   let documentRequested = !local;
   let browserTargetPromise;
   let dockRequested = false;
+  let dockReported = false;
   let fullscreenRequested = false;
   let timer;
   let finished = false;
+  let pendingReport;
+  let reportRetryTimer;
+
+  const reportPrefix = `__VIBESPACE_SIYUAN_GRAPH__:${reportNonce}:`;
+  const flushReport = () => {
+    reportRetryTimer = undefined;
+    if (!pendingReport) return;
+    if (document.title.startsWith(reportPrefix)) {
+      reportRetryTimer = window.setTimeout(flushReport, 25);
+      return;
+    }
+    const [state, detail] = pendingReport;
+    pendingReport = undefined;
+    window.__vibespaceGraphPreviousTitle = document.title;
+    const reportTitle = `__VIBESPACE_SIYUAN_GRAPH__:${reportNonce}:${state}:${detail}`;
+    window.__vibespaceGraphReportTitle = reportTitle;
+    document.title = reportTitle;
+  };
+  const report = (state, detail = "") => {
+    if (!state) return;
+    pendingReport = [state, detail];
+    if (reportRetryTimer === undefined) flushReport();
+  };
+
+  report("loading", "eval-entered");
+  if (window.top !== window) {
+    report("failed", "siyuan_graph_frame_mismatch");
+    return;
+  }
+  if (window.location.origin !== expectedOrigin) {
+    report("failed", "siyuan_graph_origin_mismatch");
+    return;
+  }
+  if (window.__vibespaceGraphBootstrapNonce === reportNonce) return;
+  window.__vibespaceGraphBootstrapNonce = reportNonce;
+
+  const reportPhase = (phase) => {
+    if (!finished && [
+      "bootstrapped",
+      "block-verified",
+      "tree-opened",
+      "graph-dock-found",
+      "fullscreen-requested",
+    ].includes(phase)) {
+      report("loading", phase);
+    }
+  };
 
   const stop = (state, error = "") => {
     if (timer !== undefined) {
@@ -46,10 +102,7 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
       return;
     }
     finished = true;
-    window.__vibespaceGraphPreviousTitle = document.title;
-    const reportTitle = `__VIBESPACE_SIYUAN_GRAPH__:${reportNonce}:${state}:${error}`;
-    window.__vibespaceGraphReportTitle = reportTitle;
-    document.title = reportTitle;
+    report(state, error);
   };
 
   const fail = (error) => stop("failed", [
@@ -57,6 +110,8 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
     "siyuan_graph_target_unavailable",
     "siyuan_graph_target_invalid",
   ].includes(error) ? error : "siyuan_graph_unavailable");
+
+  reportPhase("bootstrapped");
 
   const waitFor = async (read) => {
     while (Date.now() < deadline) {
@@ -98,6 +153,7 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
     ) {
       throw new Error("siyuan_graph_target_unavailable");
     }
+    reportPhase("block-verified");
 
     const pathIds = path
       .split("/")
@@ -128,6 +184,7 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
     if (notebookRoot && !notebookArrow?.classList.contains("b3-list-item__arrow--open")) {
       notebookRoot.querySelector(".b3-list-item__toggle")?.click();
     }
+    reportPhase("tree-opened");
 
     for (const [index, nodeId] of pathIds.entries()) {
       const node = await waitFor(() => findTreeNode(nodeId));
@@ -180,6 +237,10 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
       if (!dock) {
         return;
       }
+      if (!dockReported) {
+        dockReported = true;
+        reportPhase("graph-dock-found");
+      }
 
       const graph = document.querySelector(graphSelector);
       if (!graph || !dock.classList.contains("dock__item--active")) {
@@ -202,6 +263,7 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
 
       if (!fullscreenRequested) {
         fullscreenRequested = true;
+        reportPhase("fullscreen-requested");
         fullscreen.click();
       }
     } catch (_error) {
@@ -210,9 +272,8 @@ const SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE: &str = r#"
   };
 
   timer = window.setInterval(tick, 200);
-  window.addEventListener("pagehide", stop, { once: true });
   tick();
-})(__TARGET_DOCUMENT_ID__, __TARGET_NOTEBOOK_ID__, __GRAPH_MODE__, __REPORT_NONCE__);
+})(__TARGET_DOCUMENT_ID__, __TARGET_NOTEBOOK_ID__, __GRAPH_MODE__, __REPORT_NONCE__, __EXPECTED_ORIGIN__);
 "#;
 const MIN_SURFACE_WIDTH: f64 = 320.0;
 const MIN_SURFACE_HEIGHT: f64 = 240.0;
@@ -238,6 +299,7 @@ pub struct SiyuanSurfaceStatus {
     root_document_id: Option<String>,
     graph_mode: Option<String>,
     graph_state: Option<String>,
+    graph_phase: Option<String>,
     graph_error: Option<String>,
 }
 
@@ -249,6 +311,7 @@ struct SurfaceRecord {
     graph_mode: String,
     visible: bool,
     graph_state: String,
+    graph_phase: String,
     graph_error: Option<String>,
     report_nonce: String,
     origin: String,
@@ -338,6 +401,7 @@ fn graph_initialization_script(
     notebook_id: Option<&str>,
     root_document_id: Option<&str>,
     report_nonce: &str,
+    expected_origin: &url::Url,
 ) -> Result<String, String> {
     if !matches!(graph_mode, "local" | "global") {
         return Err(public_error("siyuan_surface_graph_mode_invalid"));
@@ -363,29 +427,175 @@ fn graph_initialization_script(
         .map_err(|_| public_error("siyuan_surface_graph_mode_invalid"))?;
     let nonce = serde_json::to_string(report_nonce)
         .map_err(|_| public_error("siyuan_surface_target_invalid"))?;
+    let expected_origin = serde_json::to_string(&expected_origin.origin().ascii_serialization())
+        .map_err(|_| public_error("siyuan_surface_origin_invalid"))?;
     Ok(SIYUAN_GRAPH_FIRST_INITIALIZATION_SCRIPT_TEMPLATE
         .replace("__TARGET_DOCUMENT_ID__", &target)
         .replace("__TARGET_NOTEBOOK_ID__", &notebook)
         .replace("__GRAPH_MODE__", &mode)
-        .replace("__REPORT_NONCE__", &nonce))
+        .replace("__REPORT_NONCE__", &nonce)
+        .replace("__EXPECTED_ORIGIN__", &expected_origin))
 }
 
-fn parse_graph_report(title: &str, nonce: &str) -> Option<(&'static str, Option<&'static str>)> {
+fn parse_graph_report(
+    title: &str,
+    nonce: &str,
+) -> Option<(&'static str, Option<&'static str>, &'static str)> {
     let prefix = format!("{GRAPH_REPORT_PREFIX}:{nonce}:");
     let payload = title.strip_prefix(&prefix)?;
     match payload {
-        "ready:" => Some(("ready", None)),
+        "loading:bootstrapped" => Some(("loading", None, "bootstrapped")),
+        "loading:eval-entered" => Some(("loading", None, "eval-entered")),
+        "loading:block-verified" => Some(("loading", None, "block-verified")),
+        "loading:tree-opened" => Some(("loading", None, "tree-opened")),
+        "loading:graph-dock-found" => Some(("loading", None, "graph-dock-found")),
+        "loading:fullscreen-requested" => Some(("loading", None, "fullscreen-requested")),
+        "ready:" => Some(("ready", None, "ready")),
         "failed:siyuan_graph_target_timeout" => {
-            Some(("failed", Some("siyuan_graph_target_timeout")))
+            Some(("failed", Some("siyuan_graph_target_timeout"), "failed"))
         }
         "failed:siyuan_graph_target_unavailable" => {
-            Some(("failed", Some("siyuan_graph_target_unavailable")))
+            Some(("failed", Some("siyuan_graph_target_unavailable"), "failed"))
         }
         "failed:siyuan_graph_target_invalid" => {
-            Some(("failed", Some("siyuan_graph_target_invalid")))
+            Some(("failed", Some("siyuan_graph_target_invalid"), "failed"))
         }
-        "failed:siyuan_graph_unavailable" => Some(("failed", Some("siyuan_graph_unavailable"))),
+        "failed:siyuan_graph_unavailable" => {
+            Some(("failed", Some("siyuan_graph_unavailable"), "failed"))
+        }
+        "failed:siyuan_graph_frame_mismatch" => {
+            Some(("failed", Some("siyuan_graph_frame_mismatch"), "failed"))
+        }
+        "failed:siyuan_graph_origin_mismatch" => {
+            Some(("failed", Some("siyuan_graph_origin_mismatch"), "failed"))
+        }
         _ => None,
+    }
+}
+
+fn schedule_graph_bootstrap_retry(
+    webview: Webview,
+    operation_id: String,
+    report_nonce: String,
+    initialization_script: String,
+    navigation_classification: Arc<AtomicU8>,
+    authenticated_document_loaded: Arc<AtomicBool>,
+) {
+    thread::spawn(move || {
+        for delay_ms in GRAPH_BOOTSTRAP_RETRY_DELAYS_MS {
+            thread::sleep(Duration::from_millis(delay_ms));
+            let should_retry = SURFACE_STATE.lock().ok().is_some_and(|state| {
+                state.as_ref().is_some_and(|record| {
+                    record.operation_id == operation_id
+                        && record.report_nonce == report_nonce
+                        && record.graph_state == "loading"
+                        && matches!(
+                            record.graph_phase.as_str(),
+                            "starting"
+                                | "document-loaded"
+                                | "about-blank"
+                                | "origin-navigated"
+                                | "origin-reloaded"
+                                | "origin-navigation-pending"
+                                | "session-reload-requested"
+                                | "navigation-status-unavailable"
+                                | "navigation-unexpected"
+                                | "bootstrap-dispatched"
+                        )
+                })
+            });
+            if !should_retry {
+                return;
+            }
+            let main_webview = webview.clone();
+            let operation_for_main = operation_id.clone();
+            let nonce_for_main = report_nonce.clone();
+            let script_for_main = initialization_script.clone();
+            let authenticated_ready = authenticated_document_loaded.load(Ordering::Acquire);
+            let navigation_phase = if !authenticated_ready {
+                "origin-navigation-pending"
+            } else {
+                match navigation_classification.load(Ordering::Acquire) {
+                    NAVIGATION_ABOUT_BLANK => "about-blank",
+                    NAVIGATION_MANAGED_ORIGIN => "origin-navigated",
+                    NAVIGATION_UNEXPECTED => "navigation-unexpected",
+                    _ => "origin-navigation-pending",
+                }
+            };
+            let may_evaluate = authenticated_ready
+                && navigation_classification.load(Ordering::Acquire) == NAVIGATION_MANAGED_ORIGIN;
+            let dispatch_result = webview.run_on_main_thread(move || {
+                if let Ok(mut state) = SURFACE_STATE.lock() {
+                    if let Some(record) = state.as_mut() {
+                        if record.operation_id == operation_for_main
+                            && record.report_nonce == nonce_for_main
+                            && record.graph_state == "loading"
+                        {
+                            record.graph_phase = navigation_phase.to_owned();
+                        }
+                    }
+                }
+                if !may_evaluate {
+                    return;
+                }
+                if main_webview.eval(&script_for_main).is_ok() {
+                    if let Ok(mut state) = SURFACE_STATE.lock() {
+                        if let Some(record) = state.as_mut() {
+                            if record.operation_id == operation_for_main
+                                && record.report_nonce == nonce_for_main
+                                && record.graph_state == "loading"
+                                && matches!(
+                                    record.graph_phase.as_str(),
+                                    "starting"
+                                        | "document-loaded"
+                                        | "about-blank"
+                                        | "origin-navigated"
+                                        | "origin-reloaded"
+                                        | "origin-navigation-pending"
+                                        | "session-reload-requested"
+                                        | "navigation-unexpected"
+                                )
+                            {
+                                record.graph_phase = "bootstrap-dispatched".to_owned();
+                            }
+                        }
+                    }
+                }
+            });
+            if dispatch_result.is_err() {
+                if let Ok(mut state) = SURFACE_STATE.lock() {
+                    if let Some(record) = state.as_mut() {
+                        if record.operation_id == operation_id
+                            && record.report_nonce == report_nonce
+                        {
+                            record.graph_phase = "navigation-status-unavailable".to_owned();
+                        }
+                    }
+                }
+            }
+        }
+        if let Ok(mut state) = SURFACE_STATE.lock() {
+            if let Some(record) = state.as_mut() {
+                if record.operation_id == operation_id
+                    && record.report_nonce == report_nonce
+                    && record.graph_state == "loading"
+                {
+                    record.graph_state = "failed".to_owned();
+                    record.graph_phase = "failed".to_owned();
+                    record.graph_error = Some("siyuan_graph_unavailable".to_owned());
+                }
+            }
+        }
+    });
+}
+
+fn graph_navigation_classification(expected_origin: &url::Url, candidate: &url::Url) -> u8 {
+    if candidate.as_str() == "about:blank" {
+        NAVIGATION_ABOUT_BLANK
+    } else if navigation_allowed(expected_origin, candidate) {
+        NAVIGATION_MANAGED_ORIGIN
+    } else {
+        NAVIGATION_UNEXPECTED
     }
 }
 
@@ -503,6 +713,7 @@ fn status(app: &AppHandle) -> SiyuanSurfaceStatus {
         root_document_id: record.and_then(|value| value.root_document_id.clone()),
         graph_mode: record.map(|value| value.graph_mode.clone()),
         graph_state: record.map(|value| value.graph_state.clone()),
+        graph_phase: record.map(|value| value.graph_phase.clone()),
         graph_error: record.and_then(|value| value.graph_error.clone()),
     }
 }
@@ -599,6 +810,7 @@ pub async fn siyuan_surface_open(
             {
                 record.visible = true;
                 record.graph_state = "loading".to_owned();
+                record.graph_phase = "starting".to_owned();
                 record.graph_error = None;
                 record.operation_id = operation_id.clone();
             }
@@ -613,8 +825,15 @@ pub async fn siyuan_surface_open(
                     )
                     .map_err(|_| public_error("siyuan_surface_session_unavailable"))?;
                 existing
-                    .navigate(origin)
+                    .navigate(origin.clone())
                     .map_err(|_| public_error("siyuan_surface_navigation_unavailable"))?;
+                if let Ok(mut state) = SURFACE_STATE.lock() {
+                    if let Some(record) = state.as_mut() {
+                        if record.operation_id == operation_id {
+                            record.graph_phase = "origin-reloaded".to_owned();
+                        }
+                    }
+                }
                 apply_bounds(&existing, &bounds)?;
                 existing
                     .show()
@@ -637,14 +856,13 @@ pub async fn siyuan_surface_open(
             .map_err(|_| public_error("siyuan_surface_state_unavailable"))? = None;
     }
 
-    let blank = url::Url::parse("about:blank")
-        .map_err(|_| public_error("siyuan_surface_origin_invalid"))?;
     let report_nonce = nanoid::nanoid!(24);
     let initialization_script = match graph_initialization_script(
         &graph_mode,
         notebook_id.as_deref(),
         root_document_id.as_deref(),
         &report_nonce,
+        &origin,
     ) {
         Ok(value) => value,
         Err(error) => {
@@ -653,14 +871,103 @@ pub async fn siyuan_surface_open(
         }
     };
     let allowed_origin = origin.clone();
+    let navigation_classification = Arc::new(AtomicU8::new(NAVIGATION_PENDING));
+    let navigation_classification_for_handler = Arc::clone(&navigation_classification);
+    let page_load_origin = origin.clone();
+    let page_load_nonce = report_nonce.clone();
+    let page_load_operation = operation_id.clone();
+    let authenticated_reload_requested = Arc::new(AtomicBool::new(false));
+    let authenticated_reload_requested_for_handler = Arc::clone(&authenticated_reload_requested);
+    let authenticated_document_loaded = Arc::new(AtomicBool::new(false));
+    let authenticated_document_loaded_for_handler = Arc::clone(&authenticated_document_loaded);
+    let page_load_navigation_classification = Arc::clone(&navigation_classification);
     let report_nonce_for_handler = report_nonce.clone();
+    let retry_report_nonce = report_nonce.clone();
+    let authenticated_root_url = origin.clone();
     let (position, size) = child_geometry(&bounds)?;
-    let mut builder = WebviewBuilder::new(SURFACE_LABEL, WebviewUrl::External(blank))
+    // Make the managed SiYuan origin the child's first real document. On Windows,
+    // initialization scripts registered on an about:blank child were not installed
+    // into the later programmatic navigation even when WebView2 returned success.
+    let mut builder = WebviewBuilder::new(SURFACE_LABEL, WebviewUrl::External(origin.clone()))
         .focused(true)
         .additional_browser_args(MAIN_WEBVIEW_ADDITIONAL_BROWSER_ARGS)
         .initialization_script(&initialization_script)
+        .on_page_load(move |webview, payload| {
+            if !matches!(payload.event(), PageLoadEvent::Finished)
+                || payload.url().as_str() == "about:blank"
+                || !navigation_allowed(&page_load_origin, payload.url())
+            {
+                return;
+            }
+            let is_auth_document = payload.url().path() == "/check-auth";
+            page_load_navigation_classification.store(NAVIGATION_MANAGED_ORIGIN, Ordering::Release);
+            let owns_surface = SURFACE_STATE.lock().ok().is_some_and(|mut state| {
+                state.as_mut().is_some_and(|record| {
+                    if record.operation_id != page_load_operation
+                        || record.report_nonce != page_load_nonce
+                    {
+                        return false;
+                    }
+                    record.graph_phase = if authenticated_reload_requested_for_handler
+                        .load(Ordering::Acquire)
+                        && !is_auth_document
+                    {
+                        "document-loaded".to_owned()
+                    } else if authenticated_reload_requested_for_handler.load(Ordering::Acquire) {
+                        "origin-navigation-pending".to_owned()
+                    } else {
+                        "session-reload-requested".to_owned()
+                    };
+                    true
+                })
+            });
+            if !owns_surface {
+                return;
+            }
+            if !authenticated_reload_requested_for_handler.swap(true, Ordering::AcqRel) {
+                let navigation_webview = webview.clone();
+                let navigation_target = authenticated_root_url.clone();
+                let navigation_operation = page_load_operation.clone();
+                let navigation_nonce = page_load_nonce.clone();
+                let dispatch_result = webview.run_on_main_thread(move || {
+                    if navigation_webview.navigate(navigation_target).is_err() {
+                        if let Ok(mut state) = SURFACE_STATE.lock() {
+                            if let Some(record) = state.as_mut() {
+                                if record.operation_id == navigation_operation
+                                    && record.report_nonce == navigation_nonce
+                                {
+                                    record.graph_state = "failed".to_owned();
+                                    record.graph_phase = "failed".to_owned();
+                                    record.graph_error =
+                                        Some("siyuan_graph_root_navigation_unavailable".to_owned());
+                                }
+                            }
+                        }
+                    }
+                });
+                if dispatch_result.is_err() {
+                    if let Ok(mut state) = SURFACE_STATE.lock() {
+                        if let Some(record) = state.as_mut() {
+                            if record.operation_id == page_load_operation
+                                && record.report_nonce == page_load_nonce
+                            {
+                                record.graph_state = "failed".to_owned();
+                                record.graph_phase = "failed".to_owned();
+                                record.graph_error =
+                                    Some("siyuan_graph_main_thread_unavailable".to_owned());
+                            }
+                        }
+                    }
+                }
+                return;
+            }
+            if is_auth_document {
+                return;
+            }
+            authenticated_document_loaded_for_handler.store(true, Ordering::Release);
+        })
         .on_document_title_changed(move |webview, title| {
-            let Some((graph_state, graph_error)) =
+            let Some((graph_state, graph_error, graph_phase)) =
                 parse_graph_report(&title, &report_nonce_for_handler)
             else {
                 return;
@@ -669,7 +976,12 @@ pub async fn siyuan_surface_open(
                 if let Some(record) = state.as_mut() {
                     if record.report_nonce == report_nonce_for_handler {
                         record.graph_state = graph_state.to_owned();
+                        record.graph_phase = graph_phase.to_owned();
                         record.graph_error = graph_error.map(str::to_owned);
+                        eprintln!(
+                            "siyuan_surface_graph_phase operation={} phase={}",
+                            record.operation_id, graph_phase
+                        );
                     }
                 }
             }
@@ -681,7 +993,12 @@ pub async fn siyuan_surface_open(
                 }"#,
             );
         })
-        .on_navigation(move |candidate| navigation_allowed(&allowed_origin, candidate))
+        .on_navigation(move |candidate| {
+            let allowed = navigation_allowed(&allowed_origin, candidate);
+            let classification = graph_navigation_classification(&allowed_origin, candidate);
+            navigation_classification_for_handler.store(classification, Ordering::Release);
+            allowed
+        })
         .on_new_window(|_, _| NewWindowResponse::Deny)
         .on_download(|_, _| false);
     let child_cdp = match child_cdp_configuration(&app) {
@@ -718,6 +1035,7 @@ pub async fn siyuan_surface_open(
         graph_mode,
         visible: true,
         graph_state: "loading".to_owned(),
+        graph_phase: "starting".to_owned(),
         graph_error: None,
         report_nonce,
         origin: origin_key,
@@ -733,9 +1051,16 @@ pub async fn siyuan_surface_open(
                     .build(),
             )
             .map_err(|_| public_error("siyuan_surface_session_unavailable"))?;
-        webview
-            .navigate(origin)
-            .map_err(|_| public_error("siyuan_surface_navigation_unavailable"))?;
+        // Do not reload here. WebView2 first creates the child on about:blank and then
+        // performs the builder's queued managed-origin navigation. Reloading at this
+        // point cancels that queued navigation and permanently reloads about:blank.
+        if let Ok(mut state) = SURFACE_STATE.lock() {
+            if let Some(record) = state.as_mut() {
+                if record.operation_id == operation_id {
+                    record.graph_phase = "origin-navigation-pending".to_owned();
+                }
+            }
+        }
         apply_bounds(&webview, &bounds)?;
         webview
             .show()
@@ -755,6 +1080,14 @@ pub async fn siyuan_surface_open(
         clear_current_operation(&operation_id);
         return Err(error);
     }
+    schedule_graph_bootstrap_retry(
+        webview,
+        operation_id,
+        retry_report_nonce,
+        initialization_script,
+        navigation_classification,
+        authenticated_document_loaded,
+    );
     Ok(status(&app))
 }
 
@@ -938,6 +1271,24 @@ mod tests {
                 &url::Url::parse(denied).unwrap()
             ));
         }
+        assert_eq!(
+            graph_navigation_classification(&origin, &url::Url::parse("about:blank").unwrap()),
+            NAVIGATION_ABOUT_BLANK
+        );
+        assert_eq!(
+            graph_navigation_classification(
+                &origin,
+                &url::Url::parse("http://127.0.0.1:61342/stage/build/app/index.html").unwrap()
+            ),
+            NAVIGATION_MANAGED_ORIGIN
+        );
+        assert_eq!(
+            graph_navigation_classification(
+                &origin,
+                &url::Url::parse("http://127.0.0.1:61343/").unwrap()
+            ),
+            NAVIGATION_UNEXPECTED
+        );
     }
 
     #[test]
@@ -951,6 +1302,7 @@ mod tests {
             root_document_id: Some("20260824010102-abcdefg".to_owned()),
             graph_mode: Some("local".to_owned()),
             graph_state: Some("ready".to_owned()),
+            graph_phase: Some("ready".to_owned()),
             graph_error: None,
         })
         .unwrap();
@@ -965,6 +1317,7 @@ mod tests {
                 "rootDocumentId": "20260824010102-abcdefg",
                 "graphMode": "local",
                 "graphState": "ready",
+                "graphPhase": "ready",
                 "graphError": null,
             })
         );
@@ -1116,11 +1469,13 @@ mod tests {
 
     #[test]
     fn graph_first_initialization_uses_only_official_bounded_dom_actions() {
+        let origin = url::Url::parse("http://127.0.0.1:61342/").unwrap();
         let script = graph_initialization_script(
             "local",
             Some("20260824010101-abcdefg"),
             Some("20260824010102-abcdefg"),
             "report-nonce",
+            &origin,
         )
         .expect("valid local graph target");
 
@@ -1144,12 +1499,14 @@ mod tests {
             "20260824010102-abcdefg",
             r#"[data-type="fullscreen"]"#,
             "window.top !== window",
-            r#"window.location.protocol !== "http:""#,
-            r#"window.location.hostname !== "127.0.0.1""#,
+            "window.location.origin !== expectedOrigin",
+            r#"window.location.pathname === "/check-auth""#,
+            r#"http://127.0.0.1:61342"#,
             "Date.now() + 10000",
             "window.setInterval(tick, 200)",
             "window.clearInterval(timer)",
-            "pagehide",
+            r#"reportPhase("bootstrapped")"#,
+            "window.__vibespaceGraphBootstrapNonce === reportNonce",
             "try {",
             "catch (_error)",
             ".click()",
@@ -1177,6 +1534,7 @@ mod tests {
         assert_eq!(script.matches("fetch(").count(), 1);
         assert_eq!(script.matches("/api/").count(), 1);
         assert_eq!(script.matches(".click()").count(), 6);
+        assert!(!script.contains("pagehide"));
     }
 
     #[test]
@@ -1185,36 +1543,84 @@ mod tests {
         let install_call = [".initialization", "_script(&initialization_script)"].join("");
 
         assert!(source.contains(&install_call));
+        assert!(source.contains(".on_page_load(move |webview, payload|"));
+        assert!(source.contains("PageLoadEvent::Finished"));
+        assert!(source.contains("\"document-loaded\".to_owned()"));
+        assert!(source.contains("session-reload-requested"));
+        assert!(source.contains("authenticated_reload_requested_for_handler.swap(true"));
+        let loaded_gate = ["authenticated_document_loaded", ".load(Ordering::Acquire)"].join("");
+        let loaded_signal = [
+            "authenticated_document_loaded_for_handler",
+            ".store(true, Ordering::Release)",
+        ]
+        .join("");
+        assert!(source.contains(&loaded_gate));
+        assert!(source.contains(&loaded_signal));
+        assert!(source.contains("payload.url().path() == \"/check-auth\""));
+        let forbidden_direct_eval = ["webview.eval", "(&page_load_script)"].join("");
+        let deferred_retry_eval = ["main_webview.eval", "(&script_for_main)"].join("");
+        assert!(!source.contains(&forbidden_direct_eval));
+        assert!(source.contains(&deferred_retry_eval));
+        assert!(source.contains("payload.url().as_str() == \"about:blank\""));
+        assert!(source.contains("WebviewUrl::External(origin.clone())"));
+        let forbidden_blank_builder = ["WebviewUrl::External(", "blank)"].join("");
+        assert!(!source.contains(&forbidden_blank_builder));
+        assert!(source.contains("if !may_evaluate"));
+        assert!(source.contains("origin-navigation-pending"));
+        let cookie_index = source.find(".set_cookie(").unwrap();
+        let navigate_index = source[cookie_index..].find(".navigate(").unwrap() + cookie_index;
+        let show_index = source[navigate_index..].find(".show()").unwrap() + navigate_index;
+        assert!(cookie_index < navigate_index && navigate_index < show_index);
+        assert!(source.contains("navigation_webview.navigate(navigation_target)"));
+        assert!(source.contains("siyuan_graph_root_navigation_unavailable"));
+        assert!(source.contains("schedule_graph_bootstrap_retry("));
+        assert!(source.contains("webview.run_on_main_thread(move ||"));
+        assert!(source.contains(".on_navigation(move |candidate|"));
+        assert!(source.contains("graph_navigation_classification(&allowed_origin, candidate)"));
+        let forbidden_url_query = ["main_webview", ".url()"].join("");
+        assert!(!source.contains(&forbidden_url_query));
+        assert!(source.contains("&& record.graph_state == \"loading\""));
+    }
+
+    #[test]
+    fn graph_bootstrap_retries_are_bounded_inside_the_existing_deadline() {
+        assert!(GRAPH_BOOTSTRAP_RETRY_DELAYS_MS[0] <= 100);
+        assert!(GRAPH_BOOTSTRAP_RETRY_DELAYS_MS.iter().sum::<u64>() < 10_000);
+        assert_eq!(GRAPH_BOOTSTRAP_RETRY_DELAYS_MS.len(), 12);
     }
 
     #[test]
     fn graph_target_validation_fails_closed() {
+        let origin = url::Url::parse("http://127.0.0.1:61342/").unwrap();
         assert!(graph_initialization_script(
             "local",
             Some("20260824010101-abcdefg"),
             Some("20260824010102-abcdefg"),
-            "report-nonce"
+            "report-nonce",
+            &origin
         )
         .is_ok());
-        assert!(graph_initialization_script("global", None, None, "report-nonce").is_ok());
+        assert!(graph_initialization_script("global", None, None, "report-nonce", &origin).is_ok());
         assert_eq!(
             graph_initialization_script(
                 "local",
                 Some("20260824010101-abcdefg"),
                 None,
-                "report-nonce"
+                "report-nonce",
+                &origin
             ),
             Err("siyuan_surface_target_invalid".to_owned())
         );
         assert_eq!(
-            graph_initialization_script("other", None, None, "report-nonce"),
+            graph_initialization_script("other", None, None, "report-nonce", &origin),
             Err("siyuan_surface_graph_mode_invalid".to_owned())
         );
         assert!(graph_initialization_script(
             "local",
             Some("20260824010101-abcdefg"),
             Some("bad');fetch('/api');"),
-            "report-nonce"
+            "report-nonce",
+            &origin
         )
         .is_err());
     }
@@ -1223,18 +1629,44 @@ mod tests {
     fn graph_reports_are_nonce_bound_and_fixed_code_only() {
         assert_eq!(
             parse_graph_report("__VIBESPACE_SIYUAN_GRAPH__:nonce-1:ready:", "nonce-1"),
-            Some(("ready", None))
+            Some(("ready", None, "ready"))
+        );
+        assert_eq!(
+            parse_graph_report(
+                "__VIBESPACE_SIYUAN_GRAPH__:nonce-1:loading:bootstrapped",
+                "nonce-1"
+            ),
+            Some(("loading", None, "bootstrapped"))
+        );
+        assert_eq!(
+            parse_graph_report(
+                "__VIBESPACE_SIYUAN_GRAPH__:nonce-1:loading:eval-entered",
+                "nonce-1"
+            ),
+            Some(("loading", None, "eval-entered"))
+        );
+        assert_eq!(
+            parse_graph_report(
+                "__VIBESPACE_SIYUAN_GRAPH__:nonce-1:failed:siyuan_graph_origin_mismatch",
+                "nonce-1"
+            ),
+            Some(("failed", Some("siyuan_graph_origin_mismatch"), "failed"))
         );
         assert_eq!(
             parse_graph_report(
                 "__VIBESPACE_SIYUAN_GRAPH__:nonce-1:failed:siyuan_graph_target_timeout",
                 "nonce-1"
             ),
-            Some(("failed", Some("siyuan_graph_target_timeout")))
+            Some(("failed", Some("siyuan_graph_target_timeout"), "failed"))
         );
         assert!(parse_graph_report("__VIBESPACE_SIYUAN_GRAPH__:other:ready:", "nonce-1").is_none());
         assert!(parse_graph_report(
             "__VIBESPACE_SIYUAN_GRAPH__:nonce-1:failed:secret-detail",
+            "nonce-1"
+        )
+        .is_none());
+        assert!(parse_graph_report(
+            "__VIBESPACE_SIYUAN_GRAPH__:nonce-1:loading:secret-detail",
             "nonce-1"
         )
         .is_none());

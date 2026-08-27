@@ -25,6 +25,26 @@ export interface SiyuanSurfaceStatus {
   rootDocumentId: string | null;
   graphMode: 'local' | 'global' | null;
   graphState: 'loading' | 'ready' | 'failed' | null;
+  graphPhase:
+    | 'starting'
+    | 'document-loaded'
+    | 'about-blank'
+    | 'origin-navigated'
+    | 'origin-reloaded'
+    | 'origin-navigation-pending'
+    | 'session-reload-requested'
+    | 'navigation-status-unavailable'
+    | 'navigation-unexpected'
+    | 'bootstrap-dispatched'
+    | 'eval-entered'
+    | 'bootstrapped'
+    | 'block-verified'
+    | 'tree-opened'
+    | 'graph-dock-found'
+    | 'fullscreen-requested'
+    | 'ready'
+    | 'failed'
+    | null;
   graphError: string | null;
 }
 
@@ -56,6 +76,30 @@ const SIYUAN_GRAPH_ERRORS = new Set([
   'siyuan_graph_target_unavailable',
   'siyuan_graph_target_invalid',
   'siyuan_graph_unavailable',
+  'siyuan_graph_frame_mismatch',
+  'siyuan_graph_origin_mismatch',
+  'siyuan_graph_root_navigation_unavailable',
+  'siyuan_graph_main_thread_unavailable',
+]);
+const SIYUAN_GRAPH_PHASES = new Set([
+  'starting',
+  'document-loaded',
+  'about-blank',
+  'origin-navigated',
+  'origin-reloaded',
+  'origin-navigation-pending',
+  'session-reload-requested',
+  'navigation-status-unavailable',
+  'navigation-unexpected',
+  'bootstrap-dispatched',
+  'eval-entered',
+  'bootstrapped',
+  'block-verified',
+  'tree-opened',
+  'graph-dock-found',
+  'fullscreen-requested',
+  'ready',
+  'failed',
 ]);
 
 export function redactSiyuanSurfaceError(value: unknown): string {
@@ -67,7 +111,7 @@ export function parseSiyuanSurfaceStatus(value: unknown): SiyuanSurfaceStatus {
   const status = record(value);
   if (
     Object.keys(status).sort().join(',') !==
-      'created,graphError,graphMode,graphState,mapId,notebookId,projectId,rootDocumentId,visible' ||
+      'created,graphError,graphMode,graphPhase,graphState,mapId,notebookId,projectId,rootDocumentId,visible' ||
     typeof status.created !== 'boolean' ||
     typeof status.visible !== 'boolean' ||
     (status.projectId !== null && typeof status.projectId !== 'string') ||
@@ -79,10 +123,15 @@ export function parseSiyuanSurfaceStatus(value: unknown): SiyuanSurfaceStatus {
       status.graphState !== 'loading' &&
       status.graphState !== 'ready' &&
       status.graphState !== 'failed') ||
+    (status.graphPhase !== null &&
+      (typeof status.graphPhase !== 'string' || !SIYUAN_GRAPH_PHASES.has(status.graphPhase))) ||
     (status.graphError !== null &&
       (typeof status.graphError !== 'string' || !SIYUAN_GRAPH_ERRORS.has(status.graphError))) ||
     (status.graphState === 'failed' && status.graphError === null) ||
-    (status.graphState !== 'failed' && status.graphError !== null)
+    (status.graphState !== 'failed' && status.graphError !== null) ||
+    (status.graphState === null) !== (status.graphPhase === null) ||
+    (status.graphState === 'ready' && status.graphPhase !== 'ready') ||
+    (status.graphState === 'failed' && status.graphPhase !== 'failed')
   ) {
     throw new Error('siyuan_surface_status_invalid');
   }
@@ -100,6 +149,7 @@ export function parseSiyuanSurfaceStatus(value: unknown): SiyuanSurfaceStatus {
       status.rootDocumentId === null ? null : assertSiyuanNodeId(status.rootDocumentId),
     graphMode: status.graphMode as SiyuanSurfaceStatus['graphMode'],
     graphState: status.graphState as SiyuanSurfaceStatus['graphState'],
+    graphPhase: status.graphPhase as SiyuanSurfaceStatus['graphPhase'],
     graphError: status.graphError as string | null,
   });
 }

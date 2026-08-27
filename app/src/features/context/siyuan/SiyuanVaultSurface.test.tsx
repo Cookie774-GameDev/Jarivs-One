@@ -5,6 +5,12 @@ import type { SiyuanSurfaceBridge } from './siyuanSurface';
 import { SiyuanVaultSurface } from './SiyuanVaultSurface';
 
 class ResizeObserverMock {
+  static callback: ResizeObserverCallback | null = null;
+
+  constructor(callback: ResizeObserverCallback) {
+    ResizeObserverMock.callback = callback;
+  }
+
   observe = vi.fn();
   disconnect = vi.fn();
 }
@@ -23,6 +29,7 @@ function bridge(overrides: Partial<SiyuanSurfaceBridge> = {}): SiyuanSurfaceBrid
     ...targetProps,
     graphMode: 'local' as const,
     graphState: 'ready' as const,
+    graphPhase: 'ready' as const,
     graphError: null,
   };
   return {
@@ -38,6 +45,7 @@ function bridge(overrides: Partial<SiyuanSurfaceBridge> = {}): SiyuanSurfaceBrid
 
 describe('SiYuan Context Vault surface', () => {
   beforeEach(() => {
+    ResizeObserverMock.callback = null;
     vi.stubGlobal('ResizeObserver', ResizeObserverMock);
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,
@@ -95,11 +103,51 @@ describe('SiYuan Context Vault surface', () => {
       'map-1',
     );
     fireEvent.click(screen.getByRole('button', { name: /close/iu }));
+    await waitFor(() => expect(native.hide).toHaveBeenCalledWith(operationId));
     await waitFor(() => expect(native.close).toHaveBeenCalledWith(operationId));
     expect(onClose).toHaveBeenCalled();
     rendered.unmount();
     expect(native.close).toHaveBeenCalledTimes(1);
     expect(native.close).not.toHaveBeenCalledWith(undefined);
+  });
+
+  it('keeps native child bounds synchronized to the focused graph rectangle', async () => {
+    const native = bridge();
+    render(
+      <SiyuanVaultSurface
+        projectId="project-1"
+        {...targetProps}
+        bridge={native}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(native.open).toHaveBeenCalledOnce());
+    const operationId = vi.mocked(native.open).mock.calls[0]?.[0];
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 320,
+      top: 96,
+      right: 1_440,
+      bottom: 816,
+      width: 1_120,
+      height: 720,
+      toJSON: () => ({}),
+    });
+
+    act(() => {
+      ResizeObserverMock.callback?.([], {} as ResizeObserver);
+    });
+
+    await waitFor(() =>
+      expect(native.setBounds).toHaveBeenCalledWith(operationId, {
+        x: 320,
+        y: 96,
+        width: 1_120,
+        height: 720,
+      }),
+    );
   });
 
   it('shows a stable redacted error and retries without exposing an origin', async () => {
@@ -113,6 +161,7 @@ describe('SiYuan Context Vault surface', () => {
         ...targetProps,
         graphMode: 'local',
         graphState: 'ready',
+        graphPhase: 'ready',
         graphError: null,
       });
     const native = bridge({ open });
@@ -143,6 +192,7 @@ describe('SiYuan Context Vault surface', () => {
       ...targetProps,
       graphMode: 'local' as const,
       graphState: 'loading' as const,
+      graphPhase: 'bootstrapped' as const,
       graphError: null,
     };
     const native = bridge({
@@ -150,6 +200,7 @@ describe('SiYuan Context Vault surface', () => {
       status: vi.fn(async () => ({
         ...loading,
         graphState: 'failed' as const,
+        graphPhase: 'failed' as const,
         graphError: 'siyuan_graph_target_unavailable',
       })),
     });
@@ -183,7 +234,7 @@ describe('SiYuan Context Vault surface', () => {
     rendered.unmount();
     await waitFor(() => expect(native.close).toHaveBeenCalledWith(operationId));
     expect(native.close).not.toHaveBeenCalledWith(undefined);
-    expect(native.hide).not.toHaveBeenCalled();
+    expect(native.hide).toHaveBeenCalledWith(operationId);
   });
 
   it('cancels an exact pending open before it can install an orphan surface', async () => {
@@ -212,6 +263,7 @@ describe('SiYuan Context Vault surface', () => {
       ...targetProps,
       graphMode: 'local',
       graphState: 'ready',
+      graphPhase: 'ready',
       graphError: null,
     });
     await act(async () => pendingOpen);

@@ -22,6 +22,7 @@ describe('SiYuan restricted surface bridge', () => {
       rootDocumentId: '20260824010102-abcdefg',
       graphMode: 'local' as const,
       graphState: 'ready' as const,
+      graphPhase: 'ready' as const,
       graphError: null,
     };
     const invoke = vi.fn(async () => status);
@@ -81,6 +82,7 @@ describe('SiYuan restricted surface bridge', () => {
         rootDocumentId: '20260824010102-abcdefg',
         graphMode: 'local',
         graphState: 'ready',
+        graphPhase: 'ready',
         graphError: null,
         token: 'forbidden',
       }),
@@ -95,6 +97,7 @@ describe('SiYuan restricted surface bridge', () => {
         rootDocumentId: '20260824010102-abcdefg',
         graphMode: 'local',
         graphState: 'ready',
+        graphPhase: 'ready',
         graphError: 'siyuan_graph_target_unavailable',
       }),
     ).toThrow('siyuan_surface_status_invalid');
@@ -102,6 +105,77 @@ describe('SiYuan restricted surface bridge', () => {
       'siyuan_surface_bounds_invalid',
     );
   });
+
+  it('accepts the authenticated managed-origin reload phase while loading', () => {
+    expect(
+      parseSiyuanSurfaceStatus({
+        created: true,
+        visible: true,
+        projectId: 'project-1',
+        mapId: 'map-1',
+        notebookId: '20260824010101-abcdefg',
+        rootDocumentId: '20260824010102-abcdefg',
+        graphMode: 'local',
+        graphState: 'loading',
+        graphPhase: 'origin-reloaded',
+        graphError: null,
+      }),
+    ).toMatchObject({ graphState: 'loading', graphPhase: 'origin-reloaded' });
+  });
+
+  it('accepts a new child waiting for its managed-origin navigation', () => {
+    expect(
+      parseSiyuanSurfaceStatus({
+        created: true,
+        visible: true,
+        projectId: 'project-1',
+        mapId: 'map-1',
+        notebookId: '20260824010101-abcdefg',
+        rootDocumentId: '20260824010102-abcdefg',
+        graphMode: 'local',
+        graphState: 'loading',
+        graphPhase: 'origin-navigation-pending',
+        graphError: null,
+      }),
+    ).toMatchObject({ graphState: 'loading', graphPhase: 'origin-navigation-pending' });
+  });
+
+  it('accepts the one-time authenticated session reload phase', () => {
+    expect(
+      parseSiyuanSurfaceStatus({
+        created: true,
+        visible: true,
+        projectId: 'project-1',
+        mapId: 'map-1',
+        notebookId: '20260824010101-abcdefg',
+        rootDocumentId: '20260824010102-abcdefg',
+        graphMode: 'local',
+        graphState: 'loading',
+        graphPhase: 'session-reload-requested',
+        graphError: null,
+      }),
+    ).toMatchObject({ graphState: 'loading', graphPhase: 'session-reload-requested' });
+  });
+
+  it.each(['siyuan_graph_root_navigation_unavailable', 'siyuan_graph_main_thread_unavailable'])(
+    'accepts the fixed native lifecycle repair code %s',
+    (graphError) => {
+      expect(
+        parseSiyuanSurfaceStatus({
+          created: true,
+          visible: true,
+          projectId: 'project-1',
+          mapId: 'map-1',
+          notebookId: '20260824010101-abcdefg',
+          rootDocumentId: '20260824010102-abcdefg',
+          graphMode: 'local',
+          graphState: 'failed',
+          graphPhase: 'failed',
+          graphError,
+        }),
+      ).toMatchObject({ graphState: 'failed', graphPhase: 'failed', graphError });
+    },
+  );
 
   it('redacts arbitrary runtime text while preserving stable surface error codes', () => {
     expect(redactSiyuanSurfaceError(new Error('siyuan_surface_window_unavailable'))).toBe(
