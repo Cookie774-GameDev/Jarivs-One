@@ -78,15 +78,15 @@ export function ModeIndicator({
 }: ModeIndicatorProps) {
   const [open, setOpen] = React.useState(false);
   const [step, setStep] = React.useState<'mode' | 'access'>('mode');
+  const [focusedOptionId, setFocusedOptionId] = React.useState<string>(mode);
   const [accessTick, setAccessTick] = React.useState(0);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const optionSetRef = React.useRef<HTMLDivElement>(null);
   const optionTransition = useThemeMotionTransition(OPTION_TRANSITION);
   const current = permissionModeOption(mode);
   const Icon = MODE_ICONS[mode];
   const accent = ACCENT[current.accent];
-  const accessState = React.useMemo(
-    () => readPermissionAccess(chatId ?? ''),
-    [chatId, accessTick],
-  );
+  const accessState = React.useMemo(() => readPermissionAccess(chatId ?? ''), [chatId, accessTick]);
 
   const applyAccess = (access: PermissionAccessLevel) => {
     if (!chatId) return;
@@ -108,6 +108,53 @@ export function ModeIndicator({
     setStep('access');
   };
 
+  React.useEffect(() => {
+    if (!open) return;
+    const nextFocusedId = step === 'mode' ? mode : accessState.access;
+    setFocusedOptionId(nextFocusedId);
+    const timeout = window.setTimeout(() => {
+      optionSetRef.current
+        ?.querySelector<HTMLButtonElement>(`[data-option-id="${nextFocusedId}"]`)
+        ?.focus();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [accessState.access, mode, open, step]);
+
+  const closeAndRestoreTrigger = React.useCallback(() => {
+    setOpen(false);
+    window.setTimeout(() => triggerRef.current?.focus(), 0);
+  }, []);
+
+  const handleOptionSetKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const options = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="option"]'),
+    );
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeAndRestoreTrigger();
+      return;
+    }
+    if ((event.key === 'Enter' || event.key === ' ') && event.target instanceof HTMLButtonElement) {
+      event.preventDefault();
+      event.target.click();
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || options.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    const currentIndex = Math.max(0, options.indexOf(document.activeElement as HTMLButtonElement));
+    let nextIndex = currentIndex;
+    if (event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % options.length;
+    if (event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + options.length) % options.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = options.length - 1;
+    const next = options[nextIndex];
+    if (!next) return;
+    setFocusedOptionId(next.dataset.optionId ?? '');
+    next.focus();
+  };
+
   return (
     <Popover
       open={open}
@@ -118,6 +165,7 @@ export function ModeIndicator({
     >
       <PopoverTrigger asChild>
         <button
+          ref={triggerRef}
           type="button"
           className={cn(
             'group inline-flex h-7 items-center gap-1 rounded-full border px-1.5 py-0 text-[11px] font-medium leading-none transition-all',
@@ -152,10 +200,15 @@ export function ModeIndicator({
           'w-[min(320px,92vw)] overflow-hidden rounded-[16px] border border-border-mid/80 p-0',
           'bg-elevated/95 text-foreground backdrop-blur-xl',
           'shadow-[0_18px_50px_rgba(0,0,0,0.52),inset_0_1px_0_hsl(var(--foreground)/0.05),0_0_28px_hsl(var(--accent-copper)/0.12)]',
+          'data-[state=closed]:!animate-none',
           // Pet mini-panel is z-[81]; default popover z-50 is hidden under it.
           compact && 'z-[120]',
         )}
         onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          triggerRef.current?.focus();
+        }}
       >
         <div className="relative border-b border-border bg-panel/90 px-3.5 py-3">
           <div
@@ -187,7 +240,13 @@ export function ModeIndicator({
         </div>
 
         {step === 'mode' ? (
-          <div className="space-y-1 p-2" role="listbox" aria-label="Chat modes">
+          <div
+            ref={optionSetRef}
+            className="space-y-1 p-2"
+            role="listbox"
+            aria-label="Chat modes"
+            onKeyDown={handleOptionSetKeyDown}
+          >
             <AnimatePresence initial={false}>
               {PERMISSION_MODE_OPTIONS.map((option) => {
                 const OptionIcon = MODE_ICONS[option.id];
@@ -199,6 +258,9 @@ export function ModeIndicator({
                     type="button"
                     role="option"
                     aria-selected={selected}
+                    tabIndex={focusedOptionId === option.id ? 0 : -1}
+                    data-option-id={option.id}
+                    onFocus={() => setFocusedOptionId(option.id)}
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={optionTransition}
@@ -239,7 +301,13 @@ export function ModeIndicator({
             </AnimatePresence>
           </div>
         ) : (
-          <div className="space-y-1 p-2" role="listbox" aria-label="Access and Approve All">
+          <div
+            ref={optionSetRef}
+            className="space-y-1 p-2"
+            role="listbox"
+            aria-label="Access and Approve All"
+            onKeyDown={handleOptionSetKeyDown}
+          >
             {PERMISSION_ACCESS_OPTIONS.map((option) => {
               const selected = option.id === accessState.access;
               const full = option.id === 'full';
@@ -249,6 +317,9 @@ export function ModeIndicator({
                   type="button"
                   role="option"
                   aria-selected={selected}
+                  tabIndex={focusedOptionId === option.id ? 0 : -1}
+                  data-option-id={option.id}
+                  onFocus={() => setFocusedOptionId(option.id)}
                   onClick={() => applyAccess(option.id)}
                   className={cn(
                     'flex w-full items-start gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-all',
@@ -289,6 +360,9 @@ export function ModeIndicator({
                   type="button"
                   role="option"
                   aria-selected={selected}
+                  tabIndex={focusedOptionId === option.id ? 0 : -1}
+                  data-option-id={option.id}
+                  onFocus={() => setFocusedOptionId(option.id)}
                   onClick={() => applyApproveAll(option.id === 'approve-all')}
                   className={cn(
                     'flex w-full items-start rounded-xl border px-2.5 py-2 text-left transition-all',
@@ -297,7 +371,9 @@ export function ModeIndicator({
                   )}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="text-[12px] font-semibold text-foreground">{option.label}</span>
+                    <span className="text-[12px] font-semibold text-foreground">
+                      {option.label}
+                    </span>
                     <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
                       {option.description}
                     </span>
@@ -323,7 +399,7 @@ export function ModeIndicator({
               <button
                 type="button"
                 className="ml-auto rounded-lg px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted/40"
-                onClick={() => setOpen(false)}
+                onClick={closeAndRestoreTrigger}
               >
                 Done
               </button>
