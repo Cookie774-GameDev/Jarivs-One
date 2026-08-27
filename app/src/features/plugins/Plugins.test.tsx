@@ -119,11 +119,22 @@ describe('Plugins settings page', () => {
 
   it('opens the existing MCP manager when Chat requests /mcp', async () => {
     renderPlugins();
+    const disclosure = screen.getByRole('button', { name: 'Add MCP connection' });
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(disclosure.getAttribute('aria-controls')).toBe('plugins-mcp-connections');
+    expect(document.getElementById('plugins-mcp-connections')).toBeNull();
     expect(screen.queryByRole('heading', { name: 'VibeSpace MCP Gateway' })).toBeNull();
 
     act(() => window.dispatchEvent(new CustomEvent(OPEN_MCP_MANAGER_EVENT)));
 
-    expect(await screen.findByRole('heading', { name: 'VibeSpace MCP Gateway' })).toBeTruthy();
+    const heading = await screen.findByRole('heading', { name: 'VibeSpace MCP Gateway' });
+    const close = screen.getByRole('button', { name: 'Close MCP connections' });
+    expect(close.getAttribute('aria-expanded')).toBe('true');
+    expect(document.getElementById('plugins-mcp-connections')?.contains(heading)).toBe(true);
+
+    fireEvent.click(close);
+    expect(screen.getByRole('button', { name: 'Add MCP connection' })).toBeTruthy();
+    expect(document.getElementById('plugins-mcp-connections')).toBeNull();
   });
 
   it('preserves an MCP-open request while the lazy Plugins page mounts', async () => {

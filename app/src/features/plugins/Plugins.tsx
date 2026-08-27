@@ -250,8 +250,9 @@ export function Plugins() {
             type="button"
             size="icon-sm"
             variant="outline"
-            aria-label="Add MCP connection"
+            aria-label={mcpOpen ? 'Close MCP connections' : 'Add MCP connection'}
             aria-expanded={mcpOpen}
+            aria-controls="plugins-mcp-connections"
             onClick={() => setMcpOpen((open) => !open)}
           >
             <Plus />
@@ -259,7 +260,11 @@ export function Plugins() {
         </div>
       </header>
 
-      {mcpOpen && <McpConnections />}
+      {mcpOpen ? (
+        <div id="plugins-mcp-connections">
+          <McpConnections />
+        </div>
+      ) : null}
 
       <div className="rounded-lg border border-accent-cyan/20 bg-accent-cyan/5 p-3 flex gap-3">
         <ShieldCheck className="h-5 w-5 shrink-0 text-accent-cyan" />
