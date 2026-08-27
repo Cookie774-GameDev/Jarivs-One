@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const { requireHealthyLocalChatStorage, runLocalChatStorageOperation } = vi.hoisted(() => ({
   requireHealthyLocalChatStorage: vi.fn(async () => undefined),
   runLocalChatStorageOperation: vi.fn(async <T>(operation: () => Promise<T>) => operation()),
@@ -14,8 +14,10 @@ import {
   ensureActiveChat,
   formatBranchChatTitle,
   isDefaultChatTitle,
+  maybeRenameChat,
   messagesThroughBranchPoint,
 } from './chatLifecycle';
+import { chatRepo } from '@/lib/db';
 import type { Message, MessageId } from '@/types';
 
 beforeEach(() => {
@@ -25,6 +27,10 @@ beforeEach(() => {
   runLocalChatStorageOperation.mockImplementation(async <T>(operation: () => Promise<T>) =>
     operation(),
   );
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('chat storage gate', () => {
@@ -58,6 +64,66 @@ describe('deriveChatTitle', () => {
   it('returns empty for unusable text', () => {
     expect(deriveChatTitle('')).toBe('');
     expect(deriveChatTitle('ok')).toBe('');
+  });
+
+  it('keeps generated titles bounded for chat tabs', () => {
+    const title = deriveChatTitle(
+      'Build a production-ready launch dashboard with every possible operational detail included',
+    );
+
+    expect(title.length).toBeLessThanOrEqual(48);
+    expect(title.endsWith('…')).toBe(true);
+  });
+});
+
+describe('maybeRenameChat', () => {
+  it('derives the title from the initial useful request in the exact chat scope', async () => {
+    const chatId = 'cht_scoped' as never;
+    const getById = vi.spyOn(chatRepo, 'getById').mockResolvedValueOnce({
+      id: chatId,
+      title: 'New chat 4',
+    } as never);
+    const update = vi.spyOn(chatRepo, 'update').mockResolvedValueOnce({} as never);
+
+    await maybeRenameChat(chatId, 'Build the launch dashboard. Then verify it.');
+
+    expect(getById).toHaveBeenCalledWith(chatId);
+    expect(update).toHaveBeenCalledWith(chatId, { title: 'Build the launch dashboard' });
+  });
+
+  it('allows the first useful agent response to name an untouched default chat', async () => {
+    const chatId = 'cht_agent_fallback' as never;
+    const getById = vi.spyOn(chatRepo, 'getById').mockResolvedValueOnce({
+      id: chatId,
+      title: 'New chat',
+    } as never);
+    const update = vi.spyOn(chatRepo, 'update').mockResolvedValueOnce({} as never);
+
+    await maybeRenameChat(chatId, 'ok');
+    expect(getById).not.toHaveBeenCalled();
+
+    await maybeRenameChat(chatId, 'I prepared the deployment checklist.');
+
+    expect(update).toHaveBeenCalledWith(chatId, {
+      title: 'I prepared the deployment checklist',
+    });
+  });
+
+  it('never overwrites a stored user rename with a later agent response', async () => {
+    const chatId = 'cht_user_named' as never;
+    const getById = vi.spyOn(chatRepo, 'getById').mockResolvedValueOnce({
+      id: chatId,
+      title: 'My launch command center',
+    } as never);
+    const update = vi.spyOn(chatRepo, 'update').mockResolvedValueOnce({} as never);
+
+    await maybeRenameChat(
+      chatId,
+      'A later assistant response that would otherwise become a title.',
+    );
+
+    expect(getById).toHaveBeenCalledWith(chatId);
+    expect(update).not.toHaveBeenCalled();
   });
 });
 
