@@ -121,6 +121,20 @@ function searchableOptionText(option: ModelPickerOption): string {
     .toLocaleLowerCase();
 }
 
+function selectedProviderGroupId(
+  groups: readonly ModelPickerGroup[],
+  selectedId: string,
+): string | undefined {
+  const group = groups.find((candidate) =>
+    candidate.options.some(
+      (option) =>
+        option.id === selectedId ||
+        option.alternativeRoutes?.some((route) => route.id === selectedId),
+    ),
+  );
+  return group ? (group.id ?? `${group.provider}:${group.label}`) : undefined;
+}
+
 export interface ModelPickerTypeaheadProps {
   groups: ModelPickerGroup[];
   selectedId: string;
@@ -179,19 +193,13 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
     const [routeIndex, setRouteIndex] = useState(0);
     const [pendingOption, setPendingOption] = useState<ModelPickerOption | null>(null);
     const [effortIndex, setEffortIndex] = useState(0);
+    const selectedGroupId = useMemo(
+      () => selectedProviderGroupId(groups, selectedId),
+      [groups, selectedId],
+    );
+    const previousSelectionRef = useRef({ selectedId, groupId: selectedGroupId });
     const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
-      () =>
-        new Set(
-          groups
-            .filter((group) =>
-              group.options.some(
-                (option) =>
-                  option.id === selectedId ||
-                  option.alternativeRoutes?.some((route) => route.id === selectedId),
-              ),
-            )
-            .map((group) => group.id ?? `${group.provider}:${group.label}`),
-        ),
+      () => new Set(selectedGroupId ? [selectedGroupId] : []),
     );
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -255,22 +263,21 @@ export const ModelPickerTypeahead = forwardRef<ModelPickerTypeaheadRef, ModelPic
     };
 
     useEffect(() => {
-      const selectedGroup = groups.find((group) =>
-        group.options.some(
-          (option) =>
-            option.id === selectedId ||
-            option.alternativeRoutes?.some((route) => route.id === selectedId),
-        ),
-      );
-      if (!selectedGroup) return;
-      const groupId = selectedGroup.id ?? `${selectedGroup.provider}:${selectedGroup.label}`;
+      const previous = previousSelectionRef.current;
+      previousSelectionRef.current = { selectedId, groupId: selectedGroupId };
+      if (
+        !selectedGroupId ||
+        (previous.selectedId === selectedId && previous.groupId === selectedGroupId)
+      ) {
+        return;
+      }
       setExpandedGroupIds((current) => {
-        if (current.has(groupId)) return current;
+        if (current.has(selectedGroupId)) return current;
         const next = new Set(current);
-        next.add(groupId);
+        next.add(selectedGroupId);
         return next;
       });
-    }, [groups, selectedId]);
+    }, [selectedGroupId, selectedId]);
 
     const effortOptions = useMemo(
       () =>

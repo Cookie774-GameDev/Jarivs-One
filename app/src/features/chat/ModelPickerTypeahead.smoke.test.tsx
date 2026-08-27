@@ -836,6 +836,70 @@ describe('ModelPickerTypeahead smoke transports', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it('preserves a collapsed provider across catalog refresh without changing exact selection', () => {
+    const onSelect = vi.fn();
+    const groups = () => [
+      {
+        id: 'provider:openai',
+        provider: 'openai' as const,
+        label: 'OpenAI',
+        options: [
+          {
+            id: 'openai-api:gpt-5.6',
+            provider: 'openai' as const,
+            modelId: 'gpt-5.6',
+            label: 'GPT-5.6',
+            connection: connection('openai-api', 'native-api'),
+          },
+        ],
+      },
+      {
+        id: 'provider:alibaba',
+        provider: 'opencode' as never,
+        label: 'Alibaba',
+        options: [
+          {
+            id: 'opencode-cli:alibaba/qwen3.7-plus',
+            provider: 'opencode' as never,
+            modelId: 'alibaba/qwen3.7-plus',
+            label: 'Qwen 3.7 Plus',
+            connection: connection('opencode-cli', 'external-cli'),
+          },
+        ],
+      },
+    ];
+    const { rerender } = render(
+      <ModelPickerTypeahead
+        groups={groups()}
+        selectedId="openai-api:gpt-5.6"
+        onSelect={onSelect}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse OpenAI' }));
+    expect(screen.getByRole('button', { name: 'Expand OpenAI' })).not.toBeNull();
+
+    rerender(
+      <ModelPickerTypeahead
+        groups={groups()}
+        selectedId="openai-api:gpt-5.6"
+        onSelect={onSelect}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Expand OpenAI' })).not.toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+
+    rerender(
+      <ModelPickerTypeahead
+        groups={groups()}
+        selectedId="opencode-cli:alibaba/qwen3.7-plus"
+        onSelect={onSelect}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Collapse Alibaba' })).not.toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it('replaces automatic routing with search across providers, model names, and exact IDs', () => {
     render(
       <ModelPickerTypeahead
