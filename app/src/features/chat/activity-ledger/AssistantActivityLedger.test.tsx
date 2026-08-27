@@ -1,4 +1,6 @@
 import * as React from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Message } from '@/types';
@@ -18,6 +20,20 @@ function assistant(parts: Message['parts'], usage?: Message['usage']): Message {
 }
 
 describe('AssistantActivityLedger', () => {
+  it('points the disclosure chevron right when collapsed and up when expanded', () => {
+    const stylesheet = readFileSync(
+      resolve(process.cwd(), 'src/features/chat/activity-ledger/activity-ledger.css'),
+      'utf8',
+    );
+
+    expect(stylesheet).toMatch(
+      /\.assistant-activity-ledger__chevron\s*\{[^}]*transform:\s*rotate\(-90deg\)/s,
+    );
+    expect(stylesheet).toMatch(
+      /\.assistant-activity-ledger__chevron\.is-open\s*\{[^}]*transform:\s*rotate\(180deg\)/s,
+    );
+  });
+
   it('renders one compact disclosure, exact usage, and a privacy-safe command receipt', () => {
     render(
       <AssistantActivityLedger

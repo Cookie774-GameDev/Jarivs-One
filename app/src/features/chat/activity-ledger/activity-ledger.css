@@ -65,6 +65,7 @@
   width: 0.9rem;
   flex: 0 0 auto;
   color: hsl(var(--muted-foreground));
+  transform: rotate(-90deg);
   transition: transform 150ms ease;
 }
 
