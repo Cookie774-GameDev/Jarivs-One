@@ -20,7 +20,22 @@ function planText(plan: JarvisPlanReview): string {
     plan.summary,
     ...plan.steps.map((step, index) => `${index + 1}. ${step}`),
     ...(plan.risks?.length ? ['Risks:', ...plan.risks.map((risk) => `- ${risk}`)] : []),
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function samePlanDefinition(left: JarvisPlanReview, right: JarvisPlanReview): boolean {
+  return (
+    left.id === right.id &&
+    left.title === right.title &&
+    left.summary === right.summary &&
+    (left.executable ?? true) === (right.executable ?? true) &&
+    left.steps.length === right.steps.length &&
+    left.steps.every((step, index) => step === right.steps[index]) &&
+    (left.risks ?? []).length === (right.risks ?? []).length &&
+    (left.risks ?? []).every((risk, index) => risk === (right.risks ?? [])[index])
+  );
 }
 
 export function PlanReviewCard({ part, messageId, chatId }: PlanReviewCardProps) {
@@ -33,15 +48,27 @@ export function PlanReviewCard({ part, messageId, chatId }: PlanReviewCardProps)
   const busyRef = useRef(false);
 
   const writeStatus = async (status: JarvisPlanReview['status']) => {
-    if (!messageId) return;
+    if (!messageId || !chatId) throw new Error('Plan approval is unavailable.');
     const message = await messageRepo.getById(messageId);
-    if (!message) return;
+    const persistedPart = message?.parts.find(
+      (messagePart): messagePart is PlanPart =>
+        messagePart.kind === 'plan_review' && messagePart.plan.id === plan.id,
+    );
+    if (
+      !message ||
+      String(message.chat_id) !== chatId ||
+      !persistedPart ||
+      persistedPart.plan.status !== 'pending' ||
+      !samePlanDefinition(persistedPart.plan, plan)
+    ) {
+      throw new Error('Plan approval is no longer pending.');
+    }
     await messageRepo.update(messageId, {
-      parts: message.parts.map((messagePart) => (
+      parts: message.parts.map((messagePart) =>
         messagePart.kind === 'plan_review' && messagePart.plan.id === plan.id
           ? { kind: 'plan_review', plan: { ...messagePart.plan, status } }
-          : messagePart
-      )),
+          : messagePart,
+      ),
     });
   };
 
@@ -57,20 +84,22 @@ export function PlanReviewCard({ part, messageId, chatId }: PlanReviewCardProps)
       }
       await writeStatus('building');
       useJarvisInteractionStore.getState().setChatMode(chatId, 'agent');
-      window.dispatchEvent(new CustomEvent('jarvis:send', {
-        detail: {
-          chatId,
-          text: `Build this approved plan:\n\n${planText(plan)}`,
-          interactionMode: 'agent',
-          structuredContext: {
-            kind: 'plan_build',
-            sourceMessageId: messageId,
-            payload: { plan },
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId,
+            text: `Build this approved plan:\n\n${planText(plan)}`,
+            interactionMode: 'agent',
+            structuredContext: {
+              kind: 'plan_build',
+              sourceMessageId: messageId,
+              payload: { plan },
+            },
           },
-        },
-      }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'The plan could not start. Please retry.');
+        }),
+      );
+    } catch {
+      setError('The plan could not start. Please retry.');
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -88,18 +117,20 @@ export function PlanReviewCard({ part, messageId, chatId }: PlanReviewCardProps)
       role: 'user',
       parts: [{ kind: 'text', text }],
     });
-    window.dispatchEvent(new CustomEvent('jarvis:send', {
-      detail: {
-        chatId,
-        text,
-        interactionMode: 'plan',
-        structuredContext: {
-          kind: 'plan_redo',
-          sourceMessageId: messageId,
-          payload: { plan, revision: revision.trim() },
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          text,
+          interactionMode: 'plan',
+          structuredContext: {
+            kind: 'plan_redo',
+            sourceMessageId: messageId,
+            payload: { plan, revision: revision.trim() },
+          },
         },
-      },
-    }));
+      }),
+    );
     setBusy(false);
   };
 
@@ -122,20 +153,28 @@ export function PlanReviewCard({ part, messageId, chatId }: PlanReviewCardProps)
         </div>
       </div>
       <ol className="ml-5 list-decimal space-y-1 text-secondary text-foreground">
-        {plan.steps.map((step, index) => <li key={`${plan.id}:step:${index}`}>{step}</li>)}
+        {plan.steps.map((step, index) => (
+          <li key={`${plan.id}:step:${index}`}>{step}</li>
+        ))}
       </ol>
       {plan.risks?.length ? (
         <div className="mt-2 rounded-md border border-border bg-background/60 px-2 py-1.5">
           <div className="text-metadata uppercase tracking-wide text-muted-foreground">Risks</div>
           <ul className="ml-4 list-disc text-secondary text-muted-foreground">
-            {plan.risks.map((risk, index) => <li key={`${plan.id}:risk:${index}`}>{risk}</li>)}
+            {plan.risks.map((risk, index) => (
+              <li key={`${plan.id}:risk:${index}`}>{risk}</li>
+            ))}
           </ul>
         </div>
       ) : null}
       {plan.status !== 'pending' && (
         <p className="mt-2 text-secondary text-muted-foreground">Plan status: {plan.status}</p>
       )}
-      {error && <p role="alert" className="mt-2 text-secondary text-destructive">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-2 text-secondary text-destructive">
+          {error}
+        </p>
+      )}
       {redoOpen && (
         <div className="mt-3 flex flex-col gap-2">
           <textarea
@@ -144,7 +183,13 @@ export function PlanReviewCard({ part, messageId, chatId }: PlanReviewCardProps)
             value={revision}
             onChange={(event) => setRevision(event.target.value)}
           />
-          <Button type="button" size="sm" variant="accent" disabled={busy || !revision.trim()} onClick={handleRedo}>
+          <Button
+            type="button"
+            size="sm"
+            variant="accent"
+            disabled={busy || !revision.trim()}
+            onClick={handleRedo}
+          >
             Send Revision
           </Button>
         </div>

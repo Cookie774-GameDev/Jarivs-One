@@ -66,19 +66,81 @@ describe('PlanReviewCard', () => {
 
     await waitFor(() => expect(repo.update).toHaveBeenCalledTimes(1));
     expect(useJarvisInteractionStore.getState().modeForChat('chat_1' as never)).toBe('agent');
-    expect(window.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'jarvis:send',
-      detail: expect.objectContaining({
-        chatId: 'chat_1',
-        interactionMode: 'agent',
-        structuredContext: expect.objectContaining({ kind: 'plan_build' }),
+    expect(window.dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'jarvis:send',
+        detail: expect.objectContaining({
+          chatId: 'chat_1',
+          interactionMode: 'agent',
+          structuredContext: expect.objectContaining({ kind: 'plan_build' }),
+        }),
       }),
-    }));
+    );
+  });
+
+  it.each([
+    ['missing', null],
+    [
+      'stale',
+      {
+        id: 'msg_1',
+        chat_id: 'chat_1',
+        role: 'assistant',
+        parts: [
+          {
+            ...planPart,
+            plan: { ...planPart.plan, status: 'cancelled' as const },
+          },
+        ],
+      },
+    ],
+    [
+      'cross-chat',
+      {
+        id: 'msg_1',
+        chat_id: 'chat_other',
+        role: 'assistant',
+        parts: [planPart],
+      },
+    ],
+    [
+      'changed',
+      {
+        id: 'msg_1',
+        chat_id: 'chat_1',
+        role: 'assistant',
+        parts: [
+          {
+            ...planPart,
+            plan: { ...planPart.plan, steps: ['A different persisted plan'] },
+          },
+        ],
+      },
+    ],
+  ])('fails closed when persisted plan approval authority is %s', async (_case, message) => {
+    repo.getById.mockResolvedValueOnce(message);
+    useJarvisInteractionStore.getState().setChatMode('chat_1' as never, 'plan');
+    render(<PlanReviewCard part={planPart} messageId={'msg_1' as never} chatId="chat_1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Yes — Implement Plan' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('The plan could not start');
+    expect(repo.update).not.toHaveBeenCalled();
+    expect(useJarvisInteractionStore.getState().modeForChat('chat_1' as never)).toBe('plan');
+    expect(window.dispatchEvent).not.toHaveBeenCalled();
   });
 
   it('completes an informational plan without starting an Agent Mode build run', async () => {
+    repo.getById.mockResolvedValueOnce({
+      id: 'msg_1',
+      chat_id: 'chat_1',
+      role: 'assistant',
+      parts: [informationalPlanPart],
+    });
     useJarvisInteractionStore.getState().setChatMode('chat_1' as never, 'plan');
-    render(<PlanReviewCard part={informationalPlanPart} messageId={'msg_1' as never} chatId="chat_1" />);
+    render(
+      <PlanReviewCard part={informationalPlanPart} messageId={'msg_1' as never} chatId="chat_1" />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: /Done/i }));
 
@@ -97,13 +159,22 @@ describe('PlanReviewCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Send Revision/i }));
 
     await waitFor(() => expect(repo.create).toHaveBeenCalledTimes(1));
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({
-      role: 'user',
-      parts: [expect.objectContaining({ kind: 'text', text: expect.stringContaining('Make it smaller.') })],
-    }));
-    expect(window.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({
-      detail: expect.objectContaining({ interactionMode: 'plan' }),
-    }));
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: 'user',
+        parts: [
+          expect.objectContaining({
+            kind: 'text',
+            text: expect.stringContaining('Make it smaller.'),
+          }),
+        ],
+      }),
+    );
+    expect(window.dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: expect.objectContaining({ interactionMode: 'plan' }),
+      }),
+    );
   });
 
   it('cancels a pending plan without dispatching execution', async () => {
@@ -116,7 +187,9 @@ describe('PlanReviewCard', () => {
   });
 
   it('renders as a wider review card for long plans', () => {
-    const { container } = render(<PlanReviewCard part={planPart} messageId={'msg_1' as never} chatId="chat_1" />);
+    const { container } = render(
+      <PlanReviewCard part={planPart} messageId={'msg_1' as never} chatId="chat_1" />,
+    );
 
     expect(container.querySelector('section')?.className).toContain('min-w');
   });
