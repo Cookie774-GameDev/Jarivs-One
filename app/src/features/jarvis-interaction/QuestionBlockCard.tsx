@@ -130,7 +130,16 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
   ) => {
     if (!messageId) return;
     const message = await messageRepo.getById(messageId);
-    if (!message) return;
+    if (!message) throw new Error('This question is no longer available.');
+    if (!chatId || String(message.chat_id) !== chatId) {
+      throw new Error('This question no longer belongs to this chat.');
+    }
+    const hasExactBlock = message.parts.some(
+      (messagePart) => messagePart.kind === 'question_block' && messagePart.block.id === block.id,
+    );
+    if (!hasExactBlock) {
+      throw new Error('This question is no longer available.');
+    }
     await messageRepo.update(messageId, {
       parts: message.parts.map((messagePart) => (
         messagePart.kind === 'question_block' && messagePart.block.id === block.id

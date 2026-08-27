@@ -142,6 +142,41 @@ describe('QuestionBlockCard', () => {
     }));
   });
 
+  it('fails closed when the persisted source message belongs to a different chat', async () => {
+    render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_2" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Chat UI/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Next/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Submit/i }));
+
+    await waitFor(() => expect(repo.getById).toHaveBeenCalledWith('msg_1'));
+    expect(repo.update).not.toHaveBeenCalled();
+    expect(repo.create).not.toHaveBeenCalled();
+    expect(window.dispatchEvent).not.toHaveBeenCalled();
+    expect((await screen.findByRole('alert')).textContent).toMatch(
+      /no longer belongs to this chat/i,
+    );
+  });
+
+  it('fails closed when the exact question block is no longer in its source message', async () => {
+    repo.getById.mockResolvedValueOnce({
+      id: 'msg_1',
+      chat_id: 'chat_1',
+      role: 'assistant',
+      parts: [{ kind: 'text', text: 'The question was replaced.' }],
+    });
+    render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Chat UI/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Next/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Submit/i }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/no longer available/i);
+    expect(repo.update).not.toHaveBeenCalled();
+    expect(repo.create).not.toHaveBeenCalled();
+    expect(window.dispatchEvent).not.toHaveBeenCalled();
+  });
+
   it('restores in-progress draft answers after remount', async () => {
     const first = render(<QuestionBlockCard part={blockPart} messageId={'msg_1' as never} chatId="chat_1" />);
     fireEvent.click(screen.getByRole('button', { name: /Chat UI/i }));
