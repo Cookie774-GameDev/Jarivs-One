@@ -1,4 +1,11 @@
-import { useRef, useEffect, forwardRef, useImperativeHandle, type CSSProperties } from 'react';
+import {
+  useRef,
+  useEffect,
+  useId,
+  forwardRef,
+  useImperativeHandle,
+  type CSSProperties,
+} from 'react';
 import { useLivePanelUiScale } from '@/lib/ui/panelScale';
 import { motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/lib/utils';
@@ -455,6 +462,8 @@ export interface SlashCommandTypeaheadRef {
   moveUp: () => void;
   moveDown: () => void;
   selectCurrent: () => void;
+  getListboxId: () => string;
+  getActiveDescendantId: () => string | undefined;
 }
 
 export const SlashCommandTypeahead = forwardRef<
@@ -465,12 +474,17 @@ export const SlashCommandTypeahead = forwardRef<
   ref,
 ) {
   const listRef = useRef<HTMLDivElement>(null);
+  const generatedId = useId();
+  const listboxId = `jarvis-slash-${generatedId.replaceAll(':', '')}`;
   const reducedMotion = useReducedMotion();
   const dropdownTransition = useThemeMotionTransition(LEGACY_DROPDOWN_TRANSITION);
   const dropdownMotion = resolveDropdownMotion(reducedMotion, dropdownTransition);
   // Live scale — re-renders when the mini panel is resized while menu is open.
   const panelScale = useLivePanelUiScale(compact);
   const displayCommands = orderSlashCommandsForDisplay(commands);
+  const activeDescendantId = displayCommands.some((command) => command.cmd === selectedCmd)
+    ? `${listboxId}-option-${selectedCmd}`
+    : undefined;
 
   useImperativeHandle(ref, () => ({
     moveUp: () => {
@@ -489,6 +503,8 @@ export const SlashCommandTypeahead = forwardRef<
       const cmd = displayCommands.find((c) => c.cmd === selectedCmd) ?? displayCommands[0];
       if (cmd) onSelect(cmd);
     },
+    getListboxId: () => listboxId,
+    getActiveDescendantId: () => activeDescendantId,
   }));
 
   useEffect(() => {
@@ -543,6 +559,10 @@ export const SlashCommandTypeahead = forwardRef<
 
       <div
         ref={listRef}
+        id={listboxId}
+        role="listbox"
+        aria-label="Slash commands"
+        aria-activedescendant={activeDescendantId}
         className={cn(
           'overflow-y-auto scrollbar-hidden',
           compact ? 'py-0.5' : 'max-h-[200px] py-0.5',
@@ -574,6 +594,9 @@ export const SlashCommandTypeahead = forwardRef<
                   return (
                     <div
                       key={c.cmd}
+                      id={`${listboxId}-option-${c.cmd}`}
+                      role="option"
+                      aria-selected={isSelected}
                       data-value={c.cmd}
                       onClick={() => onSelect(c)}
                       onMouseEnter={() => onHoverCmd?.(c.cmd)}

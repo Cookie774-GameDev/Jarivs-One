@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import { createElement, createRef, useState } from 'react';
+import { describe, expect, it, vi } from 'vitest';
 import { HelpCircle, Terminal, Wrench } from 'lucide-react';
 import {
   SLASH_COMMANDS,
@@ -9,11 +11,54 @@ import {
   orderSlashCommandsForDisplay,
   resolveSlashCommandSelection,
   slashCmdMatchScore,
+  SlashCommandTypeahead,
+  type SlashCommandTypeaheadRef,
   type SlashCommandDef,
 } from './SlashCommandTypeahead';
 import { SECTION_20_COMMANDS, SLASH_COMMAND_ALIASES } from './slashCommandRouting';
 
 describe('orderSlashCommandsForDisplay', () => {
+  it('exposes a stable listbox and truthful keyboard-selected options', () => {
+    const commands: SlashCommandDef[] = [
+      { cmd: 'terminals', description: 'Terminal', icon: Terminal, category: 'chat' },
+      { cmd: 'tools', description: 'Tools', icon: Wrench, category: 'navigation' },
+      { cmd: 'help', description: 'Help', icon: HelpCircle, category: 'utility' },
+    ];
+    const pickerRef = createRef<SlashCommandTypeaheadRef>();
+    const onSelect = vi.fn();
+
+    function Harness() {
+      const [selectedCmd, setSelectedCmd] = useState(commands[0]!.cmd);
+      return createElement(SlashCommandTypeahead, {
+        ref: pickerRef,
+        commands,
+        selectedCmd,
+        query: '',
+        onHoverCmd: setSelectedCmd,
+        onSelect,
+      });
+    }
+
+    render(createElement(Harness));
+
+    const listbox = screen.getByRole('listbox', { name: 'Slash commands' });
+    const options = screen.getAllByRole('option');
+    expect(options).toHaveLength(3);
+    expect(new Set(options.map((option) => option.id)).size).toBe(3);
+    expect(options[0]?.getAttribute('aria-selected')).toBe('true');
+    expect(options[1]?.getAttribute('aria-selected')).toBe('false');
+    expect(pickerRef.current?.getListboxId()).toBe(listbox.id);
+    expect(pickerRef.current?.getActiveDescendantId()).toBe(options[0]!.id);
+
+    act(() => pickerRef.current?.moveDown());
+
+    expect(options[0]?.getAttribute('aria-selected')).toBe('false');
+    expect(options[1]?.getAttribute('aria-selected')).toBe('true');
+    expect(pickerRef.current?.getActiveDescendantId()).toBe(options[1]!.id);
+    act(() => pickerRef.current?.selectCurrent());
+    expect(onSelect).toHaveBeenCalledWith(commands[1]);
+  });
+
   it('matches the grouped visual order used by the slash dropdown', () => {
     const commands: SlashCommandDef[] = [
       { cmd: 'help', description: 'Help', icon: HelpCircle, category: 'utility' },
