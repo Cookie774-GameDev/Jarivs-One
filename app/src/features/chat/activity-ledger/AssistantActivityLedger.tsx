@@ -148,7 +148,10 @@ export function AssistantActivityLedger({
   const filterTabId = React.useId();
   const filterPanelId = React.useId();
   const hasUsage = ledger.usage.input.value !== null || ledger.usage.output.value !== null;
-  if (ledger.actionsTotal === 0 && !hasUsage) return null;
+  const hasLiveLifecycleMotion =
+    active &&
+    correlatedEvents.some((event) => event.status === 'running' || event.status === 'pending');
+  if (ledger.actionsTotal === 0 && !hasUsage && !hasLiveLifecycleMotion) return null;
 
   const categoryFiltered =
     filter === 'all' || filter === 'usage'

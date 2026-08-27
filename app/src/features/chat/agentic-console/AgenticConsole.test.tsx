@@ -175,7 +175,7 @@ describe('AgenticConsole', () => {
     });
 
     const disclosure = screen.getByRole('button', { name: /show activity details/i });
-    expect(disclosure.textContent).toContain('7 actions');
+    expect(disclosure.textContent).toContain('4 actions');
     expect(rendered.container.querySelectorAll('[data-agent-motion]')).toHaveLength(1);
     expect(
       rendered.container.querySelector('[data-agent-motion]')?.getAttribute('data-agent-motion'),
@@ -358,11 +358,7 @@ describe('AgenticConsole', () => {
       sessionEvidence: { status: 'completed', currentOperation: 'Complete' },
     });
 
-    expect(screen.getByRole('button', { name: /show activity details/i }).textContent).toContain(
-      '1 action',
-    );
-    fireEvent.click(screen.getByRole('button', { name: /show activity details/i }));
-    expect(screen.queryByText('Ran command')).toBeNull();
+    expect(screen.queryByRole('button', { name: /show activity details/i })).toBeNull();
   });
 
   it('uses a same-turn canonical duration when correlated event timestamps have no interval', () => {
@@ -393,9 +389,7 @@ describe('AgenticConsole', () => {
       },
     });
 
-    expect(screen.getByRole('button', { name: /show activity details/i }).textContent).toContain(
-      'Worked for 7s',
-    );
+    expect(screen.queryByRole('button', { name: /show activity details/i })).toBeNull();
   });
 
   it('does not apply an older run duration to a later user turn', () => {
@@ -428,13 +422,10 @@ describe('AgenticConsole', () => {
       },
     });
 
-    expect(
-      screen.getByRole('button', { name: /show activity details/i }).textContent,
-    ).not.toContain('Worked for 7s');
+    expect(screen.queryByRole('button', { name: /show activity details/i })).toBeNull();
   });
 
   it('switches motion on a rapid structured activity transition and becomes still at completion', () => {
-    vi.useFakeTimers();
     const baseActivity: ChatActivityEvent = {
       id: 'phase',
       chatId: 'chat-console',
@@ -502,14 +493,6 @@ describe('AgenticConsole', () => {
         />
       </TooltipProvider>,
     );
-    expect(
-      rendered.container
-        .querySelector('[data-agent-motion="glyph-current"]')
-        ?.getAttribute('data-agent-motion-presence'),
-    ).toBe('exiting');
-    act(() => {
-      vi.advanceTimersByTime(1500);
-    });
     expect(rendered.container.querySelector('[data-agent-motion]')).toBeNull();
   });
 

@@ -92,8 +92,8 @@ describe('AssistantActivityLedger', () => {
     expect(document.body.textContent).not.toContain('private-path.ts');
   });
 
-  it('uses a stable authoritative run duration when persisted receipts lack an interval', () => {
-    render(
+  it('does not fabricate an action ledger from a generic persisted lifecycle event', () => {
+    const rendered = render(
       <AssistantActivityLedger
         authoritativeDurationMs={7_000}
         message={{ ...assistant([{ kind: 'text', text: 'Done.' }]), updated_at: 100 }}
@@ -110,7 +110,7 @@ describe('AssistantActivityLedger', () => {
       />,
     );
 
-    expect(screen.getByText('Worked for 7s · 1 action')).toBeTruthy();
+    expect(rendered.container.querySelector('[data-assistant-activity-ledger="true"]')).toBeNull();
   });
 
   it('keeps an authoritative active turn live during a quiet gap between receipts', () => {

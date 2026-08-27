@@ -136,7 +136,7 @@ describe('projectAssistantActivityLedger', () => {
       events,
     );
     expect(ledger).toMatchObject({
-      actionsTotal: 8,
+      actionsTotal: 7,
       readsTotal: 1,
       searchesTotal: 1,
       editedFilesTotal: 1,
@@ -257,6 +257,23 @@ describe('projectAssistantActivityLedger', () => {
     expect(ledger.durationMs).toBe(61_000);
   });
 
+  it('uses generic lifecycle events for timing and status without fabricating action receipts', () => {
+    const ledger = projectAssistantActivityLedger(assistant([{ kind: 'text', text: 'Done.' }]), [
+      event({ id: 'request-queued', status: 'pending', ts: 100 }),
+      event({ id: 'request-running', status: 'running', ts: 150 }),
+      event({ id: 'request-complete', status: 'done', ts: 7_100 }),
+    ]);
+
+    expect(ledger).toMatchObject({
+      status: 'running',
+      actionsTotal: 0,
+      currentOperation: 'Activity running',
+      omittedReceipts: 0,
+    });
+    expect(ledger.durationMs).toBeUndefined();
+    expect(ledger.receipts).toEqual([]);
+  });
+
   it('uses the stable assistant message interval when terminal receipts have no end timestamp', () => {
     const ledger = projectAssistantActivityLedger(
       assistant([
@@ -357,9 +374,9 @@ describe('projectAssistantActivityLedger', () => {
     const events = [
       event({ id: 'running-old', status: 'running', ts: 1 }),
       ...Array.from({ length: MAX_LEDGER_RECEIPTS + 20 }, (_, index) =>
-        event({ id: `done-${index}`, status: 'done', ts: index + 10 }),
+        event({ id: `done-${index}`, kind: 'file', status: 'done', ts: index + 10 }),
       ),
-      event({ id: 'late-arriving-middle', status: 'done', ts: 50 }),
+      event({ id: 'late-arriving-middle', kind: 'file', status: 'done', ts: 50 }),
     ];
 
     const ledger = projectAssistantActivityLedger(assistant([]), events);

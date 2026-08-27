@@ -354,8 +354,11 @@ export function projectAssistantActivityLedger(
   for (const event of eventsById.values()) {
     const kind = activityKind(event);
     if (kind === 'command' && messageHasCommand) continue;
-    eventReceiptCount += 1;
-    actionsTotal += 1;
+    const actionable = kind !== 'other';
+    if (actionable) {
+      eventReceiptCount += 1;
+      actionsTotal += 1;
+    }
     if (kind === 'read' && event.status === 'done') completedReads.add(event.filePath ?? event.id);
     if (kind === 'search') searchesTotal += 1;
     if (kind === 'command') commandsTotal += 1;
@@ -381,21 +384,24 @@ export function projectAssistantActivityLedger(
     if (eventEnd !== undefined) {
       latestEvidenceEnd = Math.max(latestEvidenceEnd ?? eventEnd, eventEnd);
     }
-    if (eventsAreChronological && (!previousEvent || compareEvents(previousEvent, event) <= 0)) {
-      recentEvents.push(event);
-      if (recentEvents.length >= MAX_LEDGER_RECEIPTS * 2) {
-        recentEvents = recentEvents.slice(-MAX_LEDGER_RECEIPTS);
+    if (actionable) {
+      if (eventsAreChronological && (!previousEvent || compareEvents(previousEvent, event) <= 0)) {
+        recentEvents.push(event);
+        if (recentEvents.length >= MAX_LEDGER_RECEIPTS * 2) {
+          recentEvents = recentEvents.slice(-MAX_LEDGER_RECEIPTS);
+        }
+      } else {
+        if (eventsAreChronological) {
+          const chronologicalTail = recentEvents.slice(-MAX_LEDGER_RECEIPTS);
+          recentEvents = [];
+          for (const retainedEvent of chronologicalTail)
+            pushRecentEvent(recentEvents, retainedEvent);
+          eventsAreChronological = false;
+        }
+        pushRecentEvent(recentEvents, event);
       }
-    } else {
-      if (eventsAreChronological) {
-        const chronologicalTail = recentEvents.slice(-MAX_LEDGER_RECEIPTS);
-        recentEvents = [];
-        for (const retainedEvent of chronologicalTail) pushRecentEvent(recentEvents, retainedEvent);
-        eventsAreChronological = false;
-      }
-      pushRecentEvent(recentEvents, event);
+      previousEvent = event;
     }
-    previousEvent = event;
   }
   for (const receipt of fromMessage) {
     if (receipt.countsAsAction) actionsTotal += 1;
@@ -434,7 +440,7 @@ export function projectAssistantActivityLedger(
         ? 'error'
         : hasCancelled
           ? 'cancelled'
-          : hasAnswer || allReceipts.length
+          : hasAnswer || allReceipts.length || eventsById.size > 0
             ? 'done'
             : 'idle';
   const terminal = status === 'done' || status === 'cancelled' || status === 'error';
