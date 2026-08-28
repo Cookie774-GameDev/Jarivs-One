@@ -152,6 +152,7 @@ import {
   writeAutomaticSiyuanSummaryRoutePreference,
   writeSiyuanSummaryRoutePreference,
 } from './siyuan/siyuanSummaryRoutePreference';
+import { formatSiyuanIndexCountSummary } from './siyuan/siyuanIndexCountSemantics';
 import {
   canOpenPartialSiyuanSurface,
   hasSiyuanMapJobAuthority,
@@ -3062,7 +3063,10 @@ function ContextMapList({
     const deleted = map.status === 'deleted';
     const mapFilePath = map.filePath ?? contextMapFilePath(map.rootDir);
     const job = jobSnapshots[map.id];
-    const visibleFileCount = job?.indexed ?? map.tree.fileCount;
+    const visibleCountSummary = formatSiyuanIndexCountSummary({
+      kind: job ? 'indexed-items' : 'files',
+      count: job?.indexed ?? map.tree.fileCount,
+    });
     const compactPercent = job ? siyuanOverallProgressPercent(job) : null;
     const compactRounded = compactPercent === null ? null : Math.round(compactPercent);
     const compactEta = job ? formatSiyuanJobEta(job) : null;
@@ -3100,7 +3104,7 @@ function ContextMapList({
               {map.name}
             </span>
             <span className="block truncate font-mono text-metadata text-muted-foreground">
-              {visibleFileCount.toLocaleString()} files - {mapFilePath}
+              {visibleCountSummary} - {mapFilePath}
             </span>
             {!deleted && job && job.phase !== 'completed' ? (
               <span

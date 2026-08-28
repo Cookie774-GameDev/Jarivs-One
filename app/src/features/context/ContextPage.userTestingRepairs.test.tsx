@@ -89,7 +89,7 @@ describe('Context Map focused user-testing repairs', () => {
     const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
 
     expect(source).toContain('aria-label={`Index progress for ${map.name}`}');
-    expect(source).toContain('visibleFileCount.toLocaleString()');
+    expect(source).toContain('{visibleCountSummary} - {mapFilePath}');
     expect(source).toContain(
       '`≈ ${compactRounded}% · ${compactEta} · ${job.createdNodes.toLocaleString()} nodes`',
     );
