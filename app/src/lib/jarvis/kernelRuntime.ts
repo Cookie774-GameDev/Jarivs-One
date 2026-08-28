@@ -3674,34 +3674,50 @@ export function createJarvisKernelRuntime(
       );
     },
     async decide(actionInput: Parameters<JarvisKernelActionPort['decide']>[0]) {
-      const scope = await loadCanonicalActionScope(
-        actionInput.parentRun,
-        undefined,
-        actionInput.approvalId,
-      );
+      let scope: CanonicalActionScope;
+      try {
+        scope = await loadCanonicalActionScope(
+          actionInput.parentRun,
+          undefined,
+          actionInput.approvalId,
+        );
+      } catch {
+        throw new Error('kernel_action_decide_scope_failed');
+      }
       return invokeActionCapability(scope, async (capability, parentRun, binding) => {
-        const responseBacked = await hasActionResponseCheckpoint(scope, actionInput.approvalId);
-        const value = await capability.decide({ ...actionInput, parentRun });
+        let responseBacked: boolean;
+        try {
+          responseBacked = await hasActionResponseCheckpoint(scope, actionInput.approvalId);
+        } catch {
+          throw new Error('kernel_action_decide_checkpoint_failed');
+        }
+        let value: JarvisApprovalV1;
+        try {
+          value = await capability.decide({ ...actionInput, parentRun });
+        } catch {
+          throw new Error('kernel_action_decide_decision_failed');
+        }
         if (responseBacked && actionInput.decision === 'deny' && value.status === 'denied') {
-          const current = await repositories.run.getById(parentRun.accountId, parentRun.id);
-          if (!current) throw new Error('kernel_action_scope_mismatch');
-          const finalized = await artifacts.commitKernelTurn.finalizeActionResponse({
-            accountId: parentRun.accountId,
-            runId: parentRun.id,
-            requestId: scope.requestId,
-            attemptNumber: scope.attemptNumber,
-            approvalId: actionInput.approvalId,
-            messageId: `msg_${scope.requestId}`,
-            accountBinding: binding,
-            outcome: 'denied',
-            resultRef: `japproval_denied:${actionInput.approvalId}`,
-            completedAt: Math.max(input.now(), current.updatedAt),
-          });
-          if (!finalized.committed) {
-            if (finalized.reason === 'account_authority_revoked') {
-              throw new Error('kernel_account_authority_revoked');
+          try {
+            const current = await repositories.run.getById(parentRun.accountId, parentRun.id);
+            if (!current) throw new Error('kernel_action_scope_mismatch');
+            const finalized = await artifacts.commitKernelTurn.finalizeActionResponse({
+              accountId: parentRun.accountId,
+              runId: parentRun.id,
+              requestId: scope.requestId,
+              attemptNumber: scope.attemptNumber,
+              approvalId: actionInput.approvalId,
+              messageId: `msg_${scope.requestId}`,
+              accountBinding: binding,
+              outcome: 'denied',
+              resultRef: `japproval_denied:${actionInput.approvalId}`,
+              completedAt: Math.max(input.now(), current.updatedAt),
+            });
+            if (!finalized.committed) {
+              throw new Error(`kernel_action_response_finalize_${finalized.reason}`);
             }
-            throw new Error(`kernel_action_response_finalize_${finalized.reason}`);
+          } catch {
+            throw new Error('kernel_action_decide_finalize_failed');
           }
         }
         return value;

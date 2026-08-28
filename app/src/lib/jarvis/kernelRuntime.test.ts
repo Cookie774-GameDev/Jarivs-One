@@ -1510,6 +1510,7 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
         },
       }),
     );
+    let rejectDecision = false;
     const bindKernelActions: JarvisApprovalActionBinder = (lifecycle) => ({
       async create(createInput) {
         const result = await lifecycle.putPreparedApproval({
@@ -1532,6 +1533,7 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
         return result.value;
       },
       async decide(decideInput) {
+        if (rejectDecision) throw new Error('synthetic-private-decision-failure');
         const result = await lifecycle.decidePreparedApproval({
           approvalId: decideInput.approvalId,
           decision: decideInput.decision,
@@ -1577,7 +1579,7 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
         approvalId,
         decision: 'deny',
       }),
-    ).rejects.toThrow('kernel_action_scope_mismatch');
+    ).rejects.toThrow('kernel_action_decide_scope_failed');
     expect(fromJarvisApprovalRow((await db.jarvis_approvals.get(approvalId))!)).toMatchObject({
       id: approvalId,
       status: 'pending',
@@ -1590,6 +1592,20 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
       providerResultState: 'completed',
     });
     now = NOW + 60_001;
+
+    rejectDecision = true;
+    await expect(
+      runtime.kernel.actions.decide({
+        parentRun: awaitingRun,
+        approvalId,
+        decision: 'deny',
+      }),
+    ).rejects.toThrow('kernel_action_decide_decision_failed');
+    expect(fromJarvisApprovalRow((await db.jarvis_approvals.get(approvalId))!)).toMatchObject({
+      id: approvalId,
+      status: 'pending',
+    });
+    rejectDecision = false;
 
     await expect(
       runtime.kernel.actions.decide({
@@ -1732,7 +1748,7 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
         approvalId: approvalIds[0]!,
         decision: 'approve',
       }),
-    ).rejects.toThrow('kernel_action_scope_mismatch');
+    ).rejects.toThrow('kernel_action_decide_scope_failed');
 
     await seedActionResponseCheckpoint({
       parentRun: awaitingRun,

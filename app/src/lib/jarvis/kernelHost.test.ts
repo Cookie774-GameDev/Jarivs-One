@@ -38,6 +38,9 @@ describe('trusted kernel host', () => {
     expect(sanitizeKernelHostFailureCode(new Error('kernel_action_scope_mismatch'))).toBe(
       'kernel_action_scope_mismatch',
     );
+    expect(sanitizeKernelHostFailureCode(new Error('kernel_action_decide_scope_failed'))).toBe(
+      'kernel_action_decide_scope_failed',
+    );
     expect(
       sanitizeKernelHostFailureCode({
         name: 'JarvisRepositoryError',

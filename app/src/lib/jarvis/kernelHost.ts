@@ -47,6 +47,10 @@ let localHostRequest: LocalHostRequest | null = null;
 const SAFE_KERNEL_FAILURE_CODES = new Set([
   'kernel_account_authority_revoked',
   'kernel_account_binding_invalid',
+  'kernel_action_decide_checkpoint_failed',
+  'kernel_action_decide_decision_failed',
+  'kernel_action_decide_finalize_failed',
+  'kernel_action_decide_scope_failed',
   'kernel_action_scope_mismatch',
   'kernel_action_response_checkpoint_conflict',
   'kernel_action_response_checkpoint_missing',
