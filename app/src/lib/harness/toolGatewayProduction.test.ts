@@ -12,10 +12,25 @@ import {
   installToolGatewayPluginReadPort,
 } from './toolGatewayProduction';
 import {
+  bindToolGatewayObservedExecutionAuthority,
   bindToolGatewaySessionAuthority,
   captureToolGatewayAuthorityClaim,
 } from './toolGatewayAuthority';
 import { parseToolGatewayRequest } from './toolGatewayProtocol';
+import { productionContextGateway } from '@/features/context/gateway/productionContextGateway';
+
+const observedIdentity = Object.freeze({
+  transportConnectionId: 'opencode-cli',
+  transportAdapterId: 'opencode-persistent',
+  upstreamProviderId: 'opencode-go',
+  upstreamModelId: 'deepseek-v4-flash-vision-exp',
+  providerQualifiedModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+  authBillingRoute: 'opencode-provider-session',
+  effort: 'high',
+  fastVariant: 'standard',
+  catalogRevision: 'catalog-verified-7',
+  observedProviderIdentity: 'opencode-go/deepseek-v4-flash-vision-exp',
+});
 
 function mutation() {
   return parseToolGatewayRequest({
@@ -217,6 +232,113 @@ describe('production tool gateway dependencies', () => {
         worktreeId: 'C:\\work\\project\\.worktrees\\feature',
       }),
     );
+    dispose();
+  });
+
+  it('fails a high-level Context query closed until the exact session has observed execution identity', async () => {
+    const execute = vi.fn(async () => ({ mode: 'legacy' }));
+    const dispose = installToolGatewayRlmContextPort({ execute });
+    const deps = createProductionToolGatewayDependencies();
+
+    await expect(
+      Promise.resolve().then(() =>
+        deps.context.rlm(
+          { operation: 'query', query: 'Find the exact project context.' },
+          {
+            requestId: 'request-unobserved',
+            sessionId: 'different-session',
+            messageId: 'message-1',
+            worktree: 'C:\\work\\project\\.worktrees\\feature',
+            mutationApproved: false,
+          },
+        ),
+      ),
+    ).rejects.toThrow('gateway_execution_identity_unavailable');
+    expect(execute).not.toHaveBeenCalled();
+    dispose();
+  });
+
+  it('routes an observed high-level Context query through the shared Gateway with exact identity', async () => {
+    const authority = captureToolGatewayAuthorityClaim()!;
+    expect(
+      bindToolGatewayObservedExecutionAuthority('session-1', authority, {
+        executionIdentity: observedIdentity,
+        performance: 'quality',
+      }),
+    ).toBe(true);
+    const execute = vi.fn(async () => ({ mode: 'legacy' }));
+    const dispose = installToolGatewayRlmContextPort({ execute });
+    const gatewayResult = Object.freeze({
+      promptBlock: '<vibespace_context>grounded</vibespace_context>',
+      receipt: Object.freeze({ receiptId: 'context-receipt-1' }),
+    });
+    const ask = vi.spyOn(productionContextGateway, 'ask').mockResolvedValue(gatewayResult as never);
+    const deps = createProductionToolGatewayDependencies();
+
+    await expect(
+      Promise.resolve(
+        deps.context.rlm(
+          { operation: 'query', query: 'Find the exact project context.' },
+          {
+            requestId: 'request-gateway',
+            sessionId: 'session-1',
+            messageId: 'message-1',
+            directory: 'C:\\work\\project',
+            worktree: 'C:\\work\\project\\.worktrees\\feature',
+            mutationApproved: false,
+          },
+        ),
+      ),
+    ).resolves.toBe(gatewayResult);
+    expect(ask).toHaveBeenCalledWith({
+      requestId: 'request-gateway',
+      question: 'Find the exact project context.',
+      scope: {
+        accountId: 'account-a',
+        workspaceId: 'workspace-a',
+        projectId: 'project-a',
+        worktreeId: 'C:\\work\\project\\.worktrees\\feature',
+        revision: 'session-1:0',
+      },
+      taskKind: 'answer',
+      access: 'read',
+      workingSet: 'incomplete',
+      userIntent: { context: true },
+      optionalEnrichmentEnabled: true,
+      executionIdentity: observedIdentity,
+      performance: 'quality',
+      activePaths: ['C:\\work\\project'],
+    });
+    expect(execute).not.toHaveBeenCalled();
+    ask.mockRestore();
+    dispose();
+  });
+
+  it('rejects an observed high-level query when worktree scope is incomplete', async () => {
+    const authority = captureToolGatewayAuthorityClaim()!;
+    expect(
+      bindToolGatewayObservedExecutionAuthority('session-1', authority, {
+        executionIdentity: observedIdentity,
+        performance: 'balanced',
+      }),
+    ).toBe(true);
+    const execute = vi.fn(async () => ({ mode: 'legacy' }));
+    const dispose = installToolGatewayRlmContextPort({ execute });
+
+    await expect(
+      Promise.resolve().then(() =>
+        createProductionToolGatewayDependencies().context.rlm(
+          { operation: 'query', query: 'Find the exact project context.' },
+          {
+            requestId: 'request-incomplete-scope',
+            sessionId: 'session-1',
+            messageId: 'message-1',
+            mutationApproved: false,
+          },
+        ),
+      ),
+    ).rejects.toThrow('gateway_scope_unavailable');
+    expect(execute).not.toHaveBeenCalled();
     dispose();
   });
 });

@@ -19,12 +19,14 @@ import { useUIStore } from '@/stores/ui';
 import type { TaskId } from '@/types/common';
 import type { ActionResult } from '@/lib/actions/types';
 import type { RlmContextLease } from '@/features/context/rlmOpenCodeTool';
+import { productionContextGateway } from '@/features/context/gateway/productionContextGateway';
 import type { ToolGatewayDependencies, ToolGatewayExecutionContext } from './toolGatewayRuntime';
 import {
   authorizeToolGatewayMutation,
   authorizeToolGatewayRequest,
   clearToolGatewayAuthorityForTests,
   grantToolGatewayMutation,
+  readToolGatewayObservedExecutionAuthority,
 } from './toolGatewayAuthority';
 
 export { grantToolGatewayMutation } from './toolGatewayAuthority';
@@ -315,18 +317,45 @@ export function createProductionToolGatewayDependencies(): ToolGatewayDependenci
       read: (args) => readContext(stringArg(args, 'contextId')),
       attach: async (args) => ({ attached: await readContext(stringArg(args, 'contextId')) }),
       rlm: (args, context) => {
-        const port = rlmContextPort;
-        if (!port) throw new Error('rlm_context_unavailable');
         const auth = useAuthStore.getState();
         if (!auth.localUserId) throw new Error('rlm_context_authority_unavailable');
-        return port.execute(args, {
+        const lease = {
           sessionId: context.sessionId,
           accountId: auth.localUserId,
           ...(auth.workspaceId ? { workspaceId: String(auth.workspaceId) } : {}),
           ...(auth.projectId ? { projectId: String(auth.projectId) } : {}),
           ...(context.worktree ? { worktreeId: context.worktree } : {}),
           expiresAt: Date.now() + 30_000,
-        });
+        } satisfies RlmContextLease;
+        if (args.operation === 'query') {
+          const observed = readToolGatewayObservedExecutionAuthority(context.sessionId);
+          if (!observed) throw new Error('gateway_execution_identity_unavailable');
+          if (!lease.workspaceId || !lease.projectId || !lease.worktreeId) {
+            throw new Error('gateway_scope_unavailable');
+          }
+          return productionContextGateway.ask({
+            requestId: context.requestId,
+            question: stringArg(args, 'query'),
+            scope: {
+              accountId: lease.accountId,
+              workspaceId: lease.workspaceId,
+              projectId: lease.projectId,
+              worktreeId: lease.worktreeId,
+              revision: observed.scopeRevision,
+            },
+            taskKind: 'answer',
+            access: 'read',
+            workingSet: 'incomplete',
+            userIntent: { context: true },
+            optionalEnrichmentEnabled: true,
+            executionIdentity: observed.executionIdentity,
+            performance: observed.performance,
+            ...(context.directory ? { activePaths: [context.directory] } : {}),
+          });
+        }
+        const port = rlmContextPort;
+        if (!port) throw new Error('rlm_context_unavailable');
+        return port.execute(args, lease);
       },
     },
     skills: {
