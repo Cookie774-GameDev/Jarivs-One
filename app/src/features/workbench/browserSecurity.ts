@@ -1,5 +1,12 @@
-export const EMBEDDED_BROWSER_SANDBOX =
-  'allow-forms allow-modals allow-popups allow-scripts';
+export const EMBEDDED_BROWSER_SANDBOX = 'allow-forms allow-modals allow-popups allow-scripts';
+
+/**
+ * Approved cross-origin media embeds need their provider origin intact for
+ * player storage and scripts. They remain cross-origin from VibeSpace, so
+ * this does not grant access to the parent document or Tauri bridge.
+ */
+export const TRUSTED_MEDIA_EMBED_SANDBOX =
+  'allow-forms allow-modals allow-popups allow-scripts allow-same-origin';
 
 /** Loopback pages often need same-origin for local apps; still no Tauri bridge. */
 export const LOOPBACK_BROWSER_SANDBOX =
@@ -113,17 +120,22 @@ export function browserFramePolicy(input: string): {
   frameBlocked: boolean;
   usedEmbed: boolean;
   externalUrl: string;
+  delivery: 'embedded' | 'system-browser';
 } {
   const externalUrl = normalizeBrowserUrl(input);
   const { src, usedEmbed } = toEmbeddableUrl(input);
   const frameHost = new URL(src).hostname;
-  const originalHost = new URL(externalUrl).hostname;
   const loopback = isLoopbackHost(frameHost);
-  const frameBlocked = !usedEmbed && isKnownFrameBlockedHost(originalHost);
+  const delivery = loopback || usedEmbed ? 'embedded' : 'system-browser';
+  const frameBlocked = delivery === 'system-browser';
 
   return {
     src,
-    sandbox: loopback ? LOOPBACK_BROWSER_SANDBOX : EMBEDDED_BROWSER_SANDBOX,
+    sandbox: loopback
+      ? LOOPBACK_BROWSER_SANDBOX
+      : usedEmbed
+        ? TRUSTED_MEDIA_EMBED_SANDBOX
+        : EMBEDDED_BROWSER_SANDBOX,
     referrerPolicy: 'no-referrer',
     allow: usedEmbed
       ? 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture'
@@ -131,5 +143,6 @@ export function browserFramePolicy(input: string): {
     frameBlocked,
     usedEmbed,
     externalUrl,
+    delivery,
   };
 }

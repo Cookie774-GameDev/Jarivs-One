@@ -11,7 +11,7 @@ interface BrowserPanelProps {
   onUpdate: (patch: Partial<WorkbenchPanel>) => void;
 }
 
-type LoadState = 'idle' | 'loading' | 'loaded' | 'blocked' | 'error';
+type LoadState = 'idle' | 'loading' | 'loaded' | 'external' | 'error';
 
 async function requestNamedBrowser(url: string, browser: 'chrome' | 'edge'): Promise<void> {
   const normalized = normalizeBrowserUrl(url);
@@ -30,7 +30,6 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
   const [loadState, setLoadState] = React.useState<LoadState>('idle');
   const [history, setHistory] = React.useState<string[]>([currentUrl]);
   const [historyIndex, setHistoryIndex] = React.useState(0);
-  const loadTimer = React.useRef<number | null>(null);
 
   const policy = React.useMemo(() => {
     try {
@@ -46,22 +45,15 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
 
   React.useEffect(() => {
     if (!policy) return;
-    if (policy.frameBlocked) {
-      setLoadState('blocked');
+    if (policy.delivery === 'system-browser') {
+      setLoadState('external');
       return;
     }
     setLoadState('loading');
-    if (loadTimer.current) window.clearTimeout(loadTimer.current);
-    // Sites that fail silently still get a blocked fallback after a short wait.
-    loadTimer.current = window.setTimeout(() => {
-      setLoadState((prev) => (prev === 'loading' ? 'blocked' : prev));
-    }, 3500);
-    return () => {
-      if (loadTimer.current) window.clearTimeout(loadTimer.current);
-    };
   }, [policy?.src, policy?.frameBlocked, frameKey]);
 
   const commitUrl = (normalized: string, pushHistory: boolean) => {
+    const nextPolicy = browserFramePolicy(normalized);
     setError(null);
     setDraft(normalized);
     onUpdate({ settings: { ...panel.settings, url: normalized }, status: 'ready' });
@@ -73,15 +65,20 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
       });
       setHistoryIndex((idx) => Math.min(idx + 1, 39));
     }
-    setLoadState('loading');
-    setFrameKey((value) => value + 1);
+    setLoadState(nextPolicy.delivery === 'embedded' ? 'loading' : 'external');
+    if (nextPolicy.delivery === 'embedded') setFrameKey((value) => value + 1);
+    return nextPolicy;
   };
 
-  const navigate = (event?: React.FormEvent) => {
+  const navigate = async (event?: React.FormEvent) => {
     event?.preventDefault();
     try {
       const normalized = normalizeBrowserUrl(draft);
-      commitUrl(normalized, true);
+      const nextPolicy = commitUrl(normalized, true);
+      if (nextPolicy.delivery === 'system-browser') {
+        await openExternal(normalized);
+        toast.success('Opened in your browser', 'Using your normal signed-in browser profile.');
+      }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'That address cannot be opened.';
       setError(message);
@@ -99,8 +96,9 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
       const normalized = normalizeBrowserUrl(url);
       setDraft(normalized);
       onUpdate({ settings: { ...panel.settings, url: normalized }, status: 'ready' });
-      setLoadState('loading');
-      setFrameKey((value) => value + 1);
+      const nextPolicy = browserFramePolicy(normalized);
+      setLoadState(nextPolicy.delivery === 'embedded' ? 'loading' : 'external');
+      if (nextPolicy.delivery === 'embedded') setFrameKey((value) => value + 1);
     } catch (cause) {
       toast.warning(
         'History address blocked',
@@ -134,8 +132,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
     }
   };
 
-  const showFrame =
-    policy && !policy.frameBlocked && loadState !== 'blocked' && loadState !== 'idle';
+  const showFrame = policy?.delivery === 'embedded' && loadState !== 'idle';
 
   return (
     <div
@@ -143,7 +140,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
       data-testid="workbench-browser-panel"
       onWheel={(event) => event.stopPropagation()}
     >
-      <form className="workbench-browser-bar" onSubmit={navigate}>
+      <form className="workbench-browser-bar" onSubmit={(event) => void navigate(event)}>
         <Button
           type="button"
           size="icon-sm"
@@ -166,6 +163,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
         </Button>
         <Globe2 aria-hidden="true" />
         <input
+          className="[html[data-theme=warm]_&]:border-border-mid [html[data-theme=warm]_&]:bg-background [html[data-theme=warm]_&]:text-foreground [html[data-theme=warm]_&]:caret-foreground [html[data-theme=warm]_&]:placeholder:text-muted-foreground"
           aria-label="Browser address"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -213,30 +211,25 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
           <span>{error}</span>
         </div>
       ) : null}
-      {policy?.frameBlocked || loadState === 'blocked' ? (
-        <div className="workbench-panel-empty" role="status" data-testid="workbench-browser-blocked">
-          <strong>This site cannot run inside the Workbench frame</strong>
+      {!error && (policy?.delivery === 'system-browser' || loadState === 'external') ? (
+        <div
+          className="workbench-panel-empty"
+          role="status"
+          data-testid="workbench-browser-external"
+        >
+          <strong>Ready in your normal browser</strong>
           <span>
-            {policy?.frameBlocked
-              ? 'The site blocks embedding (X-Frame-Options / CSP). Your URL is saved — open it in a real browser.'
-              : 'The embedded preview did not load. Many sites refuse iframes. Open externally for a full session.'}
+            Remote sites open with your normal signed-in browser profile so saved sessions and site
+            credentials keep working. Localhost and approved media embeds stay interactive here.
           </span>
-          <Button type="button" size="sm" variant="accent" onClick={() => void openExternalSafe(policy?.externalUrl)}>
-            <ExternalLink /> Open in system browser
+          <Button
+            type="button"
+            size="sm"
+            variant="accent"
+            onClick={() => void openExternalSafe(policy?.externalUrl)}
+          >
+            <ExternalLink /> Open in my browser
           </Button>
-          {!policy?.frameBlocked ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setLoadState('loading');
-                setFrameKey((k) => k + 1);
-              }}
-            >
-              Retry embed
-            </Button>
-          ) : null}
         </div>
       ) : null}
       {showFrame && policy ? (
@@ -254,15 +247,13 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
             referrerPolicy={policy.referrerPolicy}
             allow={policy.allow}
             onLoad={() => {
-              if (loadTimer.current) window.clearTimeout(loadTimer.current);
               setLoadState('loaded');
             }}
           />
         </>
       ) : null}
       <p className="workbench-browser-engine">
-        Embedded preview is sandboxed. Sites that refuse frames open via system browser — no VibeSpace
-        credentials are shared.
+        Local previews stay sandboxed. Remote sites use your normal browser profile.
       </p>
     </div>
   );
