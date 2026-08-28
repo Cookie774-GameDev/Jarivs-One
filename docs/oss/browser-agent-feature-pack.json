@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "vibespace-browser-agent",
   "version": "1.61.1",
-  "description": "Development-only Playwright automation metadata. No Browser Agent runtime or browser binary is shipped.",
+  "description": "Development-only Playwright automation metadata plus a repository-only offline lifecycle contract. No Browser Agent runtime or browser binary is shipped.",
   "shippingStatus": "not-implemented",
   "defaultInstallerIncluded": false,
   "optionalInstallerImplemented": false,
@@ -20,6 +20,25 @@
     "canInstall": false,
     "canRepair": false,
     "implicitBrowserDownloadAllowed": false
+  },
+  "localLifecycleContract": {
+    "status": "implemented-unintegrated",
+    "entrypoint": "scripts/pr31-playwright-acceptance-runtime.mjs",
+    "artifactSource": "caller-supplied-local-only",
+    "signedManifestRequired": true,
+    "downloadsAllowed": false,
+    "launchesBrowser": false,
+    "operations": {
+      "diagnose": true,
+      "installOrUpdate": true,
+      "sameManifestRepair": true,
+      "rollback": true,
+      "measure": true,
+      "uninstall": true
+    },
+    "productionTrustRootPinned": false,
+    "nativeAtomicReparseSafe": false,
+    "productDoctorIntegrated": false
   },
   "components": [
     {
@@ -61,18 +80,18 @@
     },
     {
       "id": "native-atomic-installer",
-      "status": "missing",
-      "reason": "No native allowlisted staging, atomic activation, or reparse-safe installation boundary exists."
+      "status": "partial",
+      "reason": "The repository-only offline lifecycle stages verified files and switches local state, but no production-key-pinned native allowlisted or reparse-safe installation boundary exists."
     },
     {
       "id": "doctor-verification-and-repair",
-      "status": "missing",
-      "reason": "Doctor cannot verify exact core and browser revisions or repair them without an implicit download."
+      "status": "partial",
+      "reason": "The repository-only lifecycle diagnoses exact signed hashes and permits same-manifest offline repair, but the product Doctor has no Playwright integration or install authority."
     },
     {
       "id": "uninstall-rollback-measurement",
-      "status": "missing",
-      "reason": "Uninstall, rollback, installed-size measurement, and native acceptance evidence do not exist."
+      "status": "partial",
+      "reason": "The repository-only lifecycle supports state-bound uninstall, verified rollback, and signed installed-size measurement, but native product integration and official-app acceptance evidence do not exist."
     }
   ]
 }

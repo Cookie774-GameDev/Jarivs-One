@@ -5,11 +5,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const SCRIPT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PLAYWRIGHT_VERSION = '1.61.1';
 const PLAYWRIGHT_PREREQUISITES = [
-  'signed-feature-pack-artifact',
-  'pinned-browser-revisions-and-hashes',
-  'native-atomic-installer',
-  'doctor-verification-and-repair',
-  'uninstall-rollback-measurement',
+  ['signed-feature-pack-artifact', 'missing'],
+  ['pinned-browser-revisions-and-hashes', 'missing'],
+  ['native-atomic-installer', 'partial'],
+  ['doctor-verification-and-repair', 'partial'],
+  ['uninstall-rollback-measurement', 'partial'],
 ];
 const REQUIRED_RESOURCES = [
   '../../docs/oss/dependency-lock.json',
@@ -33,12 +33,48 @@ const LICENSE_FILES = new Map([
   ['promptfoo', 'MIT-promptfoo.txt'],
 ]);
 const GRAMMARS = [
-  ['typescript', '0.23.2', 'f975a621f4e7f532fe322e13c4f79495e0a7b2e7', 'tree-sitter-typescript.wasm', 'MIT-tree-sitter-typescript.txt'],
-  ['tsx', '0.23.2', 'f975a621f4e7f532fe322e13c4f79495e0a7b2e7', 'tree-sitter-tsx.wasm', 'MIT-tree-sitter-typescript.txt'],
-  ['javascript', '0.25.0', '44c892e0be055ac465d5eeddae6d3e194424e7de', 'tree-sitter-javascript.wasm', 'MIT-tree-sitter-javascript.txt'],
-  ['rust', '0.24.0', '18b0515fca567f5a10aee9978c6d2640e878671a', 'tree-sitter-rust.wasm', 'MIT-tree-sitter-rust.txt'],
-  ['python', '0.25.0', '293fdc02038ee2bf0e2e206711b69c90ac0d413f', 'tree-sitter-python.wasm', 'MIT-tree-sitter-python.txt'],
-  ['json', '0.24.8', 'ee35a6ebefcef0c5c416c0d1ccec7370cfca5a24', 'tree-sitter-json.wasm', 'MIT-tree-sitter-json.txt'],
+  [
+    'typescript',
+    '0.23.2',
+    'f975a621f4e7f532fe322e13c4f79495e0a7b2e7',
+    'tree-sitter-typescript.wasm',
+    'MIT-tree-sitter-typescript.txt',
+  ],
+  [
+    'tsx',
+    '0.23.2',
+    'f975a621f4e7f532fe322e13c4f79495e0a7b2e7',
+    'tree-sitter-tsx.wasm',
+    'MIT-tree-sitter-typescript.txt',
+  ],
+  [
+    'javascript',
+    '0.25.0',
+    '44c892e0be055ac465d5eeddae6d3e194424e7de',
+    'tree-sitter-javascript.wasm',
+    'MIT-tree-sitter-javascript.txt',
+  ],
+  [
+    'rust',
+    '0.24.0',
+    '18b0515fca567f5a10aee9978c6d2640e878671a',
+    'tree-sitter-rust.wasm',
+    'MIT-tree-sitter-rust.txt',
+  ],
+  [
+    'python',
+    '0.25.0',
+    '293fdc02038ee2bf0e2e206711b69c90ac0d413f',
+    'tree-sitter-python.wasm',
+    'MIT-tree-sitter-python.txt',
+  ],
+  [
+    'json',
+    '0.24.8',
+    'ee35a6ebefcef0c5c416c0d1ccec7370cfca5a24',
+    'tree-sitter-json.wasm',
+    'MIT-tree-sitter-json.txt',
+  ],
 ];
 
 function loadText(root, relative, errors) {
@@ -83,6 +119,11 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
   const sbom = loadJson(root, 'docs/oss/sbom-pr31.cdx.json', errors);
   const featurePack = loadJson(root, 'docs/oss/browser-agent-feature-pack.json', errors);
   const doctorSource = loadText(root, 'app/src/features/doctor/vibeSpaceDoctor.ts', errors);
+  const playwrightLifecycleSource = loadText(
+    root,
+    'scripts/pr31-playwright-acceptance-runtime.mjs',
+    errors,
+  );
   const licensesReadme = loadText(root, 'docs/oss/licenses/README.md', errors);
   const grammarInventory = loadText(root, 'docs/oss/grammar-license-inventory.md', errors);
   const notices = loadText(root, 'docs/oss/THIRD_PARTY_NOTICES.md', errors);
@@ -90,20 +131,48 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
   check(dependencyLock.schemaVersion === 1, 'dependency lock schemaVersion must be 1', errors);
   check(Array.isArray(dependencyLock.entries), 'dependency lock entries must be an array', errors);
   const entries = Array.isArray(dependencyLock.entries) ? dependencyLock.entries : [];
-  check(entries.length === LICENSE_FILES.size, 'dependency lock must exactly match the PR31 license map', errors);
+  check(
+    entries.length === LICENSE_FILES.size,
+    'dependency lock must exactly match the PR31 license map',
+    errors,
+  );
   const names = new Set();
   for (const entry of entries) {
-    check(typeof entry?.name === 'string' && !names.has(entry.name), `duplicate or invalid dependency entry: ${entry?.name ?? '<missing>'}`, errors);
+    check(
+      typeof entry?.name === 'string' && !names.has(entry.name),
+      `duplicate or invalid dependency entry: ${entry?.name ?? '<missing>'}`,
+      errors,
+    );
     names.add(entry?.name);
-    check(/^\d+\.\d+\.\d+(?:[-+].+)?$/.test(entry?.version ?? ''), `invalid pinned version: ${entry?.name}`, errors);
-    check(/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(entry?.integrity ?? ''), `invalid integrity: ${entry?.name}`, errors);
+    check(
+      /^\d+\.\d+\.\d+(?:[-+].+)?$/.test(entry?.version ?? ''),
+      `invalid pinned version: ${entry?.name}`,
+      errors,
+    );
+    check(
+      /^sha512-[A-Za-z0-9+/]+={0,2}$/.test(entry?.integrity ?? ''),
+      `invalid integrity: ${entry?.name}`,
+      errors,
+    );
     check(/^[a-f0-9]{40}$/.test(entry?.gitCommit ?? ''), `invalid commit: ${entry?.name}`, errors);
-    check(/^https:\/\/github\.com\//.test(entry?.repositoryUrl ?? ''), `invalid repository: ${entry?.name}`, errors);
-    check(['MIT', 'Apache-2.0', 'Unlicense'].includes(entry?.license), `invalid license: ${entry?.name}`, errors);
+    check(
+      /^https:\/\/github\.com\//.test(entry?.repositoryUrl ?? ''),
+      `invalid repository: ${entry?.name}`,
+      errors,
+    );
+    check(
+      ['MIT', 'Apache-2.0', 'Unlicense'].includes(entry?.license),
+      `invalid license: ${entry?.name}`,
+      errors,
+    );
 
     const locked = packageLock.packages?.[`node_modules/${entry?.name}`];
     if (entry?.name === 'promptfoo') {
-      check(locked === undefined, 'promptfoo must be absent from package-lock dependency graph', errors);
+      check(
+        locked === undefined,
+        'promptfoo must be absent from package-lock dependency graph',
+        errors,
+      );
       check(
         rootPackage.workspaces?.includes('app') &&
           appPackage.scripts?.['eval:ai']?.includes(`promptfoo@${entry.version}`),
@@ -111,8 +180,16 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
         errors,
       );
     } else {
-      check(locked?.version === entry?.version, `package-lock version mismatch: ${entry?.name}`, errors);
-      check(locked?.integrity === entry?.integrity, `package-lock integrity mismatch: ${entry?.name}`, errors);
+      check(
+        locked?.version === entry?.version,
+        `package-lock version mismatch: ${entry?.name}`,
+        errors,
+      );
+      check(
+        locked?.integrity === entry?.integrity,
+        `package-lock integrity mismatch: ${entry?.name}`,
+        errors,
+      );
     }
     if (['playwright-core', '@playwright/test'].includes(entry?.name)) {
       check(
@@ -128,7 +205,11 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
       );
     }
     if (entry?.distribution === 'development-only') {
-      check(locked?.dev === true || entry.name === 'promptfoo', `development-only package is not marked dev: ${entry?.name}`, errors);
+      check(
+        locked?.dev === true || entry.name === 'promptfoo',
+        `development-only package is not marked dev: ${entry?.name}`,
+        errors,
+      );
     }
 
     const component = sbom.components?.find(
@@ -139,9 +220,21 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
     );
     check(Boolean(component), `SBOM component missing: ${entry?.name}@${entry?.version}`, errors);
     check(licenseId(component) === entry?.license, `SBOM license mismatch: ${entry?.name}`, errors);
-    check(property(component, 'npm:integrity') === entry?.integrity, `SBOM integrity mismatch: ${entry?.name}`, errors);
-    check(property(component, 'vcs:commit') === entry?.gitCommit, `SBOM commit mismatch: ${entry?.name}`, errors);
-    check(property(component, 'vcs:repository') === entry?.repositoryUrl, `SBOM repository mismatch: ${entry?.name}`, errors);
+    check(
+      property(component, 'npm:integrity') === entry?.integrity,
+      `SBOM integrity mismatch: ${entry?.name}`,
+      errors,
+    );
+    check(
+      property(component, 'vcs:commit') === entry?.gitCommit,
+      `SBOM commit mismatch: ${entry?.name}`,
+      errors,
+    );
+    check(
+      property(component, 'vcs:repository') === entry?.repositoryUrl,
+      `SBOM repository mismatch: ${entry?.name}`,
+      errors,
+    );
 
     const licenseFile = LICENSE_FILES.get(entry?.name);
     check(Boolean(licenseFile), `license mapping missing: ${entry?.name}`, errors);
@@ -155,26 +248,64 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
       `license README mapping missing: ${entry?.name}@${entry?.version}`,
       errors,
     );
-    check(notices.includes(`\`${entry?.name}\` ${entry?.version}`), `third-party notice missing: ${entry?.name}@${entry?.version}`, errors);
+    check(
+      notices.includes(`\`${entry?.name}\` ${entry?.version}`),
+      `third-party notice missing: ${entry?.name}@${entry?.version}`,
+      errors,
+    );
   }
 
-  check(sbom.bomFormat === 'CycloneDX' && sbom.specVersion === '1.6', 'SBOM must be CycloneDX 1.6', errors);
+  check(
+    sbom.bomFormat === 'CycloneDX' && sbom.specVersion === '1.6',
+    'SBOM must be CycloneDX 1.6',
+    errors,
+  );
   check(sbom.version === 1, 'SBOM version must be deterministic integer 1', errors);
   check(!('serialNumber' in sbom), 'SBOM must not contain a generated serial number', errors);
-  check(!('timestamp' in (sbom.metadata ?? {})), 'SBOM must not contain a generated timestamp', errors);
+  check(
+    !('timestamp' in (sbom.metadata ?? {})),
+    'SBOM must not contain a generated timestamp',
+    errors,
+  );
 
   for (const [id, version, commit, artifact, licenseFile] of GRAMMARS) {
-    check(grammarInventory.includes(artifact), `grammar inventory artifact missing: ${artifact}`, errors);
-    check(grammarInventory.includes(version), `grammar inventory version missing: ${id}@${version}`, errors);
+    check(
+      grammarInventory.includes(artifact),
+      `grammar inventory artifact missing: ${artifact}`,
+      errors,
+    );
+    check(
+      grammarInventory.includes(version),
+      `grammar inventory version missing: ${id}@${version}`,
+      errors,
+    );
     check(grammarInventory.includes(commit), `grammar inventory commit missing: ${id}`, errors);
-    check(grammarInventory.includes(`licenses/${licenseFile}`), `grammar license mapping missing: ${id}`, errors);
-    check(existsSync(resolve(root, 'docs/oss/licenses', licenseFile)), `grammar license file missing: ${id}`, errors);
-    const component = sbom.components?.find((candidate) => candidate?.['bom-ref'] === `grammar:${id}@${version}`);
+    check(
+      grammarInventory.includes(`licenses/${licenseFile}`),
+      `grammar license mapping missing: ${id}`,
+      errors,
+    );
+    check(
+      existsSync(resolve(root, 'docs/oss/licenses', licenseFile)),
+      `grammar license file missing: ${id}`,
+      errors,
+    );
+    const component = sbom.components?.find(
+      (candidate) => candidate?.['bom-ref'] === `grammar:${id}@${version}`,
+    );
     check(Boolean(component), `grammar SBOM component missing: ${id}@${version}`, errors);
     check(component?.scope === 'required', `grammar SBOM scope mismatch: ${id}`, errors);
     check(licenseId(component) === 'MIT', `grammar SBOM license mismatch: ${id}`, errors);
-    check(property(component, 'vcs:commit') === commit, `grammar SBOM commit mismatch: ${id}`, errors);
-    check(property(component, 'vibespace:grammar-artifact') === artifact, `grammar SBOM artifact mismatch: ${id}`, errors);
+    check(
+      property(component, 'vcs:commit') === commit,
+      `grammar SBOM commit mismatch: ${id}`,
+      errors,
+    );
+    check(
+      property(component, 'vibespace:grammar-artifact') === artifact,
+      `grammar SBOM artifact mismatch: ${id}`,
+      errors,
+    );
   }
 
   const resources = tauri.bundle?.resources;
@@ -183,8 +314,20 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
     check(resources?.includes(resource), `Tauri OSS resource missing: ${resource}`, errors);
   }
   const resourceText = JSON.stringify(resources ?? []).toLowerCase();
-  for (const forbidden of ['node_modules', 'playwright-browser', 'ms-playwright', 'promptfoo', '.env', 'credential', 'secret']) {
-    check(!resourceText.includes(forbidden), `forbidden default bundle resource: ${forbidden}`, errors);
+  for (const forbidden of [
+    'node_modules',
+    'playwright-browser',
+    'ms-playwright',
+    'promptfoo',
+    '.env',
+    'credential',
+    'secret',
+  ]) {
+    check(
+      !resourceText.includes(forbidden),
+      `forbidden default bundle resource: ${forbidden}`,
+      errors,
+    );
   }
   for (const excludedRuntime of ['playwright-core', '@playwright/test', 'promptfoo']) {
     check(
@@ -279,6 +422,49 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
     'Doctor must not claim Playwright install or repair authority',
     errors,
   );
+  const expectedLocalLifecycle = {
+    status: 'implemented-unintegrated',
+    entrypoint: 'scripts/pr31-playwright-acceptance-runtime.mjs',
+    artifactSource: 'caller-supplied-local-only',
+    signedManifestRequired: true,
+    downloadsAllowed: false,
+    launchesBrowser: false,
+    operations: {
+      diagnose: true,
+      installOrUpdate: true,
+      sameManifestRepair: true,
+      rollback: true,
+      measure: true,
+      uninstall: true,
+    },
+    productionTrustRootPinned: false,
+    nativeAtomicReparseSafe: false,
+    productDoctorIntegrated: false,
+  };
+  check(
+    JSON.stringify(featurePack.localLifecycleContract) === JSON.stringify(expectedLocalLifecycle),
+    'local lifecycle must remain unintegrated until native trust and Doctor wiring exist',
+    errors,
+  );
+  check(
+    /verifyTauriUpdaterSignature/u.test(playwrightLifecycleSource) &&
+      [
+        'diagnoseAcceptanceRuntime',
+        'installAcceptanceRuntime',
+        'repairAcceptanceRuntime',
+        'rollbackAcceptanceRuntime',
+        'uninstallAcceptanceRuntime',
+      ].every((name) => playwrightLifecycleSource.includes(`export async function ${name}`)),
+    'local lifecycle must expose every signed offline operation through the existing verifier',
+    errors,
+  );
+  check(
+    !/node:child_process|\b(?:exec|execFile|spawn|fork)\s*\(|\bfetch\s*\(|https?:\/\/|playwright(?:-core)?\s+install(?:-deps)?|\.launch\s*\(/iu.test(
+      playwrightLifecycleSource,
+    ),
+    'local lifecycle must not contain network or browser-download authority',
+    errors,
+  );
   check(
     !/(?:playwright|chromium|firefox|webkit|browser\s+(?:agent|binaries))/iu.test(doctorSource),
     'Doctor source must not claim unavailable Playwright or browser support',
@@ -288,13 +474,13 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
   check(
     prerequisites.length === PLAYWRIGHT_PREREQUISITES.length &&
       PLAYWRIGHT_PREREQUISITES.every(
-        (id, index) =>
+        ([id, status], index) =>
           prerequisites[index]?.id === id &&
-          prerequisites[index]?.status === 'missing' &&
+          prerequisites[index]?.status === status &&
           typeof prerequisites[index]?.reason === 'string' &&
           prerequisites[index].reason.trim().length >= 40,
       ),
-    'feature pack must enumerate every missing installer/native prerequisite',
+    'feature pack must enumerate every truthful installer/native prerequisite status',
     errors,
   );
   const browserBinary = featurePack.components?.find(
@@ -340,8 +526,15 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
     errors,
   );
 
-  check(rootPackage.scripts?.['verify:pr31-oss'] === 'node scripts/pr31-oss-bundle.mjs', 'root OSS verification script mismatch', errors);
-  return Object.freeze({ ok: errors.length === 0, errors: Object.freeze([...new Set(errors)].sort()) });
+  check(
+    rootPackage.scripts?.['verify:pr31-oss'] === 'node scripts/pr31-oss-bundle.mjs',
+    'root OSS verification script mismatch',
+    errors,
+  );
+  return Object.freeze({
+    ok: errors.length === 0,
+    errors: Object.freeze([...new Set(errors)].sort()),
+  });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

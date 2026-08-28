@@ -30,6 +30,10 @@ function createFixture() {
   cpSync(resolve(ROOT, 'app/package.json'), resolve(fixture, 'app/package.json'));
   cpSync(resolve(ROOT, 'package.json'), resolve(fixture, 'package.json'));
   cpSync(resolve(ROOT, 'package-lock.json'), resolve(fixture, 'package-lock.json'));
+  cpSync(
+    resolve(ROOT, 'scripts/pr31-playwright-acceptance-runtime.mjs'),
+    resolve(fixture, 'scripts/pr31-playwright-acceptance-runtime.mjs'),
+  );
   return fixture;
 }
 
@@ -56,14 +60,33 @@ test('Playwright remains an exact development pin without a fabricated shipping 
     canRepair: false,
     implicitBrowserDownloadAllowed: false,
   });
+  assert.deepEqual(featurePack.localLifecycleContract, {
+    status: 'implemented-unintegrated',
+    entrypoint: 'scripts/pr31-playwright-acceptance-runtime.mjs',
+    artifactSource: 'caller-supplied-local-only',
+    signedManifestRequired: true,
+    downloadsAllowed: false,
+    launchesBrowser: false,
+    operations: {
+      diagnose: true,
+      installOrUpdate: true,
+      sameManifestRepair: true,
+      rollback: true,
+      measure: true,
+      uninstall: true,
+    },
+    productionTrustRootPinned: false,
+    nativeAtomicReparseSafe: false,
+    productDoctorIntegrated: false,
+  });
   assert.deepEqual(
     featurePack.prerequisites.map(({ id, status }) => ({ id, status })),
     [
       { id: 'signed-feature-pack-artifact', status: 'missing' },
       { id: 'pinned-browser-revisions-and-hashes', status: 'missing' },
-      { id: 'native-atomic-installer', status: 'missing' },
-      { id: 'doctor-verification-and-repair', status: 'missing' },
-      { id: 'uninstall-rollback-measurement', status: 'missing' },
+      { id: 'native-atomic-installer', status: 'partial' },
+      { id: 'doctor-verification-and-repair', status: 'partial' },
+      { id: 'uninstall-rollback-measurement', status: 'partial' },
     ],
   );
 });
@@ -134,6 +157,37 @@ test('PR31 OSS checker rejects an implicit browser download command or Doctor ov
     assert.ok(
       result.errors.includes(
         'Doctor source must not claim unavailable Playwright or browser support',
+      ),
+    );
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test('PR31 OSS checker rejects a fabricated lifecycle integration or download authority', () => {
+  const fixture = createFixture();
+  try {
+    const featurePackPath = resolve(fixture, 'docs/oss/browser-agent-feature-pack.json');
+    const featurePack = JSON.parse(readFileSync(featurePackPath, 'utf8'));
+    featurePack.localLifecycleContract.productionTrustRootPinned = true;
+    featurePack.localLifecycleContract.nativeAtomicReparseSafe = true;
+    featurePack.localLifecycleContract.productDoctorIntegrated = true;
+    writeFileSync(featurePackPath, `${JSON.stringify(featurePack, null, 2)}\n`);
+    writeFileSync(
+      resolve(fixture, 'scripts/pr31-playwright-acceptance-runtime.mjs'),
+      "export async function unsafe() { return fetch('https://example.test/browser.zip'); }\n",
+    );
+
+    const result = verifyPr31OssBundle(fixture);
+    assert.equal(result.ok, false);
+    assert.ok(
+      result.errors.includes(
+        'local lifecycle must remain unintegrated until native trust and Doctor wiring exist',
+      ),
+    );
+    assert.ok(
+      result.errors.includes(
+        'local lifecycle must not contain network or browser-download authority',
       ),
     );
   } finally {
