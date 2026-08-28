@@ -1014,17 +1014,9 @@ pub async fn siyuan_surface_open(
             .additional_browser_args(&browser_args);
     }
 
-    let webview = match main.add_child(builder, position, size) {
-        Ok(value) => value,
-        Err(_) => {
-            clear_current_operation(&operation_id);
-            return Err(public_error("siyuan_surface_webview_unavailable"));
-        }
-    };
-    if !operation_is_current(&operation_id) {
-        let _ = retire_surface_window(&webview);
-        return Err(public_error("siyuan_surface_open_cancelled"));
-    }
+    // Page-load handlers may run before `add_child` returns on WebView2. Publish
+    // the exact operation first so the first authenticated/check-auth document
+    // can claim its nonce and request the post-cookie managed-origin navigation.
     *SURFACE_STATE
         .lock()
         .map_err(|_| public_error("siyuan_surface_state_unavailable"))? = Some(SurfaceRecord {
@@ -1041,6 +1033,17 @@ pub async fn siyuan_surface_open(
         origin: origin_key,
         operation_id: operation_id.clone(),
     });
+    let webview = match main.add_child(builder, position, size) {
+        Ok(value) => value,
+        Err(_) => {
+            retire_failed_open_locked(&app, &operation_id);
+            return Err(public_error("siyuan_surface_webview_unavailable"));
+        }
+    };
+    if !operation_is_current(&operation_id) {
+        let _ = retire_surface_window(&webview);
+        return Err(public_error("siyuan_surface_open_cancelled"));
+    }
     let setup_result = (|| -> Result<(), String> {
         webview
             .set_cookie(
@@ -1580,6 +1583,20 @@ mod tests {
         let forbidden_url_query = ["main_webview", ".url()"].join("");
         assert!(!source.contains(&forbidden_url_query));
         assert!(source.contains("&& record.graph_state == \"loading\""));
+    }
+
+    #[test]
+    fn child_operation_state_is_published_before_the_first_page_load_can_fire() {
+        let source = include_str!("surface.rs");
+        let start = source
+            .find("let mut builder = WebviewBuilder::new")
+            .unwrap();
+        let end = source[start..].find("let setup_result =").unwrap() + start;
+        let open_slice = &source[start..end];
+        let state_index = open_slice.find("= Some(SurfaceRecord {").unwrap();
+        let add_child_index = open_slice.find("main.add_child(builder").unwrap();
+
+        assert!(state_index < add_child_index);
     }
 
     #[test]

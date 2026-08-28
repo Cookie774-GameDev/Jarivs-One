@@ -35,6 +35,23 @@ export type SiyuanManagedDocumentCreateResult =
   | Readonly<{ ok: false; error: unknown }>;
 
 const SIYUAN_MANAGED_CREATE_BATCH_LIMIT = 4;
+const SIYUAN_DOCUMENT_ROOT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
+
+function documentRootIdFromPath(path: string): string {
+  if (!path.startsWith('/') || path.includes('\\') || path.includes('\0')) {
+    throw new Error('siyuan_managed_document_path_invalid');
+  }
+  const segments = path.split('/').filter(Boolean);
+  if (segments.some((segment) => segment === '.' || segment === '..')) {
+    throw new Error('siyuan_managed_document_path_invalid');
+  }
+  const filename = segments.at(-1);
+  const id = filename?.endsWith('.sy') ? filename.slice(0, -3) : '';
+  if (!SIYUAN_DOCUMENT_ROOT_ID.test(id)) {
+    throw new Error('siyuan_managed_document_path_invalid');
+  }
+  return id;
+}
 
 export interface ProductionSiyuanRlmPort extends SiyuanRlmPort {
   readManagedDocument(
@@ -173,13 +190,20 @@ export function createProductionSiyuanRlmPort(
         const summaries = await bridge.searchBlocks(lookup.query, 50);
         const ids = [
           ...new Set(
-            summaries.filter((block) => block.notebookId === notebook.id).map((block) => block.id),
+            summaries
+              .filter((block) => block.notebookId === notebook.id)
+              .map((block) => documentRootIdFromPath(block.path)),
           ),
         ];
         const candidates: SiyuanManagedDocument[] = [];
         for (const id of ids) {
           const block = await bridge.getBlock(id);
-          if (block.notebookId === notebook.id && block.markdown.includes(lookup.marker)) {
+          if (
+            block.id === id &&
+            block.notebookId === notebook.id &&
+            documentRootIdFromPath(block.path) === id &&
+            block.markdown.includes(lookup.marker)
+          ) {
             candidates.push(block);
           }
         }

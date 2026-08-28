@@ -598,6 +598,33 @@ impl HttpSiyuanTransport {
         Ok(())
     }
 
+    fn require_append_parent(
+        root: &BlockInfoData,
+        parent_id: &str,
+        parent: &BlockInfoData,
+    ) -> Result<(), ClientError> {
+        if Self::require_same_map(root, parent).is_ok() {
+            return Ok(());
+        }
+        let Some(root_stem) = root.path.strip_suffix(".sy") else {
+            return Err(ClientError::ResponseTypeMismatch);
+        };
+        let child_prefix = format!("{root_stem}/");
+        let contains_traversal_segment = parent
+            .path
+            .split('/')
+            .any(|segment| segment == "." || segment == "..");
+        if parent.notebook_id != root.notebook_id
+            || parent.root_id != parent_id
+            || !parent.path.starts_with(&child_prefix)
+            || !parent.path.ends_with(".sy")
+            || contains_traversal_segment
+        {
+            return Err(ClientError::ResponseTypeMismatch);
+        }
+        Ok(())
+    }
+
     fn require_map_target(&self, map_root_id: &str, target_id: &str) -> Result<(), ClientError> {
         let root = self.map_root_info(map_root_id)?;
         if target_id != map_root_id {
@@ -668,7 +695,7 @@ impl HttpSiyuanTransport {
         for block in blocks {
             if verified_parents.insert(block.parent_id.as_str()) && block.parent_id != map_root_id {
                 let info = self.block_info(&block.parent_id)?;
-                Self::require_same_map(&root, &info)?;
+                Self::require_append_parent(&root, &block.parent_id, &info)?;
             }
         }
         let transactions: Vec<TransactionWire> = self.post(
@@ -2042,6 +2069,77 @@ mod tests {
             assert!(!request.contains(&token));
             assert!(!request.to_ascii_lowercase().contains("authorization:"));
         }
+        server.join().unwrap();
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
+    fn native_batch_append_accepts_a_child_document_inside_the_verified_map_path() {
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/map.sy","rootID":"map-root"}}"#
+                .to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/map/Nodes/folder.sy","rootID":"folder-root"}}"#
+                .to_owned(),
+            r#"{"code":0,"msg":"","data":[{"doOperations":[{"action":"insert","id":"file-block","parentID":"folder-root"}]}]}"#
+                .to_owned(),
+        ]);
+        let client = SiyuanClient::new(
+            true,
+            HttpSiyuanTransport::new(port, "c".repeat(48)).unwrap(),
+        );
+
+        assert_eq!(
+            client
+                .batch_append_blocks(
+                    "20260820-notebook",
+                    "map-root",
+                    &[AppendBlockInput {
+                        parent_id: "folder-root".to_owned(),
+                        markdown: "# File".to_owned(),
+                    }],
+                )
+                .unwrap(),
+            ["file-block"]
+        );
+
+        let captured = (0..4).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(captured[1].contains("/api/block/getBlockInfo"));
+        assert!(captured[2].contains("/api/block/getBlockInfo"));
+        assert!(captured[3].contains("/api/block/batchAppendBlock"));
+        server.join().unwrap();
+        assert!(requests.try_recv().is_err());
+    }
+
+    #[test]
+    fn native_batch_append_rejects_a_traversal_shaped_child_path_before_write() {
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/map.sy","rootID":"map-root"}}"#
+                .to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/map/../other.sy","rootID":"other-root"}}"#
+                .to_owned(),
+        ]);
+        let client = SiyuanClient::new(
+            true,
+            HttpSiyuanTransport::new(port, "t".repeat(48)).unwrap(),
+        );
+
+        assert_eq!(
+            client.batch_append_blocks(
+                "20260820-notebook",
+                "map-root",
+                &[AppendBlockInput {
+                    parent_id: "other-root".to_owned(),
+                    markdown: "# Must not write".to_owned(),
+                }],
+            ),
+            Err(ClientError::ResponseTypeMismatch)
+        );
+        let captured = (0..3).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(captured
+            .iter()
+            .all(|request| !request.contains("/api/block/batchAppendBlock")));
         server.join().unwrap();
         assert!(requests.try_recv().is_err());
     }

@@ -183,12 +183,20 @@ describe('production SiYuan RLM port', () => {
       { id: 'notebook-project-a', name: 'VibeSpace Project Vault', closed: false },
       { id: 'other', name: 'Other', closed: false },
     ]);
-    vi.mocked(bridge.getBlock).mockResolvedValue({
-      id: 'block-project-a',
+    vi.mocked(bridge.searchBlocks).mockResolvedValue([
+      {
+        id: 'marker-block-project-a',
+        notebookId: 'notebook-project-a',
+        path: '/managed-document-project-a.sy',
+        content: '&lt;!-- vibespace-managed-key:project-context --&gt;',
+      },
+    ]);
+    vi.mocked(bridge.getBlock).mockImplementation(async (id) => ({
+      id,
       notebookId: 'notebook-project-a',
-      path: '/managed.sy',
+      path: '/managed-document-project-a.sy',
       markdown: '# VibeSpace Project Context\n\n<!-- vibespace-managed-key:project-context -->',
-    });
+    }));
     const port = createProductionSiyuanRlmPort({
       featureEnabled: true,
       createBridge: () => bridge,
@@ -199,7 +207,11 @@ describe('production SiYuan RLM port', () => {
         query: 'VibeSpace Project Context',
         marker: '<!-- vibespace-managed-key:project-context -->',
       }),
-    ).resolves.toMatchObject({ id: 'block-project-a', notebookId: 'notebook-project-a' });
+    ).resolves.toMatchObject({
+      id: 'managed-document-project-a',
+      notebookId: 'notebook-project-a',
+    });
+    expect(bridge.getBlock).toHaveBeenCalledExactlyOnceWith('managed-document-project-a');
   });
 
   it('creates the managed notebook lazily and exposes only typed mutations', async () => {

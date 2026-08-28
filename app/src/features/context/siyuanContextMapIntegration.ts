@@ -759,8 +759,34 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
         if (!parentDocumentId) throw new Error('siyuan_node_parent_binding_unavailable');
         const markdown = nodeFileBlockMarkdown(record.id, entry, parentDocumentId);
         const recovered = await recoverCreatedNode(entry, markdown);
-        if (!recovered) throw new Error('siyuan_native_block_recovery_inconclusive');
-        await checkpointCompletedNodes({ [entry.nodeId]: recovered.id });
+        if (recovered) {
+          await checkpointCompletedNodes({ [entry.nodeId]: recovered.id });
+          continue;
+        }
+        // Search indexing can lag a committed block, so a missing marker from
+        // readManagedDocument alone is never enough to re-append. Reading the
+        // exact parent document is authoritative: if it contains the marker,
+        // preserve the pending receipt; if it does not, the prior append did
+        // not commit under that parent and this node is safe to retry.
+        let parent: SiyuanManagedDocument;
+        try {
+          parent = await port.getBlock(projectId, parentDocumentId);
+        } catch {
+          throw new Error('siyuan_native_block_recovery_inconclusive');
+        }
+        if (parent.markdown.includes(nodeMarker(record.id, entry.nodeId))) {
+          throw new Error('siyuan_native_block_recovery_inconclusive');
+        }
+        if (durableJob) {
+          durableJob = {
+            ...durableJob,
+            updatedAt: Date.now(),
+            pendingNativeNodeIds: durableJob.pendingNativeNodeIds.filter(
+              (nodeId) => nodeId !== entry.nodeId,
+            ),
+          };
+          await checkpointSiyuanIndexJob({ job: durableJob });
+        }
       }
 
       const remainingFiles = unboundFileEntries.filter((entry) => !bindings[entry.nodeId]);

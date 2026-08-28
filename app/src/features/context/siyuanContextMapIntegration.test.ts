@@ -740,11 +740,46 @@ describe('SiYuan Context Map integration', () => {
     }
   });
 
+  it('re-appends a pending file only when the exact parent proves the marker was never committed', async () => {
+    const record = { ...map(), id: 'map-batch-preflight-rejected' };
+    const policy = await seedPendingNativeFileRecovery(record);
+    const nativePort = port();
+    nativePort.appendManagedBlocks = vi.fn(async () => ['recovered-block']);
+    const previousInternals = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    try {
+      await expect(
+        createSiyuanContextMapIntegration(nativePort).sync('project-1', record, {
+          accountId: 'account-1',
+          summaryPolicy: policy,
+        }),
+      ).resolves.toMatchObject({ manifest: { status: 'ready' } });
+      expect(nativePort.appendManagedBlocks).toHaveBeenCalledOnce();
+      expect(await readSiyuanIndexJob('project-1', record.id)).toMatchObject({
+        status: 'completed',
+        pendingNativeNodeIds: [],
+        createdNodes: 1,
+      });
+    } finally {
+      if (previousInternals === undefined) {
+        delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      } else {
+        (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = previousInternals;
+      }
+    }
+  });
+
   it('never re-appends a pending file when post-crash marker recovery is stale', async () => {
     const record = { ...map(), id: 'map-batch-crash-stale-search' };
     const policy = await seedPendingNativeFileRecovery(record);
     const nativePort = port();
     nativePort.appendManagedBlocks = vi.fn(async () => ['duplicate-block']);
+    vi.mocked(nativePort.getBlock).mockImplementation(async (_projectId, id) => ({
+      id,
+      notebookId: 'notebook-1',
+      path: '/map-root',
+      markdown: 'vibespace-context-node:v1 map=map-batch-crash-stale-search node=path%3Aindex.ts',
+    }));
     const previousInternals = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
     (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
     try {
