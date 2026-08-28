@@ -201,6 +201,29 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     expect(invoked('pet_show_overlay')).toBe(true);
   });
 
+  it('bounds a stalled native panel command and restores the detached overlay', async () => {
+    vi.useFakeTimers();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'pet_open_or_focus_panel') return new Promise(() => undefined);
+      if (cmd === 'pet_show_overlay') return Promise.resolve(nativeOverlayShowResult());
+      return Promise.resolve(null);
+    });
+
+    const { openOrFocusPetMiniPanel } = await import('./petTauriBridge');
+    const opening = openOrFocusPetMiniPanel();
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    await expect(opening).resolves.toMatchObject({
+      panelVisible: false,
+      useInlineFallback: false,
+      overlayVisible: true,
+      reason: 'visibility_timeout',
+    });
+    expect(invokeCount('pet_open_or_focus_panel')).toBe(1);
+    expect(invokeCount('pet_show_overlay')).toBe(1);
+    vi.useRealTimers();
+  });
+
   it('uses the inline panel only outside Tauri', async () => {
     delete (window as unknown as { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__;
 

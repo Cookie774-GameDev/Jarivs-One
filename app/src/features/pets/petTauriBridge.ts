@@ -82,9 +82,7 @@ export const PET_OVERLAY_SHOW_EVENT = 'vibespace:pet-overlay-show';
 let overlayShowSignalSequence = 0;
 const NATIVE_PET_INVOKE_TIMEOUT_MS = 1_500;
 type NativeInvokeOutcome<T> =
-  | { status: 'ok'; value: T }
-  | { status: 'failed' }
-  | { status: 'timeout' };
+  { status: 'ok'; value: T } | { status: 'failed' } | { status: 'timeout' };
 const nativeInvokes = new Map<string, Promise<NativeInvokeOutcome<unknown>>>();
 
 function signalPetOverlayShown(): void {
@@ -289,17 +287,18 @@ export async function openOrFocusPetPanel(
   panelMode: PetPanelMode = 'normal',
 ): Promise<PetPanelOpenResult> {
   if (!isTauriRuntime()) return failedPetPanelOpen('native_unavailable');
-  let response: unknown;
-  try {
-    const { invoke: inv } = await import('@tauri-apps/api/core');
-    response = await inv<unknown>('pet_open_or_focus_panel', {
-      nearX: nearX ?? null,
-      nearY: nearY ?? null,
-      panelMode,
-    });
-  } catch {
+  const outcome = await invokeWithStatus<unknown>('pet_open_or_focus_panel', {
+    nearX: nearX ?? null,
+    nearY: nearY ?? null,
+    panelMode,
+  });
+  if (outcome.status === 'timeout') {
+    return failedPetPanelOpen('visibility_timeout');
+  }
+  if (outcome.status === 'failed') {
     return failedPetPanelOpen('native_command_failed');
   }
+  const response = outcome.value;
   return isPetPanelOpenResult(response) ? response : failedPetPanelOpen('native_result_invalid');
 }
 
