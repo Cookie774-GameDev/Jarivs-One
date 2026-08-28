@@ -393,7 +393,12 @@ describe('SchedulePage Jarvis Action model picker', () => {
     fireEvent.change(screen.getByLabelText('Repeat end date'), {
       target: { value: '2026-12-31' },
     });
-    fireEvent.click(screen.getByRole('button', { name: '1 hour before' }));
+    const fifteenMinuteReminder = screen.getByRole('button', { name: '15 min before' });
+    const oneHourReminder = screen.getByRole('button', { name: '1 hour before' });
+    expect(fifteenMinuteReminder.getAttribute('aria-pressed')).toBe('true');
+    expect(oneHourReminder.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(oneHourReminder);
+    expect(oneHourReminder.getAttribute('aria-pressed')).toBe('true');
 
     expect(screen.getByText(/Every 2 weeks/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Save event/i }));
@@ -402,7 +407,10 @@ describe('SchedulePage Jarvis Action model picker', () => {
     expect(createEvent.mock.calls[0]?.[0]).toMatchObject({
       title: 'Planning cadence',
       recurrence_rule: expect.stringContaining('FREQ=WEEKLY'),
-      reminders: expect.arrayContaining([expect.objectContaining({ offset_min: 60 })]),
+      reminders: expect.arrayContaining([
+        expect.objectContaining({ offset_min: 15 }),
+        expect.objectContaining({ offset_min: 60 }),
+      ]),
     });
     expect(createEvent.mock.calls[0]?.[0]?.recurrence_rule).toContain('BYDAY=');
     expect(createEvent.mock.calls[0]?.[0]?.recurrence_rule).toContain('UNTIL=20261231');
@@ -422,7 +430,10 @@ describe('SchedulePage Jarvis Action model picker', () => {
       attendees: [],
       source: 'manual',
       recurrence_rule: 'weekly',
-      reminders: [{ offset_min: 15, channels: ['desktop', 'in_app'] }],
+      reminders: [
+        { offset_min: 15, channels: ['desktop', 'in_app'] },
+        { offset_min: 60, channels: ['desktop', 'in_app'] },
+      ],
       status: 'scheduled',
       created_by: 'usr_local',
       created_at: now,
@@ -443,6 +454,12 @@ describe('SchedulePage Jarvis Action model picker', () => {
     expect(screen.getByRole('button', { name: /^Weekly$/i }).getAttribute('aria-pressed')).toBe(
       'true',
     );
+    expect(screen.getByRole('button', { name: '15 min before' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    expect(screen.getByRole('button', { name: '1 hour before' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
 
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Unsaved change' } });
     fireEvent.click(screen.getByRole('button', { name: 'Cancel editing' }));
@@ -457,7 +474,10 @@ describe('SchedulePage Jarvis Action model picker', () => {
       expect.objectContaining({
         title: 'Updated title',
         recurrence_rule: 'weekly',
-        reminders: [{ offset_min: 15, channels: ['desktop', 'in_app'] }],
+        reminders: [
+          { offset_min: 15, channels: ['desktop', 'in_app'] },
+          { offset_min: 60, channels: ['desktop', 'in_app'] },
+        ],
       }),
     );
   });

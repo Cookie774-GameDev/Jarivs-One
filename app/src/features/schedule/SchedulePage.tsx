@@ -1865,6 +1865,7 @@ export function SchedulePage() {
                       <button
                         key={preset.offset_min}
                         type="button"
+                        aria-pressed={active}
                         onClick={() =>
                           setReminderOffsets((current) =>
                             current.includes(preset.offset_min)
