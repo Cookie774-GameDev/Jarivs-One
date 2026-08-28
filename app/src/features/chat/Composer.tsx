@@ -74,6 +74,33 @@ export function getThemeCommandHelp(): string {
 export function getAppearanceCommandHelp(): string {
   return `Available appearances: ${SELECTABLE_THEMES.map((theme) => theme.label).join(', ')}. Use /appearance to choose.`;
 }
+
+interface SlashComboboxMetadata {
+  readonly listboxId: string;
+  readonly activeDescendantId?: string;
+}
+
+interface SlashComboboxOwnerAttributes {
+  readonly role?: 'combobox';
+  readonly 'aria-controls'?: string;
+  readonly 'aria-expanded'?: true;
+  readonly 'aria-activedescendant'?: string;
+  readonly 'aria-autocomplete'?: 'list';
+}
+
+export function slashComboboxOwnerAttributes(
+  open: boolean,
+  metadata: SlashComboboxMetadata | null,
+): SlashComboboxOwnerAttributes {
+  if (!open || !metadata) return {};
+  return {
+    role: 'combobox',
+    'aria-controls': metadata.listboxId,
+    'aria-expanded': true,
+    'aria-activedescendant': metadata.activeDescendantId,
+    'aria-autocomplete': 'list',
+  };
+}
 import {
   COMPOSER_STT_STOP_EVENT,
   COMPOSER_STT_TOGGLE_EVENT,
@@ -915,6 +942,8 @@ export function Composer({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const slashTypeaheadRef = useRef<SlashCommandTypeaheadRef>(null);
+  const [slashComboboxMetadata, setSlashComboboxMetadata] =
+    useState<SlashComboboxMetadata | null>(null);
 
   useEffect(() => {
     setRuntimePolicy(readChatRuntimePolicyState(String(chatId)));
@@ -1657,6 +1686,25 @@ export function Composer({
       resolveSlashCommandSelection(slashCtx?.query ?? '', filteredSlashCommands, current),
     );
   }, [filteredSlashCommandsSignature, slashCtx?.query]);
+
+  useEffect(() => {
+    if (slashCtx === null) {
+      setSlashComboboxMetadata((current) => (current === null ? current : null));
+      return;
+    }
+    const picker = slashTypeaheadRef.current;
+    if (!picker) return;
+    const next = {
+      listboxId: picker.getListboxId(),
+      activeDescendantId: picker.getActiveDescendantId(),
+    };
+    setSlashComboboxMetadata((current) =>
+      current?.listboxId === next.listboxId &&
+      current.activeDescendantId === next.activeDescendantId
+        ? current
+        : next,
+    );
+  }, [filteredSlashCommandsSignature, selectedSlashCmd, slashCtx]);
 
   // Auto-grow the textarea up to MAX_HEIGHT, then enable internal scroll
   useEffect(() => {
@@ -4935,6 +4983,7 @@ export function Composer({
                     ? 'Message Jarvis…  (@ agent)'
                     : 'Message Jarvis...   (use @ to mention an agent)')
                 }
+                {...slashComboboxOwnerAttributes(slashCtx !== null, slashComboboxMetadata)}
                 aria-label="Message"
                 data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_CONTROL.chatComposer : undefined}
                 data-composer-input="true"
