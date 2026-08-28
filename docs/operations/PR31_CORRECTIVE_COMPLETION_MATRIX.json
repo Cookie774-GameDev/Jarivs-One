@@ -168,12 +168,16 @@
       "nativeRequired": true,
       "evidence": [
         {
+          "kind": "commit",
+          "ref": "f03dd4bd adds a fail-closed OpenCode refresh/reconnect report, validator, and 10-test evidence contract over SHA-256 hashes for 11 audited implementation/test files without changing already-complete product behavior"
+        },
+        {
           "kind": "test",
-          "ref": "Fresh corrective run: accessible Chat models, provider catalog, response-path contract, and connection catalog 4 files and 56/56 tests passed, including immediate plus five-minute refresh, authenticated OpenCode catalog cadence, reconnect retention, and no silent substitution of disappeared models"
+          "ref": "Fresh exhaustive corrective run: six OpenCode catalog/runtime/selection files and 119/119 tests plus evidence validator 10/10 passed; full TypeScript, Prettier, syntax, diff, and Gitleaks passed. Contract rejects early/manual refresh, restart-as-reconnect, out-of-session disconnect, substitution, Ollama/11434, credentials, and production mutation"
         },
         {
           "kind": "pending",
-          "ref": "Official-native auto-connect, five-minute refresh, disconnect, and reconnect proof remains required before verification"
+          "ref": "Official-native cold auto-connect, unforced authenticated refresh at >=300000 ms, genuine managed-runtime disconnect and automatic reconnect in the same app session, and identical ordered qualified routes remain required; app restart cannot substitute"
         }
       ]
     },
@@ -297,14 +301,17 @@
       "nativeRequired": true,
       "visualRequired": true,
       "evidence": [
-        { "kind": "commit", "ref": "968a4c84" },
         {
-          "kind": "test",
-          "ref": "structured read/search motion adjacent matrix 59/59; full TypeScript and reduced-motion contract passed"
+          "kind": "commit",
+          "ref": "968a4c84 adds structured book/read and magnifier/search motion; ab708293 adds structured-only mail/send and ship/launch motion from canonical MCP tool identity or plugin identity plus live operation evidence"
         },
         {
-          "kind": "audit",
-          "ref": "Book/read and magnifier/search motions are implemented from structured evidence; mail/ship intents and fresh native loading/animation-state evidence remain unimplemented"
+          "kind": "test",
+          "ref": "Structured read/search motion adjacent matrix 59/59; structured mail/ship motion, ledger, and journal projection 47/47 plus AgenticConsole 22/22; full TypeScript, Prettier, diff, Gitleaks, and reduced-motion contract passed"
+        },
+        {
+          "kind": "pending",
+          "ref": "Fresh official-native working, pause/resume, Context progress, book/search/mail/ship, reduced-motion, and animation-state visual evidence remains required"
         }
       ]
     },
