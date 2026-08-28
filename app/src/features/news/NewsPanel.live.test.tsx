@@ -142,6 +142,16 @@ describe('NewsPanel live cards', () => {
     expect(screen.getByText('Official model launch')).toBeTruthy();
   });
 
+  it('describes a failed live request as a reconnecting service, not user offline status', async () => {
+    api.fetchLiveNews.mockRejectedValueOnce(
+      new Error('Live AI News could not reach https://news.example.'),
+    );
+    render(<NewsPanel open onOpenChange={vi.fn()} now={now} runtimeEffectsEnabled />);
+
+    expect(await screen.findByText(/could not reach https:\/\/news\.example/i)).toBeTruthy();
+    expect(screen.getByText('Saved snapshot while live news reconnects.')).toBeTruthy();
+  });
+
   it('renders repository trends in a separate GitHub section', async () => {
     api.fetchLiveNews.mockResolvedValue(
       liveResponse({

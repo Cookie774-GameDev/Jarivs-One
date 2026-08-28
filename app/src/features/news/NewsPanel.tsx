@@ -447,7 +447,9 @@ export function NewsPanel({
               <p className="mt-0.5 text-metadata text-muted-foreground">
                 {live
                   ? 'Free hourly AI headlines from verified sources.'
-                  : 'Offline snapshot with original-source credits.'}
+                  : liveError
+                    ? 'Saved snapshot while live news reconnects.'
+                    : 'Saved snapshot with original-source credits.'}
               </p>
             </div>
             <Button

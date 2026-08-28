@@ -362,14 +362,30 @@ export async function fetchLiveNews(
 ): Promise<LiveNewsResponse> {
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  const endpoint = new URL(origin).origin;
   try {
     const url = new URL('/api/news?limit=50', origin);
     const response = await fetcher(url, {
       headers: { accept: 'application/json' },
+      mode: 'cors',
+      credentials: 'omit',
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`AI news request failed (${response.status}).`);
     return parseNewsResponse(await response.json());
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`Live AI News timed out while reaching ${endpoint}.`);
+    }
+    if (
+      error instanceof TypeError ||
+      /failed to fetch|networkerror|load failed/iu.test(String(error))
+    ) {
+      throw new Error(
+        `Live AI News could not reach ${endpoint}. The saved feed will remain visible while it reconnects.`,
+      );
+    }
+    throw error;
   } finally {
     globalThis.clearTimeout(timeout);
   }

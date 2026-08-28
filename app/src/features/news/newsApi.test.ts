@@ -152,4 +152,18 @@ describe('live AI news API adapter', () => {
     expect(parsed.items).toHaveLength(1);
     expect(String(fetcher.mock.calls[0]?.[0])).toBe('https://news.example/api/news?limit=50');
   });
+
+  it('reports a public-news transport failure without claiming the user is offline', async () => {
+    const fetcher = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+
+    await expect(
+      fetchLiveNews('https://news.example', { fetcher, timeoutMs: 1000 }),
+    ).rejects.toThrow(/could not reach https:\/\/news\.example/i);
+    expect(fetcher).toHaveBeenCalledWith(
+      new URL('https://news.example/api/news?limit=50'),
+      expect.objectContaining({ credentials: 'omit', mode: 'cors' }),
+    );
+  });
 });
