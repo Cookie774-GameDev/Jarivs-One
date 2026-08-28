@@ -112,8 +112,16 @@
       "nativeRequired": true,
       "evidence": [
         {
-          "kind": "audit",
-          "ref": "Prior grouped tests exist, but the corrective continuation requires fresh post-mutation focused and native proof"
+          "kind": "commit",
+          "ref": "9f9a9d12, c1b23083, 1aaea13f, and 06081cab implement durable summary batching, exact-route resume, paid partial recovery, and replay safety"
+        },
+        {
+          "kind": "test",
+          "ref": "Fresh corrective run: summary executor/store plus progress/job-store 4 files and 66/66 tests passed, including unpaid pause release, dispatched/paid retention, receipt-only resume, and no duplicate generation"
+        },
+        {
+          "kind": "pending",
+          "ref": "Official-native pause/resume and charging-boundary proof remains required before verification"
         }
       ]
     },
@@ -125,8 +133,16 @@
       "visualRequired": true,
       "evidence": [
         {
-          "kind": "audit",
-          "ref": "Detailed PLAN progress and ETA acceptance has no fresh corrective native evidence yet"
+          "kind": "commit",
+          "ref": "98385ffb and follow-up SiYuan commits implement EWMA discovery estimates, 99 percent pre-reconciliation cap, phase-aware progress, pausedMs, and renderer-offline accounting"
+        },
+        {
+          "kind": "test",
+          "ref": "Fresh corrective run: siyuanProgress plus summary executor/store and job-store 4 files and 66/66 tests passed, including nonfabricated early estimates, monotonic phase progress, pause exclusion, and cold-start gap accounting"
+        },
+        {
+          "kind": "pending",
+          "ref": "Official-native progress and ETA visual proof remains required before verification"
         }
       ]
     },
@@ -152,8 +168,12 @@
       "nativeRequired": true,
       "evidence": [
         {
-          "kind": "audit",
-          "ref": "HANDOFF lists stable auto-connect/model refresh/reconnect as unproven"
+          "kind": "test",
+          "ref": "Fresh corrective run: accessible Chat models, provider catalog, response-path contract, and connection catalog 4 files and 56/56 tests passed, including immediate plus five-minute refresh, authenticated OpenCode catalog cadence, reconnect retention, and no silent substitution of disappeared models"
+        },
+        {
+          "kind": "pending",
+          "ref": "Official-native auto-connect, five-minute refresh, disconnect, and reconnect proof remains required before verification"
         }
       ]
     },
@@ -165,8 +185,12 @@
       "visualRequired": true,
       "evidence": [
         {
-          "kind": "audit",
-          "ref": "Prior isolated picker proof is insufficient for cross-surface corrective acceptance"
+          "kind": "test",
+          "ref": "Fresh corrective cross-surface run: Chat picker, Schedule picker, canonical model selection, Prompt Forge, and action registry 6 files and 72/72 tests passed; catalog/accessible model refresh matrix separately passed 56/56"
+        },
+        {
+          "kind": "pending",
+          "ref": "Official-native cross-surface Chat/Context/Schedule visible-and-saved provider, connection, model, effort, and Fast identity proof remains required"
         }
       ]
     },
@@ -215,15 +239,23 @@
       "visualRequired": true,
       "evidence": [
         {
-          "kind": "audit",
-          "ref": "Prior Schedule authoring image does not prove the complete lifecycle"
+          "kind": "commit",
+          "ref": "16366fa6 implements Schedule edit, cancel, and reopen while preserving exact route, duration, output chat, run history, and error history"
+        },
+        {
+          "kind": "test",
+          "ref": "Fresh verification: focused lifecycle/helper 2 files and 9/9, full Schedule 15 files and 107/107, full TypeScript, Prettier, diff, and Gitleaks passed"
+        },
+        {
+          "kind": "pending",
+          "ref": "Official-native create/edit/cancel/reopen/custom recurrence/reminder persistence proof remains required before verification"
         }
       ]
     },
     {
       "id": "kanban-and-milestone-lifecycle",
       "requirement": "Warm Kanban and milestones support creation and editing with regression and native visual proof",
-      "status": "Not implemented",
+      "status": "Implemented and verified",
       "nativeRequired": true,
       "visualRequired": true,
       "evidence": [
@@ -233,8 +265,12 @@
           "ref": "Kanban create/edit/complete/reopen and persisted-state regression matrix 10/10"
         },
         {
-          "kind": "audit",
-          "ref": "Automated lifecycle now clears stale completedAt on reopen; prior native layout image still does not prove creation/edit persistence in the official app"
+          "kind": "native",
+          "ref": "pass-12-schedule-kanban-motion-cbdcec5d/kanban-lifecycle-report.json passed at 16366fa6: create/edit/target date, complete, reopen with completedAt absent, Chat route remount, persisted-state poll, and fixture cleanup; 40 guarded checks with max Ollama/11434 0/0"
+        },
+        {
+          "kind": "screenshot",
+          "ref": "pass-12-schedule-kanban-motion-cbdcec5d/01-kanban-created-edited.png, 02-kanban-completed.png, 03-kanban-reopened.png, and 04-kanban-persisted-after-remount.png"
         }
       ]
     },
@@ -290,8 +326,12 @@
       "visualRequired": true,
       "evidence": [
         {
-          "kind": "audit",
-          "ref": "HANDOFF lists exact RLM/SiYuan activity logging and HTML log as unproven"
+          "kind": "test",
+          "ref": "Fresh corrective run: opencodeSystemLog, native window, and handshake 3 files and 18/18 tests passed, including plain-language RLM/SiYuan translation and private-payload suppression"
+        },
+        {
+          "kind": "pending",
+          "ref": "Official-native system-log window proof with genuine RLM and SiYuan activity remains required before verification"
         }
       ]
     },
@@ -301,8 +341,16 @@
       "status": "Not implemented",
       "evidence": [
         {
-          "kind": "ownership",
-          "ref": "Historical audit records a protected package/Doctor boundary and no completed shipping contract"
+          "kind": "commit",
+          "ref": "91716da5 adds an executable fail-closed shipping-boundary contract without overstating delivery"
+        },
+        {
+          "kind": "test",
+          "ref": "scripts/pr31-oss-bundle.test.mjs 5/5, package/update/signature 60/60, release manifest 45/45, existing Doctor 10/10, TypeScript, OSS verifier, formatting, diff, and Gitleaks passed"
+        },
+        {
+          "kind": "boundary",
+          "ref": "Playwright 1.61.1 remains development-only; default app/updater includes no runtime or browsers, and optional signed installer plus Doctor diagnose/install/repair/uninstall/rollback/native acceptance are still not implemented"
         }
       ]
     },
@@ -351,18 +399,21 @@
       "nativeRequired": true,
       "visualRequired": true,
       "evidence": [
-        { "kind": "commit", "ref": "b698b064 tested head" },
+        {
+          "kind": "commit",
+          "ref": "6716df35 restores trusted media sandbox capability; 96959d56 supplies the approved-media referrer required by YouTube while generic remote pages stay no-referrer/system-browser-only"
+        },
         {
           "kind": "native",
           "ref": ".codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-08-guarded-final/workbench-browser-evidence.json proves ordinary externalization, history, back/forward, reload, blocked-address handling, loopback refusal classification, and recovery"
         },
         {
           "kind": "screenshot",
-          "ref": ".codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-08-guarded-final/workbench-youtube-privacy-embed.png"
+          "ref": "pass-11-workbench-retest-6716df35/FAIL-workbench-retest-v2.png shows the genuine YouTube player Error 153 before 96959d56"
         },
         {
-          "kind": "failure",
-          "ref": "YouTube privacy embed loads structural title/URL but renders black and emits sandbox-policy errors: Cache storage disabled without allow-same-origin and writeEmbed is not defined; active Workbench lock prevented an overlapping source repair"
+          "kind": "test",
+          "ref": "After 96959d56: focused BrowserSecurity/BrowserPanel 9/9 and full Workbench 30 files and 90/90 tests passed; official-native retest at this head is pending"
         }
       ]
     },
@@ -409,7 +460,14 @@
       "status": "Not implemented",
       "visualRequired": true,
       "evidence": [
-        { "kind": "audit", "ref": "No prior recorded pixel-diff thresholds or actual results" }
+        {
+          "kind": "commit",
+          "ref": "cbdcec5d adds a deterministic fail-closed PNG comparator with exact dimensions, threshold, mismatch count/ratio, SHA-256 provenance, diff image, and JSON report"
+        },
+        {
+          "kind": "test",
+          "ref": "scripts/pr31-authoritative-image-diff.test.mjs 2/2 passed; exact native/reference comparisons and actual ratios remain pending"
+        }
       ]
     },
     {
