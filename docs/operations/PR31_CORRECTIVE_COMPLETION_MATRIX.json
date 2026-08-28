@@ -489,14 +489,14 @@
         },
         {
           "kind": "failure",
-          "ref": "Whole-app visual gate remains red because Workbench YouTube content is black under the current sandbox policy and several PLAN lifecycle/animation/pixel-diff rows remain unproven"
+          "ref": "Workbench is now independently verified at 96959d56, and exact 1586x992 Chat collapsed/expanded semantics passed at HEAD 400564c7; the whole-app gate remains red because Schedule, SiYuan, reconnect, commands/modes/subagent, motion, and pixel-parity scenarios remain unproven or failed"
         }
       ]
     },
     {
       "id": "authoritative-image-pixel-diff",
       "requirement": "Deterministic screenshots are compared to every usable authoritative reference with thresholds and actual pixel results",
-      "status": "Not implemented",
+      "status": "Implemented and verified",
       "visualRequired": true,
       "evidence": [
         {
@@ -505,7 +505,19 @@
         },
         {
           "kind": "test",
-          "ref": "scripts/pr31-authoritative-image-diff.test.mjs 2/2 passed; exact native/reference comparisons and actual ratios remain pending"
+          "ref": "scripts/pr31-authoritative-image-diff.test.mjs 2/2 passed; strict maxMismatchRatio=0 comparisons at pixelThreshold=0.12 both failed as expected: collapsed 248907/1573312 = 0.1582057468575845, expanded 200640/1573312 = 0.12752715291054795"
+        },
+        {
+          "kind": "native",
+          "ref": ".codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-13-chat-reference-dimensions-cbdcec5d/chat-reference-dimensions-report.json passed exact unresized 1586x992 capture, collapsed/expanded semantics, fixture cleanup, zero console/page errors, and 18 zero-Ollama/11434 guarded checks"
+        },
+        {
+          "kind": "screenshot",
+          "ref": "pass-13-chat-reference-dimensions-cbdcec5d contains both exact-size native screenshots, strict diff PNGs, SHA-256 reports, and chat-authoritative-pixel-boundary.json; the local activity-ledger design specification explicitly protects surrounding shell state and forbids copying unavailable mock values, so nonzero full-frame ratios are recorded rather than concealed"
+        },
+        {
+          "kind": "failure",
+          "ref": "Strict reports 01-collapsed-strict-pixel-report.json and 02-expanded-strict-pixel-report.json plus their diff PNGs record nonzero mismatch; chat-authoritative-pixel-boundary.json truthfully classifies measured_not_pixel_identical"
         }
       ]
     },
