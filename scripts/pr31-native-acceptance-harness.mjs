@@ -506,6 +506,152 @@ export async function waitForSemanticLocator(locator, options = {}) {
   });
 }
 
+export async function discoverCanonicalApprovalTarget(page, options = {}) {
+  const actionId = String(options.actionId ?? '');
+  const expectedApprovalStatus = String(options.approvalStatus ?? 'pending');
+  const expectedRunStatus = String(options.runStatus ?? 'awaiting_approval');
+  const expectedMessagePartStatus = String(options.messagePartStatus ?? 'pending');
+  const readStoredApproval = options.readStoredApproval;
+  const stableObservations = options.stableObservations ?? 2;
+  if (
+    !page?.getByRole ||
+    !SAFE_CODE.test(actionId) ||
+    !SAFE_CODE.test(expectedApprovalStatus) ||
+    !SAFE_CODE.test(expectedRunStatus) ||
+    !SAFE_CODE.test(expectedMessagePartStatus) ||
+    typeof readStoredApproval !== 'function' ||
+    !Number.isInteger(stableObservations) ||
+    stableObservations < 1
+  ) {
+    fail('invalid_canonical_approval_discovery', 'discovery');
+  }
+
+  const groups = page.getByRole('group');
+  let lastIdentityKey = null;
+  let stableCount = 0;
+  let acceptedTarget = null;
+  const result = await waitForSemantic({
+    description:
+      options.description ?? 'one accessible canonical approval with exact stored identity',
+    timeoutMs: options.timeoutMs ?? 10_000,
+    intervalMs: options.intervalMs ?? 100,
+    clock: options.clock,
+    delay: options.delay,
+    observe: async () => {
+      const groupCount = await groups.count();
+      const candidates = [];
+      for (let index = 0; index < Math.min(groupCount, 100); index += 1) {
+        const card = groups.nth(index);
+        const [visible, kind, status, cardActionId, approvalId, labelledBy] = await Promise.all([
+          card.isVisible().catch(() => false),
+          card.getAttribute('data-approval-kind'),
+          card.getAttribute('data-status'),
+          card.getAttribute('data-action-id'),
+          card.getAttribute('data-approval-id'),
+          card.getAttribute('aria-labelledby'),
+        ]);
+        if (
+          !visible ||
+          kind !== 'canonical' ||
+          status !== expectedApprovalStatus ||
+          cardActionId !== actionId ||
+          typeof approvalId !== 'string' ||
+          approvalId.length < 1 ||
+          approvalId.length > 256 ||
+          typeof labelledBy !== 'string' ||
+          labelledBy.length < 1
+        ) {
+          continue;
+        }
+        const deny = card.getByRole('button', { name: 'Deny action', exact: true });
+        const [denyCount, denyVisible, denyEnabled] = await Promise.all([
+          deny.count(),
+          deny.isVisible().catch(() => false),
+          deny.isEnabled().catch(() => false),
+        ]);
+        if (denyCount !== 1 || !denyVisible || !denyEnabled) continue;
+        candidates.push({ card, approvalId });
+      }
+
+      if (candidates.length !== 1) {
+        lastIdentityKey = null;
+        stableCount = 0;
+        acceptedTarget = null;
+        return {
+          accessibleGroupCount: groupCount,
+          exactCardCount: candidates.length,
+          storedIdentityExact: false,
+          stableCount,
+        };
+      }
+
+      const candidate = candidates[0];
+      let storedIdentity = null;
+      try {
+        storedIdentity = await readStoredApproval(candidate.approvalId);
+      } catch {
+        storedIdentity = null;
+      }
+      const approval = storedIdentity?.approval;
+      const run = storedIdentity?.run;
+      const messagePart = storedIdentity?.messagePart;
+      const storedIdentityExact = Boolean(
+        approval &&
+        run &&
+        messagePart &&
+        approval.id === candidate.approvalId &&
+        approval.actionId === actionId &&
+        approval.status === expectedApprovalStatus &&
+        typeof approval.runId === 'string' &&
+        run.id === approval.runId &&
+        run.status === expectedRunStatus &&
+        messagePart.approvalId === candidate.approvalId &&
+        messagePart.actionId === actionId &&
+        messagePart.status === expectedMessagePartStatus,
+      );
+      if (!storedIdentityExact) {
+        lastIdentityKey = null;
+        stableCount = 0;
+        acceptedTarget = null;
+        return {
+          accessibleGroupCount: groupCount,
+          exactCardCount: 1,
+          storedIdentityExact: false,
+          stableCount,
+        };
+      }
+
+      const identityKey = [
+        candidate.approvalId,
+        approval.runId,
+        approval.actionId,
+        approval.status,
+        run.status,
+        messagePart.status,
+      ].join(':');
+      stableCount = identityKey === lastIdentityKey ? stableCount + 1 : 1;
+      lastIdentityKey = identityKey;
+      acceptedTarget = { ...candidate, storedIdentity };
+      return {
+        accessibleGroupCount: groupCount,
+        exactCardCount: 1,
+        storedIdentityExact: true,
+        stableCount,
+      };
+    },
+    accept: (observation) =>
+      observation.storedIdentityExact && observation.stableCount >= stableObservations,
+  });
+
+  if (!acceptedTarget) fail('canonical_approval_discovery_lost', 'discovery');
+  return Object.freeze({
+    ...acceptedTarget,
+    observations: result.attempts,
+    elapsedMs: result.elapsedMs,
+    stableObservations: result.value.stableCount,
+  });
+}
+
 export async function assertSemanticText(locator, expected, options = {}) {
   const actual = String((await locator.textContent()) ?? '').trim();
   const passed =

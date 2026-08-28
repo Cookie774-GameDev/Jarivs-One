@@ -16,6 +16,7 @@ import {
   captureScreenshot,
   createEvidencePacket,
   createPageEventRecorder,
+  discoverCanonicalApprovalTarget,
   finalizeEvidencePacket,
   parseArgs,
   readWindowsNativeState,
@@ -150,6 +151,49 @@ class FakeLocator {
 
   async getAttribute(name) {
     return this.attributes[name] ?? null;
+  }
+}
+
+class FakeApprovalCard extends FakeLocator {
+  constructor(options = {}) {
+    super(options);
+    this.button = new FakeLocator({
+      count: options.denyCount ?? 1,
+      visible: options.denyVisible ?? true,
+      enabled: options.denyEnabled ?? true,
+    });
+  }
+
+  getByRole(role, options = {}) {
+    assert.equal(role, 'button');
+    assert.equal(options.name, 'Deny action');
+    assert.equal(options.exact, true);
+    return this.button;
+  }
+}
+
+class FakeApprovalGroups {
+  constructor(cards) {
+    this.cards = cards;
+  }
+
+  async count() {
+    return this.cards.length;
+  }
+
+  nth(index) {
+    return this.cards[index];
+  }
+}
+
+class FakeApprovalPage {
+  constructor(cards) {
+    this.groups = new FakeApprovalGroups(cards);
+  }
+
+  getByRole(role) {
+    assert.equal(role, 'group');
+    return this.groups;
   }
 }
 
@@ -381,6 +425,67 @@ test('semantic locator waits and assertions use public roles, text, and attribut
   assert.equal((await assertSemanticText(locator, /Connect/u)).passed, true);
   assert.equal((await assertSemanticAttribute(locator, 'data-status', 'ready')).passed, true);
   await assert.rejects(assertSemanticText(locator, 'Disconnected'), /semantic_assertion_failed/u);
+});
+
+test('canonical approval discovery requires one accessible card and exact stored identity', async () => {
+  const exactCard = new FakeApprovalCard({
+    attributes: {
+      role: 'group',
+      'aria-labelledby': 'approval-title-jappr_1',
+      'data-approval-kind': 'canonical',
+      'data-status': 'pending',
+      'data-action-id': 'files.create',
+      'data-approval-id': 'jappr_1',
+    },
+  });
+  const readStoredApproval = async (approvalId) => ({
+    approval: {
+      id: approvalId,
+      actionId: 'files.create',
+      status: 'pending',
+      runId: 'run_1',
+    },
+    run: { id: 'run_1', status: 'awaiting_approval' },
+    messagePart: {
+      approvalId,
+      actionId: 'files.create',
+      status: 'pending',
+    },
+  });
+  const found = await discoverCanonicalApprovalTarget(new FakeApprovalPage([exactCard]), {
+    actionId: 'files.create',
+    readStoredApproval,
+    stableObservations: 2,
+    timeoutMs: 20,
+    intervalMs: 10,
+    ...fakeClock(),
+  });
+  assert.equal(found.approvalId, 'jappr_1');
+  assert.equal(found.card, exactCard);
+  assert.equal(found.storedIdentity.run.status, 'awaiting_approval');
+
+  await assert.rejects(
+    discoverCanonicalApprovalTarget(new FakeApprovalPage([exactCard]), {
+      actionId: 'files.create',
+      readStoredApproval: async () => ({
+        ...(await readStoredApproval('different_approval')),
+      }),
+      timeoutMs: 10,
+      intervalMs: 10,
+      ...fakeClock(),
+    }),
+    /semantic_wait_timeout/u,
+  );
+  await assert.rejects(
+    discoverCanonicalApprovalTarget(new FakeApprovalPage([]), {
+      actionId: 'files.create',
+      readStoredApproval,
+      timeoutMs: 10,
+      intervalMs: 10,
+      ...fakeClock(),
+    }),
+    /semantic_wait_timeout/u,
+  );
 });
 
 test('page event evidence stores only hashes and bounded classifications', () => {
