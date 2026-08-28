@@ -348,8 +348,16 @@
           "ref": "Terminal OpenCode 1.18.23 completed three fixed prompts cold/warm in 61.565 seconds with exact opencode-go/deepseek-v4-flash-vision-exp identity: reasoning 7058/6104 ms, read 11322/7102 ms, write 9212/8861 ms; all six identity, quality, session, and disposable-file checks passed; contract tests 10/10, TypeScript, Prettier, syntax, and Gitleaks passed"
         },
         {
+          "kind": "failure",
+          "ref": "Official-native attempt-04 at HEAD 33614b56 proved exact opencode/opencode-cli/opencode-go/deepseek-v4-flash-vision-exp selection and completed bounded-reasoning cold/warm, but failed the file scenarios: relative current-working-directory read was rewritten to an unrelated Context search, and write proposed approval for invented app-resource jarvis-note.txt instead of requested output.txt; no action was approved and both paths remained absent"
+        },
+        {
+          "kind": "native",
+          "ref": ".codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-16-deepseek-native-comparison-0a6121e8 contains sanitized attempt-04, bounded post-failure diagnostic, exact-route/reasoning/read/mismatch screenshots, and denial post-click diagnostic; Gitleaks reports zero findings and all safety checks preserve zero Ollama/11434"
+        },
+        {
           "kind": "pending",
-          "ref": "Official-native Chat execution of the identical prompt hashes, exact route, cold/warm timing, rubric, output, RLM, and SiYuan evidence remains required before comparison can pass"
+          "ref": "After the current-directory read/write routing repair, official-native cold/warm rerun plus terminal comparator, exact output/file hashes, RLM/SiYuan fields, and denial-state regression proof remain required"
         }
       ]
     },
