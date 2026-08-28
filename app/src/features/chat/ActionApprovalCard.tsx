@@ -27,6 +27,7 @@ import type { ActionStatus, Part } from '@/types';
 import type { MessageId } from '@/types/common';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_CONTROL, SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
+import { messageRepo } from '@/lib/db/repositories';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -183,8 +184,30 @@ function resultLine(status: ActionStatus, error?: string): string | undefined {
   return undefined;
 }
 
+async function persistVerifiedDenial(messageId: MessageId, callId: string): Promise<void> {
+  const message = await messageRepo.getById(messageId);
+  if (!message) throw new Error('approval_message_missing');
+  const action = message.parts.find(
+    (part): part is ActionPart => part.kind === 'action_proposal' && part.call_id === callId,
+  );
+  if (!action) throw new Error('approval_part_missing');
+  if (action.status !== 'pending') return;
+  const parts = message.parts.map((part) => {
+    if (part.kind !== 'action_proposal' || part.call_id !== callId) {
+      return part;
+    }
+    return { ...part, status: 'cancelled' as const, error: undefined };
+  });
+  await messageRepo.update(messageId, { parts });
+}
+
 /** Canonical cards load bounded presentation and mutate only through the host bridge. */
-export function ActionApprovalCard({ part, presentation, chatId }: ActionApprovalCardProps) {
+export function ActionApprovalCard({
+  part,
+  presentation,
+  chatId,
+  messageId,
+}: ActionApprovalCardProps) {
   const definition = resolveAction(part.action_id);
   const approvalTitleId = React.useId();
   const approvalId = React.useMemo(
@@ -300,6 +323,7 @@ export function ActionApprovalCard({ part, presentation, chatId }: ActionApprova
           throw new Error('kernel_approval_decision_failed');
         }
         if (choice === 'deny') {
+          await persistVerifiedDenial(messageId, part.call_id);
           setDisplayStatus('cancelled');
           setDecisionState('submitted');
           window.dispatchEvent(
@@ -424,6 +448,12 @@ export function ActionApprovalCard({ part, presentation, chatId }: ActionApprova
           {terminalCopy}
         </p>
       )}
+
+      {decisionState === 'failed' && displayStatus === 'pending' ? (
+        <p className="text-secondary leading-relaxed text-destructive" role="alert">
+          Approval decision could not be saved. Refresh protected state before retrying.
+        </p>
+      ) : null}
 
       {approvalId && resolvedPresentation && displayStatus === 'pending' ? (
         <div className="flex flex-wrap gap-2">

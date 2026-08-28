@@ -19,9 +19,14 @@ const kernelClient = vi.hoisted(() => ({
   executeApproval: vi.fn(),
   dispose: vi.fn(),
 }));
+const messageRepository = vi.hoisted(() => ({
+  getById: vi.fn(),
+  update: vi.fn(),
+}));
 vi.mock('@/lib/jarvis/kernelClient', () => ({
   createJarvisKernelClient: () => kernelClient,
 }));
+vi.mock('@/lib/db/repositories', () => ({ messageRepo: messageRepository }));
 
 function part(callId: string): Extract<Part, { kind: 'action_proposal' }> {
   return {
@@ -58,6 +63,11 @@ describe('ActionApprovalCard canonical adapter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useAuthStore.setState({ localUserId: 'account-smoke', cloudSession: null });
+    messageRepository.getById.mockResolvedValue({
+      id: 'message_1',
+      parts: [part('jarvisapproval:jappr_1')],
+    });
+    messageRepository.update.mockResolvedValue(undefined);
   });
 
   it('renders historical cards as view-only without raw params or execution controls', () => {
@@ -150,9 +160,7 @@ describe('ActionApprovalCard canonical adapter', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve fixed action' }));
 
-    await waitFor(() =>
-      expect(events).toContainEqual({ chatId: 'chat_1', status: 'done' }),
-    );
+    await waitFor(() => expect(events).toContainEqual({ chatId: 'chat_1', status: 'done' }));
     window.removeEventListener('jarvis:run-state', listener);
   });
 
@@ -236,6 +244,106 @@ describe('ActionApprovalCard canonical adapter', () => {
       decision: 'deny',
     });
     expect(kernelClient.executeApproval).not.toHaveBeenCalled();
+  });
+
+  it('persists a verified denial before releasing the run so remount cannot restore active controls', async () => {
+    const deniedPart = part('jarvisapproval:jappr_1');
+    const siblingPart = part('jarvisapproval:jappr_2');
+    let persistedParts: Part[] = [
+      { kind: 'text', text: 'One protected action requires review.' },
+      deniedPart,
+      siblingPart,
+    ];
+    const lifecycle: string[] = [];
+    messageRepository.getById.mockImplementation(async () => ({
+      id: 'message_1',
+      parts: persistedParts,
+    }));
+    messageRepository.update.mockImplementation(async (_messageId, patch) => {
+      persistedParts = patch.parts;
+      lifecycle.push('persisted');
+    });
+    kernelClient.decideApproval.mockResolvedValueOnce({
+      version: 1,
+      kind: 'approval_decided',
+      approvalId: 'jappr_1',
+      status: 'denied',
+    });
+    const onRunState = () => lifecycle.push('run-released');
+    window.addEventListener('jarvis:run-state', onRunState);
+    const rendered = renderCard(deniedPart, {
+      actionId: 'files.create',
+      expectedEffect: 'Create one protected file.',
+      risk: 'confirm',
+      parameters: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deny action' }));
+
+    await waitFor(() => expect(messageRepository.update).toHaveBeenCalledOnce());
+    expect(messageRepository.update).toHaveBeenCalledWith('message_1', {
+      parts: [
+        { kind: 'text', text: 'One protected action requires review.' },
+        expect.objectContaining({
+          kind: 'action_proposal',
+          call_id: 'jarvisapproval:jappr_1',
+          status: 'cancelled',
+        }),
+        siblingPart,
+      ],
+    });
+    await waitFor(() => expect(lifecycle).toEqual(['persisted', 'run-released']));
+
+    rendered.unmount();
+    const persistedDeniedPart = persistedParts[1] as Extract<Part, { kind: 'action_proposal' }>;
+    const remounted = renderCard(persistedDeniedPart, {
+      actionId: 'files.create',
+      expectedEffect: 'Create one protected file.',
+      risk: 'confirm',
+      parameters: [],
+    });
+    expect(remounted.container.firstElementChild?.getAttribute('data-status')).toBe('cancelled');
+    expect(screen.queryByRole('button', { name: 'Approve fixed action' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Deny action' })).toBeNull();
+    expect(kernelClient.decideApproval).toHaveBeenCalledOnce();
+    window.removeEventListener('jarvis:run-state', onRunState);
+  });
+
+  it('keeps denial actionable and withholds public cancellation when persistence fails', async () => {
+    messageRepository.update.mockRejectedValueOnce(new Error('disk unavailable'));
+    kernelClient.decideApproval.mockResolvedValueOnce({
+      version: 1,
+      kind: 'approval_decided',
+      approvalId: 'jappr_1',
+      status: 'denied',
+    });
+    const events: Array<{ chatId?: string; status?: string }> = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent<{ chatId?: string; status?: string }>).detail);
+    };
+    window.addEventListener('jarvis:run-state', listener);
+    const { container } = renderCard(part('jarvisapproval:jappr_1'), {
+      actionId: 'files.create',
+      expectedEffect: 'Create one protected file.',
+      risk: 'confirm',
+      parameters: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deny action' }));
+
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Approval decision could not be saved. Refresh protected state before retrying.',
+    );
+    expect(container.firstElementChild?.getAttribute('data-status')).toBe('pending');
+    expect(
+      (screen.getByRole('button', { name: 'Approve fixed action' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(
+      (screen.getByRole('button', { name: 'Deny action' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(events).toEqual([]);
+    expect(messageRepository.update).toHaveBeenCalledOnce();
+    window.removeEventListener('jarvis:run-state', listener);
   });
 
   it('uses canonical decide readback before execution and preserves handoff truth', async () => {
