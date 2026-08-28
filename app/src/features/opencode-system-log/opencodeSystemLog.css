@@ -3,20 +3,23 @@ body:has(.opencode-system-log),
 #root:has(.opencode-system-log) {
   min-height: 100%;
   margin: 0;
-  background: #f4e9d8;
+  background: var(--warm-canvas, #f4e9d8);
+  color-scheme: light;
 }
 body:has(.opencode-system-log) {
   background:
-    radial-gradient(circle at 12% 4%, rgba(255, 255, 255, 0.88), transparent 34%),
+    radial-gradient(circle at 12% 4%, rgba(251, 240, 227, 0.78), transparent 34%),
     radial-gradient(circle at 92% 96%, rgba(197, 138, 91, 0.18), transparent 36%),
     linear-gradient(145deg, #fbf3e7, #f1e1cb);
+  overflow-x: hidden;
 }
 .opencode-system-log {
+  box-sizing: border-box;
   width: min(900px, calc(100% - 36px));
   margin: 0 auto;
   padding: 36px 0 64px;
-  color: #44352d;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: var(--warm-text, #44352d);
+  font-family: var(--warm-sans, Inter, ui-sans-serif, system-ui, sans-serif);
 }
 .opencode-system-log > header {
   position: sticky;
@@ -26,7 +29,8 @@ body:has(.opencode-system-log) {
   margin-bottom: 18px;
   border: 1px solid rgba(132, 91, 61, 0.2);
   border-radius: 22px;
-  background: rgba(255, 248, 237, 0.78);
+  background: rgba(248, 235, 221, 0.82);
+  -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
   box-shadow: 0 18px 45px rgba(95, 61, 38, 0.09);
 }
@@ -67,11 +71,20 @@ body:has(.opencode-system-log) {
 .opencode-system-log button {
   border: 0;
   border-radius: 999px;
+  min-height: 36px;
   padding: 8px 13px;
   cursor: pointer;
   color: #735546;
   background: rgba(185, 113, 75, 0.12);
   font-weight: 700;
+  line-height: 1.25;
+}
+.opencode-system-log button:hover {
+  background: rgba(185, 113, 75, 0.2);
+}
+.opencode-system-log button:focus-visible {
+  outline: 2px solid var(--warm-terracotta-deep, #a9482c);
+  outline-offset: 3px;
 }
 .opencode-system-log .timeline {
   display: grid;
@@ -84,9 +97,13 @@ body:has(.opencode-system-log) {
   padding: 17px 18px;
   border: 1px solid rgba(132, 91, 61, 0.16);
   border-radius: 18px;
-  background: rgba(255, 249, 239, 0.68);
+  background: rgba(248, 235, 221, 0.7);
+  -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
   box-shadow: 0 8px 24px rgba(91, 58, 36, 0.055);
+}
+.opencode-system-log .step > :nth-child(2) {
+  min-width: 0;
 }
 .opencode-system-log .icon {
   width: 42px;
@@ -113,6 +130,7 @@ body:has(.opencode-system-log) {
   color: #78645a;
   font-size: 13px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 .opencode-system-log .when {
   color: #957b6d;
@@ -136,7 +154,7 @@ body:has(.opencode-system-log) {
   border: 1px dashed rgba(132, 91, 61, 0.25);
   border-radius: 20px;
   color: #806d62;
-  background: rgba(255, 249, 239, 0.4);
+  background: rgba(248, 235, 221, 0.48);
 }
 .opencode-system-log .empty strong {
   display: block;
@@ -156,8 +174,30 @@ body:has(.opencode-system-log) {
   .opencode-system-log .step {
     grid-template-columns: 38px 1fr;
   }
+  .opencode-system-log .icon {
+    width: 38px;
+    height: 38px;
+  }
   .opencode-system-log .when {
     grid-column: 2;
     text-align: left;
+  }
+}
+
+@media (max-width: 420px) {
+  .opencode-system-log > header {
+    padding: 18px;
+  }
+  .opencode-system-log .statusbar > * {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .opencode-system-log,
+  .opencode-system-log button {
+    scroll-behavior: auto !important;
+    transition: none !important;
   }
 }

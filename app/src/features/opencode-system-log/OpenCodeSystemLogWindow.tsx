@@ -1,6 +1,8 @@
 import * as React from 'react';
 import {
   OPENCODE_SYSTEM_LOG_REQUEST_EVENT,
+  OPENCODE_SYSTEM_LOG_PING_EVENT,
+  OPENCODE_SYSTEM_LOG_READY_EVENT,
   OPENCODE_SYSTEM_LOG_STORAGE_KEY,
   OPENCODE_SYSTEM_LOG_UPDATE_EVENT,
   readOpenCodeSystemLogPayload,
@@ -40,20 +42,32 @@ export function OpenCodeSystemLogWindow() {
     };
     window.addEventListener(OPENCODE_SYSTEM_LOG_UPDATE_EVENT, onUpdate);
     window.addEventListener('storage', onStorage);
-    let stopNative: () => void = () => undefined;
+    let stopNativeUpdate: () => void = () => undefined;
+    let stopNativePing: () => void = () => undefined;
     if ('__TAURI_INTERNALS__' in window) {
       void import('@tauri-apps/api/event')
         .then(async ({ emitTo, listen }) => {
-          stopNative = await listen<OpenCodeSystemLogPayload>(
+          const emitReady = () =>
+            emitTo('main', OPENCODE_SYSTEM_LOG_READY_EVENT, {
+              version: 1,
+              updatedAt: Date.now(),
+              stepCount: payload.steps.length,
+            });
+          stopNativeUpdate = await listen<OpenCodeSystemLogPayload>(
             OPENCODE_SYSTEM_LOG_UPDATE_EVENT,
             (event) => setPayload(event.payload),
           );
+          stopNativePing = await listen(OPENCODE_SYSTEM_LOG_PING_EVENT, () => {
+            void emitReady();
+          });
           await emitTo('main', OPENCODE_SYSTEM_LOG_REQUEST_EVENT);
+          await emitReady();
         })
         .catch(() => undefined);
     }
     return () => {
-      stopNative();
+      stopNativeUpdate();
+      stopNativePing();
       window.removeEventListener(OPENCODE_SYSTEM_LOG_UPDATE_EVENT, onUpdate);
       window.removeEventListener('storage', onStorage);
     };

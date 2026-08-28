@@ -5,6 +5,8 @@ export const OPENCODE_SYSTEM_LOG_WINDOW_LABEL = 'opencode-system-log';
 export const OPENCODE_SYSTEM_LOG_OPEN_EVENT = 'vibespace:open-opencode-system-log';
 export const OPENCODE_SYSTEM_LOG_UPDATE_EVENT = 'opencode-system-log://update';
 export const OPENCODE_SYSTEM_LOG_REQUEST_EVENT = 'opencode-system-log://request';
+export const OPENCODE_SYSTEM_LOG_READY_EVENT = 'opencode-system-log://ready';
+export const OPENCODE_SYSTEM_LOG_PING_EVENT = 'opencode-system-log://ping';
 export const OPENCODE_SYSTEM_LOG_CAPACITY = 5_000;
 
 export type OpenCodeSystemStepKind = 'request' | 'context' | 'siyuan' | 'model' | 'warning';
@@ -25,6 +27,12 @@ export interface OpenCodeSystemLogPayload {
   version: 1;
   updatedAt: number;
   steps: OpenCodeSystemStep[];
+}
+
+export interface OpenCodeSystemLogReadyPayload {
+  version: 1;
+  updatedAt: number;
+  stepCount: number;
 }
 
 export function readOpenCodeSystemLogPayload(storage: Storage): OpenCodeSystemLogPayload {

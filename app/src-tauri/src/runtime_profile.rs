@@ -46,10 +46,11 @@ pub const DENIED_EFFECT_MANIFEST_HASH: &str =
 
 const ORDINARY_APP_IDENTIFIER: &str = "ai.jarvis.desktop";
 const MONOCHROME_APP_IDENTIFIER_PREFIX: &str = "ai.vibespace.monochrome.test";
-const PRODUCTION_CAPABILITY_IDENTIFIERS: [&str; 8] = [
+const PRODUCTION_CAPABILITY_IDENTIFIERS: [&str; 9] = [
     "browser-chat-host",
     "cold-start-intro",
     "default",
+    "opencode-system-log",
     "pet-mini-panel",
     "pet-overlay",
     "siyuan-context-vault",
@@ -678,6 +679,7 @@ mod tests {
             "browser-chat-host",
             "cold-start-intro",
             "default",
+            "opencode-system-log",
             "pet-mini-panel",
             "pet-overlay",
             "siyuan-context-vault",
@@ -980,6 +982,7 @@ mod tests {
             "workbench-window",
             "browser-chat-host",
             "default",
+            "opencode-system-log",
             "pet-overlay",
             "taskbar-usage",
             "pet-mini-panel",

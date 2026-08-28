@@ -11,6 +11,7 @@
     "core:window:allow-show",
     "core:window:allow-unminimize",
     "core:window:allow-set-focus",
+    "core:window:allow-destroy",
     "core:webview:default",
     "core:webview:allow-create-webview-window",
     "core:app:default",

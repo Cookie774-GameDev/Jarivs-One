@@ -3296,7 +3296,7 @@ function AppContent({ plan }: { plan: RuntimePlan }) {
       <ToolGatewayHost />
       {plan.terminalCliEnabled ? <TerminalCliRuntimeHost /> : null}
       {plan.devConsoleEnabled ? <DevConsoleHost /> : null}
-      {plan.devConsoleEnabled ? <OpenCodeSystemLogHost /> : null}
+      <OpenCodeSystemLogHost />
       <SiyuanIndexJobHost />
     </ErrorBoundary>
   );
