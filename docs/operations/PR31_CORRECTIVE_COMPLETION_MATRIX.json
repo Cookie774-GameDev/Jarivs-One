@@ -352,6 +352,14 @@
           "ref": "Official-native attempt-04 at HEAD 33614b56 proved exact opencode/opencode-cli/opencode-go/deepseek-v4-flash-vision-exp selection and completed bounded-reasoning cold/warm, but failed the file scenarios: relative current-working-directory read was rewritten to an unrelated Context search, and write proposed approval for invented app-resource jarvis-note.txt instead of requested output.txt; no action was approved and both paths remained absent"
         },
         {
+          "kind": "commit",
+          "ref": "d808806c repairs the reproduced current-working-directory intent boundary: bounded relative reads avoid forced Context rewriting, and fallback writes preserve the authoritative project root, exact safe leaf output.txt, exact LATENCY_OK plus one newline content, and pending-approval semantics"
+        },
+        {
+          "kind": "test",
+          "ref": "Post-d808806c classifier/fallback 244/244 and affected runtime 4/4 passed; independent confirmation passed 244/244 plus 3/3 exact changed scenarios; full TypeScript, Prettier, diff, and Gitleaks passed"
+        },
+        {
           "kind": "native",
           "ref": ".codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-16-deepseek-native-comparison-0a6121e8 contains sanitized attempt-04, bounded post-failure diagnostic, exact-route/reasoning/read/mismatch screenshots, and denial post-click diagnostic; Gitleaks reports zero findings and all safety checks preserve zero Ollama/11434"
         },
