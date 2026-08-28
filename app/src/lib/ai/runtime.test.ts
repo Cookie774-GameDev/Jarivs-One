@@ -229,6 +229,11 @@ import { setPermissionAccess } from '@/features/jarvis-interaction/permissionAcc
 import { selectionFromOption } from './modelSelection';
 import { DEFAULT_CUSTOM_STEPS } from './stacks/presets';
 import { PROVIDER_CONNECTIONS } from './adapters/catalog';
+import { GEMINI_API_CONNECTION, GROQ_API_CONNECTION } from './adapters/nativeCatalog';
+import {
+  resetDiscoveredConnectionModelsForTests,
+  setDiscoveredConnectionModels,
+} from './connectionCatalog';
 import { rememberLiveOpenCodeProviders } from './openCodeProductionTransport';
 import { projectOpenCodeQuestionEvent } from './openCodeQuestionProjection';
 
@@ -1178,6 +1183,15 @@ describe('startRuntimeListener agent routing', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetDiscoveredConnectionModelsForTests();
+    setDiscoveredConnectionModels(GROQ_API_CONNECTION.id, [
+      {
+        id: 'llama-3.3-70b-versatile',
+        label: 'Llama 3.3 70B Versatile',
+        source: 'provider_list',
+        lastVerifiedAt: 1,
+      },
+    ]);
     rememberLiveOpenCodeProviders([]);
     mocks.runAgent.mockReset();
     mocks.nativeFetch.mockReset();
@@ -1207,7 +1221,11 @@ describe('startRuntimeListener agent routing', () => {
       defaultProvider: 'mock',
       offlineMode: false,
       automaticModelRoutingEnabled: false,
-      chatModelSelection: selectionFromOption('groq', 'llama-3.3-70b-versatile'),
+      chatModelSelection: selectionFromOption(
+        'groq',
+        'llama-3.3-70b-versatile',
+        GROQ_API_CONNECTION,
+      ),
     });
     useUIStore.setState({ voiceModalOpen: true });
     useVoiceStore.getState().reset();
@@ -2380,7 +2398,25 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
   it('preserves an explicit per-send model override when automatic routing is enabled', async () => {
     const jarvis = agent('agent_jarvis_model_override', 'jarvis', 'You are Jarvis.');
     const chatId = 'chat_model_override' as ChatId;
-    const originalSelection = selectionFromOption('google', 'gemini-2.0-flash');
+    setDiscoveredConnectionModels(GEMINI_API_CONNECTION.id, [
+      {
+        id: 'gemini-2.0-flash',
+        label: 'Gemini 2.0 Flash',
+        source: 'provider_list',
+        lastVerifiedAt: 1,
+      },
+      {
+        id: 'gemini-3.1-pro',
+        label: 'Gemini 3.1 Pro',
+        source: 'provider_list',
+        lastVerifiedAt: 1,
+      },
+    ]);
+    const originalSelection = selectionFromOption(
+      'google',
+      'gemini-2.0-flash',
+      GEMINI_API_CONNECTION,
+    );
     useAuthStore.setState({
       automaticModelRoutingEnabled: true,
       apiKeys: { google: 'test-google-key' },
@@ -2411,7 +2447,11 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
         detail: {
           chatId,
           text: 'Use this model for this turn.',
-          modelSelectionOverride: selectionFromOption('google', 'gemini-3.1-pro'),
+          modelSelectionOverride: selectionFromOption(
+            'google',
+            'gemini-3.1-pro',
+            GEMINI_API_CONNECTION,
+          ),
         },
       }),
     );
@@ -6301,7 +6341,9 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       now: () => 10,
     });
     trackCleanup(disposeHost);
-    const stop = trackListener(startRuntimeListener(harness.bindings));
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
+    );
 
     try {
       window.dispatchEvent(
@@ -8321,7 +8363,8 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
         startedAt: 1,
       }),
     );
-    mocks.runAgent.mockRejectedValueOnce(new Error('provider_failed_after_voice_claim'));
+    const providerFailure = deferred<Awaited<ReturnType<typeof mocks.runAgent>>>();
+    mocks.runAgent.mockImplementationOnce(() => providerFailure.promise);
     const disposeHost = await installJarvisKernelRuntimeHost({
       db: database,
       bindKernelActions: () =>
@@ -8363,6 +8406,9 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
         }),
       );
 
+      await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+      expect(useVoiceStore.getState().session?.activeRunId).toBeDefined();
+      providerFailure.reject(new Error('provider_failed_after_voice_claim'));
       await vi.waitFor(() =>
         expect(mocks.devLog).toHaveBeenCalledWith(expect.objectContaining({ level: 'error' })),
       );
@@ -8371,6 +8417,12 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       );
       expect(useVoiceStore.getState().session?.activeRunId).toBeUndefined();
     } finally {
+      providerFailure.resolve({
+        text: 'UNREACHABLE PROVIDER SUCCESS',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'mock',
+        model: 'mock-default',
+      });
       disposeHost();
       useVoiceStore.getState().reset();
       database.close();
