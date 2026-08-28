@@ -17,6 +17,14 @@ function boundedLimit(requestedLimit: number): number {
   return Math.min(500, Math.max(1, requestedLimit));
 }
 
+function boundedEventCursor(afterSeq: number | undefined): number | undefined {
+  if (afterSeq === undefined) return undefined;
+  if (!Number.isSafeInteger(afterSeq) || afterSeq < 0) {
+    throw new Error('jarvis_command_center_invalid_event_cursor');
+  }
+  return afterSeq;
+}
+
 export function createJarvisCommandCenterDataPort(input: {
   repositories: Readonly<{
     runs: JarvisRunRepository;
@@ -42,7 +50,10 @@ export function createJarvisCommandCenterDataPort(input: {
         .slice(0, boundedLimit(request.limit));
     },
     async getEventsForRun(request): Promise<readonly JarvisEvent[]> {
+      assertLiveAccount(request.accountId);
+      const afterSeq = boundedEventCursor(request.afterSeq);
       const rows = await input.repositories.events.listByRun(request.accountId, request.runId, {
+        ...(afterSeq === undefined ? {} : { afterSeq }),
         limit: boundedLimit(request.limit),
       });
       return rows.filter((event) => event.runId === request.runId);

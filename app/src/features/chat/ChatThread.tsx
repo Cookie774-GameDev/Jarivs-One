@@ -22,7 +22,6 @@ import type {
   JarvisRun,
 } from '@/features/jarvis-command-center/types';
 import type { JarvisEvent } from '@/lib/jarvis/contracts/execution';
-import { jarvisEventRepo } from '@/lib/db/jarvisRepositories';
 import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
 import type { ChatId, Message, Part } from '@/types';
 import type { JarvisCreatorKind } from '@/features/jarvis-creator/contracts';
@@ -128,7 +127,7 @@ function useCurrentCanonicalRunState(
         let fetchedCoverageTruncated = false;
         if (run && !fetchedCoverageComplete && backfillCompletedRunId !== run.id) {
           const backfill = await readBoundedAgentChecklistEvidence((afterSeq, limit) =>
-            jarvisEventRepo.listByRun(accountId, run.id, { afterSeq, limit }),
+            dataPort.getEventsForRun({ accountId, runId: run.id, afterSeq, limit }),
           );
           for (const event of backfill.events) {
             mergedPages.set(`${event.runId}:${event.seq}`, event);

@@ -111,6 +111,48 @@ describe('createJarvisCommandCenterDataPort', () => {
     ).resolves.toEqual([{ schemaVersion: 1, runId: 'run-1' }]);
   });
 
+  it('forwards bounded event pagination and rejects invalid cursors before repository access', async () => {
+    const { port, events } = setup();
+
+    await port.getEventsForRun({
+      accountId: 'account-1',
+      runId: 'run-1',
+      afterSeq: 23,
+      limit: 17,
+    });
+    expect(events.listByRun).toHaveBeenLastCalledWith('account-1', 'run-1', {
+      afterSeq: 23,
+      limit: 17,
+    });
+
+    events.listByRun.mockClear();
+    for (const afterSeq of [-1, 1.5, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+      await expect(
+        port.getEventsForRun({
+          accountId: 'account-1',
+          runId: 'run-1',
+          afterSeq,
+          limit: 17,
+        }),
+      ).rejects.toThrow('jarvis_command_center_invalid_event_cursor');
+    }
+    expect(events.listByRun).not.toHaveBeenCalled();
+  });
+
+  it('rejects cross-account event pagination before repository access', async () => {
+    const { port, events } = setup();
+
+    await expect(
+      port.getEventsForRun({
+        accountId: 'account-2',
+        runId: 'run-1',
+        afterSeq: 0,
+        limit: 500,
+      }),
+    ).rejects.toThrow('jarvis_command_center_account_mismatch');
+    expect(events.listByRun).not.toHaveBeenCalled();
+  });
+
   it('delegates exactly to the bound async live read port and rejects account mismatch before a read', async () => {
     const { port, snapshot } = setup();
 

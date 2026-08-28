@@ -10,7 +10,7 @@ import {
   requestJarvisApprovalNavigation,
   resetJarvisApprovalNavigationForTests,
 } from '@/features/jarvis-command-center/approvalNavigation';
-import type { JarvisRun } from '@/features/jarvis-command-center/types';
+import type { JarvisEvent, JarvisRun } from '@/features/jarvis-command-center/types';
 import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
 import type { Message } from '@/types';
 import { ChatThread } from './ChatThread';
@@ -63,6 +63,20 @@ function canonicalRun({
     },
     createdAt: 100,
     updatedAt: 100,
+  };
+}
+
+function canonicalEvent(runId: string, seq: number): JarvisEvent {
+  return {
+    runId,
+    seq,
+    idempotencyKey: `event-${seq}`,
+    type: 'model',
+    status: 'completed',
+    title: `Event ${seq}`,
+    sourceRefs: [],
+    artifactIds: [],
+    createdAt: 100 + seq,
   };
 }
 
@@ -318,6 +332,40 @@ describe('ChatThread Command Center routing', () => {
     expect(screen.queryByTestId('legacy-timeline')).toBeNull();
     expect(screen.queryByTestId('legacy-progress')).toBeNull();
     expect(screen.getByRole('log').getAttribute('data-sik-evidence')).toBe('chat.run-shell');
+  });
+
+  it('backfills canonical checklist evidence only through bound data-port pagination', async () => {
+    const commandCenterBinding = binding([canonicalRun({ id: 'run-page' })]);
+    vi.mocked(commandCenterBinding.dataPort.getEventsForRun).mockImplementation(async (input) => {
+      if (input.afterSeq === undefined) {
+        return Array.from({ length: 500 }, (_, index) => canonicalEvent(input.runId, index + 2));
+      }
+      if (input.afterSeq === 0) {
+        return Array.from({ length: 500 }, (_, index) => canonicalEvent(input.runId, index + 1));
+      }
+      return input.afterSeq === 500 ? [canonicalEvent(input.runId, 501)] : [];
+    });
+
+    render(
+      <JarvisCommandCenterProvider value={commandCenterBinding}>
+        <ChatThread chatId="chat-1" />
+      </JarvisCommandCenterProvider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(commandCenterBinding.dataPort.getEventsForRun).toHaveBeenCalledWith({
+        accountId: 'account-1',
+        runId: 'run-page',
+        afterSeq: 0,
+        limit: 500,
+      });
+      expect(commandCenterBinding.dataPort.getEventsForRun).toHaveBeenCalledWith({
+        accountId: 'account-1',
+        runId: 'run-page',
+        afterSeq: 500,
+        limit: 500,
+      });
+    });
   });
 
   it('rejects data-port rows that do not match the bound account and chat scope', async () => {

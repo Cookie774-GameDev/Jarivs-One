@@ -52,6 +52,7 @@ export type JarvisCommandCenterDataPort = {
   getEventsForRun(input: {
     accountId: string;
     runId: string;
+    afterSeq?: number;
     limit: number;
   }): Promise<readonly JarvisEvent[]>;
   getArtifactsForRun(input: {
