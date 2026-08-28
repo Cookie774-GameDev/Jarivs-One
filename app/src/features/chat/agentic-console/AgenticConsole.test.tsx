@@ -97,7 +97,7 @@ describe('AgenticConsole', () => {
     expect(screen.queryByRole('article', { name: 'Diff AgenticConsole.tsx' })).toBeNull();
   });
 
-  it('renders one compact terminal inspector from recorded session state', () => {
+  it('renders one truthful terminal outcome from recorded session state', () => {
     renderConsole({
       chatId: 'chat-console',
       messages: [
@@ -120,11 +120,34 @@ describe('AgenticConsole', () => {
     });
 
     const inspector = screen.getByRole('status', { name: 'Session completion status' });
-    expect(inspector.textContent).toContain('Done1 completed event recorded');
-    expect(inspector.textContent).toContain('Doing nowComplete');
-    expect(inspector.textContent).toContain('NextNo queued activity recorded');
-    expect(inspector.textContent).toContain('BlockersNone recorded');
+    expect(inspector.getAttribute('data-terminal-status')).toBe('done');
+    expect(inspector.textContent).toBe('DoneResponse complete');
+    expect(inspector.textContent).not.toContain('Doing now');
+    expect(inspector.textContent).not.toContain('Next');
+    expect(inspector.textContent).not.toContain('Blockers');
+    expect(inspector.textContent).not.toContain('event recorded');
     expect(screen.getAllByRole('status', { name: 'Session completion status' })).toHaveLength(1);
+  });
+
+  it.each([
+    ['blocked', 'Blockers', 'Blocked state recorded'],
+    ['error', 'Blockers', 'Run error recorded'],
+    ['cancelled', 'Status', 'Run cancelled'],
+    ['partial', 'Status', 'Partial completion recorded'],
+  ])('renders canonical %s terminal truth without invented future state', (status, label, text) => {
+    renderConsole({
+      chatId: 'chat-console',
+      messages: [message('user', 'user', 10, [{ kind: 'text', text: 'Continue safely.' }])],
+      activity: [],
+      sessionEvidence: { status, currentOperation: 'Untrusted stale operation text' },
+    });
+
+    const inspector = screen.getByRole('status', { name: 'Session completion status' });
+    expect(inspector.getAttribute('data-terminal-status')).toBe(status);
+    expect(inspector.textContent).toBe(`${label}${text}`);
+    expect(inspector.textContent).not.toContain('Doing now');
+    expect(inspector.textContent).not.toContain('Next');
+    expect(inspector.textContent).not.toContain('Untrusted stale operation text');
   });
 
   it('does not present a terminal inspector while the session is still running', () => {
@@ -146,6 +169,34 @@ describe('AgenticConsole', () => {
     });
 
     expect(screen.queryByRole('status', { name: 'Session completion status' })).toBeNull();
+  });
+
+  it('projects 250,000 latest-turn events without spreading timestamp arrays', () => {
+    const activity = Array.from<unknown, ChatActivityEvent>({ length: 250_000 }, (_, index) => ({
+      id: `scale-${index}`,
+      chatId: 'chat-console',
+      kind: 'agent',
+      category: 'response',
+      status: 'done',
+      title: 'Recorded activity',
+      ts: 1_000 + index,
+      endedAt: 1_000 + index,
+    }));
+
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('user-scale', 'user', 999, [{ kind: 'text', text: 'Restore the long run.' }]),
+        message('assistant-scale', 'assistant', 1_000, [
+          { kind: 'text', text: 'Recorded activity is restored.' },
+        ]),
+      ],
+      activity,
+      sessionEvidence: { status: 'running', currentOperation: 'Restoring recorded activity' },
+    });
+
+    expect(rendered.container.querySelector('[data-agentic-console="true"]')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Load 100 older events' })).toBeTruthy();
   });
 
   it('coalesces live work into one continuous activity disclosure', () => {
@@ -310,9 +361,15 @@ describe('AgenticConsole', () => {
 
     const answer = screen.getByText('The focused checks are complete.');
     const ledger = rendered.container.querySelector('[data-assistant-activity-ledger="true"]');
+    const inspector = screen.getByRole('status', { name: 'Session completion status' });
     expect(ledger).toBeTruthy();
     expect(
       Boolean(answer.compareDocumentPosition(ledger as Node) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+    expect(
+      Boolean(
+        (ledger as Node).compareDocumentPosition(inspector) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
     ).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: /show activity details/i }));
     expect(screen.getByText('Ran command')).toBeTruthy();
