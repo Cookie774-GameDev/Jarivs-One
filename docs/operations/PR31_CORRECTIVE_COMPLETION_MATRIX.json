@@ -581,14 +581,14 @@
       "requirement": "GitHub PR31 local-versus-remote commit state and CI are freshly inspected",
       "status": "Implemented and verified",
       "evidence": [
-        { "kind": "commit", "ref": "local HEAD b698b064; PR31 remote head 0ed01de9" },
+        { "kind": "commit", "ref": "local HEAD 8d2f648e; PR31 remote head 0ed01de9" },
         {
           "kind": "test",
-          "ref": "GitHub connector inspection of PR31 and all workflow runs for 0ed01de9"
+          "ref": "Fresh GitHub connector inspection on 2026-08-28 of draft PR31 and all workflow runs for 0ed01de9"
         },
         {
           "kind": "remote",
-          "ref": "CI, AI boundary, and CodeQL succeeded; Dependency Review failed because the repository dependency graph is disabled"
+          "ref": "CI run 32060494342, AI boundary run 32060494283, and CodeQL run 32060494264 succeeded; Dependency Review run 32060494326 failed while the repository dependency graph remains disabled"
         }
       ]
     },
