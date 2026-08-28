@@ -227,7 +227,15 @@
       "nativeRequired": true,
       "visualRequired": true,
       "evidence": [
-        { "kind": "audit", "ref": "Prior layout image does not prove creation/edit persistence" }
+        { "kind": "commit", "ref": "1d6361f8" },
+        {
+          "kind": "test",
+          "ref": "Kanban create/edit/complete/reopen and persisted-state regression matrix 10/10"
+        },
+        {
+          "kind": "audit",
+          "ref": "Automated lifecycle now clears stale completedAt on reopen; prior native layout image still does not prove creation/edit persistence in the official app"
+        }
       ]
     },
     {
