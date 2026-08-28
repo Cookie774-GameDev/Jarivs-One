@@ -2,24 +2,38 @@
   "schemaVersion": 1,
   "id": "vibespace-browser-agent",
   "version": "1.61.1",
-  "description": "Optional, separately provisioned Browser Agent automation assets.",
+  "description": "Development-only Playwright automation metadata. No Browser Agent runtime or browser binary is shipped.",
+  "shippingStatus": "not-implemented",
   "defaultInstallerIncluded": false,
-  "separatelyRemovable": true,
-  "separatelyMeasurable": true,
-  "measurementStatus": "pending-build-verification",
+  "optionalInstallerImplemented": false,
+  "separatelyRemovable": false,
+  "separatelyMeasurable": false,
+  "measurementStatus": "not-applicable-unshipped",
   "installerMeasurementClaimed": false,
+  "updates": {
+    "defaultAppUpdaterIncludesFeaturePack": false,
+    "separateSignedManifestImplemented": false
+  },
+  "doctor": {
+    "supportStatus": "unavailable",
+    "canDiagnoseInstalledRuntime": false,
+    "canInstall": false,
+    "canRepair": false,
+    "implicitBrowserDownloadAllowed": false
+  },
   "components": [
     {
       "name": "playwright-core",
       "version": "1.61.1",
-      "distribution": "optional-feature-pack",
+      "distribution": "development-only",
       "defaultInstallerIncluded": false
     },
     {
       "name": "playwright-browser-binaries",
-      "version": "1.61.1",
-      "distribution": "separately-provisioned-optional-assets",
+      "playwrightVersion": "1.61.1",
+      "distribution": "not-packaged",
       "defaultInstallerIncluded": false,
+      "browserRevisions": null,
       "measuredBytes": null
     }
   ],
@@ -32,6 +46,33 @@
       "name": "promptfoo",
       "version": "0.121.20",
       "reason": "development/CI-only evaluation runtime"
+    }
+  ],
+  "prerequisites": [
+    {
+      "id": "signed-feature-pack-artifact",
+      "status": "missing",
+      "reason": "A separately versioned and signed feature-pack artifact and update manifest do not exist."
+    },
+    {
+      "id": "pinned-browser-revisions-and-hashes",
+      "status": "missing",
+      "reason": "Platform-specific browser revisions, immutable hashes, provenance, and size ceilings are not registered."
+    },
+    {
+      "id": "native-atomic-installer",
+      "status": "missing",
+      "reason": "No native allowlisted staging, atomic activation, or reparse-safe installation boundary exists."
+    },
+    {
+      "id": "doctor-verification-and-repair",
+      "status": "missing",
+      "reason": "Doctor cannot verify exact core and browser revisions or repair them without an implicit download."
+    },
+    {
+      "id": "uninstall-rollback-measurement",
+      "status": "missing",
+      "reason": "Uninstall, rollback, installed-size measurement, and native acceptance evidence do not exist."
     }
   ]
 }

@@ -3,6 +3,14 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SCRIPT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const PLAYWRIGHT_VERSION = '1.61.1';
+const PLAYWRIGHT_PREREQUISITES = [
+  'signed-feature-pack-artifact',
+  'pinned-browser-revisions-and-hashes',
+  'native-atomic-installer',
+  'doctor-verification-and-repair',
+  'uninstall-rollback-measurement',
+];
 const REQUIRED_RESOURCES = [
   '../../docs/oss/dependency-lock.json',
   '../../docs/oss/grammar-license-inventory.md',
@@ -74,6 +82,7 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
   const tauri = loadJson(root, 'app/src-tauri/tauri.conf.json', errors);
   const sbom = loadJson(root, 'docs/oss/sbom-pr31.cdx.json', errors);
   const featurePack = loadJson(root, 'docs/oss/browser-agent-feature-pack.json', errors);
+  const doctorSource = loadText(root, 'app/src/features/doctor/vibeSpaceDoctor.ts', errors);
   const licensesReadme = loadText(root, 'docs/oss/licenses/README.md', errors);
   const grammarInventory = loadText(root, 'docs/oss/grammar-license-inventory.md', errors);
   const notices = loadText(root, 'docs/oss/THIRD_PARTY_NOTICES.md', errors);
@@ -185,19 +194,151 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
     );
   }
 
+  const rootScripts = JSON.stringify(rootPackage.scripts ?? {});
+  const appScripts = JSON.stringify(appPackage.scripts ?? {});
+  check(
+    !/\bplaywright(?:-core)?\s+install(?:-deps)?\b/iu.test(`${rootScripts}\n${appScripts}`),
+    'package scripts must not download Playwright browser binaries',
+    errors,
+  );
+  const playwrightWrapper = packageLock.packages?.['node_modules/playwright'];
+  check(
+    packageLock.packages?.['']?.devDependencies?.['playwright-core'] === PLAYWRIGHT_VERSION,
+    'package-lock root playwright-core development pin mismatch',
+    errors,
+  );
+  check(
+    packageLock.packages?.['']?.devDependencies?.['@playwright/test'] === PLAYWRIGHT_VERSION,
+    'package-lock root @playwright/test development pin mismatch',
+    errors,
+  );
+  check(
+    playwrightWrapper?.version === PLAYWRIGHT_VERSION && playwrightWrapper?.dev === true,
+    'transitive Playwright wrapper must be an exact development-only pin',
+    errors,
+  );
+  check(
+    playwrightWrapper?.dependencies?.['playwright-core'] === PLAYWRIGHT_VERSION,
+    'transitive Playwright wrapper core pin mismatch',
+    errors,
+  );
+
   check(featurePack.schemaVersion === 1, 'feature-pack schemaVersion must be 1', errors);
-  check(featurePack.defaultInstallerIncluded === false, 'Browser Agent pack must be excluded by default', errors);
-  check(featurePack.separatelyRemovable === true, 'Browser Agent pack must be separately removable', errors);
-  check(featurePack.separatelyMeasurable === true, 'Browser Agent pack must be separately measurable', errors);
-  check(featurePack.installerMeasurementClaimed === false, 'feature pack must not claim installer measurement', errors);
-  check(featurePack.measurementStatus === 'pending-build-verification', 'feature pack measurement must remain pending', errors);
-  const browserBinary = featurePack.components?.find((component) => component?.name === 'playwright-browser-binaries');
-  const optionalCore = featurePack.components?.find((component) => component?.name === 'playwright-core');
-  check(optionalCore?.version === '1.61.1', 'optional playwright-core version mismatch', errors);
-  check(optionalCore?.defaultInstallerIncluded === false, 'optional playwright-core must be excluded by default', errors);
-  check(browserBinary?.defaultInstallerIncluded === false, 'Playwright browsers must be excluded from default installer', errors);
-  check(browserBinary?.measuredBytes === null, 'unmeasured browser binaries must use null measuredBytes', errors);
-  check(featurePack.excluded?.some((entry) => entry?.name === 'promptfoo' && entry?.version === '0.121.20'), 'Promptfoo exclusion must be explicit and pinned', errors);
+  check(
+    featurePack.version === PLAYWRIGHT_VERSION,
+    'feature-pack Playwright development version mismatch',
+    errors,
+  );
+  check(
+    featurePack.shippingStatus === 'not-implemented',
+    'Browser Agent shipping status must remain not-implemented',
+    errors,
+  );
+  check(
+    featurePack.defaultInstallerIncluded === false,
+    'Browser Agent pack must be excluded by default',
+    errors,
+  );
+  check(
+    featurePack.optionalInstallerImplemented === false,
+    'Browser Agent optional installer must not be claimed before implementation',
+    errors,
+  );
+  check(
+    featurePack.separatelyRemovable === false,
+    'an unshipped Browser Agent pack must not claim removability',
+    errors,
+  );
+  check(
+    featurePack.separatelyMeasurable === false,
+    'an unshipped Browser Agent pack must not claim installed-size measurement',
+    errors,
+  );
+  check(
+    featurePack.installerMeasurementClaimed === false,
+    'feature pack must not claim installer measurement',
+    errors,
+  );
+  check(
+    featurePack.measurementStatus === 'not-applicable-unshipped',
+    'feature pack measurement must remain unavailable while unshipped',
+    errors,
+  );
+  check(
+    featurePack.updates?.defaultAppUpdaterIncludesFeaturePack === false &&
+      featurePack.updates?.separateSignedManifestImplemented === false,
+    'feature pack updater delivery must remain explicitly unavailable',
+    errors,
+  );
+  check(
+    featurePack.doctor?.supportStatus === 'unavailable' &&
+      featurePack.doctor?.canDiagnoseInstalledRuntime === false &&
+      featurePack.doctor?.canInstall === false &&
+      featurePack.doctor?.canRepair === false &&
+      featurePack.doctor?.implicitBrowserDownloadAllowed === false,
+    'Doctor must not claim Playwright install or repair authority',
+    errors,
+  );
+  check(
+    !/(?:playwright|chromium|firefox|webkit|browser\s+(?:agent|binaries))/iu.test(doctorSource),
+    'Doctor source must not claim unavailable Playwright or browser support',
+    errors,
+  );
+  const prerequisites = Array.isArray(featurePack.prerequisites) ? featurePack.prerequisites : [];
+  check(
+    prerequisites.length === PLAYWRIGHT_PREREQUISITES.length &&
+      PLAYWRIGHT_PREREQUISITES.every(
+        (id, index) =>
+          prerequisites[index]?.id === id &&
+          prerequisites[index]?.status === 'missing' &&
+          typeof prerequisites[index]?.reason === 'string' &&
+          prerequisites[index].reason.trim().length >= 40,
+      ),
+    'feature pack must enumerate every missing installer/native prerequisite',
+    errors,
+  );
+  const browserBinary = featurePack.components?.find(
+    (component) => component?.name === 'playwright-browser-binaries',
+  );
+  const optionalCore = featurePack.components?.find(
+    (component) => component?.name === 'playwright-core',
+  );
+  check(
+    optionalCore?.version === PLAYWRIGHT_VERSION &&
+      optionalCore?.distribution === 'development-only',
+    'playwright-core must remain an exact development-only component',
+    errors,
+  );
+  check(
+    optionalCore?.defaultInstallerIncluded === false,
+    'playwright-core must be excluded by default',
+    errors,
+  );
+  check(
+    browserBinary?.defaultInstallerIncluded === false,
+    'Playwright browsers must be excluded from default installer',
+    errors,
+  );
+  check(
+    browserBinary?.playwrightVersion === PLAYWRIGHT_VERSION &&
+      browserBinary?.distribution === 'not-packaged' &&
+      browserBinary?.version === undefined &&
+      browserBinary?.browserRevisions === null,
+    'Playwright browser binaries must remain unversioned and unshipped',
+    errors,
+  );
+  check(
+    browserBinary?.measuredBytes === null,
+    'unmeasured browser binaries must use null measuredBytes',
+    errors,
+  );
+  check(
+    featurePack.excluded?.some(
+      (entry) => entry?.name === 'promptfoo' && entry?.version === '0.121.20',
+    ),
+    'Promptfoo exclusion must be explicit and pinned',
+    errors,
+  );
 
   check(rootPackage.scripts?.['verify:pr31-oss'] === 'node scripts/pr31-oss-bundle.mjs', 'root OSS verification script mismatch', errors);
   return Object.freeze({ ok: errors.length === 0, errors: Object.freeze([...new Set(errors)].sort()) });
