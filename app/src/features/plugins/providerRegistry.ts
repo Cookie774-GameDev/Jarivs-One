@@ -1,13 +1,14 @@
 import type {
   PluginAuthType,
+  ClassifiedPluginManifest,
   PluginConnectionStrategy,
   PluginField,
   PluginHttpTest,
-  PluginManifest,
   PluginStatus,
   PluginTool,
 } from './types';
 import { CANVA_REQUIRED_SCOPES } from './canvaProvider';
+import { completePluginAuthorizationManifest } from './authorizationCapability';
 
 type RegistryPartial = {
   provider?: string;
@@ -1616,13 +1617,13 @@ const OAUTH_CATEGORY_DEFAULTS: Partial<RegistryPartial> = {
     token('client_secret', 'Client secret', '...', 'Stored in the OS keychain only.'),
   ],
   setupSteps: [
-    'Open the provider sign-in page from VibeSpace.',
-    'Create or select the provider OAuth app.',
-    'Save the client credentials here, then test the connection.',
+    'Create or select the provider OAuth app in the official developer console.',
+    'Register an exact redirect/callback and request only the declared scopes.',
+    'Wait until VibeSpace ships and verifies a trusted callback and token-exchange authority for this connector.',
   ],
   supportedFeatures: ['authenticated context'],
   limitations:
-    'Direct one-click OAuth requires a hosted VibeSpace callback and provider app approval. Until that backend exchange is configured, VibeSpace opens the official provider setup page and stores credentials only in the OS keychain.',
+    'Connection is externally blocked until an exact VibeSpace provider registration, callback, token exchange, cancellation, reconnect, and revocation path is implemented and verified.',
   tools: [readTool('oauth_context', 'OAuth capability metadata after setup.')],
 };
 
@@ -1716,7 +1717,7 @@ function mergeManifest(
   category: string,
   override?: RegistryPartial,
   categoryDefault?: Partial<RegistryPartial>,
-): PluginManifest {
+): ClassifiedPluginManifest {
   const base = { ...GENERIC_DEFAULT, ...categoryDefault, ...override };
   const provider = base.provider ?? name;
   const status = base.status ?? 'needs_credentials';
@@ -1738,7 +1739,7 @@ function mergeManifest(
         ? 'Use the official provider sign-in/setup page to authorize access, then save the returned credentials in VibeSpace.'
         : 'Open the official provider page, create the narrowest credential available, then test the connection.');
 
-  return {
+  return completePluginAuthorizationManifest({
     id,
     name,
     description,
@@ -1760,21 +1761,34 @@ function mergeManifest(
     supportedFeatures: base.supportedFeatures ?? ['integration context'],
     limitations: base.limitations,
     httpTest: base.httpTest,
-  };
+  });
 }
 
-export function buildCatalogEntry(name: string, category: string): PluginManifest {
+export function buildCatalogEntry(name: string, category: string): ClassifiedPluginManifest {
   const id = slugify(name);
   return mergeManifest(id, name, category, PROVIDER_OVERRIDES[id], CATEGORY_DEFAULTS[category]);
 }
 
-export function pluginSearchBlob(plugin: PluginManifest, connectionState?: string): string {
+export function pluginSearchBlob(
+  plugin: ClassifiedPluginManifest,
+  connectionState?: string,
+): string {
   return [
     plugin.name,
     plugin.provider,
     plugin.description,
     plugin.category,
     plugin.authType,
+    plugin.authorizationCapability.kind,
+    ...(plugin.authorizationCapability.kind === 'external_blocker'
+      ? [
+          plugin.authorizationCapability.reason,
+          ...plugin.authorizationCapability.externalPrerequisites,
+        ]
+      : plugin.authorizationCapability.kind === 'provider_hosted_oauth' ||
+          plugin.authorizationCapability.kind === 'manual_fallback'
+        ? [...plugin.authorizationCapability.externalPrerequisites]
+        : [plugin.authorizationCapability.reason]),
     plugin.status,
     connectionState ?? '',
     plugin.help,

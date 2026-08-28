@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CLASSIFIED_PLUGIN_CATALOG,
   PLUGIN_CATALOG,
   PLUGIN_CATALOG_TARGET,
   catalogStats,
@@ -15,16 +16,79 @@ describe('plugin catalog', () => {
   });
 
   it('gives every external connector one exact HTTPS provider access page', () => {
-    const external = PLUGIN_CATALOG.filter((plugin) => plugin.authType !== 'none');
+    const external = CLASSIFIED_PLUGIN_CATALOG.filter((plugin) => plugin.authType !== 'none');
     expect(external).toHaveLength(111);
     for (const plugin of external) {
       expect(plugin.providerAccessUrl, plugin.id).toMatch(/^https:\/\//);
       const access = new URL(plugin.providerAccessUrl!);
       expect(access.username, plugin.id).toBe('');
       expect(access.password, plugin.id).toBe('');
-      if (plugin.authorizationUrl) {
+      if (plugin.authorizationCapability.kind === 'provider_hosted_oauth') {
         expect(plugin.providerAccessUrl, plugin.id).toBe(plugin.authorizationUrl);
         expect(plugin.providerAccessUrl, plugin.id).not.toBe(plugin.credentialUrl);
+      } else if (plugin.authorizationCapability.kind === 'manual_fallback') {
+        expect(plugin.providerAccessUrl, plugin.id).toBe(plugin.credentialUrl);
+      }
+    }
+  });
+
+  it('classifies authorization truthfully and exhaustively for all 112 connectors', () => {
+    const byCapability: Partial<
+      Record<
+        (typeof CLASSIFIED_PLUGIN_CATALOG)[number]['authorizationCapability']['kind'],
+        Array<(typeof CLASSIFIED_PLUGIN_CATALOG)[number]>
+      >
+    > = {};
+    for (const plugin of CLASSIFIED_PLUGIN_CATALOG) {
+      (byCapability[plugin.authorizationCapability.kind] ??= []).push(plugin);
+    }
+
+    expect(byCapability.provider_hosted_oauth?.map((plugin) => plugin.id)).toEqual(['github']);
+    expect(byCapability.no_auth?.map((plugin) => plugin.id)).toEqual(['mock-connector']);
+    expect(byCapability.external_blocker?.map((plugin) => plugin.id).sort()).toEqual([
+      'dynamics-365',
+      'excel',
+      'google-analytics',
+      'google-calendar',
+      'google-chat',
+      'google-contacts',
+      'google-docs',
+      'google-forms',
+      'google-search-console',
+      'google-sheets',
+      'google-slides',
+      'microsoft-forms',
+      'microsoft-graph',
+      'microsoft-planner',
+      'onedrive',
+      'onenote',
+      'outlook',
+      'power-bi',
+      'powerpoint',
+      'sharepoint',
+      'word',
+      'youtube',
+    ]);
+    expect(byCapability.manual_fallback).toHaveLength(88);
+    expect(
+      Object.values(byCapability).reduce((total, plugins) => total + (plugins?.length ?? 0), 0),
+    ).toBe(PLUGIN_CATALOG_TARGET);
+
+    for (const plugin of CLASSIFIED_PLUGIN_CATALOG) {
+      const capability = plugin.authorizationCapability;
+      if (capability.kind === 'provider_hosted_oauth') {
+        expect(plugin.authorizationUrl, plugin.id).toBe(capability.authorizationUrl);
+        expect(plugin.providerAccessUrl, plugin.id).toBe(capability.authorizationUrl);
+        expect(capability.externalPrerequisites.length, plugin.id).toBeGreaterThan(0);
+      } else if (capability.kind === 'manual_fallback') {
+        expect(plugin.providerAccessUrl, plugin.id).toBe(capability.providerAccessUrl);
+        expect(plugin.credentialUrl, plugin.id).toBe(capability.providerAccessUrl);
+      } else if (capability.kind === 'no_auth') {
+        expect(plugin.authType, plugin.id).toBe('none');
+        expect(plugin.fields, plugin.id).toEqual([]);
+      } else {
+        expect(capability.reason.trim().length, plugin.id).toBeGreaterThan(20);
+        expect(capability.externalPrerequisites.length, plugin.id).toBeGreaterThan(0);
       }
     }
   });

@@ -34,7 +34,7 @@ import { toast } from '@/components/ui/toast';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { openExternal } from '@/lib/tauri';
 import { useAuthStore } from '@/stores/auth';
-import { PLUGIN_CATALOG } from './catalog';
+import { CLASSIFIED_PLUGIN_CATALOG } from './catalog';
 import { usePluginManagementCapability } from './managementContext';
 import { pluginSearchBlob } from './providerRegistry';
 import {
@@ -43,17 +43,20 @@ import {
   selectPluginConnectionsForAccount,
   usePluginStore,
 } from './store';
-import type { PluginConnection, PluginManifest } from './types';
+import type { ClassifiedPluginManifest, PluginConnection } from './types';
 import { isConnectableStatus } from './types';
 import { PluginLogo } from './PluginLogo';
 import { OpenCodeMcpConnections } from './OpenCodeMcpConnections';
 import { PLUGIN_COMPATIBILITY_BY_ID } from './compatibilityMatrix';
-import { PLUGIN_CONNECTION_ADAPTERS } from './connectionFramework';
 import { OPEN_MCP_MANAGER_EVENT, consumePendingMcpManagerOpenRequest } from './openMcpManager';
+import {
+  isProviderHostedAuthorization,
+  verifiedProviderAuthorizationUrl,
+} from './authorizationCapability';
 
 type Filter = 'all' | 'available' | 'connected' | 'planned';
 type AuthorizationPanel = Readonly<{
-  plugin: PluginManifest;
+  plugin: ClassifiedPluginManifest;
   phase: 'opening' | 'awaiting_approval' | 'connected' | 'error';
   authorizationUrl?: string;
   userCode?: string;
@@ -72,15 +75,16 @@ const STATUS_LABELS = {
   expired: 'Expired',
 } as const;
 
-function defaultConnectionState(plugin: PluginManifest): PluginConnection['state'] {
+function defaultConnectionState(plugin: ClassifiedPluginManifest): PluginConnection['state'] {
   if (plugin.status === 'needs_credentials' || plugin.status === 'blocked') return 'needs_setup';
   return isConnectableStatus(plugin.status) ? 'not_connected' : 'needs_setup';
 }
 
 function statusBadgeLabel(
-  plugin: PluginManifest,
+  plugin: ClassifiedPluginManifest,
   connectionState: PluginConnection['state'],
 ): string {
+  if (plugin.authorizationCapability.kind === 'external_blocker') return 'External blocker';
   if (plugin.status === 'needs_credentials' || plugin.status === 'blocked') {
     if (connectionState === 'connected') return STATUS_LABELS.connected;
     if (connectionState === 'error') return STATUS_LABELS.error;
@@ -92,14 +96,8 @@ function statusBadgeLabel(
   return STATUS_LABELS[connectionState];
 }
 
-function usesProviderAuthorization(pluginId: string): boolean {
-  const path = PLUGIN_CONNECTION_ADAPTERS[pluginId].path;
-  return (
-    path === 'native_oauth_pkce' ||
-    path === 'hosted_oauth' ||
-    path === 'device_authorization' ||
-    path === 'app_installation'
-  );
+function usesProviderAuthorization(plugin: ClassifiedPluginManifest): boolean {
+  return isProviderHostedAuthorization(plugin.authorizationCapability);
 }
 
 export function Plugins() {
@@ -120,7 +118,7 @@ export function Plugins() {
   const movePinnedPlugin = usePluginStore((state) => state.movePinnedPlugin);
   const [query, setQuery] = React.useState('');
   const [filter, setFilter] = React.useState<Filter>('all');
-  const [selected, setSelected] = React.useState<PluginManifest | null>(null);
+  const [selected, setSelected] = React.useState<ClassifiedPluginManifest | null>(null);
   const [authorizationPanel, setAuthorizationPanel] = React.useState<AuthorizationPanel | null>(
     null,
   );
@@ -137,7 +135,30 @@ export function Plugins() {
     return () => window.removeEventListener(OPEN_MCP_MANAGER_EVENT, openMcpManager);
   }, []);
 
-  async function startProviderAuthorization(plugin: PluginManifest) {
+  React.useEffect(() => {
+    const panel = authorizationPanel;
+    if (!panel || panel.phase !== 'awaiting_approval') return;
+    const state = connections[panel.plugin.id]?.state;
+    if (state === 'connected') {
+      setAuthorizationPanel({ ...panel, phase: 'connected' });
+      toast.success(`${panel.plugin.name} connected`, 'Provider authorization is verified.');
+    } else if (state === 'error' || state === 'expired' || state === 'reauthorize') {
+      const error =
+        connections[panel.plugin.id]?.error ??
+        (state === 'expired'
+          ? `${panel.plugin.provider} authorization expired. Reconnect to continue.`
+          : state === 'reauthorize'
+            ? `${panel.plugin.provider} requires reauthorization.`
+            : `${panel.plugin.provider} authorization failed.`);
+      setAuthorizationPanel({ ...panel, phase: 'error', error });
+    }
+  }, [authorizationPanel, connections]);
+
+  async function startProviderAuthorization(plugin: ClassifiedPluginManifest) {
+    if (!usesProviderAuthorization(plugin)) {
+      setSelected(plugin);
+      return;
+    }
     setAuthorizationPanel({ plugin, phase: 'opening' });
     if (!accountId || !management) {
       setAuthorizationPanel({
@@ -155,31 +176,54 @@ export function Plugins() {
           phase: 'error',
           error: result.error,
           setupUrl: result.setupUrl,
-          authorizationUrl: plugin.providerAccessUrl,
         };
         setAuthorizationPanel(recoveryPanel);
-        if (plugin.providerAccessUrl) {
+        return;
+      }
+      let authorizationUrl: string | undefined;
+      if (result.authorizationUrl) {
+        try {
+          authorizationUrl = verifiedProviderAuthorizationUrl(
+            plugin.authorizationCapability,
+            result.authorizationUrl,
+          );
+        } catch {
           try {
-            await openExternal(plugin.providerAccessUrl);
+            await management.cancelAuthorization({ accountId, pluginId: plugin.id });
           } catch {
-            setAuthorizationPanel({
-              ...recoveryPanel,
-              error: `${result.error} The ${plugin.provider} page did not open automatically.`,
-            });
+            // The unverified endpoint remains unopened even if cancellation cannot complete.
           }
+          setAuthorizationPanel({
+            plugin,
+            phase: 'error',
+            error: 'Provider authorization returned an unverified authorization endpoint.',
+          });
+          return;
         }
+      }
+      if (result.state !== 'connected' && !authorizationUrl) {
+        try {
+          await management.cancelAuthorization({ accountId, pluginId: plugin.id });
+        } catch {
+          // Missing endpoint is already fail-closed; cancellation is best effort.
+        }
+        setAuthorizationPanel({
+          plugin,
+          phase: 'error',
+          error: 'Provider authorization did not return its verified authorization endpoint.',
+        });
         return;
       }
       const nextPanel: AuthorizationPanel = {
         plugin,
         phase: result.state,
-        authorizationUrl: result.authorizationUrl,
+        authorizationUrl,
         userCode: result.userCode,
       };
       setAuthorizationPanel(nextPanel);
-      if (result.authorizationUrl) {
+      if (authorizationUrl) {
         try {
-          await openExternal(result.authorizationUrl);
+          await openExternal(authorizationUrl);
         } catch {
           setAuthorizationPanel({
             ...nextPanel,
@@ -199,7 +243,7 @@ export function Plugins() {
     }
   }
 
-  function openManualProviderSetup(plugin: PluginManifest) {
+  function openManualProviderSetup(plugin: ClassifiedPluginManifest) {
     setSelected(plugin);
     if (!plugin.providerAccessUrl) return;
     void openExternal(plugin.providerAccessUrl).catch(() => {
@@ -212,7 +256,7 @@ export function Plugins() {
 
   const visible = React.useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return PLUGIN_CATALOG.filter((plugin) => {
+    return CLASSIFIED_PLUGIN_CATALOG.filter((plugin) => {
       const connection = connections[plugin.id];
       const connectionState = connection?.state ?? defaultConnectionState(plugin);
       if (filter === 'available' && !isConnectableStatus(plugin.status)) return false;
@@ -280,7 +324,7 @@ export function Plugins() {
           <Input
             aria-label="Search plugins"
             className="pl-8"
-            placeholder={`Search ${PLUGIN_CATALOG.length} plugins`}
+            placeholder={`Search ${CLASSIFIED_PLUGIN_CATALOG.length} plugins`}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -307,6 +351,7 @@ export function Plugins() {
           const pinIndex = pinnedPluginIds.indexOf(plugin.id);
           const isPinned = pinIndex >= 0;
           const isInstalled = installedPluginIds.includes(plugin.id) || Boolean(connection);
+          const isExternallyBlocked = plugin.authorizationCapability.kind === 'external_blocker';
           return (
             <Card
               key={plugin.id}
@@ -401,9 +446,13 @@ export function Plugins() {
                     type="button"
                     size="sm"
                     variant={connection?.state === 'connected' ? 'outline' : 'default'}
-                    disabled={!isConnectableStatus(plugin.status) || !accountId}
+                    disabled={
+                      !accountId || (!isExternallyBlocked && !isConnectableStatus(plugin.status))
+                    }
                     onClick={() => {
                       if (connection?.state === 'connected') {
+                        setSelected(plugin);
+                      } else if (isExternallyBlocked) {
                         setSelected(plugin);
                       } else if (!isInstalled) {
                         installPlugin(accountId, plugin.id);
@@ -411,7 +460,7 @@ export function Plugins() {
                           `${plugin.name} installed`,
                           'The connector is ready. Connect your provider account when you are ready.',
                         );
-                      } else if (usesProviderAuthorization(plugin.id)) {
+                      } else if (usesProviderAuthorization(plugin)) {
                         void startProviderAuthorization(plugin);
                       } else {
                         openManualProviderSetup(plugin);
@@ -422,13 +471,20 @@ export function Plugins() {
                       <>
                         <Settings2 className="h-3.5 w-3.5" /> Manage
                       </>
+                    ) : isExternallyBlocked ? (
+                      <>
+                        <ExternalLink className="h-3.5 w-3.5" /> View requirements
+                      </>
                     ) : !isInstalled ? (
                       <>
                         <Download className="h-3.5 w-3.5" /> Install
                       </>
                     ) : (
                       <>
-                        <KeyRound className="h-3.5 w-3.5" /> Connect
+                        <KeyRound className="h-3.5 w-3.5" />
+                        {connectionState === 'expired' || connectionState === 'reauthorize'
+                          ? 'Reconnect'
+                          : 'Connect'}
                       </>
                     )}
                   </Button>
@@ -528,7 +584,11 @@ function PluginAuthorizationDialog({
   const { plugin } = panel;
   const isOpening = panel.phase === 'opening';
   const canCancel = panel.phase === 'awaiting_approval';
-  const hasManualFallback = plugin.fields.length > 0 && Boolean(plugin.credentialUrl);
+  const hasManualFallback =
+    plugin.authorizationCapability.kind === 'provider_hosted_oauth' &&
+    plugin.authorizationCapability.manualFallback &&
+    plugin.fields.length > 0 &&
+    Boolean(plugin.credentialUrl);
 
   async function cancel() {
     if (!management || !accountId) return;
@@ -591,7 +651,11 @@ function PluginAuthorizationDialog({
           <DialogDescription>
             {isOpening
               ? `Opening ${plugin.provider}’s official authorization page…`
-              : `${plugin.provider} authorization should open in your browser.`}
+              : panel.phase === 'connected'
+                ? 'Provider authorization completed and verified.'
+                : panel.authorizationUrl
+                  ? `${plugin.provider} authorization should open in your browser.`
+                  : `${plugin.provider} authorization could not start. Review the exact requirement or use the supported fallback.`}
           </DialogDescription>
         </DialogHeader>
 
@@ -625,7 +689,7 @@ function PluginAuthorizationDialog({
             </div>
           )}
 
-          {!isOpening && (
+          {!isOpening && panel.authorizationUrl && (
             <div>
               <p className="mb-1 text-metadata uppercase tracking-wide text-muted-foreground">
                 Manual recovery
@@ -635,6 +699,13 @@ function PluginAuthorizationDialog({
                 <li>Sign in, review the requested permissions, and approve or decline.</li>
                 <li>Return to VibeSpace; the connection status updates after verification.</li>
               </ol>
+            </div>
+          )}
+
+          {panel.phase === 'connected' && (
+            <div className="flex gap-2 rounded-lg border border-success/30 bg-success/10 p-3 text-secondary text-success">
+              <CheckCircle2 className="h-4 w-4" />
+              Provider authorization completed and verified.
             </div>
           )}
 
@@ -770,7 +841,7 @@ function PluginSetupDialog({
   onClose,
 }: {
   accountId: string;
-  plugin: PluginManifest | null;
+  plugin: ClassifiedPluginManifest | null;
   onClose: () => void;
 }) {
   const management = usePluginManagementCapability();
@@ -792,24 +863,25 @@ function PluginSetupDialog({
 
   const activePlugin = plugin;
   const compatibility = PLUGIN_COMPATIBILITY_BY_ID[activePlugin.id];
-  const adapter = PLUGIN_CONNECTION_ADAPTERS[activePlugin.id];
-  const usesProviderAuthorization =
-    adapter.path === 'native_oauth_pkce' ||
-    adapter.path === 'hosted_oauth' ||
-    adapter.path === 'device_authorization' ||
-    adapter.path === 'app_installation';
+  const authorizationCapability = activePlugin.authorizationCapability;
+  const usesProviderAuthorization = isProviderHostedAuthorization(authorizationCapability);
+  const isExternallyBlocked = authorizationCapability.kind === 'external_blocker';
   const configuredFields = new Set(connection?.configuredFields ?? []);
   const hasAutomatedTest = Boolean(activePlugin.httpTest) || activePlugin.authType === 'none';
   const providerConnectLabel = `Continue with ${activePlugin.provider}`;
   const requiresLocalCredential =
-    adapter.path === 'manual_credential' && activePlugin.fields.length > 0;
+    authorizationCapability.kind === 'manual_fallback' && activePlugin.fields.length > 0;
   const displayedSetupSteps = usesProviderAuthorization
     ? [
         `Choose Continue with ${activePlugin.provider}.`,
         'Review the exact permissions on the provider-owned authorization page.',
         'Approve or decline there, then return to VibeSpace for verification.',
       ]
-    : activePlugin.setupSteps;
+    : authorizationCapability.kind === 'manual_fallback'
+      ? [...authorizationCapability.externalPrerequisites, ...activePlugin.setupSteps]
+      : authorizationCapability.kind === 'external_blocker'
+        ? [...authorizationCapability.externalPrerequisites]
+        : activePlugin.setupSteps;
 
   async function authorize() {
     setError('');
@@ -943,7 +1015,9 @@ function PluginSetupDialog({
           <DialogDescription>
             {usesProviderAuthorization
               ? `Authorize ${plugin.name} on ${plugin.provider}’s official page. VibeSpace receives only a token-free connection receipt in this interface.`
-              : plugin.help}
+              : isExternallyBlocked
+                ? authorizationCapability.reason
+                : plugin.help}
           </DialogDescription>
         </DialogHeader>
 
@@ -957,8 +1031,7 @@ function PluginSetupDialog({
               Provider: {plugin.provider} · Auth: {plugin.authType.replace(/_/g, ' ')}
             </p>
             <p className="mt-1 text-metadata text-muted-foreground">
-              Connection method: {compatibility.connectionClass.replace(/_/g, ' ')} ·{' '}
-              {compatibility.redirectMethod.replace(/_/g, ' ')}
+              Authorization capability: {authorizationCapability.kind.replace(/_/g, ' ')}
             </p>
           </div>
 
@@ -1009,7 +1082,7 @@ function PluginSetupDialog({
             </div>
           )}
 
-          {!usesProviderAuthorization && activePlugin.providerAccessUrl && (
+          {authorizationCapability.kind === 'manual_fallback' && activePlugin.providerAccessUrl && (
             <div className="rounded-xl border border-accent-cyan/20 bg-accent-cyan/5 p-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -1031,6 +1104,32 @@ function PluginSetupDialog({
                   Open {activePlugin.name} account page
                 </Button>
               </div>
+            </div>
+          )}
+
+          {isExternallyBlocked && (
+            <div
+              role="alert"
+              className="rounded-xl border border-destructive/30 bg-destructive/5 p-3"
+            >
+              <p className="text-secondary font-medium text-destructive">
+                External authorization prerequisite
+              </p>
+              <p className="mt-1 text-secondary text-muted-foreground">
+                {authorizationCapability.reason}
+              </p>
+              {authorizationCapability.providerAccessUrl && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-3"
+                  onClick={() => void openExternal(authorizationCapability.providerAccessUrl!)}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open {activePlugin.provider} configuration
+                </Button>
+              )}
             </div>
           )}
 
@@ -1088,7 +1187,7 @@ function PluginSetupDialog({
             </div>
           )}
 
-          {!requiresLocalCredential && !usesProviderAuthorization && plugin.fields.length === 0 && (
+          {authorizationCapability.kind === 'no_auth' && (
             <div className="rounded-md border border-border bg-panel p-3 flex gap-2">
               <CheckCircle2 className="h-4 w-4 text-success" />
               <span className="text-secondary text-muted-foreground">
@@ -1174,7 +1273,7 @@ function PluginSetupDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Close
             </Button>
-            {!usesProviderAuthorization && (
+            {!usesProviderAuthorization && !isExternallyBlocked && (
               <Button
                 type="button"
                 disabled={testing || !accountId || !management}

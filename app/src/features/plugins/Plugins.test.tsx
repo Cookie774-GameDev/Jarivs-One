@@ -33,7 +33,7 @@ describe('Plugins settings page', () => {
       return {
         ok: true as const,
         state: 'awaiting_approval' as const,
-        authorizationUrl: 'https://accounts.example.test/authorize',
+        authorizationUrl: 'https://github.com/login/device',
       };
     }),
     cancelAuthorization: vi.fn(async () => undefined),
@@ -135,7 +135,7 @@ describe('Plugins settings page', () => {
     fireEvent.click(close);
     expect(screen.getByRole('button', { name: 'Add MCP connection' })).toBeTruthy();
     expect(document.getElementById('plugins-mcp-connections')).toBeNull();
-  });
+  }, 15_000);
 
   it('preserves an MCP-open request while the lazy Plugins page mounts', async () => {
     requestOpenMcpManager();
@@ -176,7 +176,7 @@ describe('Plugins settings page', () => {
     });
   }, 15_000);
 
-  it('installs first, then opens OAuth immediately while keeping compact recovery controls', async () => {
+  it('keeps bring-your-own Gmail OAuth on the supported manual configuration path', async () => {
     renderPlugins();
     fireEvent.change(screen.getByLabelText('Search plugins'), { target: { value: 'Gmail' } });
     const card = screen.getByTestId('plugin-card-gmail');
@@ -186,18 +186,16 @@ describe('Plugins settings page', () => {
     fireEvent.click(within(card).getByRole('button', { name: /^install$/i }));
     fireEvent.click(within(card).getByRole('button', { name: /^connect$/i }));
 
-    expect(screen.queryByLabelText(/desktop oauth client id/i)).toBeNull();
-    expect(screen.queryByLabelText(/oauth refresh grant/i)).toBeNull();
     await waitFor(() =>
-      expect(management.beginAuthorization).toHaveBeenCalledWith({
-        accountId: 'account-a',
-        pluginId: 'gmail',
-      }),
+      expect(openExternal).toHaveBeenCalledWith(
+        'https://console.cloud.google.com/apis/credentials',
+      ),
     );
-    expect(openExternal).toHaveBeenCalledWith('https://accounts.example.test/authorize');
-    expect(screen.getByText(/if authorization did not open automatically/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /open google authorization/i })).toBeTruthy();
-    expect(screen.queryByText('What this plugin does')).toBeNull();
+    expect(screen.getByLabelText(/desktop oauth client id/i)).toBeTruthy();
+    expect(screen.getByLabelText(/oauth refresh grant/i)).toBeTruthy();
+    expect(screen.getByText(/bring a refresh grant from your own registered google/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /open gmail account page/i })).toBeTruthy();
+    expect(management.beginAuthorization).not.toHaveBeenCalled();
     expect(management.saveCredential).not.toHaveBeenCalled();
     expect(window.open).not.toHaveBeenCalled();
   }, 15_000);
@@ -281,8 +279,111 @@ describe('Plugins settings page', () => {
     );
     expect(screen.getByRole('button', { name: /view provider requirements/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /continue with github/i })).toBeNull();
-    expect(openExternal).toHaveBeenCalledWith('https://github.com/login/device');
-    expect(screen.getByRole('button', { name: /open github authorization/i })).toBeTruthy();
+    expect(openExternal).not.toHaveBeenCalledWith('https://github.com/login/device');
+    expect(screen.queryByRole('button', { name: /open github authorization/i })).toBeNull();
+    expect(screen.getByText(/use a key instead/i)).toBeTruthy();
+  }, 15_000);
+
+  it('rejects an unverified provider authorization endpoint and cancels its local session', async () => {
+    vi.mocked(management.beginAuthorization).mockResolvedValueOnce({
+      ok: true,
+      state: 'awaiting_approval',
+      authorizationUrl: 'https://accounts.example.test/authorize',
+    });
+    renderPlugins();
+    fireEvent.change(screen.getByLabelText('Search plugins'), { target: { value: 'GitHub' } });
+    const card = screen.getByTestId('plugin-card-github');
+    fireEvent.click(within(card).getByRole('button', { name: /^install$/i }));
+    fireEvent.click(within(card).getByRole('button', { name: /^connect$/i }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(
+      /unverified authorization endpoint/i,
+    );
+    expect(openExternal).not.toHaveBeenCalledWith('https://accounts.example.test/authorize');
+    expect(management.cancelAuthorization).toHaveBeenCalledWith({
+      accountId: 'account-a',
+      pluginId: 'github',
+    });
+  }, 15_000);
+
+  it('cancels an awaiting provider authorization without reporting success', async () => {
+    renderPlugins();
+    fireEvent.change(screen.getByLabelText('Search plugins'), { target: { value: 'GitHub' } });
+    const card = screen.getByTestId('plugin-card-github');
+    fireEvent.click(within(card).getByRole('button', { name: /^install$/i }));
+    fireEvent.click(within(card).getByRole('button', { name: /^connect$/i }));
+
+    fireEvent.click(await screen.findByRole('button', { name: /cancel authorization/i }));
+    await waitFor(() =>
+      expect(management.cancelAuthorization).toHaveBeenCalledWith({
+        accountId: 'account-a',
+        pluginId: 'github',
+      }),
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+  }, 15_000);
+
+  it('reflects verified provider completion and supports a later reconnect state', async () => {
+    renderPlugins();
+    fireEvent.change(screen.getByLabelText('Search plugins'), { target: { value: 'GitHub' } });
+    const card = screen.getByTestId('plugin-card-github');
+    fireEvent.click(within(card).getByRole('button', { name: /^install$/i }));
+    fireEvent.click(within(card).getByRole('button', { name: /^connect$/i }));
+    await screen.findByRole('button', { name: /cancel authorization/i });
+
+    act(() =>
+      usePluginStore.getState().upsertConnection({
+        accountId: 'account-a',
+        pluginId: 'github',
+        state: 'connected',
+        enabled: true,
+        enabledProjectIds: [],
+        configuredFields: ['token'],
+        updatedAt: 2,
+      }),
+    );
+    expect(
+      await screen.findAllByText(/provider authorization completed and verified/i),
+    ).toHaveLength(2);
+
+    fireEvent.click(
+      screen
+        .getAllByRole('button', { name: /^close$/i })
+        .find((button) => button.textContent === 'Close')!,
+    );
+    act(() =>
+      usePluginStore.getState().upsertConnection({
+        accountId: 'account-a',
+        pluginId: 'github',
+        state: 'reauthorize',
+        enabled: false,
+        enabledProjectIds: [],
+        configuredFields: ['token'],
+        updatedAt: 3,
+      }),
+    );
+    fireEvent.click(within(card).getByRole('button', { name: /^reconnect$/i }));
+    await waitFor(() => expect(management.beginAuthorization).toHaveBeenCalledTimes(2));
+  }, 15_000);
+
+  it('shows an exact external blocker without installing or starting OAuth', async () => {
+    renderPlugins();
+    fireEvent.change(screen.getByLabelText('Search plugins'), {
+      target: { value: 'Google Calendar' },
+    });
+    const card = screen.getByTestId('plugin-card-google-calendar');
+    fireEvent.click(within(card).getByRole('button', { name: /view requirements/i }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(
+      /no registered google calendar application, exact redirect\/callback handler, or trusted token exchange/i,
+    );
+    expect(
+      screen.getByText(/register a provider application for the exact google calendar/i),
+    ).toBeTruthy();
+    expect(screen.queryByLabelText(/client secret/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: /^connect$/i })).toBeNull();
+    expect(management.beginAuthorization).not.toHaveBeenCalled();
+    expect(usePluginStore.getState().installedPluginIdsByAccount['account-a']).toBeUndefined();
   }, 15_000);
 
   it('shows exact required OAuth scopes in the compact recovery panel', async () => {
@@ -292,7 +393,7 @@ describe('Plugins settings page', () => {
     fireEvent.click(within(card).getByRole('button', { name: /^install$/i }));
     fireEvent.click(within(card).getByRole('button', { name: /^connect$/i }));
 
-    expect(await screen.findByText('Permissions requested')).toBeTruthy();
+    expect(await screen.findByText('Required provider scopes')).toBeTruthy();
     expect(screen.getByText('https://www.googleapis.com/auth/gmail.readonly')).toBeTruthy();
     expect(screen.getByText('https://www.googleapis.com/auth/gmail.compose')).toBeTruthy();
   }, 15_000);

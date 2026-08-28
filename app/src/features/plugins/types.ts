@@ -14,6 +14,34 @@ export type PluginConnectionStrategy =
   | 'official_connector'
   | 'manual_credential';
 
+export type PluginAuthorizationCapability =
+  | Readonly<{
+      kind: 'provider_hosted_oauth';
+      strategy: Extract<
+        PluginConnectionStrategy,
+        'native_oauth_pkce' | 'hosted_oauth' | 'device_authorization' | 'app_installation'
+      >;
+      authorizationUrl: string;
+      manualFallback: boolean;
+      externalPrerequisites: readonly string[];
+    }>
+  | Readonly<{
+      kind: 'manual_fallback';
+      providerAccessUrl: string;
+      verification: 'provider_probe' | 'trusted_runtime';
+      externalPrerequisites: readonly string[];
+    }>
+  | Readonly<{
+      kind: 'no_auth';
+      reason: string;
+    }>
+  | Readonly<{
+      kind: 'external_blocker';
+      reason: string;
+      providerAccessUrl?: string;
+      externalPrerequisites: readonly string[];
+    }>;
+
 export type PluginField = {
   id: string;
   label: string;
@@ -49,6 +77,8 @@ export type PluginManifest = {
   category: string;
   provider: string;
   authType: PluginAuthType;
+  /** Executable connection truth. Required by the curated catalog validator. */
+  authorizationCapability?: PluginAuthorizationCapability;
   /** Explicit interactive connection route. Defaults conservatively from authType. */
   connectionStrategy?: PluginConnectionStrategy;
   fields: PluginField[];
@@ -58,12 +88,12 @@ export type PluginManifest = {
   docsUrl?: string;
   /** Official page to create API keys, OAuth apps, or tokens. */
   credentialUrl?: string;
-  /** Provider authorization endpoint. Never substitute credentialUrl for this value. */
+  /** Provider authorization endpoint metadata. It is executable only for provider_hosted_oauth. */
   authorizationUrl?: string;
   /**
-   * Official external page opened beside the in-app connection UI. OAuth entries
-   * must use their authorization endpoint; credential connectors use the signed-in
-   * provider account/configuration page.
+   * Exact official external page opened beside the in-app connection UI. Provider-hosted
+   * authorization uses the verified authorization endpoint; manual and externally blocked
+   * connectors use the signed-in provider account/configuration page.
    */
   providerAccessUrl?: string;
   help: string;
@@ -74,6 +104,10 @@ export type PluginManifest = {
   limitations?: string;
   /** When set, the trusted account-scoped runtime uses this connection probe. */
   httpTest?: PluginHttpTest;
+};
+
+export type ClassifiedPluginManifest = PluginManifest & {
+  authorizationCapability: PluginAuthorizationCapability;
 };
 
 export type PluginConnectionState =

@@ -1,5 +1,6 @@
 import { buildCatalogEntry } from './providerRegistry';
-import type { PluginManifest, PluginStatus } from './types';
+import type { ClassifiedPluginManifest, PluginManifest, PluginStatus } from './types';
+import { completePluginAuthorizationManifest } from './authorizationCapability';
 
 const token = (id: string, label: string, placeholder: string, help?: string) => ({
   id,
@@ -19,7 +20,7 @@ const text = (id: string, label: string, placeholder: string, help?: string) => 
   required: true,
 });
 
-const IMPLEMENTED_BASE: PluginManifest[] = [
+const IMPLEMENTED_BASE_DEFINITIONS: Array<Omit<PluginManifest, 'authorizationCapability'>> = [
   {
     id: 'github',
     name: 'GitHub',
@@ -303,6 +304,10 @@ const IMPLEMENTED_BASE: PluginManifest[] = [
   },
 ];
 
+const IMPLEMENTED_BASE: ClassifiedPluginManifest[] = IMPLEMENTED_BASE_DEFINITIONS.map(
+  completePluginAuthorizationManifest,
+);
+
 export const PLUGIN_CATALOG_TARGET = 112;
 
 type CatalogCandidate = { name: string; category: string };
@@ -436,7 +441,7 @@ const PRIORITY_CANDIDATES: CatalogCandidate[] = [
   { name: 'Box', category: 'Files' },
 ];
 
-function isVerifiedCatalogEntry(plugin: PluginManifest): boolean {
+function isVerifiedCatalogEntry(plugin: ClassifiedPluginManifest): boolean {
   return plugin.status === 'implemented' || plugin.status === 'configurable';
 }
 
@@ -444,20 +449,31 @@ const implementedIds = new Set(IMPLEMENTED_BASE.map((plugin) => plugin.id));
 const GENERATED_TARGET = PLUGIN_CATALOG_TARGET - IMPLEMENTED_BASE.length;
 const CUSTOM_RUNTIME_TESTERS = new Set(['zapier']);
 
-const GENERATED: PluginManifest[] = PRIORITY_CANDIDATES.map(({ name, category }) =>
+const GENERATED: ClassifiedPluginManifest[] = PRIORITY_CANDIDATES.map(({ name, category }) =>
   buildCatalogEntry(name, category),
 )
   .filter((plugin) => !implementedIds.has(plugin.id))
   .filter(isVerifiedCatalogEntry)
   .slice(0, GENERATED_TARGET);
 
-export const PLUGIN_CATALOG: readonly PluginManifest[] = [...IMPLEMENTED_BASE, ...GENERATED];
+export const CLASSIFIED_PLUGIN_CATALOG: readonly ClassifiedPluginManifest[] = [
+  ...IMPLEMENTED_BASE,
+  ...GENERATED,
+];
+
+export const PLUGIN_CATALOG: readonly PluginManifest[] = CLASSIFIED_PLUGIN_CATALOG;
 
 export function getPluginManifest(id: string): PluginManifest | undefined {
   return PLUGIN_CATALOG.find((plugin) => plugin.id === id);
 }
 
-export function validatePluginCatalog(catalog = PLUGIN_CATALOG): string[] {
+export function getClassifiedPluginManifest(id: string): ClassifiedPluginManifest | undefined {
+  return CLASSIFIED_PLUGIN_CATALOG.find((plugin) => plugin.id === id);
+}
+
+export function validatePluginCatalog(
+  catalog: readonly PluginManifest[] = PLUGIN_CATALOG,
+): string[] {
   const errors: string[] = [];
   const ids = new Set<string>();
   for (const plugin of catalog) {
@@ -500,7 +516,12 @@ export function validatePluginCatalog(catalog = PLUGIN_CATALOG): string[] {
     if (plugin.status === 'implemented' && plugin.tools.length === 0) {
       errors.push(`${plugin.id}: implemented plugin has no tools`);
     }
-    if (plugin.authType !== 'none') {
+    const capability = plugin.authorizationCapability;
+    if (!capability) {
+      errors.push(`${plugin.id}: missing authorization capability`);
+      continue;
+    }
+    if (capability.kind !== 'no_auth') {
       try {
         const accessUrl = new URL(plugin.providerAccessUrl ?? '');
         if (accessUrl.protocol !== 'https:' || accessUrl.username || accessUrl.password) {
@@ -509,9 +530,33 @@ export function validatePluginCatalog(catalog = PLUGIN_CATALOG): string[] {
       } catch {
         errors.push(`${plugin.id}: invalid provider access URL`);
       }
-      if (plugin.authorizationUrl && plugin.providerAccessUrl !== plugin.authorizationUrl) {
-        errors.push(`${plugin.id}: OAuth access page must be the authorization endpoint`);
+    }
+    if (capability.kind === 'provider_hosted_oauth') {
+      if (
+        plugin.authorizationUrl !== capability.authorizationUrl ||
+        plugin.providerAccessUrl !== capability.authorizationUrl ||
+        plugin.connectionStrategy !== capability.strategy ||
+        capability.externalPrerequisites.length === 0
+      ) {
+        errors.push(`${plugin.id}: invalid provider-hosted authorization capability`);
       }
+    } else if (capability.kind === 'manual_fallback') {
+      if (
+        plugin.credentialUrl !== capability.providerAccessUrl ||
+        plugin.providerAccessUrl !== capability.providerAccessUrl ||
+        plugin.fields.length === 0
+      ) {
+        errors.push(`${plugin.id}: invalid manual authorization fallback`);
+      }
+    } else if (capability.kind === 'no_auth') {
+      if (plugin.authType !== 'none' || plugin.fields.length !== 0 || plugin.providerAccessUrl) {
+        errors.push(`${plugin.id}: invalid no-auth capability`);
+      }
+    } else if (
+      capability.reason.trim().length < 20 ||
+      capability.externalPrerequisites.length === 0
+    ) {
+      errors.push(`${plugin.id}: invalid external authorization blocker`);
     }
     if (plugin.status === 'planned') {
       errors.push(`${plugin.id}: legacy planned status is not allowed`);
