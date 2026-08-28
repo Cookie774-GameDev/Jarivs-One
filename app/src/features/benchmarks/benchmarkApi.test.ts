@@ -62,6 +62,13 @@ describe('benchmark API contract', () => {
     });
   });
 
+  it('downgrades an old backend response without a complete page receipt', () => {
+    const parsed = parseBenchmarkResponse(payload());
+    expect(parsed.dataset?.completeness).toMatchObject({ state: 'unverified' });
+    expect(parsed.freshness).toMatchObject({ state: 'degraded' });
+    expect(parsed.freshness.warning).toMatch(/did not provide a complete/i);
+  });
+
   it('rejects Arena/Elo-scale values mapped into Intelligence Index', () => {
     expect(() =>
       parseBenchmarkResponse(payload({ rows: [{ ...row, intelligenceIndex: 1587 }] })),

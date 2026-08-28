@@ -93,6 +93,32 @@ describe('BenchmarkIntelligencePage', () => {
     expect(screen.queryByText(/^Fresh$/u)).toBeNull();
   });
 
+  it('shows unverified pagination as degraded instead of a green fresh badge', async () => {
+    api.fetchBenchmarkLeaderboard.mockResolvedValueOnce({
+      generatedAt: '2026-08-14T23:08:00.000Z',
+      freshness: { state: 'fresh' },
+      dataset: {
+        source: 'Artificial Analysis',
+        metric: 'Artificial Analysis Intelligence Index',
+        sourceUrl: 'https://artificialanalysis.ai/leaderboards/models',
+        sourceObservedAt: '2026-08-14T23:00:00.000Z',
+        ingestedAt: '2026-08-14T23:07:00.000Z',
+        rowCount: 2,
+        completeness: {
+          state: 'unverified',
+          reason: 'The backend did not provide a complete Artificial Analysis page-set receipt.',
+        },
+      },
+      latestRun: { status: 'success', completedAt: '2026-08-14T23:07:00.000Z', errorCodes: [] },
+      rows,
+      fromCache: false,
+    });
+    render(<BenchmarkIntelligencePage />);
+    expect(await screen.findByText('Degraded')).toBeTruthy();
+    expect(screen.queryByText(/^Fresh$/u)).toBeNull();
+    expect(screen.getByText('Dataset completeness: unverified')).toBeTruthy();
+  });
+
   it('sorts by exact-row input price and output speed', async () => {
     render(<BenchmarkIntelligencePage />);
     await screen.findAllByText('Claude Opus 5 (Max Effort)');

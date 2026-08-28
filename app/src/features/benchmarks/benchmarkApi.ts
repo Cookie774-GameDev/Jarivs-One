@@ -17,6 +17,31 @@ export interface BenchmarkDatasetMetadata {
   ingestedAt: string;
   rowCount: number;
   checksum?: string;
+  completeness: BenchmarkCompleteness;
+}
+
+export interface BenchmarkPaginationMetadata {
+  mode: 'page';
+  expectedPages: number;
+  receivedPages: number;
+  pageSize: number;
+  receivedSourceRows: number;
+  expectedSourceRows?: number;
+  complete: true;
+}
+
+export interface BenchmarkCompleteness {
+  state: 'complete' | 'unverified';
+  pagination?: BenchmarkPaginationMetadata;
+  reason?: string;
+}
+
+export interface BenchmarkLatestRun {
+  status: string;
+  completedAt: string | null;
+  datasetId?: string;
+  pagination?: Record<string, unknown>;
+  errorCodes: string[];
 }
 
 export interface BenchmarkModelRow {
@@ -49,6 +74,7 @@ export interface BenchmarkApiResponse {
   generatedAt: string;
   freshness: BenchmarkFreshness;
   dataset: BenchmarkDatasetMetadata | null;
+  latestRun: BenchmarkLatestRun | null;
   rows: BenchmarkModelRow[];
 }
 
@@ -166,6 +192,84 @@ function parseDataset(value: unknown): BenchmarkDatasetMetadata | null {
     rowCount,
     methodologyVersion: optionalString(record, 'methodologyVersion'),
     checksum: optionalString(record, 'checksum'),
+    completeness: parseCompleteness(record.completeness),
+  };
+}
+
+function parsePagination(value: unknown): BenchmarkPaginationMetadata | undefined {
+  if (value === undefined || value === null) return undefined;
+  const record = asRecord(value);
+  if (requiredString(record, 'mode') !== 'page' || record.complete !== true) {
+    throw new Error('Benchmark completeness receipt is malformed.');
+  }
+  const expectedPages = requiredNumber(record, 'expectedPages');
+  const receivedPages = requiredNumber(record, 'receivedPages');
+  const pageSize = requiredNumber(record, 'pageSize');
+  const receivedSourceRows = requiredNumber(record, 'receivedSourceRows');
+  const expectedSourceRows = optionalNonNegativeNumber(record, 'expectedSourceRows');
+  if (
+    ![expectedPages, receivedPages, pageSize, receivedSourceRows].every(
+      (entry) => Number.isInteger(entry) && entry >= 1,
+    ) ||
+    receivedPages !== expectedPages ||
+    (expectedSourceRows !== undefined && expectedSourceRows !== receivedSourceRows)
+  ) {
+    throw new Error('Benchmark completeness receipt is malformed.');
+  }
+  return {
+    mode: 'page',
+    expectedPages,
+    receivedPages,
+    pageSize,
+    receivedSourceRows,
+    ...(expectedSourceRows === undefined ? {} : { expectedSourceRows }),
+    complete: true,
+  };
+}
+
+function parseCompleteness(value: unknown): BenchmarkCompleteness {
+  if (value === undefined || value === null) {
+    return {
+      state: 'unverified',
+      reason: 'The backend did not provide a complete Artificial Analysis page-set receipt.',
+    };
+  }
+  const record = asRecord(value);
+  const state = requiredString(record, 'state');
+  if (state === 'complete') {
+    const pagination = parsePagination(record.pagination);
+    if (!pagination) throw new Error('Benchmark completeness receipt is malformed.');
+    return { state, pagination };
+  }
+  if (state === 'unverified') {
+    return { state, reason: optionalString(record, 'reason') };
+  }
+  throw new Error('Benchmark completeness receipt is malformed.');
+}
+
+function parseLatestRun(value: unknown): BenchmarkLatestRun | null {
+  if (value === undefined || value === null) return null;
+  const record = asRecord(value);
+  const errorCodes = Array.isArray(record.errorCodes)
+    ? record.errorCodes.map((entry) => {
+        if (typeof entry !== 'string' || !entry.trim()) {
+          throw new Error('Benchmark response is malformed.');
+        }
+        return entry.trim();
+      })
+    : [];
+  return {
+    status: requiredString(record, 'status'),
+    completedAt:
+      record.completedAt === null
+        ? null
+        : isoTimestamp(requiredString(record, 'completedAt')),
+    datasetId: optionalString(record, 'datasetId'),
+    pagination:
+      record.pagination && typeof record.pagination === 'object' && !Array.isArray(record.pagination)
+        ? (record.pagination as Record<string, unknown>)
+        : undefined,
+    errorCodes,
   };
 }
 
@@ -232,10 +336,23 @@ export function parseBenchmarkResponse(payload: unknown): BenchmarkApiResponse {
   }
   if (!dataset && rows.length > 0) throw new Error('Benchmark response is malformed.');
 
+  const freshness = parseFreshness(root.freshness);
+  const truthfulFreshness =
+    dataset?.completeness.state === 'unverified' && freshness.state === 'fresh'
+      ? {
+          ...freshness,
+          state: 'degraded' as const,
+          warning:
+            dataset.completeness.reason ??
+            'The backend did not prove complete Artificial Analysis pagination.',
+        }
+      : freshness;
+
   return {
     generatedAt: isoTimestamp(requiredString(root, 'generatedAt')),
-    freshness: parseFreshness(root.freshness),
+    freshness: truthfulFreshness,
     dataset,
+    latestRun: parseLatestRun(root.latestRun),
     rows,
   };
 }

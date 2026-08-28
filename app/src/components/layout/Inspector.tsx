@@ -2046,12 +2046,13 @@ function ContextContextPanel() {
   );
 }
 
-// ----- Benchmarks — top 5 by Arena score (snapshot fallback) -----
+// ----- Benchmarks — backend-authoritative Intelligence Index -----
 
 interface BenchmarkLite {
+  id: string;
   model: string;
   provider: string;
-  arena_score: number;
+  intelligenceIndex: number;
 }
 
 function BenchmarksContextPanel() {
@@ -2062,19 +2063,25 @@ function BenchmarksContextPanel() {
     let cancelled = false;
     (async () => {
       try {
-        const { fetchBenchmarks } = await import('@/features/benchmarks/benchmarkData');
-        const result = await fetchBenchmarks();
+        const { fetchBenchmarkLeaderboard } = await import('@/features/benchmarks/benchmarkApi');
+        const result = await fetchBenchmarkLeaderboard();
         if (cancelled) return;
-        const top = [...result.rows]
-          .sort((a, b) => b.arena_score - a.arena_score)
+        const top = result.rows
           .slice(0, 5)
           .map((r) => ({
+            id: r.id,
             model: r.model,
             provider: r.provider,
-            arena_score: r.arena_score,
+            intelligenceIndex: r.intelligenceIndex,
           }));
         setRows(top);
-        setSourceHint(result.fromSnapshot ? 'snapshot' : 'live');
+        setSourceHint(
+          result.fromCache
+            ? 'cached D1 data'
+            : result.freshness.state === 'fresh'
+              ? 'fresh'
+              : result.freshness.state,
+        );
       } catch {
         /* silent — placeholder remains */
       }
@@ -2085,18 +2092,18 @@ function BenchmarksContextPanel() {
   }, []);
 
   if (!rows) {
-    return <PlaceholderCard title="Top by Arena score" body="Loading leaderboard…" />;
+    return <PlaceholderCard title="Top Intelligence Index" body="Loading verified leaderboard…" />;
   }
   if (rows.length === 0) {
-    return <PlaceholderCard title="Top by Arena score" body="No benchmark rows available yet." />;
+    return <PlaceholderCard title="Top Intelligence Index" body="No verified benchmark rows available yet." />;
   }
 
   return (
-    <StripCard eyebrow="Top by Arena score" hint={sourceHint}>
+    <StripCard eyebrow="Top Intelligence Index" hint={sourceHint}>
       <ol className="flex flex-col gap-1.5">
         {rows.map((r, i) => (
           <li
-            key={`${r.provider}-${r.model}`}
+            key={r.id}
             className="flex items-center gap-2 rounded-md bg-paper-soft px-2 py-1.5"
           >
             <span className="text-metadata text-muted-foreground tabular-nums shrink-0 w-4">
@@ -2106,7 +2113,7 @@ function BenchmarksContextPanel() {
               {r.model}
             </span>
             <span className="text-metadata text-accent-copper tabular-nums shrink-0">
-              {r.arena_score}
+              {r.intelligenceIndex.toLocaleString(undefined, { maximumFractionDigits: 1 })}
             </span>
           </li>
         ))}

@@ -109,7 +109,14 @@ function fullTime(value: string | undefined): string {
 
 function statusLabel(result: BenchmarkFetchResult | null): string {
   if (!result) return 'Loading';
-  if (result.fromCache || ['degraded', 'stale'].includes(result.freshness.state)) return 'Stale';
+  if (
+    result.dataset?.completeness?.state === 'unverified' &&
+    result.freshness.state === 'fresh'
+  ) {
+    return 'Degraded';
+  }
+  if (result.fromCache || result.freshness.state === 'stale') return 'Stale';
+  if (result.freshness.state === 'degraded') return 'Degraded';
   if (['failed', 'never'].includes(result.freshness.state)) return 'Unavailable';
   return 'Fresh';
 }
@@ -233,7 +240,7 @@ export function BenchmarkIntelligencePage() {
               <span
                 className={cn(
                   'h-1.5 w-1.5 rounded-full',
-                  result?.freshness.state === 'fresh' ? 'bg-success' : 'bg-warning',
+                  statusLabel(result) === 'Fresh' ? 'bg-success' : 'bg-warning',
                 )}
               />
               <span>{statusLabel(result)}</span>
@@ -251,6 +258,24 @@ export function BenchmarkIntelligencePage() {
                 <span>{result.dataset.metric}</span>
                 <span>Observed: {fullTime(result.dataset.sourceObservedAt)}</span>
                 <span>Ingested: {fullTime(result.dataset.ingestedAt)}</span>
+                {(result.dataset.completeness?.state ?? 'unverified') === 'complete' &&
+                result.dataset.completeness?.pagination ? (
+                  <span data-benchmark-completeness="complete">
+                    Complete pages: {result.dataset.completeness.pagination.receivedPages}/
+                    {result.dataset.completeness.pagination.expectedPages} · source rows:{' '}
+                    {result.dataset.completeness.pagination.receivedSourceRows}
+                  </span>
+                ) : (
+                  <span data-benchmark-completeness="unverified">Dataset completeness: unverified</span>
+                )}
+                {result.latestRun ? (
+                  <span>
+                    Latest backend run: {result.latestRun.status}
+                    {result.latestRun.errorCodes.length
+                      ? ` (${result.latestRun.errorCodes.join(', ')})`
+                      : ''}
+                  </span>
+                ) : null}
                 {result.dataset.methodologyVersion ? (
                   <span>Methodology: {result.dataset.methodologyVersion}</span>
                 ) : null}
