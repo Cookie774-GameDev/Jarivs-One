@@ -190,11 +190,11 @@
       "evidence": [
         {
           "kind": "commit",
-          "ref": "631e8336 makes Schedule timeline/action output disclose the persisted provider, connection, exact model, -fast route, and provider-default effort without substitution; Schedule 111/111 and full TypeScript passed"
+          "ref": "631e8336 makes Schedule timeline/action output disclose the persisted provider, connection, exact model, -fast route, and provider-default effort without substitution; 4912c802 makes Prompt Forge fail closed when an explicit exact route is unavailable instead of silently selecting Spark"
         },
         {
           "kind": "test",
-          "ref": "Fresh corrective cross-surface run: Chat picker, Schedule picker, canonical model selection, Prompt Forge, and action registry 6 files and 72/72 tests passed; catalog/accessible model refresh matrix separately passed 56/56"
+          "ref": "Fresh corrective cross-surface run: Chat picker, Schedule picker, canonical model selection, Prompt Forge, and action registry 6 files and 72/72 tests passed; catalog/accessible model refresh matrix separately passed 56/56; post-4912c802 affected Prompt Forge matrix passed 30 files and 255/255 tests plus TypeScript"
         },
         {
           "kind": "pending",
@@ -254,21 +254,25 @@
     {
       "id": "schedule-complete-lifecycle",
       "requirement": "Schedules create, edit, cancel, reopen, retain custom recurrence/reminders, and preserve their exact Jarvis model route",
-      "status": "Not implemented",
+      "status": "Implemented and verified",
       "nativeRequired": true,
       "visualRequired": true,
       "evidence": [
         {
           "kind": "commit",
-          "ref": "16366fa6 implements Schedule edit, cancel, and reopen while preserving exact route, duration, output chat, run history, and error history"
+          "ref": "16366fa6 implements Schedule edit, cancel, and reopen while preserving exact route, duration, output chat, run history, and error history; f72d9746 exposes and locks reminder selection state"
         },
         {
           "kind": "test",
-          "ref": "Fresh verification: focused lifecycle/helper 2 files and 9/9, full Schedule 15 files and 107/107, full TypeScript, Prettier, diff, and Gitleaks passed"
+          "ref": "Fresh verification: full Schedule 16 files and 111/111 tests, full TypeScript, Prettier, diff, and Gitleaks passed"
         },
         {
-          "kind": "pending",
-          "ref": "Official-native create/edit/cancel/reopen/custom recurrence/reminder persistence proof remains required before verification"
+          "kind": "native",
+          "ref": "Official Tauri Playwright aggregate pass at .codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-12-schedule-kanban-motion-cbdcec5d/schedule-lifecycle-aggregate.json proves event custom weekly interval/end date with 15/60 reminders and Jarvis action create/edit/cancel/reopen, ten-day interval, exact opencode/opencode-cli/opencode-go/deepseek-v4-flash-vision-exp identity, provider-default effort receipt, remount persistence, and fixture cleanup; 5/5 aggregate assertions passed with 28 safety checks, zero Ollama/11434, and zero console/page errors"
+        },
+        {
+          "kind": "screenshot",
+          "ref": "06-schedule-event-supplement.png, 07-schedule-action-receipt-supplement.png, and 08-schedule-supplement-after-remount.png in the same evidence directory"
         }
       ]
     },
