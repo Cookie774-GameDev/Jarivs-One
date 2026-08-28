@@ -9,7 +9,9 @@ export type AgentMotionKind =
   | 'cursor-forge'
   | 'breathing-brackets'
   | 'stack-shift'
-  | 'code-shimmer';
+  | 'code-shimmer'
+  | 'book-read'
+  | 'search-scan';
 
 export interface AgentMotionEvidence {
   status?: ChatActivityStatus;
@@ -43,6 +45,10 @@ const KIND_CATEGORY: Readonly<Record<ChatActivityKind, ChatActivityCategory>> = 
 
 export function resolveAgentMotion(evidence: AgentMotionEvidence): AgentMotionKind | null {
   if (!evidence.status || !LIVE_STATUSES.has(evidence.status)) return null;
+  if (evidence.activityKind === 'url') return 'search-scan';
+  if (evidence.activityKind === 'file' && evidence.activityCategory !== 'writing') {
+    return 'book-read';
+  }
   const structuredCategory =
     evidence.activityCategory &&
     Object.prototype.hasOwnProperty.call(CATEGORY_MOTION, evidence.activityCategory)
@@ -129,6 +135,23 @@ export function AgentMotionIndicator({
             style={{ '--motion-index': index, '--motion-width': width } as React.CSSProperties}
           />
         ))}
+      </span>
+    );
+  } else if (motion === 'book-read') {
+    animation = (
+      <span className="agent-motion agent-motion--book-read">
+        <i className="agent-motion__book-cover" />
+        <i className="agent-motion__book-page agent-motion__book-page--left" />
+        <i className="agent-motion__book-page agent-motion__book-page--right" />
+        <i className="agent-motion__book-turn" />
+      </span>
+    );
+  } else if (motion === 'search-scan') {
+    animation = (
+      <span className="agent-motion agent-motion--search-scan">
+        <i className="agent-motion__search-ring" />
+        <i className="agent-motion__search-handle" />
+        <i className="agent-motion__search-glint" />
       </span>
     );
   } else {

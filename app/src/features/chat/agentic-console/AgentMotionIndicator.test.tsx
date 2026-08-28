@@ -57,13 +57,13 @@ describe('resolveAgentMotion', () => {
         status: 'running',
         activityKind: 'file',
         title: 'Coordinating agents',
-        expected: 'stack-shift',
+        expected: 'book-read',
       },
       {
         status: 'running',
         activityKind: 'url',
         title: 'Writing code',
-        expected: 'twin-loop',
+        expected: 'search-scan',
       },
       {
         status: 'running',
@@ -92,6 +92,14 @@ describe('resolveAgentMotion', () => {
     ).toEqual(titledLikeOtherActivities.map(({ expected }) => expected));
   });
 
+  it('uses the reference book and magnifier only for structured read and search evidence', () => {
+    expect(resolveAgentMotion({ status: 'running', activityKind: 'file' })).toBe('book-read');
+    expect(resolveAgentMotion({ status: 'running', activityKind: 'url' })).toBe('search-scan');
+    expect(
+      resolveAgentMotion({ status: 'running', activityKind: 'tool', title: 'send mail and ship' }),
+    ).toBe('cursor-forge');
+  });
+
   it('uses generic thinking for unknown live evidence and no motion without a live status', () => {
     expect(resolveAgentMotion({ status: 'running' })).toBe('cursor-forge');
     expect(resolveAgentMotion({ activityCategory: 'thinking' })).toBeNull();
@@ -104,7 +112,7 @@ describe('resolveAgentMotion', () => {
         activityCategory: 'unknown-category' as ChatActivityCategory,
         activityKind: 'file',
       }),
-    ).toBe('stack-shift');
+    ).toBe('book-read');
   });
 
   it('uses generic thinking when both persisted category and kind are invalid', () => {
@@ -119,7 +127,11 @@ describe('resolveAgentMotion', () => {
 });
 
 describe('AgentMotionIndicator', () => {
-  it.each(EXPECTED_MOTIONS)(
+  it.each([
+    ...EXPECTED_MOTIONS,
+    ['structured read', 'book-read'],
+    ['structured search', 'search-scan'],
+  ] as const)(
     'renders %s motion as decorative in standard and compact layouts',
     (_activityCategory, motion) => {
       const standard = render(<AgentMotionIndicator motion={motion} />);
