@@ -1664,8 +1664,7 @@ export function createJarvisKernelRuntime(
         !['pending', 'approved'].includes(approval.status) ||
         approval.runId !== canonicalParent.id ||
         approval.requestId !== providerScope.requestId ||
-        approval.attemptNumber !== providerScope.attemptNumber ||
-        approval.expiresAt <= input.now()
+        approval.attemptNumber !== providerScope.attemptNumber
       ) {
         throw new Error('kernel_action_scope_mismatch');
       }

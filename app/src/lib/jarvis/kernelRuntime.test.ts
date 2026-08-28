@@ -1468,9 +1468,10 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
     expect(await db.jarvis_events.count()).toBe(3);
   });
 
-  it('decides an exact typed-chat approval backed by completed provider response evidence', async () => {
+  it('denies an expired typed-chat approval backed by completed provider response evidence', async () => {
     const requestId = 'request-runtime-response-backed-approval';
     const approvalId = 'jappr_runtime_response_backed';
+    let now = NOW;
     const parentRun: JarvisRun = {
       ...kernelRun(),
       status: 'running',
@@ -1553,7 +1554,7 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
       processResponse: vi.fn() as never,
       takeProviderArtifactDrafts: vi.fn(() => []),
       randomUUID: () => 'runtime-response-backed-approval-uuid',
-      now: () => NOW,
+      now: () => now,
     });
 
     await runtime.kernel.actions.create({
@@ -1574,7 +1575,7 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
       runtime.kernel.actions.decide({
         parentRun: awaitingRun,
         approvalId,
-        decision: 'approve',
+        decision: 'deny',
       }),
     ).rejects.toThrow('kernel_action_scope_mismatch');
     expect(fromJarvisApprovalRow((await db.jarvis_approvals.get(approvalId))!)).toMatchObject({
@@ -1588,12 +1589,13 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
       actionId: 'files.create',
       providerResultState: 'completed',
     });
+    now = NOW + 60_001;
 
     await expect(
       runtime.kernel.actions.decide({
         parentRun: awaitingRun,
         approvalId,
-        decision: 'approve',
+        decision: 'deny',
       }),
     ).resolves.toMatchObject({
       kind: 'committed',
@@ -1602,7 +1604,7 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
         runId: awaitingRun.id,
         requestId,
         attemptNumber: 1,
-        status: 'approved',
+        status: 'denied',
       },
     });
   });
