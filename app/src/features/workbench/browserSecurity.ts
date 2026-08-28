@@ -115,7 +115,7 @@ export function toEmbeddableUrl(input: string): { src: string; usedEmbed: boolea
 export function browserFramePolicy(input: string): {
   src: string;
   sandbox: string;
-  referrerPolicy: 'no-referrer';
+  referrerPolicy: 'no-referrer' | 'strict-origin-when-cross-origin';
   allow: string;
   frameBlocked: boolean;
   usedEmbed: boolean;
@@ -136,7 +136,7 @@ export function browserFramePolicy(input: string): {
       : usedEmbed
         ? TRUSTED_MEDIA_EMBED_SANDBOX
         : EMBEDDED_BROWSER_SANDBOX,
-    referrerPolicy: 'no-referrer',
+    referrerPolicy: usedEmbed ? 'strict-origin-when-cross-origin' : 'no-referrer',
     allow: usedEmbed
       ? 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture'
       : "clipboard-read 'none'; clipboard-write 'none'; camera 'none'; microphone 'none'; geolocation 'none'",

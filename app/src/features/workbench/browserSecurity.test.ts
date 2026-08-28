@@ -59,10 +59,12 @@ describe('Workbench browser isolation', () => {
     expect(policy.src).toContain('/embed/');
     expect(policy.sandbox).toBe(TRUSTED_MEDIA_EMBED_SANDBOX);
     expect(policy.sandbox).toContain('allow-same-origin');
+    expect(policy.referrerPolicy).toBe('strict-origin-when-cross-origin');
   });
 
   it('does not grant the trusted-media sandbox to arbitrary remote or loopback pages', () => {
     expect(browserFramePolicy('https://example.com').sandbox).toBe(EMBEDDED_BROWSER_SANDBOX);
+    expect(browserFramePolicy('https://example.com').referrerPolicy).toBe('no-referrer');
     expect(browserFramePolicy('http://127.0.0.1:5173').sandbox).toBe(LOOPBACK_BROWSER_SANDBOX);
     expect(TRUSTED_MEDIA_EMBED_SANDBOX).not.toBe(EMBEDDED_BROWSER_SANDBOX);
   });
