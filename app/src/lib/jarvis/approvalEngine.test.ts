@@ -357,6 +357,73 @@ describe('createJarvisApprovalEngine', () => {
     expect(putPreparedApproval).not.toHaveBeenCalled();
   });
 
+  it('allows an expired pending approval to be denied but never approved', async () => {
+    const setup = fixture();
+    const putPreparedApproval = vi.fn(async (prepared) => {
+      const approval = {
+        id: prepared.approvalId,
+        runId: prepared.parentRun.id,
+        actionId: prepared.actionId,
+        actionVersion: prepared.actionVersion,
+        params: prepared.params,
+        secretHandleRefs: prepared.secretHandleRefs,
+        paramsHash: prepared.paramsHash,
+        targetSnapshot: prepared.targetSnapshot,
+        risk: prepared.risk,
+        status: 'pending',
+        createdAt: prepared.createdAt,
+        schemaVersion: 1,
+        requestId: prepared.attempt.requestId,
+        attemptNumber: prepared.attempt.attemptNumber,
+        capabilityId: prepared.capabilityId,
+        capabilitySnapshotHash: prepared.capabilitySnapshotHash,
+        expectedEffect: prepared.expectedEffect,
+        expiresAt: prepared.expiresAt,
+      } as JarvisApprovalV1;
+      setup.approvals.set(approval.id, approval);
+      return { kind: 'committed' as const, value: approval };
+    });
+    const created = await setup.engine
+      .bindIssuedLifecycle(lifecycle({ putPreparedApproval }))
+      .create({
+        parentRun: setup.run,
+        attempt: requestAttempt(),
+        actionId: 'notes.create',
+        actionVersion: 1,
+        params: { title: 'hello' },
+        expiresAt: now + 1_000,
+      });
+    const expired = { ...created, expiresAt: now };
+    setup.approvals.set(expired.id, expired);
+    const decidePreparedApproval = vi.fn(async ({ decision }) => ({
+      kind: 'committed' as const,
+      value: {
+        ...expired,
+        status: decision === 'deny' ? ('denied' as const) : ('approved' as const),
+        decidedAt: now,
+      },
+    }));
+    const capability = setup.engine.bindIssuedLifecycle(lifecycle({ decidePreparedApproval }));
+
+    await expect(
+      capability.decide({
+        parentRun: setup.run,
+        approvalId: expired.id,
+        decision: 'deny',
+      }),
+    ).resolves.toMatchObject({ id: expired.id, status: 'denied' });
+    expect(decidePreparedApproval).toHaveBeenCalledOnce();
+
+    await expect(
+      capability.decide({
+        parentRun: setup.run,
+        approvalId: expired.id,
+        decision: 'approve',
+      }),
+    ).rejects.toSatisfy((error: unknown) => expectApprovalError(error, 'expired'));
+    expect(decidePreparedApproval).toHaveBeenCalledOnce();
+  });
+
   it('rejects nested cast authority instead of forwarding supplied run or attempt objects', async () => {
     const setup = fixture();
     const putPreparedApproval = vi.fn(async (input) => ({

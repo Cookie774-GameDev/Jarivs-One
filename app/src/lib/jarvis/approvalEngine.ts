@@ -1572,6 +1572,7 @@ export function createJarvisApprovalEngine(
       'accountId' | 'runId' | 'requestId' | 'attemptNumber'
     >,
     approval: JarvisApprovalV1,
+    options: Readonly<{ allowExpired?: boolean }> = {},
   ): Promise<{
     registration: Readonly<JarvisRegisteredActionDefinition>;
     params: Readonly<Record<string, unknown>>;
@@ -1584,7 +1585,7 @@ export function createJarvisApprovalEngine(
     ) {
       approvalError('run_scope_mismatch');
     }
-    if (approval.expiresAt <= input.now()) approvalError('expired');
+    if (approval.expiresAt <= input.now() && !options.allowExpired) approvalError('expired');
     const registration = resolveRegistration(approval.actionId, approval.actionVersion);
     if (!approval.params || typeof approval.params !== 'object' || Array.isArray(approval.params)) {
       approvalError('params_changed');
@@ -1903,8 +1904,9 @@ export function createJarvisApprovalEngine(
             decideInput.approvalId,
           );
           if (!approval || approval.status !== 'pending') approvalError('not_pending');
-          if (approval.expiresAt <= input.now()) approvalError('expired');
-          await validateStoredApproval(lifecycle, approval);
+          await validateStoredApproval(lifecycle, approval, {
+            allowExpired: decideInput.decision === 'deny',
+          });
           assertLive(state);
           return committed(
             await lifecycle.decidePreparedApproval({
