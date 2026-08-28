@@ -33,7 +33,11 @@ import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
 import './sakura-schedule.css';
 import { useAgentStore } from '@/stores/agents';
 import { findProtectedJarvisAgent } from '@/lib/jarvis/identity';
-import { selectionFromOption, selectionOptionId } from '@/lib/ai/modelSelection';
+import {
+  selectionFromOption,
+  selectionOptionId,
+  type ChatModelSelection,
+} from '@/lib/ai/modelSelection';
 import { useAssistantPersonaName } from '@/lib/assistantPersona';
 
 const LEGACY_SCHEDULE_TIMELINE_TRANSITION = Object.freeze({
@@ -71,6 +75,7 @@ import {
 } from './localDateTime';
 import { visualForEventTitle, visualForTask } from './scheduleIcons';
 import {
+  buildJarvisScheduleEventUpdate,
   buildJarvisScheduleEventInput,
   formatJarvisIntervalLabel,
   intervalMsFromParts,
@@ -456,6 +461,8 @@ export function SchedulePage() {
       defaultCustomRecurrence(initialScheduleDraft.startInput),
   );
   const [editingEventId, setEditingEventId] = React.useState<EventRow['id'] | null>(null);
+  const [editingJarvisModelSelection, setEditingJarvisModelSelection] =
+    React.useState<ChatModelSelection | null>(null);
   const [description, setDescription] = React.useState(initialScheduleDraft.description);
   const [reminderOffsets, setReminderOffsets] = React.useState<number[]>([
     ...initialScheduleDraft.reminderOffsets,
@@ -610,6 +617,30 @@ export function SchedulePage() {
       ) ?? null
     );
   }, [jarvisModelOptions, jarvisModelOptionId]);
+  const jarvisModelSelectionForSave = React.useMemo<ChatModelSelection | null>(() => {
+    if (
+      editingJarvisModelSelection &&
+      selectionOptionId(editingJarvisModelSelection) === jarvisModelOptionId
+    ) {
+      return editingJarvisModelSelection;
+    }
+    if (!selectedJarvisModel) return null;
+    return selectionFromOption(
+      selectedJarvisModel.provider,
+      selectedJarvisModel.modelId,
+      selectedJarvisModel.connection,
+    );
+  }, [editingJarvisModelSelection, jarvisModelOptionId, selectedJarvisModel]);
+  const savedJarvisRoute =
+    editingJarvisModelSelection?.mode === 'single' &&
+    selectionOptionId(editingJarvisModelSelection) === jarvisModelOptionId
+      ? editingJarvisModelSelection
+      : null;
+  const jarvisModelDisplay = selectedJarvisModel
+    ? `${getProviderDisplayName(selectedJarvisModel.provider)} · ${selectedJarvisModel.label}`
+    : savedJarvisRoute
+      ? `${getProviderDisplayName(savedJarvisRoute.providerId)} · ${savedJarvisRoute.modelId} (saved route unavailable)`
+      : null;
 
   React.useEffect(() => {
     if (scheduleMode === 'jarvis') setAllDay(false);
@@ -618,6 +649,12 @@ export function SchedulePage() {
   React.useEffect(() => {
     const activeId = selectionOptionId(chatModelSelection);
     setJarvisModelOptionId((current) => {
+      if (
+        editingJarvisModelSelection &&
+        current === selectionOptionId(editingJarvisModelSelection)
+      ) {
+        return current;
+      }
       if (current && jarvisModelOptions.some((option) => option.id === current)) return current;
       if (activeId && jarvisModelOptions.some((option) => option.id === activeId)) return activeId;
       if (chatModelSelection.mode === 'single') {
@@ -635,7 +672,7 @@ export function SchedulePage() {
         ''
       );
     });
-  }, [chatModelSelection, jarvisModelOptions]);
+  }, [chatModelSelection, editingJarvisModelSelection, jarvisModelOptions]);
 
   // Pick a day from the mini-calendar: pre-fill the new-event form for 9–10am
   // that day and jump the timeline to it if anything is already scheduled.
@@ -677,29 +714,61 @@ export function SchedulePage() {
     setEventRecurrenceRule(undefined);
     setCustomRecurrence(defaultCustomRecurrence(nextStartInput));
     setEditingEventId(null);
+    setEditingJarvisModelSelection(null);
   }, []);
 
   const handleEditEvent = React.useCallback((event: EventRow) => {
-    if (isJarvisScheduleEvent(event)) return;
     const nextStartInput = toLocalDateTimeInput(event.start_at);
-    setScheduleMode('event');
     setEditingEventId(event.id);
-    setTitle(event.title);
-    setDescription(event.description ?? '');
     setStartInput(nextStartInput);
     setEndInput(toLocalDateTimeInput(event.end_at));
-    setAllDay(event.all_day);
-    setReminderOffsets(event.reminders?.map((reminder) => reminder.offset_min) ?? []);
-    setEventRecurrenceRule(event.recurrence_rule);
-    setCustomRecurrence(
-      parseCustomRecurrence(event.recurrence_rule) ?? defaultCustomRecurrence(nextStartInput),
-    );
+    const jarvisMetadata = parseJarvisScheduleMetadata(event);
+    if (jarvisMetadata) {
+      setScheduleMode('jarvis');
+      setTitle(jarvisEventDisplayTitle(event));
+      setDescription(jarvisMetadata.prompt);
+      setAllDay(false);
+      setJarvisRecurrence(jarvisMetadata.recurrence);
+      const intervalMs = jarvisMetadata.intervalMs;
+      if (intervalMs && intervalMs % DAY_MS === 0) {
+        setIntervalAmount(intervalMs / DAY_MS);
+        setIntervalUnit('days');
+      } else if (intervalMs && intervalMs % HOUR_MS === 0) {
+        setIntervalAmount(intervalMs / HOUR_MS);
+        setIntervalUnit('hours');
+      } else if (intervalMs) {
+        setIntervalAmount(Math.max(1, Math.round(intervalMs / 60_000)));
+        setIntervalUnit('minutes');
+      }
+      setEditingJarvisModelSelection(jarvisMetadata.modelSelection);
+      setJarvisModelOptionId(selectionOptionId(jarvisMetadata.modelSelection) ?? '');
+    } else {
+      setScheduleMode('event');
+      setTitle(event.title);
+      setDescription(event.description ?? '');
+      setAllDay(event.all_day);
+      setReminderOffsets(event.reminders?.map((reminder) => reminder.offset_min) ?? []);
+      setEventRecurrenceRule(event.recurrence_rule);
+      setCustomRecurrence(
+        parseCustomRecurrence(event.recurrence_rule) ?? defaultCustomRecurrence(nextStartInput),
+      );
+      setEditingJarvisModelSelection(null);
+    }
     requestAnimationFrame(() => {
       const editor = document.getElementById('schedule-editor');
       if (typeof editor?.scrollIntoView === 'function')
         editor.scrollIntoView({ behavior: 'smooth' });
     });
   }, []);
+
+  const handleScheduleModeChange = React.useCallback(
+    (nextMode: 'event' | 'jarvis') => {
+      if (nextMode === scheduleMode) return;
+      if (editingEventId) resetManualEditor();
+      setScheduleMode(nextMode);
+    },
+    [editingEventId, resetManualEditor, scheduleMode],
+  );
 
   const handleSave = async () => {
     if (!workspaceId) {
@@ -710,7 +779,7 @@ export function SchedulePage() {
       toast.warning('Add a title', 'Events need a name.');
       return;
     }
-    if (scheduleMode === 'jarvis' && !selectedJarvisModel) {
+    if (scheduleMode === 'jarvis' && !jarvisModelSelectionForSave) {
       toast.warning(
         'Connect a model',
         `Connect a provider or download a local model before saving a ${personaName} Action.`,
@@ -744,12 +813,17 @@ export function SchedulePage() {
           offset_min,
           channels: ['desktop', 'in_app'],
         }));
+    const editingJarvisEvent =
+      jarvisAction && editingEventId
+        ? jarvisEvents.find((event) => String(event.id) === String(editingEventId))
+        : undefined;
 
     if (jarvisAction) {
       // Duplicate guard: repeated saves of the same action at the same time must not stack runs.
       const normalizedTitle = title.trim().toLowerCase();
       const duplicate = jarvisEvents.some(
         (event) =>
+          String(event.id) !== String(editingEventId) &&
           event.status === 'scheduled' &&
           event.start_at === start &&
           event.title
@@ -772,29 +846,40 @@ export function SchedulePage() {
       );
       const protectedJarvisId = protectedJarvis?.id ?? 'agent_jarvis';
       if (jarvisAction) {
-        await eventRepo.create(
-          buildJarvisScheduleEventInput({
-            workspaceId,
-            createdBy: protectedJarvisId,
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+        if (editingJarvisEvent) {
+          const patch = buildJarvisScheduleEventUpdate(editingJarvisEvent, {
             title: title.trim(),
             prompt: description.trim() || title.trim(),
             startAt: start,
-            durationMs: end - start,
+            durationMs: Math.max(
+              editingJarvisEvent.end_at - editingJarvisEvent.start_at,
+              5 * 60 * 1000,
+            ),
             recurrence: jarvisRecurrence,
             ...(customIntervalMs !== undefined ? { intervalMs: customIntervalMs } : {}),
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-            modelSelection: selectedJarvisModel
-              ? selectionOptionId(chatModelSelection) === selectedJarvisModel.id
-                ? chatModelSelection
-                : selectionFromOption(
-                    selectedJarvisModel.provider,
-                    selectedJarvisModel.modelId,
-                    selectedJarvisModel.connection,
-                  )
-              : chatModelSelection,
-            agentId: protectedJarvisId,
-          }),
-        );
+            timezone,
+            modelSelection: jarvisModelSelectionForSave!,
+          });
+          if (!patch) throw new Error('This saved action can no longer be edited safely.');
+          await eventRepo.update(editingJarvisEvent.id, patch);
+        } else {
+          await eventRepo.create(
+            buildJarvisScheduleEventInput({
+              workspaceId,
+              createdBy: protectedJarvisId,
+              title: title.trim(),
+              prompt: description.trim() || title.trim(),
+              startAt: start,
+              durationMs: end - start,
+              recurrence: jarvisRecurrence,
+              ...(customIntervalMs !== undefined ? { intervalMs: customIntervalMs } : {}),
+              timezone,
+              modelSelection: jarvisModelSelectionForSave!,
+              agentId: protectedJarvisId,
+            }),
+          );
+        }
       } else {
         const manualInput = {
           title: title.trim(),
@@ -818,17 +903,23 @@ export function SchedulePage() {
       }
       toast.success(
         jarvisAction
-          ? `${personaName} Action saved`
+          ? editingJarvisEvent
+            ? `${personaName} Action updated`
+            : `${personaName} Action saved`
           : editingEventId
             ? 'Event updated'
             : 'Event saved',
         formatScheduleSuccess(
           jarvisAction
-            ? `“${title.trim()}” will run ${
-                jarvisRecurrence === 'once'
-                  ? 'once'
-                  : jarvisRecurrenceLabel(jarvisRecurrence, customIntervalMs).toLowerCase()
-              } while VibeSpace is open.`
+            ? editingJarvisEvent
+              ? editingJarvisEvent.status === 'cancelled'
+                ? `“${title.trim()}” was updated and remains paused.`
+                : `“${title.trim()}” was updated without changing its status.`
+              : `“${title.trim()}” will run ${
+                  jarvisRecurrence === 'once'
+                    ? 'once'
+                    : jarvisRecurrenceLabel(jarvisRecurrence, customIntervalMs).toLowerCase()
+                } while VibeSpace is open.`
             : `“${title.trim()}” is on your schedule.`,
         ),
       );
@@ -1125,6 +1216,8 @@ export function SchedulePage() {
               <JarvisActionOutputView
                 event={openJarvisEvent}
                 onBack={() => setOpenJarvisEventId(null)}
+                onEdit={handleEditEvent}
+                onStatusChange={handleScheduleStatus}
                 onDelete={(event) => {
                   setOpenJarvisEventId(null);
                   void handleDeleteEvent(event);
@@ -1273,7 +1366,7 @@ export function SchedulePage() {
                 type="button"
                 size="sm"
                 variant={scheduleMode === 'event' ? 'secondary' : 'ghost'}
-                onClick={() => setScheduleMode('event')}
+                onClick={() => handleScheduleModeChange('event')}
               >
                 Event
               </Button>
@@ -1281,7 +1374,7 @@ export function SchedulePage() {
                 type="button"
                 size="sm"
                 variant={scheduleMode === 'jarvis' ? 'secondary' : 'ghost'}
-                onClick={() => setScheduleMode('jarvis')}
+                onClick={() => handleScheduleModeChange('jarvis')}
               >
                 {personaName} Action
               </Button>
@@ -1312,13 +1405,15 @@ export function SchedulePage() {
                           )}
                         >
                           <span className="flex min-w-0 items-center gap-2 truncate">
-                            {selectedJarvisModel ? (
-                              <ProviderFallbackMark provider={selectedJarvisModel.provider} />
+                            {selectedJarvisModel || savedJarvisRoute ? (
+                              <ProviderFallbackMark
+                                provider={
+                                  selectedJarvisModel?.provider ?? savedJarvisRoute!.providerId
+                                }
+                              />
                             ) : null}
                             <span className="truncate">
-                              {selectedJarvisModel
-                                ? `${getProviderDisplayName(selectedJarvisModel.provider)} · ${selectedJarvisModel.label}`
-                                : 'Choose a connected model'}
+                              {jarvisModelDisplay ?? 'Choose a connected model'}
                             </span>
                           </span>
                           <ChevronRight className="h-3.5 w-3.5 shrink-0 rotate-90 text-muted-foreground" />
@@ -1414,6 +1509,11 @@ export function SchedulePage() {
                         </div>
                       </PopoverContent>
                     </Popover>
+                  ) : savedJarvisRoute ? (
+                    <div className="rounded-md border border-dashed border-border bg-background/50 px-2.5 py-2 text-metadata text-muted-foreground">
+                      Saved route: {jarvisModelDisplay}. This edit keeps that exact identity;
+                      connect it again before its next run.
+                    </div>
                   ) : (
                     <div className="rounded-md border border-dashed border-border bg-background/50 px-2.5 py-2 text-metadata text-muted-foreground">
                       Connect a provider in Settings → Providers or download a local model before
@@ -1476,10 +1576,7 @@ export function SchedulePage() {
                   ) : null}
                 </div>
                 <p className={cn(FIELD_HINT_CLASS, 'text-accent-violet')}>
-                  Selected:{' '}
-                  {selectedJarvisModel
-                    ? `${getProviderDisplayName(selectedJarvisModel.provider)} · ${selectedJarvisModel.label}`
-                    : 'none'}
+                  Selected: {jarvisModelDisplay ?? 'none'}
                 </p>
                 <p className={FIELD_HINT_CLASS}>
                   Runs while VibeSpace is open. Runs missed by more than 6 hours are logged, not
@@ -1797,12 +1894,14 @@ export function SchedulePage() {
             >
               <Plus className="mr-1 h-3.5 w-3.5" />{' '}
               {scheduleMode === 'jarvis'
-                ? `Save ${personaName} Action`
+                ? editingEventId
+                  ? `Update ${personaName} Action`
+                  : `Save ${personaName} Action`
                 : editingEventId
                   ? 'Update event'
                   : 'Save event'}
             </Button>
-            {scheduleMode === 'event' && editingEventId ? (
+            {editingEventId ? (
               <Button type="button" variant="ghost" onClick={resetManualEditor}>
                 Cancel editing
               </Button>
@@ -1972,35 +2071,33 @@ function EventTimelineRow({
             )}
           </div>
           <div className="flex items-center gap-1">
-            {!jarvisSchedule ? (
-              <>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  onClick={() => onEdit(event)}
-                  aria-label={`Edit ${event.title}`}
-                  className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  size="icon-sm"
-                  variant="ghost"
-                  onClick={() =>
-                    onStatusChange(event, event.status === 'cancelled' ? 'scheduled' : 'cancelled')
-                  }
-                  aria-label={`${event.status === 'cancelled' ? 'Reopen' : 'Cancel'} ${event.title}`}
-                  className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                >
-                  {event.status === 'cancelled' ? (
-                    <RotateCcw className="h-3.5 w-3.5" />
-                  ) : (
-                    <CalendarX2 className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              </>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              onClick={() => onEdit(event)}
+              aria-label={`Edit ${event.title}`}
+              className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            {event.status === 'scheduled' || event.status === 'cancelled' ? (
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                onClick={() =>
+                  onStatusChange(event, event.status === 'cancelled' ? 'scheduled' : 'cancelled')
+                }
+                aria-label={`${event.status === 'cancelled' ? 'Reopen' : 'Cancel'} ${event.title}`}
+                className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              >
+                {event.status === 'cancelled' ? (
+                  <RotateCcw className="h-3.5 w-3.5" />
+                ) : (
+                  <CalendarX2 className="h-3.5 w-3.5" />
+                )}
+              </Button>
             ) : null}
             <Button
               type="button"
@@ -2163,10 +2260,14 @@ function JarvisActionsList({
 function JarvisActionOutputView({
   event,
   onBack,
+  onEdit,
+  onStatusChange,
   onDelete,
 }: {
   event: EventRow;
   onBack: () => void;
+  onEdit: (event: EventRow) => void;
+  onStatusChange: (event: EventRow, status: 'scheduled' | 'cancelled') => void;
   onDelete: (event: EventRow) => void;
 }) {
   const metadata = parseJarvisScheduleMetadata(event);
@@ -2199,15 +2300,43 @@ function JarvisActionOutputView({
             </p>
           </div>
         </div>
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          onClick={() => onDelete(event)}
-          aria-label={`Delete ${event.title}`}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => onEdit(event)}
+            aria-label={`Edit ${event.title}`}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          {event.status === 'scheduled' || event.status === 'cancelled' ? (
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              onClick={() =>
+                onStatusChange(event, event.status === 'cancelled' ? 'scheduled' : 'cancelled')
+              }
+              aria-label={`${event.status === 'cancelled' ? 'Reopen' : 'Cancel'} ${event.title}`}
+            >
+              {event.status === 'cancelled' ? (
+                <RotateCcw className="h-3.5 w-3.5" />
+              ) : (
+                <CalendarX2 className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => onDelete(event)}
+            aria-label={`Delete ${event.title}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       {metadata?.errorHistory.length ? (

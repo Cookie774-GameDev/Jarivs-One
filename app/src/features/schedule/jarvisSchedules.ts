@@ -269,6 +269,68 @@ export function buildJarvisScheduleEventInput(input: {
   };
 }
 
+export function buildJarvisScheduleEventUpdate(
+  event: EventRow,
+  input: {
+    title: string;
+    prompt: string;
+    startAt: number;
+    durationMs?: number;
+    recurrence: JarvisScheduleRecurrence;
+    intervalMs?: number;
+    timezone: string;
+    modelSelection: ChatModelSelection;
+  },
+): Partial<EventRow> | null {
+  const current = parseJarvisScheduleMetadata(event);
+  if (!current || !Number.isFinite(input.startAt)) return null;
+
+  const intervalMs =
+    input.recurrence === 'custom_interval'
+      ? normalizeJarvisIntervalMs(input.intervalMs)
+      : undefined;
+  if (input.recurrence === 'custom_interval' && intervalMs === undefined) return null;
+
+  const title = input.title.trim() || 'Jarvis task';
+  const prompt = input.prompt.trim();
+  const durationMs =
+    typeof input.durationMs === 'number' &&
+    Number.isFinite(input.durationMs) &&
+    input.durationMs > 0
+      ? input.durationMs
+      : 30 * 60 * 1000;
+  const metadata: JarvisScheduleMetadata = {
+    ...current,
+    prompt,
+    recurrence: input.recurrence,
+    ...(intervalMs === undefined ? { intervalMs: undefined } : { intervalMs }),
+    modelSelection: input.modelSelection,
+    nextRunAt: input.startAt,
+  };
+  const metadataPatch = withJarvisScheduleMetadata(event, metadata);
+  const metadataId = metadataPatch.source_ref?.context?.id;
+  if (!metadataId) return null;
+
+  return {
+    title: `Jarvis Scheduled — ${title}`,
+    description: prompt,
+    start_at: input.startAt,
+    end_at: input.startAt + durationMs,
+    all_day: false,
+    timezone: input.timezone.trim() || event.timezone,
+    recurrence_rule: recurrenceToRule(input.recurrence),
+    source_ref: {
+      ...metadataPatch.source_ref,
+      context: {
+        kind: metadataPatch.source_ref?.context?.kind ?? 'memory',
+        ...metadataPatch.source_ref?.context,
+        id: metadataId,
+        excerpt: prompt,
+      },
+    },
+  };
+}
+
 export function findScheduleConflicts(
   events: EventRow[],
   startAt: number,

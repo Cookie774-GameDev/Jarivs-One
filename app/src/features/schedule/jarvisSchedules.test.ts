@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { EventRow } from '@/types/event';
 import type { WorkspaceId } from '@/types/common';
 import {
+  buildJarvisScheduleEventUpdate,
   buildJarvisScheduleEventInput,
   findScheduleConflicts,
   isJarvisScheduleEvent,
@@ -33,6 +34,113 @@ describe('Jarvis schedules', () => {
     expect(input.end_at - input.start_at).toBe(30 * 60 * 1000);
     expect(input.all_day).toBe(false);
     expect(input.reminders).toEqual([]);
+  });
+
+  it('projects an edit without losing the exact route or accumulated run state', () => {
+    const originalMetadata: JarvisScheduleMetadata = {
+      kind: 'jarvis_schedule',
+      prompt: 'Original prompt',
+      recurrence: 'daily',
+      modelSelection: {
+        mode: 'single',
+        providerId: 'opencode' as never,
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        connectionId: 'opencode-cli',
+        connectionMode: 'external-cli',
+        authSource: 'opencode-cli-authenticated',
+        capabilities: {
+          text: true,
+          images: true,
+          files: true,
+          tools: true,
+          modelSelection: true,
+          structuredOutput: true,
+          streaming: true,
+          cancellation: true,
+          resumeSession: true,
+          systemPrompt: true,
+          workingDirectory: true,
+          usage: true,
+          subscriptionQuota: true,
+          localOnly: false,
+        },
+      },
+      agentId: 'agent_jarvis',
+      createdBy: 'jarvis',
+      lastRunAt: 1_786_300_000_000,
+      nextRunAt: 1_786_303_600_000,
+      outputChatId: 'chat_schedule_output',
+      runHistory: [
+        {
+          schemaVersion: 1,
+          at: 1_786_300_000_000,
+          runId: 'run_1',
+          requestId: 'request_1',
+          status: 'completed',
+        },
+      ],
+      errorHistory: [{ at: 1_786_301_000_000, error: 'Prior bounded failure' }],
+    };
+    const event = {
+      id: 'evt_ai' as EventRow['id'],
+      workspace_id: 'workspace_1' as EventRow['workspace_id'],
+      title: 'Jarvis Scheduled — Original title',
+      description: 'Original prompt',
+      start_at: 1_786_303_600_000,
+      end_at: 1_786_305_400_000,
+      all_day: false,
+      timezone: 'America/Chicago',
+      attendees: [],
+      source: 'ai',
+      source_ref: {
+        context: {
+          kind: 'memory',
+          id: serializeJarvisScheduleMetadata(originalMetadata),
+          excerpt: 'Original prompt',
+        },
+      },
+      recurrence_rule: 'daily',
+      reminders: [],
+      status: 'cancelled',
+      created_by: 'agent_jarvis',
+      created_at: 1_786_200_000_000,
+      updated_at: 1_786_200_000_000,
+    } as EventRow;
+
+    const patch = buildJarvisScheduleEventUpdate(event, {
+      title: 'Updated title',
+      prompt: 'Updated prompt',
+      startAt: 1_786_390_000_000,
+      durationMs: 45 * 60 * 1000,
+      recurrence: 'custom_interval',
+      intervalMs: 2 * 60 * 60 * 1000,
+      timezone: 'America/New_York',
+      modelSelection: originalMetadata.modelSelection,
+    });
+
+    expect(patch).toMatchObject({
+      title: 'Jarvis Scheduled — Updated title',
+      description: 'Updated prompt',
+      start_at: 1_786_390_000_000,
+      end_at: 1_786_392_700_000,
+      timezone: 'America/New_York',
+      recurrence_rule: 'custom_interval',
+    });
+    expect(patch).not.toHaveProperty('status');
+    const updated = parseJarvisScheduleMetadata({ ...event, ...patch } as EventRow);
+    expect(updated).toMatchObject({
+      prompt: 'Updated prompt',
+      recurrence: 'custom_interval',
+      intervalMs: 2 * 60 * 60 * 1000,
+      modelSelection: originalMetadata.modelSelection,
+      agentId: 'agent_jarvis',
+      createdBy: 'jarvis',
+      lastRunAt: 1_786_300_000_000,
+      nextRunAt: 1_786_390_000_000,
+      outputChatId: 'chat_schedule_output',
+      runHistory: originalMetadata.runHistory,
+      errorHistory: originalMetadata.errorHistory,
+    });
   });
 
   it('detects same-time conflicts without overwriting user events', () => {
