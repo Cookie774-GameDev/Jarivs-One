@@ -1,0 +1,625 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "pr31-continuation-delta-gate-v1",
+  "generatedAt": "2026-08-28T12:12:00-05:00",
+  "baseHead": "d998bc9ea4842a0ef9a1fb6c1f33c5fd500bfc08",
+  "targetHead": "4912c802004a867dbf105cff2a2efb08d49470e6",
+  "status": "passed-with-protected-baseline-failures",
+  "completionClaimed": false,
+  "releaseReady": false,
+  "range": {
+    "commitCount": 11,
+    "changedFileCount": 27,
+    "commits": [
+      {
+        "sha": "631e8336f97e5bff86978db3278dbbae30a31fb8",
+        "subject": "feat(schedule): disclose saved model identity",
+        "files": [
+          {
+            "status": "M",
+            "path": "app/src/features/schedule/SchedulePage.jarvisLifecycle.test.tsx"
+          },
+          {
+            "status": "M",
+            "path": "app/src/features/schedule/SchedulePage.tsx"
+          },
+          {
+            "status": "A",
+            "path": "app/src/features/schedule/jarvisScheduleModelIdentity.test.ts"
+          },
+          {
+            "status": "A",
+            "path": "app/src/features/schedule/jarvisScheduleModelIdentity.ts"
+          }
+        ]
+      },
+      {
+        "sha": "0a6121e81fcdcbbc1b1a03212ad21a321fbf2015",
+        "subject": "test(pr31): measure DeepSeek terminal latency",
+        "files": [
+          {
+            "status": "A",
+            "path": "docs/operations/PR31_DEEPSEEK_NATIVE_TERMINAL_LATENCY_REPORT.json"
+          },
+          {
+            "status": "A",
+            "path": "scripts/pr31-deepseek-terminal-latency.mjs"
+          },
+          {
+            "status": "A",
+            "path": "scripts/pr31-deepseek-terminal-latency.test.mjs"
+          }
+        ]
+      },
+      {
+        "sha": "b2714b83172f70099dfd5ac9e88840c15c961a5f",
+        "subject": "docs(pr31): verify native Workbench recovery",
+        "files": [
+          {
+            "status": "M",
+            "path": "docs/operations/PR31_CORRECTIVE_COMPLETION_MATRIX.json"
+          }
+        ]
+      },
+      {
+        "sha": "f03dd4bd079c7fb42241f4e16982decb2b744123",
+        "subject": "test(pr31): lock OpenCode refresh evidence",
+        "files": [
+          {
+            "status": "A",
+            "path": "docs/operations/PR31_OPENCODE_REFRESH_RECONNECT_REPORT.json"
+          },
+          {
+            "status": "A",
+            "path": "scripts/pr31-opencode-refresh-reconnect-evidence.mjs"
+          },
+          {
+            "status": "A",
+            "path": "scripts/pr31-opencode-refresh-reconnect-evidence.test.mjs"
+          }
+        ]
+      },
+      {
+        "sha": "ab708293f7435ece97ce462ac4ee2c7fb0150664",
+        "subject": "feat(chat): animate structured mail and launches",
+        "files": [
+          {
+            "status": "M",
+            "path": "app/src/features/chat/activity-ledger/AssistantActivityLedger.test.tsx"
+          },
+          {
+            "status": "M",
+            "path": "app/src/features/chat/activity-ledger/AssistantActivityLedger.tsx"
+          },
+          {
+            "status": "M",
+            "path": "app/src/features/chat/activity/types.ts"
+          },
+          {
+            "status": "M",
+            "path": "app/src/features/chat/agentic-console/AgentMotionIndicator.test.tsx"
+          },
+          {
+            "status": "M",
+            "path": "app/src/features/chat/agentic-console/AgentMotionIndicator.tsx"
+          },
+          {
+            "status": "M",
+            "path": "app/src/features/chat/agentic-console/agent-motion.css"
+          },
+          {
+            "status": "M",
+            "path": "app/src/lib/jarvis/executionJournal/legacyActivityProjection.test.ts"
+          },
+          {
+            "status": "M",
+            "path": "app/src/lib/jarvis/executionJournal/legacyActivityProjection.ts"
+          }
+        ]
+      },
+      {
+        "sha": "400564c750bf60da0c6c9827611ef4d76f7e3fd9",
+        "subject": "docs(pr31): record structured motion and refresh gates",
+        "files": [
+          {
+            "status": "M",
+            "path": "docs/operations/PR31_CORRECTIVE_COMPLETION_MATRIX.json"
+          }
+        ]
+      },
+      {
+        "sha": "2a15edc80cd737775b8f0a1fa1c6579436d3e189",
+        "subject": "docs(pr31): record exact Chat pixel evidence",
+        "files": [
+          {
+            "status": "M",
+            "path": "docs/operations/PR31_CORRECTIVE_COMPLETION_MATRIX.json"
+          }
+        ]
+      },
+      {
+        "sha": "f72d97469a9daca77714bace8ea0bd281d228d88",
+        "subject": "fix(schedule): expose reminder selection state",
+        "files": [
+          {
+            "status": "M",
+            "path": "app/src/features/schedule/SchedulePage.modelPicker.test.tsx"
+          },
+          {
+            "status": "M",
+            "path": "app/src/features/schedule/SchedulePage.tsx"
+          }
+        ]
+      },
+      {
+        "sha": "26c510b8fc9537507fba5bdd7a2a151ede22be8f",
+        "subject": "feat(release): add offline Playwright runtime lifecycle",
+        "files": [
+          {
+            "status": "M",
+            "path": "docs/oss/browser-agent-feature-pack.json"
+          },
+          {
+            "status": "M",
+            "path": "scripts/pr31-oss-bundle.mjs"
+          },
+          {
+            "status": "M",
+            "path": "scripts/pr31-oss-bundle.test.mjs"
+          },
+          {
+            "status": "A",
+            "path": "scripts/pr31-playwright-acceptance-runtime.mjs"
+          },
+          {
+            "status": "A",
+            "path": "scripts/pr31-playwright-acceptance-runtime.test.mjs"
+          }
+        ]
+      },
+      {
+        "sha": "7d24c52c9ebd08e73be275e9db8c9af7e22c9e76",
+        "subject": "docs(pr31): record offline Playwright lifecycle",
+        "files": [
+          {
+            "status": "M",
+            "path": "docs/operations/PR31_CORRECTIVE_COMPLETION_MATRIX.json"
+          }
+        ]
+      },
+      {
+        "sha": "4912c802004a867dbf105cff2a2efb08d49470e6",
+        "subject": "fix(prompt-forge): preserve exact unavailable routes",
+        "files": [
+          {
+            "status": "M",
+            "path": "app/src/features/prompt-forge/modelSelection.test.ts"
+          },
+          {
+            "status": "M",
+            "path": "app/src/features/prompt-forge/modelSelection.ts"
+          }
+        ]
+      }
+    ]
+  },
+  "changedFiles": [
+    {
+      "path": "app/src/features/chat/activity-ledger/AssistantActivityLedger.test.tsx",
+      "status": "M",
+      "kind": "product-test",
+      "gateIds": ["structured-chat-motion"],
+      "sha256": "10e22c4d027ccf0bf123f80797c6d76d8e586b17eeac2db62449cd2429dc367b"
+    },
+    {
+      "path": "app/src/features/chat/activity-ledger/AssistantActivityLedger.tsx",
+      "status": "M",
+      "kind": "product-source",
+      "gateIds": ["structured-chat-motion"],
+      "sha256": "f3f61eb3a6215a26eb427c5f67523cdbe1d66d0d8e3cfaa0e55115208f762d01"
+    },
+    {
+      "path": "app/src/features/chat/activity/types.ts",
+      "status": "M",
+      "kind": "product-source",
+      "gateIds": ["structured-chat-motion"],
+      "sha256": "f78d2dcdd0b6d3adb340a5c2b86c19ea86c71c4178d72255534f2c0788afbabd"
+    },
+    {
+      "path": "app/src/features/chat/agentic-console/AgentMotionIndicator.test.tsx",
+      "status": "M",
+      "kind": "product-test",
+      "gateIds": ["structured-chat-motion"],
+      "sha256": "3ca27e8869390b4006cfcf02b53001170b69f651f014f1243a021e65c141fcf7"
+    },
+    {
+      "path": "app/src/features/chat/agentic-console/AgentMotionIndicator.tsx",
+      "status": "M",
+      "kind": "product-source",
+      "gateIds": ["structured-chat-motion"],
+      "sha256": "7d22276f3cf017a05a281a69001b58ed95e6c5ce8d02e6ef751a03163c095766"
+    },
+    {
+      "path": "app/src/features/chat/agentic-console/agent-motion.css",
+      "status": "M",
+      "kind": "product-style",
+      "gateIds": ["structured-chat-motion"],
+      "sha256": "644914f08159be120f67c0002ad97576acd332bd8bbd98342d875c72a86764ed"
+    },
+    {
+      "path": "app/src/features/prompt-forge/modelSelection.test.ts",
+      "status": "M",
+      "kind": "product-test",
+      "gateIds": ["prompt-forge-exact-route"],
+      "sha256": "5a07b57661337e86624bfbed3670a0e0fc4e6073e85217bde194d77d7f7abfc7"
+    },
+    {
+      "path": "app/src/features/prompt-forge/modelSelection.ts",
+      "status": "M",
+      "kind": "product-source",
+      "gateIds": ["prompt-forge-exact-route"],
+      "sha256": "d81235879177c7a2ce161943ed1c71f76f042d73949246c0830a1866ec00101e"
+    },
+    {
+      "path": "app/src/features/schedule/SchedulePage.jarvisLifecycle.test.tsx",
+      "status": "M",
+      "kind": "product-test",
+      "gateIds": ["schedule-identity-reminders"],
+      "sha256": "516ba2abab377ca8506b6a50280299648747a887c307b92013bc0774d7255119"
+    },
+    {
+      "path": "app/src/features/schedule/SchedulePage.modelPicker.test.tsx",
+      "status": "M",
+      "kind": "product-test",
+      "gateIds": ["schedule-identity-reminders"],
+      "sha256": "f2fc684a0131b28468d4c9dae92f1f1f262587cc36dc8a458e4126f4910344d2"
+    },
+    {
+      "path": "app/src/features/schedule/SchedulePage.tsx",
+      "status": "M",
+      "kind": "product-source",
+      "gateIds": ["schedule-identity-reminders"],
+      "sha256": "4cbb315bc2c0a47ffc11111e326389d058eb82b01dc15eae67187888e08c17f7"
+    },
+    {
+      "path": "app/src/features/schedule/jarvisScheduleModelIdentity.test.ts",
+      "status": "A",
+      "kind": "product-test",
+      "gateIds": ["schedule-identity-reminders"],
+      "sha256": "ffeefcf3c3b9ff6150ce2e3e10d2be84ce772365982cbd6bede460a03fcc7496"
+    },
+    {
+      "path": "app/src/features/schedule/jarvisScheduleModelIdentity.ts",
+      "status": "A",
+      "kind": "product-source",
+      "gateIds": ["schedule-identity-reminders"],
+      "sha256": "2787d473812a803dc5497007951640c7f845894ca6a0613242d98b897de89a86"
+    },
+    {
+      "path": "app/src/lib/jarvis/executionJournal/legacyActivityProjection.test.ts",
+      "status": "M",
+      "kind": "product-test",
+      "gateIds": ["structured-chat-motion"],
+      "sha256": "290de781a51f83ba88c8b8dcd5717a53ca220991aaf9b6fbd32150600345a2e2"
+    },
+    {
+      "path": "app/src/lib/jarvis/executionJournal/legacyActivityProjection.ts",
+      "status": "M",
+      "kind": "product-source",
+      "gateIds": ["structured-chat-motion"],
+      "sha256": "6ad353491c4b973534f6074131311d4bdfca61ebb0751a6b4fcbc9a7cd036b5a"
+    },
+    {
+      "path": "docs/operations/PR31_CORRECTIVE_COMPLETION_MATRIX.json",
+      "status": "M",
+      "kind": "matrix-report",
+      "gateIds": ["corrective-matrix"],
+      "sha256": "92a5715b958331ec494c24b4ba9f6aeae935cf533bdc58f97b2619f5b853bc2f"
+    },
+    {
+      "path": "docs/operations/PR31_DEEPSEEK_NATIVE_TERMINAL_LATENCY_REPORT.json",
+      "status": "A",
+      "kind": "evidence-report",
+      "gateIds": ["deepseek-latency-contract"],
+      "sha256": "3cca51af74c5459e2f3d15051a954809a5e0d47e564c19525b9159797801b9e8"
+    },
+    {
+      "path": "docs/operations/PR31_OPENCODE_REFRESH_RECONNECT_REPORT.json",
+      "status": "A",
+      "kind": "evidence-report",
+      "gateIds": ["opencode-refresh-contract"],
+      "sha256": "ba01cc0b81fe282187b18766ef2cd34288a58ef049e16f869136e170d0daac97"
+    },
+    {
+      "path": "docs/oss/browser-agent-feature-pack.json",
+      "status": "M",
+      "kind": "oss-metadata",
+      "gateIds": ["playwright-offline-lifecycle"],
+      "sha256": "d1d8315f4f5a5f49fd425204dd4818b8f9f8a922389421e4a28db57425ad12b0"
+    },
+    {
+      "path": "scripts/pr31-deepseek-terminal-latency.mjs",
+      "status": "A",
+      "kind": "script-source",
+      "gateIds": ["deepseek-latency-contract"],
+      "sha256": "d00a9f5289a3eebd5b66dc368720b7ae76eecbd2a04dfafde979ed5acb0bd2db"
+    },
+    {
+      "path": "scripts/pr31-deepseek-terminal-latency.test.mjs",
+      "status": "A",
+      "kind": "script-test",
+      "gateIds": ["deepseek-latency-contract"],
+      "sha256": "8cb1b2167787a87cbd56a7310189963936f3b031725f833c665117388ce29063"
+    },
+    {
+      "path": "scripts/pr31-opencode-refresh-reconnect-evidence.mjs",
+      "status": "A",
+      "kind": "script-source",
+      "gateIds": ["opencode-refresh-contract"],
+      "sha256": "85b768abbb077038b29d7512742a087bc84b416da9995bf31d03df4bd5a46e22"
+    },
+    {
+      "path": "scripts/pr31-opencode-refresh-reconnect-evidence.test.mjs",
+      "status": "A",
+      "kind": "script-test",
+      "gateIds": ["opencode-refresh-contract"],
+      "sha256": "e1cdbadfd329f93ad2699115c5cc31a012652664e43203dac8bc44325f98fe58"
+    },
+    {
+      "path": "scripts/pr31-oss-bundle.mjs",
+      "status": "M",
+      "kind": "script-source",
+      "gateIds": ["playwright-offline-lifecycle"],
+      "sha256": "30b738e9c2a16c2244cf191f471e0c8af5ceda1ad6cbf5f08d9238f01f300798"
+    },
+    {
+      "path": "scripts/pr31-oss-bundle.test.mjs",
+      "status": "M",
+      "kind": "script-test",
+      "gateIds": ["playwright-offline-lifecycle"],
+      "sha256": "11a41738daec7622c9395b54ad69c1481b27e1266b77a4169df0030ea849bb8c"
+    },
+    {
+      "path": "scripts/pr31-playwright-acceptance-runtime.mjs",
+      "status": "A",
+      "kind": "script-source",
+      "gateIds": ["playwright-offline-lifecycle"],
+      "sha256": "0a522188703d9276c08c1779c9c6d427fa13ad19457cdc66bbff5ec1cd134cf7"
+    },
+    {
+      "path": "scripts/pr31-playwright-acceptance-runtime.test.mjs",
+      "status": "A",
+      "kind": "script-test",
+      "gateIds": ["playwright-offline-lifecycle"],
+      "sha256": "ed9e93b416242dac43b1fe491adf480374a89582b16483b4a6dff1f72130fcc3"
+    }
+  ],
+  "focusedEvidence": [
+    {
+      "id": "corrective-matrix",
+      "status": "passed",
+      "freshness": "fresh-post-change",
+      "sourceCommit": "7d24c52c9ebd08e73be275e9db8c9af7e22c9e76",
+      "testCount": 5,
+      "failed": 0,
+      "commands": ["node --test scripts/pr31-corrective-completion-matrix.test.mjs"],
+      "evidenceRef": "docs/AGENT_COORDINATION.md:4524 and 4552"
+    },
+    {
+      "id": "deepseek-latency-contract",
+      "status": "passed",
+      "freshness": "fresh-post-change",
+      "sourceCommit": "0a6121e81fcdcbbc1b1a03212ad21a321fbf2015",
+      "testCount": 10,
+      "failed": 0,
+      "commands": ["node --test scripts/pr31-deepseek-terminal-latency.test.mjs"],
+      "evidenceRef": "docs/AGENT_COORDINATION.md:4526-4527"
+    },
+    {
+      "id": "opencode-refresh-contract",
+      "status": "passed",
+      "freshness": "fresh-post-change",
+      "sourceCommit": "f03dd4bd079c7fb42241f4e16982decb2b744123",
+      "testCount": 129,
+      "failed": 0,
+      "commands": [
+        "workdir=app :: .\\node_modules\\.bin\\vitest.cmd run src/features/settings/sections/Providers.test.tsx src/lib/ai/providerModelCatalog.test.ts src/lib/ai/modelSelection.test.ts src/lib/ai/opencodeModelCatalog.test.ts src/lib/ai/runtime.opencode.test.ts src/lib/ai/router.opencode.test.ts",
+        "node --test scripts/pr31-opencode-refresh-reconnect-evidence.test.mjs"
+      ],
+      "evidenceRef": "docs/AGENT_COORDINATION.md:4541-4542"
+    },
+    {
+      "id": "playwright-offline-lifecycle",
+      "status": "passed",
+      "freshness": "fresh-post-change",
+      "sourceCommit": "26c510b8fc9537507fba5bdd7a2a151ede22be8f",
+      "testCount": 166,
+      "failed": 0,
+      "commands": [
+        "node --test scripts/pr31-oss-bundle.test.mjs scripts/pr31-playwright-acceptance-runtime.test.mjs",
+        "workdir=app :: .\\node_modules\\.bin\\vitest.cmd run src/features/doctor src/features/updates"
+      ],
+      "evidenceRef": "docs/AGENT_COORDINATION.md:4545-4546"
+    },
+    {
+      "id": "prompt-forge-exact-route",
+      "status": "passed",
+      "freshness": "fresh-post-change",
+      "sourceCommit": "4912c802004a867dbf105cff2a2efb08d49470e6",
+      "testCount": 255,
+      "failed": 0,
+      "commands": [
+        "workdir=app :: .\\node_modules\\.bin\\vitest.cmd run src/features/prompt-forge src/features/chat src/features/context src/features/schedule src/lib/ai/modelSelection.test.ts src/lib/ai/providerModelCatalog.test.ts src/lib/actions/registry.test.ts"
+      ],
+      "evidenceRef": "docs/AGENT_COORDINATION.md:4548-4549"
+    },
+    {
+      "id": "schedule-identity-reminders",
+      "status": "passed",
+      "freshness": "fresh-post-change",
+      "sourceCommit": "f72d97469a9daca77714bace8ea0bd281d228d88",
+      "testCount": 111,
+      "failed": 0,
+      "commands": ["workdir=app :: .\\node_modules\\.bin\\vitest.cmd run src/features/schedule"],
+      "evidenceRef": "docs/AGENT_COORDINATION.md:4523 and 4538"
+    },
+    {
+      "id": "structured-chat-motion",
+      "status": "passed",
+      "freshness": "fresh-post-change",
+      "sourceCommit": "ab708293f7435ece97ce462ac4ee2c7fb0150664",
+      "testCount": 69,
+      "failed": 0,
+      "commands": [
+        "workdir=app :: .\\node_modules\\.bin\\vitest.cmd run src/features/chat/activity-ledger src/features/chat/agentic-console src/lib/jarvis/executionJournal"
+      ],
+      "evidenceRef": "docs/AGENT_COORDINATION.md:4532"
+    }
+  ],
+  "executionPolicy": {
+    "affectedMatricesAlreadyFresh": true,
+    "unaffectedMatricesRerun": false,
+    "protectedBaselineRerun": false,
+    "notYetFreshAffectedMatrices": []
+  },
+  "crossCuttingEvidence": [
+    {
+      "id": "delta-diff-check",
+      "status": "passed",
+      "exitCode": 0,
+      "commands": [
+        "git diff --check d998bc9ea4842a0ef9a1fb6c1f33c5fd500bfc08..4912c802004a867dbf105cff2a2efb08d49470e6"
+      ],
+      "observedAt": "2026-08-28T12:12:00-05:00"
+    },
+    {
+      "id": "delta-secret-scan",
+      "status": "passed",
+      "exitCode": 0,
+      "commands": [
+        "gitleaks git --log-opts=d998bc9ea4842a0ef9a1fb6c1f33c5fd500bfc08..4912c802004a867dbf105cff2a2efb08d49470e6 --redact --no-banner"
+      ],
+      "observedAt": "2026-08-28T12:12:00-05:00",
+      "commitsScanned": 11
+    },
+    {
+      "id": "delta-source-digests",
+      "status": "passed",
+      "exitCode": 0,
+      "commands": ["node --test scripts/pr31-continuation-delta-gate.test.mjs"],
+      "observedAt": "2026-08-28T12:12:00-05:00"
+    },
+    {
+      "id": "oss-contract",
+      "status": "passed",
+      "exitCode": 0,
+      "commands": [
+        "node --test scripts/pr31-oss-bundle.test.mjs scripts/pr31-playwright-acceptance-runtime.test.mjs",
+        "node scripts/pr31-oss-bundle.mjs"
+      ],
+      "observedAt": "2026-08-28T12:12:00-05:00",
+      "testCount": 20,
+      "failed": 0
+    },
+    {
+      "id": "production-build",
+      "status": "passed",
+      "exitCode": 0,
+      "commands": [
+        "workdir=app :: node ../scripts/visual-monochrome/generate-theme-contract.mjs --check && VITE_DISABLE_OLLAMA_BOOTSTRAP=true .\\node_modules\\.bin\\vite.cmd build --outDir C:\\Users\\viper\\AppData\\Local\\Temp\\VS-CODEX-CONTINUATION-DELTA-GATE-4912c802"
+      ],
+      "observedAt": "2026-08-28T12:12:00-05:00",
+      "modulesTransformed": 4997,
+      "artifactFiles": 551,
+      "artifactBytes": 73918644
+    },
+    {
+      "id": "release-regression",
+      "status": "passed",
+      "exitCode": 0,
+      "commands": [
+        "node --test scripts/build-updater-manifest.test.mjs scripts/release-windows.test.mjs scripts/verify-release-artifact-size.test.mjs"
+      ],
+      "observedAt": "2026-08-28T12:12:00-05:00",
+      "testCount": 77,
+      "failed": 0
+    },
+    {
+      "id": "typecheck",
+      "status": "passed",
+      "exitCode": 0,
+      "commands": ["workdir=app :: .\\node_modules\\.bin\\tsc.cmd -b --pretty false"],
+      "observedAt": "2026-08-28T12:12:00-05:00"
+    },
+    {
+      "id": "updater-signature",
+      "status": "passed",
+      "exitCode": 0,
+      "commands": ["node --test scripts/verify-updater-signature.test.mjs"],
+      "observedAt": "2026-08-28T12:12:00-05:00",
+      "testCount": 9,
+      "failed": 0
+    }
+  ],
+  "protectedBaseline": {
+    "status": "preserved-not-rerun",
+    "rerun": false,
+    "unchangedAcrossDelta": true,
+    "totalFailedTests": 67,
+    "commands": [],
+    "files": [
+      {
+        "path": "app/src/App.kernelHost.test.tsx",
+        "failedTests": 1,
+        "sha256": "6c50223249cd7fc2eb25f4e83ca6201ca97483227e0613b1b68f42cc9bc6537c"
+      },
+      {
+        "path": "app/src/lib/ai/featureOpenCodeParity.test.ts",
+        "failedTests": 1,
+        "sha256": "472c6ee8d6d5659c42fe2b80a41df909ee1f9dff066889a5f12286782344a3f6"
+      },
+      {
+        "path": "app/src/lib/ai/runtime.test.ts",
+        "failedTests": 65,
+        "sha256": "7ed75b12ba554736292d7eb8ffa85fea20e9aff2e8e5aa60ea6f8a559ba75b3a"
+      }
+    ]
+  },
+  "preexistingCrossGateFailures": {
+    "status": "preserved-pre-existing-not-fixed",
+    "totalFailedTests": 1,
+    "entries": [
+      {
+        "id": "ordinary-native-authority-hash",
+        "testPath": "scripts/release-native-file-command-authority.test.mjs",
+        "sourcePath": "app/src-tauri/src/lib.rs",
+        "failedTests": 1,
+        "baseSourceSha256": "81e745ee4dfaa1aafe20449bdfeaf6e2ee1a8a019969d9200e157a4eaa2e9d13",
+        "targetSourceSha256": "81e745ee4dfaa1aafe20449bdfeaf6e2ee1a8a019969d9200e157a4eaa2e9d13",
+        "testSha256": "2124fef10d881fcbe501a30911354d02fd1c01d876c7b172175e779fb272f571",
+        "authorityActualSha256": "5b61cb41922597c71dea8cd6b5edb52f151daf85b4231dab37f1099b43feaef4",
+        "authorityExpectedSha256": "e4e173c63b356b3adda37dc67826c2333906da21fb3cc8a14e4242d57a8f4f7f",
+        "handlerActualSha256": "9eddbd22655fe76a35c57d762e132f31091990cd40490e11370c1c918ffcbdaa",
+        "handlerExpectedSha256": "9a5a6571238380d8c44f61bd984d65b2a40bc43d5298a17d8cf801069fc483f0",
+        "rerunDuringDeltaGate": true,
+        "fixedDuringDeltaGate": false,
+        "observedAt": "2026-08-28T12:05:00-05:00",
+        "command": "node --test scripts/release-native-file-command-authority.test.mjs",
+        "ownershipBlocker": "Live owner.txt active_siyuan_typed_inbound_backlinks_scope exclusively owns app/src-tauri/src/lib.rs."
+      }
+    ]
+  },
+  "disposableArtifacts": {
+    "cleanupComplete": false,
+    "paths": ["C:\\Users\\viper\\AppData\\Local\\Temp\\VS-CODEX-CONTINUATION-DELTA-GATE-4912c802"],
+    "cleanupBlocker": "The command runner rejected recursive PowerShell cleanup after the absolute non-link OS-temp path was verified; no alternate deletion mechanism was used."
+  },
+  "safety": {
+    "ollamaAllowed": false,
+    "port11434Allowed": false,
+    "processControlAllowed": false,
+    "credentialsMayChange": false,
+    "productionMayChange": false,
+    "remoteMayChange": false
+  }
+}
