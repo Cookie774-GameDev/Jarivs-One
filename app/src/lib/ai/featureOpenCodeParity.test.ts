@@ -10,7 +10,7 @@ describe('PR31 OpenCode feature parity', () => {
   it('compiles VibeSpace-owned context before the canonical chat dispatch', () => {
     const runtime = source('src/lib/ai/runtime.ts');
     const contextStart = runtime.indexOf('const runtimeContextBlocks =');
-    const dispatchStart = runtime.indexOf('const response = shouldRunLocalFinalBossRevision');
+    const dispatchStart = runtime.indexOf('const response = explicitReadRoot');
     expect(contextStart).toBeGreaterThan(0);
     expect(dispatchStart).toBeGreaterThan(contextStart);
 
