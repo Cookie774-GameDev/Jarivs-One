@@ -2006,6 +2006,36 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
           { field: 'token', safeValue: '[redacted]' },
         ],
       });
+      await database.jarvis_approvals.put(
+        toJarvisApprovalRow({ ...approval, status: 'denied', decidedAt: 3 }),
+      );
+      await expect(
+        handleInstalledJarvisKernelClientRequest({
+          version: 1,
+          kind: 'approval_status',
+          accountId: run.accountId,
+          approvalId: approval.id,
+        }),
+      ).resolves.toEqual({
+        version: 1,
+        kind: 'approval_state',
+        accountId: run.accountId,
+        approvalId: approval.id,
+        status: 'denied',
+      });
+      await expect(
+        handleInstalledJarvisKernelClientRequest({
+          version: 1,
+          kind: 'approval_status',
+          accountId: 'different-account',
+          approvalId: approval.id,
+        }),
+      ).resolves.toEqual({
+        version: 1,
+        kind: 'unavailable',
+        requestKind: 'approval_status',
+        reason: 'kernel_not_activated',
+      });
     } finally {
       disposeHost();
       await database.delete();

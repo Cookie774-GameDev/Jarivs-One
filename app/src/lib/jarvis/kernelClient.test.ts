@@ -61,6 +61,7 @@ describe('typed kernel client', () => {
       'dispose',
       'executeApproval',
       'getApprovalPresentation',
+      'getApprovalStatus',
       'getCommandCenterSnapshot',
       'retryScheduled',
     ]);
@@ -152,6 +153,35 @@ describe('typed kernel client', () => {
     expect(localHost.request).toHaveBeenCalledWith({
       version: 1,
       kind: 'approval_present',
+      accountId: 'account-1',
+      approvalId: 'approval-1',
+    });
+    expect(tauri.listen).not.toHaveBeenCalled();
+    expect(tauri.invoke).not.toHaveBeenCalled();
+  });
+
+  it('reads only the exact account-scoped canonical approval status', async () => {
+    localHost.request.mockResolvedValueOnce({
+      version: 1,
+      kind: 'approval_state',
+      accountId: 'account-1',
+      approvalId: 'approval-1',
+      status: 'denied',
+    });
+    const client = createJarvisKernelClient();
+
+    await expect(
+      client.getApprovalStatus({ accountId: 'account-1', approvalId: 'approval-1' }),
+    ).resolves.toEqual({
+      version: 1,
+      kind: 'approval_state',
+      accountId: 'account-1',
+      approvalId: 'approval-1',
+      status: 'denied',
+    });
+    expect(localHost.request).toHaveBeenCalledWith({
+      version: 1,
+      kind: 'approval_status',
       accountId: 'account-1',
       approvalId: 'approval-1',
     });

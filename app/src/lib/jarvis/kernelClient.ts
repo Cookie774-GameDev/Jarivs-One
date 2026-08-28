@@ -31,15 +31,17 @@ type ResponseFor<K extends KernelClientRequestV1['kind']> = Extract<
           ? 'approval_created'
           : K extends 'approval_present'
             ? 'approval_presentation'
-            : K extends 'approval_decide'
-              ? 'approval_decided'
-              : K extends 'approval_execute'
-                ? 'approval_execution'
-                : K extends 'cancel'
-                  ? 'cancellation_state'
-                  : K extends 'scheduled_retry'
-                    ? 'retry_state'
-                    : 'command_center_snapshot';
+            : K extends 'approval_status'
+              ? 'approval_state'
+              : K extends 'approval_decide'
+                ? 'approval_decided'
+                : K extends 'approval_execute'
+                  ? 'approval_execution'
+                  : K extends 'cancel'
+                    ? 'cancellation_state'
+                    : K extends 'scheduled_retry'
+                      ? 'retry_state'
+                      : 'command_center_snapshot';
     }
 >;
 
@@ -49,6 +51,9 @@ export interface JarvisKernelClient {
   getApprovalPresentation(
     input: RequestInput<'approval_present'>,
   ): Promise<ResponseFor<'approval_present'>>;
+  getApprovalStatus(
+    input: RequestInput<'approval_status'>,
+  ): Promise<ResponseFor<'approval_status'>>;
   decideApproval(input: RequestInput<'approval_decide'>): Promise<ResponseFor<'approval_decide'>>;
   executeApproval(
     input: RequestInput<'approval_execute'>,
@@ -122,9 +127,7 @@ export function createJarvisKernelClient(options?: { timeoutMs?: number }): Jarv
             ? (response as ResponseFor<K>)
             : (unavailableKernelResponse(request, 'invalid_response') as ResponseFor<K>),
         )
-        .catch(
-          () => unavailableKernelResponse(request, 'invalid_response') as ResponseFor<K>,
-        );
+        .catch(() => unavailableKernelResponse(request, 'invalid_response') as ResponseFor<K>);
     }
     if (!isTauriRuntime()) {
       return unavailableKernelResponse(request, 'host_unavailable') as ResponseFor<K>;
@@ -228,6 +231,8 @@ export function createJarvisKernelClient(options?: { timeoutMs?: number }): Jarv
       send(buildRequest('approval_create', input)),
     getApprovalPresentation: (input: RequestInput<'approval_present'>) =>
       send(buildRequest('approval_present', input)),
+    getApprovalStatus: (input: RequestInput<'approval_status'>) =>
+      send(buildRequest('approval_status', input)),
     decideApproval: (input: RequestInput<'approval_decide'>) =>
       send(buildRequest('approval_decide', input)),
     executeApproval: (input: RequestInput<'approval_execute'>) =>

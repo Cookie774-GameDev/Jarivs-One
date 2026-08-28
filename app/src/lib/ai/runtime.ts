@@ -1867,6 +1867,17 @@ export async function installJarvisKernelRuntimeHost(
           ...presentation,
         };
       }
+      if (request.kind === 'approval_status') {
+        const approval = await repositories.approval.getById(request.accountId, request.approvalId);
+        if (!approval || approval.id !== request.approvalId) return unavailable();
+        return {
+          version: 1,
+          kind: 'approval_state',
+          accountId: request.accountId,
+          approvalId: approval.id,
+          status: approval.status,
+        };
+      }
       if (request.kind === 'approval_decide') {
         const approval = await repositories.approval.getById(request.accountId, request.approvalId);
         if (!approval) return unavailable();

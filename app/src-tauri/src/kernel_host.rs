@@ -19,6 +19,7 @@ pub(crate) enum KernelRequestKind {
     TurnDispatch,
     ApprovalCreate,
     ApprovalPresent,
+    ApprovalStatus,
     ApprovalDecide,
     ApprovalExecute,
     Cancel,
@@ -58,6 +59,11 @@ pub(crate) enum KernelClientRequestV1 {
         account_id: String,
         approval_id: String,
     },
+    ApprovalStatus {
+        version: u8,
+        account_id: String,
+        approval_id: String,
+    },
     ApprovalDecide {
         version: u8,
         account_id: String,
@@ -92,6 +98,7 @@ impl KernelClientRequestV1 {
             Self::TurnDispatch { .. } => KernelRequestKind::TurnDispatch,
             Self::ApprovalCreate { .. } => KernelRequestKind::ApprovalCreate,
             Self::ApprovalPresent { .. } => KernelRequestKind::ApprovalPresent,
+            Self::ApprovalStatus { .. } => KernelRequestKind::ApprovalStatus,
             Self::ApprovalDecide { .. } => KernelRequestKind::ApprovalDecide,
             Self::ApprovalExecute { .. } => KernelRequestKind::ApprovalExecute,
             Self::Cancel { .. } => KernelRequestKind::Cancel,
@@ -125,6 +132,11 @@ impl KernelClientRequestV1 {
                     && bounded_id(action_request_id)
             }
             Self::ApprovalPresent {
+                version,
+                account_id,
+                approval_id,
+            }
+            | Self::ApprovalStatus {
                 version,
                 account_id,
                 approval_id,
@@ -170,6 +182,16 @@ impl KernelClientRequestV1 {
 pub(crate) enum ApprovalStatus {
     Approved,
     Denied,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ApprovalLifecycleStatus {
+    Pending,
+    Approved,
+    Denied,
+    Expired,
+    Consumed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -270,6 +292,12 @@ pub(crate) enum KernelClientResponseV1 {
         approval_id: String,
         status: ApprovalStatus,
     },
+    ApprovalState {
+        version: u8,
+        account_id: String,
+        approval_id: String,
+        status: ApprovalLifecycleStatus,
+    },
     ApprovalExecution {
         version: u8,
         approval_id: String,
@@ -304,6 +332,7 @@ impl KernelClientResponseV1 {
             Self::TurnAccepted { .. } => Some(KernelRequestKind::TurnDispatch),
             Self::ApprovalCreated { .. } => Some(KernelRequestKind::ApprovalCreate),
             Self::ApprovalPresentation { .. } => Some(KernelRequestKind::ApprovalPresent),
+            Self::ApprovalState { .. } => Some(KernelRequestKind::ApprovalStatus),
             Self::ApprovalDecided { .. } => Some(KernelRequestKind::ApprovalDecide),
             Self::ApprovalExecution { .. } => Some(KernelRequestKind::ApprovalExecute),
             Self::CancellationState { .. } => Some(KernelRequestKind::Cancel),
@@ -352,6 +381,12 @@ impl KernelClientResponseV1 {
                             && parameter.safe_value.len() <= 160
                     })
             }
+            Self::ApprovalState {
+                version,
+                account_id,
+                approval_id,
+                ..
+            } => *version == 1 && bounded_id(account_id) && bounded_id(approval_id),
             Self::ApprovalExecution {
                 version,
                 approval_id,
@@ -384,8 +419,20 @@ impl KernelClientResponseV1 {
                     approval_id: response_approval_id,
                     ..
                 },
-            )
-            | (
+            ) => approval_id == response_approval_id,
+            (
+                KernelClientRequestV1::ApprovalStatus {
+                    account_id,
+                    approval_id,
+                    ..
+                },
+                Self::ApprovalState {
+                    account_id: response_account_id,
+                    approval_id: response_approval_id,
+                    ..
+                },
+            ) if account_id == response_account_id && approval_id == response_approval_id => true,
+            (
                 KernelClientRequestV1::ApprovalDecide { approval_id, .. },
                 Self::ApprovalDecided {
                     approval_id: response_approval_id,
@@ -1253,6 +1300,66 @@ mod tests {
                 "accountId": "account-1",
                 "approvalId": "approval-1",
                 "rawParameters": { "path": "C:\\private\\secret.txt" }
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn native_approval_status_is_read_only_bounded_and_exactly_correlated() {
+        let request = serde_json::from_value::<KernelClientRequestV1>(serde_json::json!({
+            "version": 1,
+            "kind": "approval_status",
+            "accountId": "account-1",
+            "approvalId": "approval-1"
+        }))
+        .expect("bounded approval status request");
+        assert_eq!(request.kind(), KernelRequestKind::ApprovalStatus);
+        assert_eq!(request.validate(), Ok(()));
+
+        let response = KernelClientResponseV1::ApprovalState {
+            version: 1,
+            account_id: "account-1".into(),
+            approval_id: "approval-1".into(),
+            status: ApprovalLifecycleStatus::Denied,
+        };
+        assert_eq!(response.kind(), Some(KernelRequestKind::ApprovalStatus));
+        assert_eq!(response.validate(), Ok(()));
+        assert!(response.matches_request(&request));
+
+        let different_account = KernelClientResponseV1::ApprovalState {
+            version: 1,
+            account_id: "account-2".into(),
+            approval_id: "approval-1".into(),
+            status: ApprovalLifecycleStatus::Denied,
+        };
+        assert!(!different_account.matches_request(&request));
+        let different_approval = KernelClientResponseV1::ApprovalState {
+            version: 1,
+            account_id: "account-1".into(),
+            approval_id: "approval-2".into(),
+            status: ApprovalLifecycleStatus::Denied,
+        };
+        assert!(!different_approval.matches_request(&request));
+
+        assert!(
+            serde_json::from_value::<KernelClientRequestV1>(serde_json::json!({
+                "version": 1,
+                "kind": "approval_status",
+                "accountId": "account-1",
+                "approvalId": "approval-1",
+                "rawApproval": { "params": "must-not-cross" }
+            }))
+            .is_err()
+        );
+        assert!(
+            serde_json::from_value::<KernelClientResponseV1>(serde_json::json!({
+                "version": 1,
+                "kind": "approval_state",
+                "accountId": "account-1",
+                "approvalId": "approval-1",
+                "status": "denied",
+                "rawApproval": { "params": "must-not-cross" }
             }))
             .is_err()
         );

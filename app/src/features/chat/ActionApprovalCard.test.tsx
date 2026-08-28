@@ -15,6 +15,7 @@ vi.mock('@/lib/actions', () => ({
 vi.mock('@/lib/jarvis/smoke/config', () => ({ isKernelSmokeEnabled: () => true }));
 const kernelClient = vi.hoisted(() => ({
   getApprovalPresentation: vi.fn(),
+  getApprovalStatus: vi.fn(),
   decideApproval: vi.fn(),
   executeApproval: vi.fn(),
   dispose: vi.fn(),
@@ -243,6 +244,7 @@ describe('ActionApprovalCard canonical adapter', () => {
       approvalId: 'jappr_1',
       decision: 'deny',
     });
+    expect(kernelClient.getApprovalStatus).not.toHaveBeenCalled();
     expect(kernelClient.executeApproval).not.toHaveBeenCalled();
   });
 
@@ -344,6 +346,178 @@ describe('ActionApprovalCard canonical adapter', () => {
     expect(events).toEqual([]);
     expect(messageRepository.update).toHaveBeenCalledOnce();
     window.removeEventListener('jarvis:run-state', listener);
+  });
+
+  it('reconciles an already-kernel-denied approval only after exact account-scoped status proof', async () => {
+    const lifecycle: string[] = [];
+    kernelClient.decideApproval.mockImplementationOnce(async () => {
+      lifecycle.push('decide-unavailable');
+      return {
+        version: 1,
+        kind: 'unavailable',
+        requestKind: 'approval_decide',
+        reason: 'invalid_response',
+      };
+    });
+    kernelClient.getApprovalStatus.mockImplementationOnce(async () => {
+      lifecycle.push('status-denied');
+      return {
+        version: 1,
+        kind: 'approval_state',
+        accountId: 'account-smoke',
+        approvalId: 'jappr_1',
+        status: 'denied',
+      };
+    });
+    messageRepository.update.mockImplementationOnce(async () => {
+      lifecycle.push('persisted');
+    });
+    const listener = () => lifecycle.push('run-released');
+    window.addEventListener('jarvis:run-state', listener);
+    const { container } = renderCard(part('jarvisapproval:jappr_1'), {
+      actionId: 'files.create',
+      expectedEffect: 'Create one protected file.',
+      risk: 'confirm',
+      parameters: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deny action' }));
+
+    await waitFor(() =>
+      expect(container.firstElementChild?.getAttribute('data-status')).toBe('cancelled'),
+    );
+    expect(kernelClient.getApprovalStatus).toHaveBeenCalledWith({
+      accountId: 'account-smoke',
+      approvalId: 'jappr_1',
+    });
+    expect(lifecycle).toEqual(['decide-unavailable', 'status-denied', 'persisted', 'run-released']);
+    expect(kernelClient.executeApproval).not.toHaveBeenCalled();
+    window.removeEventListener('jarvis:run-state', listener);
+  });
+
+  it.each([
+    [
+      'missing',
+      {
+        version: 1,
+        kind: 'unavailable',
+        requestKind: 'approval_status',
+        reason: 'kernel_not_activated',
+      },
+    ],
+    [
+      'pending',
+      {
+        version: 1,
+        kind: 'approval_state',
+        accountId: 'account-smoke',
+        approvalId: 'jappr_1',
+        status: 'pending',
+      },
+    ],
+    [
+      'approved',
+      {
+        version: 1,
+        kind: 'approval_state',
+        accountId: 'account-smoke',
+        approvalId: 'jappr_1',
+        status: 'approved',
+      },
+    ],
+    [
+      'consumed',
+      {
+        version: 1,
+        kind: 'approval_state',
+        accountId: 'account-smoke',
+        approvalId: 'jappr_1',
+        status: 'consumed',
+      },
+    ],
+    [
+      'expired',
+      {
+        version: 1,
+        kind: 'approval_state',
+        accountId: 'account-smoke',
+        approvalId: 'jappr_1',
+        status: 'expired',
+      },
+    ],
+    [
+      'mismatched account',
+      {
+        version: 1,
+        kind: 'approval_state',
+        accountId: 'different-account',
+        approvalId: 'jappr_1',
+        status: 'denied',
+      },
+    ],
+    [
+      'mismatched approval',
+      {
+        version: 1,
+        kind: 'approval_state',
+        accountId: 'account-smoke',
+        approvalId: 'jappr_other',
+        status: 'denied',
+      },
+    ],
+  ])('keeps local denial actionable when status proof is %s', async (_label, statusResponse) => {
+    kernelClient.decideApproval.mockResolvedValueOnce({
+      version: 1,
+      kind: 'unavailable',
+      requestKind: 'approval_decide',
+      reason: 'invalid_response',
+    });
+    kernelClient.getApprovalStatus.mockResolvedValueOnce(statusResponse);
+    const events: Array<{ chatId?: string; status?: string }> = [];
+    const listener = (event: Event) => {
+      events.push((event as CustomEvent<{ chatId?: string; status?: string }>).detail);
+    };
+    window.addEventListener('jarvis:run-state', listener);
+    const { container } = renderCard(part('jarvisapproval:jappr_1'), {
+      actionId: 'files.create',
+      expectedEffect: 'Create one protected file.',
+      risk: 'confirm',
+      parameters: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deny action' }));
+
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Approval decision could not be verified. Refresh protected state before retrying.',
+    );
+    expect(container.firstElementChild?.getAttribute('data-status')).toBe('pending');
+    expect(messageRepository.update).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
+    expect(
+      (screen.getByRole('button', { name: 'Deny action' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    window.removeEventListener('jarvis:run-state', listener);
+  });
+
+  it('does not reinterpret an approved deny response as a denied status retry', async () => {
+    kernelClient.decideApproval.mockResolvedValueOnce({
+      version: 1,
+      kind: 'approval_decided',
+      approvalId: 'jappr_1',
+      status: 'approved',
+    });
+    renderCard(part('jarvisapproval:jappr_1'), {
+      actionId: 'files.create',
+      expectedEffect: 'Create one protected file.',
+      risk: 'confirm',
+      parameters: [],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deny action' }));
+
+    await screen.findByRole('alert');
+    expect(kernelClient.getApprovalStatus).not.toHaveBeenCalled();
+    expect(messageRepository.update).not.toHaveBeenCalled();
   });
 
   it('uses canonical decide readback before execution and preserves handoff truth', async () => {

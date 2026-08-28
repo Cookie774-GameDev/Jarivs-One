@@ -230,6 +230,9 @@ export function ActionApprovalCard({
   const [decisionState, setDecisionState] = React.useState<
     'idle' | 'busy' | 'submitted' | 'failed'
   >('idle');
+  const [decisionFailure, setDecisionFailure] = React.useState<
+    'verification' | 'persistence' | undefined
+  >();
   const dangerous =
     resolvedPresentation?.risk === 'dangerous' ||
     part.action_id === 'task.cancel' ||
@@ -306,6 +309,8 @@ export function ActionApprovalCard({
       return;
     }
     setDecisionState('busy');
+    setDecisionFailure(undefined);
+    let failureKind: 'verification' | 'persistence' = 'verification';
     try {
       const { createJarvisKernelClient } = await import('@/lib/jarvis/kernelClient');
       const client = createJarvisKernelClient();
@@ -315,14 +320,29 @@ export function ActionApprovalCard({
           approvalId,
           decision: choice,
         });
-        if (
-          decision.kind !== 'approval_decided' ||
-          decision.approvalId !== approvalId ||
-          decision.status !== (choice === 'approve' ? 'approved' : 'denied')
-        ) {
-          throw new Error('kernel_approval_decision_failed');
-        }
         if (choice === 'deny') {
+          const denialAlreadyVerified =
+            decision.kind === 'approval_decided' &&
+            decision.approvalId === approvalId &&
+            decision.status === 'denied';
+          if (!denialAlreadyVerified) {
+            if (decision.kind !== 'unavailable' || decision.requestKind !== 'approval_decide') {
+              throw new Error('kernel_approval_decision_failed');
+            }
+            const status = await client.getApprovalStatus({
+              accountId: identity.accountId,
+              approvalId,
+            });
+            if (
+              status.kind !== 'approval_state' ||
+              status.accountId !== identity.accountId ||
+              status.approvalId !== approvalId ||
+              status.status !== 'denied'
+            ) {
+              throw new Error('kernel_approval_status_not_denied');
+            }
+          }
+          failureKind = 'persistence';
           await persistVerifiedDenial(messageId, part.call_id);
           setDisplayStatus('cancelled');
           setDecisionState('submitted');
@@ -332,6 +352,13 @@ export function ActionApprovalCard({
             }),
           );
           return;
+        }
+        if (
+          decision.kind !== 'approval_decided' ||
+          decision.approvalId !== approvalId ||
+          decision.status !== 'approved'
+        ) {
+          throw new Error('kernel_approval_decision_failed');
         }
         const execution = await client.executeApproval({
           accountId: identity.accountId,
@@ -372,6 +399,7 @@ export function ActionApprovalCard({
       }
     } catch {
       setDecisionState('failed');
+      setDecisionFailure(failureKind);
     }
   };
 
@@ -451,7 +479,9 @@ export function ActionApprovalCard({
 
       {decisionState === 'failed' && displayStatus === 'pending' ? (
         <p className="text-secondary leading-relaxed text-destructive" role="alert">
-          Approval decision could not be saved. Refresh protected state before retrying.
+          {decisionFailure === 'persistence'
+            ? 'Approval decision could not be saved. Refresh protected state before retrying.'
+            : 'Approval decision could not be verified. Refresh protected state before retrying.'}
         </p>
       ) : null}
 

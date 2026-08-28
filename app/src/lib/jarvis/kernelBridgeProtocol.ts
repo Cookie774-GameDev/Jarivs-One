@@ -25,6 +25,12 @@ export type KernelClientRequestV1 =
     }>
   | Readonly<{
       version: 1;
+      kind: 'approval_status';
+      accountId: string;
+      approvalId: string;
+    }>
+  | Readonly<{
+      version: 1;
       kind: 'approval_decide';
       accountId: string;
       approvalId: string;
@@ -82,6 +88,13 @@ export type KernelClientResponseV1 =
       kind: 'approval_decided';
       approvalId: string;
       status: 'approved' | 'denied';
+    }>
+  | Readonly<{
+      version: 1;
+      kind: 'approval_state';
+      accountId: string;
+      approvalId: string;
+      status: 'pending' | 'approved' | 'denied' | 'expired' | 'consumed';
     }>
   | Readonly<{
       version: 1;
@@ -193,6 +206,12 @@ export function isKernelClientRequestV1(value: unknown): value is KernelClientRe
         id(record.accountId) &&
         id(record.approvalId)
       );
+    case 'approval_status':
+      return (
+        exactKeys(record, ['version', 'kind', 'accountId', 'approvalId']) &&
+        id(record.accountId) &&
+        id(record.approvalId)
+      );
     case 'approval_decide':
       return (
         exactKeys(record, ['version', 'kind', 'accountId', 'approvalId', 'decision']) &&
@@ -230,6 +249,7 @@ const REQUEST_KINDS = new Set<KernelClientRequestKind>([
   'turn_dispatch',
   'approval_create',
   'approval_present',
+  'approval_status',
   'approval_decide',
   'approval_execute',
   'cancel',
@@ -310,6 +330,14 @@ export function isKernelClientResponseV1(value: unknown): value is KernelClientR
         id(record.approvalId) &&
         (record.status === 'approved' || record.status === 'denied')
       );
+    case 'approval_state':
+      return (
+        exactKeys(record, ['version', 'kind', 'accountId', 'approvalId', 'status']) &&
+        id(record.accountId) &&
+        id(record.approvalId) &&
+        typeof record.status === 'string' &&
+        ['pending', 'approved', 'denied', 'expired', 'consumed'].includes(record.status)
+      );
     case 'approval_execution':
       return (
         exactKeys(record, ['version', 'kind', 'approvalId', 'runId', 'status']) &&
@@ -368,6 +396,7 @@ const RESPONSE_FOR_REQUEST: Readonly<
   turn_dispatch: 'turn_accepted',
   approval_create: 'approval_created',
   approval_present: 'approval_presentation',
+  approval_status: 'approval_state',
   approval_decide: 'approval_decided',
   approval_execute: 'approval_execution',
   cancel: 'cancellation_state',
@@ -385,6 +414,12 @@ export function responseMatchesKernelRequest(
     case 'approval_present':
       return (
         response.kind === 'approval_presentation' && response.approvalId === request.approvalId
+      );
+    case 'approval_status':
+      return (
+        response.kind === 'approval_state' &&
+        response.accountId === request.accountId &&
+        response.approvalId === request.approvalId
       );
     case 'approval_decide':
       return response.kind === 'approval_decided' && response.approvalId === request.approvalId;

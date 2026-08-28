@@ -55,6 +55,12 @@ describe('kernel bridge protocol', () => {
     },
     {
       version: 1,
+      kind: 'approval_status',
+      accountId: 'account-1',
+      approvalId: 'approval-1',
+    },
+    {
+      version: 1,
       kind: 'approval_decide',
       accountId: 'account-1',
       approvalId: 'approval-1',
@@ -140,6 +146,39 @@ describe('kernel bridge protocol', () => {
   });
 
   it('binds correlated response identifiers to the exact request', () => {
+    const approvalStatusRequest: KernelClientRequestV1 = {
+      version: 1,
+      kind: 'approval_status',
+      accountId: 'account-1',
+      approvalId: 'approval-1',
+    };
+    const deniedState = {
+      version: 1 as const,
+      kind: 'approval_state' as const,
+      accountId: 'account-1',
+      approvalId: 'approval-1',
+      status: 'denied' as const,
+    };
+    expect(isKernelClientResponseV1(deniedState)).toBe(true);
+    expect(responseMatchesKernelRequest(approvalStatusRequest, deniedState)).toBe(true);
+    expect(
+      responseMatchesKernelRequest(approvalStatusRequest, {
+        ...deniedState,
+        accountId: 'different-account',
+      }),
+    ).toBe(false);
+    expect(
+      responseMatchesKernelRequest(approvalStatusRequest, {
+        ...deniedState,
+        approvalId: 'different-approval',
+      }),
+    ).toBe(false);
+    for (const status of ['pending', 'approved', 'denied', 'expired', 'consumed'] as const) {
+      expect(isKernelClientResponseV1({ ...deniedState, status })).toBe(true);
+    }
+    expect(isKernelClientResponseV1({ ...deniedState, status: 'missing' })).toBe(false);
+    expect(isKernelClientResponseV1({ ...deniedState, rawApproval: {} })).toBe(false);
+
     const cancelRequest: KernelClientRequestV1 = {
       version: 1,
       kind: 'cancel',
