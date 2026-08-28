@@ -112,6 +112,9 @@ function buildJarvisEvent(status: EventRow['status']): EventRow {
 }
 
 describe('SchedulePage Jarvis lifecycle', () => {
+  const savedRouteReceipt =
+    'Provider: OpenCode · Connection: opencode-cli · Model: openai/gpt-5.6-sol-fast · Fast: exact route · Effort: provider default';
+
   beforeEach(() => {
     window.localStorage.clear();
     createEvent.mockReset().mockResolvedValue({});
@@ -236,6 +239,19 @@ describe('SchedulePage Jarvis lifecycle', () => {
         status: 'scheduled',
       }),
     );
+  });
+
+  it('shows the exact saved route receipt in the timeline and action output', () => {
+    render(<SchedulePage />);
+
+    expect(screen.getByLabelText('Saved model identity').textContent).toBe(savedRouteReceipt);
+
+    fireEvent.click(screen.getByRole('button', { name: /View runs & output/i }));
+    expect(
+      screen
+        .getAllByLabelText('Saved model identity')
+        .some((element) => element.textContent === savedRouteReceipt),
+    ).toBe(true);
   });
 
   it('keeps a saved exact route editable while its live catalog row is unavailable', async () => {

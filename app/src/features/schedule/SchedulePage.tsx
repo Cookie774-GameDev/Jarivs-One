@@ -83,6 +83,7 @@ import {
   parseJarvisScheduleMetadata,
   type JarvisScheduleRecurrence,
 } from './jarvisSchedules';
+import { describeJarvisScheduleModelIdentity } from './jarvisScheduleModelIdentity';
 import { ChatThread } from '@/features/chat/ChatThread';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_CONTROL } from '@/lib/jarvis/smoke/evidenceIds';
@@ -1956,6 +1957,9 @@ function EventTimelineRow({
   const visual = visualForEventTitle(event.title);
   const jarvisSchedule = isJarvisScheduleEvent(event);
   const jarvisMetadata = parseJarvisScheduleMetadata(event);
+  const jarvisModelIdentity = jarvisMetadata
+    ? describeJarvisScheduleModelIdentity(jarvisMetadata.modelSelection)
+    : null;
   const Icon = visual.icon;
   const reminderCount = event.reminders?.length ?? 0;
   const accentColor = event.color_hue !== undefined ? `hsl(${event.color_hue} 70% 55%)` : undefined;
@@ -2036,12 +2040,11 @@ function EventTimelineRow({
             )}
             {jarvisSchedule && jarvisMetadata ? (
               <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-metadata text-muted-foreground">
-                <span>
-                  Model:{' '}
-                  {jarvisMetadata.modelSelection.mode === 'single'
-                    ? jarvisMetadata.modelSelection.modelId
-                    : jarvisMetadata.modelSelection.mode}
-                </span>
+                {jarvisModelIdentity ? (
+                  <span aria-label="Saved model identity">{jarvisModelIdentity.summary}</span>
+                ) : (
+                  <span>Model: {jarvisMetadata.modelSelection.mode}</span>
+                )}
                 <span>
                   Repeats:{' '}
                   {jarvisRecurrenceLabel(jarvisMetadata.recurrence, jarvisMetadata.intervalMs)}
@@ -2271,6 +2274,9 @@ function JarvisActionOutputView({
   onDelete: (event: EventRow) => void;
 }) {
   const metadata = parseJarvisScheduleMetadata(event);
+  const modelIdentity = metadata
+    ? describeJarvisScheduleModelIdentity(metadata.modelSelection)
+    : null;
 
   return (
     <div className="flex h-[560px] min-h-0 flex-col">
@@ -2291,9 +2297,12 @@ function JarvisActionOutputView({
             </div>
             <p className="text-metadata text-muted-foreground">
               {jarvisRecurrenceLabel(metadata?.recurrence ?? 'once', metadata?.intervalMs)}
-              {metadata?.modelSelection.mode === 'single'
-                ? ` · ${metadata.modelSelection.modelId}`
-                : ''}
+              {modelIdentity ? (
+                <>
+                  {' · '}
+                  <span aria-label="Saved model identity">{modelIdentity.summary}</span>
+                </>
+              ) : null}
               {metadata?.nextRunAt && event.status === 'scheduled'
                 ? ` · next ${formatLocalDateTime(metadata.nextRunAt)}`
                 : ''}
