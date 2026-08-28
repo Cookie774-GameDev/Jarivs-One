@@ -66,6 +66,7 @@ mod model_foundry_training;
 mod monochrome_evidence;
 mod ollama_http;
 mod pets;
+mod playwright_feature_pack;
 mod preview;
 mod renderer_watchdog;
 pub mod runtime_profile;
