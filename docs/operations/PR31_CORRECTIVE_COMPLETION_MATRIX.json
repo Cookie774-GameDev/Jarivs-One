@@ -373,15 +373,15 @@
       "evidence": [
         {
           "kind": "commit",
-          "ref": "91716da5 adds an executable fail-closed shipping-boundary contract without overstating delivery"
+          "ref": "91716da5 adds an executable fail-closed shipping-boundary contract; 26c510b8 adds a repository-only offline signed-manifest lifecycle for diagnose, install/update, same-manifest repair, rollback, size measurement, and tamper-safe uninstall without network, browser launch, or Playwright-download authority"
         },
         {
           "kind": "test",
-          "ref": "scripts/pr31-oss-bundle.test.mjs 5/5, package/update/signature 60/60, release manifest 45/45, existing Doctor 10/10, TypeScript, OSS verifier, formatting, diff, and Gitleaks passed"
+          "ref": "After 26c510b8: Node release/package/signature/lifecycle 100/100, renderer updater/Doctor 46/46, post-commit focused 20/20, full TypeScript, Prettier, syntax, diff, exact scope, and Gitleaks passed; zero temporary roots, Ollama processes, and 11434 listeners"
         },
         {
           "kind": "boundary",
-          "ref": "Playwright 1.61.1 remains development-only; default app/updater includes no runtime or browsers, and optional signed installer plus Doctor diagnose/install/repair/uninstall/rollback/native acceptance are still not implemented"
+          "ref": "Lifecycle code is implemented but unintegrated. Default app/updater still includes no runtime/browser. Remaining safe/external prerequisites: independently signed per-platform artifacts plus signed update manifest, production-pinned public key, Chromium revision/hash/provenance/size ceilings, native reparse-safe allowlisted app-data bridge, product Doctor integration after its active lock releases, and official-native lifecycle acceptance"
         }
       ]
     },
