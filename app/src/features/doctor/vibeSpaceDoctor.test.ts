@@ -31,6 +31,11 @@ function dependencies(
       { label: 'RLM', ok: true, detail: 'Tool binding refreshed' },
       { label: 'SiYuan', ok: true, detail: 'Read-only transport probe passed' },
     ]),
+    checkPlaywrightFeaturePack: vi.fn().mockResolvedValue({
+      label: 'Playwright acceptance runtime',
+      ok: true,
+      detail: 'Ready · Playwright 1.61.1 · Chromium 1234567',
+    }),
     readRecentHealthSignals: vi.fn().mockReturnValue([]),
     captureProtectedRouteState: vi.fn().mockReturnValue('exact-route-state'),
     runAdditionalChecks: vi.fn().mockResolvedValue([]),
@@ -40,6 +45,37 @@ function dependencies(
 }
 
 describe('VibeSpace slash Doctor', () => {
+  it('includes truthful Playwright external prerequisites without claiming repair', async () => {
+    const checkPlaywrightFeaturePack = vi.fn().mockResolvedValue({
+      label: 'Playwright acceptance runtime',
+      ok: false,
+      detail:
+        'External prerequisite required · production_trust_not_configured · production-trust-and-signed-artifact',
+    });
+    const report = await runVibeSpaceDoctorWithDependencies(
+      dependencies({ checkPlaywrightFeaturePack }),
+    );
+
+    expect(checkPlaywrightFeaturePack).toHaveBeenCalledOnce();
+    expect(report.ok).toBe(false);
+    expect(report.text).toContain(
+      'Playwright acceptance runtime — External prerequisite required · production_trust_not_configured',
+    );
+    expect(report.text).not.toMatch(/downloaded|installed successfully|repair succeeded/iu);
+  });
+
+  it('does not call the native Playwright bridge in browser preview', async () => {
+    const checkPlaywrightFeaturePack = vi.fn();
+    const report = await runVibeSpaceDoctorWithDependencies(
+      dependencies({ nativeRuntime: false, checkPlaywrightFeaturePack }),
+    );
+
+    expect(checkPlaywrightFeaturePack).not.toHaveBeenCalled();
+    expect(report.text).toContain(
+      'Playwright acceptance runtime — Native check unavailable in browser preview',
+    );
+  });
+
   it('refreshes OpenCode and rebinds RLM/SiYuan without changing exact route controls', async () => {
     const refreshOpenCode = vi.fn().mockResolvedValue(undefined);
     const refreshOpenCodeProvider = vi

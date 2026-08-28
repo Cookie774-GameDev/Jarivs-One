@@ -5,11 +5,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const SCRIPT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PLAYWRIGHT_VERSION = '1.61.1';
 const PLAYWRIGHT_PREREQUISITES = [
+  ['production-signing-trust', 'missing'],
   ['signed-feature-pack-artifact', 'missing'],
   ['pinned-browser-revisions-and-hashes', 'missing'],
-  ['native-atomic-installer', 'partial'],
-  ['doctor-verification-and-repair', 'partial'],
-  ['uninstall-rollback-measurement', 'partial'],
+  ['native-atomic-installer', 'implemented'],
+  ['doctor-verification-and-repair', 'implemented'],
+  ['uninstall-rollback-measurement', 'implemented'],
 ];
 const REQUIRED_RESOURCES = [
   '../../docs/oss/dependency-lock.json',
@@ -119,6 +120,22 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
   const sbom = loadJson(root, 'docs/oss/sbom-pr31.cdx.json', errors);
   const featurePack = loadJson(root, 'docs/oss/browser-agent-feature-pack.json', errors);
   const doctorSource = loadText(root, 'app/src/features/doctor/vibeSpaceDoctor.ts', errors);
+  const featurePackBridgeSource = loadText(
+    root,
+    'app/src/features/doctor/playwrightFeaturePackBridge.ts',
+    errors,
+  );
+  const cargoManifest = loadText(root, 'app/src-tauri/Cargo.toml', errors);
+  const nativeLifecycleSource = loadText(
+    root,
+    'app/src-tauri/src/playwright_feature_pack.rs',
+    errors,
+  );
+  const nativeCommandSource = loadText(
+    root,
+    'app/src-tauri/src/playwright_feature_pack_commands.rs',
+    errors,
+  );
   const playwrightLifecycleSource = loadText(
     root,
     'scripts/pr31-playwright-acceptance-runtime.mjs',
@@ -373,8 +390,9 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
     errors,
   );
   check(
-    featurePack.shippingStatus === 'not-implemented',
-    'Browser Agent shipping status must remain not-implemented',
+    featurePack.shippingStatus === 'externally-blocked' &&
+      featurePack.productionConfigurationStatus === 'external-prerequisite',
+    'Browser Agent shipping status must remain externally blocked on production prerequisites',
     errors,
   );
   check(
@@ -383,18 +401,18 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
     errors,
   );
   check(
-    featurePack.optionalInstallerImplemented === false,
-    'Browser Agent optional installer must not be claimed before implementation',
+    featurePack.optionalInstallerImplemented === true,
+    'Browser Agent optional local installer integration must remain implemented',
     errors,
   );
   check(
-    featurePack.separatelyRemovable === false,
-    'an unshipped Browser Agent pack must not claim removability',
+    featurePack.separatelyRemovable === true,
+    'the optional feature pack must retain state-bound removability',
     errors,
   );
   check(
-    featurePack.separatelyMeasurable === false,
-    'an unshipped Browser Agent pack must not claim installed-size measurement',
+    featurePack.separatelyMeasurable === true,
+    'the optional feature pack must retain signed installed-size measurement',
     errors,
   );
   check(
@@ -403,8 +421,8 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
     errors,
   );
   check(
-    featurePack.measurementStatus === 'not-applicable-unshipped',
-    'feature pack measurement must remain unavailable while unshipped',
+    featurePack.measurementStatus === 'implemented-awaiting-production-artifact',
+    'feature pack measurement must remain implemented but externally blocked',
     errors,
   );
   check(
@@ -414,17 +432,20 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
     errors,
   );
   check(
-    featurePack.doctor?.supportStatus === 'unavailable' &&
-      featurePack.doctor?.canDiagnoseInstalledRuntime === false &&
+    featurePack.doctor?.supportStatus === 'implemented-external-prerequisite' &&
+      featurePack.doctor?.canDiagnoseInstalledRuntime === true &&
       featurePack.doctor?.canInstall === false &&
-      featurePack.doctor?.canRepair === false &&
+      featurePack.doctor?.canRepair === true &&
+      featurePack.doctor?.configuredRepairOnly === true &&
+      featurePack.doctor?.requiresProductionTrust === true &&
       featurePack.doctor?.implicitBrowserDownloadAllowed === false,
-    'Doctor must not claim Playwright install or repair authority',
+    'Doctor must remain diagnosis/configured-repair only with no install or download authority',
     errors,
   );
   const expectedLocalLifecycle = {
-    status: 'implemented-unintegrated',
-    entrypoint: 'scripts/pr31-playwright-acceptance-runtime.mjs',
+    status: 'implemented-native-external-prerequisite',
+    entrypoint: 'app/src-tauri/src/playwright_feature_pack_commands.rs',
+    referenceEntrypoint: 'scripts/pr31-playwright-acceptance-runtime.mjs',
     artifactSource: 'caller-supplied-local-only',
     signedManifestRequired: true,
     downloadsAllowed: false,
@@ -437,13 +458,13 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
       measure: true,
       uninstall: true,
     },
-    productionTrustRootPinned: false,
-    nativeAtomicReparseSafe: false,
-    productDoctorIntegrated: false,
+    productionTrustRootPinned: 'compile-time-required-unconfigured',
+    nativeAtomicReparseSafe: true,
+    productDoctorIntegrated: true,
   };
   check(
     JSON.stringify(featurePack.localLifecycleContract) === JSON.stringify(expectedLocalLifecycle),
-    'local lifecycle must remain unintegrated until native trust and Doctor wiring exist',
+    'local lifecycle must remain native-integrated and externally blocked on production inputs',
     errors,
   );
   check(
@@ -465,9 +486,43 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
     'local lifecycle must not contain network or browser-download authority',
     errors,
   );
+  const nativeLifecycleProduction = nativeLifecycleSource.split('#[cfg(test)]')[0] ?? '';
+  const nativeCommandProduction = nativeCommandSource.split('#[cfg(test)]')[0] ?? '';
   check(
-    !/(?:playwright|chromium|firefox|webkit|browser\s+(?:agent|binaries))/iu.test(doctorSource),
-    'Doctor source must not claim unavailable Playwright or browser support',
+    /minisign-verify\s*=\s*"=0\.2\.5"/u.test(cargoManifest),
+    'native feature pack must directly pin minisign-verify 0.2.5',
+    errors,
+  );
+  check(
+    [
+      'VIBESPACE_PLAYWRIGHT_FEATURE_PACK_PUBLIC_KEY',
+      'VIBESPACE_PLAYWRIGHT_FEATURE_PACK_MANIFEST_SHA256',
+      'VIBESPACE_PLAYWRIGHT_FEATURE_PACK_BROWSER_REVISION',
+      'playwright_feature_pack_diagnose',
+      'playwright_feature_pack_install_or_update',
+      'playwright_feature_pack_repair_configured',
+      'playwright_feature_pack_rollback',
+      'playwright_feature_pack_measure',
+      'playwright_feature_pack_uninstall',
+    ].every((token) => nativeCommandProduction.includes(token)) &&
+      nativeCommandProduction.includes('option_env!') &&
+      !nativeCommandProduction.includes('std::env::var'),
+    'native commands must use compile-time trust and expose the bounded lifecycle',
+    errors,
+  );
+  check(
+    /runDefaultPlaywrightFeaturePackDoctorCheck/u.test(doctorSource) &&
+      /runPlaywrightFeaturePackDoctorCheck/u.test(featurePackBridgeSource) &&
+      /repairConfigured/u.test(featurePackBridgeSource) &&
+      /no install was attempted/u.test(featurePackBridgeSource),
+    'Doctor must expose diagnosis and configured repair without implicit install',
+    errors,
+  );
+  check(
+    !/\breqwest\b|std::process::Command|Command::new|https?:\/\/|playwright(?:-core)?\s+install(?:-deps)?|\.launch\s*\(/iu.test(
+      `${nativeLifecycleProduction}\n${nativeCommandProduction}\n${featurePackBridgeSource}`,
+    ),
+    'product feature-pack bridge must not contain network, process, browser launch, or download authority',
     errors,
   );
   const prerequisites = Array.isArray(featurePack.prerequisites) ? featurePack.prerequisites : [];

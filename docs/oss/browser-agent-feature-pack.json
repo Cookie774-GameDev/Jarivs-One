@@ -2,28 +2,32 @@
   "schemaVersion": 1,
   "id": "vibespace-browser-agent",
   "version": "1.61.1",
-  "description": "Development-only Playwright automation metadata plus a repository-only offline lifecycle contract. No Browser Agent runtime or browser binary is shipped.",
-  "shippingStatus": "not-implemented",
+  "description": "An optional native signed-runtime lifecycle and Doctor bridge are implemented but remain externally blocked on production signing trust and per-platform artifacts. No Browser Agent runtime or browser binary is included in the default app.",
+  "shippingStatus": "externally-blocked",
+  "productionConfigurationStatus": "external-prerequisite",
   "defaultInstallerIncluded": false,
-  "optionalInstallerImplemented": false,
-  "separatelyRemovable": false,
-  "separatelyMeasurable": false,
-  "measurementStatus": "not-applicable-unshipped",
+  "optionalInstallerImplemented": true,
+  "separatelyRemovable": true,
+  "separatelyMeasurable": true,
+  "measurementStatus": "implemented-awaiting-production-artifact",
   "installerMeasurementClaimed": false,
   "updates": {
     "defaultAppUpdaterIncludesFeaturePack": false,
     "separateSignedManifestImplemented": false
   },
   "doctor": {
-    "supportStatus": "unavailable",
-    "canDiagnoseInstalledRuntime": false,
+    "supportStatus": "implemented-external-prerequisite",
+    "canDiagnoseInstalledRuntime": true,
     "canInstall": false,
-    "canRepair": false,
+    "canRepair": true,
+    "configuredRepairOnly": true,
+    "requiresProductionTrust": true,
     "implicitBrowserDownloadAllowed": false
   },
   "localLifecycleContract": {
-    "status": "implemented-unintegrated",
-    "entrypoint": "scripts/pr31-playwright-acceptance-runtime.mjs",
+    "status": "implemented-native-external-prerequisite",
+    "entrypoint": "app/src-tauri/src/playwright_feature_pack_commands.rs",
+    "referenceEntrypoint": "scripts/pr31-playwright-acceptance-runtime.mjs",
     "artifactSource": "caller-supplied-local-only",
     "signedManifestRequired": true,
     "downloadsAllowed": false,
@@ -36,9 +40,9 @@
       "measure": true,
       "uninstall": true
     },
-    "productionTrustRootPinned": false,
-    "nativeAtomicReparseSafe": false,
-    "productDoctorIntegrated": false
+    "productionTrustRootPinned": "compile-time-required-unconfigured",
+    "nativeAtomicReparseSafe": true,
+    "productDoctorIntegrated": true
   },
   "components": [
     {
@@ -69,6 +73,11 @@
   ],
   "prerequisites": [
     {
+      "id": "production-signing-trust",
+      "status": "missing",
+      "reason": "No production Minisign public key is compiled into release builds and no production signing ceremony has supplied one."
+    },
+    {
       "id": "signed-feature-pack-artifact",
       "status": "missing",
       "reason": "A separately versioned and signed feature-pack artifact and update manifest do not exist."
@@ -80,18 +89,18 @@
     },
     {
       "id": "native-atomic-installer",
-      "status": "partial",
-      "reason": "The repository-only offline lifecycle stages verified files and switches local state, but no production-key-pinned native allowlisted or reparse-safe installation boundary exists."
+      "status": "implemented",
+      "reason": "The native fixed-app-data lifecycle is allowlisted, bounded, reparse-safe, and accepts only caller-selected local signed artifacts after compile-time trust is present."
     },
     {
       "id": "doctor-verification-and-repair",
-      "status": "partial",
-      "reason": "The repository-only lifecycle diagnoses exact signed hashes and permits same-manifest offline repair, but the product Doctor has no Playwright integration or install authority."
+      "status": "implemented",
+      "reason": "Product Doctor diagnoses the native lifecycle and permits only configured same-manifest repair; it never installs an absent runtime or downloads a browser."
     },
     {
       "id": "uninstall-rollback-measurement",
-      "status": "partial",
-      "reason": "The repository-only lifecycle supports state-bound uninstall, verified rollback, and signed installed-size measurement, but native product integration and official-app acceptance evidence do not exist."
+      "status": "implemented",
+      "reason": "Native commands expose state-bound uninstall, verified rollback, and signed installed-size measurement while refusing untrusted or tampered state."
     }
   ]
 }

@@ -17,6 +17,7 @@ import { installToolGatewayRlmContextPort } from '@/lib/harness/toolGatewayProdu
 import { productionRlmContextTool } from '@/features/context/contextRlmProduction';
 import { getProductionSiyuanRlmPort } from '@/features/context/siyuanRlmProduction';
 import { useDevConsoleStore, type DevLogEntry } from '@/features/dev-console/store';
+import { runDefaultPlaywrightFeaturePackDoctorCheck } from './playwrightFeaturePackBridge';
 
 const OPENCODE_SETTLE_TIMEOUT_MS = 20_000;
 
@@ -40,6 +41,7 @@ export interface VibeSpaceDoctorDependencies {
   readonly waitForOpenCodeSettled: () => Promise<void>;
   readonly refreshOpenCodeProvider: () => Promise<VibeSpaceDoctorSubsystemCheck>;
   readonly refreshContextBindings: () => Promise<readonly VibeSpaceDoctorSubsystemCheck[]>;
+  readonly checkPlaywrightFeaturePack: () => Promise<VibeSpaceDoctorSubsystemCheck>;
   readonly readRecentHealthSignals: () => readonly VibeSpaceDoctorSubsystemCheck[];
   readonly captureProtectedRouteState: () => string;
   readonly runAdditionalChecks: () => Promise<readonly VibeSpaceDoctorSubsystemCheck[]>;
@@ -355,6 +357,11 @@ export async function runVibeSpaceDoctorWithDependencies(
       ok: false,
       detail: 'Native check unavailable in browser preview',
     });
+    runtimeChecks.push({
+      label: 'Playwright acceptance runtime',
+      ok: false,
+      detail: 'Native check unavailable in browser preview',
+    });
   } else {
     try {
       await dependencies.refreshOpenCode();
@@ -383,6 +390,15 @@ export async function runVibeSpaceDoctorWithDependencies(
         label: 'RLM / SiYuan',
         ok: false,
         detail: 'Check failed safely · context_runtime_unavailable',
+      });
+    }
+    try {
+      runtimeChecks.push(await dependencies.checkPlaywrightFeaturePack());
+    } catch {
+      runtimeChecks.push({
+        label: 'Playwright acceptance runtime',
+        ok: false,
+        detail: 'Check failed safely · playwright_feature_pack_unavailable',
       });
     }
   }
@@ -466,6 +482,7 @@ export function runVibeSpaceDoctor(): Promise<VibeSpaceDoctorReport> {
     waitForOpenCodeSettled: () => waitForOpenCodeSettled(harnessRuntimeManager),
     refreshOpenCodeProvider: refreshDefaultOpenCodeProvider,
     refreshContextBindings: refreshDefaultContextBindings,
+    checkPlaywrightFeaturePack: runDefaultPlaywrightFeaturePackDoctorCheck,
     readRecentHealthSignals: () =>
       collectRecentDoctorHealthSignals(useDevConsoleStore.getState().entries, Date.now()),
     captureProtectedRouteState: captureDefaultProtectedRouteState,

@@ -1,5 +1,7 @@
+use base64::Engine;
 use cap_fs_ext::{DirExt, FollowSymlinks, MetadataExt, OpenOptionsFollowExt};
 use cap_std::fs::{Dir, OpenOptions};
+use minisign_verify::{PublicKey, Signature};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashSet};
@@ -12,7 +14,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const PLAYWRIGHT_VERSION: &str = "1.61.1";
 const MAX_FILE_BYTES: u64 = 768 * 1024 * 1024;
-const MAX_TOTAL_BYTES: u64 = 1_500_000_000;
+pub(crate) const MAX_TOTAL_BYTES: u64 = 1_500_000_000;
 const MAX_FILES: usize = 20_000;
 const MAX_MANIFEST_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_SIGNATURE_BYTES: u64 = 16 * 1024;
@@ -36,7 +38,7 @@ pub(crate) struct FeaturePackError {
 }
 
 impl FeaturePackError {
-    fn new(code: &'static str) -> Self {
+    pub(crate) fn new(code: &'static str) -> Self {
         Self { code }
     }
 }
@@ -70,6 +72,96 @@ pub(crate) trait ManifestSignatureVerifier: Send + Sync {
         manifest_bytes: &[u8],
         signature_bytes: &[u8],
     ) -> Result<VerifiedManifestSignature>;
+}
+
+pub(crate) struct MinisignManifestVerifier {
+    public_key: PublicKey,
+    public_key_sha256: String,
+    key_id: String,
+}
+
+impl MinisignManifestVerifier {
+    pub(crate) fn from_tauri_public_key(encoded_public_key: &str) -> Result<Self> {
+        let decoded = decode_canonical_base64(encoded_public_key, 16 * 1024)?;
+        let public_key_record = std::str::from_utf8(&decoded)
+            .map_err(|_| FeaturePackError::new("production_trust_not_configured"))?;
+        let lines = public_key_record.lines().collect::<Vec<_>>();
+        if lines.len() != 2
+            || !lines[0].starts_with("untrusted comment: ")
+            || lines[0].bytes().any(|byte| byte.is_ascii_control())
+        {
+            return fail("production_trust_not_configured");
+        }
+        let raw_key = decode_canonical_base64(lines[1], 42)?;
+        if raw_key.len() != 42 || &raw_key[..2] != b"Ed" {
+            return fail("production_trust_not_configured");
+        }
+        let public_key = PublicKey::decode(public_key_record)
+            .map_err(|_| FeaturePackError::new("production_trust_not_configured"))?;
+        let key_id = raw_key[2..10]
+            .iter()
+            .rev()
+            .map(|byte| format!("{byte:02X}"))
+            .collect::<String>();
+        Ok(Self {
+            public_key,
+            public_key_sha256: sha256(&raw_key),
+            key_id,
+        })
+    }
+
+    pub(crate) fn key_id(&self) -> &str {
+        &self.key_id
+    }
+}
+
+impl ManifestSignatureVerifier for MinisignManifestVerifier {
+    fn public_key_sha256(&self) -> &str {
+        &self.public_key_sha256
+    }
+
+    fn verify_hashed_manifest(
+        &self,
+        manifest_bytes: &[u8],
+        signature_bytes: &[u8],
+    ) -> Result<VerifiedManifestSignature> {
+        let encoded_signature = std::str::from_utf8(signature_bytes)
+            .map_err(|_| FeaturePackError::new("signature_invalid"))?;
+        let decoded = decode_canonical_base64(encoded_signature, MAX_SIGNATURE_BYTES as usize)
+            .map_err(|_| FeaturePackError::new("signature_invalid"))?;
+        let signature_record = std::str::from_utf8(&decoded)
+            .map_err(|_| FeaturePackError::new("signature_invalid"))?;
+        if signature_record.lines().count() != 4 {
+            return fail("signature_invalid");
+        }
+        let signature = Signature::decode(signature_record)
+            .map_err(|_| FeaturePackError::new("signature_invalid"))?;
+        self.public_key
+            .verify(manifest_bytes, &signature, false)
+            .map_err(|_| FeaturePackError::new("signature_invalid"))?;
+        Ok(VerifiedManifestSignature {
+            key_id: self.key_id.clone(),
+        })
+    }
+}
+
+fn decode_canonical_base64(value: &str, maximum_decoded_bytes: usize) -> Result<Vec<u8>> {
+    if value.is_empty()
+        || value.trim() != value
+        || value.len() > maximum_decoded_bytes.saturating_mul(2)
+    {
+        return fail("production_trust_not_configured");
+    }
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(value)
+        .map_err(|_| FeaturePackError::new("production_trust_not_configured"))?;
+    if decoded.is_empty()
+        || decoded.len() > maximum_decoded_bytes
+        || base64::engine::general_purpose::STANDARD.encode(&decoded) != value
+    {
+        return fail("production_trust_not_configured");
+    }
+    Ok(decoded)
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -509,7 +601,7 @@ fn validate_payload_path(value: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
-fn validate_trust_policy<V: ManifestSignatureVerifier>(
+pub(crate) fn validate_trust_policy<V: ManifestSignatureVerifier>(
     trust: &FeaturePackTrustPolicy,
     verifier: &V,
 ) -> Result<()> {
@@ -1558,6 +1650,7 @@ pub(crate) fn current_target_platform() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::Engine;
     use serde_json::{json, Value};
     use sha2::{Digest, Sha256};
     use std::fs;
@@ -2158,5 +2251,42 @@ mod tests {
         assert_eq!(MAX_FILE_BYTES, 768 * 1024 * 1024);
         assert_eq!(MAX_TOTAL_BYTES, 1_500_000_000);
         assert_eq!(MAX_FILES, 20_000);
+    }
+
+    #[test]
+    fn direct_minisign_verifier_accepts_only_prehashed_tauri_wrapped_signatures() {
+        const PUBLIC_KEY_RECORD: &str = "untrusted comment: minisign public key E7620F1842B4E81F\nRWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3";
+        const PREHASHED_SIGNATURE: &str = "untrusted comment: signature from minisign secret key\nRUQf6LRCGA9i559r3g7V1qNyJDApGip8MfqcadIgT9CuhV3EMhHoN1mGTkUidF/z7SrlQgXdy8ofjb7bNJJylDOocrCo8KLzZwo=\ntrusted comment: timestamp:1556193335\tfile:test\ny/rUw2y8/hOUYjZU71eHp/Wo1KZ40fGy2VJEDl34XMJM+TX48Ss/17u3IvIfbVR1FkZZSNCisQbuQY+bHwhEBg==";
+        const LEGACY_SIGNATURE: &str = "untrusted comment: signature from minisign secret key\nRWQf6LRCGA9i59SLOFxz6NxvASXDJeRtuZykwQepbDEGt87ig1BNpWaVWuNrm73YiIiJbq71Wi+dP9eKL8OC351vwIasSSbXxwA=\ntrusted comment: timestamp:1555779966\tfile:test\nQtKMXWyYcwdpZAlPF7tE2ENJkRd1ujvKjlj1m9RtHTBnZPa5WKU5uWRs5GoP5M/VqE81QFuMKI5k/SfNQUaOAA==";
+
+        let encoded_key = base64::engine::general_purpose::STANDARD.encode(PUBLIC_KEY_RECORD);
+        let verifier = MinisignManifestVerifier::from_tauri_public_key(&encoded_key)
+            .expect("known public key");
+        assert_eq!(verifier.key_id(), "E7620F1842B4E81F");
+
+        let signature = base64::engine::general_purpose::STANDARD.encode(PREHASHED_SIGNATURE);
+        assert_eq!(
+            verifier
+                .verify_hashed_manifest(b"test", signature.as_bytes())
+                .expect("known prehashed signature")
+                .key_id,
+            "E7620F1842B4E81F"
+        );
+        assert_eq!(
+            verifier
+                .verify_hashed_manifest(b"tampered", signature.as_bytes())
+                .unwrap_err()
+                .code,
+            "signature_invalid"
+        );
+
+        let legacy = base64::engine::general_purpose::STANDARD.encode(LEGACY_SIGNATURE);
+        assert_eq!(
+            verifier
+                .verify_hashed_manifest(b"test", legacy.as_bytes())
+                .unwrap_err()
+                .code,
+            "signature_invalid"
+        );
     }
 }

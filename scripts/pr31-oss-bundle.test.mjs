@@ -15,6 +15,7 @@ function readJson(relative) {
 function createFixture() {
   const fixture = mkdtempSync(resolve(tmpdir(), 'vibespace-pr31-oss-'));
   mkdirSync(resolve(fixture, 'app/src-tauri'), { recursive: true });
+  mkdirSync(resolve(fixture, 'app/src-tauri/src'), { recursive: true });
   mkdirSync(resolve(fixture, 'app/src/features/doctor'), { recursive: true });
   mkdirSync(resolve(fixture, 'docs'), { recursive: true });
   mkdirSync(resolve(fixture, 'scripts'), { recursive: true });
@@ -26,6 +27,19 @@ function createFixture() {
   cpSync(
     resolve(ROOT, 'app/src/features/doctor/vibeSpaceDoctor.ts'),
     resolve(fixture, 'app/src/features/doctor/vibeSpaceDoctor.ts'),
+  );
+  cpSync(
+    resolve(ROOT, 'app/src/features/doctor/playwrightFeaturePackBridge.ts'),
+    resolve(fixture, 'app/src/features/doctor/playwrightFeaturePackBridge.ts'),
+  );
+  cpSync(resolve(ROOT, 'app/src-tauri/Cargo.toml'), resolve(fixture, 'app/src-tauri/Cargo.toml'));
+  cpSync(
+    resolve(ROOT, 'app/src-tauri/src/playwright_feature_pack.rs'),
+    resolve(fixture, 'app/src-tauri/src/playwright_feature_pack.rs'),
+  );
+  cpSync(
+    resolve(ROOT, 'app/src-tauri/src/playwright_feature_pack_commands.rs'),
+    resolve(fixture, 'app/src-tauri/src/playwright_feature_pack_commands.rs'),
   );
   cpSync(resolve(ROOT, 'app/package.json'), resolve(fixture, 'app/package.json'));
   cpSync(resolve(ROOT, 'package.json'), resolve(fixture, 'package.json'));
@@ -41,28 +55,32 @@ test('PR31 OSS bundle metadata is deterministically cross-checked', () => {
   assert.deepEqual(verifyPr31OssBundle(ROOT), { ok: true, errors: [] });
 });
 
-test('Playwright remains an exact development pin without a fabricated shipping or Doctor claim', () => {
+test('Playwright remains default-excluded while native integration reports external prerequisites', () => {
   const featurePack = readJson('docs/oss/browser-agent-feature-pack.json');
-  assert.equal(featurePack.shippingStatus, 'not-implemented');
+  assert.equal(featurePack.shippingStatus, 'externally-blocked');
+  assert.equal(featurePack.productionConfigurationStatus, 'external-prerequisite');
   assert.equal(featurePack.defaultInstallerIncluded, false);
-  assert.equal(featurePack.optionalInstallerImplemented, false);
-  assert.equal(featurePack.separatelyRemovable, false);
-  assert.equal(featurePack.separatelyMeasurable, false);
-  assert.equal(featurePack.measurementStatus, 'not-applicable-unshipped');
+  assert.equal(featurePack.optionalInstallerImplemented, true);
+  assert.equal(featurePack.separatelyRemovable, true);
+  assert.equal(featurePack.separatelyMeasurable, true);
+  assert.equal(featurePack.measurementStatus, 'implemented-awaiting-production-artifact');
   assert.deepEqual(featurePack.updates, {
     defaultAppUpdaterIncludesFeaturePack: false,
     separateSignedManifestImplemented: false,
   });
   assert.deepEqual(featurePack.doctor, {
-    supportStatus: 'unavailable',
-    canDiagnoseInstalledRuntime: false,
+    supportStatus: 'implemented-external-prerequisite',
+    canDiagnoseInstalledRuntime: true,
     canInstall: false,
-    canRepair: false,
+    canRepair: true,
+    configuredRepairOnly: true,
+    requiresProductionTrust: true,
     implicitBrowserDownloadAllowed: false,
   });
   assert.deepEqual(featurePack.localLifecycleContract, {
-    status: 'implemented-unintegrated',
-    entrypoint: 'scripts/pr31-playwright-acceptance-runtime.mjs',
+    status: 'implemented-native-external-prerequisite',
+    entrypoint: 'app/src-tauri/src/playwright_feature_pack_commands.rs',
+    referenceEntrypoint: 'scripts/pr31-playwright-acceptance-runtime.mjs',
     artifactSource: 'caller-supplied-local-only',
     signedManifestRequired: true,
     downloadsAllowed: false,
@@ -75,18 +93,19 @@ test('Playwright remains an exact development pin without a fabricated shipping 
       measure: true,
       uninstall: true,
     },
-    productionTrustRootPinned: false,
-    nativeAtomicReparseSafe: false,
-    productDoctorIntegrated: false,
+    productionTrustRootPinned: 'compile-time-required-unconfigured',
+    nativeAtomicReparseSafe: true,
+    productDoctorIntegrated: true,
   });
   assert.deepEqual(
     featurePack.prerequisites.map(({ id, status }) => ({ id, status })),
     [
+      { id: 'production-signing-trust', status: 'missing' },
       { id: 'signed-feature-pack-artifact', status: 'missing' },
       { id: 'pinned-browser-revisions-and-hashes', status: 'missing' },
-      { id: 'native-atomic-installer', status: 'partial' },
-      { id: 'doctor-verification-and-repair', status: 'partial' },
-      { id: 'uninstall-rollback-measurement', status: 'partial' },
+      { id: 'native-atomic-installer', status: 'implemented' },
+      { id: 'doctor-verification-and-repair', status: 'implemented' },
+      { id: 'uninstall-rollback-measurement', status: 'implemented' },
     ],
   );
 });
@@ -107,37 +126,39 @@ test('PR31 OSS checker rejects a package-lock integrity drift without network ac
   }
 });
 
-test('PR31 OSS checker rejects a fabricated Playwright installer, updater, or Doctor claim', () => {
+test('PR31 OSS checker rejects a fabricated default installer, updater, or Doctor install claim', () => {
   const fixture = createFixture();
   try {
     const featurePackPath = resolve(fixture, 'docs/oss/browser-agent-feature-pack.json');
     const featurePack = JSON.parse(readFileSync(featurePackPath, 'utf8'));
     featurePack.shippingStatus = 'available';
-    featurePack.optionalInstallerImplemented = true;
+    featurePack.defaultInstallerIncluded = true;
     featurePack.updates.defaultAppUpdaterIncludesFeaturePack = true;
-    featurePack.doctor.canRepair = true;
+    featurePack.doctor.canInstall = true;
     writeFileSync(featurePackPath, `${JSON.stringify(featurePack, null, 2)}\n`);
 
     const result = verifyPr31OssBundle(fixture);
     assert.equal(result.ok, false);
-    assert.ok(result.errors.includes('Browser Agent shipping status must remain not-implemented'));
     assert.ok(
       result.errors.includes(
-        'Browser Agent optional installer must not be claimed before implementation',
+        'Browser Agent shipping status must remain externally blocked on production prerequisites',
       ),
     );
+    assert.ok(result.errors.includes('Browser Agent pack must be excluded by default'));
     assert.ok(
       result.errors.includes('feature pack updater delivery must remain explicitly unavailable'),
     );
     assert.ok(
-      result.errors.includes('Doctor must not claim Playwright install or repair authority'),
+      result.errors.includes(
+        'Doctor must remain diagnosis/configured-repair only with no install or download authority',
+      ),
     );
   } finally {
     rmSync(fixture, { recursive: true, force: true });
   }
 });
 
-test('PR31 OSS checker rejects an implicit browser download command or Doctor overclaim', () => {
+test('PR31 OSS checker rejects an implicit browser download command in the product bridge', () => {
   const fixture = createFixture();
   try {
     const packagePath = resolve(fixture, 'package.json');
@@ -145,8 +166,8 @@ test('PR31 OSS checker rejects an implicit browser download command or Doctor ov
     rootPackage.scripts['install:browser'] = 'playwright install chromium';
     writeFileSync(packagePath, `${JSON.stringify(rootPackage, null, 2)}\n`);
     writeFileSync(
-      resolve(fixture, 'app/src/features/doctor/vibeSpaceDoctor.ts'),
-      "export const unsupportedClaim = 'Repair Playwright Chromium browser binaries';\n",
+      resolve(fixture, 'app/src/features/doctor/playwrightFeaturePackBridge.ts'),
+      "export async function unsafe() { return fetch('https://example.test/browser.zip'); }\n",
     );
 
     const result = verifyPr31OssBundle(fixture);
@@ -156,7 +177,7 @@ test('PR31 OSS checker rejects an implicit browser download command or Doctor ov
     );
     assert.ok(
       result.errors.includes(
-        'Doctor source must not claim unavailable Playwright or browser support',
+        'product feature-pack bridge must not contain network, process, browser launch, or download authority',
       ),
     );
   } finally {
@@ -164,30 +185,19 @@ test('PR31 OSS checker rejects an implicit browser download command or Doctor ov
   }
 });
 
-test('PR31 OSS checker rejects a fabricated lifecycle integration or download authority', () => {
+test('PR31 OSS checker rejects runtime trust lookup or missing native integration authority', () => {
   const fixture = createFixture();
   try {
-    const featurePackPath = resolve(fixture, 'docs/oss/browser-agent-feature-pack.json');
-    const featurePack = JSON.parse(readFileSync(featurePackPath, 'utf8'));
-    featurePack.localLifecycleContract.productionTrustRootPinned = true;
-    featurePack.localLifecycleContract.nativeAtomicReparseSafe = true;
-    featurePack.localLifecycleContract.productDoctorIntegrated = true;
-    writeFileSync(featurePackPath, `${JSON.stringify(featurePack, null, 2)}\n`);
     writeFileSync(
-      resolve(fixture, 'scripts/pr31-playwright-acceptance-runtime.mjs'),
-      "export async function unsafe() { return fetch('https://example.test/browser.zip'); }\n",
+      resolve(fixture, 'app/src-tauri/src/playwright_feature_pack_commands.rs'),
+      'fn unsafe_config() { std::env::var("RUNTIME_PUBLIC_KEY"); }\n',
     );
 
     const result = verifyPr31OssBundle(fixture);
     assert.equal(result.ok, false);
     assert.ok(
       result.errors.includes(
-        'local lifecycle must remain unintegrated until native trust and Doctor wiring exist',
-      ),
-    );
-    assert.ok(
-      result.errors.includes(
-        'local lifecycle must not contain network or browser-download authority',
+        'native commands must use compile-time trust and expose the bounded lifecycle',
       ),
     );
   } finally {

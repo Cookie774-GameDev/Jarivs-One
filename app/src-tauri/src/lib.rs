@@ -67,6 +67,7 @@ mod monochrome_evidence;
 mod ollama_http;
 mod pets;
 mod playwright_feature_pack;
+mod playwright_feature_pack_commands;
 mod preview;
 mod renderer_watchdog;
 pub mod runtime_profile;
@@ -628,6 +629,13 @@ fn run_ordinary(
             chat_temp_attachments::chat_temp_attachment_create,
             chat_temp_attachments::chat_temp_attachment_cleanup,
             runtime_profile_query,
+            playwright_feature_pack_commands::playwright_feature_pack_diagnose,
+            playwright_feature_pack_commands::playwright_feature_pack_install_or_update,
+            playwright_feature_pack_commands::playwright_feature_pack_repair,
+            playwright_feature_pack_commands::playwright_feature_pack_repair_configured,
+            playwright_feature_pack_commands::playwright_feature_pack_rollback,
+            playwright_feature_pack_commands::playwright_feature_pack_measure,
+            playwright_feature_pack_commands::playwright_feature_pack_uninstall,
             siyuan::commands::siyuan_status,
             siyuan::commands::siyuan_start,
             siyuan::commands::siyuan_stop,
@@ -907,6 +915,13 @@ browser_chat_surface::browser_chat_surface_hide_all
 chat_temp_attachments::chat_temp_attachment_create
 chat_temp_attachments::chat_temp_attachment_cleanup
 runtime_profile_query
+playwright_feature_pack_commands::playwright_feature_pack_diagnose
+playwright_feature_pack_commands::playwright_feature_pack_install_or_update
+playwright_feature_pack_commands::playwright_feature_pack_repair
+playwright_feature_pack_commands::playwright_feature_pack_repair_configured
+playwright_feature_pack_commands::playwright_feature_pack_rollback
+playwright_feature_pack_commands::playwright_feature_pack_measure
+playwright_feature_pack_commands::playwright_feature_pack_uninstall
 siyuan::commands::siyuan_status
 siyuan::commands::siyuan_start
 siyuan::commands::siyuan_stop
@@ -1098,9 +1113,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "e4e173c63b356b3adda37dc67826c2333906da21fb3cc8a14e4242d57a8f4f7f";
+        "ef3d3cee0cdcc9f9c303a6ebfb9943d0ce5627446715ad109c825cd82e749ab8";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "9a5a6571238380d8c44f61bd984d65b2a40bc43d5298a17d8cf801069fc483f0";
+        "42d81b0368c49c565e1ada67ec28fe52f9650406fa5e9b4deae0175f7a321d39";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
