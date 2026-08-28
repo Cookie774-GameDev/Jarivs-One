@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "pr31-opencode-refresh-reconnect-v1",
+  "generatedAt": "2026-08-28T16:05:31.225Z",
+  "sourceHead": "b2714b83172f70099dfd5ac9e88840c15c961a5f",
+  "matrixRowId": "opencode-model-refresh-and-reconnect",
+  "status": "automated-complete-native-pending",
+  "matrixStatus": "Not implemented",
+  "completionClaimed": false,
+  "implementationAssessment": {
+    "productChangeNeeded": false,
+    "nativeRequired": true,
+    "reason": "Current product code already implements current-session auth gating, immediate detection, five-minute refresh, short empty-catalog retry, serialized generation invalidation, same-account transient retention, stale-result rejection, and managed-runtime generation recovery. The row remains incomplete only because its official-native lifecycle has not been observed end to end."
+  },
+  "policy": {
+    "catalogRefreshIntervalMs": 300000,
+    "emptyCatalogRetryMs": 15000,
+    "failedRefreshAuthority": "Retain only same-account last-verified informational rows while current-session authentication remains verified; never promote static or stale fallback rows to executable authority.",
+    "disconnectAuthority": "A genuine current-session disconnect removes live executable authority. Automatic reconnection must re-attest and restore the same exact qualified routes without substitution."
+  },
+  "automatedEvidence": {
+    "status": "passed",
+    "command": "cd app && node node_modules/vitest/vitest.mjs run src/lib/ai/useAccessibleChatModels.test.ts src/lib/ai/useAccessibleChatModels.smoke.test.ts src/lib/ai/adapters/autoDetectConnections.test.ts src/lib/ai/connectionCatalog.test.ts src/lib/ai/adapters/opencodePersistent.test.ts src/lib/harness/runtimeManager.test.ts",
+    "testFiles": [
+      "src/lib/ai/useAccessibleChatModels.test.ts",
+      "src/lib/ai/useAccessibleChatModels.smoke.test.ts",
+      "src/lib/ai/adapters/autoDetectConnections.test.ts",
+      "src/lib/ai/connectionCatalog.test.ts",
+      "src/lib/ai/adapters/opencodePersistent.test.ts",
+      "src/lib/harness/runtimeManager.test.ts"
+    ],
+    "testFileCount": 6,
+    "testCount": 119,
+    "failed": 0,
+    "auditedFiles": [
+      {
+        "id": "app/src/lib/ai/useAccessibleChatModels.ts",
+        "sha256": "f25cd510f2f7b00e00f5737cf77df69059e2e534a481807955c647b2875d1976"
+      },
+      {
+        "id": "app/src/lib/ai/useAccessibleChatModels.test.ts",
+        "sha256": "964e024ff6d9d116e7ec94b4fbe54f2055b7739a752472f348e6cdd0a934ce87"
+      },
+      {
+        "id": "app/src/lib/ai/useAccessibleChatModels.smoke.test.ts",
+        "sha256": "44ed02f3f779e7756d092beefcf5bf29c7e8cd0e2cb448eb095d3d5cc80c5aaa"
+      },
+      {
+        "id": "app/src/lib/ai/adapters/autoDetectConnections.ts",
+        "sha256": "2266e6e6748d5445e5cb2412707fcae6c1c6ee3612bde1b912447205aeeaf5b8"
+      },
+      {
+        "id": "app/src/lib/ai/adapters/autoDetectConnections.test.ts",
+        "sha256": "8040bdda093860662dbfa42b98f3f89952d21dfc6dc99bd088fee331feb89977"
+      },
+      {
+        "id": "app/src/lib/ai/connectionCatalog.ts",
+        "sha256": "e8d424d19b8226665e038c649fac710fd8ad5875e5b0d0f2b40cb47392d0211e"
+      },
+      {
+        "id": "app/src/lib/ai/connectionCatalog.test.ts",
+        "sha256": "a779d2f3db7494dea871c0845c39ff1d840fa06c78370a2d406ea844b70a229b"
+      },
+      {
+        "id": "app/src/lib/ai/adapters/opencodePersistent.ts",
+        "sha256": "ec73283fdf2b2b790bb418661a3e838f2dc89a78924ea934eed1cfab5b0e78d5"
+      },
+      {
+        "id": "app/src/lib/ai/adapters/opencodePersistent.test.ts",
+        "sha256": "50ff52cf9b240a85c95dd0d797c97302454e8550b05b655355333211c6832994"
+      },
+      {
+        "id": "app/src/lib/harness/runtimeManager.ts",
+        "sha256": "78bd5fc73fce58567b80caef537d893a4362692e3afaac11c75094c96cd39e14"
+      },
+      {
+        "id": "app/src/lib/harness/runtimeManager.test.ts",
+        "sha256": "9f664ecc8adf34fb472a7875a2728192e42ad54017ccca611f65da0bb85bba70"
+      }
+    ],
+    "capabilities": [
+      {
+        "id": "current-session-auth-gate",
+        "status": "passed",
+        "sourceRefs": [
+          "app/src/lib/ai/useAccessibleChatModels.ts: openCodeReady/current-session checks"
+        ],
+        "testRefs": [
+          "does not probe OpenCode models until current-session authentication is verified"
+        ]
+      },
+      {
+        "id": "immediate-auto-detection",
+        "status": "passed",
+        "sourceRefs": [
+          "app/src/lib/ai/useAccessibleChatModels.ts: ensureExternalConnectionAutoDetection effect"
+        ],
+        "testRefs": [
+          "uses only read-only detect and auth probes and publishes authenticated Codex state"
+        ]
+      },
+      {
+        "id": "incremental-detection-publish",
+        "status": "passed",
+        "sourceRefs": [
+          "app/src/lib/ai/adapters/autoDetectConnections.ts: serialized compare-and-swap publish queue"
+        ],
+        "testRefs": [
+          "publishes a completed authenticated route without waiting for an unrelated inspection deadline"
+        ]
+      },
+      {
+        "id": "post-login-forced-invalidation",
+        "status": "passed",
+        "sourceRefs": [
+          "app/src/lib/ai/adapters/autoDetectConnections.ts: forced scan generation invalidation"
+        ],
+        "testRefs": ["queues and coalesces a forced post-login scan behind an older in-flight scan"]
+      },
+      {
+        "id": "immediate-connected-provider-refresh",
+        "status": "passed",
+        "sourceRefs": [
+          "app/src/lib/ai/useAccessibleChatModels.ts: immediate refreshConnectedProviderModels invocation"
+        ],
+        "testRefs": [
+          "runs the lightweight connected-provider refresh immediately and every five minutes"
+        ]
+      },
+      {
+        "id": "five-minute-connected-provider-refresh",
+        "status": "passed",
+        "sourceRefs": [
+          "app/src/lib/ai/useAccessibleChatModels.ts: MODEL_CATALOG_REFRESH_INTERVAL_MS timer"
+        ],
+        "testRefs": [
+          "runs the lightweight connected-provider refresh immediately and every five minutes"
+        ]
+      },
+      {
+        "id": "five-minute-authenticated-opencode-refresh",
+        "status": "passed",
+        "sourceRefs": [
+          "app/src/lib/ai/useAccessibleChatModels.ts: OPEN_CODE_MODEL_CACHE_TTL_MS timer"
+        ],
+        "testRefs": ["refreshes an authenticated OpenCode catalog at five minutes, never earlier"]
+      },
+      {
+        "id": "fifteen-second-empty-catalog-retry",
+        "status": "passed",
+        "sourceRefs": [
+          "app/src/lib/ai/useAccessibleChatModels.ts: OPEN_CODE_MODEL_FAILURE_RETRY_MS"
+        ],
+        "testRefs": [
+          "retries an authenticated empty OpenCode catalog on the short failure interval"
+        ]
+      },
+      {
+        "id": "same-account-transient-failure-retention",
+        "status": "passed",
+        "sourceRefs": [
+          "app/src/lib/ai/useAccessibleChatModels.ts: account-generation-bound catalog state"
+        ],
+        "testRefs": ["retains the same-account last verified rows when a catalog refresh rejects"]
+      },
+      {
+        "id": "stale-inflight-result-rejected",
+        "status": "passed",
+        "sourceRefs": [
+          "app/src/lib/ai/useAccessibleChatModels.ts: catalog generation-bound load serialization"
+        ],
+        "testRefs": ["serializes forced OpenCode refreshes and rejects stale in-flight results"]
+      },
+      {
+        "id": "account-generation-isolation",
+        "status": "passed",
+        "sourceRefs": [
+          "app/src/lib/ai/useAccessibleChatModels.ts: openCodeAccountGeneration visibility gate"
+        ],
+        "testRefs": [
+          "invalidates both picker and persistent catalogs when OpenCode auth truth changes"
+        ]
+      },
+      {
+        "id": "managed-runtime-generation-recovery",
+        "status": "passed",
+        "sourceRefs": [
+          "app/src/lib/harness/runtimeManager.ts: same-generation continuity and fail-closed re-detection"
+        ],
+        "testRefs": [
+          "keeps an exact ready generation visible across a background refresh",
+          "falls back to fail-closed detection when ready status is a different generation",
+          "reuses a validated ready connection when the runtime subscriber remounts"
+        ]
+      },
+      {
+        "id": "unavailable-static-fallback-non-executable",
+        "status": "passed",
+        "sourceRefs": [
+          "app/src/lib/ai/useAccessibleChatModels.ts: live/current account visibility authority"
+        ],
+        "testRefs": [
+          "keeps static OpenCode fallback hints visible but non-executable",
+          "omits stale external fallback rows until a live authenticated catalog exists"
+        ]
+      }
+    ]
+  },
+  "nativeHandoff": {
+    "status": "pending",
+    "owner": "/root/native_acceptance",
+    "remainingBoundary": "Official jarvis.exe/WebView evidence must still prove cold auto-connect, a naturally scheduled refresh after at least 300000ms, an honest managed-runtime disconnect, automatic reconnect, and exact qualified-route restoration in one controlled acceptance sequence.",
+    "constraints": {
+      "ollamaAllowed": false,
+      "port11434Allowed": false,
+      "credentialsMayChange": false,
+      "productionMayChange": false,
+      "substitutionAllowed": false,
+      "manualRefreshMaySatisfyScheduledRefresh": false
+    },
+    "safeDisconnectBoundary": "Use only a documented repository-owned managed-runtime lifecycle control already authorized to the native owner, or observe a genuine managed disconnect. Do not kill or adopt arbitrary processes, alter credentials, use developer state injection, or claim a restart as reconnect proof. If no safe within-session disconnect mechanism exists, leave the transition pending and record that exact blocker.",
+    "requiredTransitions": [
+      {
+        "id": "official-cold-auto-connect",
+        "status": "pending",
+        "acceptance": "From an official jarvis.exe-owned WebView/profile cold start, current-session OpenCode becomes authenticated and exposes live qualified model rows without manual connect or refresh.",
+        "proof": []
+      },
+      {
+        "id": "scheduled-five-minute-refresh",
+        "status": "pending",
+        "acceptance": "A second authenticated catalog verification completes at least 300000ms after the baseline without a manual refresh, while the exact account and qualified routes remain stable.",
+        "proof": []
+      },
+      {
+        "id": "honest-managed-disconnect",
+        "status": "pending",
+        "acceptance": "A genuine supported within-session managed-runtime disconnect makes current live authority unavailable without promoting cached or static fallback rows to executable authority.",
+        "proof": []
+      },
+      {
+        "id": "automatic-reconnect",
+        "status": "pending",
+        "acceptance": "The same app session automatically re-detects and re-attests OpenCode after the supported runtime recovers, without manual refresh, credential mutation, or provider substitution.",
+        "proof": []
+      },
+      {
+        "id": "exact-route-restoration",
+        "status": "pending",
+        "acceptance": "The ordered set of exact provider-qualified live model routes after reconnect matches the pre-disconnect set, and no random disappearance or replacement route is observed.",
+        "proof": []
+      }
+    ],
+    "requiredObservedFields": {
+      "authority": ["executable", "officialProfileVerified", "productHead"],
+      "safety": [
+        "ollamaProcessCountBefore",
+        "ollamaProcessCountAfter",
+        "port11434ListenerCountBefore",
+        "port11434ListenerCountAfter",
+        "credentialsMutated",
+        "productionMutated",
+        "manualRefreshUsedForScheduledProof"
+      ],
+      "modelContinuity": [
+        "qualifiedModelIdsBefore",
+        "qualifiedModelIdsAfter",
+        "substitutionObserved"
+      ],
+      "lifecycle": [
+        "autoConnectedWithoutManualAction",
+        "scheduledRefreshElapsedMs",
+        "documentedManagedLifecycleControl",
+        "currentSessionDisconnectObserved",
+        "liveAuthorityHiddenDuringDisconnect",
+        "automaticReconnectSameAppSession",
+        "manualReconnectActionUsed",
+        "appRestartUsedAsReconnectProof"
+      ]
+    }
+  }
+}
