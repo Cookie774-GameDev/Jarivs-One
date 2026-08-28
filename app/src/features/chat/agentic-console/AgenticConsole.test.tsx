@@ -97,7 +97,7 @@ describe('AgenticConsole', () => {
     expect(screen.queryByRole('article', { name: 'Diff AgenticConsole.tsx' })).toBeNull();
   });
 
-  it('renders one truthful terminal outcome from recorded session state', () => {
+  it('renders the four-cell completed inspector from recorded terminal state', () => {
     renderConsole({
       chatId: 'chat-console',
       messages: [
@@ -121,20 +121,31 @@ describe('AgenticConsole', () => {
 
     const inspector = screen.getByRole('status', { name: 'Session completion status' });
     expect(inspector.getAttribute('data-terminal-status')).toBe('done');
-    expect(inspector.textContent).toBe('DoneResponse complete');
-    expect(inspector.textContent).not.toContain('Doing now');
-    expect(inspector.textContent).not.toContain('Next');
-    expect(inspector.textContent).not.toContain('Blockers');
+    expect(inspector.textContent).toBe(
+      'DoneResponse completeDoing nowNo active workNextAwaiting your next requestBlockersNone',
+    );
     expect(inspector.textContent).not.toContain('event recorded');
     expect(screen.getAllByRole('status', { name: 'Session completion status' })).toHaveLength(1);
   });
 
   it.each([
-    ['blocked', 'Blockers', 'Blocked state recorded'],
-    ['error', 'Blockers', 'Run error recorded'],
-    ['cancelled', 'Status', 'Run cancelled'],
-    ['partial', 'Status', 'Partial completion recorded'],
-  ])('renders canonical %s terminal truth without invented future state', (status, label, text) => {
+    [
+      'blocked',
+      'DoneRun stoppedDoing nowNo active workNextBlocker resolution requiredBlockersBlocked state recorded',
+    ],
+    [
+      'error',
+      'DoneRun endedDoing nowNo active workNextReview before retryingBlockersRun error recorded',
+    ],
+    [
+      'cancelled',
+      'DoneRun cancelledDoing nowNo active workNextAwaiting your next requestBlockersNot reported',
+    ],
+    [
+      'partial',
+      'DonePartial completion recordedDoing nowNo active workNextContinuation availableBlockersNot reported',
+    ],
+  ])('renders canonical %s terminal truth without stale operation prose', (status, expected) => {
     renderConsole({
       chatId: 'chat-console',
       messages: [message('user', 'user', 10, [{ kind: 'text', text: 'Continue safely.' }])],
@@ -144,9 +155,7 @@ describe('AgenticConsole', () => {
 
     const inspector = screen.getByRole('status', { name: 'Session completion status' });
     expect(inspector.getAttribute('data-terminal-status')).toBe(status);
-    expect(inspector.textContent).toBe(`${label}${text}`);
-    expect(inspector.textContent).not.toContain('Doing now');
-    expect(inspector.textContent).not.toContain('Next');
+    expect(inspector.textContent).toBe(expected);
     expect(inspector.textContent).not.toContain('Untrusted stale operation text');
   });
 

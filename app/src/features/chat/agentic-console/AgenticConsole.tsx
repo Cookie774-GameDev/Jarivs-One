@@ -622,14 +622,51 @@ function SessionCompletionInspector({ summary }: { summary: AgenticSessionSummar
 
   const outcome =
     summary.status === 'done'
-      ? { label: 'Done', text: 'Response complete', className: 'is-done' }
+      ? {
+          done: 'Response complete',
+          next: 'Awaiting your next request',
+          blockers: 'None',
+          className: 'is-done',
+        }
       : summary.status === 'blocked'
-        ? { label: 'Blockers', text: 'Blocked state recorded', className: 'is-blocked' }
+        ? {
+            done: 'Run stopped',
+            next: 'Blocker resolution required',
+            blockers: 'Blocked state recorded',
+            className: 'is-blocked',
+          }
         : summary.status === 'error'
-          ? { label: 'Blockers', text: 'Run error recorded', className: 'is-blocked' }
+          ? {
+              done: 'Run ended',
+              next: 'Review before retrying',
+              blockers: 'Run error recorded',
+              className: 'is-blocked',
+            }
           : summary.status === 'cancelled'
-            ? { label: 'Status', text: 'Run cancelled', className: 'is-blocked' }
-            : { label: 'Status', text: 'Partial completion recorded', className: 'is-blocked' };
+            ? {
+                done: 'Run cancelled',
+                next: 'Awaiting your next request',
+                blockers: 'Not reported',
+                className: 'is-blocked',
+              }
+            : {
+                done: 'Partial completion recorded',
+                next: 'Continuation available',
+                blockers: 'Not reported',
+                className: 'is-blocked',
+              };
+
+  const items = [
+    { label: 'Done', text: outcome.done, icon: Check, className: outcome.className },
+    { label: 'Doing now', text: 'No active work', icon: Clock3, className: undefined },
+    { label: 'Next', text: outcome.next, icon: ChevronRight, className: undefined },
+    {
+      label: 'Blockers',
+      text: outcome.blockers,
+      icon: AlertCircle,
+      className: outcome.blockers === 'None' ? undefined : 'is-blocked',
+    },
+  ] as const;
 
   return (
     <section
@@ -639,17 +676,21 @@ function SessionCompletionInspector({ summary }: { summary: AgenticSessionSummar
       aria-live="polite"
       data-terminal-status={summary.status}
     >
-      <div className={cn('agentic-completion-inspector__item', outcome.className)}>
-        <strong>
-          {summary.status === 'done' ? (
-            <Check aria-hidden="true" />
-          ) : (
-            <AlertCircle aria-hidden="true" />
-          )}
-          {outcome.label}
-        </strong>
-        <span>{outcome.text}</span>
-      </div>
+      {items.map((item) => {
+        const Icon = item.icon;
+        return (
+          <div
+            key={item.label}
+            className={cn('agentic-completion-inspector__item', item.className)}
+          >
+            <strong>
+              <Icon aria-hidden="true" />
+              {item.label}
+            </strong>
+            <span>{item.text}</span>
+          </div>
+        );
+      })}
     </section>
   );
 }
