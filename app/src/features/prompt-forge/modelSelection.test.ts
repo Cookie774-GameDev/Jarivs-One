@@ -184,6 +184,52 @@ describe('Prompt Forge model selection', () => {
     ).toThrow(/single.*model/i);
   });
 
+  it.each([
+    {
+      label: 'an explicit single route',
+      selection: {
+        mode: 'single' as const,
+        providerId: 'openai' as const,
+        modelId: 'missing-exact-model',
+        connectionId: 'missing-exact-connection',
+      },
+      currentChatSelection: context.currentChatSelection,
+    },
+    {
+      label: 'the exact current chat route',
+      selection: { mode: 'current_chat_model' as const },
+      currentChatSelection: {
+        ...context.currentChatSelection,
+        modelId: 'missing-exact-model',
+        connectionId: 'missing-exact-connection',
+      },
+    },
+  ])(
+    'does not replace $label with an available fast fallback',
+    ({ selection, currentChatSelection }) => {
+      const sparkFallback: PromptForgeModelOption = {
+        id: 'openai-codex:gpt-5.3-codex-spark',
+        providerId: 'openai',
+        modelId: 'gpt-5.3-codex-spark',
+        label: 'GPT-5.3 Codex Spark',
+        connectionId: 'openai-codex',
+        connectionMode: 'external-cli',
+        variants: ['max'],
+        localOnly: false,
+        available: true,
+      };
+
+      expect(() =>
+        resolvePromptForgeModelSelection(selection, {
+          ...context,
+          currentChatSelection,
+          options: [sparkFallback],
+          defaultLocalModel: '',
+        }),
+      ).toThrow(expect.objectContaining({ code: 'model_unavailable' }));
+    },
+  );
+
   it('falls back to GPT-5.3 Spark when no local model is downloaded', () => {
     const spark: PromptForgeModelOption = {
       id: 'openai-codex:gpt-5.3-codex-spark',

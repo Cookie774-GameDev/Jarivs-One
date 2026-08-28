@@ -256,9 +256,6 @@ export function resolvePromptForgeModelSelection(
       throw new PromptForgeModelSelectionError('connection_ambiguous');
     }
     option = matches[0];
-    if (!option && !context.offlineMode) {
-      option = pickFastPromptUpgradeFallback(context.options);
-    }
   }
   if (!option) throw new PromptForgeModelSelectionError('model_unavailable');
   if (context.offlineMode && !isLocal(option)) {
