@@ -29,6 +29,24 @@ export interface JarvisQuestionAnswer {
   skipped?: boolean;
 }
 
+export interface JarvisOpenCodeQuestionRoute {
+  protocol: 'opencode-question-v1';
+  blockId: string;
+  requestId: string;
+  sessionId: string;
+  tool?: Readonly<{ messageId: string; callId: string }>;
+  questions: readonly {
+    questionId: string;
+    questionIndex: number;
+    multiple: boolean;
+    allowCustomAnswer: boolean;
+    options: readonly { optionId: string; optionIndex: number; label: string }[];
+  }[];
+}
+
+/** Data-only persisted route. It contains no credential, callback, or transport authority. */
+export type JarvisQuestionHarnessRoute = JarvisOpenCodeQuestionRoute;
+
 export interface JarvisQuestionBlock {
   id: string;
   title?: string;

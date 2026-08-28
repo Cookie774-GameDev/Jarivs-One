@@ -1,15 +1,57 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const nativeOpenCodeMocks = vi.hoisted(() => ({
+  request:
+    vi.fn<
+      (
+        generation: string,
+        path: string,
+        init?: RequestInit,
+        timeoutMs?: number,
+      ) => Promise<Response>
+    >(),
+  events:
+    vi.fn<
+      (
+        generation: string,
+        path: string,
+        signal?: AbortSignal,
+      ) => AsyncGenerator<{ type: string; properties?: Readonly<Record<string, unknown>> }>
+    >(),
+}));
+
+const managedRuntimeMocks = vi.hoisted(() => ({
+  refresh: vi.fn(async () => undefined),
+  getConnection: vi.fn(() => ({
+    version: '1.18.21',
+    source: 'system' as const,
+    generation: 'opencode-server-question-test',
+  })),
+}));
+
+vi.mock('@/lib/harness/openCodeNativeTransport', () => ({
+  nativeOpenCodeRequest: nativeOpenCodeMocks.request,
+  nativeOpenCodeEvents: nativeOpenCodeMocks.events,
+}));
+
+vi.mock('@/lib/harness/runtimeManager', () => ({
+  harnessRuntimeManager: managedRuntimeMocks,
+}));
+
 import {
   assertAuthoritativeOpenCodeCompletion,
   assertAuthoritativeOpenCodeIdentity,
   assertAuthoritativeOpenCodeRuntimeControls,
+  bindPersistentOpenCodeQuestionRoute,
   canonicalOpenCodeTextSuffix,
   classifyExplicitRootInventoryScope,
   combineSystemPrompt,
   contextSystemAddendum,
   createGenerationSafeAsyncCache,
   createPersistentOpenCodeRuntimeSupervisor,
+  disposeOpenCodePersistentRuntimes,
   filterOpenCodeModelsToConnectedProviders,
+  invalidateOpenCodePersistentCaches,
   managedOpenCodeAuthResult,
   normalizePersistentOpenCodeUsage,
   normalizeQuestionEvent,
@@ -20,12 +62,19 @@ import {
   parseConnectedOpenCodeProviderIds,
   persistentOpenCodeSessionErrorMessage,
   requireAuthoritativeOpenCodeModel,
+  respondToPersistentOpenCodeQuestion,
   shouldReportPersistentTurnFailure,
   shouldReconcileOpenCodeSessionCompletion,
   toolsForPolicy,
   toOpenCodeDiscoveredModels,
 } from './opencodePersistent';
 import type { HarnessRuntimeManager } from '@/lib/harness/runtimeManager';
+import { projectOpenCodeQuestionEvent } from '@/lib/ai/openCodeQuestionProjection';
+import {
+  buildOpenCodeQuestionRejectRequest,
+  buildOpenCodeQuestionReplyRequest,
+} from '@/lib/ai/openCodeQuestionReply';
+import type { ProviderEvent, ProviderRequest } from './types';
 
 const liveModels = parseOpenCodeLiveModels({
   providers: [
@@ -61,6 +110,356 @@ const validNativeQuestions = [
     options: [{ label: 'One', description: 'Use option one.' }],
   },
 ];
+
+function jsonResponse(value: unknown, status = 200): Response {
+  return new Response(status === 204 ? null : JSON.stringify(value), {
+    status,
+    statusText: status === 200 ? 'OK' : 'No Content',
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function configureManagedQuestionTransport(
+  events: readonly { type: string; properties?: Readonly<Record<string, unknown>> }[],
+): void {
+  nativeOpenCodeMocks.request.mockImplementation(async (_generation, path, init) => {
+    if (path.startsWith('/global/health')) {
+      return jsonResponse({ healthy: true, version: '1.18.21' });
+    }
+    if (path.startsWith('/provider')) return jsonResponse({ connected: ['openai'] });
+    if (path.startsWith('/config/providers')) {
+      return jsonResponse({
+        providers: [
+          {
+            id: 'openai',
+            models: { 'gpt-question-test': { name: 'Question Test' } },
+          },
+        ],
+      });
+    }
+    if (path.includes('/message?')) {
+      return jsonResponse([
+        {
+          info: { role: 'assistant', providerID: 'openai', modelID: 'gpt-question-test' },
+          parts: [{ type: 'text', text: 'Question handled.' }],
+        },
+      ]);
+    }
+    if (path.startsWith('/question/')) return jsonResponse(true);
+    if (/^\/session(?:\?|$)/u.test(path) && init?.method === 'POST') {
+      return jsonResponse({ id: 'ses_question_exact' });
+    }
+    if (path.includes('/abort')) return jsonResponse(true);
+    if (path.includes('/prompt_async')) return jsonResponse(true);
+    if (path.startsWith('/session/') && init?.method === 'PATCH') return jsonResponse(true);
+    if (path.startsWith('/session/')) return jsonResponse({ id: 'ses_question_exact' });
+    throw new Error(`Unexpected managed OpenCode test path: ${path}`);
+  });
+  nativeOpenCodeMocks.events.mockImplementation(async function* (_generation, _path, signal) {
+    for (const event of events) {
+      if (signal?.aborted) return;
+      yield event;
+    }
+  });
+}
+
+function questionAskedEvent(toolCallId = 'call_question_exact') {
+  return {
+    type: 'question.asked',
+    properties: {
+      id: 'que_question_exact',
+      sessionID: 'ses_question_exact',
+      questions: [
+        {
+          header: 'Approach',
+          question: 'Which implementation should I use?',
+          options: [
+            { label: 'Smallest fix', description: 'Change the narrow boundary.' },
+            { label: 'Broader refactor', description: 'Change the surrounding module.' },
+          ],
+          multiple: false,
+          custom: false,
+        },
+      ],
+      tool: { messageID: 'msg_question_exact', callID: toolCallId },
+    },
+  } as const;
+}
+
+function questionProviderRequest(requestId: string, signal?: AbortSignal): ProviderRequest {
+  return {
+    requestId,
+    chatId: `chat-${requestId}`,
+    accountId: 'account-question-test',
+    workspaceId: 'workspace-question-test',
+    prompt: 'Ask the bounded question.',
+    modelId: 'openai/gpt-question-test',
+    workingDirectory: 'C:\\workspace',
+    connection: {
+      id: 'opencode-cli',
+      adapterId: 'opencode-cli',
+      providerId: 'opencode',
+      displayName: 'OpenCode',
+      mode: 'external-cli',
+      authSource: 'managed-runtime',
+      capabilities: {
+        text: true,
+        images: false,
+        files: true,
+        tools: true,
+        modelSelection: true,
+        structuredOutput: false,
+        streaming: true,
+        cancellation: true,
+        resumeSession: true,
+        systemPrompt: true,
+        workingDirectory: true,
+        usage: true,
+        subscriptionQuota: false,
+        localOnly: false,
+      },
+      promptTransport: 'native-system',
+      enabled: true,
+    },
+    ...(signal ? { signal } : {}),
+  };
+}
+
+async function startWaitingQuestion(requestId: string, signal?: AbortSignal) {
+  const iterator = openCodePersistentAdapter.send!(questionProviderRequest(requestId, signal))[
+    Symbol.asyncIterator
+  ]();
+  await expect(iterator.next()).resolves.toEqual({
+    done: false,
+    value: { type: 'session', sessionId: 'ses_question_exact' },
+  });
+  const question = await iterator.next();
+  expect(question.done).toBe(false);
+  expect(question.value).toMatchObject({
+    type: 'question',
+    request: { id: 'que_question_exact', sessionId: 'ses_question_exact' },
+  });
+  const projection = projectOpenCodeQuestionEvent(
+    question.value as ProviderEvent,
+    'ses_question_exact',
+  );
+  expect(projection).toBeDefined();
+  return { iterator, projection: projection! };
+}
+
+async function drain(iterator: AsyncIterator<ProviderEvent>): Promise<void> {
+  for (;;) {
+    const next = await iterator.next();
+    if (next.done) return;
+  }
+}
+
+describe('persistent OpenCode question transport authority', () => {
+  beforeEach(async () => {
+    await disposeOpenCodePersistentRuntimes();
+    invalidateOpenCodePersistentCaches();
+    if (typeof localStorage !== 'undefined') localStorage.clear();
+    vi.clearAllMocks();
+    configureManagedQuestionTransport([questionAskedEvent(), { type: 'session.idle' }]);
+  });
+
+  afterEach(async () => {
+    await disposeOpenCodePersistentRuntimes();
+    invalidateOpenCodePersistentCaches();
+  });
+
+  it('binds exact question authority and sends the official reply through the same managed transport', async () => {
+    const { iterator, projection } = await startWaitingQuestion('request-question-reply');
+    bindPersistentOpenCodeQuestionRoute(projection.route);
+    const question = projection.route.questions[0]!;
+    const request = buildOpenCodeQuestionReplyRequest({
+      route: projection.route,
+      expectedSessionId: projection.route.sessionId,
+      blockId: projection.route.blockId,
+      answers: [
+        {
+          questionId: question.questionId,
+          selectedOptionIds: [question.options[0]!.optionId],
+        },
+      ],
+    });
+    expect(request).toBeDefined();
+
+    await expect(
+      respondToPersistentOpenCodeQuestion({
+        request: request!,
+        expectedSessionId: projection.route.sessionId,
+        expectedBlockId: projection.route.blockId,
+      }),
+    ).resolves.toMatchObject({
+      protocol: 'opencode-question-dispatch-receipt-v1',
+      action: 'reply',
+      sessionId: 'ses_question_exact',
+      requestId: 'que_question_exact',
+      blockId: projection.route.blockId,
+      tool: { messageId: 'msg_question_exact', callId: 'call_question_exact' },
+      questionCount: 1,
+    });
+
+    const transportCall = nativeOpenCodeMocks.request.mock.calls.find(([, path]) =>
+      path.startsWith('/question/'),
+    );
+    expect(transportCall).toEqual([
+      'opencode-server-question-test',
+      '/question/que_question_exact/reply?directory=C%3A%5Cworkspace',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ answers: [['Smallest fix']] }),
+        signal: expect.any(AbortSignal),
+      }),
+      30_000,
+    ]);
+
+    await expect(
+      respondToPersistentOpenCodeQuestion({
+        request: request!,
+        expectedSessionId: projection.route.sessionId,
+        expectedBlockId: projection.route.blockId,
+      }),
+    ).rejects.toThrow(/no longer waiting|no longer active/i);
+    expect(
+      nativeOpenCodeMocks.request.mock.calls.filter(([, path]) => path.startsWith('/question/')),
+    ).toHaveLength(1);
+
+    await drain(iterator);
+    expect(() => bindPersistentOpenCodeQuestionRoute(projection.route)).toThrow(
+      /no longer active/i,
+    );
+  });
+
+  it('sends official reject without a body and consumes the exact authority once', async () => {
+    const { iterator, projection } = await startWaitingQuestion('request-question-reject');
+    bindPersistentOpenCodeQuestionRoute(projection.route);
+    const request = buildOpenCodeQuestionRejectRequest({
+      route: projection.route,
+      expectedSessionId: projection.route.sessionId,
+      blockId: projection.route.blockId,
+    });
+    expect(request).toBeDefined();
+
+    await expect(
+      respondToPersistentOpenCodeQuestion({
+        request: request!,
+        expectedSessionId: projection.route.sessionId,
+        expectedBlockId: projection.route.blockId,
+      }),
+    ).resolves.toMatchObject({ action: 'reject', questionCount: 0 });
+
+    const transportCall = nativeOpenCodeMocks.request.mock.calls.find(([, path]) =>
+      path.startsWith('/question/'),
+    );
+    expect(transportCall?.[0]).toBe('opencode-server-question-test');
+    expect(transportCall?.[1]).toBe(
+      '/question/que_question_exact/reject?directory=C%3A%5Cworkspace',
+    );
+    expect(transportCall?.[2]).toMatchObject({ method: 'POST' });
+    expect(transportCall?.[2]).not.toHaveProperty('body');
+
+    await expect(
+      respondToPersistentOpenCodeQuestion({
+        request: request!,
+        expectedSessionId: projection.route.sessionId,
+        expectedBlockId: projection.route.blockId,
+      }),
+    ).rejects.toThrow(/no longer waiting|no longer active/i);
+    await drain(iterator);
+  });
+
+  it('fails closed for malformed, cross-session, or cross-tool bindings without transport I/O', async () => {
+    const { iterator, projection } = await startWaitingQuestion('request-question-invalid');
+    expect(() =>
+      bindPersistentOpenCodeQuestionRoute({
+        ...projection.route,
+        sessionId: 'ses_question_other',
+      }),
+    ).toThrow(/no longer active/i);
+    expect(() =>
+      bindPersistentOpenCodeQuestionRoute({
+        ...projection.route,
+        tool: { messageId: 'msg_question_exact', callId: 'call_question_other' },
+      }),
+    ).toThrow(/no longer active/i);
+
+    bindPersistentOpenCodeQuestionRoute(projection.route);
+    const validRequest = buildOpenCodeQuestionRejectRequest({
+      route: projection.route,
+      expectedSessionId: projection.route.sessionId,
+      blockId: projection.route.blockId,
+    });
+    expect(validRequest).toBeDefined();
+    await expect(
+      respondToPersistentOpenCodeQuestion({
+        request: { ...validRequest!, path: '/question/que_question_other/reject' },
+        expectedSessionId: projection.route.sessionId,
+        expectedBlockId: projection.route.blockId,
+      }),
+    ).rejects.toThrow(/invalid/i);
+    await expect(
+      respondToPersistentOpenCodeQuestion({
+        request: validRequest!,
+        expectedSessionId: 'ses_question_other',
+        expectedBlockId: projection.route.blockId,
+      }),
+    ).rejects.toThrow(/no longer active/i);
+    expect(
+      nativeOpenCodeMocks.request.mock.calls.filter(([, path]) => path.startsWith('/question/')),
+    ).toHaveLength(0);
+    await iterator.return?.();
+  });
+
+  it('rejects a duplicate native question whose tool authority changes and clears the registry', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    configureManagedQuestionTransport([
+      questionAskedEvent(),
+      questionAskedEvent('call_question_changed'),
+    ]);
+    const { iterator, projection } = await startWaitingQuestion('request-question-duplicate');
+
+    await expect(iterator.next()).rejects.toThrow(/authority changed/i);
+    expect(nativeOpenCodeMocks.request.mock.calls).toContainEqual([
+      'opencode-server-question-test',
+      '/session/ses_question_exact/abort?directory=C%3A%5Cworkspace',
+      expect.objectContaining({ method: 'POST', body: '{}' }),
+      30_000,
+    ]);
+    expect(() => bindPersistentOpenCodeQuestionRoute(projection.route)).toThrow(
+      /no longer active/i,
+    );
+    warn.mockRestore();
+  });
+
+  it('clears waiting question authority when the owning provider request is cancelled', async () => {
+    const controller = new AbortController();
+    const { iterator, projection } = await startWaitingQuestion(
+      'request-question-cancel',
+      controller.signal,
+    );
+    bindPersistentOpenCodeQuestionRoute(projection.route);
+
+    controller.abort();
+    await expect(iterator.next()).rejects.toMatchObject({ name: 'AbortError' });
+    expect(() => bindPersistentOpenCodeQuestionRoute(projection.route)).toThrow(
+      /no longer active/i,
+    );
+    const request = buildOpenCodeQuestionRejectRequest({
+      route: projection.route,
+      expectedSessionId: projection.route.sessionId,
+      blockId: projection.route.blockId,
+    });
+    await expect(
+      respondToPersistentOpenCodeQuestion({
+        request: request!,
+        expectedSessionId: projection.route.sessionId,
+        expectedBlockId: projection.route.blockId,
+      }),
+    ).rejects.toThrow(/no longer active/i);
+  });
+});
 
 describe('persistent OpenCode live authority', () => {
   it('maps the native question request as a bounded dedicated provider event', () => {

@@ -67,6 +67,10 @@ import {
   readLocalAgentPreferences,
   type LocalInferenceFailure,
 } from './localAgentRuntime';
+import {
+  projectOpenCodeQuestionEvent,
+  type OpenCodeQuestionProjection,
+} from './openCodeQuestionProjection';
 
 export class NoModelSelectedError extends Error {
   constructor() {
@@ -88,7 +92,9 @@ async function sha256Hex(canonical: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-const providerAttemptEvidenceAuthority = createJarvisProviderAttemptEvidenceAuthority({ sha256: sha256Hex });
+const providerAttemptEvidenceAuthority = createJarvisProviderAttemptEvidenceAuthority({
+  sha256: sha256Hex,
+});
 
 export const jarvisProviderAttemptEvidenceRevalidator = Object.freeze({
   revalidateFailure: providerAttemptEvidenceAuthority.revalidateFailure.bind(
@@ -310,9 +316,11 @@ export interface RunAgentRequest {
   approveAllForRun?: boolean;
   tools?: Readonly<Record<string, boolean>>;
   onApprovalRequested?: (approval: VibeSpaceApproval) => void | Promise<void>;
-  onHarnessSessionBound?: (binding: { sessionId: string; parentSessionId?: string }) =>
-    | void
-    | Promise<void>;
+  onHarnessSessionBound?: (binding: {
+    sessionId: string;
+    parentSessionId?: string;
+  }) => void | Promise<void>;
+  onQuestionRequested?: (projection: Readonly<OpenCodeQuestionProjection>) => void | Promise<void>;
   onProviderCompletionEvidence?: (
     evidence: Readonly<ProviderCompletionEvidence>,
   ) => void | Promise<void>;
@@ -335,8 +343,13 @@ function resolveOpenCodeSelection(req: Readonly<RunAgentRequest>): OpenCodeSelec
   const auth = useAuthStore.getState();
   if (req.connectionId) {
     const connection = getProviderConnectionDescriptor(req.connectionId);
-    if (!connection.enabled) throw new Error(`Provider connection is disabled: ${req.connectionId}`);
-    if (auth.offlineMode && connection.mode !== 'local' && connection.adapterId !== 'opencode-cli') {
+    if (!connection.enabled)
+      throw new Error(`Provider connection is disabled: ${req.connectionId}`);
+    if (
+      auth.offlineMode &&
+      connection.mode !== 'local' &&
+      connection.adapterId !== 'opencode-cli'
+    ) {
       throw new NoModelSelectedError();
     }
     assertConnectionCapabilities(connection, req.connectionRequirements);
@@ -385,7 +398,9 @@ function resolveOpenCodeSelection(req: Readonly<RunAgentRequest>): OpenCodeSelec
 
   const usesDefault =
     agentUsesDefaultProvider(req.agent.model.provider, req.agent.model.model) ||
-    (req.agent.builtin && req.agent.model.provider === 'mock' && req.agent.model.model === 'mock-default');
+    (req.agent.builtin &&
+      req.agent.model.provider === 'mock' &&
+      req.agent.model.model === 'mock-default');
   if (usesDefault) {
     const selection = auth.chatModelSelection ?? EMPTY_CHAT_MODEL_SELECTION;
     if (selection.mode !== 'single') throw new NoModelSelectedError();
@@ -481,6 +496,7 @@ async function executePersistentOpenCode(
     let finishReason: string | undefined;
     let usage: Extract<ProviderEvent, { type: 'usage' }>['usage'] | undefined;
     let observedSessionId: string | undefined;
+    const observedQuestionRequestIds = new Set<string>();
     let terminalDoneObserved = false;
     let completedReadOnlyFilesystem = false;
     let anyToolObserved = false;
@@ -554,6 +570,20 @@ async function executePersistentOpenCode(
             throw new Error('provider_completion_session_mismatch');
           }
           observedSessionId = event.sessionId;
+        } else if (event.type === 'question') {
+          const exactSessionId = observedSessionId ?? req.expectedSessionId;
+          if (!exactSessionId) throw new Error('provider_question_session_missing');
+          if (event.request.sessionId !== exactSessionId) {
+            throw new Error('provider_question_session_mismatch');
+          }
+          const projection = projectOpenCodeQuestionEvent(event, exactSessionId);
+          if (!projection) throw new Error('provider_question_invalid');
+          if (observedQuestionRequestIds.has(projection.route.requestId)) {
+            throw new Error('provider_question_duplicate');
+          }
+          if (!req.onQuestionRequested) throw new Error('provider_question_handler_missing');
+          observedQuestionRequestIds.add(projection.route.requestId);
+          await req.onQuestionRequested(projection);
         } else if (event.type === 'tool') {
           anyToolObserved = true;
           if (event.checklist) checklistEvidence.set(event.checklist.callId, event.checklist);
@@ -563,10 +593,7 @@ async function executePersistentOpenCode(
           if (req.explicitReadRoot && !READ_ONLY_FILESYSTEM_TOOL_NAMES.has(event.name)) {
             throw new Error('kernel_explicit_root_unapproved_tool_observed');
           }
-          if (
-            event.status === 'completed' &&
-            READ_ONLY_FILESYSTEM_TOOL_NAMES.has(event.name)
-          ) {
+          if (event.status === 'completed' && READ_ONLY_FILESYSTEM_TOOL_NAMES.has(event.name)) {
             completedReadOnlyFilesystem = true;
             if (
               event.name === 'list' ||
@@ -650,7 +677,8 @@ async function dispatchThroughOpenCode(req: RunAgentRequest): Promise<LLMRespons
   }
 
   const selection = resolveOpenCodeSelection(req);
-  const dispatch = (hooks?: ProtectedAttemptHooks) => executePersistentOpenCode(req, selection, hooks);
+  const dispatch = (hooks?: ProtectedAttemptHooks) =>
+    executePersistentOpenCode(req, selection, hooks);
   let response: LLMResponse;
   try {
     response = protectedDispatch
@@ -754,7 +782,9 @@ async function runKernelSmokeCliConnection(
   if (!adapter.send) throw new Error('Kernel smoke adapter cannot send requests.');
   const detection = adapter.detect ? await adapter.detect() : { status: 'unavailable' as const };
   if (detection.status !== 'available') throw new Error('Kernel smoke adapter is unavailable.');
-  const auth = adapter.probeAuth ? await adapter.probeAuth(connection) : { status: 'unknown' as const };
+  const auth = adapter.probeAuth
+    ? await adapter.probeAuth(connection)
+    : { status: 'unknown' as const };
   if (auth.status === 'unauthenticated') throw new Error('Kernel smoke adapter is signed out.');
   if (auth.status !== 'authenticated' && !isKernelSmokeBindingActive()) {
     throw new Error('Kernel smoke authentication could not be verified.');
@@ -832,7 +862,8 @@ async function runKernelSmokeDispatch(req: RunAgentRequest): Promise<LLMResponse
     }
   }
 
-  if (!req.connectionId) throw new Error('Kernel smoke dispatch requires its exact debug connection.');
+  if (!req.connectionId)
+    throw new Error('Kernel smoke dispatch requires its exact debug connection.');
   const connection = getProviderConnectionDescriptor(req.connectionId);
   if (connection.providerId !== KERNEL_SMOKE_PROVIDER_ID) {
     throw new Error('Kernel smoke provider connection is invalid.');
@@ -840,25 +871,31 @@ async function runKernelSmokeDispatch(req: RunAgentRequest): Promise<LLMResponse
   recordKernelSmokeRouterDispatch(protectedDispatch ? 'protected' : 'unprotected');
   if (connection.mode === 'external-cli') {
     const transport = protectedDispatch
-      ? buildProviderPromptTransport({ compiled: req.compiledPrompt!, connection, messages: req.messages })
+      ? buildProviderPromptTransport({
+          compiled: req.compiledPrompt!,
+          connection,
+          messages: req.messages,
+        })
       : undefined;
-    const prompt = transport?.strategy === 'prefixed-preamble'
-      ? transport.prompt
-      : promptForOpenCode(req.messages);
-    const dispatch = (hooks?: ProtectedAttemptHooks) => runKernelSmokeCliConnection({
-      connection,
-      adapter: kernelSmokeCliAdapter,
-      requestId: req.requestId ?? `kernel-smoke-${Date.now()}`,
-      prompt,
-      modelId: req.agent.model.model,
-      systemPrompt: protectedDispatch ? undefined : req.agent.system_prompt,
-      workingDirectory: req.workingDirectory,
-      signal: req.signal,
-      requirements: req.connectionRequirements,
-      onChunk: req.onChunk,
-      onResponseObservation: hooks?.onResponseObservation,
-      onActionDispatch: hooks?.onActionDispatch,
-    });
+    const prompt =
+      transport?.strategy === 'prefixed-preamble'
+        ? transport.prompt
+        : promptForOpenCode(req.messages);
+    const dispatch = (hooks?: ProtectedAttemptHooks) =>
+      runKernelSmokeCliConnection({
+        connection,
+        adapter: kernelSmokeCliAdapter,
+        requestId: req.requestId ?? `kernel-smoke-${Date.now()}`,
+        prompt,
+        modelId: req.agent.model.model,
+        systemPrompt: protectedDispatch ? undefined : req.agent.system_prompt,
+        workingDirectory: req.workingDirectory,
+        signal: req.signal,
+        requirements: req.connectionRequirements,
+        onChunk: req.onChunk,
+        onResponseObservation: hooks?.onResponseObservation,
+        onActionDispatch: hooks?.onActionDispatch,
+      });
     const response = protectedDispatch
       ? await runProtectedProviderAttempt(
           {
@@ -869,18 +906,24 @@ async function runKernelSmokeDispatch(req: RunAgentRequest): Promise<LLMResponse
           dispatch,
         )
       : await dispatch();
-    useAgentStore.getState().addTokens(
-      req.agent.id,
-      response.usage.input_tokens,
-      response.usage.output_tokens,
-      response.usage.cost_usd,
-    );
+    useAgentStore
+      .getState()
+      .addTokens(
+        req.agent.id,
+        response.usage.input_tokens,
+        response.usage.output_tokens,
+        response.usage.cost_usd,
+      );
     return response;
   }
 
   const resolved = resolveKernelSmokeProviderAndModel(connection, req.agent);
   const transport = protectedDispatch
-    ? buildProviderPromptTransport({ compiled: req.compiledPrompt!, connection, messages: req.messages })
+    ? buildProviderPromptTransport({
+        compiled: req.compiledPrompt!,
+        connection,
+        messages: req.messages,
+      })
     : undefined;
   if (protectedDispatch && transport?.strategy !== 'native-system') {
     throw new Error('Protected kernel smoke transport is invalid.');
@@ -904,19 +947,22 @@ async function runKernelSmokeDispatch(req: RunAgentRequest): Promise<LLMResponse
           providerId: connection.providerId,
           modelId: resolved.model,
         },
-        (hooks) => resolved.provider.run({
-          ...llmReq,
-          onResponseObservation: hooks.onResponseObservation,
-          onActionDispatch: hooks.onActionDispatch,
-        }),
+        (hooks) =>
+          resolved.provider.run({
+            ...llmReq,
+            onResponseObservation: hooks.onResponseObservation,
+            onActionDispatch: hooks.onActionDispatch,
+          }),
       )
     : await resolved.provider.run(llmReq);
-  useAgentStore.getState().addTokens(
-    req.agent.id,
-    response.usage.input_tokens,
-    response.usage.output_tokens,
-    response.usage.cost_usd,
-  );
+  useAgentStore
+    .getState()
+    .addTokens(
+      req.agent.id,
+      response.usage.input_tokens,
+      response.usage.output_tokens,
+      response.usage.cost_usd,
+    );
   return response;
 }
 
@@ -941,12 +987,14 @@ async function runFoundryDispatch(req: RunAgentRequest): Promise<LLMResponse> {
     provider_options: req.provider_options,
   };
   const response = await foundryProvider.run(llmReq);
-  useAgentStore.getState().addTokens(
-    req.agent.id,
-    response.usage.input_tokens,
-    response.usage.output_tokens,
-    response.usage.cost_usd,
-  );
+  useAgentStore
+    .getState()
+    .addTokens(
+      req.agent.id,
+      response.usage.input_tokens,
+      response.usage.output_tokens,
+      response.usage.cost_usd,
+    );
   return response;
 }
 

@@ -3,8 +3,13 @@ import { ArrowLeft, ArrowRight, Check, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { messageRepo } from '@/lib/db/repositories';
+import {
+  buildOpenCodeQuestionRejectRequest,
+  buildOpenCodeQuestionReplyRequest,
+} from '@/lib/ai/openCodeQuestionReply';
+import { respondToPersistentOpenCodeQuestion } from '@/lib/ai/adapters/opencodePersistent';
 import type { MessageId, Part } from '@/types';
-import type { JarvisQuestion, JarvisQuestionAnswer } from './types';
+import type { JarvisQuestion, JarvisQuestionAnswer, JarvisQuestionHarnessRoute } from './types';
 
 type QuestionBlockPart = Extract<Part, { kind: 'question_block' }>;
 
@@ -37,9 +42,18 @@ function readDraft(key: string): QuestionDraft {
     const parsed = JSON.parse(raw) as Partial<QuestionDraft> | null;
     if (!parsed || typeof parsed !== 'object') return EMPTY_DRAFT;
     return {
-      selected: parsed.selected && typeof parsed.selected === 'object' ? parsed.selected as Record<string, string[]> : {},
-      text: parsed.text && typeof parsed.text === 'object' ? parsed.text as Record<string, string> : {},
-      activeIndex: typeof parsed.activeIndex === 'number' && Number.isFinite(parsed.activeIndex) ? parsed.activeIndex : 0,
+      selected:
+        parsed.selected && typeof parsed.selected === 'object'
+          ? (parsed.selected as Record<string, string[]>)
+          : {},
+      text:
+        parsed.text && typeof parsed.text === 'object'
+          ? (parsed.text as Record<string, string>)
+          : {},
+      activeIndex:
+        typeof parsed.activeIndex === 'number' && Number.isFinite(parsed.activeIndex)
+          ? parsed.activeIndex
+          : 0,
     };
   } catch {
     return EMPTY_DRAFT;
@@ -72,23 +86,69 @@ function answerLabel(question: JarvisQuestion, answer: JarvisQuestionAnswer): st
 }
 
 function buildAnswerSummary(questions: JarvisQuestion[], answers: JarvisQuestionAnswer[]): string {
-  return answers.map((answer) => {
-    const question = questions.find((item) => item.id === answer.questionId);
-    return question ? answerLabel(question, answer) : `${answer.questionId}: answered`;
-  }).join('\n');
+  return answers
+    .map((answer) => {
+      const question = questions.find((item) => item.id === answer.questionId);
+      return question ? answerLabel(question, answer) : `${answer.questionId}: answered`;
+    })
+    .join('\n');
+}
+
+function sameHarnessRoute(
+  left: JarvisQuestionHarnessRoute | undefined,
+  right: JarvisQuestionHarnessRoute | undefined,
+): boolean {
+  if (!left || !right) return left === right;
+  if (
+    left.protocol !== right.protocol ||
+    left.blockId !== right.blockId ||
+    left.requestId !== right.requestId ||
+    left.sessionId !== right.sessionId ||
+    left.tool?.messageId !== right.tool?.messageId ||
+    left.tool?.callId !== right.tool?.callId ||
+    left.questions.length !== right.questions.length
+  ) {
+    return false;
+  }
+  return left.questions.every((question, questionIndex) => {
+    const candidate = right.questions[questionIndex];
+    return Boolean(
+      candidate &&
+      question.questionId === candidate.questionId &&
+      question.questionIndex === candidate.questionIndex &&
+      question.multiple === candidate.multiple &&
+      question.allowCustomAnswer === candidate.allowCustomAnswer &&
+      question.options.length === candidate.options.length &&
+      question.options.every((option, optionIndex) => {
+        const candidateOption = candidate.options[optionIndex];
+        return Boolean(
+          candidateOption &&
+          option.optionId === candidateOption.optionId &&
+          option.optionIndex === candidateOption.optionIndex &&
+          option.label === candidateOption.label,
+        );
+      }),
+    );
+  });
 }
 
 export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCardProps) {
   const { block } = part;
   const draftKey = draftKeyFor(chatId, block.id);
   const initialDraft = useMemo(() => readDraft(draftKey), [draftKey]);
-  const [selectedByQuestion, setSelectedByQuestion] = useState<Record<string, string[]>>(initialDraft.selected);
+  const [selectedByQuestion, setSelectedByQuestion] = useState<Record<string, string[]>>(
+    initialDraft.selected,
+  );
   const [textByQuestion, setTextByQuestion] = useState<Record<string, string>>(initialDraft.text);
   const [customOpenByQuestion, setCustomOpenByQuestion] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(Object.keys(initialDraft.text).map((id) => [id, Boolean(initialDraft.text[id])])),
+    Object.fromEntries(
+      Object.keys(initialDraft.text).map((id) => [id, Boolean(initialDraft.text[id])]),
+    ),
   );
   const total = block.questions.length;
-  const [activeIndex, setActiveIndex] = useState(() => Math.min(Math.max(initialDraft.activeIndex, 0), Math.max(total - 1, 0)));
+  const [activeIndex, setActiveIndex] = useState(() =>
+    Math.min(Math.max(initialDraft.activeIndex, 0), Math.max(total - 1, 0)),
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -108,83 +168,176 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
     [block.questions],
   );
 
-  const collectAnswers = (skipped = false): JarvisQuestionAnswer[] => block.questions.map((question) => ({
-    questionId: question.id,
-    selectedOptionIds: skipped ? [] : selectedByQuestion[question.id] ?? [],
-    text: skipped ? '' : (textByQuestion[question.id] ?? '').trim(),
-    skipped,
-  }));
+  const collectAnswers = (skipped = false): JarvisQuestionAnswer[] =>
+    block.questions.map((question) => ({
+      questionId: question.id,
+      selectedOptionIds: skipped ? [] : (selectedByQuestion[question.id] ?? []),
+      text: skipped ? '' : (textByQuestion[question.id] ?? '').trim(),
+      skipped,
+    }));
 
   const questionAnswered = (question: JarvisQuestion, answers: JarvisQuestionAnswer[]): boolean => {
     const answer = answers.find((item) => item.questionId === question.id);
     return Boolean((answer?.selectedOptionIds?.length ?? 0) > 0 || answer?.text?.trim());
   };
 
-  const firstMissingRequired = (answers: JarvisQuestionAnswer[]): number => block.questions.findIndex(
-    (question) => question.required && !questionAnswered(question, answers),
-  );
+  const firstMissingRequired = (answers: JarvisQuestionAnswer[]): number =>
+    block.questions.findIndex(
+      (question) => question.required && !questionAnswered(question, answers),
+    );
+
+  const readPersistedQuestionPart = async () => {
+    if (!messageId) throw new Error('This question is no longer available.');
+    const message = await messageRepo.getById(messageId);
+    if (!message) throw new Error('This question is no longer available.');
+    if (!chatId || String(message.chat_id) !== chatId) {
+      throw new Error('This question no longer belongs to this chat.');
+    }
+    const persistedPart = message.parts.find(
+      (messagePart): messagePart is QuestionBlockPart =>
+        messagePart.kind === 'question_block' && messagePart.block.id === block.id,
+    );
+    if (
+      !persistedPart ||
+      persistedPart.block.status !== 'pending' ||
+      !sameHarnessRoute(part.harness, persistedPart.harness)
+    ) {
+      throw new Error('This question is no longer available.');
+    }
+    return { message, persistedPart };
+  };
 
   const persistBlockStatus = async (
     answers: JarvisQuestionAnswer[],
     status: 'answered' | 'skipped' | 'cancelled',
   ) => {
     if (!messageId) return;
-    const message = await messageRepo.getById(messageId);
-    if (!message) throw new Error('This question is no longer available.');
-    if (!chatId || String(message.chat_id) !== chatId) {
-      throw new Error('This question no longer belongs to this chat.');
-    }
-    const hasExactBlock = message.parts.some(
-      (messagePart) => messagePart.kind === 'question_block' && messagePart.block.id === block.id,
-    );
-    if (!hasExactBlock) {
-      throw new Error('This question is no longer available.');
-    }
+    const { message } = await readPersistedQuestionPart();
     await messageRepo.update(messageId, {
-      parts: message.parts.map((messagePart) => (
+      parts: message.parts.map((messagePart) =>
         messagePart.kind === 'question_block' && messagePart.block.id === block.id
-          ? { kind: 'question_block', block: { ...messagePart.block, answers, status } }
-          : messagePart
-      )),
+          ? {
+              kind: 'question_block',
+              block: { ...messagePart.block, answers, status },
+              ...(messagePart.harness ? { harness: messagePart.harness } : {}),
+            }
+          : messagePart,
+      ),
     });
   };
 
-  const persistAndSend = async (answers: JarvisQuestionAnswer[], status: 'answered' | 'skipped') => {
+  const respondToHarnessQuestion = async (
+    answers: JarvisQuestionAnswer[],
+    action: 'reply' | 'reject',
+  ) => {
+    const { persistedPart } = await readPersistedQuestionPart();
+    const route = persistedPart.harness;
+    if (!route) throw new Error('OpenCode question authority is unavailable.');
+    const replyAnswers = answers.map(({ text, ...answer }) =>
+      text?.trim() ? { ...answer, text: text.trim() } : answer,
+    );
+    const request =
+      action === 'reply'
+        ? buildOpenCodeQuestionReplyRequest({
+            route,
+            expectedSessionId: route.sessionId,
+            blockId: block.id,
+            answers: replyAnswers,
+          })
+        : buildOpenCodeQuestionRejectRequest({
+            route,
+            expectedSessionId: route.sessionId,
+            blockId: block.id,
+          });
+    if (!request) throw new Error('OpenCode question response is invalid.');
+    await respondToPersistentOpenCodeQuestion({
+      request,
+      expectedSessionId: route.sessionId,
+      expectedBlockId: block.id,
+    });
+  };
+
+  const emitHarnessResolution = (
+    answers: JarvisQuestionAnswer[],
+    status: 'answered' | 'skipped' | 'cancelled',
+  ) => {
+    if (!part.harness || !messageId || !chatId) return;
+    window.dispatchEvent(
+      new CustomEvent('vibespace:opencode-question-resolved', {
+        detail: {
+          chatId,
+          messageId,
+          part: {
+            kind: 'question_block',
+            block: { ...block, answers, status },
+            harness: part.harness,
+          },
+        },
+      }),
+    );
+  };
+
+  const persistAndSend = async (
+    answers: JarvisQuestionAnswer[],
+    status: 'answered' | 'skipped',
+  ) => {
     if (!messageId || !chatId || busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     setError(null);
     try {
+      if (part.harness) {
+        await respondToHarnessQuestion(answers, 'reply');
+        await persistBlockStatus(answers, status);
+        emitHarnessResolution(answers, status);
+        clearDraft(draftKey);
+        return;
+      }
       await persistBlockStatus(answers, status);
       await messageRepo.create({
         chat_id: chatId as never,
         role: 'user',
         parts: [
-          { kind: 'text', text: status === 'skipped' ? `Skipped: ${block.title ?? 'Jarvis questions'}` : buildAnswerSummary(block.questions, answers) },
+          {
+            kind: 'text',
+            text:
+              status === 'skipped'
+                ? `Skipped: ${block.title ?? 'Jarvis questions'}`
+                : buildAnswerSummary(block.questions, answers),
+          },
           { kind: 'question_answer', blockId: block.id, answers },
         ],
       });
-      window.dispatchEvent(new CustomEvent('jarvis:send', {
-        detail: {
-          chatId,
-          text: status === 'skipped'
-            ? `Skipped Jarvis question block ${block.id}.`
-            : buildAnswerSummary(block.questions, answers),
-          structuredContext: {
-            kind: 'question_answers',
-            sourceMessageId: messageId,
-            payload: {
-              blockId: block.id,
-              originalRequest: block.originalRequest,
-              answers,
-              skipped: status === 'skipped',
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId,
+            text:
+              status === 'skipped'
+                ? `Skipped Jarvis question block ${block.id}.`
+                : buildAnswerSummary(block.questions, answers),
+            structuredContext: {
+              kind: 'question_answers',
+              sourceMessageId: messageId,
+              payload: {
+                blockId: block.id,
+                originalRequest: block.originalRequest,
+                answers,
+                skipped: status === 'skipped',
+              },
             },
           },
-        },
-      }));
+        }),
+      );
       clearDraft(draftKey);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save these answers. Please retry.');
+      setError(
+        part.harness
+          ? 'Could not send this answer to OpenCode. Please retry.'
+          : err instanceof Error
+            ? err.message
+            : 'Could not save these answers. Please retry.',
+      );
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -244,10 +397,19 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
     setBusy(true);
     setError(null);
     try {
-      await persistBlockStatus(collectAnswers(true), 'cancelled');
+      const answers = collectAnswers(true);
+      if (part.harness) await respondToHarnessQuestion(answers, 'reject');
+      await persistBlockStatus(answers, 'cancelled');
+      emitHarnessResolution(answers, 'cancelled');
       clearDraft(draftKey);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not cancel these questions. Please retry.');
+      setError(
+        part.harness
+          ? 'Could not cancel this OpenCode question. Please retry.'
+          : err instanceof Error
+            ? err.message
+            : 'Could not cancel these questions. Please retry.',
+      );
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -295,7 +457,7 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
             })}
           </div>
         ) : null}
-        {question.options?.length ? (
+        {question.options?.length && question.allowCustomResponse ? (
           <button
             type="button"
             className={cn(
@@ -306,15 +468,18 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
             )}
             aria-pressed={Boolean(customOpenByQuestion[question.id])}
             aria-controls={`question-custom-${question.id}`}
-            onClick={() => setCustomOpenByQuestion((current) => ({
-              ...current,
-              [question.id]: !current[question.id],
-            }))}
+            onClick={() =>
+              setCustomOpenByQuestion((current) => ({
+                ...current,
+                [question.id]: !current[question.id],
+              }))
+            }
           >
             Write my own answer
           </button>
         ) : null}
-        {customOpenByQuestion[question.id] || !question.options?.length ? (
+        {!question.options?.length ||
+        (question.allowCustomResponse && customOpenByQuestion[question.id]) ? (
           <textarea
             id={`question-custom-${question.id}`}
             aria-label={`Custom response for ${question.prompt}`}
@@ -340,7 +505,9 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
             <HelpCircle className="h-3.5 w-3.5 text-accent-cyan" />
           </div>
           <div>
-            <div className="text-ui-strong text-foreground">{block.title ?? 'Jarvis needs a quick answer'}</div>
+            <div className="text-ui-strong text-foreground">
+              {block.title ?? 'Jarvis needs a quick answer'}
+            </div>
             {block.description && (
               <p className="text-secondary text-muted-foreground">{block.description}</p>
             )}
@@ -377,37 +544,76 @@ export function QuestionBlockCard({ part, messageId, chatId }: QuestionBlockCard
           : block.questions.map((question, index) => renderQuestion(question, index))}
       </div>
 
-      {error && <p role="alert" className="mt-2 text-secondary text-destructive">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-2 text-secondary text-destructive">
+          {error}
+        </p>
+      )}
       {!isPending && (
         <p className="mt-2 text-secondary text-muted-foreground">
-          {block.status === 'skipped' ? 'Skipped.' : block.status === 'cancelled' ? 'Cancelled.' : 'Answered.'}
+          {block.status === 'skipped'
+            ? 'Skipped.'
+            : block.status === 'cancelled'
+              ? 'Cancelled.'
+              : 'Answered.'}
         </p>
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {isWizard && activeIndex > 0 && (
-          <Button type="button" size="sm" variant="ghost" disabled={busy || !isPending} onClick={handleBack}>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={busy || !isPending}
+            onClick={handleBack}
+          >
             <ArrowLeft className="mr-1 h-3.5 w-3.5" />
             Back
           </Button>
         )}
         {isWizard && !isLast ? (
-          <Button type="button" size="sm" variant="accent" disabled={busy || !isPending} onClick={handleNext}>
+          <Button
+            type="button"
+            size="sm"
+            variant="accent"
+            disabled={busy || !isPending}
+            onClick={handleNext}
+          >
             Next
             <ArrowRight className="ml-1 h-3.5 w-3.5" />
           </Button>
         ) : (
-          <Button type="button" size="sm" variant="accent" disabled={busy || !isPending} onClick={handleContinue}>
+          <Button
+            type="button"
+            size="sm"
+            variant="accent"
+            disabled={busy || !isPending}
+            onClick={handleContinue}
+          >
             Submit
           </Button>
         )}
         {canSkip && (
-          <Button type="button" size="sm" variant="ghost" disabled={busy || !isPending} onClick={handleSkip}>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={busy || !isPending}
+            onClick={handleSkip}
+          >
             Skip
           </Button>
         )}
         {isPending && (
-          <Button type="button" size="sm" variant="ghost" className="text-muted-foreground" disabled={busy} onClick={handleCancel}>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="text-muted-foreground"
+            disabled={busy}
+            onClick={handleCancel}
+          >
             Cancel
           </Button>
         )}

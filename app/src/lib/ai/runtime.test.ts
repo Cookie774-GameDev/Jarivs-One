@@ -88,6 +88,7 @@ const mocks = vi.hoisted(() => ({
   voiceCanSpeak: true,
   nativeFetch: vi.fn(),
   buildRoutedMcpTaskContext: vi.fn(),
+  bindPersistentOpenCodeQuestionRoute: vi.fn(),
   kernelRuntimeInterceptor: null as
     | ((composition: JarvisKernelRuntimeComposition) => JarvisKernelRuntimeComposition)
     | null,
@@ -98,6 +99,14 @@ vi.mock('@/lib/nativeFetch', () => ({ nativeFetch: mocks.nativeFetch }));
 vi.mock('@/lib/mcp/taskContext', () => ({
   buildRoutedMcpTaskContext: mocks.buildRoutedMcpTaskContext,
 }));
+
+vi.mock('./adapters/opencodePersistent', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./adapters/opencodePersistent')>();
+  return {
+    ...actual,
+    bindPersistentOpenCodeQuestionRoute: mocks.bindPersistentOpenCodeQuestionRoute,
+  };
+});
 
 vi.mock('@/features/voice/voiceRouter', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/voice/voiceRouter')>();
@@ -221,6 +230,7 @@ import { selectionFromOption } from './modelSelection';
 import { DEFAULT_CUSTOM_STEPS } from './stacks/presets';
 import { PROVIDER_CONNECTIONS } from './adapters/catalog';
 import { rememberLiveOpenCodeProviders } from './openCodeProductionTransport';
+import { projectOpenCodeQuestionEvent } from './openCodeQuestionProjection';
 
 function startRuntimeListener(
   ...args: Parameters<typeof startKernelAwareRuntimeListener>
@@ -1172,6 +1182,7 @@ describe('startRuntimeListener agent routing', () => {
     mocks.runAgent.mockReset();
     mocks.nativeFetch.mockReset();
     mocks.buildRoutedMcpTaskContext.mockReset();
+    mocks.bindPersistentOpenCodeQuestionRoute.mockReset();
     mocks.kernelRuntimeInterceptor = null;
     mocks.voiceCanSpeak = true;
     clearOpenCodeApprovalStatuses();
@@ -1533,6 +1544,16 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
   });
 
   it('presents an OpenCode approval in the live placeholder and preserves its decision', async () => {
+    const openCodeConnection = PROVIDER_CONNECTIONS.find(
+      (connection) => connection.id === 'opencode-cli',
+    )!;
+    useAuthStore.setState({
+      chatModelSelection: selectionFromOption(
+        openCodeConnection.providerId as ProviderId,
+        'opencode-go/deepseek-v4-flash-vision-exp',
+        openCodeConnection,
+      ),
+    });
     const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
     const chatId = 'chat_opencode_approval' as ChatId;
     const placeholderId = 'msg_opencode_approval_assistant' as MessageId;
@@ -1603,6 +1624,230 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     expect(mocks.runAgent.mock.calls[0]?.[0].tools).toEqual(
       openCodeToolsForInteractionMode('agent'),
     );
+
+    stop();
+  });
+
+  it('keeps one projected OpenCode question in the same placeholder through resolution and completion', async () => {
+    const openCodeConnection = PROVIDER_CONNECTIONS.find(
+      (connection) => connection.id === 'opencode-cli',
+    )!;
+    useAuthStore.setState({
+      chatModelSelection: selectionFromOption(
+        openCodeConnection.providerId as ProviderId,
+        'opencode-go/deepseek-v4-flash-vision-exp',
+        openCodeConnection,
+      ),
+    });
+    const projection = projectOpenCodeQuestionEvent(
+      {
+        type: 'question',
+        request: {
+          id: 'que_runtime_scope',
+          sessionId: 'ses_runtime_scope',
+          tool: { messageId: 'msg_provider_scope', callId: 'call_runtime_scope' },
+          questions: [
+            {
+              header: 'Scope',
+              prompt: 'Which source should the audit use?',
+              multiple: false,
+              allowCustomAnswer: true,
+              options: [
+                { label: 'Repository', description: 'Use the current repository only.' },
+                { label: 'Workspace', description: 'Use the approved workspace.' },
+              ],
+            },
+          ],
+        },
+      },
+      'ses_runtime_scope',
+    );
+    if (!projection) throw new Error('expected a valid OpenCode question projection');
+
+    const jarvis = agent('agent_question_runtime', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_opencode_question_runtime' as ChatId;
+    const placeholderId = 'msg_opencode_question_assistant' as MessageId;
+    const userMessage: Message = {
+      id: 'msg_opencode_question_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'Audit the approved scope.' }],
+      created_at: 1,
+      updated_at: 1,
+    };
+    const appendMessage = vi.fn(async (message) => ({
+      ...message,
+      id: placeholderId,
+      created_at: 2,
+      updated_at: 2,
+    }));
+    const updateMessage = vi.fn(async () => undefined);
+    const selectedOptionId = projection.part.block.questions[0]?.options?.[0]?.id;
+    if (!selectedOptionId) throw new Error('expected a projected option');
+    const answeredPart: Extract<Part, { kind: 'question_block' }> = {
+      ...projection.part,
+      block: {
+        ...projection.part.block,
+        status: 'answered',
+        answers: [
+          {
+            questionId: projection.part.block.questions[0]!.id,
+            selectedOptionIds: [selectedOptionId],
+          },
+        ],
+      },
+    };
+
+    mocks.runAgent.mockImplementationOnce(async (input) => {
+      await input.onQuestionRequested?.(projection);
+      const pendingWriteCount = updateMessage.mock.calls.length;
+      const expectResolutionIgnored = async (part: Extract<Part, { kind: 'question_block' }>) => {
+        window.dispatchEvent(
+          new CustomEvent('vibespace:opencode-question-resolved', {
+            detail: { chatId, messageId: placeholderId, part },
+          }),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(updateMessage).toHaveBeenCalledTimes(pendingWriteCount);
+      };
+      await expectResolutionIgnored({
+        ...answeredPart,
+        harness: {
+          ...answeredPart.harness!,
+          tool: { ...answeredPart.harness!.tool!, callId: 'call_other' },
+        },
+      });
+      await expectResolutionIgnored({
+        ...answeredPart,
+        harness: {
+          ...answeredPart.harness!,
+          questions: answeredPart.harness!.questions.map((question, questionIndex) =>
+            questionIndex === 0
+              ? { ...question, options: [...question.options].reverse() }
+              : question,
+          ),
+        },
+      });
+      await expectResolutionIgnored(projection.part);
+      expect(() =>
+        window.dispatchEvent(
+          new CustomEvent('vibespace:opencode-question-resolved', {
+            detail: {
+              chatId,
+              messageId: placeholderId,
+              part: {
+                kind: 'question_block',
+                block: null,
+                harness: projection.part.harness,
+              },
+            },
+          }),
+        ),
+      ).not.toThrow();
+      expect(updateMessage).toHaveBeenCalledTimes(pendingWriteCount);
+
+      window.dispatchEvent(
+        new CustomEvent('vibespace:opencode-question-resolved', {
+          detail: { chatId, messageId: placeholderId, part: answeredPart },
+        }),
+      );
+      await vi.waitFor(() =>
+        expect(updateMessage.mock.calls.length).toBeGreaterThan(pendingWriteCount),
+      );
+      const answeredWriteCount = updateMessage.mock.calls.length;
+      window.dispatchEvent(
+        new CustomEvent('vibespace:opencode-question-resolved', {
+          detail: {
+            chatId,
+            messageId: placeholderId,
+            part: {
+              ...answeredPart,
+              block: { ...answeredPart.block, status: 'cancelled' },
+            },
+          },
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(updateMessage).toHaveBeenCalledTimes(answeredWriteCount);
+
+      input.onChunk?.({ delta: 'Working ', first: true });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      input.onChunk?.({ delta: 'done.', done: true });
+      return {
+        text: 'Working done.',
+        usage: { input_tokens: 3, output_tokens: 2, cost_usd: 0 },
+        provider: 'opencode',
+        model: 'opencode-go/deepseek-v4-flash-vision-exp',
+      };
+    });
+
+    const stop = trackListener(
+      startRuntimeListener(
+        {
+          getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+          getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+          getAgentForChat: vi.fn(async () => jarvis),
+          getMessages: vi.fn(async () => [userMessage]),
+          appendMessage,
+          updateMessage,
+        },
+        { jarvisKernelMode: 'legacy', flushIntervalMs: 0 },
+      ),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId, text: 'Audit the approved scope.', interactionMode: 'agent' },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+    await stop.whenIdle();
+    expect(mocks.bindPersistentOpenCodeQuestionRoute).toHaveBeenCalledOnce();
+    expect(mocks.bindPersistentOpenCodeQuestionRoute).toHaveBeenCalledWith(projection.route);
+    expect(appendMessage).toHaveBeenCalled();
+    expect(mocks.runAgent).toHaveBeenCalledOnce();
+
+    const writes = updateMessage.mock.calls as unknown as Array<
+      [MessageId, Partial<Omit<Message, 'id'>>]
+    >;
+    expect(writes.length).toBeGreaterThanOrEqual(3);
+    expect(writes.every(([messageId]) => messageId === placeholderId)).toBe(true);
+    const questionWrites = writes.filter(([, update]) =>
+      update.parts?.some((part) => part.kind === 'question_block'),
+    );
+    expect(
+      questionWrites.some(([, update]) =>
+        update.parts?.some(
+          (part) => part.kind === 'question_block' && part.block.status === 'pending',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      questionWrites.at(-1)?.[1].parts?.find((part) => part.kind === 'question_block'),
+    ).toEqual(answeredPart);
+    expect(questionWrites.at(-1)?.[1].parts?.[0]).toEqual({
+      kind: 'text',
+      text: 'Working done.',
+    });
+
+    const completedAppendCount = appendMessage.mock.calls.length;
+    const completedWriteCount = updateMessage.mock.calls.length;
+    window.dispatchEvent(
+      new CustomEvent('vibespace:opencode-question-resolved', {
+        detail: {
+          chatId,
+          messageId: placeholderId,
+          part: {
+            ...answeredPart,
+            block: { ...answeredPart.block, status: 'cancelled' },
+          },
+        },
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(appendMessage).toHaveBeenCalledTimes(completedAppendCount);
+    expect(updateMessage).toHaveBeenCalledTimes(completedWriteCount);
 
     stop();
   });
@@ -5793,9 +6038,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       now: () => 10,
     });
     trackCleanup(disposeHost);
-    const stop = trackListener(
-      startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
-    );
+    const stop = trackListener(startRuntimeListener(harness.bindings));
 
     try {
       window.dispatchEvent(
@@ -6054,7 +6297,9 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
         resolveHistory = resolve;
       }),
     );
-    const stop = trackListener(startRuntimeListener(harness.bindings));
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
+    );
 
     window.dispatchEvent(
       new CustomEvent('jarvis:send', {

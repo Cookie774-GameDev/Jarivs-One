@@ -459,18 +459,22 @@ describe('canonical OpenCode AI routing', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const controller = new AbortController();
     let entered!: () => void;
-    const started = new Promise<void>((resolve) => { entered = resolve; });
-    openCodeSend.mockImplementationOnce((request) => (async function* () {
-      entered();
-      await new Promise<void>((_, reject) => {
-        request.signal?.addEventListener(
-          'abort',
-          () => reject(new DOMException('Aborted by user', 'AbortError')),
-          { once: true },
-        );
-      });
-      yield { type: 'done' } as const;
-    })());
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    openCodeSend.mockImplementationOnce((request) =>
+      (async function* () {
+        entered();
+        await new Promise<void>((_, reject) => {
+          request.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted by user', 'AbortError')),
+            { once: true },
+          );
+        });
+        yield { type: 'done' } as const;
+      })(),
+    );
     const foundryAgent: Agent = {
       ...jarvis,
       id: 'agent_foundry_cancel' as Agent['id'],
@@ -525,11 +529,13 @@ describe('canonical OpenCode AI routing', () => {
 
   it('preserves protected prompt, exact connection, scope, signal and evidence hooks', async () => {
     const controller = new AbortController();
-    openCodeSend.mockImplementationOnce((request) => (async function* () {
-      request.onResponseObservation?.({ kind: 'bytes', byteLength: 4, observedAt: Date.now() });
-      request.onActionDispatch?.({ observedAt: Date.now() });
-      yield* successfulOpenCodeEvents('protected');
-    })());
+    openCodeSend.mockImplementationOnce((request) =>
+      (async function* () {
+        request.onResponseObservation?.({ kind: 'bytes', byteLength: 4, observedAt: Date.now() });
+        request.onActionDispatch?.({ observedAt: Date.now() });
+        yield* successfulOpenCodeEvents('protected');
+      })(),
+    );
     await runAgent({
       agent: openaiAgent,
       messages: [{ role: 'user', content: 'protected request' }],
@@ -630,11 +636,13 @@ describe('canonical OpenCode AI routing', () => {
     };
     const onApprovalRequested = vi.fn();
     const onHarnessSessionBound = vi.fn();
-    openCodeSend.mockImplementationOnce((request) => (async function* () {
-      await request.onSessionBound?.({ sessionId: 'session-1' });
-      await request.onApprovalRequested?.(approval);
-      yield* successfulOpenCodeEvents();
-    })());
+    openCodeSend.mockImplementationOnce((request) =>
+      (async function* () {
+        await request.onSessionBound?.({ sessionId: 'session-1' });
+        await request.onApprovalRequested?.(approval);
+        yield* successfulOpenCodeEvents();
+      })(),
+    );
     await runAgent({
       agent: openaiAgent,
       messages: [{ role: 'user', content: 'write it' }],
@@ -643,6 +651,195 @@ describe('canonical OpenCode AI routing', () => {
     });
     expect(onApprovalRequested).toHaveBeenCalledWith(approval);
     expect(onHarnessSessionBound).toHaveBeenCalledWith({ sessionId: 'session-1' });
+  });
+
+  it('emits one bounded question projection while the exact OpenCode stream remains active', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let projected!: () => void;
+    const projectionObserved = new Promise<void>((resolve) => {
+      projected = resolve;
+    });
+    const onQuestionRequested = vi.fn(() => projected());
+    openCodeSend.mockImplementationOnce((request) =>
+      (async function* () {
+        await request.onSessionBound?.({ sessionId: 'ses_question_exact' });
+        yield { type: 'session', sessionId: 'ses_question_exact' } as const;
+        yield {
+          type: 'question',
+          request: {
+            id: 'que_native_exact',
+            sessionId: 'ses_question_exact',
+            tool: { messageId: 'msg_exact', callId: 'call_exact' },
+            questions: [
+              {
+                header: 'Implementation',
+                prompt: 'Implement this plan?',
+                options: [
+                  { label: 'Yes', description: 'Start implementation.' },
+                  { label: 'No', description: 'Keep planning.' },
+                ],
+                multiple: false,
+                allowCustomAnswer: true,
+              },
+            ],
+          },
+        } as const;
+        await gate;
+        yield { type: 'done', finishReason: 'stop' } as const;
+      })(),
+    );
+
+    let settled = false;
+    const pending = runAgent({
+      agent: openaiAgent,
+      messages: [{ role: 'user', content: 'Plan this.' }],
+      expectedSessionId: 'ses_question_exact',
+      onQuestionRequested,
+    }).finally(() => {
+      settled = true;
+    });
+    await projectionObserved;
+
+    expect(onQuestionRequested).toHaveBeenCalledOnce();
+    expect(onQuestionRequested).toHaveBeenCalledWith(
+      expect.objectContaining({
+        part: expect.objectContaining({ kind: 'question_block' }),
+        route: expect.objectContaining({
+          protocol: 'opencode-question-v1',
+          requestId: 'que_native_exact',
+          sessionId: 'ses_question_exact',
+          tool: { messageId: 'msg_exact', callId: 'call_exact' },
+        }),
+      }),
+    );
+    expect(settled).toBe(false);
+    release();
+    await pending;
+  });
+
+  it('fails closed on duplicate native question authority after emitting it once', async () => {
+    const question = {
+      type: 'question',
+      request: {
+        id: 'que_duplicate',
+        sessionId: 'ses_question_duplicate',
+        questions: [
+          {
+            header: 'Choice',
+            prompt: 'Choose once.',
+            options: [{ label: 'Only', description: '' }],
+            multiple: false,
+            allowCustomAnswer: false,
+          },
+        ],
+      },
+    } as const;
+    const onQuestionRequested = vi.fn();
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield { type: 'session', sessionId: 'ses_question_duplicate' } as const;
+        yield question;
+        yield question;
+      })(),
+    );
+
+    await expect(
+      runAgent({
+        agent: openaiAgent,
+        messages: [{ role: 'user', content: 'Ask once.' }],
+        expectedSessionId: 'ses_question_duplicate',
+        onQuestionRequested,
+      }),
+    ).rejects.toThrow('provider_question_duplicate');
+    expect(onQuestionRequested).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [
+      'cross-session',
+      {
+        type: 'question',
+        request: {
+          id: 'que_wrong_session',
+          sessionId: 'ses_other',
+          questions: [
+            {
+              header: 'Choice',
+              prompt: 'Choose.',
+              options: [],
+              multiple: false,
+              allowCustomAnswer: true,
+            },
+          ],
+        },
+      },
+      'provider_question_session_mismatch',
+    ],
+    [
+      'malformed',
+      {
+        type: 'question',
+        request: {
+          id: 'que_malformed',
+          sessionId: 'ses_question_exact',
+          questions: [],
+        },
+      },
+      'provider_question_invalid',
+    ],
+  ])('fails closed on a %s question event', async (_label, question, expectedError) => {
+    const onQuestionRequested = vi.fn();
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield { type: 'session', sessionId: 'ses_question_exact' } as const;
+        yield question as never;
+      })(),
+    );
+
+    await expect(
+      runAgent({
+        agent: openaiAgent,
+        messages: [{ role: 'user', content: 'Ask safely.' }],
+        expectedSessionId: 'ses_question_exact',
+        onQuestionRequested,
+      }),
+    ).rejects.toThrow(expectedError);
+    expect(onQuestionRequested).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when a native question has no request-local handler', async () => {
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield { type: 'session', sessionId: 'ses_question_unhandled' } as const;
+        yield {
+          type: 'question',
+          request: {
+            id: 'que_unhandled',
+            sessionId: 'ses_question_unhandled',
+            questions: [
+              {
+                header: 'Choice',
+                prompt: 'Choose.',
+                options: [],
+                multiple: false,
+                allowCustomAnswer: true,
+              },
+            ],
+          },
+        } as const;
+      })(),
+    );
+
+    await expect(
+      runAgent({
+        agent: openaiAgent,
+        messages: [{ role: 'user', content: 'No handler.' }],
+        expectedSessionId: 'ses_question_unhandled',
+      }),
+    ).rejects.toThrow('provider_question_handler_missing');
   });
 
   it('emits one exact completion receipt with merged partial provider usage', async () => {
@@ -731,14 +928,20 @@ describe('canonical OpenCode AI routing', () => {
 
   it('tracks active routing until the persistent OpenCode stream completes', async () => {
     let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     let entered!: () => void;
-    const started = new Promise<void>((resolve) => { entered = resolve; });
-    openCodeSend.mockImplementationOnce(() => (async function* () {
-      entered();
-      await gate;
-      yield* successfulOpenCodeEvents();
-    })());
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        entered();
+        await gate;
+        yield* successfulOpenCodeEvents();
+      })(),
+    );
     const pending = runAgent({
       agent: openaiAgent,
       messages: [{ role: 'user', content: 'long request' }],

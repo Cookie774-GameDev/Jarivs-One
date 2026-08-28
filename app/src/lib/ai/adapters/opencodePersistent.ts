@@ -5,6 +5,7 @@ import type {
   ProviderAdapter,
   ProviderDiscoveredModel,
   ProviderEvent,
+  ProviderQuestionRequest,
   ProviderRequest,
   UsageSnapshot,
 } from './types';
@@ -59,6 +60,16 @@ import { harnessRuntimeManager, type HarnessRuntimeManager } from '@/lib/harness
 import { nativeOpenCodeEvents, nativeOpenCodeRequest } from '@/lib/harness/openCodeNativeTransport';
 import { normalizePortableAbsolutePath } from '@/lib/actions/filePolicy';
 import { sanitizeOpenCodeChecklistSnapshot } from '@/lib/ai/openCodeChecklist';
+import type { OpenCodeQuestionReplyRoute } from '@/lib/ai/openCodeQuestionProjection';
+import type {
+  OpenCodeQuestionRequestAuthority,
+  OpenCodeQuestionReplyRequest,
+  OpenCodeQuestionRejectRequest,
+} from '@/lib/ai/openCodeQuestionReply';
+import {
+  executeOpenCodeQuestionRequest,
+  type OpenCodeQuestionDispatchReceipt,
+} from '@/lib/ai/openCodeQuestionDispatch';
 
 const SESSION_REGISTRY_KEY = 'vibespace.opencode-session-registry.v1';
 const AUTH_CACHE_TTL_MS = 60_000;
@@ -457,6 +468,13 @@ type ActivePersistentApprovalSession = {
   readonly gatewayAuthority?: ToolGatewayAuthorityClaim;
 };
 const activeApprovalSessions = new Map<string, ActivePersistentApprovalSession>();
+type ActivePersistentQuestionSession = {
+  readonly requestId: string;
+  readonly http: OpenCodeHttpSdk;
+  readonly pending: Map<string, Readonly<ProviderQuestionRequest>>;
+  readonly authorities: Map<string, Readonly<OpenCodeQuestionRequestAuthority>>;
+};
+const activeQuestionSessions = new Map<string, ActivePersistentQuestionSession>();
 const TOOL_GATEWAY_NAMES = new Set<string>(TOOL_GATEWAY_CATALOG);
 const OPENCODE_BUILTIN_TOOL_NAMES = Object.freeze([
   'bash',
@@ -503,6 +521,62 @@ export async function respondToPersistentOpenCodeApproval(
     throw new Error('OpenCode rejected the approval response.');
   }
   active.approvalIds.delete(approvalId);
+}
+
+function sameQuestionTool(
+  left: Readonly<{ messageId: string; callId: string }> | undefined,
+  right: Readonly<{ messageId: string; callId: string }> | undefined,
+): boolean {
+  return left?.messageId === right?.messageId && left?.callId === right?.callId;
+}
+
+export function bindPersistentOpenCodeQuestionRoute(route: OpenCodeQuestionReplyRoute): void {
+  const active = activeQuestionSessions.get(route.sessionId);
+  const pending = active?.pending.get(route.requestId);
+  if (
+    !active ||
+    !pending ||
+    pending.sessionId !== route.sessionId ||
+    !sameQuestionTool(pending.tool, route.tool)
+  ) {
+    throw new Error('OpenCode question binding is no longer active.');
+  }
+  active.authorities.set(route.requestId, {
+    protocol: route.protocol,
+    blockId: route.blockId,
+    requestId: route.requestId,
+    sessionId: route.sessionId,
+    ...(route.tool ? { tool: { ...route.tool } } : {}),
+  });
+}
+
+export async function respondToPersistentOpenCodeQuestion(input: {
+  request: OpenCodeQuestionReplyRequest | OpenCodeQuestionRejectRequest;
+  expectedSessionId: string;
+  expectedBlockId: string;
+  signal?: AbortSignal;
+}): Promise<OpenCodeQuestionDispatchReceipt> {
+  const active = activeQuestionSessions.get(input.expectedSessionId);
+  if (!active) throw new Error('OpenCode question is no longer active.');
+  const receipt = await executeOpenCodeQuestionRequest(
+    input.request,
+    {
+      readWaitingAuthority: async (sessionId, requestId) =>
+        activeQuestionSessions.get(sessionId)?.authorities.get(requestId),
+      request: async (path, init) =>
+        unwrapData(
+          await requestJson(active.http.handle.generation, active.http.handle.scope, path, init),
+        ),
+    },
+    {
+      sessionId: input.expectedSessionId,
+      blockId: input.expectedBlockId,
+      ...(input.signal ? { signal: input.signal } : {}),
+    },
+  );
+  active.pending.delete(receipt.requestId);
+  active.authorities.delete(receipt.requestId);
+  return receipt;
 }
 
 function upstreamProviderId(modelId: string): string {
@@ -1490,6 +1564,12 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       approvalIds: new Set<string>(),
       ...(gatewayAuthority ? { gatewayAuthority } : {}),
     });
+    activeQuestionSessions.set(dispatch.sessionId, {
+      requestId: request.requestId,
+      http: client.http,
+      pending: new Map(),
+      authorities: new Map(),
+    });
     await request.onSessionBound?.({ sessionId: dispatch.sessionId });
     yield { type: 'session', sessionId: dispatch.sessionId };
 
@@ -1630,7 +1710,24 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         yield tool;
       }
       const question = normalizeQuestionEvent(event, dispatch.sessionId);
-      if (question) yield question;
+      if (question) {
+        const active = activeQuestionSessions.get(dispatch.sessionId);
+        if (!active || active.requestId !== request.requestId) {
+          await client.abort(dispatch.sessionId).catch(() => undefined);
+          throw new Error('OpenCode question arrived outside the active request binding.');
+        }
+        const existing = active.pending.get(question.request.id);
+        if (
+          existing &&
+          (existing.sessionId !== question.request.sessionId ||
+            !sameQuestionTool(existing.tool, question.request.tool))
+        ) {
+          await client.abort(dispatch.sessionId).catch(() => undefined);
+          throw new Error('OpenCode question authority changed while waiting.');
+        }
+        if (!existing) active.pending.set(question.request.id, question.request);
+        yield question;
+      }
       const usage = normalizePersistentOpenCodeUsage(event);
       if (usage) yield { type: 'usage', usage };
       if (event.type === 'session.error') {
@@ -1693,6 +1790,10 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       const active = activeApprovalSessions.get(boundSessionId);
       if (active?.requestId === request.requestId) {
         activeApprovalSessions.delete(boundSessionId);
+      }
+      const activeQuestion = activeQuestionSessions.get(boundSessionId);
+      if (activeQuestion?.requestId === request.requestId) {
+        activeQuestionSessions.delete(boundSessionId);
       }
       releaseToolGatewaySessionAuthority(boundSessionId);
     }

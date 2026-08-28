@@ -1,32 +1,13 @@
 import type { Part } from '@/types/chat';
+import type { JarvisOpenCodeQuestionRoute } from '@/features/jarvis-interaction/types';
 import type { ProviderEvent, ProviderQuestionRequest } from './adapters/types';
 
 type QuestionBlockPart = Extract<Part, { kind: 'question_block' }>;
 
-export interface OpenCodeQuestionReplyOptionRoute {
-  optionId: string;
-  optionIndex: number;
-  /** Exact native label expected in the ordered OpenCode reply answer. */
-  label: string;
-}
-
-export interface OpenCodeQuestionReplyPromptRoute {
-  questionId: string;
-  questionIndex: number;
-  multiple: boolean;
-  allowCustomAnswer: boolean;
-  options: readonly OpenCodeQuestionReplyOptionRoute[];
-}
-
 /** Data-only authority descriptor; it intentionally contains no callback or credential. */
-export interface OpenCodeQuestionReplyRoute {
-  protocol: 'opencode-question-v1';
-  blockId: string;
-  requestId: string;
-  sessionId: string;
-  tool?: Readonly<{ messageId: string; callId: string }>;
-  questions: readonly OpenCodeQuestionReplyPromptRoute[];
-}
+export type OpenCodeQuestionReplyRoute = JarvisOpenCodeQuestionRoute;
+export type OpenCodeQuestionReplyPromptRoute = OpenCodeQuestionReplyRoute['questions'][number];
+export type OpenCodeQuestionReplyOptionRoute = OpenCodeQuestionReplyPromptRoute['options'][number];
 
 export interface OpenCodeQuestionProjection {
   /** This is the only member intended for Message.parts persistence. */
@@ -137,6 +118,24 @@ export function projectOpenCodeQuestionEvent(
     };
   });
 
+  const route: OpenCodeQuestionReplyRoute = {
+    protocol: 'opencode-question-v1',
+    blockId,
+    requestId: request.id,
+    sessionId: request.sessionId,
+    ...(request.tool ? { tool: { ...request.tool } } : {}),
+    questions: questions.map((question, questionIndex) => ({
+      questionId: question.id,
+      questionIndex,
+      multiple: request.questions[questionIndex].multiple,
+      allowCustomAnswer: request.questions[questionIndex].allowCustomAnswer,
+      options: question.options.map((option, optionIndex) => ({
+        optionId: option.id,
+        optionIndex,
+        label: option.label,
+      })),
+    })),
+  };
   return {
     part: {
       kind: 'question_block',
@@ -146,24 +145,8 @@ export function projectOpenCodeQuestionEvent(
         questions,
         status: 'pending',
       },
+      harness: route,
     },
-    route: {
-      protocol: 'opencode-question-v1',
-      blockId,
-      requestId: request.id,
-      sessionId: request.sessionId,
-      ...(request.tool ? { tool: { ...request.tool } } : {}),
-      questions: questions.map((question, questionIndex) => ({
-        questionId: question.id,
-        questionIndex,
-        multiple: request.questions[questionIndex].multiple,
-        allowCustomAnswer: request.questions[questionIndex].allowCustomAnswer,
-        options: question.options.map((option, optionIndex) => ({
-          optionId: option.id,
-          optionIndex,
-          label: option.label,
-        })),
-      })),
-    },
+    route,
   };
 }

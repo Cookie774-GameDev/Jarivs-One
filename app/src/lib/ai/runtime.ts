@@ -69,7 +69,10 @@ import {
   expireApproveAllForRun,
   readPermissionAccess,
 } from '@/features/jarvis-interaction/permissionAccessStore';
-import { respondToPersistentOpenCodeApproval } from '@/lib/ai/adapters/opencodePersistent';
+import {
+  bindPersistentOpenCodeQuestionRoute,
+  respondToPersistentOpenCodeApproval,
+} from '@/lib/ai/adapters/opencodePersistent';
 import { openCodeChecklistParts } from '@/lib/ai/openCodeChecklist';
 import { grantToolGatewayMutation } from '@/lib/harness/toolGatewayAuthority';
 import { recordOpenCodeApprovalStatus } from '@/lib/harness/openCodeApprovalState';
@@ -3893,6 +3896,184 @@ async function cancelPersistedShadowRun(
   });
 }
 
+type OpenCodeQuestionPart = Extract<Part, { kind: 'question_block' }>;
+
+function boundedRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function canonicalOpenCodeQuestionRoute(value: unknown): string | null {
+  const route = boundedRecord(value);
+  if (
+    route?.protocol !== 'opencode-question-v1' ||
+    typeof route.blockId !== 'string' ||
+    typeof route.requestId !== 'string' ||
+    typeof route.sessionId !== 'string' ||
+    !Array.isArray(route.questions) ||
+    route.questions.length === 0 ||
+    route.questions.length > 8
+  ) {
+    return null;
+  }
+  const tool = route.tool === undefined ? null : boundedRecord(route.tool);
+  if (
+    route.tool !== undefined &&
+    (!tool || typeof tool.messageId !== 'string' || typeof tool.callId !== 'string')
+  ) {
+    return null;
+  }
+  const questions = route.questions.map((value) => {
+    const question = boundedRecord(value);
+    if (
+      !question ||
+      typeof question.questionId !== 'string' ||
+      typeof question.questionIndex !== 'number' ||
+      !Number.isSafeInteger(question.questionIndex) ||
+      typeof question.multiple !== 'boolean' ||
+      typeof question.allowCustomAnswer !== 'boolean' ||
+      !Array.isArray(question.options) ||
+      question.options.length > 8
+    ) {
+      return null;
+    }
+    const options = question.options.map((value) => {
+      const option = boundedRecord(value);
+      return option &&
+        typeof option.optionId === 'string' &&
+        typeof option.optionIndex === 'number' &&
+        Number.isSafeInteger(option.optionIndex) &&
+        typeof option.label === 'string'
+        ? [option.optionId, option.optionIndex, option.label]
+        : null;
+    });
+    return options.includes(null)
+      ? null
+      : [
+          question.questionId,
+          question.questionIndex,
+          question.multiple,
+          question.allowCustomAnswer,
+          options,
+        ];
+  });
+  if (questions.includes(null)) return null;
+  return JSON.stringify([
+    route.protocol,
+    route.blockId,
+    route.requestId,
+    route.sessionId,
+    tool ? [tool.messageId, tool.callId] : null,
+    questions,
+  ]);
+}
+
+function canonicalOpenCodeQuestionBlock(value: unknown): string | null {
+  const block = boundedRecord(value);
+  if (
+    !block ||
+    typeof block.id !== 'string' ||
+    (block.title !== undefined && typeof block.title !== 'string') ||
+    (block.description !== undefined && typeof block.description !== 'string') ||
+    (block.originalRequest !== undefined && typeof block.originalRequest !== 'string') ||
+    !Array.isArray(block.questions) ||
+    block.questions.length === 0 ||
+    block.questions.length > 8
+  ) {
+    return null;
+  }
+  const questions = block.questions.map((value) => {
+    const question = boundedRecord(value);
+    if (
+      !question ||
+      typeof question.id !== 'string' ||
+      typeof question.prompt !== 'string' ||
+      !['single', 'multi', 'text', 'mixed'].includes(String(question.type)) ||
+      (question.required !== undefined && typeof question.required !== 'boolean') ||
+      (question.allowSkip !== undefined && typeof question.allowSkip !== 'boolean') ||
+      (question.placeholder !== undefined && typeof question.placeholder !== 'string') ||
+      (question.allowCustomResponse !== undefined &&
+        typeof question.allowCustomResponse !== 'boolean') ||
+      !Array.isArray(question.options) ||
+      question.options.length > 8
+    ) {
+      return null;
+    }
+    const options = question.options.map((value) => {
+      const option = boundedRecord(value);
+      return option &&
+        typeof option.id === 'string' &&
+        typeof option.label === 'string' &&
+        (option.description === undefined || typeof option.description === 'string')
+        ? [option.id, option.label, option.description ?? null]
+        : null;
+    });
+    return options.includes(null)
+      ? null
+      : [
+          question.id,
+          question.prompt,
+          question.type,
+          options,
+          question.required ?? null,
+          question.allowSkip ?? null,
+          question.placeholder ?? null,
+          question.allowCustomResponse ?? null,
+        ];
+  });
+  if (questions.includes(null)) return null;
+  return JSON.stringify([
+    block.id,
+    block.title ?? null,
+    block.description ?? null,
+    block.originalRequest ?? null,
+    questions,
+  ]);
+}
+
+function hasValidTerminalQuestionAnswers(part: OpenCodeQuestionPart): boolean {
+  const answers = part.block.answers as unknown;
+  if (!Array.isArray(answers) || answers.length !== part.block.questions.length) return false;
+  return answers.every((value, index) => {
+    const answer = boundedRecord(value);
+    const question = part.block.questions[index];
+    if (!answer || !question || answer.questionId !== question.id) {
+      return false;
+    }
+    if (answer.skipped !== undefined && typeof answer.skipped !== 'boolean') return false;
+    if (part.block.status === 'answered' && answer.skipped === true) return false;
+    if (part.block.status === 'cancelled' && answer.skipped !== true) return false;
+    if (
+      answer.text !== undefined &&
+      (typeof answer.text !== 'string' || answer.text.length > 2_048)
+    ) {
+      return false;
+    }
+    if (!Array.isArray(answer.selectedOptionIds)) return false;
+    const allowed = new Set((question.options ?? []).map((option) => option.id));
+    const selectedOptionIds = answer.selectedOptionIds;
+    if (
+      !selectedOptionIds.every(
+        (optionId): optionId is string => typeof optionId === 'string' && allowed.has(optionId),
+      )
+    ) {
+      return false;
+    }
+    if (
+      part.block.status === 'answered' &&
+      selectedOptionIds.length === 0 &&
+      (typeof answer.text !== 'string' || answer.text.trim().length === 0)
+    ) {
+      return false;
+    }
+    return (
+      new Set(selectedOptionIds).size === selectedOptionIds.length &&
+      selectedOptionIds.every((optionId) => allowed.has(optionId))
+    );
+  });
+}
+
 export function startRuntimeListener(
   bindings: RuntimeBindings,
   options: RuntimeOptions = {},
@@ -5026,6 +5207,7 @@ export function startRuntimeListener(
     }
 
     let placeholderId: MessageId | null = null;
+    let removeOpenCodeQuestionResolutionListener: (() => void) | null = null;
     const bindCanonicalCancellation = async (
       host: InstalledJarvisKernelRuntimeHost,
       turn: JarvisKernelTurnInput,
@@ -5113,6 +5295,8 @@ export function startRuntimeListener(
     let shadowCompilation: Extract<JarvisShadowCompilationResult, { ok: true }> | null = null;
     let activeShadowDeps: JarvisShadowCompilationDeps | null = null;
     const liveOpenCodePermissions: Array<Extract<Part, { kind: 'permission_request' }>> = [];
+    const liveOpenCodeQuestions: Array<Extract<Part, { kind: 'question_block' }>> = [];
+    const currentOpenCodeQuestionParts = (): Part[] => [...liveOpenCodeQuestions];
     const currentOpenCodePermissionParts = (): Part[] =>
       liveOpenCodePermissions.map((part) => {
         const harness = part.request.harness;
@@ -5160,7 +5344,11 @@ export function startRuntimeListener(
         // store; the final awaited write below stamps the canonical version.
         const write = trackListenerOwnedTask(
           bindings.updateMessage(placeholderId, {
-            parts: [{ kind: 'text', text: acc }, ...currentOpenCodePermissionParts()],
+            parts: [
+              { kind: 'text', text: acc },
+              ...currentOpenCodeQuestionParts(),
+              ...currentOpenCodePermissionParts(),
+            ],
           }),
         );
         pendingStreamingWrites.add(write);
@@ -5704,6 +5892,73 @@ export function startRuntimeListener(
       placeholderId = placeholder.id;
       inFlight.set(placeholder.id, controller);
       dispatchRunState(chatId, 'running');
+      const handleOpenCodeQuestionResolved = (event: Event): void => {
+        const resolved = (
+          event as CustomEvent<{
+            chatId?: unknown;
+            messageId?: unknown;
+            part?: Extract<Part, { kind: 'question_block' }>;
+          }>
+        ).detail;
+        const partRecord = boundedRecord(resolved?.part);
+        const blockRecord = boundedRecord(partRecord?.block);
+        if (
+          String(resolved?.chatId ?? '') !== String(chatId) ||
+          String(resolved?.messageId ?? '') !== String(placeholder.id) ||
+          partRecord?.kind !== 'question_block' ||
+          !blockRecord ||
+          !['answered', 'cancelled'].includes(String(blockRecord.status))
+        ) {
+          return;
+        }
+        const part = resolved?.part as OpenCodeQuestionPart;
+        const index = liveOpenCodeQuestions.findIndex(
+          (candidate) => candidate.block.id === blockRecord.id,
+        );
+        if (index < 0) return;
+        const pendingPart = liveOpenCodeQuestions[index];
+        const pendingRoute = canonicalOpenCodeQuestionRoute(pendingPart?.harness);
+        const resolvedRoute = canonicalOpenCodeQuestionRoute(part.harness);
+        const pendingBlock = canonicalOpenCodeQuestionBlock(pendingPart?.block);
+        const resolvedBlock = canonicalOpenCodeQuestionBlock(part.block);
+        if (
+          pendingPart?.block.status !== 'pending' ||
+          !pendingRoute ||
+          pendingRoute !== resolvedRoute ||
+          !pendingBlock ||
+          pendingBlock !== resolvedBlock ||
+          !hasValidTerminalQuestionAnswers(part)
+        ) {
+          return;
+        }
+        liveOpenCodeQuestions[index] = part;
+        cancelPendingFlush();
+        const write = trackListenerOwnedTask(
+          settleStreamingWrites().then(() =>
+            bindings.updateMessage(placeholder.id, {
+              parts: [
+                { kind: 'text', text: acc },
+                ...currentOpenCodeQuestionParts(),
+                ...currentOpenCodePermissionParts(),
+              ],
+            }),
+          ),
+        );
+        pendingStreamingWrites.add(write);
+        void write.then(
+          () => pendingStreamingWrites.delete(write),
+          () => pendingStreamingWrites.delete(write),
+        );
+      };
+      window.addEventListener(
+        'vibespace:opencode-question-resolved',
+        handleOpenCodeQuestionResolved,
+      );
+      removeOpenCodeQuestionResolutionListener = () =>
+        window.removeEventListener(
+          'vibespace:opencode-question-resolved',
+          handleOpenCodeQuestionResolved,
+        );
 
       // Read the now-current history; pass it (sans placeholder) to the model.
       const history = await bindings.getMessages(chatId);
@@ -5888,7 +6143,7 @@ export function startRuntimeListener(
         detail.approveAllForRun === true || readPermissionAccess(String(chatId)).approveAll;
       const runAccessLevel =
         detail.accessLevel ?? (interactionMode === 'agent' ? 'full' : 'read-only');
-      const providerRequest = {
+      const providerRequest: RunAgentRequest = {
         agent: runnable,
         chatId: String(chatId),
         ...(explicitReadRoot ? { requestId: String(placeholder.id) } : {}),
@@ -5996,7 +6251,36 @@ export function startRuntimeListener(
             request,
           });
           await bindings.updateMessage(placeholder.id, {
-            parts: [{ kind: 'text', text: acc }, ...currentOpenCodePermissionParts()],
+            parts: [
+              { kind: 'text', text: acc },
+              ...currentOpenCodeQuestionParts(),
+              ...currentOpenCodePermissionParts(),
+            ],
+          });
+        },
+        onQuestionRequested: async (projection) => {
+          controller.signal.throwIfAborted();
+          if (
+            liveOpenCodeQuestions.some(
+              (part) =>
+                part.block.id === projection.part.block.id ||
+                (part.harness?.protocol === 'opencode-question-v1' &&
+                  part.harness.sessionId === projection.route.sessionId &&
+                  part.harness.requestId === projection.route.requestId),
+            )
+          ) {
+            throw new Error('OpenCode question was already projected for this turn.');
+          }
+          bindPersistentOpenCodeQuestionRoute(projection.route);
+          cancelPendingFlush();
+          await settleStreamingWrites();
+          liveOpenCodeQuestions.push(projection.part);
+          await bindings.updateMessage(placeholder.id, {
+            parts: [
+              { kind: 'text', text: acc },
+              ...currentOpenCodeQuestionParts(),
+              ...currentOpenCodePermissionParts(),
+            ],
           });
         },
       };
@@ -6177,6 +6461,8 @@ export function startRuntimeListener(
         : responseTextParts;
       const finalParts: Part[] = [
         ...displayResponseParts,
+        ...openCodeChecklistParts(response.checklist_evidence ?? []),
+        ...currentOpenCodeQuestionParts(),
         ...currentOpenCodePermissionParts(),
         ...(responseInspector
           ? ([{ kind: 'context_inspector', inspector: responseInspector }] as const)
@@ -6379,7 +6665,11 @@ export function startRuntimeListener(
         const sep = acc.length > 0 ? '\n\n' : '';
         try {
           await bindings.updateMessage(placeholderId, {
-            parts: [{ kind: 'text', text: acc + sep + suffix }],
+            parts: [
+              { kind: 'text', text: acc + sep + suffix },
+              ...currentOpenCodeQuestionParts(),
+              ...currentOpenCodePermissionParts(),
+            ],
           });
         } catch (writeErr) {
           // The audit's medium finding: a DB failure inside the catch
@@ -6439,6 +6729,7 @@ export function startRuntimeListener(
       });
     } finally {
       controller.signal.removeEventListener('abort', cancelScheduledStreamingEffects);
+      removeOpenCodeQuestionResolutionListener?.();
       if (placeholderId && inFlight.get(placeholderId) === controller) {
         inFlight.delete(placeholderId);
       }

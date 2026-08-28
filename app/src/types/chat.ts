@@ -1,4 +1,13 @@
-import type { ContextRef, Timestamped, ChatId, MessageId, AgentId, ProjectId, WorkspaceId, ProviderId } from './common';
+import type {
+  ContextRef,
+  Timestamped,
+  ChatId,
+  MessageId,
+  AgentId,
+  ProjectId,
+  WorkspaceId,
+  ProviderId,
+} from './common';
 import type {
   JarvisChatAgent,
   JarvisPermissionRequest,
@@ -24,13 +33,7 @@ export type Role = 'user' | 'assistant' | 'agent' | 'system' | 'tool';
  * the runner moves it to `success` / `error`. `cancelled` is used when
  * the user explicitly dismisses without running.
  */
-export type ActionStatus =
-  | 'pending'
-  | 'queued'
-  | 'running'
-  | 'success'
-  | 'error'
-  | 'cancelled';
+export type ActionStatus = 'pending' | 'queued' | 'running' | 'success' | 'error' | 'cancelled';
 
 export type JarvisSourceMessageRef = {
   id: string;
@@ -101,7 +104,11 @@ export type Part =
       result?: unknown;
       error?: string;
     }
-  | { kind: 'question_block'; block: JarvisQuestionBlock }
+  | {
+      kind: 'question_block';
+      block: JarvisQuestionBlock;
+      harness?: import('@/features/jarvis-interaction/types').JarvisQuestionHarnessRoute;
+    }
   | { kind: 'question_answer'; blockId: string; answers: JarvisQuestionAnswer[] }
   | { kind: 'plan_review'; plan: JarvisPlanReview }
   | { kind: 'permission_request'; request: JarvisPermissionRequest }
@@ -176,7 +183,13 @@ export type StreamEvent =
   | { type: 'agent_start'; agent_id: AgentId; ts: number }
   | { type: 'token'; agent_id: AgentId; delta: string }
   | { type: 'reasoning'; agent_id: AgentId; delta: string }
-  | { type: 'tool_call'; agent_id: AgentId; tool: string; args: Record<string, unknown>; call_id: string }
+  | {
+      type: 'tool_call';
+      agent_id: AgentId;
+      tool: string;
+      args: Record<string, unknown>;
+      call_id: string;
+    }
   | { type: 'tool_result'; call_id: string; result?: unknown; error?: string }
   | { type: 'state_update'; key: string; value: unknown }
   | { type: 'agent_done'; agent_id: AgentId; usage?: Message['usage'] }

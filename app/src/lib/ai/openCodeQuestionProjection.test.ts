@@ -110,6 +110,7 @@ describe('projectOpenCodeQuestionEvent', () => {
           })) ?? [],
       })),
     });
+    expect(first?.part.harness).toEqual(first?.route);
     expect(JSON.stringify(first)).not.toMatch(/callback|function|prompt-for-provider/iu);
   });
 

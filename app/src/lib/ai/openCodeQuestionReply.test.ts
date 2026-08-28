@@ -120,7 +120,16 @@ describe('OpenCode question reply request contract', () => {
     expect(request).not.toHaveProperty('body');
   });
 
-  it.each([
+  it.each<
+    [
+      string,
+      {
+        route?: OpenCodeQuestionReplyRoute;
+        expectedSessionId?: string;
+        blockId?: string;
+      },
+    ]
+  >([
     ['wrong session', { expectedSessionId: 'ses_other' }],
     ['wrong block', { blockId: 'qb_other' }],
     ['wrong protocol', { route: { ...route, protocol: 'other' as 'opencode-question-v1' } }],
