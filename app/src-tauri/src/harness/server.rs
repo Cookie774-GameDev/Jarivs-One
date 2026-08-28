@@ -13,7 +13,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, State, Webview};
 
 const RUNTIME_STATE_EVENT: &str = "vibespace://opencode-runtime-state";
 const LOOPBACK_HOST: &str = "127.0.0.1";
@@ -1261,6 +1261,14 @@ enum OpenCodeTransportRoute {
     ProviderCallback {
         provider_id: String,
     },
+    McpStatus,
+    McpAdd,
+    McpConnect {
+        name: String,
+    },
+    McpDisconnect {
+        name: String,
+    },
     SessionCreate,
     SessionGet {
         session_id: String,
@@ -1336,8 +1344,8 @@ fn encoded_route_identifier(value: &str) -> Result<String, String> {
     Ok(url::form_urlencoded::byte_serialize(value.as_bytes()).collect())
 }
 
-fn ensure_transport_caller(window: &WebviewWindow) -> Result<(), String> {
-    if transport_caller_allowed(window.label()) {
+fn ensure_transport_caller(webview: &Webview) -> Result<(), String> {
+    if transport_caller_allowed(webview.label()) {
         Ok(())
     } else {
         Err("OpenCode transport caller is not authorized.".to_string())
@@ -1387,6 +1395,16 @@ fn transport_route_parts(
                 "/provider/{}/oauth/callback",
                 encoded_route_identifier(provider_id)?
             ),
+        ),
+        OpenCodeTransportRoute::McpStatus => (reqwest::Method::GET, "/mcp".to_string()),
+        OpenCodeTransportRoute::McpAdd => (reqwest::Method::POST, "/mcp".to_string()),
+        OpenCodeTransportRoute::McpConnect { name } => (
+            reqwest::Method::POST,
+            format!("/mcp/{}/connect", encoded_route_identifier(name)?),
+        ),
+        OpenCodeTransportRoute::McpDisconnect { name } => (
+            reqwest::Method::POST,
+            format!("/mcp/{}/disconnect", encoded_route_identifier(name)?),
         ),
         OpenCodeTransportRoute::SessionCreate => (reqwest::Method::POST, "/session".to_string()),
         OpenCodeTransportRoute::SessionGet { session_id } => (
@@ -1461,6 +1479,9 @@ fn validate_transport_body(
             | OpenCodeTransportRoute::ConfigProviders
             | OpenCodeTransportRoute::ProviderAuth
             | OpenCodeTransportRoute::ProviderStatus
+            | OpenCodeTransportRoute::McpStatus
+            | OpenCodeTransportRoute::McpConnect { .. }
+            | OpenCodeTransportRoute::McpDisconnect { .. }
             | OpenCodeTransportRoute::SessionGet { .. }
             | OpenCodeTransportRoute::SessionDelete { .. }
             | OpenCodeTransportRoute::SessionChildren { .. }
@@ -1538,6 +1559,91 @@ fn validate_transport_body(
                             && text.len() <= 8_192
                             && !text.chars().any(char::is_control)
                     })
+                })
+        }
+        OpenCodeTransportRoute::McpAdd => {
+            let name = object.get("name").and_then(Value::as_str);
+            let config = object.get("config").and_then(Value::as_object);
+            only_keys(&["name", "config"])
+                && object.len() == 2
+                && name.is_some_and(|name| {
+                    !name.is_empty()
+                        && name.len() <= 160
+                        && name.bytes().enumerate().all(|(index, byte)| {
+                            byte.is_ascii_alphanumeric()
+                                || (index > 0 && matches!(byte, b'_' | b'-' | b'.' | b':'))
+                        })
+                })
+                && config.is_some_and(|config| {
+                    let config_keys =
+                        |allowed: &[&str]| config.keys().all(|key| allowed.contains(&key.as_str()));
+                    let bounded_map = |key: &str| {
+                        config.get(key).map_or(true, |candidate| {
+                            candidate.as_object().is_some_and(|entries| {
+                                entries.len() <= 32
+                                    && entries.iter().all(|(name, value)| {
+                                        !name.is_empty()
+                                            && name.len() <= 128
+                                            && name.bytes().all(|byte| {
+                                                byte.is_ascii_alphanumeric()
+                                                    || matches!(byte, b'_' | b'-')
+                                            })
+                                            && value.as_str().is_some_and(|text| {
+                                                !text.is_empty()
+                                                    && text.len() <= 8_192
+                                                    && !text.contains('\0')
+                                                    && !text.contains('\r')
+                                                    && !text.contains('\n')
+                                            })
+                                    })
+                            })
+                        })
+                    };
+                    match config.get("type").and_then(Value::as_str) {
+                        Some("remote") => {
+                            let endpoint = config
+                                .get("url")
+                                .and_then(Value::as_str)
+                                .filter(|url| url.len() <= 4_096)
+                                .and_then(|url| url::Url::parse(url).ok());
+                            config_keys(&["type", "url", "enabled", "headers", "oauth"])
+                                && config.get("enabled").map_or(true, Value::is_boolean)
+                                && config
+                                    .get("oauth")
+                                    .map_or(true, |oauth| oauth.as_bool() == Some(false))
+                                && bounded_map("headers")
+                                && endpoint.is_some_and(|url| {
+                                    (url.scheme() == "https"
+                                        || (url.scheme() == "http"
+                                            && matches!(
+                                                url.host_str(),
+                                                Some("127.0.0.1" | "localhost" | "::1")
+                                            )))
+                                        && url.username().is_empty()
+                                        && url.password().is_none()
+                                        && url.fragment().is_none()
+                                })
+                        }
+                        Some("local") => {
+                            config_keys(&["type", "command", "enabled", "environment"])
+                                && config.get("enabled").map_or(true, Value::is_boolean)
+                                && bounded_map("environment")
+                                && config.get("command").is_some_and(|command| {
+                                    command.as_array().is_some_and(|parts| {
+                                        !parts.is_empty()
+                                            && parts.len() <= 32
+                                            && parts.iter().all(|part| {
+                                                part.as_str().is_some_and(|text| {
+                                                    !text.is_empty()
+                                                        && text.len() <= 4_096
+                                                        && !text.chars().any(char::is_control)
+                                                })
+                                            })
+                                    })
+                                })
+                        }
+                        _ => false,
+                    }
                 })
         }
         OpenCodeTransportRoute::SessionCreate => {
@@ -1672,10 +1778,10 @@ fn read_bounded_response(mut response: reqwest::blocking::Response) -> Result<St
 #[tauri::command]
 pub async fn opencode_server_request(
     app: AppHandle,
-    window: WebviewWindow,
+    webview: Webview,
     request: OpenCodeTransportRequest,
 ) -> Result<OpenCodeTransportResponse, String> {
-    ensure_transport_caller(&window)?;
+    ensure_transport_caller(&webview)?;
     validate_transport_directory(request.directory.as_deref())?;
     if request.body.as_ref().map(String::len).unwrap_or(0) > TRANSPORT_MAX_BODY_BYTES {
         return Err("OpenCode transport request exceeded its safe bound.".to_string());
@@ -1813,13 +1919,13 @@ async fn run_event_stream(
 #[tauri::command]
 pub async fn opencode_server_event_stream(
     app: AppHandle,
-    window: WebviewWindow,
+    webview: Webview,
     generation: String,
     directory: Option<String>,
     stream_id: String,
     on_event: Channel<OpenCodeTransportStreamMessage>,
 ) -> Result<(), String> {
-    ensure_transport_caller(&window)?;
+    ensure_transport_caller(&webview)?;
     validate_transport_directory(directory.as_deref())?;
     if !valid_transport_identifier(&stream_id, 128) {
         return Err("OpenCode event stream identifier is invalid.".to_string());
@@ -1840,7 +1946,7 @@ pub async fn opencode_server_event_stream(
                 .unwrap_or_default()
         );
     }
-    let owner = window.label().to_string();
+    let owner = webview.label().to_string();
     let token = Arc::new(());
     let task_token = token.clone();
     let task_stream_id = stream_id.clone();
@@ -1902,12 +2008,12 @@ pub async fn opencode_server_event_stream(
 
 #[tauri::command]
 pub fn opencode_server_event_cancel(
-    window: WebviewWindow,
+    webview: Webview,
     state: State<'_, OpenCodeServerState>,
     generation: String,
     stream_id: String,
 ) -> Result<bool, String> {
-    ensure_transport_caller(&window)?;
+    ensure_transport_caller(&webview)?;
     if !valid_transport_identifier(&generation, 256) || !valid_transport_identifier(&stream_id, 128)
     {
         return Err("OpenCode event stream identity is invalid.".to_string());
@@ -1919,7 +2025,7 @@ pub fn opencode_server_event_cancel(
     let Some(active) = inner.active_streams.get(&stream_id) else {
         return Ok(false);
     };
-    if active.generation != generation || active.owner != window.label() {
+    if active.generation != generation || active.owner != webview.label() {
         return Ok(false);
     }
     let active = inner
@@ -2077,15 +2183,15 @@ mod windows_process_tree {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_launch_spec_with, claim_start, event_data, failure, probe_health_once,
-        reserve_loopback_port, reuse_or_stop_existing, server_status, sse_frame_boundary,
-        start_retry_delay, start_server_attempt_with, stop_server, take_crashed_runtime,
-        transport_caller_allowed, transport_route_parts, validate_transport_body,
-        validate_transport_directory, write_scoped_config, ActiveStream, CredentialSource,
-        HealthWaiter, LocalModelSource, OpenCodeServerConnection, OpenCodeServerState,
-        OpenCodeTransportRequest, OpenCodeTransportRoute, OwnedProcess, ProcessLauncher,
-        ResolvedTrustedRuntime, RunningServer, RuntimeSource, ServerFailure, ServerRuntimeEvent,
-        StartClaim, CRASH_WINDOW, MAX_AUTOMATIC_RESTARTS,
+        build_launch_spec_with, claim_start, ensure_transport_caller, event_data, failure,
+        probe_health_once, reserve_loopback_port, reuse_or_stop_existing, server_status,
+        sse_frame_boundary, start_retry_delay, start_server_attempt_with, stop_server,
+        take_crashed_runtime, transport_caller_allowed, transport_route_parts,
+        validate_transport_body, validate_transport_directory, write_scoped_config, ActiveStream,
+        CredentialSource, HealthWaiter, LocalModelSource, OpenCodeServerConnection,
+        OpenCodeServerState, OpenCodeTransportRequest, OpenCodeTransportRoute, OwnedProcess,
+        ProcessLauncher, ResolvedTrustedRuntime, RunningServer, RuntimeSource, ServerFailure,
+        ServerRuntimeEvent, StartClaim, CRASH_WINDOW, MAX_AUTOMATIC_RESTARTS,
     };
     use crate::harness::tool_gateway::ToolGatewayEndpoint;
     use base64::Engine as _;
@@ -2097,6 +2203,7 @@ mod tests {
     use std::sync::{mpsc, Arc};
     use std::thread;
     use std::time::{Duration, Instant};
+    use tauri::Webview;
 
     static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -2827,6 +2934,11 @@ mod tests {
     }
 
     #[test]
+    fn managed_transport_caller_accepts_child_webviews() {
+        let _child_webview_caller: fn(&Webview) -> Result<(), String> = ensure_transport_caller;
+    }
+
+    #[test]
     fn managed_transport_accepts_only_trusted_callers_and_allowlisted_routes() {
         assert!(transport_caller_allowed("main"));
         assert!(transport_caller_allowed("workbench-main"));
@@ -2838,6 +2950,14 @@ mod tests {
             OpenCodeTransportRoute::ConfigProviders,
             OpenCodeTransportRoute::ProviderStatus,
             OpenCodeTransportRoute::ProviderAuth,
+            OpenCodeTransportRoute::McpStatus,
+            OpenCodeTransportRoute::McpAdd,
+            OpenCodeTransportRoute::McpConnect {
+                name: "github:copilot".into(),
+            },
+            OpenCodeTransportRoute::McpDisconnect {
+                name: "github:copilot".into(),
+            },
             OpenCodeTransportRoute::SessionStatus,
             OpenCodeTransportRoute::SessionGet {
                 session_id: "session/one".into(),
@@ -2882,6 +3002,11 @@ mod tests {
             })
             .unwrap();
         assert_eq!(provider_path, "/provider/github%2Fcopilot/oauth/authorize");
+        let (_, mcp_path) = transport_route_parts(&OpenCodeTransportRoute::McpConnect {
+            name: "github:copilot".into(),
+        })
+        .unwrap();
+        assert_eq!(mcp_path, "/mcp/github%3Acopilot/connect");
     }
 
     #[test]
@@ -2933,6 +3058,19 @@ mod tests {
         )
         .is_err());
         assert!(validate_transport_body(&OpenCodeTransportRoute::Health, Some("{}")).is_err());
+        let add_mcp = OpenCodeTransportRoute::McpAdd;
+        assert!(validate_transport_body(
+            &add_mcp,
+            Some(r#"{"name":"github","config":{"type":"remote","url":"https://mcp.example.test/rpc","enabled":true}}"#),
+        )
+        .is_ok());
+        assert!(validate_transport_body(
+            &add_mcp,
+            Some(
+                r#"{"name":"github","config":{"type":"remote","url":"http://attacker.test/rpc"}}"#
+            ),
+        )
+        .is_err());
     }
 
     #[test]

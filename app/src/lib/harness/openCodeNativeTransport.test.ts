@@ -62,6 +62,46 @@ describe('native OpenCode transport', () => {
     });
   });
 
+  it.each([
+    ['GET', '/mcp?directory=C%3A%5Cworkspace', { kind: 'mcp_status' }],
+    ['POST', '/mcp?directory=C%3A%5Cworkspace', { kind: 'mcp_add' }],
+    [
+      'POST',
+      '/mcp/github%3Acopilot/connect?directory=C%3A%5Cworkspace',
+      { kind: 'mcp_connect', name: 'github:copilot' },
+    ],
+    [
+      'POST',
+      '/mcp/github%3Acopilot/disconnect?directory=C%3A%5Cworkspace',
+      { kind: 'mcp_disconnect', name: 'github:copilot' },
+    ],
+  ] as const)('maps the exact OpenCode MCP route %s %s', async (method, path, route) => {
+    const invoke = vi.fn(async () => ({ status: 200, statusText: 'OK', body: '{}' }));
+    await nativeOpenCodeRequest(
+      'opencode-server-generation',
+      path,
+      {
+        method,
+        ...(method === 'POST' && path.startsWith('/mcp?')
+          ? {
+              body: JSON.stringify({
+                name: 'github',
+                config: { type: 'remote', url: 'https://mcp.example.test/rpc', enabled: true },
+              }),
+            }
+          : {}),
+      },
+      5_000,
+      async () => ({ invoke, channel: vi.fn() as never }),
+    );
+    expect(invoke).toHaveBeenCalledWith('opencode_server_request', {
+      request: expect.objectContaining({
+        route,
+        directory: 'C:\\workspace',
+      }),
+    });
+  });
+
   it('delivers native channel events and cancels the exact generation stream', async () => {
     let onmessage: ((message: unknown) => void) | undefined;
     const invoke = vi.fn(async (command: string, _args: Record<string, unknown>) => {

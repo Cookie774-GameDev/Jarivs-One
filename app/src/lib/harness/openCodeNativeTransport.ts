@@ -14,6 +14,10 @@ type NativeTransportRoute =
   | { kind: 'provider_status' }
   | { kind: 'provider_authorize'; providerId: string }
   | { kind: 'provider_callback'; providerId: string }
+  | { kind: 'mcp_status' }
+  | { kind: 'mcp_add' }
+  | { kind: 'mcp_connect'; name: string }
+  | { kind: 'mcp_disconnect'; name: string }
   | { kind: 'session_create' }
   | { kind: 'session_get'; sessionId: string }
   | { kind: 'session_update'; sessionId: string }
@@ -108,7 +112,14 @@ function nativeRoute(
     else if (segments[3] === 'callback') route = { kind: 'provider_callback', providerId };
     else throw new Error('OpenCode native transport route is invalid.');
   } else if (key === 'POST /session') route = { kind: 'session_create' };
-  else if (key === 'GET /session/status') route = { kind: 'session_status' };
+  else if (key === 'GET /mcp') route = { kind: 'mcp_status' };
+  else if (key === 'POST /mcp') route = { kind: 'mcp_add' };
+  else if (segments[0] === 'mcp' && segments.length === 3 && method === 'POST') {
+    const name = decodedIdentifier(segments[1]);
+    if (segments[2] === 'connect') route = { kind: 'mcp_connect', name };
+    else if (segments[2] === 'disconnect') route = { kind: 'mcp_disconnect', name };
+    else throw new Error('OpenCode native transport route is invalid.');
+  } else if (key === 'GET /session/status') route = { kind: 'session_status' };
   else if (key === 'POST /instance/dispose') route = { kind: 'instance_dispose' };
   else if (segments[0] === 'session' && segments.length >= 2) {
     const sessionId = decodedIdentifier(segments[1]);

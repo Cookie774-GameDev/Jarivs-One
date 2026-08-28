@@ -123,11 +123,11 @@ describe('Plugins settings page', () => {
     expect(disclosure.getAttribute('aria-expanded')).toBe('false');
     expect(disclosure.getAttribute('aria-controls')).toBe('plugins-mcp-connections');
     expect(document.getElementById('plugins-mcp-connections')).toBeNull();
-    expect(screen.queryByRole('heading', { name: 'VibeSpace MCP Gateway' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'OpenCode MCP servers' })).toBeNull();
 
     act(() => window.dispatchEvent(new CustomEvent(OPEN_MCP_MANAGER_EVENT)));
 
-    const heading = await screen.findByRole('heading', { name: 'VibeSpace MCP Gateway' });
+    const heading = await screen.findByRole('heading', { name: 'OpenCode MCP servers' });
     const close = screen.getByRole('button', { name: 'Close MCP connections' });
     expect(close.getAttribute('aria-expanded')).toBe('true');
     expect(document.getElementById('plugins-mcp-connections')?.contains(heading)).toBe(true);
@@ -141,7 +141,7 @@ describe('Plugins settings page', () => {
     requestOpenMcpManager();
     renderPlugins();
 
-    expect(await screen.findByRole('heading', { name: 'VibeSpace MCP Gateway' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'OpenCode MCP servers' })).toBeTruthy();
   });
 
   it('connects and disconnects the local mock connector', async () => {

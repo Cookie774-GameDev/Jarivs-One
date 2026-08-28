@@ -46,7 +46,7 @@ import {
 import type { PluginConnection, PluginManifest } from './types';
 import { isConnectableStatus } from './types';
 import { PluginLogo } from './PluginLogo';
-import { McpConnections } from '@/features/settings/sections/McpConnections';
+import { OpenCodeMcpConnections } from './OpenCodeMcpConnections';
 import { PLUGIN_COMPATIBILITY_BY_ID } from './compatibilityMatrix';
 import { PLUGIN_CONNECTION_ADAPTERS } from './connectionFramework';
 import { OPEN_MCP_MANAGER_EVENT, consumePendingMcpManagerOpenRequest } from './openMcpManager';
@@ -262,7 +262,7 @@ export function Plugins() {
 
       {mcpOpen ? (
         <div id="plugins-mcp-connections">
-          <McpConnections />
+          <OpenCodeMcpConnections />
         </div>
       ) : null}
 
