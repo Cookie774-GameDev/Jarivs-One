@@ -44,6 +44,55 @@ let hostLifecycleTail: Promise<void> = Promise.resolve();
 type LocalHostRequest = (request: KernelClientRequestV1) => Promise<KernelClientResponseV1>;
 let localHostRequest: LocalHostRequest | null = null;
 
+const SAFE_KERNEL_FAILURE_CODES = new Set([
+  'kernel_account_authority_revoked',
+  'kernel_account_binding_invalid',
+  'kernel_action_scope_mismatch',
+  'kernel_action_response_checkpoint_conflict',
+  'kernel_action_response_checkpoint_missing',
+  'kernel_action_response_finalize_account_authority_revoked',
+  'kernel_action_response_finalize_conflict',
+  'kernel_action_response_finalize_integrity_error',
+  'kernel_event_sequence_invalid',
+]);
+
+const SAFE_REPOSITORY_FAILURE_CODES = new Set([
+  'account_scope_mismatch',
+  'parent_run_not_found',
+  'run_id_conflict',
+  'event_idempotency_conflict',
+  'transition_event_requires_atomic_run_update',
+  'live_evidence_integrity_error',
+  'transport_attempt_integrity_error',
+  'attempt_effect_integrity_error',
+  'profile_integrity_error',
+  'artifact_integrity_error',
+  'approval_integrity_error',
+  'approval_scope_mismatch',
+  'approval_status_conflict',
+  'invalid_limit',
+]);
+
+/** @internal Emits only stable codes; never forwards arbitrary error text or data. */
+export function sanitizeKernelHostFailureCode(error: unknown): string {
+  if (
+    error instanceof Error &&
+    SAFE_KERNEL_FAILURE_CODES.has(error.message) &&
+    error.message.length <= 96
+  ) {
+    return error.message;
+  }
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    Reflect.get(error, 'name') === 'JarvisRepositoryError'
+  ) {
+    const code = Reflect.get(error, 'code');
+    if (typeof code === 'string' && SAFE_REPOSITORY_FAILURE_CODES.has(code)) return code;
+  }
+  return 'unclassified';
+}
+
 function loadNativeHostTransport() {
   nativeHostTransportPromise ??= Promise.all([
     import('@tauri-apps/api/core'),
@@ -109,7 +158,11 @@ async function handleValidatedHostRequest(
     return isKernelClientResponseV1(candidate) && responseMatchesKernelRequest(request, candidate)
       ? candidate
       : unavailableKernelResponse(request, 'invalid_response');
-  } catch {
+  } catch (error) {
+    console.error('[jarvis-kernel] request failed', {
+      requestKind: request.kind,
+      code: sanitizeKernelHostFailureCode(error),
+    });
     return unavailableKernelResponse(request, 'invalid_response');
   }
 }

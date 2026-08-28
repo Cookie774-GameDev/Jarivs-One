@@ -16,7 +16,11 @@ vi.mock('@tauri-apps/api/event', () => ({
   }),
 }));
 
-import { requestLocalJarvisKernelHost, startJarvisKernelHost } from './kernelHost';
+import {
+  requestLocalJarvisKernelHost,
+  sanitizeKernelHostFailureCode,
+  startJarvisKernelHost,
+} from './kernelHost';
 
 const request: KernelHostRequestEvent = {
   epoch: 7,
@@ -30,6 +34,55 @@ const request: KernelHostRequestEvent = {
 };
 
 describe('trusted kernel host', () => {
+  it('keeps kernel failure diagnostics bounded to safe codes', () => {
+    expect(sanitizeKernelHostFailureCode(new Error('kernel_action_scope_mismatch'))).toBe(
+      'kernel_action_scope_mismatch',
+    );
+    expect(
+      sanitizeKernelHostFailureCode({
+        name: 'JarvisRepositoryError',
+        code: 'approval_status_conflict',
+      }),
+    ).toBe('approval_status_conflict');
+    expect(
+      sanitizeKernelHostFailureCode(
+        new Error('token=synthetic-secret account=private-user C:\\private\\file.txt'),
+      ),
+    ).toBe('unclassified');
+    expect(sanitizeKernelHostFailureCode({ code: 'not safe' })).toBe('unclassified');
+  });
+
+  it('logs only the request kind and sanitized failure code when a host request throws', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    tauri.invoke.mockImplementation(async (command: string) =>
+      command === 'register_kernel_host'
+        ? { epoch: 7, ownerToken: 'native-owner-token' }
+        : undefined,
+    );
+    const session = await startJarvisKernelHost({
+      createRuntime: () => ({
+        handleRequest: async () => {
+          throw new Error('kernel_action_scope_mismatch');
+        },
+        invalidateAccount: vi.fn(),
+        dispose: vi.fn(),
+      }),
+    });
+
+    tauri.handler?.({ payload: request });
+    await vi.waitFor(() =>
+      expect(consoleError).toHaveBeenCalledWith('[jarvis-kernel] request failed', {
+        requestKind: 'cancel',
+        code: 'kernel_action_scope_mismatch',
+      }),
+    );
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain('account-1');
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain('run-1');
+
+    if (session.role !== 'host') throw new Error(session.reason);
+    await session.dispose();
+  });
+
   beforeEach(() => {
     tauri.invoke.mockReset();
     tauri.listen.mockReset();
