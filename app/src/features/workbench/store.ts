@@ -63,7 +63,7 @@ interface WorkbenchState extends WorkbenchDocument {
   applyTemplate: (templateId: string) => boolean;
   saveTemplate: (name: string) => string | null;
   deleteTemplate: (templateId: string) => void;
-  setWallpaper: (id: WallpaperId, assetUrl?: string) => void;
+  setWallpaper: (id: WallpaperId, assetUrl?: string, catalogWallpaperId?: string) => void;
   configureWallpaper: (patch: Partial<WorkbenchDocument['wallpaper']>) => void;
   /** Viewport size of the spatial canvas (updated by WorkbenchCanvas). */
   canvasSize: { width: number; height: number };
@@ -97,9 +97,7 @@ interface WorkbenchState extends WorkbenchDocument {
   toDocument: () => WorkbenchDocument;
 }
 
-const snapshot = (
-  state: Pick<WorkbenchState, 'panels' | 'view' | 'name'>,
-): WorkbenchSnapshot => ({
+const snapshot = (state: Pick<WorkbenchState, 'panels' | 'view' | 'name'>): WorkbenchSnapshot => ({
   panels: state.panels.map((panel) => ({ ...panel, settings: { ...panel.settings } })),
   view: { ...state.view },
   name: state.name,
@@ -194,15 +192,14 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
         minimized: false,
         status: 'idle',
         settings: {
-          ...(
-          kind === 'browser'
+          ...(kind === 'browser'
             ? { url: 'https://developer.mozilla.org' }
             : kind === 'files'
               ? { route: 'files' }
               : kind === 'jarvis'
                 ? { route: 'chat' }
                 : kind === 'editor'
-                ? { note: '', previewEnabled: false }
+                  ? { note: '', previewEnabled: false }
                   : {}),
           ...initialSettings,
         },
@@ -340,9 +337,9 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
       customTemplates: state.customTemplates.filter((entry) => entry.id !== templateId),
       updatedAt: Date.now(),
     })),
-  setWallpaper: (id, assetUrl) =>
+  setWallpaper: (id, assetUrl, catalogWallpaperId) =>
     set((state) => ({
-      wallpaper: { ...state.wallpaper, id, assetUrl },
+      wallpaper: { ...state.wallpaper, id, assetUrl, catalogWallpaperId },
       updatedAt: Date.now(),
     })),
   configureWallpaper: (patch) =>
@@ -384,11 +381,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
       const height = Math.max(1, maxY - minY);
       const zoom = Math.max(
         0.25,
-        Math.min(
-          1.1,
-          (canvasSize.width - pad) / width,
-          (canvasSize.height - pad) / height,
-        ),
+        Math.min(1.1, (canvasSize.width - pad) / width, (canvasSize.height - pad) / height),
       );
       // Only the camera moves — panel x/y/width/height stay exactly as the user left them.
       return {

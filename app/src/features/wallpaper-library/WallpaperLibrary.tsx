@@ -9,6 +9,7 @@ import {
   clientMayApplyPremiumWallpaper,
   clientMayDownloadWallpaper,
   loadWallpaperCatalog,
+  readCachedCatalog,
   redeemOrbitWallpaper,
   requestWallpaperDownloadUrl,
   type CatalogLoadResult,
@@ -21,7 +22,6 @@ import {
   deleteWallpaperBlob,
   isFullQualityCached,
   listWallpaperBlobIds,
-  rehydrateWallpaperObjectUrl,
   storeDownloadedWallpaper,
   storeFullMasterPath,
 } from './localWallpaperStore';
@@ -52,22 +52,43 @@ async function getAccessToken(): Promise<string | null> {
 export function WallpaperLibrary({
   onApplyWallpaper,
 }: {
-  onApplyWallpaper?: (id: WallpaperId, assetUrl?: string) => void;
+  onApplyWallpaper?: (id: WallpaperId, assetUrl?: string, catalogWallpaperId?: string) => void;
 } = {}) {
   const plan = useAuthStore((s) => s.plan);
   const isAdmin = useAppAdmin();
   const setWorkbenchWallpaper = useWorkbenchStore((s) => s.setWallpaper);
   const setWallpaper = onApplyWallpaper ?? setWorkbenchWallpaper;
-  const [catalog, setCatalog] = React.useState<CatalogLoadResult | null>(null);
+  const [catalog, setCatalog] = React.useState<CatalogLoadResult>(
+    () =>
+      readCachedCatalog() ?? {
+        wallpapers: CATALOG_SEED,
+        access: {
+          mode: 'none',
+          plan: String(plan ?? 'free'),
+          status: 'inactive',
+          period_end: null,
+          is_admin: isAdmin,
+          orbit_wallpaper_ids: [],
+        },
+        source: 'bundled-seed',
+        fetchedAt: new Date().toISOString(),
+      },
+  );
   const [filter, setFilter] = React.useState<'all' | 'available' | 'featured'>('all');
   const [query, setQuery] = React.useState('');
   const [pending, setPending] = React.useState<CatalogWallpaper | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
-  /** Session object URLs rehydrated from IndexedDB bytes (not persisted as blob: strings). */
-  const [localIds, setLocalIds] = React.useState<Record<string, string>>({});
+  const [downloadedIds, setDownloadedIds] = React.useState<Set<string>>(() => new Set());
+  /** Object URLs created by downloads while this picker is mounted. */
   const objectUrlsRef = React.useRef<Record<string, string>>({});
 
   React.useEffect(() => {
+    let cancelled = false;
+    void listWallpaperBlobIds()
+      .then((ids) => {
+        if (!cancelled) setDownloadedIds(new Set(ids));
+      })
+      .catch(() => undefined);
     void (async () => {
       const token = await getAccessToken();
       const result = await loadWallpaperCatalog({
@@ -84,23 +105,10 @@ export function WallpaperLibrary({
           mode: isAdmin || result.access.is_admin ? 'full_catalog' : result.access.mode,
         };
       }
-      setCatalog(result);
-
-      // Rehydrate durable downloads after restart.
-      try {
-        const ids = await listWallpaperBlobIds();
-        const next: Record<string, string> = {};
-        for (const id of ids) {
-          const url = await rehydrateWallpaperObjectUrl(id);
-          if (url) next[id] = url;
-        }
-        objectUrlsRef.current = next;
-        setLocalIds(next);
-      } catch {
-        // IndexedDB unavailable — downloads still work in-session after fetch.
-      }
+      if (!cancelled) setCatalog(result);
     })();
     return () => {
+      cancelled = true;
       for (const url of Object.values(objectUrlsRef.current)) {
         if (url.startsWith('blob:')) URL.revokeObjectURL(url);
       }
@@ -108,7 +116,7 @@ export function WallpaperLibrary({
   }, [plan, isAdmin]);
 
   const access: WallpaperAccessState = React.useMemo(() => {
-    const base = catalog?.access ?? {
+    const base = catalog.access ?? {
       mode: 'none' as const,
       plan: String(plan ?? 'free'),
       status: 'inactive',
@@ -125,11 +133,11 @@ export function WallpaperLibrary({
       };
     }
     return base;
-  }, [catalog?.access, isAdmin, plan]);
+  }, [catalog.access, isAdmin, plan]);
 
   const slotsUsed = access.orbit_wallpaper_ids?.length ?? 0;
 
-  const items = (catalog?.wallpapers ?? []).filter((w) => {
+  const items = catalog.wallpapers.filter((w) => {
     if (filter === 'featured' && !w.featured) return false;
     if (filter === 'available') {
       if (!clientMayDownloadWallpaper({ wallpaperId: w.id, access })) return false;
@@ -204,7 +212,7 @@ export function WallpaperLibrary({
     const prev = objectUrlsRef.current[wallpaperId];
     if (prev?.startsWith('blob:') && prev !== url) URL.revokeObjectURL(prev);
     objectUrlsRef.current = { ...objectUrlsRef.current, [wallpaperId]: url };
-    setLocalIds({ ...objectUrlsRef.current });
+    setDownloadedIds((current) => new Set(current).add(wallpaperId));
   };
 
   /** Download the FULL master MP4 — never the tiny 1s catalog preview. */
@@ -323,19 +331,13 @@ export function WallpaperLibrary({
     }
 
     // Always prefer full-quality cache; never apply the tiny 1s catalog preview.
-    let local = localIds[wallpaper.id];
     const full = await isFullQualityCached(wallpaper.id);
-    if (!local || !full) {
+    if (!full) {
       toast.info('Getting full quality…', 'Downloading the complete wallpaper first');
       const downloaded = await download(wallpaper);
       if (!downloaded) return;
-      local = objectUrlsRef.current[wallpaper.id];
     }
-    if (!local) {
-      toast.warning('Apply failed', 'Full wallpaper is not available yet.');
-      return;
-    }
-    setWallpaper('custom-video', local);
+    setWallpaper('custom-video', undefined, wallpaper.id);
     toast.success('Wallpaper applied (full quality)', wallpaper.name);
   };
 
@@ -346,7 +348,11 @@ export function WallpaperLibrary({
     const next = { ...objectUrlsRef.current };
     delete next[wallpaper.id];
     objectUrlsRef.current = next;
-    setLocalIds(next);
+    setDownloadedIds((current) => {
+      const updated = new Set(current);
+      updated.delete(wallpaper.id);
+      return updated;
+    });
     toast.info('Removed local copy', wallpaper.name);
   };
 
@@ -387,7 +393,7 @@ export function WallpaperLibrary({
       <div className="wallpaper-library-grid">
         {items.map((w) => {
           const entitled = clientMayDownloadWallpaper({ wallpaperId: w.id, access });
-          const downloaded = Boolean(localIds[w.id]);
+          const downloaded = downloadedIds.has(w.id);
           const orbitNeedsRedeem =
             access.mode === 'orbit_slots' &&
             !access.orbit_wallpaper_ids.includes(w.id) &&

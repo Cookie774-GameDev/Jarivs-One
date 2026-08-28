@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { rehydrateWallpaperObjectUrl } from '@/features/wallpaper-library/localWallpaperStore';
 import { isSafeWallpaperAssetUrl } from './wallpapers';
 import type { WorkbenchWallpaperConfig } from './types';
 
@@ -152,18 +153,49 @@ export function WallpaperHost({ config }: WallpaperHostProps) {
   }, []);
   const paused = config.paused || reducedMotion || documentHidden;
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  const [rehydratedAssetUrl, setRehydratedAssetUrl] = React.useState<string | undefined>(
+    config.catalogWallpaperId ? undefined : config.assetUrl,
+  );
+  React.useEffect(() => {
+    let cancelled = false;
+    let ownedObjectUrl: string | null = null;
+    if (!config.catalogWallpaperId) {
+      setRehydratedAssetUrl(config.assetUrl);
+      return () => undefined;
+    }
+    setRehydratedAssetUrl(undefined);
+    void rehydrateWallpaperObjectUrl(config.catalogWallpaperId).then((url) => {
+      if (cancelled || !url) {
+        if (cancelled && url?.startsWith('blob:') && typeof URL.revokeObjectURL === 'function') {
+          URL.revokeObjectURL(url);
+        }
+        return;
+      }
+      if (url.startsWith('blob:')) ownedObjectUrl = url;
+      setRehydratedAssetUrl(url);
+    });
+    return () => {
+      cancelled = true;
+      if (ownedObjectUrl && typeof URL.revokeObjectURL === 'function') {
+        URL.revokeObjectURL(ownedObjectUrl);
+      }
+    };
+  }, [config.assetUrl, config.catalogWallpaperId]);
   React.useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     if (paused) {
       video.pause();
     } else {
-      void video.play().catch(() => undefined);
+      const playback = video.play();
+      void playback?.catch(() => undefined);
     }
-  }, [paused]);
+  }, [paused, rehydratedAssetUrl]);
   const assetKind = config.id === 'custom-video' ? 'video' : 'image';
   const safeAsset =
-    config.assetUrl && isSafeWallpaperAssetUrl(config.assetUrl, assetKind) ? config.assetUrl : null;
+    rehydratedAssetUrl && isSafeWallpaperAssetUrl(rehydratedAssetUrl, assetKind)
+      ? rehydratedAssetUrl
+      : null;
 
   return (
     <div

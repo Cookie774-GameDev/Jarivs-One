@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render } from '@testing-library/react';
+import { fireEvent, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { WallpaperPreviewThumb } from './WallpaperPreviewThumb';
 import type { CatalogWallpaper } from './types';
@@ -40,22 +40,29 @@ describe('WallpaperPreviewThumb', () => {
       configurable: true,
       value: pause,
     });
+    Object.defineProperty(HTMLMediaElement.prototype, 'load', {
+      configurable: true,
+      value: vi.fn(),
+    });
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       value: vi.fn().mockReturnValue({ matches: false }),
     });
   });
 
-  it('keeps public preview media idle until hover and resets it on leave', () => {
+  it('keeps public preview media idle until hover and resets it on leave', async () => {
     const { container } = render(<WallpaperPreviewThumb wallpaper={wallpaper} locked />);
     const thumb = container.querySelector('.wallpaper-library-thumb')!;
     const video = container.querySelector('video') as HTMLVideoElement;
 
     expect(video.autoplay).toBe(false);
+    expect(video.getAttribute('src')).toBeNull();
+    expect(video.preload).toBe('none');
     expect(play).not.toHaveBeenCalled();
 
     fireEvent.pointerEnter(thumb);
-    expect(play).toHaveBeenCalledTimes(1);
+    expect(video.getAttribute('src')).toContain('preview.mp4');
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
 
     video.currentTime = 0.6;
     fireEvent.pointerLeave(thumb);

@@ -100,6 +100,8 @@ export interface WorkbenchWallpaperConfig {
   brightness: number;
   quality: 'low' | 'balanced' | 'high';
   assetUrl?: string;
+  /** Durable catalog key used to rehydrate a downloaded full master after remount/restart. */
+  catalogWallpaperId?: string;
 }
 
 export interface WorkbenchTemplate {

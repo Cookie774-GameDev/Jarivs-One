@@ -61,6 +61,25 @@ describe('Workbench persistence', () => {
     expect(window.localStorage.getItem(WORKBENCH_STORAGE_KEY)).not.toContain('javascript:');
   });
 
+  it('persists the durable catalog identity instead of a temporary playback URL', () => {
+    const document = createDefaultWorkbenchDocument();
+    document.wallpaper = {
+      ...document.wallpaper,
+      id: 'custom-video',
+      assetUrl: 'blob:temporary-session-url',
+      catalogWallpaperId: 'wallpaper-cosmic-haven',
+    };
+
+    saveWorkbenchDocument(document, window.localStorage);
+    const loaded = loadWorkbenchDocument(window.localStorage);
+
+    expect(loaded.document.wallpaper.catalogWallpaperId).toBe('wallpaper-cosmic-haven');
+    expect(loaded.document.wallpaper.assetUrl).toBeUndefined();
+    expect(window.localStorage.getItem(WORKBENCH_STORAGE_KEY)).not.toContain(
+      'blob:temporary-session-url',
+    );
+  });
+
   it('defaults wallpaper brightness to 50 percent and clamps persisted values', () => {
     const document = createDefaultWorkbenchDocument();
     expect(document.wallpaper.brightness).toBe(0.5);

@@ -171,9 +171,18 @@ export function sanitizeWorkbenchDocument(
     typeof wallpaperInput.assetUrl === 'string'
       ? wallpaperInput.assetUrl.slice(0, 4_000_000)
       : undefined;
+  const catalogWallpaperId =
+    id === 'custom-video' &&
+    typeof wallpaperInput.catalogWallpaperId === 'string' &&
+    /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(wallpaperInput.catalogWallpaperId)
+      ? wallpaperInput.catalogWallpaperId
+      : undefined;
   const assetKind = id === 'custom-video' ? 'video' : id === 'custom-image' ? 'image' : null;
   const assetUrl =
-    assetKind && rawAssetUrl && isSafeWallpaperAssetUrl(rawAssetUrl, assetKind)
+    !catalogWallpaperId &&
+    assetKind &&
+    rawAssetUrl &&
+    isSafeWallpaperAssetUrl(rawAssetUrl, assetKind)
       ? rawAssetUrl
       : undefined;
 
@@ -201,6 +210,7 @@ export function sanitizeWorkbenchDocument(
           ? wallpaperInput.quality
           : 'balanced',
       assetUrl,
+      catalogWallpaperId,
     },
     customTemplates: Array.isArray(input.customTemplates)
       ? input.customTemplates
@@ -213,9 +223,7 @@ export function sanitizeWorkbenchDocument(
 }
 
 /** Strip live runtime IDs for reusable template snapshots. */
-export function documentToTemplatePanels(
-  panels: WorkbenchPanel[],
-): WorkbenchTemplate['panels'] {
+export function documentToTemplatePanels(panels: WorkbenchPanel[]): WorkbenchTemplate['panels'] {
   return panels.map(({ id: _id, z: _z, status: _status, ...panel }) => ({
     ...panel,
     settings: {
@@ -300,7 +308,10 @@ export function saveWorkbenchDocument(
     if (options?.previousSerialized) {
       try {
         const prev = JSON.parse(options.previousSerialized) as WorkbenchDocument;
-        if (serializeContentFingerprint(prev) === contentKey && prev.revision === next.revision - 1) {
+        if (
+          serializeContentFingerprint(prev) === contentKey &&
+          prev.revision === next.revision - 1
+        ) {
           // Meaningful state unchanged except our forced revision bump — still write once is fine;
           // skip only when fingerprint matches last successful write and caller uses same payload.
         }
@@ -321,10 +332,11 @@ export function saveWorkbenchDocument(
 
 /** Fingerprint of user-visible state (excludes revision/updatedAt). */
 export function serializeContentFingerprint(document: WorkbenchDocument): string {
-  const { revision: _r, updatedAt: _u, ...rest } = sanitizeWorkbenchDocument(
-    document,
-    emptyWorkbenchDocument,
-  );
+  const {
+    revision: _r,
+    updatedAt: _u,
+    ...rest
+  } = sanitizeWorkbenchDocument(document, emptyWorkbenchDocument);
   return JSON.stringify(rest);
 }
 

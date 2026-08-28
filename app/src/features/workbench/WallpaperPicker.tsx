@@ -11,7 +11,7 @@ interface WallpaperPickerProps {
   open: boolean;
   onClose: () => void;
   config?: WorkbenchWallpaperConfig;
-  onSetWallpaper?: (id: WallpaperId, assetUrl?: string) => void;
+  onSetWallpaper?: (id: WallpaperId, assetUrl?: string, catalogWallpaperId?: string) => void;
   onConfigureWallpaper?: (patch: Partial<WorkbenchWallpaperConfig>) => void;
   persistCustomVideo?: boolean;
 }
