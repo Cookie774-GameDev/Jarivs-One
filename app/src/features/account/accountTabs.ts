@@ -4,7 +4,7 @@
 
 export const ACCOUNT_TABS = [
   { id: 'profile', label: 'Profile', description: 'Sign in and local identity' },
-  { id: 'usage', label: 'Usage', description: 'Shared company credit pool' },
+  { id: 'status', label: 'Status', description: 'Private local activity and usage' },
   { id: 'billing', label: 'Billing', description: 'Plan and upgrades' },
   { id: 'pets', label: 'Pets', description: 'Desktop companion' },
   { id: 'support', label: 'Support', description: 'Help, docs, and device' },
@@ -21,6 +21,8 @@ export function isAccountTabId(value: string | null | undefined): value is Accou
 export function resolveAccountTab(value: string | null | undefined): AccountTabId {
   // Legacy "more" tab content moved under Support.
   if (value === 'more') return 'support';
+  // Preserve bookmarks from before Usage became the richer local Status page.
+  if (value === 'usage') return 'status';
   return isAccountTabId(value) ? value : DEFAULT_ACCOUNT_TAB;
 }
 

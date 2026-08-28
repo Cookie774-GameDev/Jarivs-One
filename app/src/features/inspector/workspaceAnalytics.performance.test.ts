@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const analyticsHarness = vi.hoisted(() => ({
-  getMonthlyAllProviderUsage: vi.fn(),
+  loadStatusSummary: vi.fn(),
 }));
 
-vi.mock('@/lib/usage/usageSummary', () => ({
-  getMonthlyAllProviderUsage: analyticsHarness.getMonthlyAllProviderUsage,
+vi.mock('@/lib/accountIdentity', () => ({
+  getActiveAccountIdentity: () => ({ accountId: 'account-a', source: 'local' }),
+}));
+
+vi.mock('@/features/account/statusAnalytics', () => ({
+  loadStatusSummary: analyticsHarness.loadStatusSummary,
+  createActiveStatusClock: () => () => undefined,
+  startStatusAnalyticsRuntime: async () => () => undefined,
+  STATUS_ANALYTICS_CHANGED_EVENT: 'vibespace:status-analytics:changed',
 }));
 
 vi.mock('./milestonesStore', () => ({
@@ -24,7 +31,7 @@ import { useWorkspaceAnalyticsStore } from './workspaceAnalytics';
 
 describe('workspace analytics background rollup', () => {
   beforeEach(() => {
-    analyticsHarness.getMonthlyAllProviderUsage.mockReset();
+    analyticsHarness.loadStatusSummary.mockReset();
   });
 
   it('coalesces overlapping refreshes and permits a fresh run after settlement', async () => {
@@ -32,32 +39,32 @@ describe('workspace analytics background rollup', () => {
     const gate = new Promise<Record<string, unknown>>((resolve) => {
       release = resolve;
     });
-    analyticsHarness.getMonthlyAllProviderUsage.mockReturnValue(gate);
+    analyticsHarness.loadStatusSummary.mockReturnValue(gate);
 
     const first = useWorkspaceAnalyticsStore.getState().refreshTokenRollup();
     const overlapping = useWorkspaceAnalyticsStore.getState().refreshTokenRollup();
-    expect(analyticsHarness.getMonthlyAllProviderUsage).toHaveBeenCalledTimes(1);
+    expect(analyticsHarness.loadStatusSummary).toHaveBeenCalledTimes(1);
 
     release?.({});
     await Promise.all([first, overlapping]);
 
-    analyticsHarness.getMonthlyAllProviderUsage.mockResolvedValueOnce({});
+    analyticsHarness.loadStatusSummary.mockResolvedValueOnce({ models: [] });
     await useWorkspaceAnalyticsStore.getState().refreshTokenRollup();
-    expect(analyticsHarness.getMonthlyAllProviderUsage).toHaveBeenCalledTimes(2);
+    expect(analyticsHarness.loadStatusSummary).toHaveBeenCalledTimes(2);
   });
 
   it('releases the single-flight gate after a failed rollup', async () => {
-    analyticsHarness.getMonthlyAllProviderUsage.mockRejectedValueOnce(
+    analyticsHarness.loadStatusSummary.mockRejectedValueOnce(
       new Error('temporary IndexedDB failure'),
     );
     await expect(useWorkspaceAnalyticsStore.getState().refreshTokenRollup()).rejects.toThrow(
       'temporary IndexedDB failure',
     );
 
-    analyticsHarness.getMonthlyAllProviderUsage.mockResolvedValueOnce({});
+    analyticsHarness.loadStatusSummary.mockResolvedValueOnce({ models: [] });
     await expect(
       useWorkspaceAnalyticsStore.getState().refreshTokenRollup(),
     ).resolves.toBeUndefined();
-    expect(analyticsHarness.getMonthlyAllProviderUsage).toHaveBeenCalledTimes(2);
+    expect(analyticsHarness.loadStatusSummary).toHaveBeenCalledTimes(2);
   });
 });

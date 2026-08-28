@@ -28,6 +28,7 @@ describe('AccountSecurityPanel', () => {
 
   it('changes the password only for the current authenticated session', async () => {
     render(<AccountSecurityPanel accountId="account-a" />);
+    fireEvent.click(screen.getByRole('button', { name: /change password/i }));
 
     fireEvent.change(screen.getByLabelText('New account password'), {
       target: { value: 'SecurePass9' },
@@ -35,7 +36,7 @@ describe('AccountSecurityPanel', () => {
     fireEvent.change(screen.getByLabelText('Confirm account password'), {
       target: { value: 'SecurePass9' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /change password/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save new password/i }));
 
     await waitFor(() => {
       expect(updateUser).toHaveBeenCalledWith({ password: 'SecurePass9' });
@@ -53,17 +54,20 @@ describe('AccountSecurityPanel', () => {
 
   it('clears password fields and status when the cloud account changes', async () => {
     const { rerender } = render(<AccountSecurityPanel accountId="account-a" />);
+    fireEvent.click(screen.getByRole('button', { name: /change password/i }));
     fireEvent.change(screen.getByLabelText('New account password'), {
       target: { value: 'SecurePass9' },
     });
     fireEvent.change(screen.getByLabelText('Confirm account password'), {
       target: { value: 'Different9' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /change password/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save new password/i }));
     expect(screen.getByRole('alert').textContent).toMatch(/passwords do not match/i);
 
     rerender(<AccountSecurityPanel accountId="account-b" />);
 
+    expect(screen.queryByLabelText('New account password')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /change password/i }));
     expect((screen.getByLabelText('New account password') as HTMLInputElement).value).toBe('');
     expect((screen.getByLabelText('Confirm account password') as HTMLInputElement).value).toBe('');
     expect(screen.queryByRole('status')).toBeNull();
@@ -78,13 +82,14 @@ describe('AccountSecurityPanel', () => {
       }),
     );
     const { rerender } = render(<AccountSecurityPanel key="account-a" accountId="account-a" />);
+    fireEvent.click(screen.getByRole('button', { name: /change password/i }));
     fireEvent.change(screen.getByLabelText('New account password'), {
       target: { value: 'SecurePass9' },
     });
     fireEvent.change(screen.getByLabelText('Confirm account password'), {
       target: { value: 'SecurePass9' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /change password/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save new password/i }));
     await waitFor(() => expect(updateUser).toHaveBeenCalledTimes(1));
 
     rerender(<AccountSecurityPanel key="account-b" accountId="account-b" />);

@@ -8,10 +8,10 @@ import {
 } from './accountTabs';
 
 describe('accountTabs', () => {
-  it('includes profile, usage, billing, pets, and support (no more)', () => {
+  it('includes profile, status, billing, pets, and support (no more)', () => {
     expect(ACCOUNT_TABS.map((t) => t.id)).toEqual([
       'profile',
-      'usage',
+      'status',
       'billing',
       'pets',
       'support',
@@ -19,7 +19,7 @@ describe('accountTabs', () => {
   });
 
   it('resolves valid and invalid tab ids', () => {
-    expect(isAccountTabId('usage')).toBe(true);
+    expect(isAccountTabId('status')).toBe(true);
     expect(isAccountTabId('pets')).toBe(true);
     expect(isAccountTabId('more')).toBe(false);
     expect(isAccountTabId('nope')).toBe(false);
@@ -31,7 +31,8 @@ describe('accountTabs', () => {
   });
 
   it('resolves the initial product tab from an exact URL query', () => {
-    expect(resolveAccountTabFromSearch('?tab=usage')).toBe('usage');
+    expect(resolveAccountTabFromSearch('?tab=status')).toBe('status');
+    expect(resolveAccountTabFromSearch('?tab=usage')).toBe('status');
     expect(resolveAccountTabFromSearch('?source=navigation&tab=billing')).toBe('billing');
     expect(resolveAccountTabFromSearch('?tab=more')).toBe('support');
     expect(resolveAccountTabFromSearch('?tab=unknown')).toBe('profile');

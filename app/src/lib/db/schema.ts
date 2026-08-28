@@ -143,6 +143,79 @@ export type SyncQueueRow = {
   created_at: number;
 };
 
+export type StatusActivityCategory =
+  'surface' | 'ai' | 'chat' | 'terminal' | 'file' | 'agent' | 'context' | 'optimizer';
+
+export type StatusCostType = 'actual' | 'estimated' | 'subscription' | 'local' | 'unknown';
+
+/**
+ * Content-free local analytics event. This store is deliberately absent from
+ * the cloud sync allowlist: prompts, responses, file contents, terminal output,
+ * keystrokes, coordinates, credentials, and screenshots are never accepted.
+ */
+export type StatusActivityEventRow = {
+  id: string;
+  accountId: string;
+  timestamp: number;
+  category: StatusActivityCategory;
+  action: string;
+  surface?: string;
+  projectId?: string;
+  chatId?: string;
+  providerId?: string;
+  modelId?: string;
+  agentId?: string;
+  durationMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+  cachedTokens?: number;
+  tokensSaved?: number;
+  costUsd?: number;
+  costType?: StatusCostType;
+  latencyMs?: number;
+  linesAdded?: number;
+  linesRemoved?: number;
+  generatedLines?: number;
+  characters?: number;
+  count?: number;
+  outcome?: 'completed' | 'failed' | 'cancelled' | 'unknown';
+};
+
+export type StatusRollupDimension =
+  'all' | 'surface' | 'provider' | 'model' | 'project' | 'agent' | 'action' | 'category';
+
+/** Precomputed hourly/daily counters used by Account Status without rescans. */
+export type StatusActivityRollupRow = {
+  id: string;
+  accountId: string;
+  bucketKind: 'hour' | 'day';
+  bucketStart: number;
+  dimension: StatusRollupDimension;
+  dimensionId: string;
+  durationMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cachedTokens: number;
+  tokensSaved: number;
+  costUsd: number;
+  actualCostUsd: number;
+  estimatedCostUsd: number;
+  requests: number;
+  completed: number;
+  failed: number;
+  cancelled: number;
+  linesAdded: number;
+  linesRemoved: number;
+  generatedLines: number;
+  characters: number;
+  count: number;
+  latencyTotalMs: number;
+  latencySamples: number;
+  updatedAt: number;
+};
+
 export type JarvisModelSnapshotRow = {
   connection_id?: string;
   provider_id: string;
@@ -219,13 +292,7 @@ export type JarvisRunRow = {
   chat_id?: string;
   parent_run_id?: string;
   source:
-    | 'typed_chat'
-    | 'voice'
-    | 'schedule'
-    | 'hive_final'
-    | 'phone'
-    | 'browser_chat'
-    | 'chatgpt_ade';
+    'typed_chat' | 'voice' | 'schedule' | 'hive_final' | 'phone' | 'browser_chat' | 'chatgpt_ade';
   status:
     | 'queued'
     | 'compiling'
@@ -688,7 +755,7 @@ export type BrowserChatPermissionProfileRow = {
 
 export const DB_NAME = 'jarvis-v1';
 /** Current schema version — bumped to 12 for durable Browser Chat permission profiles. */
-export const DB_VERSION = 12;
+export const DB_VERSION = 13;
 
 /**
  * Dexie store schema strings.
@@ -883,6 +950,16 @@ export const STORES_V12 = {
     'id, accountId, workspaceId, projectId, plan, updatedAt, &[accountId+workspaceId+projectId], [accountId+workspaceId]',
 } as const;
 
-export const STORES = STORES_V12;
+/** V13 adds compact, local-only Account Status events and precomputed rollups. */
+// prettier-ignore
+export const STORES_V13 = {
+  ...STORES_V12,
+  status_activity_events:
+    'id, accountId, timestamp, category, projectId, providerId, modelId, [accountId+timestamp], [accountId+category+timestamp], [accountId+projectId+timestamp]',
+  status_activity_rollups:
+    'id, accountId, bucketKind, bucketStart, dimension, dimensionId, &[accountId+bucketKind+bucketStart+dimension+dimensionId], [accountId+bucketKind+bucketStart]',
+} as const;
+
+export const STORES = STORES_V13;
 
 export type StoreName = keyof typeof STORES;

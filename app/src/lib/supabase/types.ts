@@ -61,6 +61,19 @@ export type Profile = {
   updated_at: string;
 };
 
+export type PublicProfileStatus = {
+  user_id: string;
+  slug: string;
+  visible: boolean;
+  display_name: string;
+  headline: string | null;
+  avatar_seed: string | null;
+  selected_metrics: Json;
+  updated_at: string;
+};
+
+export type PublicProfileStatusCard = Omit<PublicProfileStatus, 'user_id' | 'visible'>;
+
 export type ApiKey = {
   id: string;
   user_id: string;
@@ -406,6 +419,7 @@ export type Database = {
   public: {
     Tables: {
       profiles: Crud<Profile, 'id'>;
+      public_profile_status: Crud<PublicProfileStatus, 'user_id' | 'slug' | 'display_name'>;
       api_keys: Crud<ApiKey, 'user_id' | 'provider' | 'encrypted'>;
       usage_log: Crud<UsageLog, 'user_id' | 'provider' | 'model' | 'status'>;
       subscriptions: Crud<Subscription, 'id' | 'user_id' | 'plan' | 'status'>;
@@ -433,6 +447,7 @@ export type Database = {
     };
     Views: {
       usage_month: { Row: UsageMonthRow; Relationships: [] };
+      public_profile_status_cards: { Row: PublicProfileStatusCard; Relationships: [] };
     };
     Functions: {
       set_phone_pin: {

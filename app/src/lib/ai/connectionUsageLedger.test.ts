@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   aggregateConnectionUsage,
   recordConnectionUsage,
@@ -54,5 +54,38 @@ describe('connection usage ledger', () => {
       lastRequestAt: null,
       availability: 'unavailable',
     });
+  });
+
+  it('emits only the normalized usage fact needed by local status analytics', () => {
+    const listener = vi.fn();
+    window.addEventListener('jarvis:ai-connection-usage:changed', listener);
+    recordConnectionUsage({
+      connectionId: 'openai-api',
+      providerId: 'openai',
+      modelId: 'gpt-5.6-sol',
+      timestamp: 1_800_000_000_000,
+      inputTokens: 10,
+      cachedInputTokens: 2,
+      outputTokens: 4,
+      costUsd: 0.04,
+      costType: 'actual',
+      ...({ prompt: 'must never cross the analytics boundary' } as Record<string, unknown>),
+    });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    const detail = (listener.mock.calls[0]?.[0] as CustomEvent).detail;
+    expect(detail).toEqual({
+      connectionId: 'openai-api',
+      providerId: 'openai',
+      modelId: 'gpt-5.6-sol',
+      timestamp: 1_800_000_000_000,
+      inputTokens: 10,
+      cachedInputTokens: 2,
+      outputTokens: 4,
+      costUsd: 0.04,
+      costType: 'actual',
+    });
+    expect(detail).not.toHaveProperty('prompt');
+    window.removeEventListener('jarvis:ai-connection-usage:changed', listener);
   });
 });

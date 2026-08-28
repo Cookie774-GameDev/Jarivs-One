@@ -49,6 +49,7 @@ import {
   STORES_V10,
   STORES_V11,
   STORES_V12,
+  STORES_V13,
   type BrowserChatBindingRow,
   type BrowserChatImportRow,
   type BrowserChatPermissionProfileRow,
@@ -210,6 +211,14 @@ const EXPECTED_STORES_V12 = {
   ...EXPECTED_STORES_V11,
   browser_chat_permission_profiles:
     'id, accountId, workspaceId, projectId, plan, updatedAt, &[accountId+workspaceId+projectId], [accountId+workspaceId]',
+} as const;
+
+const EXPECTED_STORES_V13 = {
+  ...EXPECTED_STORES_V12,
+  status_activity_events:
+    'id, accountId, timestamp, category, projectId, providerId, modelId, [accountId+timestamp], [accountId+category+timestamp], [accountId+projectId+timestamp]',
+  status_activity_rollups:
+    'id, accountId, bucketKind, bucketStart, dimension, dimensionId, &[accountId+bucketKind+bucketStart+dimension+dimensionId], [accountId+bucketKind+bucketStart]',
 } as const;
 
 const EXPECTED_STORES_V1_SOURCE = `export const STORES_V1 = {
@@ -629,7 +638,7 @@ afterEach(async () => {
   createdNames.clear();
 });
 
-describe('Jarvis Dexie V12 additive migration', () => {
+describe('Jarvis Dexie V13 additive migration', () => {
   it('keeps the exact V1 through V4 declarations and advances only the active version', () => {
     const schemaSource = readFileSync(join(__dirname, 'schema.ts'), 'utf8');
     expect(STORES_V1).toEqual(EXPECTED_STORES_V1);
@@ -644,11 +653,12 @@ describe('Jarvis Dexie V12 additive migration', () => {
     expect(STORES_V10).toEqual(EXPECTED_STORES_V10);
     expect(STORES_V11).toEqual(EXPECTED_STORES_V11);
     expect(STORES_V12).toEqual(EXPECTED_STORES_V12);
+    expect(STORES_V13).toEqual(EXPECTED_STORES_V13);
     expect(frozenStoreBlock(schemaSource, 'STORES_V1')).toBe(EXPECTED_STORES_V1_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V2')).toBe(EXPECTED_STORES_V2_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V3')).toBe(EXPECTED_STORES_V3_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V4')).toBe(EXPECTED_STORES_V4_SOURCE);
-    expect(DB_VERSION).toBe(12);
+    expect(DB_VERSION).toBe(13);
   });
 
   it('opens durable Browser Chat workspace, import, and permission stores on a fresh V12 database', async () => {
@@ -671,12 +681,12 @@ describe('Jarvis Dexie V12 additive migration', () => {
     expect(database.table('browser_chat_permission_profiles').schema.primKey.name).toBe('id');
   });
 
-  it('opens every prior store plus Browser Chat permissions on a fresh V12 database', async () => {
-    const database = createTestJarvisDb(testDbName('jarvis-v12-fresh'));
+  it('opens every prior store plus local Status rollups on a fresh V13 database', async () => {
+    const database = createTestJarvisDb(testDbName('jarvis-v13-fresh'));
     await database.open();
 
     expect(database.tables.map((table) => table.name).sort()).toEqual(
-      Object.keys(STORES_V12).sort(),
+      Object.keys(STORES_V13).sort(),
     );
     expect(database.agents.name).toBe('agents');
     expect(database.settings.name).toBe('settings');
@@ -1363,7 +1373,7 @@ describe('Jarvis Dexie V12 additive migration', () => {
     database.close();
   });
 
-  it('declares V12 additively without a destructive upgrade callback', () => {
+  it('declares V13 additively without a destructive upgrade callback', () => {
     const source = readFileSync(join(__dirname, 'index.ts'), 'utf8');
     expect(source).not.toContain('.upgrade(');
     expect(source).toContain('this.version(1).stores(STORES_V1)');
@@ -1378,5 +1388,6 @@ describe('Jarvis Dexie V12 additive migration', () => {
     expect(source).toContain('this.version(10).stores(STORES_V10)');
     expect(source).toContain('this.version(11).stores(STORES_V11)');
     expect(source).toContain('this.version(12).stores(STORES_V12)');
+    expect(source).toContain('this.version(13).stores(STORES_V13)');
   });
 });

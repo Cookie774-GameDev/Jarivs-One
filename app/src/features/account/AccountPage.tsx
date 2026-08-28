@@ -55,13 +55,14 @@ import {
   type AccountTabId,
 } from './accountTabs';
 import { AccountSecurityPanel } from './AccountSecurityPanel';
+import { StatusDashboard } from './StatusDashboard';
 import './sakura-account.css';
 
 const UPGRADE_ORDER: PlanId[] = ['starter', 'pro', 'ultra', 'apex'];
 
 const TAB_ICONS: Record<AccountTabId, React.ReactNode> = {
   profile: <User2 className="h-3.5 w-3.5" />,
-  usage: <Activity className="h-3.5 w-3.5" />,
+  status: <Activity className="h-3.5 w-3.5" />,
   billing: <CreditCard className="h-3.5 w-3.5" />,
   pets: <Cat className="h-3.5 w-3.5" />,
   support: <LifeBuoy className="h-3.5 w-3.5" />,
@@ -135,9 +136,9 @@ export function AccountPage() {
     void loadUsage();
   }, [loadUsage]);
 
-  // Prefetch usage when opening the Usage tab.
+  // Prefetch the separate cloud credit pool when opening Status.
   React.useEffect(() => {
-    if (tab === 'usage') void loadUsage();
+    if (tab === 'status') void loadUsage();
   }, [tab, loadUsage]);
 
   const nextTier = React.useMemo(
@@ -217,7 +218,7 @@ export function AccountPage() {
   const who = displayName?.trim() || cloudEmail || 'You';
 
   return (
-    <main
+    <div
       className="mc7f-account-page h-full overflow-y-auto bg-background [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&_*]:rounded-none [html[data-theme=monochrome]_&_*]:bg-none [html[data-theme=monochrome]_&_*]:shadow-none"
       data-warm-account-tab={tab}
     >
@@ -317,10 +318,10 @@ export function AccountPage() {
             </PanelCard>
           </TabsContent>
 
-          <TabsContent value="usage" className="mt-0 focus-visible:ring-0">
+          <TabsContent value="status" className="mt-0 focus-visible:ring-0">
             <PanelCard
-              title="Usage"
-              subtitle="One shared credit pool for DeepSeek chat, phone calls, and SMS."
+              title="Status"
+              subtitle="Private local activity, exact connected-model usage, and your separate cloud plan pool."
               icon={<Activity className="h-5 w-5 text-accent-cyan" />}
               action={
                 cloudUserId ? (
@@ -337,6 +338,14 @@ export function AccountPage() {
                 ) : null
               }
             >
+              <StatusDashboard accountId={cloudUserId?.trim() || localUserId || ''} />
+              <div className="my-5 border-t border-border/60" />
+              <div className="mb-3">
+                <h3 className="text-ui-strong text-foreground">Cloud plan usage</h3>
+                <p className="mt-1 text-metadata text-muted-foreground">
+                  This signed-in credit pool is separate from private on-device Status analytics.
+                </p>
+              </div>
               {!cloudUserId ? (
                 <EmptyState
                   title="Sign in to view usage"
@@ -561,8 +570,8 @@ export function AccountPage() {
                   icon={<Sparkles className="h-4 w-4" />}
                   title="Usage & plans"
                   body="Check live DeepSeek / phone / SMS meters, or upgrade your tier."
-                  actionLabel="Open usage"
-                  onAction={() => setTab('usage')}
+                  actionLabel="Open status"
+                  onAction={() => setTab('status')}
                 />
                 <LinkRow
                   icon={<Download className="h-4 w-4" />}
@@ -601,7 +610,7 @@ export function AccountPage() {
           </TabsContent>
         </Tabs>
       </div>
-    </main>
+    </div>
   );
 }
 

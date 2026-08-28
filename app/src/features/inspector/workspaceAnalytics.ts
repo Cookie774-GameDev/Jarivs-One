@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { getMonthlyAllProviderUsage } from '@/lib/usage/usageSummary';
-import type { ProviderId } from '@/types/common';
+import { getActiveAccountIdentity } from '@/lib/accountIdentity';
+import {
+  createActiveStatusClock,
+  loadStatusSummary,
+  startStatusAnalyticsRuntime,
+  STATUS_ANALYTICS_CHANGED_EVENT,
+} from '@/features/account/statusAnalytics';
 import { useMilestonesStore } from './milestonesStore';
 import { useToolRunsStore } from './toolRunsStore';
 
@@ -53,33 +58,9 @@ let lastTickAt = Date.now();
 let ticking = false;
 let rollupInFlight: Promise<void> | null = null;
 
-const TRACKED_PROVIDERS: ProviderId[] = [
-  'openai',
-  'google',
-  'anthropic',
-  'groq',
-  'openrouter',
-  'mock',
-  'ollama',
-  'local',
-];
-
-async function loadRollupByModel(): Promise<ModelUsageRow[]> {
-  const usage = await getMonthlyAllProviderUsage(TRACKED_PROVIDERS);
-  const rows: ModelUsageRow[] = [];
-  for (const [provider, bucket] of Object.entries(usage)) {
-    if (!bucket || (bucket.inputTokens === 0 && bucket.outputTokens === 0)) continue;
-    rows.push({
-      providerName: provider,
-      modelName: provider,
-      inputTokens: bucket.inputTokens,
-      outputTokens: bucket.outputTokens,
-      totalTokens: bucket.inputTokens + bucket.outputTokens,
-      estimatedCostUsd: bucket.costUsd,
-    });
-  }
-  rows.sort((a, b) => b.totalTokens - a.totalTokens);
-  return rows;
+async function loadLocalStatusRollup() {
+  const identity = getActiveAccountIdentity();
+  return identity ? loadStatusSummary(identity.accountId, '30d') : null;
 }
 
 export const useWorkspaceAnalyticsStore = create<AnalyticsState>()(
@@ -106,7 +87,18 @@ export const useWorkspaceAnalyticsStore = create<AnalyticsState>()(
       refreshTokenRollup: () => {
         if (rollupInFlight) return rollupInFlight;
         const run = (async () => {
-          const byModel = await loadRollupByModel();
+          const summary = await loadLocalStatusRollup();
+          const byModel: ModelUsageRow[] = (summary?.models ?? []).map((model) => {
+            const separator = model.id.indexOf('::');
+            return {
+              providerName: separator >= 0 ? model.id.slice(0, separator) : 'unknown',
+              modelName: model.label,
+              inputTokens: model.inputTokens,
+              outputTokens: model.outputTokens,
+              totalTokens: model.totalTokens,
+              estimatedCostUsd: model.costUsd,
+            };
+          });
           const totalInputTokens = byModel.reduce((n, r) => n + r.inputTokens, 0);
           const totalOutputTokens = byModel.reduce((n, r) => n + r.outputTokens, 0);
           const estimatedTotalCostUsd = byModel.reduce((n, r) => n + r.estimatedCostUsd, 0);
@@ -116,6 +108,7 @@ export const useWorkspaceAnalyticsStore = create<AnalyticsState>()(
             totalOutputTokens,
             totalTokens: totalInputTokens + totalOutputTokens,
             estimatedTotalCostUsd,
+            foregroundActiveMs: summary?.activeTimeMs ?? 0,
             completedMilestones: useMilestonesStore
               .getState()
               .items.filter((i) => i.status === 'done').length,
@@ -162,6 +155,11 @@ export function startWorkspaceAnalyticsClock(): () => void {
   if (ticking || typeof window === 'undefined') return () => {};
   ticking = true;
   lastTickAt = Date.now();
+  let stopStatusRuntime: () => void = () => undefined;
+  const stopActiveClock = createActiveStatusClock();
+  void startStatusAnalyticsRuntime().then((stop) => {
+    stopStatusRuntime = stop;
+  });
 
   const onVisible = () => {
     lastTickAt = Date.now();
@@ -177,7 +175,11 @@ export function startWorkspaceAnalyticsClock(): () => void {
       useWorkspaceAnalyticsStore.getState().tickBackground();
     }
     void useWorkspaceAnalyticsStore.getState().refreshTokenRollup();
-  }, 15_000);
+  }, 60_000);
+
+  const onStatusChanged = () => {
+    void useWorkspaceAnalyticsStore.getState().refreshTokenRollup();
+  };
 
   document.addEventListener('visibilitychange', onVisible);
   window.addEventListener('focus', onVisible);
@@ -186,6 +188,7 @@ export function startWorkspaceAnalyticsClock(): () => void {
     lastTickAt = Date.now();
   };
   window.addEventListener('blur', onBlur);
+  window.addEventListener(STATUS_ANALYTICS_CHANGED_EVENT, onStatusChanged);
 
   void useWorkspaceAnalyticsStore.getState().refreshTokenRollup();
 
@@ -195,6 +198,9 @@ export function startWorkspaceAnalyticsClock(): () => void {
     document.removeEventListener('visibilitychange', onVisible);
     window.removeEventListener('focus', onVisible);
     window.removeEventListener('blur', onBlur);
+    window.removeEventListener(STATUS_ANALYTICS_CHANGED_EVENT, onStatusChanged);
+    stopActiveClock();
+    stopStatusRuntime();
   };
 }
 

@@ -13,6 +13,7 @@ export interface ConnectionUsageEntry {
   cachedInputTokens: number;
   outputTokens: number;
   costUsd: number;
+  costType?: 'actual' | 'estimated' | 'subscription' | 'local' | 'unknown';
 }
 
 export interface ConnectionUsageWindow {
@@ -49,7 +50,7 @@ function normalizeEntry(value: unknown): ConnectionUsageEntry | null {
   ) {
     return null;
   }
-  return {
+  const normalized: ConnectionUsageEntry = {
     connectionId: entry.connectionId,
     providerId: entry.providerId,
     modelId: entry.modelId,
@@ -59,6 +60,16 @@ function normalizeEntry(value: unknown): ConnectionUsageEntry | null {
     outputTokens: boundedNumber(entry.outputTokens ?? 0),
     costUsd: boundedNumber(entry.costUsd ?? 0),
   };
+  if (
+    entry.costType === 'actual' ||
+    entry.costType === 'estimated' ||
+    entry.costType === 'subscription' ||
+    entry.costType === 'local' ||
+    entry.costType === 'unknown'
+  ) {
+    normalized.costType = entry.costType;
+  }
+  return normalized;
 }
 
 export function readConnectionUsageLedger(): ConnectionUsageEntry[] {
@@ -79,7 +90,11 @@ export function recordConnectionUsage(entry: ConnectionUsageEntry): void {
   const next = [...readConnectionUsageLedger(), normalized].slice(-MAX_ENTRIES);
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    window.dispatchEvent(new Event(CONNECTION_USAGE_LEDGER_EVENT));
+    window.dispatchEvent(
+      new CustomEvent<ConnectionUsageEntry>(CONNECTION_USAGE_LEDGER_EVENT, {
+        detail: normalized,
+      }),
+    );
   } catch {
     // Usage analytics are best-effort and never block a completed response.
   }

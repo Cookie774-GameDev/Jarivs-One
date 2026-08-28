@@ -110,7 +110,7 @@ describe('AccountPage account ownership', () => {
   });
 
   it('clears Account A usage immediately and ignores its delayed result after switching to B', async () => {
-    window.history.replaceState({}, '', '/?tab=usage');
+    window.history.replaceState({}, '', '/?tab=status');
     const accountA = deferred<CombinedUsage | null>();
     const accountB = deferred<CombinedUsage | null>();
     let accountACalls = 0;
