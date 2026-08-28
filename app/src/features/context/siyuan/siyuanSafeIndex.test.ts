@@ -11,6 +11,7 @@ import {
 import {
   checkpointSiyuanIndexJob,
   createSiyuanIndexJob,
+  readSiyuanIndexEntries,
   readSiyuanIndexJob,
   replaceSiyuanIndexJob,
   updateSiyuanIndexJobStatus,
@@ -552,6 +553,60 @@ describe('SiYuan safe read-only index', () => {
     );
     expect(index.entries).toHaveLength(5_000);
     expect(index.entries.at(-1)?.sourcePointer).toMatch(/file-\d+\.txt$/u);
+  });
+
+  it('durably checkpoints an oversized directory every 250 entries and resumes idempotently', async () => {
+    const controller = new AbortController();
+    const files = Array.from({ length: 600 }, (_, index) => {
+      const sourcePath = `C:/Users/viper/large/file-${String(index).padStart(3, '0')}.txt`;
+      return {
+        name: `file-${String(index).padStart(3, '0')}.txt`,
+        get path() {
+          if (index === 249) controller.abort('renderer_shutdown_after_checkpoint');
+          return sourcePath;
+        },
+        isDir: false,
+        size: index,
+      };
+    });
+    const durableJob = { accountId: null, projectId: 'project-1', mapId: 'map-1' };
+
+    await expect(
+      scanSiyuanFilesystemIndex(
+        { ...map(), rootDir: 'C:\\Users\\viper\\large' },
+        { mode: 'none', selectedExtensions: [], selectedPaths: [] },
+        {
+          signal: controller.signal,
+          durableJob,
+          list: async (path) => ({ ok: true, path, entries: files }),
+        },
+      ),
+    ).rejects.toThrow('siyuan_index_cancelled');
+
+    const interrupted = await readSiyuanIndexJob('project-1', 'map-1');
+    expect(interrupted).toMatchObject({ phase: 'discovering', cursor: 0, indexed: 250 });
+    expect(await readSiyuanIndexEntries('project-1', 'map-1')).toHaveLength(250);
+
+    const resumed = await scanSiyuanFilesystemIndex(
+      { ...map(), rootDir: 'C:\\Users\\viper\\large' },
+      { mode: 'none', selectedExtensions: [], selectedPaths: [] },
+      {
+        durableJob,
+        list: async (path) => ({
+          ok: true,
+          path,
+          entries: files.map((file, index) => ({
+            name: file.name,
+            path: `C:/Users/viper/large/file-${String(index).padStart(3, '0')}.txt`,
+            isDir: false,
+            size: index,
+          })),
+        }),
+      },
+    );
+    expect(resumed.entries).toHaveLength(600);
+    expect(new Set(resumed.entries.map((entry) => entry.nodeId)).size).toBe(600);
+    expect(await readSiyuanIndexEntries('project-1', 'map-1')).toHaveLength(600);
   });
 
   it('resumes discovery from the last durable directory batch after renderer shutdown', async () => {

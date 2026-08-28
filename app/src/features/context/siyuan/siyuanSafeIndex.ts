@@ -209,6 +209,7 @@ const SECRET_FILE =
   /^(?:\.env(?:\..*)?|\.git-credentials|\.netrc|\.npmrc|\.pypirc|auth(?:entication)?\.json|credentials?(?:\..*)?|id_(?:rsa|ecdsa|ed25519)|secrets?(?:\..*)?|tokens?(?:\..*)?|.*\.(?:key|pem|p12|pfx))$/iu;
 const MAX_ENTRIES = 500_000;
 const DIRECTORY_SCAN_BATCH_SIZE = 64;
+const DURABLE_CHECKPOINT_ITEM_INTERVAL = 250;
 
 function canonical(value: string): string {
   return value
@@ -531,6 +532,11 @@ export async function scanSiyuanFilesystemIndex(
     }
   }
 
+  const knownEntryNodeIds = new Set(entries.map((entry) => entry.nodeId));
+  const knownDirectoryPaths = new Set(
+    queue.map((directory) => canonical(directory.path).toLocaleLowerCase('en-US')),
+  );
+
   while (cursor < queue.length) {
     await options.control?.checkpoint(options.signal);
     if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
@@ -548,13 +554,32 @@ export async function scanSiyuanFilesystemIndex(
     if (batchResults.length !== directories.length) {
       throw new Error('siyuan_index_batch_incomplete');
     }
-    cursor += directories.length;
     const listings = directories.map((directory, index) => ({
       directory,
       result: batchResults[index]!,
     }));
     const batchEntries: SiyuanSafeIndexEntry[] = [];
     const batchDirectories: SiyuanIndexDirectory[] = [];
+    let processedSinceCheckpoint = 0;
+    const checkpointOversizedBatch = async () => {
+      if (!durableRecord || processedSinceCheckpoint < DURABLE_CHECKPOINT_ITEM_INTERVAL) return;
+      const checkpointedAt = Date.now();
+      durableRecord = {
+        ...durableRecord,
+        frontierLength: queue.length,
+        indexed: entries.length,
+        summarized,
+        updatedAt: checkpointedAt,
+      };
+      await checkpointSiyuanIndexJob({
+        job: durableRecord,
+        appendedEntries: batchEntries.splice(0),
+        appendedDirectories: batchDirectories.splice(0),
+      });
+      processedSinceCheckpoint = 0;
+      await options.control?.checkpoint(options.signal);
+      if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+    };
     for (const { directory, result } of listings) {
       if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
       if (!result.ok) {
@@ -567,12 +592,18 @@ export async function scanSiyuanFilesystemIndex(
       );
       for (const child of children) {
         if (entries.length >= MAX_ENTRIES) throw new Error('siyuan_safe_index_entry_limit');
+        processedSinceCheckpoint += 1;
         const relativePath = relativeSource(root, child.path);
         if (relativePath === null || excludedPath(relativePath, child.name, exclusions)) {
           excluded += 1;
+          await checkpointOversizedBatch();
           continue;
         }
         const nodeId = `path:${canonical(relativePath)}`;
+        if (knownEntryNodeIds.has(nodeId)) {
+          await checkpointOversizedBatch();
+          continue;
+        }
         const summaryCandidate = summaries.get(canonical(relativePath).toLocaleLowerCase('en-US'));
         const summaryNode: ContextTreeNode = {
           id: nodeId,
@@ -602,15 +633,22 @@ export async function scanSiyuanFilesystemIndex(
           modifiedAt: Number.isSafeInteger(child.modifiedMs) ? (child.modifiedMs ?? null) : null,
         };
         entries.push(indexedEntry);
+        knownEntryNodeIds.add(nodeId);
         batchEntries.push(indexedEntry);
         if (child.isDir) {
           const queuedDirectory = { path: child.path, relativePath, parentNodeId: nodeId };
-          queue.push(queuedDirectory);
-          batchDirectories.push(queuedDirectory);
+          const directoryKey = canonical(queuedDirectory.path).toLocaleLowerCase('en-US');
+          if (!knownDirectoryPaths.has(directoryKey)) {
+            knownDirectoryPaths.add(directoryKey);
+            queue.push(queuedDirectory);
+            batchDirectories.push(queuedDirectory);
+          }
         }
+        await checkpointOversizedBatch();
       }
       options.onProgress?.({ indexed: entries.length, excluded, unreadable });
     }
+    cursor += directories.length;
     if (durableRecord) {
       const sampledAt = Date.now();
       const estimate = estimateSiyuanDiscoveryProgress({
