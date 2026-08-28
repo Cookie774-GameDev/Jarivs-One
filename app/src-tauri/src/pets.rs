@@ -9,9 +9,11 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Mutex,
 };
+#[cfg(not(target_os = "windows"))]
+use tauri::PhysicalSize;
 use tauri::{
-    AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
+    AppHandle, LogicalPosition, LogicalSize, Manager, PhysicalPosition, WebviewBuilder, WebviewUrl,
+    WebviewWindow, WindowBuilder,
 };
 
 pub const PET_OVERLAY_LABEL: &str = "pet-overlay";
@@ -1135,29 +1137,45 @@ fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
 }
 
 fn build_pet_overlay(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
-    WebviewWindowBuilder::new(
-        app,
-        PET_OVERLAY_LABEL,
-        pet_webview_url(app, "pet-overlay")?,
-    )
-    .title("VibeSpace Pet")
-    .inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
-    .min_inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
-    .max_inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
-    .resizable(false)
-    .decorations(false)
+    let webview_url = pet_webview_url(app, "pet-overlay")?;
+    let host = WindowBuilder::new(app, PET_OVERLAY_LABEL)
+        .title("VibeSpace Pet")
+        .inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
+        .min_inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
+        .max_inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
+        .resizable(false)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .visible(visible)
+        .focused(false)
+        .shadow(false)
+        .background_color(tauri::window::Color(0, 0, 0, 0))
+        .build()
+        .map_err(|e| format!("failed to create pet-overlay host: {e}"))?;
+    let webview = WebviewBuilder::new(PET_OVERLAY_LABEL, webview_url)
     .transparent(true)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .visible(visible)
     .focused(false)
-    .shadow(false)
     .background_color(tauri::window::Color(0, 0, 0, 0))
     .additional_browser_args(
         "--default-background-color=00000000 --disable-features=CalculateNativeWinOcclusion --autoplay-policy=no-user-gesture-required",
-    )
-    .build()
-    .map_err(|e| format!("failed to create pet-overlay window: {e}"))
+    );
+    if let Err(error) = host.add_child(
+        webview,
+        LogicalPosition::new(0.0, 0.0),
+        LogicalSize::new(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64),
+    ) {
+        let _ = host.destroy();
+        return Err(format!("failed to create pet-overlay webview: {error}"));
+    }
+    match app.get_webview_window(PET_OVERLAY_LABEL) {
+        Some(window) => Ok(window),
+        None => {
+            let _ = host.destroy();
+            Err("failed to register pet-overlay webview".to_string())
+        }
+    }
 }
 
 fn get_or_create_pet_panel(app: &AppHandle) -> Result<WebviewWindow, String> {
@@ -1176,23 +1194,45 @@ fn get_or_create_pet_panel(app: &AppHandle) -> Result<WebviewWindow, String> {
 }
 
 fn build_pet_panel(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
-    WebviewWindowBuilder::new(
-        app,
-        PET_MINI_PANEL_LABEL,
-        pet_webview_url(app, "pet-mini-panel")?,
-    )
-    .title("VibeSpace Pet Panel")
-    .inner_size(PANEL_DEFAULT_W, PANEL_DEFAULT_H)
-    .min_inner_size(PANEL_MIN_W, PANEL_MIN_H)
-    .resizable(true)
-    .decorations(false)
-    .transparent(false)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .visible(visible)
-    .focused(false)
-    .build()
-    .map_err(|e| format!("failed to create pet-mini-panel window: {e}"))
+    let webview_url = pet_webview_url(app, "pet-mini-panel")?;
+    let host = WindowBuilder::new(app, PET_MINI_PANEL_LABEL)
+        .title("VibeSpace Pet Panel")
+        .inner_size(PANEL_DEFAULT_W, PANEL_DEFAULT_H)
+        .min_inner_size(PANEL_MIN_W, PANEL_MIN_H)
+        .resizable(true)
+        .decorations(false)
+        .transparent(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .visible(visible)
+        .focused(false)
+        .build()
+        .map_err(|e| format!("failed to create pet-mini-panel host: {e}"))?;
+    let webview = WebviewBuilder::new(PET_MINI_PANEL_LABEL, webview_url).focused(false);
+    let child = match host.add_child(
+        webview,
+        LogicalPosition::new(0.0, 0.0),
+        LogicalSize::new(PANEL_DEFAULT_W, PANEL_DEFAULT_H),
+    ) {
+        Ok(child) => child,
+        Err(error) => {
+            let _ = host.destroy();
+            return Err(format!("failed to create pet-mini-panel webview: {error}"));
+        }
+    };
+    let resize_child = child.clone();
+    host.on_window_event(move |event| {
+        if let tauri::WindowEvent::Resized(size) = event {
+            let _ = resize_child.set_size(*size);
+        }
+    });
+    match app.get_webview_window(PET_MINI_PANEL_LABEL) {
+        Some(window) => Ok(window),
+        None => {
+            let _ = host.destroy();
+            Err("failed to register pet-mini-panel webview".to_string())
+        }
+    }
 }
 
 /// Show the pet overlay (create visibility). Single instance by label.
@@ -1872,6 +1912,40 @@ mod tests {
         assert!(is_pet_label(PET_OVERLAY_LABEL));
         assert!(is_pet_label(PET_MINI_PANEL_LABEL));
         assert!(!is_pet_label("main"));
+    }
+
+    #[test]
+    fn detached_pet_windows_build_native_hosts_before_same_label_webviews() {
+        let source = include_str!("pets.rs");
+        let overlay_start = source
+            .find("fn build_pet_overlay")
+            .expect("overlay builder exists");
+        let overlay_end = source[overlay_start..]
+            .find("fn get_or_create_pet_panel")
+            .map(|offset| overlay_start + offset)
+            .expect("overlay builder has a bounded source slice");
+        let panel_start = source
+            .find("fn build_pet_panel")
+            .expect("panel builder exists");
+        let panel_end = source[panel_start..]
+            .find("/// Show the pet overlay")
+            .map(|offset| panel_start + offset)
+            .expect("panel builder has a bounded source slice");
+
+        for builder in [
+            &source[overlay_start..overlay_end],
+            &source[panel_start..panel_end],
+        ] {
+            let host_index = builder
+                .find("WindowBuilder::new")
+                .expect("native host is built");
+            let webview_index = builder
+                .find("WebviewBuilder::new")
+                .expect("same-label child webview is built");
+            assert!(host_index < webview_index);
+            assert!(builder.contains("host.add_child("));
+            assert!(!builder.contains("WebviewWindowBuilder::new"));
+        }
     }
 
     #[test]
