@@ -622,11 +622,10 @@ export const SlashCommandTypeahead = forwardRef<
                         <span className="block truncate">
                           {c.label ?? c.displayCommand ?? `/${c.cmd}`}
                         </span>
-                        {c.label ? (
-                          <span className="block truncate text-[9px] text-muted-foreground/75">
-                            {c.displayCommand} · {c.description}
-                          </span>
-                        ) : null}
+                        <span className="block truncate text-[9px] text-muted-foreground/75">
+                          {c.label && c.displayCommand ? `${c.displayCommand} · ` : ''}
+                          {c.description}
+                        </span>
                       </span>
                       {c.hasOptions && (
                         <ChevronRight className="h-2.5 w-2.5 text-accent-copper/60" />

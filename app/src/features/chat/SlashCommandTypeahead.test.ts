@@ -18,6 +18,23 @@ import {
 import { SECTION_20_COMMANDS, SLASH_COMMAND_ALIASES } from './slashCommandRouting';
 
 describe('orderSlashCommandsForDisplay', () => {
+  it('shows the canonical /mcp help text without requiring an optional label', () => {
+    const mcp = findSlashCommandDef('mcp')!;
+
+    render(
+      createElement(SlashCommandTypeahead, {
+        commands: [mcp],
+        selectedCmd: mcp.cmd,
+        query: 'mcp',
+        onSelect: vi.fn(),
+      }),
+    );
+
+    const option = screen.getByRole('option', { name: /\/mcp/i });
+    expect(option.textContent).toContain('/mcp');
+    expect(option.textContent).toContain('Open MCP connections and custom server management');
+  });
+
   it('exposes a stable listbox and truthful keyboard-selected options', () => {
     const commands: SlashCommandDef[] = [
       { cmd: 'terminals', description: 'Terminal', icon: Terminal, category: 'chat' },
