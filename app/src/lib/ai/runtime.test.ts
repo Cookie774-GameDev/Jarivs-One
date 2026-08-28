@@ -1338,6 +1338,20 @@ describe('startRuntimeListener agent routing', () => {
     expect(messages[0]?.content).toContain('Do not answer with a bootstrap receipt');
   });
 
+  it('preserves a bounded relative current-working-directory read for disk tooling', () => {
+    const content = [
+      'Read only input.txt in the current working directory.',
+      'Add the two integer values in that file.',
+      'Return exactly these two lines and nothing else:',
+      'READ_SUM: 42',
+      'SOURCE: input.txt',
+    ].join('\n');
+
+    expect(prepareOpenCodeMessagesForInteractionMode([{ role: 'user', content }])).toEqual([
+      { role: 'user', content },
+    ]);
+  });
+
   const liveTest08AddressBatches = [
     `This is batch 1 of 2 for one Test08 run in the same retained chat.
 Use the production vibespace_context address operation only. Do not use search, open, or expand.
@@ -4038,6 +4052,225 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
         }),
       ]),
     );
+    expect(useAgentStore.getState().runStates[jarvis.id]).toBe('waiting_for_user');
+    expect(mocks.notifyDone).not.toHaveBeenCalled();
+
+    stop();
+  });
+
+  it('completes a bounded current-directory read without a Context rewrite or approval card', async () => {
+    const projectId = 'project_deepseek_cwd_read' as never;
+    const workingDirectory = 'C:\\Users\\viper\\Documents\\Codex\\2026-08-21';
+    const openCodeConnection = PROVIDER_CONNECTIONS.find(
+      (connection) => connection.id === 'opencode-cli',
+    )!;
+    rememberLiveOpenCodeProviders([
+      {
+        id: 'opencode-go',
+        name: 'OpenCode Go',
+        connected: true,
+        models: [
+          {
+            id: 'deepseek-v4-flash-vision-exp',
+            name: 'DeepSeek V4 FLASH Vision Exp',
+            variants: ['high'],
+          },
+        ],
+      },
+    ]);
+    const userText = [
+      'Read only input.txt in the current working directory.',
+      'Add the two integer values in that file.',
+      'Return exactly these two lines and nothing else:',
+      'READ_SUM: 42',
+      'SOURCE: input.txt',
+    ].join('\n');
+    const { setStoredProjectRoot } = await import('@/features/files/projectFiles');
+    setStoredProjectRoot(projectId, workingDirectory);
+    useAuthStore.setState({
+      projectId,
+      chatModelSelection: selectionFromOption(
+        openCodeConnection.providerId as ProviderId,
+        'opencode-go/deepseek-v4-flash-vision-exp',
+        openCodeConnection,
+      ),
+    });
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_deepseek_cwd_read' as ChatId;
+    const placeholderId = 'msg_deepseek_cwd_read_assistant' as MessageId;
+    const updateMessage = vi.fn(async () => undefined);
+    const userMessage: Message = {
+      id: 'msg_deepseek_cwd_read_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: userText }],
+      created_at: 1,
+      updated_at: 1,
+    };
+    mocks.chatGetById.mockResolvedValueOnce({
+      id: chatId,
+      workspace_id: 'workspace_deepseek_cwd' as never,
+      project_id: projectId,
+      title: 'DeepSeek cwd read',
+      mode: 'chat',
+      active_agent_ids: [jarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    mocks.runAgent.mockResolvedValueOnce({
+      text: 'READ_SUM: 42\nSOURCE: input.txt',
+      usage: { input_tokens: 1, output_tokens: 6, cost_usd: 0 },
+      provider: 'opencode',
+      model: 'opencode-go/deepseek-v4-flash-vision-exp',
+    });
+
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
+
+    window.dispatchEvent(new CustomEvent('jarvis:send', { detail: { chatId, text: userText } }));
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+    await stop.whenIdle();
+
+    const providerInput = mocks.runAgent.mock.calls[0]![0];
+    expect(providerInput.workingDirectory).toBe(workingDirectory);
+    expect(providerInput.messages.at(-1)?.content).toBe(userText);
+    expect(
+      Object.entries(providerInput.tools)
+        .filter(([tool]) => tool !== 'vibespace_context')
+        .some(([, enabled]) => enabled === true),
+    ).toBe(true);
+    const updateCalls = updateMessage.mock.calls as unknown as Array<
+      [MessageId, { parts: Part[] }]
+    >;
+    const finalWrite = updateCalls.at(-1)?.[1];
+    expect(finalWrite?.parts).toEqual([{ kind: 'text', text: 'READ_SUM: 42\nSOURCE: input.txt' }]);
+    expect(useAgentStore.getState().runStates[jarvis.id]).toBe('done');
+    expect(mocks.notifyDone).toHaveBeenCalledOnce();
+
+    stop();
+  });
+
+  it('keeps an exact current-directory write pending at the project root without inventing a path', async () => {
+    const projectId = 'project_deepseek_cwd' as never;
+    const workingDirectory = 'C:\\Users\\viper\\Documents\\Codex\\2026-08-21';
+    const openCodeConnection = PROVIDER_CONNECTIONS.find(
+      (connection) => connection.id === 'opencode-cli',
+    )!;
+    rememberLiveOpenCodeProviders([
+      {
+        id: 'opencode-go',
+        name: 'OpenCode Go',
+        connected: true,
+        models: [
+          {
+            id: 'deepseek-v4-flash-vision-exp',
+            name: 'DeepSeek V4 FLASH Vision Exp',
+            variants: ['high'],
+          },
+        ],
+      },
+    ]);
+    const userText = [
+      'Write a UTF-8 file named output.txt in the current working directory containing exactly LATENCY_OK followed by one newline.',
+      'Do not inspect any other path.',
+      'Then return exactly this line and nothing else:',
+      'WRITE: output.txt',
+    ].join('\n');
+    const { setStoredProjectRoot } = await import('@/features/files/projectFiles');
+    setStoredProjectRoot(projectId, workingDirectory);
+    useAuthStore.setState({
+      projectId,
+      chatModelSelection: selectionFromOption(
+        openCodeConnection.providerId as ProviderId,
+        'opencode-go/deepseek-v4-flash-vision-exp',
+        openCodeConnection,
+      ),
+    });
+    const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_deepseek_cwd_write' as ChatId;
+    const placeholderId = 'msg_deepseek_cwd_write_assistant' as MessageId;
+    const updateMessage = vi.fn(async () => undefined);
+    const userMessage: Message = {
+      id: 'msg_deepseek_cwd_write_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: userText }],
+      created_at: 1,
+      updated_at: 1,
+    };
+    mocks.chatGetById.mockResolvedValueOnce({
+      id: chatId,
+      workspace_id: 'workspace_deepseek_cwd' as never,
+      project_id: projectId,
+      title: 'DeepSeek cwd write',
+      mode: 'chat',
+      active_agent_ids: [jarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    mocks.runAgent.mockResolvedValueOnce({
+      text: 'WRITE: output.txt',
+      usage: { input_tokens: 1, output_tokens: 3, cost_usd: 0 },
+      provider: 'opencode',
+      model: 'opencode-go/deepseek-v4-flash-vision-exp',
+    });
+
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
+
+    window.dispatchEvent(new CustomEvent('jarvis:send', { detail: { chatId, text: userText } }));
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+    await stop.whenIdle();
+    const providerInput = mocks.runAgent.mock.calls[0]![0];
+    expect(providerInput.workingDirectory).toBe(workingDirectory);
+    expect(providerInput.messages.at(-1)?.content).toBe(userText);
+    const updateCalls = updateMessage.mock.calls as unknown as Array<
+      [MessageId, { parts: Part[] }]
+    >;
+    const finalWrite = updateCalls[updateCalls.length - 1]?.[1];
+    if (!finalWrite) throw new Error('expected a final assistant message write');
+    expect(finalWrite.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'action_proposal',
+          action_id: 'files.create',
+          params: {
+            path: `${workingDirectory}\\output.txt`,
+            content: 'LATENCY_OK\n',
+            root: workingDirectory,
+          },
+          status: 'pending',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(finalWrite.parts)).not.toContain('jarvis-note.txt');
     expect(useAgentStore.getState().runStates[jarvis.id]).toBe('waiting_for_user');
     expect(mocks.notifyDone).not.toHaveBeenCalled();
 

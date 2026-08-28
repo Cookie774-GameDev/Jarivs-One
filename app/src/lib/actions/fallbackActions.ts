@@ -1,6 +1,6 @@
 import type { ParsedActionProposal } from './types';
 import { defaultWriteFilePath, getCachedDefaultWriteDir } from './defaultWriteDir';
-import { isPathInsideRoot } from './filePolicy';
+import { isPathInsideRoot, joinPortablePath, normalizePortableAbsolutePath } from './filePolicy';
 
 let nextFallbackId = 1;
 
@@ -612,6 +612,7 @@ export function shouldReplaceModelActionsWithFileReadFallback(
 export function inferFallbackActionProposals(
   userText: string,
   assistantText: string,
+  options: { workingDirectory?: string | null } = {},
 ): ParsedActionProposal[] {
   const user = normalized(userText);
   const assistant = normalized(assistantText);
@@ -796,17 +797,19 @@ export function inferFallbackActionProposals(
 
   const fileWrite = extractFileWriteRequest(userText, assistantText, {
     defaultDir: defaultWriteDir,
+    workingDirectory: options.workingDirectory,
   });
   if (fileWrite) {
     const usesDefaultRoot =
       defaultWriteDir !== null && isPathInsideRoot(fileWrite.path, defaultWriteDir);
+    const trustedRoot = fileWrite.root ?? (usesDefaultRoot ? defaultWriteDir : null);
     proposals.push(
       proposal(
         'files.create',
         {
           path: fileWrite.path,
           content: fileWrite.content,
-          ...(usesDefaultRoot ? { root: defaultWriteDir } : {}),
+          ...(trustedRoot ? { root: trustedRoot } : {}),
         },
         `Write ${fileWrite.path} after user approval.`,
       ),
@@ -883,8 +886,8 @@ export function extractFileReadRequest(userText: string): { path: string } | nul
 export function extractFileWriteRequest(
   userText: string,
   assistantText = '',
-  options?: { defaultDir?: string | null },
-): { path: string; content: string } | null {
+  options?: { defaultDir?: string | null; workingDirectory?: string | null },
+): { path: string; content: string; root?: string } | null {
   const raw = userText.trim();
   if (!raw) return null;
   const pathMatch = matchAbsolutePath(raw);
@@ -893,6 +896,7 @@ export function extractFileWriteRequest(
       match[0].toLowerCase(),
     ),
   );
+  const mentionsCurrentWorkingDirectory = /\bcurrent working directory\b/iu.test(raw);
   // A prose request for a multi-file project is agent work, not authority to
   // invent one unrelated default-file write after the provider finishes.
   if (!pathMatch && mentionedFilenames.size > 1) return null;
@@ -923,6 +927,7 @@ export function extractFileWriteRequest(
 
   // Absolute Windows / UNC / POSIX path, optionally quoted
   let path: string;
+  let root: string | undefined;
   if (pathMatch?.[1]) {
     path = pathMatch[1].replace(/[.,;:]+$/, '').trim();
     if (!path) return null;
@@ -932,6 +937,34 @@ export function extractFileWriteRequest(
       const name = wantsTxt ? 'jarvis-note.txt' : 'jarvis-file.txt';
       path = path.replace(/[\\/]+$/, '') + (path.includes('\\') ? `\\${name}` : `/${name}`);
     }
+  } else if (mentionsCurrentWorkingDirectory) {
+    const filenameMatches = [
+      ...raw.matchAll(/\b[A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9]{1,12}\b/gu),
+    ];
+    const uniqueFilenames = new Map<string, string>();
+    let unsafeReference = false;
+    for (const match of filenameMatches) {
+      const filename = match[0];
+      const start = match.index ?? -1;
+      if (start < 0 || /[\\/.]/u.test(raw[start - 1] ?? '') || !isSafeLeafFilename(filename)) {
+        unsafeReference = true;
+        continue;
+      }
+      uniqueFilenames.set(filename.toLowerCase(), filename);
+    }
+    if (unsafeReference || uniqueFilenames.size !== 1) return null;
+    const requestedFilename = uniqueFilenames.values().next().value;
+    if (typeof requestedFilename !== 'string') return null;
+    const requestedWorkingDirectory = options?.workingDirectory?.trim() ?? '';
+    const portableWorkingDirectory = requestedWorkingDirectory.match(
+      /^\\\\\?\\([A-Za-z]:[\\/].*)$/u,
+    )?.[1];
+    const normalizedWorkingDirectory = normalizePortableAbsolutePath(
+      portableWorkingDirectory ?? requestedWorkingDirectory,
+    );
+    if (!normalizedWorkingDirectory) return null;
+    root = normalizedWorkingDirectory;
+    path = joinPortablePath(normalizedWorkingDirectory, requestedFilename);
   } else {
     // No path given — place a general file in the default write folder
     if (!/\b(file|txt|document|story|note|script)\b/.test(lower)) return null;
@@ -943,13 +976,30 @@ export function extractFileWriteRequest(
   // Content: after "write/about" or remaining prose without the path/make-file boilerplate
   let content = '';
   const pathToken = pathMatch?.[0] ?? '';
+  const exactSingleNewlineMatches = [
+    ...raw.matchAll(
+      /\bcontaining\s+exactly\s+([^\r\n]{1,199999}?)\s+followed\s+by\s+(?:exactly\s+)?one\s+newline\b/giu,
+    ),
+  ];
+  if (root) {
+    if (exactSingleNewlineMatches.length !== 1) return null;
+    const captured = exactSingleNewlineMatches[0]?.[1]?.trim() ?? '';
+    const paired = captured.match(/^(?:`([^`]*)`|"([^"]*)"|'([^']*)'|“([^”]*)”)$/u);
+    const exactContent = paired
+      ? (paired.slice(1).find((value) => value !== undefined) ?? '')
+      : captured;
+    if (!exactContent || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(exactContent)) {
+      return null;
+    }
+    content = `${exactContent}\n`;
+  }
   const explicitContentMatch = raw.match(
     /\b(?:that\s+)?(?:contains?|containing|says?)\s+(?:exactly\s*)?:\s*([\s\S]+)$/i,
   );
   const aboutMatch =
     explicitContentMatch ??
     raw.match(/\b(?:write|about|with|containing|that says?)\b[:\s]+([\s\S]+)/i);
-  if (aboutMatch?.[1]) {
+  if (!content && aboutMatch?.[1]) {
     content = explicitContentMatch
       ? explicitContentMatch[1].trim()
       : aboutMatch[1]
@@ -960,7 +1010,7 @@ export function extractFileWriteRequest(
           .trim();
   }
 
-  if (!content || content.length < 8) {
+  if (!content || (content.length < 8 && !root)) {
     // Strip path and boilerplate; use leftover as content seed
     content = raw
       .replace(pathToken, ' ')
@@ -984,5 +1034,5 @@ export function extractFileWriteRequest(
   // Cap content for safety
   if (content.length > 200_000) content = content.slice(0, 200_000);
 
-  return { path, content };
+  return { path, content, ...(root ? { root } : {}) };
 }

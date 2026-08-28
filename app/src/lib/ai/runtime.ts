@@ -3199,6 +3199,7 @@ function textToParts(
   text: string,
   userText?: string,
   interactionMode: JarvisInteractionMode = 'agent',
+  fallbackOptions: { workingDirectory?: string | null } = {},
 ): Part[] {
   const requestIntent = classifyJarvisIntent({ text: userText ?? '' });
   const questionResult = parseJarvisQuestionBlocks(text);
@@ -3226,7 +3227,9 @@ function textToParts(
   }
   if (!result.hasActionBlocks) {
     const fallbackProposals =
-      userText && interactionMode === 'agent' ? inferFallbackActionProposals(userText, text) : [];
+      userText && interactionMode === 'agent'
+        ? inferFallbackActionProposals(userText, text, fallbackOptions)
+        : [];
     if (fallbackProposals.length === 0) return [{ kind: 'text', text }];
     const actionLabel = fallbackProposals
       .map(({ action_id, rationale }) => rationale?.trim() || action_id)
@@ -3280,7 +3283,7 @@ function textToParts(
     )
     .map((seg) => seg.proposal.action_id);
   if (userText && interactionMode === 'agent') {
-    const fallbackProposals = inferFallbackActionProposals(userText, text);
+    const fallbackProposals = inferFallbackActionProposals(userText, text, fallbackOptions);
     const replaceValidCommandWithFileCreate =
       hasValidAction &&
       shouldReplaceModelActionsWithFileCreateFallback(modelActionIds, fallbackProposals);
@@ -6425,7 +6428,9 @@ export function startRuntimeListener(
         explicitReadScopeUnverified ||
         explicitRootAuditIncomplete
           ? [{ kind: 'text', text: finalText }]
-          : textToParts(finalText, text, interactionMode);
+          : textToParts(finalText, text, interactionMode, {
+              workingDirectory: providerRequest.workingDirectory,
+            });
       let oversizedResponseAttachment: Awaited<
         ReturnType<typeof createOversizedMessageAttachment>
       > = null;

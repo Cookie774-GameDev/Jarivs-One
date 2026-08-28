@@ -481,6 +481,17 @@ export function requestsReadOnlyContextTool(userText: string): boolean {
   if (MUTATING_REQUEST.test(userText)) return false;
   // Registered disk reads must stay on files.read, not Context-map search.
   if (/\bfiles\.read\b/i.test(userText) && /[A-Za-z]:[\\/]/.test(userText)) return false;
+  if (/\bcurrent working directory\b/i.test(userText) && READ_OR_EVIDENCE_REQUEST.test(userText)) {
+    const relativeLeafMatches = [
+      ...userText.matchAll(/\b[A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z0-9]{1,12}\b/giu),
+    ];
+    const relativeLeafNames = new Set(relativeLeafMatches.map((match) => match[0].toLowerCase()));
+    const everyReferenceIsAStandaloneLeaf = relativeLeafMatches.every((match) => {
+      const start = match.index ?? -1;
+      return start >= 0 && !/[\\/.]/u.test(userText[start - 1] ?? '');
+    });
+    if (relativeLeafNames.size === 1 && everyReferenceIsAStandaloneLeaf) return false;
+  }
   return (
     (READ_OR_EVIDENCE_REQUEST.test(userText) && FILE_LIKE_SOURCE.test(userText)) ||
     (BOUND_PROJECT_SCOPE.test(userText) && BOUND_PROJECT_FACT_LOOKUP.test(userText)) ||

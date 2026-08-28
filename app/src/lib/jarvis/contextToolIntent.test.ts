@@ -571,4 +571,18 @@ describe('requestsReadOnlyContextTool', () => {
       ),
     ).toBe(false);
   });
+
+  it('does not rewrite one bounded relative file read from the current working directory', () => {
+    expect(
+      requestsReadOnlyContextTool(
+        [
+          'Read only input.txt in the current working directory.',
+          'Add the two integer values in that file.',
+          'Return exactly these two lines and nothing else:',
+          'READ_SUM: 42',
+          'SOURCE: input.txt',
+        ].join('\n'),
+      ),
+    ).toBe(false);
+  });
 });

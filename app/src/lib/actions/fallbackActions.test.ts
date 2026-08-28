@@ -181,6 +181,74 @@ describe('inferFallbackActionProposals', () => {
     __setCachedDefaultWriteDirForTests(null);
   });
 
+  it('resolves one exact relative write against the authoritative current working directory', () => {
+    const workingDirectory = 'C:\\Users\\viper\\Documents\\Codex\\2026-08-21';
+    __setCachedDefaultWriteDirForTests(
+      'C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\Projects',
+    );
+    const proposals = inferFallbackActionProposals(
+      [
+        'Write a UTF-8 file named output.txt in the current working directory containing exactly LATENCY_OK followed by one newline.',
+        'Do not inspect any other path.',
+        'Then return exactly this line and nothing else:',
+        'WRITE: output.txt',
+      ].join('\n'),
+      'WRITE: output.txt',
+      { workingDirectory },
+    );
+
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0]).toMatchObject({
+      action_id: 'files.create',
+      params: {
+        path: `${workingDirectory}\\output.txt`,
+        content: 'LATENCY_OK\n',
+        root: workingDirectory,
+      },
+    });
+    expect(JSON.stringify(proposals)).not.toContain('jarvis-note.txt');
+  });
+
+  it('normalizes an authoritative Windows extended-length working directory before approval', () => {
+    const proposals = inferFallbackActionProposals(
+      'Write output.txt in the current working directory containing exactly SAFE followed by one newline.',
+      'WRITE: output.txt',
+      { workingDirectory: '\\\\?\\C:\\Users\\viper\\Project' },
+    );
+
+    expect(proposals[0]?.params).toEqual({
+      path: 'C:\\Users\\viper\\Project\\output.txt',
+      content: 'SAFE\n',
+      root: 'C:\\Users\\viper\\Project',
+    });
+  });
+
+  it.each([
+    ['missing working directory', undefined],
+    ['relative working directory', '..\\outside'],
+  ])('fails closed for a current-directory write with %s', (_label, workingDirectory) => {
+    __setCachedDefaultWriteDirForTests(
+      'C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\Projects',
+    );
+    expect(
+      inferFallbackActionProposals(
+        'Write output.txt in the current working directory containing exactly SAFE followed by one newline.',
+        'WRITE: output.txt',
+        { workingDirectory },
+      ),
+    ).toEqual([]);
+  });
+
+  it('fails closed when the current-directory target is not one safe leaf filename', () => {
+    expect(
+      inferFallbackActionProposals(
+        'Write ../output.txt in the current working directory containing exactly SAFE followed by one newline.',
+        'WRITE: output.txt',
+        { workingDirectory: 'C:\\Users\\viper\\Documents\\Codex\\2026-08-21' },
+      ),
+    ).toEqual([]);
+  });
+
   it('proposes opening Settings when a local model only replies in prose', () => {
     const proposals = inferFallbackActionProposals(
       'Okay can you open the settings page please',
