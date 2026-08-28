@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { syncDiscoveredOllamaModels } from './models';
+import { getDiscoveredConnectionModels } from './connectionCatalog';
 import {
   getModelsForProvider,
   loadProviderModels,
   modelBelongsToProvider,
+  MODEL_CATALOG_REFRESH_INTERVAL_MS,
+  refreshConnectedProviderModels,
   resetProviderModelCache,
   resolveModelOnProviderChange,
   resolveSelectedModelOrDisable,
@@ -28,20 +31,17 @@ describe('providerModelCatalog', () => {
     expect(sanitizeModelIdForInput('  gemini-3.5-flash \n')).toBe('gemini-3.5-flash');
   });
 
-  it('returns Gemini models for google provider', () => {
+  it('does not expose Gemini fallback rows before live discovery', () => {
     const models = getModelsForProvider('google', ctx);
-    expect(models.some((model) => model.id === 'gemini-3.5-flash')).toBe(true);
-    expect(models.every((model) => model.provider === 'google')).toBe(true);
-    expect(models.some((model) => model.id === 'gemini-3.1-pro')).toBe(false);
+    expect(models).toEqual([]);
   });
 
-  it('does not overlay stale Hive frontier ids onto provider catalogs', () => {
+  it('does not expose static OpenAI entries before an authenticated catalog exists', () => {
     const openai = getModelsForProvider('openai', {
       ...ctx,
       apiKeys: { openai: 'test-key' },
     });
-    expect(openai.some((model) => model.id === 'gpt-5.5-pro')).toBe(false);
-    expect(openai.some((model) => model.id === 'gpt-5.5-codex')).toBe(false);
+    expect(openai).toEqual([]);
   });
 
   it('discovers the Qwen models from the authenticated region endpoint only', async () => {
@@ -93,6 +93,42 @@ describe('providerModelCatalog', () => {
     setActiveQwenCompatibleBaseUrlForTests(undefined);
   });
 
+  it('keeps Gemini model discovery on the chat transport', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          models: [
+            {
+              name: 'models/gemini-3.7-flash',
+              displayName: 'Gemini 3.7 Flash',
+              supportedGenerationMethods: ['generateContent'],
+            },
+            {
+              name: 'models/deep-research-max-preview-04-2026',
+              displayName: 'Deep Research Max Preview',
+              supportedGenerationMethods: ['interactions.create'],
+            },
+            {
+              name: 'models/gemini-3-pro-image',
+              displayName: 'Gemini 3 Pro Image',
+              supportedGenerationMethods: ['generateContent'],
+            },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const models = await loadProviderModels(
+      'google',
+      { ...ctx, apiKeys: { google: 'google-key' } },
+      { force: true },
+    );
+
+    expect(models.map((model) => model.id)).toEqual(['gemini-3.7-flash']);
+    fetchMock.mockRestore();
+  });
+
   it('refreshes every OpenAI-compatible chat catalog and excludes non-chat models', async () => {
     const endpoints = {
       deepseek: 'https://api.deepseek.com/models',
@@ -109,6 +145,10 @@ describe('providerModelCatalog', () => {
             data: [
               { id: `${provider}-chat`, type: 'chat' },
               { id: `${provider}-image`, type: 'image' },
+              { id: `${provider}-translation`, type: 'language' },
+              { id: `${provider}-deep-research-preview`, type: 'language' },
+              { id: `${provider}-agent-endpoint`, type: 'language' },
+              { id: `${provider}-computer-use-preview`, type: 'language' },
             ],
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
@@ -131,6 +171,10 @@ describe('providerModelCatalog', () => {
       );
       expect(models.some((model) => model.id === `${provider}-chat`)).toBe(true);
       expect(models.some((model) => model.id === `${provider}-image`)).toBe(false);
+      expect(models.some((model) => model.id === `${provider}-translation`)).toBe(false);
+      expect(models.some((model) => model.id === `${provider}-deep-research-preview`)).toBe(false);
+      expect(models.some((model) => model.id === `${provider}-agent-endpoint`)).toBe(false);
+      expect(models.some((model) => model.id === `${provider}-computer-use-preview`)).toBe(false);
     }
     fetchMock.mockRestore();
   });
@@ -146,15 +190,140 @@ describe('providerModelCatalog', () => {
     expect(result).toEqual({
       status: 'missing',
       modelId: 'gemini-2.0-flash',
-      error:
-        'gemini-2.0-flash is no longer available for Gemini. Choose another model.',
+      error: 'gemini-2.0-flash is no longer available for Gemini. Choose another model.',
     });
   });
 
-  it('marks static picker rows unverified until live discovery replaces them', () => {
+  it('retains only a previously verified catalog when a refresh fails', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            models: [
+              {
+                name: 'models/gemini-live',
+                supportedGenerationMethods: ['generateContent'],
+              },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+      .mockRejectedValueOnce(new Error('network unavailable'));
+    const live = await loadProviderModels('google', ctx, { force: true });
+    expect(live.map((model) => model.id)).toEqual(['gemini-live']);
+
+    const refreshed = await loadProviderModels('google', ctx, { force: true });
+    expect(refreshed.map((model) => model.id)).toEqual(['gemini-live']);
+    fetchMock.mockRestore();
+  });
+
+  it('refreshes only connected BYOK catalogs with a five-minute no-inference list pass', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ models: [{ name: 'models/gemini-3.7-flash' }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [{ id: 'deepseek-v4-flash', type: 'chat' }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+
+    const report = await refreshConnectedProviderModels({
+      ...ctx,
+      apiKeys: { google: 'google-key', deepseek: 'deepseek-key', mock: 'demo-only' },
+    });
+
+    expect(MODEL_CATALOG_REFRESH_INTERVAL_MS).toBe(5 * 60 * 1000);
+    expect(report).toEqual([
+      { providerId: 'google', status: 'refreshed' },
+      { providerId: 'deepseek', status: 'refreshed' },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(getModelsForProvider('google', { ...ctx, apiKeys: { google: 'google-key' } })).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'gemini-3.7-flash' })]),
+    );
+    expect(
+      getModelsForProvider('deepseek', { ...ctx, apiKeys: { deepseek: 'deepseek-key' } }),
+    ).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'deepseek-v4-flash' })]));
+    fetchMock.mockRestore();
+  });
+
+  it('retires a removed upstream ID instead of silently replacing the selected model', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [{ id: 'deepseek-v4-flash', type: 'chat' }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [{ id: 'deepseek-v4-vision-exp', type: 'chat' }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    const deepseekCtx = { ...ctx, apiKeys: { deepseek: 'deepseek-key' } };
+
+    await loadProviderModels('deepseek', deepseekCtx, { force: true });
+    expect(resolveSelectedModelOrDisable('deepseek', 'deepseek-v4-flash', deepseekCtx)).toEqual({
+      status: 'available',
+      modelId: 'deepseek-v4-flash',
+    });
+
+    await loadProviderModels('deepseek', deepseekCtx, { force: true });
+
+    expect(resolveSelectedModelOrDisable('deepseek', 'deepseek-v4-flash', deepseekCtx)).toEqual({
+      status: 'missing',
+      modelId: 'deepseek-v4-flash',
+      error: 'deepseek-v4-flash is no longer available for DeepSeek. Choose another model.',
+    });
+    expect(getModelsForProvider('deepseek', deepseekCtx).map((model) => model.id)).toEqual([
+      'deepseek-v4-vision-exp',
+    ]);
+    expect(getDiscoveredConnectionModels('deepseek-api').map((model) => model.id)).toEqual([
+      'deepseek-v4-vision-exp',
+    ]);
+    fetchMock.mockRestore();
+  });
+
+  it('does not show a previous account catalog after the provider key changes', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [{ id: 'deepseek-v4-flash', type: 'chat' }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: [{ id: 'deepseek-v4-vision-exp', type: 'chat' }] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    const firstAccount = { ...ctx, apiKeys: { deepseek: 'first-key' } };
+    const secondAccount = { ...ctx, apiKeys: { deepseek: 'second-key' } };
+
+    await loadProviderModels('deepseek', firstAccount, { force: true });
+    expect(getModelsForProvider('deepseek', secondAccount)).toEqual([]);
+    await loadProviderModels('deepseek', secondAccount);
+    expect(getModelsForProvider('deepseek', secondAccount).map((model) => model.id)).toEqual([
+      'deepseek-v4-vision-exp',
+    ]);
+    fetchMock.mockRestore();
+  });
+
+  it('does not mark unverified static picker rows as provider models', () => {
     const models = getModelsForProvider('google', ctx);
-    expect(models.length).toBeGreaterThan(0);
-    expect(models.every((model) => model.availability === 'unverified')).toBe(true);
+    expect(models).toEqual([]);
   });
 
   it('does not expose unknown saved models as dropdown options', () => {

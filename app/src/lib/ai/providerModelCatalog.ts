@@ -12,6 +12,7 @@ import {
   getProviderRegistryEntry,
   isLocalProvider,
   isProviderConnected,
+  PROVIDER_REGISTRY,
   type ProviderConnectionContext,
 } from './providerRegistry';
 import { setDiscoveredConnectionModels } from './connectionCatalog';
@@ -56,13 +57,16 @@ export interface ProviderModelValidation {
   isCustomModel?: boolean;
 }
 
-const MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
+/** Catalog reads happen outside prompt dispatch and refresh on a bounded five-minute cadence. */
+export const MODEL_CATALOG_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 8000;
 
 type ModelCacheEntry = {
   fetchedAt: number;
   models: RegistryModelOption[];
   stale: boolean;
+  /** In-memory only; prevents a prior account's result being reused after a key change. */
+  credential: string;
   error?: string;
 };
 
@@ -124,7 +128,7 @@ function mergeModelOptions(
   return merged;
 }
 
-/** Resolve dropdown models for a provider (full static fallback + cached live catalog). */
+/** Resolve dropdown models from the current authenticated provider catalog. */
 export function getModelsForProvider(
   providerId: ProviderId,
   ctx: ProviderConnectionContext,
@@ -134,9 +138,23 @@ export function getModelsForProvider(
     return [];
   }
 
-  const cached = dynamicModelCache.get(providerId)?.models ?? [];
+  const credential = ctx.apiKeys[providerId]?.trim() ?? '';
+  const cachedEntry = dynamicModelCache.get(providerId);
+  const cached =
+    cachedEntry && (isLocalProvider(providerId) || cachedEntry.credential === credential)
+      ? cachedEntry.models
+      : [];
   if (cached.length > 0) {
     return mergeModelOptions(providerId, [cached]);
+  }
+  // A dynamic provider's static list is useful for migrations and validation,
+  // but it is not an authorization result. Showing it in the picker makes an
+  // unsigned-in account look like it can run every historical model.
+  if (
+    getProviderRegistryEntry(providerId)?.supportsDynamicListing &&
+    !isLocalProvider(providerId)
+  ) {
+    return [];
   }
   const staticModels = staticOptionsForProvider(providerId, ctx).map((option) => ({
     ...option,
@@ -275,7 +293,7 @@ export function getProviderModelCacheState(providerId: ProviderId): {
 } {
   const entry = dynamicModelCache.get(providerId);
   if (!entry) return { stale: false };
-  const expired = Date.now() - entry.fetchedAt > MODEL_CACHE_TTL_MS;
+  const expired = Date.now() - entry.fetchedAt > MODEL_CATALOG_REFRESH_INTERVAL_MS;
   return { stale: entry.stale || expired, error: entry.error, fetchedAt: entry.fetchedAt };
 }
 
@@ -300,7 +318,7 @@ function isOpenAiCompatibleModelRow(value: unknown): value is OpenAiCompatibleMo
 }
 
 const NON_CHAT_MODEL_ID_SEGMENT_RE =
-  /(?:^|[./_-])(?:asr|audio|embed(?:ding)?s?|image|livetranslate|moderation|realtime|rerank|speech|transcri(?:be|ption)|tts|video|whisper)(?:$|[./_-])/iu;
+  /(?:^|[./_-])(?:agents?|asr|audio|computer[._-]?use|deep[._-]?research|embed(?:ding)?s?|image|livetranslate|moderation|realtime|rerank|speech|transcri(?:be|ption)|translat(?:e|ion)|tts|video|whisper)(?:$|[./_-])/iu;
 
 function isChatTransportCompatibleModelId(id: string): boolean {
   return !NON_CHAT_MODEL_ID_SEGMENT_RE.test(id);
@@ -310,7 +328,7 @@ function parseOpenAiCompatibleModels(
   providerId: ProviderId,
   payload: { data?: unknown[] } | unknown[],
 ): RegistryModelOption[] {
-  const rows = (Array.isArray(payload) ? payload : payload.data ?? []).filter(
+  const rows = (Array.isArray(payload) ? payload : (payload.data ?? [])).filter(
     isOpenAiCompatibleModelRow,
   );
   return rows
@@ -332,12 +350,28 @@ function parseOpenAiCompatibleModels(
 }
 
 function parseGoogleModels(payload: {
-  models?: Array<{ name?: string; displayName?: string }>;
+  models?: Array<{
+    name?: string;
+    displayName?: string;
+    supportedGenerationMethods?: unknown;
+  }>;
 }): RegistryModelOption[] {
   const rows: RegistryModelOption[] = [];
   for (const row of payload.models ?? []) {
     const raw = row.name?.replace(/^models\//, '').trim();
     if (!raw) continue;
+    if (!isChatTransportCompatibleModelId(raw)) continue;
+    const methods = Array.isArray(row.supportedGenerationMethods)
+      ? row.supportedGenerationMethods.filter(
+          (method): method is string => typeof method === 'string',
+        )
+      : [];
+    if (
+      methods.length > 0 &&
+      !methods.some((method) => method === 'generateContent' || method === 'streamGenerateContent')
+    ) {
+      continue;
+    }
     rows.push({
       id: raw,
       label: row.displayName?.trim() || raw,
@@ -443,17 +477,21 @@ export async function loadProviderModels(
     return getModelsForProvider(providerId, ctx);
   }
 
-  const cached = dynamicModelCache.get(providerId);
+  const apiKey = ctx.apiKeys[providerId]?.trim() ?? '';
+  const cachedEntry = dynamicModelCache.get(providerId);
+  const cached =
+    cachedEntry && (isLocalProvider(providerId) || cachedEntry.credential === apiKey)
+      ? cachedEntry
+      : undefined;
   if (
     !opts?.force &&
     cached &&
-    Date.now() - cached.fetchedAt < MODEL_CACHE_TTL_MS &&
+    Date.now() - cached.fetchedAt < MODEL_CATALOG_REFRESH_INTERVAL_MS &&
     cached.models.length > 0
   ) {
     return getModelsForProvider(providerId, ctx);
   }
 
-  const apiKey = ctx.apiKeys[providerId]?.trim();
   if (!apiKey && !isLocalProvider(providerId)) {
     return getModelsForProvider(providerId, ctx);
   }
@@ -468,9 +506,10 @@ export async function loadProviderModels(
         fetchedAt: Date.now(),
         models: dynamic,
         stale: false,
+        credential: apiKey,
       });
       const connectionId = NATIVE_CONNECTION_ID_BY_PROVIDER[providerId];
-      if (connectionId && dynamic.length > 0) {
+      if (connectionId) {
         setDiscoveredConnectionModels(
           connectionId,
           dynamic.map((model) => ({
@@ -487,6 +526,7 @@ export async function loadProviderModels(
         fetchedAt: Date.now(),
         models: cached?.models ?? [],
         stale: true,
+        credential: apiKey,
         error: err instanceof Error ? err.message : 'fetch failed',
       });
       return getModelsForProvider(providerId, ctx);
@@ -504,6 +544,41 @@ export function refreshProviderModels(
   ctx: ProviderConnectionContext,
 ): Promise<RegistryModelOption[]> {
   return loadProviderModels(providerId, ctx, { force: true });
+}
+
+export type ConnectedProviderCatalogRefreshResult = {
+  providerId: ProviderId;
+  status: 'refreshed' | 'failed';
+};
+
+/**
+ * Refresh each connected BYOK catalog without sending a prompt or blocking a model request.
+ * A small worker pool avoids spiking user/provider rate limits when several accounts are linked.
+ */
+export async function refreshConnectedProviderModels(
+  ctx: ProviderConnectionContext,
+): Promise<readonly ConnectedProviderCatalogRefreshResult[]> {
+  if (ctx.offlineMode) return [];
+  const providerIds = PROVIDER_REGISTRY.filter(
+    (entry) =>
+      entry.supportsDynamicListing &&
+      !isLocalProvider(entry.id) &&
+      Boolean(ctx.apiKeys[entry.id]?.trim()),
+  ).map((entry) => entry.id);
+  const results = new Map<ProviderId, ConnectedProviderCatalogRefreshResult>();
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < providerIds.length) {
+      const providerId = providerIds[nextIndex++]!;
+      await refreshProviderModels(providerId, ctx);
+      results.set(providerId, {
+        providerId,
+        status: getProviderModelCacheState(providerId).error ? 'failed' : 'refreshed',
+      });
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(2, providerIds.length) }, worker));
+  return providerIds.map((providerId) => results.get(providerId)!);
 }
 
 /** Clear dynamic cache — used in tests. */

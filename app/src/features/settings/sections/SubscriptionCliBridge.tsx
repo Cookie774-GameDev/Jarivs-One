@@ -292,11 +292,11 @@ function OpenCodeSubscriptionCenter({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 id="opencode-subscriptions-title" className="text-base font-bold text-foreground">
-            OpenCode subscriptions
+            Provider subscriptions
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            OpenCode runs official provider authorization and owns its OAuth material. VibeSpace
-            never reads browser cookies or tokens.
+            Connect with the provider you choose. VibeSpace uses a managed local bridge for the
+            OAuth flow and never reads browser cookies or tokens.
           </p>
         </div>
         {client ? (
@@ -314,7 +314,7 @@ function OpenCodeSubscriptionCenter({
 
       {!client ? (
         <p className="mt-3 text-xs text-muted-foreground">
-          Start the OpenCode harness to discover official subscription routes.
+          Start the managed subscription service to discover supported provider routes.
         </p>
       ) : null}
       {error ? (
@@ -334,7 +334,7 @@ function OpenCodeSubscriptionCenter({
                   <p className="text-xs text-muted-foreground">{route.label}</p>
                 </div>
                 <Badge variant={route.providerAvailable ? 'success' : 'outline'}>
-                  {route.providerAvailable ? 'Connected in OpenCode' : 'Not connected'}
+                  {route.providerAvailable ? 'Connected' : 'Not connected'}
                 </Badge>
               </div>
 
@@ -772,9 +772,9 @@ export function SubscriptionCliBridge({
             AI Connectors
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Authenticate supported subscriptions through OpenCode, manage API keys separately, and
-            retain read-only legacy CLI status for migration. Scans never send a model prompt or
-            read secret files.
+            Connect supported provider subscriptions, manage API keys separately, and retain
+            read-only legacy CLI status for migration. Scans never send a model prompt or read
+            secret files.
           </p>
         </div>
         <Button

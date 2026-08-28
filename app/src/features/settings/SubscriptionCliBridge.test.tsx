@@ -73,7 +73,7 @@ describe('SubscriptionCliBridge', () => {
     expect(screen.getByRole('heading', { name: 'VibeSpace MCP Gateway' })).toBeTruthy();
   });
 
-  it('uses OpenCode-owned OAuth for supported subscriptions and refreshes connected state', async () => {
+  it('uses the managed OAuth transport without mislabeling the provider connection', async () => {
     let connected = false;
     const providerStatus = vi.fn(async () => ({ connected: connected ? ['openai'] : [] }));
     const subscriptionClient: OpenCodeSubscriptionClient = {
@@ -104,7 +104,8 @@ describe('SubscriptionCliBridge', () => {
       name: 'Connect OpenAI with ChatGPT Plus/Pro',
     });
     fireEvent.click(connect);
-    expect(await screen.findByText('Connected in OpenCode')).toBeTruthy();
+    expect(await screen.findByText('Connected')).toBeTruthy();
+    expect(screen.queryByText('Connected in OpenCode')).toBeNull();
     expect(screen.getByText('Approve ChatGPT access in your browser.')).toBeTruthy();
     expect(bridgeRefreshMocks.invalidateOpenCodePersistentCaches).toHaveBeenCalledOnce();
     expect(bridgeRefreshMocks.refreshExternalConnectionAutoDetection).toHaveBeenCalledOnce();
@@ -122,7 +123,7 @@ describe('SubscriptionCliBridge', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Refresh subscriptions' }));
     await waitFor(() => expect(providerStatus).toHaveBeenCalledTimes(4));
-    expect(await screen.findByText('Connected in OpenCode')).toBeTruthy();
+    expect(await screen.findByText('Connected')).toBeTruthy();
     expect(bridgeRefreshMocks.invalidateOpenCodePersistentCaches).toHaveBeenCalledTimes(2);
     expect(bridgeRefreshMocks.refreshExternalConnectionAutoDetection).toHaveBeenCalledTimes(2);
     expect(bridgeRefreshMocks.requestOpenCodeModelCatalogRefresh).toHaveBeenCalledTimes(2);
@@ -135,7 +136,7 @@ describe('SubscriptionCliBridge', () => {
         subscriptionClient={subscriptionClient}
       />,
     );
-    expect(await screen.findByText('Connected in OpenCode')).toBeTruthy();
+    expect(await screen.findByText('Connected')).toBeTruthy();
   });
 
   it('requires an explicit callback code and labels Anthropic Pro/Max truthfully', async () => {

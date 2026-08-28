@@ -931,7 +931,9 @@ const ProviderKeyRow = memo(function ProviderKeyRow({
             ) : null}
             {getProviderModelCacheState(row.id).error ? (
               <span role="status" className="text-destructive">
-                Live catalog unavailable; showing last verified options.
+                {models.length > 0
+                  ? 'Live catalog unavailable; showing last verified options.'
+                  : 'Live catalog unavailable; no unverified model names are shown.'}
               </span>
             ) : null}
           </div>

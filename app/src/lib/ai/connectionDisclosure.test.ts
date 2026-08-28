@@ -32,6 +32,25 @@ describe('connection route disclosure', () => {
 
   it('clearly distinguishes subscription allowance from API billing', () => {
     expect(buildConnectionRouteDisclosure(codex)).toContain('not your OpenAI API key');
+    expect(buildConnectionRouteDisclosure(codex)).toContain('Codex / ChatGPT subscription');
+    expect(
+      buildConnectionRouteDisclosure({
+        ...codex,
+        connectionId: 'zai-coding-plan',
+        providerId: 'Z.AI / GLM',
+        modelLabel: 'GLM 5.3',
+      }),
+    ).toContain('Z.AI Coding Plan subscription');
+    const managedOpenAi = buildConnectionRouteDisclosure({
+      ...codex,
+      connectionId: 'opencode-cli',
+      providerId: 'opencode',
+      modelLabel: 'openai/gpt-5.6-sol',
+    });
+    expect(managedOpenAi).toContain('Codex / ChatGPT subscription');
+    expect(managedOpenAi).toContain('not your OpenAI API key');
+    expect(managedOpenAi).not.toContain('OpenCode');
+    expect(managedOpenAi).not.toContain('managed provider');
     expect(
       buildConnectionRouteDisclosure({
         ...codex,
