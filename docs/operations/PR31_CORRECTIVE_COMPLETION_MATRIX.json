@@ -185,6 +185,10 @@
       "visualRequired": true,
       "evidence": [
         {
+          "kind": "commit",
+          "ref": "631e8336 makes Schedule timeline/action output disclose the persisted provider, connection, exact model, -fast route, and provider-default effort without substitution; Schedule 111/111 and full TypeScript passed"
+        },
+        {
           "kind": "test",
           "ref": "Fresh corrective cross-surface run: Chat picker, Schedule picker, canonical model selection, Prompt Forge, and action registry 6 files and 72/72 tests passed; catalog/accessible model refresh matrix separately passed 56/56"
         },
@@ -201,8 +205,12 @@
       "nativeRequired": true,
       "evidence": [
         {
-          "kind": "audit",
-          "ref": "Unit coverage exists in ancestors, but complete official-native lifecycle proof is reopened"
+          "kind": "test",
+          "ref": "Fresh corrective subagent run: local/router runtime, action cancel/resume, Composer contract, SubagentsMiniPanel, and lifecycle 6 files and 30/30 tests passed"
+        },
+        {
+          "kind": "pending",
+          "ref": "Official-native spawn, communication, truthful activity, exactly-once cancel, and exact-child resume proof remains required"
         }
       ]
     },
@@ -214,8 +222,12 @@
       "visualRequired": true,
       "evidence": [
         {
-          "kind": "audit",
-          "ref": "Corrective whole-app acceptance requires fresh question/answer and native tool-activity evidence"
+          "kind": "test",
+          "ref": "Fresh corrective mode/question run: OpenCode reply/projection/dispatch, Composer/mode transition safety, kernel mode, response modes, and classifier 8 files and 125/125 tests passed"
+        },
+        {
+          "kind": "pending",
+          "ref": "Official-native Agent/Plan/Ask interaction, bounded choices plus custom answer, and queue-versus-steer under real activity remain required"
         }
       ]
     },
@@ -226,8 +238,12 @@
       "nativeRequired": true,
       "evidence": [
         {
-          "kind": "audit",
-          "ref": "Grouped slash screenshots do not prove all command execution, usage fallback, and naming persistence"
+          "kind": "test",
+          "ref": "Fresh corrective commands/usage run: slash routing and catalog, usage composer/card/service/summary/connection ledger, effort/chat-engine options, and agent selector 10 files and 58/58 tests passed"
+        },
+        {
+          "kind": "pending",
+          "ref": "Official-native execution of the full command set, provider-specific usage fallback, active-model naming, and preserved user rename remains required"
         }
       ]
     },
@@ -313,8 +329,16 @@
       "nativeRequired": true,
       "evidence": [
         {
-          "kind": "audit",
-          "ref": "HANDOFF lists the DeepSeek/OpenCode latency comparison as unproven"
+          "kind": "commit",
+          "ref": "0a6121e8 adds the fail-closed DeepSeek native-versus-terminal latency contract, terminal runner, report validator, and comparison command"
+        },
+        {
+          "kind": "test",
+          "ref": "Terminal OpenCode 1.18.23 completed three fixed prompts cold/warm in 61.565 seconds with exact opencode-go/deepseek-v4-flash-vision-exp identity: reasoning 7058/6104 ms, read 11322/7102 ms, write 9212/8861 ms; all six identity, quality, session, and disposable-file checks passed; contract tests 10/10, TypeScript, Prettier, syntax, and Gitleaks passed"
+        },
+        {
+          "kind": "pending",
+          "ref": "Official-native Chat execution of the identical prompt hashes, exact route, cold/warm timing, rubric, output, RLM, and SiYuan evidence remains required before comparison can pass"
         }
       ]
     },
@@ -395,7 +419,7 @@
     {
       "id": "workbench-browser-native",
       "requirement": "Official native Workbench browser proves YouTube, ordinary sites, navigation, reload, errors, refusal classification, and recovery",
-      "status": "Implemented but verification failed",
+      "status": "Implemented and verified",
       "nativeRequired": true,
       "visualRequired": true,
       "evidence": [
@@ -413,7 +437,15 @@
         },
         {
           "kind": "test",
-          "ref": "After 96959d56: focused BrowserSecurity/BrowserPanel 9/9 and full Workbench 30 files and 90/90 tests passed; official-native retest at this head is pending"
+          "ref": "After 96959d56: focused BrowserSecurity/BrowserPanel 9/9 and full Workbench 30 files and 90/90 tests passed"
+        },
+        {
+          "kind": "native",
+          "ref": ".codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-15-workbench-referrer-retest-96959d56/workbench-referrer-native-report.json passed 17/17 assertions at descendant HEAD 631e8336 with zero Workbench source diff: genuine YouTube privacy player visible and Error-153-free, reload metrics identical, back/forward/refusal/final recovery passed, ordinary external pages remained no-referrer system-browser handoffs, and 32 guarded checks observed zero Ollama processes/listeners"
+        },
+        {
+          "kind": "screenshot",
+          "ref": "pass-15-workbench-referrer-retest-96959d56/01-ordinary-external-handoff-no-launch.png through 06-final-youtube-recovery.png provide fresh official-native visual evidence"
         }
       ]
     },
