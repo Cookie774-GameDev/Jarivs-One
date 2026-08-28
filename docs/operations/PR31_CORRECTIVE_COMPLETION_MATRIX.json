@@ -404,18 +404,21 @@
       "requirement": "Focused, affected frontend, Rust, typecheck, format, build, secret, and diff gates pass after final mutation",
       "status": "Implemented but verification failed",
       "evidence": [
-        { "kind": "commit", "ref": "b698b064 tested head plus uncommitted matrix evidence only" },
+        {
+          "kind": "commit",
+          "ref": "48f0cb91 focused regression repair on top of b698b064 product acceptance head"
+        },
         {
           "kind": "test",
           "ref": "Full frontend: 1319/1326 files and 12382/12453 tests passed; 7 files and 71 tests failed in 3137.60s"
         },
         {
           "kind": "test",
-          "ref": "Focused isolation reproduced all 71 failures deterministically across App.kernelHost, NavigationHistoryBoundary, composerVoiceFailures, runtimeModelControls, ProviderModelSelect, featureOpenCodeParity, and ai/runtime"
+          "ref": "48f0cb91 repaired four clean failure files; final focused residual is 3 failed/4 passed files and 67 failed/105 passed tests. App.kernelHost, featureOpenCodeParity, and ai/runtime remain actively owned/dirty boundaries"
         },
         {
           "kind": "build",
-          "ref": "Vite production bundle passed: 4996 modules in 1m29s at D:/VibeSpace-Testing/pr31-corrective-build-b698b064; theme contract and full TypeScript passed"
+          "ref": "Post-repair Vite production bundle passed: 4996 modules in 58.73s at D:/VibeSpace-Testing/pr31-corrective-build-48f0cb91; theme contract and full TypeScript passed"
         },
         {
           "kind": "test",
