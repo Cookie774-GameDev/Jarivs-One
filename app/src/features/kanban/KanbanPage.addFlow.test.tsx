@@ -93,4 +93,38 @@ describe('KanbanPage add controls', () => {
         .value,
     ).toBe('');
   });
+
+  it('edits, completes, and reopens a milestone without stale completion state', () => {
+    render(<KanbanPage />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'New item for Milestones' }), {
+      target: { value: 'Draft milestone' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add item to Milestones' }));
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Task title: Draft milestone' }), {
+      target: { value: 'Verified milestone' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Description for Verified milestone' }), {
+      target: { value: 'Persist the complete lifecycle' },
+    });
+    fireEvent.change(screen.getByLabelText('Target date for Verified milestone'), {
+      target: { value: '2026-12-31' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Complete Verified milestone' }));
+    expect(useMilestonesStore.getState().items[0]).toMatchObject({
+      title: 'Verified milestone',
+      description: 'Persist the complete lifecycle',
+      status: 'done',
+      completedAt: expect.any(Number),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark Verified milestone not done' }));
+    expect(useMilestonesStore.getState().items[0]).toMatchObject({
+      title: 'Verified milestone',
+      description: 'Persist the complete lifecycle',
+      status: 'todo',
+      completedAt: undefined,
+    });
+  });
 });

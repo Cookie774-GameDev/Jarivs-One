@@ -8,8 +8,16 @@ function newId(): string {
 
 interface MilestonesState {
   items: MilestoneItem[];
-  addMilestone: (title: string, kind?: MilestoneKind, description?: string, deadlineAt?: number) => string;
-  updateMilestone: (id: string, patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status' | 'deadlineAt'>>) => void;
+  addMilestone: (
+    title: string,
+    kind?: MilestoneKind,
+    description?: string,
+    deadlineAt?: number,
+  ) => string;
+  updateMilestone: (
+    id: string,
+    patch: Partial<Pick<MilestoneItem, 'title' | 'description' | 'status' | 'deadlineAt'>>,
+  ) => void;
   removeMilestone: (id: string) => void;
   toggleDone: (id: string) => void;
   /** Remove completed daily to-dos (keeps long-running milestones). */
@@ -48,7 +56,12 @@ export const useMilestonesStore = create<MilestonesState>()(
               ...patch,
               status: nextStatus,
               updatedAt: now,
-              completedAt: nextStatus === 'done' ? now : item.completedAt,
+              completedAt:
+                patch.status === undefined
+                  ? item.completedAt
+                  : nextStatus === 'done'
+                    ? now
+                    : undefined,
             };
           }),
         });
@@ -62,9 +75,7 @@ export const useMilestonesStore = create<MilestonesState>()(
       },
       clearCompletedTodos: () =>
         set({
-          items: get().items.filter(
-            (i) => i.kind === 'milestone' || i.status !== 'done',
-          ),
+          items: get().items.filter((i) => i.kind === 'milestone' || i.status !== 'done'),
         }),
       reorder: (fromIndex, toIndex) => {
         const items = [...get().items];
