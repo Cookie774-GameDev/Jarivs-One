@@ -549,6 +549,18 @@
         {
           "kind": "test",
           "ref": "Targeted Rust: 70 passed, 0 failed, 1 ignored; cargo check passed with existing warnings; release manifest 45/45; OSS bundle 2/2; visual compare 10/10"
+        },
+        {
+          "kind": "commit",
+          "ref": "c1bf47d3 adds a fail-closed post-4912c802 continuation delta gate over the exact 11-commit/27-path range without rerunning or concealing the protected baseline"
+        },
+        {
+          "kind": "test",
+          "ref": "Continuation delta validator 12/12; TypeScript; Vite production build 4997 modules, 551 files, 73918644 bytes; updater signature 9/9; OSS/Playwright 20/20 plus verifier; release-safe subset 77/77; delta diff and Gitleaks passed"
+        },
+        {
+          "kind": "failure",
+          "ref": "c1bf47d3 preserves the unchanged App.kernelHost/featureOpenCodeParity/ai-runtime 3-file/67-test failure boundary and separately records one pre-existing release-native-file-command-authority hash failure in clean but live SiYuan-owned app/src-tauri/src/lib.rs; final automated gate remains red"
         }
       ]
     },
