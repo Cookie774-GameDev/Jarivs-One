@@ -178,16 +178,48 @@ export function connectionRouteProviderLabel(
 
 /** Explicit model-catalog invalidation used after auth, key, plan, region, or runtime changes. */
 export const OPEN_CODE_MODEL_CATALOG_REFRESH_EVENT = 'vibespace:open-code-model-catalog-refresh';
+export const OPEN_CODE_CATALOG_EVIDENCE_EVENT = 'vibespace:open-code-catalog-evidence';
+export const OPEN_CODE_CATALOG_EVIDENCE_ATTRIBUTE = 'data-vibespace-opencode-catalog-evidence';
+
+export type OpenCodeCatalogRefreshReason =
+  | 'initial'
+  | 'requested'
+  | 'scheduled'
+  | 'retry'
+  | 'authority-changed';
+
+export interface OpenCodeCatalogEvidence {
+  readonly schemaVersion: 1;
+  readonly connectionId: typeof OPENCODE_CLI_CONNECTION.id;
+  readonly authority: 'current-session-authenticated';
+  readonly sessionChecked: true;
+  readonly available: true;
+  readonly auth: 'authenticated';
+  readonly catalogGeneration: number;
+  readonly accountGeneration: number;
+  readonly refreshReason: OpenCodeCatalogRefreshReason;
+  readonly refreshRequestedAt: number;
+  readonly lastVerifiedAt: number;
+  readonly previousVerifiedAt?: number;
+  readonly elapsedSincePreviousVerifiedMs?: number;
+  readonly refreshIntervalMs: number;
+  readonly routeCount: number;
+  readonly catalogSha256: string;
+}
 
 const OPEN_CODE_MODEL_CACHE_TTL_MS = MODEL_CATALOG_REFRESH_INTERVAL_MS;
 const OPEN_CODE_MODEL_FAILURE_RETRY_MS = 15_000;
 let openCodeCatalogGeneration = 0;
 let openCodeAccountGeneration = 0;
+let openCodeCatalogRefreshReason: OpenCodeCatalogRefreshReason = 'initial';
+let openCodeCatalogRefreshRequestedAt = Date.now();
 let openCodeModelCache:
   | {
       readonly generation: number;
       readonly loadedAt: number;
       readonly models: readonly PickerCatalogModel[];
+      readonly refreshReason: OpenCodeCatalogRefreshReason;
+      readonly refreshRequestedAt: number;
     }
   | undefined;
 let openCodeModelLoad:
@@ -220,6 +252,216 @@ function dedupeModelMetadataInOrder(
     if (merged) byId.set(key, merged);
   }
   return order.map((key) => byId.get(key)!).filter(Boolean);
+}
+
+const SHA256_ROUND_CONSTANTS = Object.freeze([
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]);
+
+function rotateRight(value: number, bits: number): number {
+  return (value >>> bits) | (value << (32 - bits));
+}
+
+/** Browser-safe SHA-256 used only to identify an ordered public catalog without exposing routes. */
+function sha256Text(value: string): string {
+  const input = new TextEncoder().encode(value);
+  const bitLength = input.length * 8;
+  const paddedLength = Math.ceil((input.length + 9) / 64) * 64;
+  const bytes = new Uint8Array(paddedLength);
+  bytes.set(input);
+  bytes[input.length] = 0x80;
+  const view = new DataView(bytes.buffer);
+  view.setUint32(paddedLength - 8, Math.floor(bitLength / 0x1_0000_0000), false);
+  view.setUint32(paddedLength - 4, bitLength >>> 0, false);
+
+  const hash = new Uint32Array([
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+  ]);
+  const words = new Uint32Array(64);
+  for (let offset = 0; offset < paddedLength; offset += 64) {
+    for (let index = 0; index < 16; index += 1) {
+      words[index] = view.getUint32(offset + index * 4, false);
+    }
+    for (let index = 16; index < 64; index += 1) {
+      const left = words[index - 15] ?? 0;
+      const right = words[index - 2] ?? 0;
+      const sigma0 = rotateRight(left, 7) ^ rotateRight(left, 18) ^ (left >>> 3);
+      const sigma1 = rotateRight(right, 17) ^ rotateRight(right, 19) ^ (right >>> 10);
+      words[index] = ((words[index - 16] ?? 0) + sigma0 + (words[index - 7] ?? 0) + sigma1) >>> 0;
+    }
+
+    let a = hash[0] ?? 0;
+    let b = hash[1] ?? 0;
+    let c = hash[2] ?? 0;
+    let d = hash[3] ?? 0;
+    let e = hash[4] ?? 0;
+    let f = hash[5] ?? 0;
+    let g = hash[6] ?? 0;
+    let h = hash[7] ?? 0;
+    for (let index = 0; index < 64; index += 1) {
+      const sum1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
+      const choice = (e & f) ^ (~e & g);
+      const temporary1 =
+        (h + sum1 + choice + (SHA256_ROUND_CONSTANTS[index] ?? 0) + (words[index] ?? 0)) >>> 0;
+      const sum0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22);
+      const majority = (a & b) ^ (a & c) ^ (b & c);
+      const temporary2 = (sum0 + majority) >>> 0;
+      h = g;
+      g = f;
+      f = e;
+      e = (d + temporary1) >>> 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (temporary1 + temporary2) >>> 0;
+    }
+    hash[0] = ((hash[0] ?? 0) + a) >>> 0;
+    hash[1] = ((hash[1] ?? 0) + b) >>> 0;
+    hash[2] = ((hash[2] ?? 0) + c) >>> 0;
+    hash[3] = ((hash[3] ?? 0) + d) >>> 0;
+    hash[4] = ((hash[4] ?? 0) + e) >>> 0;
+    hash[5] = ((hash[5] ?? 0) + f) >>> 0;
+    hash[6] = ((hash[6] ?? 0) + g) >>> 0;
+    hash[7] = ((hash[7] ?? 0) + h) >>> 0;
+  }
+  return Array.from(hash, (part) => part.toString(16).padStart(8, '0')).join('');
+}
+
+function isOpenCodeCatalogEvidence(value: unknown): value is OpenCodeCatalogEvidence {
+  if (!value || typeof value !== 'object') return false;
+  const evidence = value as Partial<OpenCodeCatalogEvidence>;
+  const allowedKeys = new Set([
+    'schemaVersion',
+    'connectionId',
+    'authority',
+    'sessionChecked',
+    'available',
+    'auth',
+    'catalogGeneration',
+    'accountGeneration',
+    'refreshReason',
+    'refreshRequestedAt',
+    'lastVerifiedAt',
+    'previousVerifiedAt',
+    'elapsedSincePreviousVerifiedMs',
+    'refreshIntervalMs',
+    'routeCount',
+    'catalogSha256',
+  ]);
+  const refreshReasons: readonly OpenCodeCatalogRefreshReason[] = [
+    'initial',
+    'requested',
+    'scheduled',
+    'retry',
+    'authority-changed',
+  ];
+  const previousPairIsValid =
+    evidence.previousVerifiedAt === undefined &&
+    evidence.elapsedSincePreviousVerifiedMs === undefined
+      ? true
+      : Number.isSafeInteger(evidence.previousVerifiedAt) &&
+        Number.isSafeInteger(evidence.elapsedSincePreviousVerifiedMs) &&
+        (evidence.previousVerifiedAt ?? 0) < (evidence.lastVerifiedAt ?? 0) &&
+        evidence.elapsedSincePreviousVerifiedMs ===
+          (evidence.lastVerifiedAt ?? 0) - (evidence.previousVerifiedAt ?? 0);
+  return (
+    Object.keys(value).every((key) => allowedKeys.has(key)) &&
+    evidence.schemaVersion === 1 &&
+    evidence.connectionId === OPENCODE_CLI_CONNECTION.id &&
+    evidence.authority === 'current-session-authenticated' &&
+    evidence.sessionChecked === true &&
+    evidence.available === true &&
+    evidence.auth === 'authenticated' &&
+    Number.isSafeInteger(evidence.catalogGeneration) &&
+    (evidence.catalogGeneration ?? -1) >= 0 &&
+    Number.isSafeInteger(evidence.accountGeneration) &&
+    (evidence.accountGeneration ?? -1) >= 0 &&
+    refreshReasons.includes(evidence.refreshReason as OpenCodeCatalogRefreshReason) &&
+    Number.isSafeInteger(evidence.refreshRequestedAt) &&
+    (evidence.refreshRequestedAt ?? 0) > 0 &&
+    Number.isSafeInteger(evidence.lastVerifiedAt) &&
+    (evidence.lastVerifiedAt ?? 0) >= (evidence.refreshRequestedAt ?? 0) &&
+    previousPairIsValid &&
+    evidence.refreshIntervalMs === OPEN_CODE_MODEL_CACHE_TTL_MS &&
+    Number.isSafeInteger(evidence.routeCount) &&
+    (evidence.routeCount ?? 0) > 0 &&
+    typeof evidence.catalogSha256 === 'string' &&
+    /^[0-9a-f]{64}$/u.test(evidence.catalogSha256)
+  );
+}
+
+/** Reads the renderer-owned receipt without importing private catalog/session module state. */
+export function readOpenCodeCatalogEvidence(): OpenCodeCatalogEvidence | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const serialized = document.documentElement.getAttribute(OPEN_CODE_CATALOG_EVIDENCE_ATTRIBUTE);
+  if (!serialized) return undefined;
+  try {
+    const evidence: unknown = JSON.parse(serialized);
+    return isOpenCodeCatalogEvidence(evidence) ? evidence : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function clearOpenCodeCatalogEvidence(): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.removeAttribute(OPEN_CODE_CATALOG_EVIDENCE_ATTRIBUTE);
+}
+
+function publishOpenCodeCatalogEvidence(
+  cache: NonNullable<typeof openCodeModelCache>,
+  accountGeneration: number,
+): void {
+  if (typeof document === 'undefined') return;
+  const previous = readOpenCodeCatalogEvidence();
+  const catalogSha256 = sha256Text(
+    cache.models.map((model) => `${OPENCODE_CLI_CONNECTION.id}:${model.id}`).join('\n'),
+  );
+  if (
+    previous?.catalogGeneration === cache.generation &&
+    previous.accountGeneration === accountGeneration &&
+    previous.lastVerifiedAt === cache.loadedAt &&
+    previous.catalogSha256 === catalogSha256
+  ) {
+    return;
+  }
+  const previousVerifiedAt = previous?.lastVerifiedAt;
+  const evidence: OpenCodeCatalogEvidence = {
+    schemaVersion: 1,
+    connectionId: OPENCODE_CLI_CONNECTION.id,
+    authority: 'current-session-authenticated',
+    sessionChecked: true,
+    available: true,
+    auth: 'authenticated',
+    catalogGeneration: cache.generation,
+    accountGeneration,
+    refreshReason: cache.refreshReason,
+    refreshRequestedAt: cache.refreshRequestedAt,
+    lastVerifiedAt: cache.loadedAt,
+    ...(previousVerifiedAt !== undefined && previousVerifiedAt < cache.loadedAt
+      ? {
+          previousVerifiedAt,
+          elapsedSincePreviousVerifiedMs: cache.loadedAt - previousVerifiedAt,
+        }
+      : {}),
+    refreshIntervalMs: OPEN_CODE_MODEL_CACHE_TTL_MS,
+    routeCount: cache.models.length,
+    catalogSha256,
+  };
+  document.documentElement.setAttribute(
+    OPEN_CODE_CATALOG_EVIDENCE_ATTRIBUTE,
+    JSON.stringify(evidence),
+  );
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(OPEN_CODE_CATALOG_EVIDENCE_EVENT, { detail: evidence }));
+  }
 }
 
 function asCatalogModels(
@@ -270,14 +512,20 @@ export function buildLiveOpenCodePickerModels(
   );
 }
 
-function invalidateOpenCodeModelCatalog(): number {
+function invalidateOpenCodeModelCatalog(
+  reason: OpenCodeCatalogRefreshReason = 'requested',
+): number {
   openCodeCatalogGeneration += 1;
+  openCodeCatalogRefreshReason = reason;
+  openCodeCatalogRefreshRequestedAt = Date.now();
   return openCodeCatalogGeneration;
 }
 
 async function loadOpenCodeModels(force = false): Promise<readonly PickerCatalogModel[]> {
   const now = Date.now();
   const generation = openCodeCatalogGeneration;
+  const refreshReason = openCodeCatalogRefreshReason;
+  const refreshRequestedAt = openCodeCatalogRefreshRequestedAt;
   if (
     !force &&
     openCodeModelCache &&
@@ -304,7 +552,13 @@ async function loadOpenCodeModels(force = false): Promise<readonly PickerCatalog
       }
       // An older auth/refresh request must never overwrite a newer catalog.
       if (generation === openCodeCatalogGeneration) {
-        openCodeModelCache = { generation, loadedAt, models: normalized };
+        openCodeModelCache = {
+          generation,
+          loadedAt,
+          models: normalized,
+          refreshReason,
+          refreshRequestedAt,
+        };
       }
       return normalized;
     })
@@ -322,7 +576,7 @@ async function loadOpenCodeModels(force = false): Promise<readonly PickerCatalog
 
 /** Force the next authenticated model discovery without erasing verified cache. */
 export function requestOpenCodeModelCatalogRefresh(): void {
-  invalidateOpenCodeModelCatalog();
+  invalidateOpenCodeModelCatalog('requested');
   invalidateOpenCodePersistentModelCache();
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event(OPEN_CODE_MODEL_CATALOG_REFRESH_EVENT));
@@ -704,8 +958,15 @@ export function useAccessibleChatModels() {
       if (nextSignature !== openCodeStateSignatureRef.current) {
         openCodeStateSignatureRef.current = nextSignature;
         openCodeAccountGeneration += 1;
-        invalidateOpenCodeModelCatalog();
+        invalidateOpenCodeModelCatalog('authority-changed');
         invalidateOpenCodePersistentModelCache();
+        if (
+          !isConnectionSessionChecked(OPENCODE_CLI_CONNECTION.id) ||
+          sessionState?.available !== true ||
+          sessionState.auth !== 'authenticated'
+        ) {
+          clearOpenCodeCatalogEvidence();
+        }
       }
       setConnectionRevision((value) => value + 1);
     };
@@ -783,6 +1044,7 @@ export function useAccessibleChatModels() {
     let cancelled = false;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     if (!openCodeReady) {
+      clearOpenCodeCatalogEvidence();
       return () => {
         cancelled = true;
       };
@@ -791,17 +1053,31 @@ export function useAccessibleChatModels() {
     const expectedAccountGeneration = openCodeAccountGeneration;
     void loadOpenCodeModels()
       .then((models) => {
-        if (cancelled || expectedGeneration !== openCodeCatalogGeneration) return;
+        const currentSessionState = readConnectionSessionPickerStates()[OPENCODE_CLI_CONNECTION.id];
+        if (
+          cancelled ||
+          expectedGeneration !== openCodeCatalogGeneration ||
+          expectedAccountGeneration !== openCodeAccountGeneration ||
+          !isConnectionSessionChecked(OPENCODE_CLI_CONNECTION.id) ||
+          currentSessionState?.available !== true ||
+          currentSessionState.auth !== 'authenticated'
+        ) {
+          clearOpenCodeCatalogEvidence();
+          return;
+        }
         setOpenCodeCatalog({
           generation: expectedGeneration,
           accountGeneration: expectedAccountGeneration,
           models,
         });
+        if (openCodeModelCache?.generation === expectedGeneration) {
+          publishOpenCodeCatalogEvidence(openCodeModelCache, expectedAccountGeneration);
+        }
         const age = openCodeModelCache ? Date.now() - openCodeModelCache.loadedAt : 0;
         const delay = Math.max(1_000, OPEN_CODE_MODEL_CACHE_TTL_MS - age);
         refreshTimer = setTimeout(() => {
           if (cancelled) return;
-          invalidateOpenCodeModelCatalog();
+          invalidateOpenCodeModelCatalog('scheduled');
           setCatalogRevision((value) => value + 1);
         }, delay);
       })
@@ -818,7 +1094,7 @@ export function useAccessibleChatModels() {
         );
         refreshTimer = setTimeout(() => {
           if (cancelled) return;
-          invalidateOpenCodeModelCatalog();
+          invalidateOpenCodeModelCatalog('retry');
           setCatalogRevision((value) => value + 1);
         }, OPEN_CODE_MODEL_FAILURE_RETRY_MS);
       });

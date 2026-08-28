@@ -7,6 +7,8 @@ import {
   buildLiveOpenCodePickerModels,
   buildModelPickerGroups,
   connectionRouteProviderLabel,
+  OPEN_CODE_CATALOG_EVIDENCE_ATTRIBUTE,
+  readOpenCodeCatalogEvidence,
   requestOpenCodeModelCatalogRefresh,
   useAccessibleChatModels,
 } from './useAccessibleChatModels';
@@ -72,6 +74,7 @@ vi.mock('./providerModelCatalog', async (importOriginal) => ({
 describe('useAccessibleChatModels', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    document.documentElement.removeAttribute(OPEN_CODE_CATALOG_EVIDENCE_ATTRIBUTE);
     resetConnectionSessionChecksForTests();
     ensureExternalConnectionAutoDetection.mockClear();
     isConnectionSessionChecked.mockReset();
@@ -682,13 +685,60 @@ describe('useAccessibleChatModels', () => {
       });
       markConnectionSessionChecked(['opencode-cli']);
 
-      const { unmount } = renderHook(() => useAccessibleChatModels());
-      await act(async () => Promise.resolve());
+      const { result, unmount } = renderHook(() => useAccessibleChatModels());
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
       expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(1);
+      const initialEvidence = readOpenCodeCatalogEvidence();
+      expect(initialEvidence).toMatchObject({
+        schemaVersion: 1,
+        connectionId: 'opencode-cli',
+        authority: 'current-session-authenticated',
+        sessionChecked: true,
+        available: true,
+        auth: 'authenticated',
+        refreshReason: 'requested',
+        routeCount: 1,
+        refreshIntervalMs: 5 * 60 * 1000,
+      });
+      expect(initialEvidence?.catalogSha256).toBe(
+        'acb879aa945dd363ae16f784abbe3fb7a24a7de970f9b99afd16c4ceea2fbefc',
+      );
+      expect(
+        document.documentElement.getAttribute(OPEN_CODE_CATALOG_EVIDENCE_ATTRIBUTE),
+      ).not.toContain('gpt-live');
+      expect(
+        result.current.flatOptions.filter((option) => option.connectionId === 'opencode-cli'),
+      ).toEqual([expect.objectContaining({ modelId: 'openai/gpt-live', available: true })]);
       await act(async () => vi.advanceTimersByTimeAsync(5 * 60 * 1000 - 1));
       expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(1);
+      expect(readOpenCodeCatalogEvidence()).toEqual(initialEvidence);
       await act(async () => vi.advanceTimersByTimeAsync(1));
       expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      const scheduledEvidence = readOpenCodeCatalogEvidence();
+      expect(scheduledEvidence).toMatchObject({
+        schemaVersion: 1,
+        connectionId: 'opencode-cli',
+        authority: 'current-session-authenticated',
+        refreshReason: 'scheduled',
+        routeCount: 1,
+        refreshIntervalMs: 5 * 60 * 1000,
+        previousVerifiedAt: initialEvidence?.lastVerifiedAt,
+        elapsedSincePreviousVerifiedMs: 5 * 60 * 1000,
+        catalogSha256: initialEvidence?.catalogSha256,
+      });
+      expect(Number(scheduledEvidence?.lastVerifiedAt)).toBeGreaterThan(
+        Number(initialEvidence?.lastVerifiedAt),
+      );
+      expect(
+        result.current.flatOptions.filter((option) => option.connectionId === 'opencode-cli'),
+      ).toEqual([expect.objectContaining({ modelId: 'openai/gpt-live', available: true })]);
       unmount();
     } finally {
       vi.useRealTimers();
@@ -745,12 +795,52 @@ describe('useAccessibleChatModels', () => {
   });
 
   it('does not probe OpenCode models until current-session authentication is verified', async () => {
+    document.documentElement.setAttribute(
+      OPEN_CODE_CATALOG_EVIDENCE_ATTRIBUTE,
+      JSON.stringify({ connectionId: 'opencode-cli', stale: true }),
+    );
+    listPersistentOpenCodeModels.mockResolvedValue([
+      { id: 'openai/should-not-be-executable', label: 'Should Not Be Executable' },
+    ]);
+    writeConnectionMetadata({
+      'opencode-cli': {
+        installation: 'installed',
+        auth: 'authenticated',
+        lastCheckedAt: 1,
+      },
+    });
     isConnectionSessionChecked.mockReturnValue(false);
 
-    renderHook(() => useAccessibleChatModels());
+    const { result } = renderHook(() => useAccessibleChatModels());
 
     await act(async () => Promise.resolve());
     expect(listPersistentOpenCodeModels).not.toHaveBeenCalled();
+    expect(
+      result.current.flatOptions.some((option) => option.connectionId === 'opencode-cli'),
+    ).toBe(false);
+    expect(readOpenCodeCatalogEvidence()).toBeUndefined();
+    expect(document.documentElement.getAttribute(OPEN_CODE_CATALOG_EVIDENCE_ATTRIBUTE)).toBeNull();
+  });
+
+  it('keeps a checked but unknown OpenCode session fail closed and clears stale evidence', async () => {
+    document.documentElement.setAttribute(
+      OPEN_CODE_CATALOG_EVIDENCE_ATTRIBUTE,
+      JSON.stringify({ connectionId: 'opencode-cli', stale: true }),
+    );
+    isConnectionSessionChecked.mockImplementation((id) => id === 'opencode-cli');
+    writeConnectionPickerStates({
+      'opencode-cli': { available: true, auth: 'unknown' },
+    });
+
+    const { result } = renderHook(() => useAccessibleChatModels());
+
+    await act(async () => Promise.resolve());
+    expect(listPersistentOpenCodeModels).not.toHaveBeenCalled();
+    expect(
+      result.current.flatOptions.some((option) => option.connectionId === 'opencode-cli'),
+    ).toBe(false);
+    expect(readOpenCodeCatalogEvidence()).toBeUndefined();
+    expect(document.documentElement.getAttribute(OPEN_CODE_CATALOG_EVIDENCE_ATTRIBUTE)).toBeNull();
   });
 
   it('does not repeat OpenCode discovery for unrelated connection events', async () => {
