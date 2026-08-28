@@ -405,6 +405,91 @@ html[data-theme='warm'] .agent-motion-slot {
     var(--agent-motion-ease) infinite;
 }
 
+.agent-motion--mail-send {
+  width: 70px;
+  height: 48px;
+  animation: agent-motion-mail-send calc(2.6s * var(--agent-motion-speed)) var(--agent-motion-ease)
+    infinite;
+}
+
+.agent-motion__mail-body {
+  width: 43px;
+  height: 29px;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--console-raised, hsl(var(--muted))) 90%, transparent);
+}
+
+.agent-motion__mail-flap {
+  position: absolute;
+  width: 29px;
+  height: 29px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-7px) rotate(45deg);
+}
+
+.agent-motion__mail-trail {
+  position: absolute;
+  width: 16px;
+  height: 2px;
+  border-radius: 99px;
+  background: var(--agent-motion-secondary);
+  opacity: 0;
+  animation: agent-motion-mail-trail calc(2.6s * var(--agent-motion-speed)) ease-out infinite;
+}
+
+.agent-motion__mail-trail--one {
+  transform: translate(-29px, -7px);
+}
+
+.agent-motion__mail-trail--two {
+  animation-delay: calc(0.16s * var(--agent-motion-speed));
+  transform: translate(-31px, 8px);
+}
+
+.agent-motion--ship-launch {
+  width: 72px;
+  height: 50px;
+  animation: agent-motion-ship-bob calc(2.8s * var(--agent-motion-speed)) ease-in-out infinite;
+}
+
+.agent-motion__ship-hull {
+  position: absolute;
+  width: 45px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-top: 0;
+  border-radius: 2px 2px 18px 18px;
+  transform: translateY(9px);
+}
+
+.agent-motion__ship-sail {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-right: 19px solid transparent;
+  border-bottom: 24px solid currentColor;
+  filter: drop-shadow(8px 2px 0 color-mix(in srgb, var(--agent-motion-secondary) 72%, transparent));
+  transform: translate(-4px, -10px) skewX(-5deg);
+}
+
+.agent-motion__ship-wave {
+  position: absolute;
+  bottom: 4px;
+  width: 54px;
+  height: 6px;
+  border-top: 2px solid var(--agent-motion-secondary);
+  border-radius: 50%;
+  animation: agent-motion-ship-wave calc(2.8s * var(--agent-motion-speed)) linear infinite;
+}
+
+.agent-motion__ship-wave--two {
+  bottom: 0;
+  width: 39px;
+  animation-delay: calc(-1.2s * var(--agent-motion-speed));
+}
+
 @keyframes agent-motion-glyph-fill {
   0%,
   12% {
@@ -569,6 +654,65 @@ html[data-theme='warm'] .agent-motion-slot {
   65% {
     opacity: 1;
     transform: translate(10px, 9px) scale(1);
+  }
+}
+
+@keyframes agent-motion-mail-send {
+  0%,
+  16% {
+    opacity: 0.45;
+    transform: translateX(-7px) rotate(-2deg);
+  }
+  48%,
+  68% {
+    opacity: 1;
+    transform: translateX(5px) rotate(1deg);
+  }
+  100% {
+    opacity: 0.45;
+    transform: translateX(14px) rotate(2deg);
+  }
+}
+
+@keyframes agent-motion-mail-trail {
+  0%,
+  22% {
+    opacity: 0;
+    width: 4px;
+  }
+  42%,
+  70% {
+    opacity: 0.9;
+    width: 18px;
+  }
+  100% {
+    opacity: 0;
+    width: 7px;
+  }
+}
+
+@keyframes agent-motion-ship-bob {
+  0%,
+  100% {
+    transform: translateY(2px) rotate(-1deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(1deg);
+  }
+}
+
+@keyframes agent-motion-ship-wave {
+  0% {
+    opacity: 0.25;
+    transform: translateX(-7px) scaleX(0.72);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translateX(5px) scaleX(1);
+  }
+  100% {
+    opacity: 0.25;
+    transform: translateX(12px) scaleX(0.72);
   }
 }
 

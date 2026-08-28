@@ -100,6 +100,23 @@ describe('resolveAgentMotion', () => {
     ).toBe('cursor-forge');
   });
 
+  it('uses mail and launch motions only for structured semantic intent', () => {
+    expect(
+      resolveAgentMotion({ status: 'running', activityKind: 'tool', semanticIntent: 'mail' }),
+    ).toBe('mail-send');
+    expect(
+      resolveAgentMotion({ status: 'running', activityKind: 'tool', semanticIntent: 'ship' }),
+    ).toBe('ship-launch');
+    expect(
+      resolveAgentMotion({
+        status: 'running',
+        activityKind: 'tool',
+        title: 'Send an email and ship the release',
+        detail: 'mail deploy launch',
+      }),
+    ).toBe('cursor-forge');
+  });
+
   it('uses generic thinking for unknown live evidence and no motion without a live status', () => {
     expect(resolveAgentMotion({ status: 'running' })).toBe('cursor-forge');
     expect(resolveAgentMotion({ activityCategory: 'thinking' })).toBeNull();
@@ -131,6 +148,8 @@ describe('AgentMotionIndicator', () => {
     ...EXPECTED_MOTIONS,
     ['structured read', 'book-read'],
     ['structured search', 'search-scan'],
+    ['structured mail', 'mail-send'],
+    ['structured launch', 'ship-launch'],
   ] as const)(
     'renders %s motion as decorative in standard and compact layouts',
     (_activityCategory, motion) => {

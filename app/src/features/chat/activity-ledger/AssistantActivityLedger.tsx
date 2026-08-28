@@ -206,6 +206,7 @@ export function AssistantActivityLedger({
           status: runningEvent.status,
           activityCategory: runningEvent.category,
           activityKind: runningEvent.kind,
+          semanticIntent: runningEvent.semanticIntent,
           title: runningEvent.title,
           detail: runningEvent.detail,
           filePath: runningEvent.filePath,

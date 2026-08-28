@@ -10,6 +10,7 @@ export type ChatActivityCategory =
   | 'learning'
   | 'response';
 export type ChatActivityStatus = 'pending' | 'running' | 'done' | 'cancelled' | 'error';
+export type ChatActivitySemanticIntent = 'mail' | 'ship';
 
 export interface ChatActivityEvent {
   id: string;
@@ -17,6 +18,8 @@ export interface ChatActivityEvent {
   kind: ChatActivityKind;
   /** Structured semantic used for truthful activity presentation. */
   category?: ChatActivityCategory;
+  /** Narrow intent supplied by canonical tool identity, never inferred from display prose. */
+  semanticIntent?: ChatActivitySemanticIntent;
   status: ChatActivityStatus;
   title: string;
   subtitle?: string;

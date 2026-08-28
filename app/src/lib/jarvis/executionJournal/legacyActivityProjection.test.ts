@@ -144,4 +144,92 @@ describe('projectJarvisEventsForLegacyActivity', () => {
       'response',
     ]);
   });
+
+  it('projects mail and launch intent only from canonical plugin or MCP producer identity', () => {
+    const projected = projectJarvisEventsForLegacyActivity({
+      run: run(),
+      events: [
+        event(1, {
+          title: 'PRIVATE GENERIC TOOL',
+          liveEvidence: {
+            schemaVersion: 1,
+            kind: 'capability',
+            accountId: 'account-alpha',
+            runId: 'jrun_alpha',
+            requestId: 'request-1',
+            attemptNumber: 1,
+            registrationId: 'registration-1',
+            producerKind: 'plugin',
+            producerIdentity: {
+              producerKind: 'plugin',
+              pluginId: 'gmail',
+              invocationId: 'invocation-1',
+            },
+            transition: 'busy',
+            operations: ['draft_email'],
+            resultRef: 'result-1',
+            resultEventSeq: 1,
+            observedAt: NOW,
+            category: 'plugin',
+            capabilityId: 'gmail.draft',
+          },
+        }),
+        event(2, {
+          producerSourceEvidence: {
+            schemaVersion: 1,
+            accountId: 'account-alpha',
+            runId: 'jrun_alpha',
+            requestId: 'request-2',
+            attemptNumber: 1,
+            producerKind: 'mcp',
+            producerIdentity: {
+              producerKind: 'mcp',
+              serverId: 'cloudflare',
+              toolName: 'deploy_worker',
+              invocationId: 'invocation-2',
+            },
+            resultRef: 'result-2',
+            observedAt: NOW,
+            phase: 'result',
+            state: 'completed',
+          },
+        }),
+        event(3, {
+          title: 'Send email and ship release',
+          safeSummary: 'Mail, deploy, launch, and publish are mentioned only in prose.',
+        }),
+        event(4, {
+          liveEvidence: {
+            schemaVersion: 1,
+            kind: 'capability',
+            accountId: 'account-alpha',
+            runId: 'jrun_alpha',
+            requestId: 'request-4',
+            attemptNumber: 1,
+            registrationId: 'registration-4',
+            producerKind: 'plugin',
+            producerIdentity: {
+              producerKind: 'plugin',
+              pluginId: 'gmail',
+              invocationId: 'invocation-4',
+            },
+            transition: 'busy',
+            operations: ['list_messages'],
+            resultRef: 'result-4',
+            resultEventSeq: 4,
+            observedAt: NOW,
+            category: 'plugin',
+            capabilityId: 'gmail.read',
+          },
+        }),
+      ],
+    });
+
+    expect(projected.map(({ semanticIntent }) => semanticIntent)).toEqual([
+      'mail',
+      'ship',
+      undefined,
+      undefined,
+    ]);
+  });
 });

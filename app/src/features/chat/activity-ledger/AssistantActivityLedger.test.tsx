@@ -323,4 +323,33 @@ describe('AssistantActivityLedger', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Usage' }));
     expect(screen.getByText('Output usage unavailable')).toBeTruthy();
   });
+
+  it.each([
+    ['mail', 'mail-send'],
+    ['ship', 'ship-launch'],
+  ] as const)(
+    'renders %s motion from the correlated structured intent',
+    (semanticIntent, motion) => {
+      render(
+        <AssistantActivityLedger
+          message={assistant([])}
+          active
+          correlatedEvents={[
+            {
+              id: `structured-${semanticIntent}`,
+              chatId: 'chat-ledger-ui',
+              kind: 'tool',
+              category: 'thinking',
+              semanticIntent,
+              status: 'running',
+              title: 'Generic tool activity',
+              ts: 100,
+            },
+          ]}
+        />,
+      );
+
+      expect(document.querySelector(`[data-agent-motion="${motion}"]`)).not.toBeNull();
+    },
+  );
 });

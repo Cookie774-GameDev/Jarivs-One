@@ -2,6 +2,7 @@ import type {
   ChatActivityCategory,
   ChatActivityEvent,
   ChatActivityKind,
+  ChatActivitySemanticIntent,
   ChatActivityStatus,
 } from '@/features/chat/activity/types';
 import type { JarvisEvent, JarvisRun } from '@/lib/jarvis/contracts/execution';
@@ -89,6 +90,59 @@ function activityStatus(event: JarvisEvent, run: JarvisRun): ChatActivityStatus 
   return 'done';
 }
 
+function normalizedToolName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+const MAIL_PLUGIN_IDS = new Set([
+  'gmail',
+  'google_mail',
+  'microsoft_outlook',
+  'outlook',
+  'mailgun',
+  'postmark',
+  'resend',
+  'sendgrid',
+]);
+
+function mailOperation(value: string): boolean {
+  const operation = normalizedToolName(value);
+  return (
+    /^(?:send|draft|compose|reply|forward)_(?:email|mail)$/u.test(operation) ||
+    /^(?:email|mail)_(?:send|draft|compose|reply|forward)$/u.test(operation)
+  );
+}
+
+function shipOperation(value: string): boolean {
+  const operation = normalizedToolName(value);
+  return (
+    /^(?:deploy|publish|release|ship)(?:_|$)/u.test(operation) ||
+    /^launch_(?:app|application|site|website|release|update|pricing)(?:_|$)/u.test(operation)
+  );
+}
+
+function structuredToolIntent(event: JarvisEvent): ChatActivitySemanticIntent | undefined {
+  if (event.type !== 'tool') return undefined;
+  const identity =
+    event.producerSourceEvidence?.producerIdentity ?? event.liveEvidence?.producerIdentity;
+  if (identity?.producerKind === 'mcp') {
+    if (mailOperation(identity.toolName)) return 'mail';
+    if (shipOperation(identity.toolName)) return 'ship';
+  }
+  if (identity?.producerKind === 'plugin' && event.liveEvidence?.producerKind === 'plugin') {
+    const pluginId = normalizedToolName(identity.pluginId);
+    if (MAIL_PLUGIN_IDS.has(pluginId) && event.liveEvidence.operations.some(mailOperation)) {
+      return 'mail';
+    }
+    if (event.liveEvidence.operations.some(shipOperation)) return 'ship';
+  }
+  return undefined;
+}
+
 function internalKey(run: JarvisRun, event: JarvisEvent): string {
   const sources = event.sourceRefs
     .filter((source) => source.accountId === run.accountId)
@@ -109,12 +163,14 @@ export function projectJarvisEventsForLegacyActivity(input: {
     .filter((event) => event.runId === input.run.id)
     .sort((left, right) => left.seq - right.seq || left.createdAt - right.createdAt)
     .slice(-limit)
-    .map((event) =>
-      Object.freeze({
+    .map((event) => {
+      const semanticIntent = structuredToolIntent(event);
+      return Object.freeze({
         id: internalKey(input.run, event),
         chatId,
         kind: activityKind(event.type),
         category: activityCategory(event.type),
+        ...(semanticIntent ? { semanticIntent } : {}),
         status: activityStatus(event, input.run),
         title: activityTitle(event.type),
         ...(event.safeSummary?.trim() ? { detail: event.safeSummary.trim() } : {}),
@@ -125,7 +181,7 @@ export function projectJarvisEventsForLegacyActivity(input: {
         )
           ? { endedAt: event.createdAt }
           : {}),
-      }),
-    );
+      });
+    });
   return Object.freeze(events);
 }

@@ -1,5 +1,10 @@
 import * as React from 'react';
-import type { ChatActivityCategory, ChatActivityKind, ChatActivityStatus } from '../activity/types';
+import type {
+  ChatActivityCategory,
+  ChatActivityKind,
+  ChatActivitySemanticIntent,
+  ChatActivityStatus,
+} from '../activity/types';
 import './agent-motion.css';
 
 export type AgentMotionKind =
@@ -11,12 +16,15 @@ export type AgentMotionKind =
   | 'stack-shift'
   | 'code-shimmer'
   | 'book-read'
-  | 'search-scan';
+  | 'search-scan'
+  | 'mail-send'
+  | 'ship-launch';
 
 export interface AgentMotionEvidence {
   status?: ChatActivityStatus;
   activityCategory?: ChatActivityCategory;
   activityKind?: ChatActivityKind;
+  semanticIntent?: ChatActivitySemanticIntent;
   title?: string;
   detail?: string;
   filePath?: string;
@@ -45,6 +53,8 @@ const KIND_CATEGORY: Readonly<Record<ChatActivityKind, ChatActivityCategory>> = 
 
 export function resolveAgentMotion(evidence: AgentMotionEvidence): AgentMotionKind | null {
   if (!evidence.status || !LIVE_STATUSES.has(evidence.status)) return null;
+  if (evidence.semanticIntent === 'mail') return 'mail-send';
+  if (evidence.semanticIntent === 'ship') return 'ship-launch';
   if (evidence.activityKind === 'url') return 'search-scan';
   if (evidence.activityKind === 'file' && evidence.activityCategory !== 'writing') {
     return 'book-read';
@@ -152,6 +162,24 @@ export function AgentMotionIndicator({
         <i className="agent-motion__search-ring" />
         <i className="agent-motion__search-handle" />
         <i className="agent-motion__search-glint" />
+      </span>
+    );
+  } else if (motion === 'mail-send') {
+    animation = (
+      <span className="agent-motion agent-motion--mail-send">
+        <i className="agent-motion__mail-body" />
+        <i className="agent-motion__mail-flap" />
+        <i className="agent-motion__mail-trail agent-motion__mail-trail--one" />
+        <i className="agent-motion__mail-trail agent-motion__mail-trail--two" />
+      </span>
+    );
+  } else if (motion === 'ship-launch') {
+    animation = (
+      <span className="agent-motion agent-motion--ship-launch">
+        <i className="agent-motion__ship-hull" />
+        <i className="agent-motion__ship-sail" />
+        <i className="agent-motion__ship-wave agent-motion__ship-wave--one" />
+        <i className="agent-motion__ship-wave agent-motion__ship-wave--two" />
       </span>
     );
   } else {
