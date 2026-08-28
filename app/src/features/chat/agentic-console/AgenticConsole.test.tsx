@@ -97,6 +97,57 @@ describe('AgenticConsole', () => {
     expect(screen.queryByRole('article', { name: 'Diff AgenticConsole.tsx' })).toBeNull();
   });
 
+  it('renders one compact terminal inspector from recorded session state', () => {
+    renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('user', 'user', 10, [{ kind: 'text', text: 'Verify the change.' }]),
+        message('assistant', 'assistant', 30, [{ kind: 'text', text: 'The change is verified.' }]),
+      ],
+      activity: [
+        {
+          id: 'completed-check',
+          chatId: 'chat-console',
+          kind: 'tool',
+          category: 'learning',
+          status: 'done',
+          title: 'Verified focused check',
+          ts: 20,
+          endedAt: 25,
+        },
+      ],
+      sessionEvidence: { status: 'completed', currentOperation: 'Complete' },
+    });
+
+    const inspector = screen.getByRole('status', { name: 'Session completion status' });
+    expect(inspector.textContent).toContain('Done1 completed event recorded');
+    expect(inspector.textContent).toContain('Doing nowComplete');
+    expect(inspector.textContent).toContain('NextNo queued activity recorded');
+    expect(inspector.textContent).toContain('BlockersNone recorded');
+    expect(screen.getAllByRole('status', { name: 'Session completion status' })).toHaveLength(1);
+  });
+
+  it('does not present a terminal inspector while the session is still running', () => {
+    renderConsole({
+      chatId: 'chat-console',
+      messages: [message('user', 'user', 10, [{ kind: 'text', text: 'Keep working.' }])],
+      activity: [
+        {
+          id: 'running-check',
+          chatId: 'chat-console',
+          kind: 'tool',
+          category: 'learning',
+          status: 'running',
+          title: 'Running focused checks',
+          ts: 20,
+        },
+      ],
+      sessionEvidence: { status: 'running', currentOperation: 'Running focused checks' },
+    });
+
+    expect(screen.queryByRole('status', { name: 'Session completion status' })).toBeNull();
+  });
+
   it('coalesces live work into one continuous activity disclosure', () => {
     const activity: ChatActivityEvent[] = [
       {

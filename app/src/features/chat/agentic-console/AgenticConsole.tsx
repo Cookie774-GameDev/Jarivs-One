@@ -610,6 +610,83 @@ function isInlineLedgerLegacyBlock(block: TranscriptBlock, latestUserTurnStarted
   return hasProse && hasContextReferences && canSplitWithoutChangingInteractiveContent;
 }
 
+function SessionCompletionInspector({
+  summary,
+  activity,
+}: {
+  summary: AgenticSessionSummary;
+  activity: readonly ChatActivityEvent[];
+}) {
+  const terminal = new Set<AgenticSessionSummary['status']>([
+    'done',
+    'blocked',
+    'partial',
+    'error',
+    'cancelled',
+  ]).has(summary.status);
+  if (!terminal) return null;
+
+  const completedCount = activity.filter((event) => event.status === 'done').length;
+  const queuedCount = activity.filter((event) => event.status === 'pending').length;
+  const failedCount = activity.filter((event) => event.status === 'error').length;
+  const doneText =
+    completedCount > 0
+      ? `${formatMetric(completedCount)} completed ${completedCount === 1 ? 'event' : 'events'} recorded`
+      : summary.status === 'done'
+        ? 'Response complete'
+        : 'No completed event recorded';
+  const nextText =
+    queuedCount > 0
+      ? `${formatMetric(queuedCount)} queued ${queuedCount === 1 ? 'event' : 'events'} recorded`
+      : 'No queued activity recorded';
+  const blockerText =
+    failedCount > 0
+      ? `${formatMetric(failedCount)} failed ${failedCount === 1 ? 'event' : 'events'} recorded`
+      : summary.status === 'blocked'
+        ? 'Blocked state recorded'
+        : summary.status === 'error'
+          ? 'Run error recorded'
+          : 'None recorded';
+
+  return (
+    <section
+      className="agentic-completion-inspector"
+      role="status"
+      aria-label="Session completion status"
+      aria-live="polite"
+    >
+      <div className="agentic-completion-inspector__item is-done">
+        <strong>
+          <Check aria-hidden="true" />
+          Done
+        </strong>
+        <span>{doneText}</span>
+      </div>
+      <div className="agentic-completion-inspector__item is-current">
+        <strong>
+          <Clock3 aria-hidden="true" />
+          Doing now
+        </strong>
+        <span>{summary.currentOperation}</span>
+      </div>
+      <div className="agentic-completion-inspector__item is-next">
+        <strong>
+          <ChevronRight aria-hidden="true" />
+          Next
+        </strong>
+        <span>{nextText}</span>
+      </div>
+      <div className="agentic-completion-inspector__item is-blocked">
+        <strong>
+          <AlertCircle aria-hidden="true" />
+          Blockers
+        </strong>
+        <span>{blockerText}</span>
+      </div>
+    </section>
+  );
+}
+
 export function AgenticConsole({
   chatId,
   messages,
@@ -933,6 +1010,7 @@ export function AgenticConsole({
           ) : null}
         </div>
       ) : null}
+      <SessionCompletionInspector summary={summary} activity={turnActivity} />
     </section>
   );
 }
