@@ -1,0 +1,330 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "pr31-deepseek-native-terminal-latency-v1",
+  "generatedAt": "2026-08-28T15:48:21.801Z",
+  "status": "complete",
+  "rawOutputStored": false,
+  "expectedModelId": "opencode-go/deepseek-v4-flash-vision-exp",
+  "environment": {
+    "kind": "terminal-opencode",
+    "cliVersion": "1.18.23",
+    "authority": {
+      "requestedModelId": "opencode-go/deepseek-v4-flash-vision-exp",
+      "observedProviderId": "opencode-go",
+      "observedModelId": "deepseek-v4-flash-vision-exp"
+    }
+  },
+  "featureEvidence": {
+    "rlm": {
+      "requested": false,
+      "observed": false,
+      "evidence": "Terminal OpenCode does not expose VibeSpace RLM state; bounded prompts do not request it."
+    },
+    "siyuan": {
+      "requested": false,
+      "observed": false,
+      "evidence": "Terminal OpenCode does not expose VibeSpace SiYuan state; bounded prompts use only task-owned fixtures."
+    }
+  },
+  "prompts": [
+    {
+      "id": "bounded-reasoning",
+      "promptSha256": "707baa2049870e56c63af21ddd1f8ce89a8fb21dbf260b1b0eee1940caaf4a17",
+      "bounds": {
+        "timeoutMs": 35000,
+        "maxOutputChars": 2000
+      },
+      "samples": {
+        "cold": {
+          "phase": "cold",
+          "status": "completed",
+          "durationMs": 7058,
+          "timeToFirstTextMs": 6973,
+          "identity": {
+            "providerId": "opencode-go",
+            "modelId": "deepseek-v4-flash-vision-exp",
+            "qualifiedModelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "output": {
+            "sha256": "01e253f3c56cb0e45bcb191452e63743ecaded09f218a12cc6292db3a6029e80",
+            "charCount": 26
+          },
+          "quality": {
+            "passed": true,
+            "checks": [
+              {
+                "id": "response_bounded",
+                "passed": true
+              },
+              {
+                "id": "required_markers",
+                "passed": true
+              },
+              {
+                "id": "no_failure_language",
+                "passed": true
+              }
+            ]
+          },
+          "sessionSha256": "9abdce0c8cc5d11f8e8245fd312d033f865f619739710e3a9d4e493a60e045a6"
+        },
+        "warm": {
+          "phase": "warm",
+          "status": "completed",
+          "durationMs": 6104,
+          "timeToFirstTextMs": 6018,
+          "identity": {
+            "providerId": "opencode-go",
+            "modelId": "deepseek-v4-flash-vision-exp",
+            "qualifiedModelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "output": {
+            "sha256": "01e253f3c56cb0e45bcb191452e63743ecaded09f218a12cc6292db3a6029e80",
+            "charCount": 26
+          },
+          "quality": {
+            "passed": true,
+            "checks": [
+              {
+                "id": "response_bounded",
+                "passed": true
+              },
+              {
+                "id": "required_markers",
+                "passed": true
+              },
+              {
+                "id": "no_failure_language",
+                "passed": true
+              }
+            ]
+          },
+          "sessionSha256": "9abdce0c8cc5d11f8e8245fd312d033f865f619739710e3a9d4e493a60e045a6",
+          "sessionContinuity": true
+        }
+      }
+    },
+    {
+      "id": "disposable-read",
+      "promptSha256": "95961f04768cf28ed6f2ce2cabb14742a32b209bfe71461c1a6bdddc818fc416",
+      "bounds": {
+        "timeoutMs": 35000,
+        "maxOutputChars": 2000
+      },
+      "samples": {
+        "cold": {
+          "phase": "cold",
+          "status": "completed",
+          "durationMs": 11322,
+          "timeToFirstTextMs": 11233,
+          "identity": {
+            "providerId": "opencode-go",
+            "modelId": "deepseek-v4-flash-vision-exp",
+            "qualifiedModelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "output": {
+            "sha256": "4072387c53e6107d1ae2d708734c70776d1994c31aebbbdf30b22bcff180e880",
+            "charCount": 30
+          },
+          "quality": {
+            "passed": true,
+            "checks": [
+              {
+                "id": "response_bounded",
+                "passed": true
+              },
+              {
+                "id": "required_markers",
+                "passed": true
+              },
+              {
+                "id": "no_failure_language",
+                "passed": true
+              }
+            ]
+          },
+          "sessionSha256": "5e74954781310a5ad1f9cd8d9da96c9f2c52b122731d9efda0b699ae4666e3d8"
+        },
+        "warm": {
+          "phase": "warm",
+          "status": "completed",
+          "durationMs": 7102,
+          "timeToFirstTextMs": 7011,
+          "identity": {
+            "providerId": "opencode-go",
+            "modelId": "deepseek-v4-flash-vision-exp",
+            "qualifiedModelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "output": {
+            "sha256": "4072387c53e6107d1ae2d708734c70776d1994c31aebbbdf30b22bcff180e880",
+            "charCount": 30
+          },
+          "quality": {
+            "passed": true,
+            "checks": [
+              {
+                "id": "response_bounded",
+                "passed": true
+              },
+              {
+                "id": "required_markers",
+                "passed": true
+              },
+              {
+                "id": "no_failure_language",
+                "passed": true
+              }
+            ]
+          },
+          "sessionSha256": "5e74954781310a5ad1f9cd8d9da96c9f2c52b122731d9efda0b699ae4666e3d8",
+          "sessionContinuity": true
+        }
+      },
+      "fileEvidence": {
+        "inputRead": true,
+        "inputSha256": "51ef1fb954f9943798b2c7fe07373cdf36a25d8c7c1023fe460fe2742f17ba11"
+      }
+    },
+    {
+      "id": "disposable-write",
+      "promptSha256": "5c9bc3226e0f3b105ad71f90abc248ad001bb2bc96625c306bc02c2cc24536e8",
+      "bounds": {
+        "timeoutMs": 35000,
+        "maxOutputChars": 2000
+      },
+      "samples": {
+        "cold": {
+          "phase": "cold",
+          "status": "completed",
+          "durationMs": 9212,
+          "timeToFirstTextMs": 9143,
+          "identity": {
+            "providerId": "opencode-go",
+            "modelId": "deepseek-v4-flash-vision-exp",
+            "qualifiedModelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "output": {
+            "sha256": "99a1f119f10a73ff188c281792bebf29ba2be147434074929fd126b81fe7ce10",
+            "charCount": 17
+          },
+          "quality": {
+            "passed": true,
+            "checks": [
+              {
+                "id": "response_bounded",
+                "passed": true
+              },
+              {
+                "id": "required_markers",
+                "passed": true
+              },
+              {
+                "id": "no_failure_language",
+                "passed": true
+              },
+              {
+                "id": "exact_output_file",
+                "passed": true
+              }
+            ]
+          },
+          "sessionSha256": "1fab8a0cffca1080c069a61e6d3d4b3f2cd7a237a6fd34934213d331f759e305"
+        },
+        "warm": {
+          "phase": "warm",
+          "status": "completed",
+          "durationMs": 8861,
+          "timeToFirstTextMs": 8771,
+          "identity": {
+            "providerId": "opencode-go",
+            "modelId": "deepseek-v4-flash-vision-exp",
+            "qualifiedModelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "output": {
+            "sha256": "99a1f119f10a73ff188c281792bebf29ba2be147434074929fd126b81fe7ce10",
+            "charCount": 17
+          },
+          "quality": {
+            "passed": true,
+            "checks": [
+              {
+                "id": "response_bounded",
+                "passed": true
+              },
+              {
+                "id": "required_markers",
+                "passed": true
+              },
+              {
+                "id": "no_failure_language",
+                "passed": true
+              },
+              {
+                "id": "exact_output_file",
+                "passed": true
+              }
+            ]
+          },
+          "sessionSha256": "1fab8a0cffca1080c069a61e6d3d4b3f2cd7a237a6fd34934213d331f759e305",
+          "sessionContinuity": true
+        }
+      },
+      "fileEvidence": {
+        "outputWritten": true,
+        "outputSha256": "2921a8de9f4219de5f32e1c877305e1de0405b2f677e68d1c2b9d622d5fa1a2e"
+      }
+    }
+  ],
+  "execution": {
+    "budgetMs": 270000,
+    "elapsedMs": 61565,
+    "tempDirectoryRemoved": true
+  },
+  "comparisonBoundary": {
+    "status": "pending-native",
+    "requiredEnvironment": "official-native-vibespace",
+    "requiredAuthority": {
+      "providerId": "opencode",
+      "connectionId": "opencode-cli",
+      "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+    },
+    "requiredPromptHashes": [
+      {
+        "id": "bounded-reasoning",
+        "promptSha256": "707baa2049870e56c63af21ddd1f8ce89a8fb21dbf260b1b0eee1940caaf4a17"
+      },
+      {
+        "id": "disposable-read",
+        "promptSha256": "95961f04768cf28ed6f2ce2cabb14742a32b209bfe71461c1a6bdddc818fc416"
+      },
+      {
+        "id": "disposable-write",
+        "promptSha256": "5c9bc3226e0f3b105ad71f90abc248ad001bb2bc96625c306bc02c2cc24536e8"
+      }
+    ],
+    "requiredSampleFields": [
+      "cold.durationMs",
+      "cold.timeToFirstTextMs",
+      "warm.durationMs",
+      "warm.timeToFirstTextMs",
+      "warm.sessionContinuity",
+      "identity.providerId",
+      "identity.connectionId",
+      "identity.modelId",
+      "output.sha256",
+      "output.charCount",
+      "quality.passed"
+    ],
+    "requiredFeatureFields": [
+      "featureEvidence.rlm.requested",
+      "featureEvidence.rlm.observed",
+      "featureEvidence.rlm.evidence",
+      "featureEvidence.siyuan.requested",
+      "featureEvidence.siyuan.observed",
+      "featureEvidence.siyuan.evidence"
+    ],
+    "processBoundary": "The native lane only may attach to the already-running official jarvis.exe WebView, record its owning process/profile, and collect native samples; this terminal lane must not control or restart it.",
+    "comparisonCommand": "node scripts/pr31-deepseek-terminal-latency.mjs --compare --terminal-report <terminal.json> --native-report <native.json> --output <comparison.json>",
+    "requirement": "Run the identical prompt hashes in the already-running official jarvis.exe WebView and provide exact opencode/opencode-cli/opencode-go/deepseek-v4-flash-vision-exp observed identity before comparison."
+  }
+}
