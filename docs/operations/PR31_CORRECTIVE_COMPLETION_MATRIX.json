@@ -245,9 +245,14 @@
       "nativeRequired": true,
       "visualRequired": true,
       "evidence": [
+        { "kind": "commit", "ref": "968a4c84" },
+        {
+          "kind": "test",
+          "ref": "structured read/search motion adjacent matrix 59/59; full TypeScript and reduced-motion contract passed"
+        },
         {
           "kind": "audit",
-          "ref": "Corrective prompt requires fresh loading and animation-state evidence"
+          "ref": "Book/read and magnifier/search motions are implemented from structured evidence; mail/ship intents and fresh native loading/animation-state evidence remain unimplemented"
         }
       ]
     },
