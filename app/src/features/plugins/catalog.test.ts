@@ -66,10 +66,11 @@ describe('plugin catalog', () => {
       'power-bi',
       'powerpoint',
       'sharepoint',
+      'supabase',
       'word',
       'youtube',
     ]);
-    expect(byCapability.manual_fallback).toHaveLength(88);
+    expect(byCapability.manual_fallback).toHaveLength(87);
     expect(
       Object.values(byCapability).reduce((total, plugins) => total + (plugins?.length ?? 0), 0),
     ).toBe(PLUGIN_CATALOG_TARGET);
@@ -91,6 +92,14 @@ describe('plugin catalog', () => {
         expect(capability.externalPrerequisites.length, plugin.id).toBeGreaterThan(0);
       }
     }
+  });
+
+  it('does not present a Supabase API-key page as provider-hosted authorization', () => {
+    const supabase = CLASSIFIED_PLUGIN_CATALOG.find((plugin) => plugin.id === 'supabase');
+    expect(supabase?.authorizationCapability.kind).toBe('external_blocker');
+    expect(supabase?.providerAccessUrl).toBe('https://supabase.com/docs/guides/ai-tools/mcp');
+    expect(supabase?.providerAccessUrl).not.toMatch(/api-keys/i);
+    expect(supabase?.help).toMatch(/provider-hosted browser sign-in/i);
   });
 
   it('only labels connectors with declared runtime tools as implemented', () => {

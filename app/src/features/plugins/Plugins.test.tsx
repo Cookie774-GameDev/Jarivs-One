@@ -236,7 +236,6 @@ describe('Plugins settings page', () => {
   }, 15_000);
 
   it.each([
-    ['Supabase', 'supabase', 'https://supabase.com/dashboard/project/_/settings/api-keys'],
     ['Stripe', 'stripe', 'https://dashboard.stripe.com/apikeys'],
     ['Cloudflare', 'cloudflare', 'https://dash.cloudflare.com/profile/api-tokens'],
   ])(
@@ -260,6 +259,25 @@ describe('Plugins settings page', () => {
     },
     15_000,
   );
+
+  it('shows Supabase as an explicit hosted-MCP OAuth integration blocker', async () => {
+    renderPlugins();
+    fireEvent.change(screen.getByLabelText('Search plugins'), { target: { value: 'Supabase' } });
+    const card = screen.getByTestId('plugin-card-supabase');
+
+    expect(within(card).getByText(/external blocker/i)).toBeTruthy();
+    fireEvent.click(within(card).getByRole('button', { name: /view requirements/i }));
+
+    expect(await screen.findByText(/external authorization prerequisite/i)).toBeTruthy();
+    expect(screen.getAllByText(/provider-hosted browser sign-in.*remote MCP/i)).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: /open supabase configuration/i }));
+    expect(openExternal).toHaveBeenCalledWith('https://supabase.com/docs/guides/ai-tools/mcp');
+    expect(screen.queryByRole('button', { name: /save and verify key/i })).toBeNull();
+    expect(management.beginAuthorization).not.toHaveBeenCalledWith({
+      accountId: 'account-a',
+      pluginId: 'supabase',
+    });
+  }, 15_000);
 
   it('keeps a compact recovery panel when provider registration is unavailable', async () => {
     vi.mocked(management.beginAuthorization).mockResolvedValueOnce({

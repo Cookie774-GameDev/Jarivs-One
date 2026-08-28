@@ -34,6 +34,26 @@ const MANUAL_OAUTH_PREREQUISITES: Readonly<Record<string, readonly string[]>> = 
   ]),
 });
 
+const HOSTED_OAUTH_INTEGRATION_BLOCKERS: Readonly<
+  Record<
+    string,
+    Readonly<{
+      reason: string;
+      externalPrerequisites: readonly string[];
+    }>
+  >
+> = Object.freeze({
+  supabase: Object.freeze({
+    reason:
+      'Supabase offers provider-hosted browser sign-in for its remote MCP server, but VibeSpace has not implemented the MCP OAuth discovery, callback, or token lifecycle required to connect it safely.',
+    externalPrerequisites: Object.freeze([
+      'Integrate the official hosted Supabase MCP endpoint through OAuth discovery; never substitute a project API-key page for sign-in.',
+      'Implement and verify the exact redirect callback, PKCE/state validation, secure token storage and refresh, cancellation, reconnect, revocation, and error recovery.',
+      'Complete native provider-owned login and consent verification without exposing project credentials.',
+    ]),
+  }),
+});
+
 function parseOfficialHttpsPage(value: string | undefined): string | undefined {
   if (!value) return undefined;
   try {
@@ -87,6 +107,17 @@ export function classifyPluginAuthorization(
       authorizationUrl,
       manualFallback: verified.manualFallback,
       externalPrerequisites: verified.externalPrerequisites,
+    });
+  }
+
+  const hostedOAuthBlocker = HOSTED_OAUTH_INTEGRATION_BLOCKERS[input.id];
+  if (hostedOAuthBlocker) {
+    const providerAccessUrl = parseOfficialHttpsPage(input.providerAccessUrl ?? input.docsUrl);
+    return Object.freeze({
+      kind: 'external_blocker',
+      reason: hostedOAuthBlocker.reason,
+      ...(providerAccessUrl ? { providerAccessUrl } : {}),
+      externalPrerequisites: hostedOAuthBlocker.externalPrerequisites,
     });
   }
 

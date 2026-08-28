@@ -45,6 +45,21 @@ describe('plugin authorization capability', () => {
     ).toThrow(/not available/i);
   });
 
+  it('fails Supabase closed until its official hosted MCP OAuth lifecycle is integrated', () => {
+    const supabase = getClassifiedPluginManifest('supabase');
+    expect(supabase?.authorizationCapability).toMatchObject({
+      kind: 'external_blocker',
+      providerAccessUrl: 'https://supabase.com/docs/guides/ai-tools/mcp',
+    });
+    expect(supabase?.authorizationCapability).toHaveProperty(
+      'reason',
+      expect.stringMatching(/provider-hosted browser sign-in.*MCP.*not implemented/i),
+    );
+    expect(JSON.stringify(supabase?.authorizationCapability)).toMatch(
+      /OAuth discovery.*callback.*token lifecycle/i,
+    );
+  });
+
   it('fails a misconfigured registered provider back to an explicit blocker', () => {
     const github = getClassifiedPluginManifest('github');
     if (!github) {

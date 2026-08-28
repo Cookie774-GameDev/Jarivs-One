@@ -163,17 +163,19 @@ const IMPLEMENTED_BASE_DEFINITIONS: Array<Omit<PluginManifest, 'authorizationCap
       ),
     ],
     status: 'implemented',
-    docsUrl: 'https://supabase.com/docs/guides/api/api-keys',
-    credentialUrl: 'https://supabase.com/dashboard/project/_/settings/api-keys',
-    providerAccessUrl: 'https://supabase.com/dashboard/project/_/settings/api-keys',
-    help: 'Enter the project URL and a publishable/anon API key. VibeSpace rejects privileged service-role or secret keys before calling the REST root.',
+    docsUrl: 'https://supabase.com/docs/guides/ai-tools/mcp',
+    credentialUrl: 'https://supabase.com/docs/guides/ai-tools/mcp',
+    providerAccessUrl: 'https://supabase.com/docs/guides/ai-tools/mcp',
+    help: 'Supabase supports provider-hosted browser sign-in for its remote MCP server. VibeSpace keeps this connector blocked until its OAuth discovery, callback, and token lifecycle are implemented and verified; the legacy project-key fields are not presented as an OAuth substitute.',
     tags: ['database', 'auth', 'storage', 'api_key'],
     setupSteps: [
-      'Open your Supabase project → Settings → API.',
-      'Copy the project URL and publishable/anon key.',
-      'Paste both values and test.',
+      'Review the official Supabase remote MCP setup and OAuth security guidance.',
+      'Wait for VibeSpace to provide a verified MCP OAuth callback and secure token lifecycle.',
+      'Do not enter a service-role key or treat a project API key as provider-hosted authorization.',
     ],
     supportedFeatures: ['database', 'auth', 'storage', 'edge functions'],
+    limitations:
+      'The existing bounded REST probe can validate a publishable project key, but it does not satisfy provider-hosted authorization and is not exposed as a replacement for Supabase MCP OAuth.',
     tools: [
       {
         name: 'connection_info',
