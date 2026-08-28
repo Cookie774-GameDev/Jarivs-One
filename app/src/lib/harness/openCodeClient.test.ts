@@ -12,10 +12,7 @@ const syntheticSecret = 'synthetic-secret-value';
 describe('OpenCodeHttpClient', () => {
   it('rejects malformed managed server descriptors', () => {
     expect(() =>
-      createOpenCodeHttpClient(
-        { ...connection, generation: '../unsafe' },
-        { fetch: vi.fn() },
-      ),
+      createOpenCodeHttpClient({ ...connection, generation: '../unsafe' }, { fetch: vi.fn() }),
     ).toThrow('managed server descriptor');
   });
 
@@ -210,6 +207,114 @@ describe('OpenCodeHttpClient', () => {
 
     await expect(client.providerAuthMethods()).rejects.toThrow('invalid provider auth');
     await expect(client.authorizeProvider('openai', 0)).rejects.toThrow('invalid authorization');
+  });
+
+  it('uses OpenCode authoritative MCP status and lifecycle routes in the exact workspace', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (url) => {
+      const path = new URL(String(url)).pathname;
+      if (path === '/mcp') {
+        return new Response(
+          JSON.stringify({
+            github: { status: 'connected' },
+            playwright: { status: 'disabled' },
+            private: { status: 'failed', error: `Bearer ${syntheticSecret}` },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response('true', { status: 200 });
+    });
+    const client = createOpenCodeHttpClient(connection, { fetch });
+
+    await expect(client.mcpStatus('C:\\workspace')).resolves.toEqual({
+      github: { status: 'connected' },
+      playwright: { status: 'disabled' },
+      private: { status: 'failed', error: 'Bearer [REDACTED]' },
+    });
+    await expect(client.connectMcp('github', 'C:\\workspace')).resolves.toBe(true);
+    await expect(client.disconnectMcp('github', 'C:\\workspace')).resolves.toBe(true);
+
+    expect(fetch.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual([
+      '/mcp',
+      '/mcp/github/connect',
+      '/mcp/github/disconnect',
+    ]);
+    expect(
+      fetch.mock.calls.map(([url]) => new URL(String(url)).searchParams.get('directory')),
+    ).toEqual(['C:\\workspace', 'C:\\workspace', 'C:\\workspace']);
+  });
+
+  it('adds exact remote and local MCP definitions through OpenCode without substitution', async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementation(
+        async () =>
+          new Response(JSON.stringify({ docs: { status: 'connected' } }), { status: 200 }),
+      );
+    const client = createOpenCodeHttpClient(connection, { fetch });
+
+    await client.addMcp(
+      'docs',
+      {
+        type: 'remote',
+        url: 'https://mcp.example.test/rpc',
+        enabled: true,
+        headers: { Authorization: `Bearer ${syntheticSecret}` },
+      },
+      'C:\\workspace',
+    );
+    await client.addMcp(
+      'local-tools',
+      {
+        type: 'local',
+        command: ['node', 'server.mjs'],
+        enabled: false,
+        environment: { LOG_LEVEL: 'info' },
+      },
+      'C:\\workspace',
+    );
+
+    const bodies = fetch.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
+    expect(bodies).toEqual([
+      {
+        name: 'docs',
+        config: {
+          type: 'remote',
+          url: 'https://mcp.example.test/rpc',
+          enabled: true,
+          headers: { Authorization: `Bearer ${syntheticSecret}` },
+        },
+      },
+      {
+        name: 'local-tools',
+        config: {
+          type: 'local',
+          command: ['node', 'server.mjs'],
+          enabled: false,
+          environment: { LOG_LEVEL: 'info' },
+        },
+      },
+    ]);
+    expect(fetch.mock.calls.every(([url]) => new URL(String(url)).pathname === '/mcp')).toBe(true);
+    expect(fetch.mock.calls.every(([, init]) => init?.method === 'POST')).toBe(true);
+  });
+
+  it('fails closed on malformed MCP status and unsafe MCP definitions', async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ forged: { status: 'running' } }), { status: 200 }),
+      );
+    const client = createOpenCodeHttpClient(connection, { fetch });
+
+    await expect(client.mcpStatus()).rejects.toThrow('invalid MCP status');
+    await expect(
+      client.addMcp('unsafe/name', { type: 'remote', url: 'http://remote.example.test/mcp' }),
+    ).rejects.toThrow('MCP');
+    await expect(
+      client.addMcp('unsafe', { type: 'local', command: ['node', 'bad\u0000arg'] }),
+    ).rejects.toThrow('MCP');
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('rejects redirects and redacts credentials from bounded server errors', async () => {

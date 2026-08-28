@@ -49,6 +49,25 @@ export interface OpenCodeProviderAuthorization {
   instructions: string;
 }
 
+export type OpenCodeMcpStatus =
+  | Readonly<{ status: 'connected' | 'disabled' | 'needs_auth' }>
+  | Readonly<{ status: 'failed' | 'needs_client_registration'; error: string }>;
+
+export type OpenCodeMcpConfig =
+  | Readonly<{
+      type: 'remote';
+      url: string;
+      enabled?: boolean;
+      headers?: Readonly<Record<string, string>>;
+      oauth?: false;
+    }>
+  | Readonly<{
+      type: 'local';
+      command: readonly string[];
+      enabled?: boolean;
+      environment?: Readonly<Record<string, string>>;
+    }>;
+
 export interface OpenCodeHttpClient {
   health(): Promise<{ healthy: true; version: string }>;
   configureQwenEndpoint(baseUrl: string): Promise<void>;
@@ -61,6 +80,14 @@ export interface OpenCodeHttpClient {
     inputs?: Readonly<Record<string, string>>,
   ): Promise<OpenCodeProviderAuthorization>;
   callbackProvider(providerId: string, method: number, code?: string): Promise<boolean>;
+  mcpStatus(directory?: string): Promise<Readonly<Record<string, OpenCodeMcpStatus>>>;
+  addMcp(
+    name: string,
+    config: OpenCodeMcpConfig,
+    directory?: string,
+  ): Promise<Readonly<Record<string, OpenCodeMcpStatus>>>;
+  connectMcp(name: string, directory?: string): Promise<boolean>;
+  disconnectMcp(name: string, directory?: string): Promise<boolean>;
   createSession(
     input: { title?: string; parentID?: string },
     directory?: string,
@@ -100,6 +127,14 @@ const MAX_AUTH_PROMPTS = 16;
 const MAX_AUTH_OPTIONS = 64;
 const MAX_AUTH_COPY = 4_096;
 const MAX_AUTH_URL = 2_048;
+const MAX_MCP_SERVERS = 64;
+const MAX_MCP_NAME = 160;
+const MAX_MCP_COPY = 4_096;
+const MAX_MCP_HEADERS = 32;
+const MAX_MCP_COMMAND_PARTS = 32;
+const SAFE_MCP_NAME = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$/u;
+const SAFE_ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/u;
+const SAFE_HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,128}$/u;
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -258,6 +293,99 @@ function requireProviderAuthorization(value: unknown): OpenCodeProviderAuthoriza
   return { url, method, instructions };
 }
 
+function requireMcpName(value: string): string {
+  const normalized = boundedAuthString(value, MAX_MCP_NAME);
+  if (!normalized || !SAFE_MCP_NAME.test(normalized)) {
+    throw new Error('OpenCode MCP server name is invalid.');
+  }
+  return normalized;
+}
+
+function requireMcpStatus(value: unknown): Readonly<Record<string, OpenCodeMcpStatus>> {
+  if (!isRecord(value) || Object.keys(value).length > MAX_MCP_SERVERS) {
+    throw new Error('OpenCode returned invalid MCP status.');
+  }
+  const output: Record<string, OpenCodeMcpStatus> = {};
+  for (const [rawName, rawStatus] of Object.entries(value)) {
+    const name = requireMcpName(rawName);
+    const statusRecord = isRecord(rawStatus) ? rawStatus : undefined;
+    const status = statusRecord?.status;
+    if (status === 'connected' || status === 'disabled' || status === 'needs_auth') {
+      output[name] = Object.freeze({ status });
+      continue;
+    }
+    if (status === 'failed' || status === 'needs_client_registration') {
+      const error = boundedAuthString(statusRecord?.error, MAX_MCP_COPY);
+      if (!error) throw new Error('OpenCode returned invalid MCP status.');
+      output[name] = Object.freeze({ status, error: redactHarnessText(error) });
+      continue;
+    }
+    throw new Error('OpenCode returned invalid MCP status.');
+  }
+  return Object.freeze(output);
+}
+
+function boundedMcpMap(
+  value: Readonly<Record<string, string>> | undefined,
+  kind: 'header' | 'environment',
+): Readonly<Record<string, string>> | undefined {
+  if (value === undefined) return undefined;
+  const entries = Object.entries(value);
+  if (entries.length > MAX_MCP_HEADERS) throw new Error('OpenCode MCP configuration is invalid.');
+  const output: Record<string, string> = {};
+  for (const [key, rawValue] of entries) {
+    const validKey = kind === 'header' ? SAFE_HEADER_NAME.test(key) : SAFE_ENV_NAME.test(key);
+    const safeValue = boundedAuthString(rawValue, 8_192);
+    if (!validKey || !safeValue) throw new Error('OpenCode MCP configuration is invalid.');
+    output[key] = safeValue;
+  }
+  return Object.freeze(output);
+}
+
+function requireMcpConfig(config: OpenCodeMcpConfig): OpenCodeMcpConfig {
+  if (config.type === 'remote') {
+    let url: URL;
+    try {
+      url = new URL(config.url);
+    } catch {
+      throw new Error('OpenCode MCP remote URL is invalid.');
+    }
+    const loopbackHttp =
+      url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
+    if (
+      (url.protocol !== 'https:' && !loopbackHttp) ||
+      Boolean(url.username || url.password || url.hash) ||
+      config.url.length > MAX_MCP_COPY
+    ) {
+      throw new Error('OpenCode MCP remote URL is invalid.');
+    }
+    return Object.freeze({
+      type: 'remote',
+      url: url.toString(),
+      ...(config.enabled === undefined ? {} : { enabled: config.enabled }),
+      ...(config.headers ? { headers: boundedMcpMap(config.headers, 'header') } : {}),
+      ...(config.oauth === false ? { oauth: false as const } : {}),
+    });
+  }
+  if (
+    !Array.isArray(config.command) ||
+    config.command.length === 0 ||
+    config.command.length > MAX_MCP_COMMAND_PARTS
+  ) {
+    throw new Error('OpenCode MCP local command is invalid.');
+  }
+  const command = config.command.map((part) => boundedAuthString(part, MAX_MCP_COPY));
+  if (command.some((part) => !part)) throw new Error('OpenCode MCP local command is invalid.');
+  return Object.freeze({
+    type: 'local',
+    command: Object.freeze(command as string[]),
+    ...(config.enabled === undefined ? {} : { enabled: config.enabled }),
+    ...(config.environment
+      ? { environment: boundedMcpMap(config.environment, 'environment') }
+      : {}),
+  });
+}
+
 export function createOpenCodeHttpClient(
   connection: OpenCodeServerConnection,
   options: ClientOptions = {},
@@ -270,8 +398,7 @@ export function createOpenCodeHttpClient(
     throw new Error('OpenCode client requires a validated managed server descriptor.');
   }
 
-  const sanitize = (value: string): string =>
-    redactHarnessText(value).slice(0, MAX_ERROR_BYTES);
+  const sanitize = (value: string): string => redactHarnessText(value).slice(0, MAX_ERROR_BYTES);
 
   const requestUrl = (path: string, directory?: string): string => {
     const url = new URL(path, 'http://127.0.0.1');
@@ -391,6 +518,34 @@ export function createOpenCodeHttpClient(
         method: 'POST',
         body: JSON.stringify({ method, ...(code ? { code } : {}) }),
       }),
+    async mcpStatus(directory) {
+      return requireMcpStatus(await request('/mcp', {}, 'json', MAX_JSON_BYTES, directory));
+    },
+    async addMcp(name, config, directory) {
+      const exactName = requireMcpName(name);
+      const exactConfig = requireMcpConfig(config);
+      return requireMcpStatus(
+        await request(
+          '/mcp',
+          { method: 'POST', body: JSON.stringify({ name: exactName, config: exactConfig }) },
+          'json',
+          MAX_JSON_BYTES,
+          directory,
+        ),
+      );
+    },
+    connectMcp: (name, directory) =>
+      booleanRequest(
+        `/mcp/${encodeURIComponent(requireMcpName(name))}/connect`,
+        { method: 'POST' },
+        directory,
+      ),
+    disconnectMcp: (name, directory) =>
+      booleanRequest(
+        `/mcp/${encodeURIComponent(requireMcpName(name))}/disconnect`,
+        { method: 'POST' },
+        directory,
+      ),
     async createSession(input, directory) {
       return requireSession(
         await request(
@@ -475,16 +630,19 @@ export function createOpenCodeHttpClient(
       }
       let response: Response;
       try {
-        response = await options.fetch(new URL(requestUrl('/event', directory), 'http://127.0.0.1').toString(), {
-          method: 'GET',
-          credentials: 'omit',
-          redirect: 'error',
-          signal,
-          headers: {
-            accept: 'text/event-stream',
-            'cache-control': 'no-cache',
+        response = await options.fetch(
+          new URL(requestUrl('/event', directory), 'http://127.0.0.1').toString(),
+          {
+            method: 'GET',
+            credentials: 'omit',
+            redirect: 'error',
+            signal,
+            headers: {
+              accept: 'text/event-stream',
+              'cache-control': 'no-cache',
+            },
           },
-        });
+        );
       } catch (error) {
         if (signal?.aborted) return;
         throw new Error(
