@@ -128,7 +128,7 @@
     {
       "id": "siyuan-honest-progress-and-eta",
       "requirement": "SiYuan exposes phase-aware monotonic progress, 99 percent reconciliation cap, EWMA ETA excluding pause/cold-start time, and nonfabricated early estimates",
-      "status": "Not implemented",
+      "status": "Implemented and verified",
       "nativeRequired": true,
       "visualRequired": true,
       "evidence": [
@@ -141,8 +141,16 @@
           "ref": "Fresh corrective run: siyuanProgress plus summary executor/store and job-store 4 files and 66/66 tests passed, including nonfabricated early estimates, monotonic phase progress, pause exclusion, and cold-start gap accounting"
         },
         {
-          "kind": "pending",
-          "ref": "Official-native progress and ETA visual proof remains required before verification"
+          "kind": "native",
+          "ref": ".codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-19-chat-context-animations-9568b1f9/context-progress-report-attempt-03.json passed at official jarvis PID 19612/WebView 9688 on HEAD 226cd09e: the canonical fixture uniquely resolved at approximately 68 percent with a truthful discovery-phase three-minute ETA; Pause produced a durable stable checkpoint with no new local work, Resume restored running state, ARIA progress/canvas truth passed, and every working animation became none under reduced motion"
+        },
+        {
+          "kind": "screenshot",
+          "ref": "pass-19-chat-context-animations-9568b1f9 contains fresh attempt-03 running, paused, and reduced-motion-resumed Context screenshots; the original null-map attempt is preserved as a conclusively diagnosed driver-selector failure"
+        },
+        {
+          "kind": "audit",
+          "ref": "The attempt-03 fixture's original job and manifest were restored byte-for-byte; console/page errors and network failures were zero, one bounded hashed warning was retained, and all guarded checks observed zero Ollama processes and zero listeners on 11434"
         }
       ]
     },
@@ -313,7 +321,7 @@
     {
       "id": "chat-context-animations",
       "requirement": "Chat working, pause/resume, Context progress, and contextual book/search/mail/ship animations reflect real state and remain accessible",
-      "status": "Not implemented",
+      "status": "Implemented and verified",
       "nativeRequired": true,
       "visualRequired": true,
       "evidence": [
@@ -338,8 +346,12 @@
           "ref": "pass-19-chat-context-animations-9568b1f9 contains five fresh passing attempt-02 PNGs for book, search, mail, ship, and reduced-motion ship plus the immutable pre-fix failure packet and screenshot"
         },
         {
-          "kind": "pending",
-          "ref": "Structured motions and reduced-motion behavior are now natively verified. Fresh official-native working pause/resume and phase-aware Context progress evidence remains required before this combined row can be verified"
+          "kind": "native",
+          "ref": ".codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-19-chat-context-animations-9568b1f9/context-progress-report-attempt-03.json passed canonical live Context working, approximately 68 percent phase-aware progress and ETA, durable Pause with no new work, Resume, progress ARIA and decorative-canvas truth, and zero working animations under reduced motion; fixture state was restored byte-for-byte with zero console/page errors or network failures and zero Ollama/11434"
+        },
+        {
+          "kind": "screenshot",
+          "ref": "pass-19-chat-context-animations-9568b1f9 contains fresh attempt-03 running, paused, and reduced-motion-resumed Context screenshots in addition to the five passing structured book/search/mail/ship screenshots"
         }
       ]
     },
