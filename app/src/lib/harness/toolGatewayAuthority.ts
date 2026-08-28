@@ -1,5 +1,7 @@
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { useAuthStore } from '@/stores/auth';
+import type { PerformanceProfile } from '@/features/chat/runtime/performanceProfile';
+import type { ExecutionIdentity } from '@/features/context/gateway/contextGatewayContracts';
 import type { ToolGatewayRequest } from './toolGatewayProtocol';
 
 type AuthorityScope = Readonly<{
@@ -15,6 +17,18 @@ export type ToolGatewayAuthorityClaim = Readonly<{
 }>;
 
 const sessionAuthorities = new Map<string, ToolGatewayAuthorityClaim>();
+export type ToolGatewayObservedExecutionAuthority = Readonly<{
+  executionIdentity: Readonly<ExecutionIdentity>;
+  performance: PerformanceProfile;
+  scopeRevision: string;
+}>;
+const observedExecutionAuthorities = new Map<
+  string,
+  Readonly<{
+    authority: ToolGatewayAuthorityClaim;
+    value: ToolGatewayObservedExecutionAuthority;
+  }>
+>();
 type MutationGrant = {
   mode: 'once' | 'always';
   expiresAt: number;
@@ -77,6 +91,62 @@ function sameAuthority(left: ToolGatewayAuthorityClaim, right: ToolGatewayAuthor
   return left.generation === right.generation && sameScope(left.scope, right.scope);
 }
 
+const EXECUTION_IDENTITY_REQUIRED_FIELDS = Object.freeze([
+  'transportConnectionId',
+  'transportAdapterId',
+  'upstreamProviderId',
+  'upstreamModelId',
+  'providerQualifiedModelId',
+  'authBillingRoute',
+  'effort',
+  'fastVariant',
+  'catalogRevision',
+] as const);
+const EXECUTION_IDENTITY_ALLOWED_FIELDS = new Set<string>([
+  ...EXECUTION_IDENTITY_REQUIRED_FIELDS,
+  'observedProviderIdentity',
+]);
+const SAFE_EXECUTION_IDENTITY_VALUE = /^[^\u0000-\u001f\u007f]{1,512}$/u;
+
+function immutableExecutionIdentity(value: unknown): Readonly<ExecutionIdentity> | null {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    Object.keys(record).some((key) => !EXECUTION_IDENTITY_ALLOWED_FIELDS.has(key)) ||
+    EXECUTION_IDENTITY_REQUIRED_FIELDS.some((key) => {
+      const candidate = record[key];
+      return (
+        typeof candidate !== 'string' ||
+        candidate.trim() !== candidate ||
+        !SAFE_EXECUTION_IDENTITY_VALUE.test(candidate)
+      );
+    }) ||
+    (record.observedProviderIdentity !== undefined &&
+      (typeof record.observedProviderIdentity !== 'string' ||
+        record.observedProviderIdentity.trim() !== record.observedProviderIdentity ||
+        !SAFE_EXECUTION_IDENTITY_VALUE.test(record.observedProviderIdentity)))
+  ) {
+    return null;
+  }
+  return Object.freeze({ ...(record as unknown as ExecutionIdentity) });
+}
+
+function sameExecutionIdentity(
+  left: Readonly<ExecutionIdentity>,
+  right: Readonly<ExecutionIdentity>,
+): boolean {
+  return [...EXECUTION_IDENTITY_REQUIRED_FIELDS, 'observedProviderIdentity' as const].every(
+    (field) => left[field] === right[field],
+  );
+}
+
 export function captureToolGatewayAuthorityClaim(): ToolGatewayAuthorityClaim | null {
   return currentAuthority();
 }
@@ -95,8 +165,65 @@ export function bindToolGatewaySessionAuthority(
   return true;
 }
 
+export function bindToolGatewayObservedExecutionAuthority(
+  sessionId: string,
+  expected: ToolGatewayAuthorityClaim,
+  input: Readonly<{
+    executionIdentity: Readonly<ExecutionIdentity>;
+    performance: PerformanceProfile;
+  }>,
+): boolean {
+  const current = currentAuthority();
+  const bound = sessionAuthorities.get(sessionId);
+  const identity = immutableExecutionIdentity(input.executionIdentity);
+  if (
+    !current ||
+    !bound ||
+    !sameAuthority(current, expected) ||
+    !sameAuthority(bound, expected) ||
+    !identity ||
+    !['responsive', 'balanced', 'quality'].includes(input.performance)
+  ) {
+    return false;
+  }
+  const value = Object.freeze({
+    executionIdentity: identity,
+    performance: input.performance,
+    scopeRevision: `${sessionId}:${expected.generation}`,
+  });
+  const existing = observedExecutionAuthorities.get(sessionId);
+  if (existing) {
+    return (
+      sameAuthority(existing.authority, expected) &&
+      existing.value.performance === value.performance &&
+      sameExecutionIdentity(existing.value.executionIdentity, value.executionIdentity)
+    );
+  }
+  observedExecutionAuthorities.set(
+    sessionId,
+    Object.freeze({ authority: expected, value }),
+  );
+  return true;
+}
+
+export function readToolGatewayObservedExecutionAuthority(
+  sessionId: string,
+): ToolGatewayObservedExecutionAuthority | null {
+  const current = currentAuthority();
+  const bound = sessionAuthorities.get(sessionId);
+  const observed = observedExecutionAuthorities.get(sessionId);
+  return current &&
+    bound &&
+    observed &&
+    sameAuthority(current, bound) &&
+    sameAuthority(bound, observed.authority)
+    ? observed.value
+    : null;
+}
+
 export function releaseToolGatewaySessionAuthority(sessionId: string): void {
   sessionAuthorities.delete(sessionId);
+  observedExecutionAuthorities.delete(sessionId);
   grants.delete(sessionId);
 }
 
@@ -175,6 +302,7 @@ export function authorizeToolGatewayMutation(request: ToolGatewayRequest): boole
 export function clearToolGatewayAuthorityForTests(): void {
   ensureScopeObserver();
   sessionAuthorities.clear();
+  observedExecutionAuthorities.clear();
   grants.clear();
   generation = 0;
   observedScope = activeScope();

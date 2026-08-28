@@ -4,10 +4,26 @@ import type { ProjectId, WorkspaceId } from '@/types/common';
 import { parseToolGatewayRequest } from './toolGatewayProtocol';
 import {
   authorizeToolGatewayRequest,
+  bindToolGatewayObservedExecutionAuthority,
   bindToolGatewaySessionAuthority,
   captureToolGatewayAuthorityClaim,
   clearToolGatewayAuthorityForTests,
+  readToolGatewayObservedExecutionAuthority,
+  releaseToolGatewaySessionAuthority,
 } from './toolGatewayAuthority';
+
+const observedIdentity = Object.freeze({
+  transportConnectionId: 'opencode-cli',
+  transportAdapterId: 'opencode-persistent',
+  upstreamProviderId: 'opencode-go',
+  upstreamModelId: 'deepseek-v4-flash-vision-exp',
+  providerQualifiedModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+  authBillingRoute: 'opencode-provider-session',
+  effort: 'high',
+  fastVariant: 'standard',
+  catalogRevision: 'catalog-verified-7',
+  observedProviderIdentity: 'opencode-go/deepseek-v4-flash-vision-exp',
+});
 
 function readRequest(sessionId: string) {
   return parseToolGatewayRequest({
@@ -75,5 +91,78 @@ describe('tool gateway session authority', () => {
     for (const sessionId of sessionIds) {
       expect(authorizeToolGatewayRequest(readRequest(sessionId))).toBe(false);
     }
+  });
+
+  it('keeps execution identity unavailable until the exact session records an observation', () => {
+    const claim = captureToolGatewayAuthorityClaim()!;
+    expect(bindToolGatewaySessionAuthority('observed-session', claim)).toBe(true);
+    expect(readToolGatewayObservedExecutionAuthority('observed-session')).toBeNull();
+
+    expect(
+      bindToolGatewayObservedExecutionAuthority('observed-session', claim, {
+        executionIdentity: observedIdentity,
+        performance: 'quality',
+      }),
+    ).toBe(true);
+    expect(readToolGatewayObservedExecutionAuthority('observed-session')).toEqual({
+      executionIdentity: observedIdentity,
+      performance: 'quality',
+      scopeRevision: 'observed-session:0',
+    });
+    expect(Object.isFrozen(readToolGatewayObservedExecutionAuthority('observed-session'))).toBe(
+      true,
+    );
+    expect(
+      Object.isFrozen(
+        readToolGatewayObservedExecutionAuthority('observed-session')?.executionIdentity,
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects malformed, selected-only, or mismatched execution identity claims', () => {
+    const claim = captureToolGatewayAuthorityClaim()!;
+    expect(bindToolGatewaySessionAuthority('strict-session', claim)).toBe(true);
+    expect(
+      bindToolGatewayObservedExecutionAuthority('strict-session', claim, {
+        executionIdentity: {
+          ...observedIdentity,
+          upstreamModelId: '',
+        },
+        performance: 'quality',
+      }),
+    ).toBe(false);
+    expect(
+      bindToolGatewayObservedExecutionAuthority(
+        'strict-session',
+        { ...claim, generation: claim.generation + 1 },
+        { executionIdentity: observedIdentity, performance: 'quality' },
+      ),
+    ).toBe(false);
+    expect(readToolGatewayObservedExecutionAuthority('strict-session')).toBeNull();
+  });
+
+  it('revokes observed identity on scope transition and erases it on release', () => {
+    const firstClaim = captureToolGatewayAuthorityClaim()!;
+    expect(bindToolGatewaySessionAuthority('first-session', firstClaim)).toBe(true);
+    expect(
+      bindToolGatewayObservedExecutionAuthority('first-session', firstClaim, {
+        executionIdentity: observedIdentity,
+        performance: 'balanced',
+      }),
+    ).toBe(true);
+
+    useAuthStore.setState({ projectId: 'project-b' as ProjectId });
+    expect(readToolGatewayObservedExecutionAuthority('first-session')).toBeNull();
+
+    const secondClaim = captureToolGatewayAuthorityClaim()!;
+    expect(bindToolGatewaySessionAuthority('second-session', secondClaim)).toBe(true);
+    expect(
+      bindToolGatewayObservedExecutionAuthority('second-session', secondClaim, {
+        executionIdentity: observedIdentity,
+        performance: 'responsive',
+      }),
+    ).toBe(true);
+    releaseToolGatewaySessionAuthority('second-session');
+    expect(readToolGatewayObservedExecutionAuthority('second-session')).toBeNull();
   });
 });
