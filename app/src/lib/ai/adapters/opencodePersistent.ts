@@ -30,9 +30,13 @@ import {
   OpenCodeTextAccumulator,
 } from '@/lib/harness/OpenCodeTextAccumulator';
 import { OpenCodeTurnGate } from '@/lib/harness/OpenCodeTurnGate';
-import { assertObservedModelMatches } from '@/lib/harness/OpenCodeRequestControls';
+import {
+  assertObservedModelMatches,
+  type OpenCodeRequestControls,
+} from '@/lib/harness/OpenCodeRequestControls';
 import { normalizeOpenCodeEvent } from '@/lib/harness/eventNormalizer';
 import {
+  bindToolGatewayObservedExecutionAuthority,
   bindToolGatewaySessionAuthority,
   captureToolGatewayAuthorityClaim,
   releaseToolGatewaySessionAuthority,
@@ -696,6 +700,32 @@ export function toOpenCodeDiscoveredModels(
   }));
 }
 
+export async function openCodeCatalogRevision(
+  models: readonly Readonly<OpenCodeLiveModel>[],
+): Promise<string> {
+  const canonical = JSON.stringify(
+    models.map((model) => ({
+      id: model.id,
+      label: model.label,
+      providerId: model.providerId,
+      upstreamModelId: model.upstreamModelId,
+      variants: model.variants.map((variant) => ({ ...variant })),
+      pricing: model.pricing ? { ...model.pricing } : null,
+      supportsIndependentReasoningEffort: model.supportsIndependentReasoningEffort,
+      serviceTiers: [...model.serviceTiers],
+      supportsOpenCodeFastMode: model.supportsOpenCodeFastMode,
+    })),
+  );
+  const digest = await globalThis.crypto?.subtle?.digest(
+    'SHA-256',
+    new TextEncoder().encode(canonical),
+  );
+  if (!digest) throw new Error('OpenCode catalog revision hashing is unavailable.');
+  return `sha256:${[...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')}`;
+}
+
 export function parseConnectedOpenCodeProviderIds(value: unknown): readonly string[] {
   const data = recordOf(unwrapData(value));
   if (!data || !Array.isArray(data.connected) || data.connected.length > 512) {
@@ -1052,6 +1082,57 @@ export function assertAuthoritativeOpenCodeIdentity(input: {
     },
   });
   return observedModelId;
+}
+
+const CATALOG_REVISION = /^sha256:[a-f0-9]{64}$/u;
+
+export function buildObservedOpenCodeGatewayAuthority(input: Readonly<{
+  connection: ProviderRequest['connection'];
+  model: Readonly<OpenCodeLiveModel>;
+  observed: Readonly<OpenCodeObservedIdentity>;
+  controls: Readonly<OpenCodeRequestControls>;
+  catalogRevision: string;
+}>): Readonly<{
+  executionIdentity: Readonly<import('@/features/context/gateway/contextGatewayContracts').ExecutionIdentity>;
+  performance: OpenCodeRequestControls['performance'];
+}> {
+  if (
+    input.controls.connectionId !== input.connection.id ||
+    input.controls.providerId !== input.model.providerId ||
+    input.controls.modelId !== input.model.upstreamModelId ||
+    !CATALOG_REVISION.test(input.catalogRevision)
+  ) {
+    throw new Error('OpenCode observed Gateway authority does not match the dispatched route.');
+  }
+  const observedModelId = assertAuthoritativeOpenCodeIdentity({
+    connectionId: input.connection.id,
+    providerId: input.model.providerId,
+    modelId: input.model.id,
+    ...(input.controls.variant ? { variant: input.controls.variant } : {}),
+    ...(input.controls.serviceTier ? { serviceTier: input.controls.serviceTier } : {}),
+    observed: input.observed,
+  });
+  const fastVariant = input.controls.openCodeFastMode
+    ? input.controls.serviceTier ?? input.controls.variant
+    : 'standard';
+  if (!fastVariant) {
+    throw new Error('OpenCode Fast execution completed without an exact observed route variant.');
+  }
+  return Object.freeze({
+    executionIdentity: Object.freeze({
+      transportConnectionId: input.connection.id,
+      transportAdapterId: input.connection.adapterId,
+      upstreamProviderId: input.model.providerId,
+      upstreamModelId: input.model.upstreamModelId,
+      providerQualifiedModelId: observedModelId,
+      authBillingRoute: input.connection.authSource,
+      effort: input.controls.effort ?? 'provider-default',
+      fastVariant,
+      catalogRevision: input.catalogRevision,
+      observedProviderIdentity: observedModelId,
+    }),
+    performance: input.controls.performance,
+  });
 }
 
 export function assertAuthoritativeOpenCodeCompletion(input: {
@@ -1468,7 +1549,11 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     const session = await sessions.sessionForChat(scope, chatId);
     const client = session.client as PersistentOpenCodeClient;
     failureStage = 'live_model_authority';
-    const liveModel = requireAuthoritativeOpenCodeModel(await liveModels(scope), modelId);
+    const authoritativeCatalog = await liveModels(scope);
+    const liveModel = requireAuthoritativeOpenCodeModel(authoritativeCatalog, modelId);
+    const catalogRevision = gatewayAuthority
+      ? await openCodeCatalogRevision(authoritativeCatalog)
+      : undefined;
     const authoritativeModelId = liveModel.id;
     const providerId = upstreamProviderId(liveModel.id);
     const mode = request.interactionMode ?? 'agent';
@@ -1547,6 +1632,24 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
             : {}),
         },
       });
+      if (gatewayAuthority && catalogRevision) {
+        const observedAuthority = buildObservedOpenCodeGatewayAuthority({
+          connection: request.connection,
+          model: liveModel,
+          observed: identity,
+          controls: dispatch.controls,
+          catalogRevision,
+        });
+        if (
+          !bindToolGatewayObservedExecutionAuthority(
+            dispatch.sessionId,
+            gatewayAuthority,
+            observedAuthority,
+          )
+        ) {
+          throw new Error('Observed OpenCode Tool Gateway identity changed during the session.');
+        }
+      }
       return observedModel;
     };
     boundSessionId = dispatch.sessionId;

@@ -43,6 +43,7 @@ import {
   assertAuthoritativeOpenCodeIdentity,
   assertAuthoritativeOpenCodeRuntimeControls,
   bindPersistentOpenCodeQuestionRoute,
+  buildObservedOpenCodeGatewayAuthority,
   canonicalOpenCodeTextSuffix,
   classifyExplicitRootInventoryScope,
   combineSystemPrompt,
@@ -56,6 +57,7 @@ import {
   normalizePersistentOpenCodeUsage,
   normalizeQuestionEvent,
   normalizeToolEvent,
+  openCodeCatalogRevision,
   openCodeChecklistSnapshotsFromMessages,
   openCodePersistentAdapter,
   parseOpenCodeLiveModels,
@@ -75,6 +77,9 @@ import {
   buildOpenCodeQuestionReplyRequest,
 } from '@/lib/ai/openCodeQuestionReply';
 import type { ProviderEvent, ProviderRequest } from './types';
+import { readToolGatewayObservedExecutionAuthority } from '@/lib/harness/toolGatewayAuthority';
+import { useAuthStore } from '@/stores/auth';
+import type { ProjectId, WorkspaceId } from '@/types/common';
 
 const liveModels = parseOpenCodeLiveModels({
   providers: [
@@ -332,6 +337,62 @@ describe('persistent OpenCode question transport authority', () => {
     );
   });
 
+  it('publishes validated observed execution identity to the exact Tool Gateway session and releases it', async () => {
+    useAuthStore.setState({
+      localUserId: 'account-question-test',
+      workspaceId: 'workspace-question-test' as WorkspaceId,
+      projectId: 'project-question-test' as ProjectId,
+    });
+    configureManagedQuestionTransport([
+      {
+        type: 'message.updated',
+        properties: {
+          sessionID: 'ses_question_exact',
+          info: {
+            role: 'assistant',
+            sessionID: 'ses_question_exact',
+            providerID: 'openai',
+            modelID: 'gpt-question-test',
+          },
+        },
+      },
+      questionAskedEvent(),
+      { type: 'session.idle' },
+    ]);
+    const request = questionProviderRequest('request-gateway-observed');
+    request.projectId = 'project-question-test';
+    request.worktreeId = 'C:\\workspace';
+    request.tools = { vibespace_context: true };
+    const iterator = openCodePersistentAdapter.send!(request)[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toEqual({
+      done: false,
+      value: { type: 'session', sessionId: 'ses_question_exact' },
+    });
+    await expect(iterator.next()).resolves.toEqual({
+      done: false,
+      value: { type: 'model', modelId: 'openai/gpt-question-test' },
+    });
+    expect(readToolGatewayObservedExecutionAuthority('ses_question_exact')).toMatchObject({
+      executionIdentity: {
+        transportConnectionId: 'opencode-cli',
+        transportAdapterId: 'opencode-cli',
+        upstreamProviderId: 'openai',
+        upstreamModelId: 'gpt-question-test',
+        providerQualifiedModelId: 'openai/gpt-question-test',
+        authBillingRoute: 'managed-runtime',
+        effort: 'provider-default',
+        fastVariant: 'standard',
+        catalogRevision: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        observedProviderIdentity: 'openai/gpt-question-test',
+      },
+      performance: 'quality',
+    });
+
+    await drain(iterator);
+    expect(readToolGatewayObservedExecutionAuthority('ses_question_exact')).toBeNull();
+  });
+
   it('sends official reject without a body and consumes the exact authority once', async () => {
     const { iterator, projection } = await startWaitingQuestion('request-question-reject');
     bindPersistentOpenCodeQuestionRoute(projection.route);
@@ -462,6 +523,72 @@ describe('persistent OpenCode question transport authority', () => {
 });
 
 describe('persistent OpenCode live authority', () => {
+  it('derives a deterministic revision from the exact ordered connected catalog', async () => {
+    const first = await openCodeCatalogRevision(liveModels);
+    const same = await openCodeCatalogRevision(liveModels.map((model) => ({ ...model })));
+    const changed = await openCodeCatalogRevision(liveModels.slice(0, 1));
+
+    expect(first).toMatch(/^sha256:[a-f0-9]{64}$/u);
+    expect(same).toBe(first);
+    expect(changed).not.toBe(first);
+  });
+
+  it('builds Gateway authority only from a matching observed OpenCode identity', () => {
+    const model = requireAuthoritativeOpenCodeModel(liveModels, 'openai/gpt-5.6-sol');
+    expect(
+      buildObservedOpenCodeGatewayAuthority({
+        connection: questionProviderRequest('gateway-authority').connection,
+        model,
+        observed: {
+          providerId: 'openai',
+          modelId: 'gpt-5.6-sol',
+          variant: 'max',
+        },
+        controls: {
+          connectionId: 'opencode-cli',
+          providerId: 'openai',
+          modelId: 'gpt-5.6-sol',
+          effort: 'max',
+          variant: 'max',
+          performance: 'quality',
+          rlmEnabled: true,
+        },
+        catalogRevision: `sha256:${'a'.repeat(64)}`,
+      }),
+    ).toEqual({
+      executionIdentity: {
+        transportConnectionId: 'opencode-cli',
+        transportAdapterId: 'opencode-cli',
+        upstreamProviderId: 'openai',
+        upstreamModelId: 'gpt-5.6-sol',
+        providerQualifiedModelId: 'openai/gpt-5.6-sol',
+        authBillingRoute: 'managed-runtime',
+        effort: 'max',
+        fastVariant: 'standard',
+        catalogRevision: `sha256:${'a'.repeat(64)}`,
+        observedProviderIdentity: 'openai/gpt-5.6-sol',
+      },
+      performance: 'quality',
+    });
+    expect(() =>
+      buildObservedOpenCodeGatewayAuthority({
+        connection: questionProviderRequest('gateway-authority-mismatch').connection,
+        model,
+        observed: { providerId: 'other', modelId: 'gpt-5.6-sol', variant: 'max' },
+        controls: {
+          connectionId: 'opencode-cli',
+          providerId: 'openai',
+          modelId: 'gpt-5.6-sol',
+          effort: 'max',
+          variant: 'max',
+          performance: 'quality',
+          rlmEnabled: true,
+        },
+        catalogRevision: `sha256:${'a'.repeat(64)}`,
+      }),
+    ).toThrow(/MODEL_IDENTITY_MISMATCH/);
+  });
+
   it('maps the native question request as a bounded dedicated provider event', () => {
     const event = normalizeQuestionEvent(
       {
