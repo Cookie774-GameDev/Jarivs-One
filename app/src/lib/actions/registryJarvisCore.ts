@@ -323,6 +323,98 @@ export async function waitForAgentBatch(
   return { ok: false, error: `Child agents did not finish within ${timeoutMs}ms.` };
 }
 
+type JarvisChildRunTarget = Readonly<{ agentId: string; childChatId: string }>;
+type JarvisChildRunControlEvent = 'jarvis:cancel' | 'jarvis:resume';
+
+const MAX_RESUMABLE_CHILD_BATCHES = 32;
+const resumableChildrenByParentChat = new Map<string, readonly JarvisChildRunTarget[]>();
+let childResumePropagationListening = false;
+
+function normalizedChildRunTargets(
+  children: readonly JarvisChildRunTarget[],
+): JarvisChildRunTarget[] {
+  const seen = new Set<string>();
+  return children.flatMap((child) => {
+    const childChatId = child.childChatId.trim();
+    if (!childChatId || seen.has(childChatId)) return [];
+    seen.add(childChatId);
+    return [{ agentId: child.agentId, childChatId }];
+  });
+}
+
+export function dispatchExactChildRunControl(
+  eventName: JarvisChildRunControlEvent,
+  children: readonly JarvisChildRunTarget[],
+  dispatch: (event: Event) => void = (event) => window.dispatchEvent(event),
+  newCancellationKey: () => string = () => crypto.randomUUID(),
+): void {
+  for (const child of normalizedChildRunTargets(children)) {
+    const detail =
+      eventName === 'jarvis:resume'
+        ? { chatId: child.childChatId, cancellationKey: newCancellationKey() }
+        : { chatId: child.childChatId };
+    dispatch(new CustomEvent(eventName, { detail }));
+  }
+}
+
+function stopChildResumePropagationWhenIdle(): void {
+  if (!childResumePropagationListening || resumableChildrenByParentChat.size > 0) return;
+  window.removeEventListener('jarvis:resume', handleParentChatResume as EventListener);
+  childResumePropagationListening = false;
+}
+
+function handleParentChatResume(event: Event): void {
+  const parentChatId = String(
+    (event as CustomEvent<{ chatId?: unknown }>).detail?.chatId ?? '',
+  ).trim();
+  if (!parentChatId) return;
+  const children = resumableChildrenByParentChat.get(parentChatId);
+  if (!children) return;
+  resumableChildrenByParentChat.delete(parentChatId);
+  stopChildResumePropagationWhenIdle();
+  dispatchExactChildRunControl('jarvis:resume', children);
+}
+
+export function armExactChildRunResumePropagation(
+  parentChatId: string,
+  children: readonly JarvisChildRunTarget[],
+): void {
+  const parent = parentChatId.trim();
+  const targets = normalizedChildRunTargets(children);
+  if (!parent || targets.length === 0) return;
+  resumableChildrenByParentChat.delete(parent);
+  resumableChildrenByParentChat.set(parent, targets);
+  while (resumableChildrenByParentChat.size > MAX_RESUMABLE_CHILD_BATCHES) {
+    const oldest = resumableChildrenByParentChat.keys().next().value as string | undefined;
+    if (!oldest) break;
+    resumableChildrenByParentChat.delete(oldest);
+  }
+  if (!childResumePropagationListening) {
+    window.addEventListener('jarvis:resume', handleParentChatResume as EventListener);
+    childResumePropagationListening = true;
+  }
+}
+
+export function bindExactSingleChildRunCancellationResume(
+  parentChatId: string,
+  child: Readonly<{ agentId: string; childChatId: string }>,
+  parentSignal: AbortSignal | undefined,
+): void {
+  if (!parentSignal) return;
+  let handled = false;
+  const cancelChild = () => {
+    if (handled) return;
+    handled = true;
+    armExactChildRunResumePropagation(parentChatId, [child]);
+    dispatchExactChildRunControl('jarvis:cancel', [child]);
+  };
+  if (parentSignal.aborted) {
+    cancelChild();
+    return;
+  }
+  parentSignal.addEventListener('abort', cancelChild, { once: true });
+}
+
 export const CORE_ACTION_IDS = [
   'terminal.create',
   'terminal.create_many',
@@ -989,6 +1081,17 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
           jarvisAgentId: agent?.id,
           commandName: 'multitask',
         });
+        const launchedChild = launched.agents[0];
+        if (launchedChild) {
+          bindExactSingleChildRunCancellationResume(
+            ctx.chatId,
+            {
+              agentId: String(launchedChild.agentId),
+              childChatId: String(launchedChild.childChatId),
+            },
+            ctx.signal,
+          );
+        }
         return ok('Agent started.', launched);
       },
     },
@@ -1054,10 +1157,9 @@ export function createJarvisCoreActions(resolveLegacy: LegacyResolver): ActionDe
         });
         if (!observed.ok) {
           if (/\bcancelled\b/i.test(observed.error)) {
+            armExactChildRunResumePropagation(ctx.chatId, launchedChildren);
+            dispatchExactChildRunControl('jarvis:cancel', launchedChildren);
             for (const child of launchedChildren) {
-              window.dispatchEvent(
-                new CustomEvent('jarvis:cancel', { detail: { chatId: child.childChatId } }),
-              );
               useJarvisInteractionStore.getState().updateAgent(ctx.chatId, child.agentId, {
                 status: 'cancelled',
                 currentStep: 'Cancelled by user',
