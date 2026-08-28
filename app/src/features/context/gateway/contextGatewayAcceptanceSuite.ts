@@ -25,6 +25,7 @@ export const REQUIRED_CONTEXT_GATEWAY_SURFACES = [
 ] as const;
 
 export type ContextGatewaySurfaceId = (typeof REQUIRED_CONTEXT_GATEWAY_SURFACES)[number];
+const REQUIRED_ISOLATION_SURFACES = ['chat', 'terminal:codex', 'terminal:claude'] as const;
 
 export interface NativeSurfaceProof {
   surfaceId: string;
@@ -57,6 +58,18 @@ export interface ContextGatewayAcceptanceInput {
   nativeProofs: NativeSurfaceProof[];
   featureParityPassed: boolean;
   concurrentScopeIsolationPassed: boolean;
+  isolationProof?: {
+    evidenceId: string;
+    recordedAt: string;
+    commitSha: string;
+    runtimeGeneration: string;
+    officialDesktop: boolean;
+    concurrent: boolean;
+    scopes: Array<{ surfaceId: string; scopeHash: string }>;
+    crossScopeContextBlocked: boolean;
+    crossScopeEvidenceReuseBlocked: boolean;
+    latePostCancelEventBlocked: boolean;
+  };
   rollbackProof?: {
     commitSha: string;
     runtimeGeneration: string;
@@ -288,6 +301,53 @@ export function evaluateContextGatewayAcceptance(
 
   if (!input.featureParityPassed) failures.push('featureParity');
   if (!input.concurrentScopeIsolationPassed) failures.push('concurrentScopeIsolation');
+  if (!input.isolationProof) {
+    missing.push('isolationProof');
+  } else {
+    const proof = input.isolationProof;
+    if (proof.evidenceId.trim().length === 0)
+      throw new Error('isolation evidenceId must be non-empty');
+    const recordedAt = Date.parse(proof.recordedAt);
+    if (!Number.isFinite(recordedAt) || new Date(recordedAt).toISOString() !== proof.recordedAt) {
+      throw new Error('isolation recordedAt must be a canonical ISO timestamp');
+    }
+    if (!/^[0-9a-f]{40}$/i.test(proof.commitSha)) {
+      throw new Error('isolation commitSha must be a full Git SHA');
+    }
+    if (proof.runtimeGeneration.trim().length === 0) {
+      throw new Error('isolation runtimeGeneration must be non-empty');
+    }
+    if (
+      (validBuildCommit && proof.commitSha.toLowerCase() !== input.build.commitSha.toLowerCase()) ||
+      (validRuntimeGeneration && proof.runtimeGeneration !== input.build.runtimeGeneration)
+    ) {
+      failures.push('isolation:buildBinding');
+    }
+    const scopeBySurface = new Map(proof.scopes.map((scope) => [scope.surfaceId, scope.scopeHash]));
+    if (
+      scopeBySurface.size !== REQUIRED_ISOLATION_SURFACES.length ||
+      proof.scopes.length !== REQUIRED_ISOLATION_SURFACES.length ||
+      REQUIRED_ISOLATION_SURFACES.some((surfaceId) => !scopeBySurface.has(surfaceId))
+    ) {
+      throw new Error('isolation scopes must contain exactly Chat, Codex, and Claude');
+    }
+    const scopeHashes = [...scopeBySurface.values()];
+    if (
+      scopeHashes.some((hash) => !/^sha256:[0-9a-f]{64}$/i.test(hash)) ||
+      new Set(scopeHashes.map((hash) => hash.toLowerCase())).size !== scopeHashes.length
+    ) {
+      throw new Error('isolation scopeHash values must be distinct SHA-256 metadata');
+    }
+    for (const field of [
+      'officialDesktop',
+      'concurrent',
+      'crossScopeContextBlocked',
+      'crossScopeEvidenceReuseBlocked',
+      'latePostCancelEventBlocked',
+    ] as const) {
+      if (!proof[field]) failures.push(`isolation:${field}`);
+    }
+  }
   if (!input.rollbackProof) {
     missing.push('rollbackProof');
   } else {

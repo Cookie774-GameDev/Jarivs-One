@@ -40,6 +40,29 @@ describe('parseContextGatewayAcceptanceInput', () => {
     ).toThrow('unknown field');
   });
 
+  it('accepts bounded metadata-only concurrent isolation proof', () => {
+    const input = {
+      ...incompleteEnvelope(),
+      isolationProof: {
+        evidenceId: 'isolation-proof-1',
+        recordedAt: '2026-08-22T12:00:00.000Z',
+        commitSha: '0123456789abcdef0123456789abcdef01234567',
+        runtimeGeneration: 'generation-1',
+        officialDesktop: true,
+        concurrent: true,
+        scopes: [
+          { surfaceId: 'chat', scopeHash: `sha256:${'1'.repeat(64)}` },
+          { surfaceId: 'terminal:codex', scopeHash: `sha256:${'2'.repeat(64)}` },
+          { surfaceId: 'terminal:claude', scopeHash: `sha256:${'3'.repeat(64)}` },
+        ],
+        crossScopeContextBlocked: true,
+        crossScopeEvidenceReuseBlocked: true,
+        latePostCancelEventBlocked: true,
+      },
+    };
+    expect(parseContextGatewayAcceptanceInput(input)).toEqual(input);
+  });
+
   it('rejects an unknown top-level prompt field', () => {
     expect(() =>
       parseContextGatewayAcceptanceInput({

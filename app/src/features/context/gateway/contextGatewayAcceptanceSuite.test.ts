@@ -121,6 +121,22 @@ function completeInput(): ContextGatewayAcceptanceInput {
     nativeProofs: REQUIRED_CONTEXT_GATEWAY_SURFACES.map(nativeProof),
     featureParityPassed: true,
     concurrentScopeIsolationPassed: true,
+    isolationProof: {
+      evidenceId: 'isolation-proof-1',
+      recordedAt: '2026-08-22T12:00:00.000Z',
+      commitSha: '0123456789abcdef0123456789abcdef01234567',
+      runtimeGeneration: 'generation-42',
+      officialDesktop: true,
+      concurrent: true,
+      scopes: [
+        { surfaceId: 'chat', scopeHash: `sha256:${'1'.repeat(64)}` },
+        { surfaceId: 'terminal:codex', scopeHash: `sha256:${'2'.repeat(64)}` },
+        { surfaceId: 'terminal:claude', scopeHash: `sha256:${'3'.repeat(64)}` },
+      ],
+      crossScopeContextBlocked: true,
+      crossScopeEvidenceReuseBlocked: true,
+      latePostCancelEventBlocked: true,
+    },
     rollbackProof: {
       commitSha: '0123456789abcdef0123456789abcdef01234567',
       runtimeGeneration: 'generation-42',
@@ -347,6 +363,29 @@ describe('evaluateContextGatewayAcceptance', () => {
       status: 'failed',
       failures: ['rollback:buildBinding'],
     });
+  });
+
+  it('fails isolation proof that permits cross-scope evidence reuse', () => {
+    const input = completeInput();
+    input.isolationProof = { ...input.isolationProof!, crossScopeEvidenceReuseBlocked: false };
+
+    expect(evaluateContextGatewayAcceptance(input)).toMatchObject({
+      status: 'failed',
+      failures: ['isolation:crossScopeEvidenceReuseBlocked'],
+    });
+  });
+
+  it('rejects isolation proof with duplicate opaque scope hashes', () => {
+    const input = completeInput();
+    input.isolationProof = {
+      ...input.isolationProof!,
+      scopes: input.isolationProof!.scopes.map((scope) => ({
+        ...scope,
+        scopeHash: `sha256:${'1'.repeat(64)}`,
+      })),
+    };
+
+    expect(() => evaluateContextGatewayAcceptance(input)).toThrow('scopeHash');
   });
 
   it('rejects duplicate or unknown surface rows and malformed blocker metadata', () => {

@@ -223,7 +223,7 @@ export function parseContextGatewayAcceptanceInput(value: unknown): ContextGatew
       'externalBlockers',
     ],
     'acceptance',
-    ['focusedReport', 'deepReport', 'rollbackProof'],
+    ['focusedReport', 'deepReport', 'rollbackProof', 'isolationProof'],
   );
 
   const build = record(input.build, 'acceptance.build');
@@ -296,6 +296,47 @@ export function parseContextGatewayAcceptanceInput(value: unknown): ContextGatew
 
   bool(input.featureParityPassed, 'acceptance.featureParityPassed');
   bool(input.concurrentScopeIsolationPassed, 'acceptance.concurrentScopeIsolationPassed');
+  if ('isolationProof' in input) {
+    const proof = record(input.isolationProof, 'acceptance.isolationProof');
+    exactKeys(
+      proof,
+      [
+        'evidenceId',
+        'recordedAt',
+        'commitSha',
+        'runtimeGeneration',
+        'officialDesktop',
+        'concurrent',
+        'scopes',
+        'crossScopeContextBlocked',
+        'crossScopeEvidenceReuseBlocked',
+        'latePostCancelEventBlocked',
+      ],
+      'acceptance.isolationProof',
+    );
+    for (const field of ['evidenceId', 'recordedAt', 'commitSha', 'runtimeGeneration']) {
+      safeString(proof[field], `acceptance.isolationProof.${field}`, 256);
+    }
+    for (const field of [
+      'officialDesktop',
+      'concurrent',
+      'crossScopeContextBlocked',
+      'crossScopeEvidenceReuseBlocked',
+      'latePostCancelEventBlocked',
+    ]) {
+      bool(proof[field], `acceptance.isolationProof.${field}`);
+    }
+    for (const [index, scopeValue] of boundedArray(
+      proof.scopes,
+      'acceptance.isolationProof.scopes',
+      3,
+    ).entries()) {
+      const scope = record(scopeValue, `acceptance.isolationProof.scopes[${index}]`);
+      exactKeys(scope, ['surfaceId', 'scopeHash'], `acceptance.isolationProof.scopes[${index}]`);
+      safeString(scope.surfaceId, `acceptance.isolationProof.scopes[${index}].surfaceId`, 64);
+      safeString(scope.scopeHash, `acceptance.isolationProof.scopes[${index}].scopeHash`, 80);
+    }
+  }
   if ('rollbackProof' in input) {
     const proof = record(input.rollbackProof, 'acceptance.rollbackProof');
     exactKeys(
