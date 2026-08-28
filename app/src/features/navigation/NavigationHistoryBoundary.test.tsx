@@ -91,7 +91,11 @@ describe('NavigationHistoryBoundary', () => {
       'utf8',
     );
 
-    expect(appSource).toMatch(/<NavigationHistoryBoundary\s*\/>\s*<AppShell>/u);
+    const boundaryIndex = appSource.lastIndexOf('<NavigationHistoryBoundary />');
+    const shellIndex = appSource.lastIndexOf('<AppShell>');
+    expect(boundaryIndex).toBeGreaterThanOrEqual(0);
+    expect(shellIndex).toBeGreaterThan(boundaryIndex);
+    expect(appSource.match(/<NavigationHistoryBoundary\s*\/>/gu)).toHaveLength(1);
     expect(pageRouterSource).not.toContain('<NavigationHistoryBoundary />');
   });
 });

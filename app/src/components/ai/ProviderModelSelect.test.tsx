@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/stores/auth';
 import { syncDiscoveredOllamaModels } from '@/lib/ai/models';
 import { resetProviderModelCache } from '@/lib/ai/providerModelCatalog';
+import { nativeFetch } from '@/lib/nativeFetch';
 import { ProviderModelSelect } from './ProviderModelSelect';
 
 vi.mock('@/lib/ai/providers/ollama', () => ({
@@ -11,9 +12,7 @@ vi.mock('@/lib/ai/providers/ollama', () => ({
 }));
 
 vi.mock('@/lib/nativeFetch', () => ({
-  nativeFetch: vi.fn(async () => {
-    throw new Error('network disabled in tests');
-  }),
+  nativeFetch: vi.fn(),
 }));
 
 describe('ProviderModelSelect', () => {
@@ -26,9 +25,17 @@ describe('ProviderModelSelect', () => {
       plan: 'free',
       defaultLocalModel: '',
     });
+    vi.mocked(nativeFetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [{ id: 'deepseek-v4-flash' }, { id: 'deepseek-v4-pro' }],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
   });
 
-  it('shows only connected provider models without manual custom entry', () => {
+  it('shows only connected provider models without manual custom entry', async () => {
     render(
       <ProviderModelSelect
         providerId="deepseek"
@@ -39,15 +46,15 @@ describe('ProviderModelSelect', () => {
       />,
     );
 
-    const modelSelect = screen.getByLabelText('Model');
+    const modelSelect = await screen.findByLabelText('Model');
     expect(modelSelect.tagName).toBe('SELECT');
-    expect(screen.getByRole('option', { name: /DeepSeek V4 Flash/i })).toBeTruthy();
-    expect(screen.getByRole('option', { name: /DeepSeek V4 Pro/i })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'deepseek-v4-flash' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'deepseek-v4-pro' })).toBeTruthy();
     expect(screen.queryByLabelText(/Advanced: custom model ID/i)).toBeNull();
     expect(screen.queryByPlaceholderText(/custom-model-id/i)).toBeNull();
   });
 
-  it('does not preserve stale custom model ids as selectable options', () => {
+  it('does not preserve stale custom model ids as selectable options', async () => {
     render(
       <ProviderModelSelect
         providerId="deepseek"
@@ -58,7 +65,9 @@ describe('ProviderModelSelect', () => {
       />,
     );
 
-    expect(screen.queryByRole('option', { name: /legacy-manual-model/i })).toBeNull();
-    expect(screen.getByRole('alert').textContent).toMatch(/not available/i);
+    await waitFor(() => {
+      expect(screen.queryByRole('option', { name: /legacy-manual-model/i })).toBeNull();
+      expect(screen.getByRole('alert').textContent).toMatch(/not available/i);
+    });
   });
 });

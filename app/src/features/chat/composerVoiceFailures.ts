@@ -1,11 +1,6 @@
 import { formatJarvisVerifiedNarration } from '@/lib/jarvis/response/templates';
 
-export type ComposerVoiceFailureKind =
-  | 'system_startup'
-  | 'local_capture'
-  | 'local_transcription'
-  | 'groq_capture'
-  | 'groq_transcription';
+export type ComposerVoiceFailureKind = 'system_startup' | 'local_capture' | 'local_transcription';
 
 const COMPOSER_VOICE_FAILURE_DETAILS: Readonly<
   Record<ComposerVoiceFailureKind, Readonly<{ actionLabel: string; reason: string }>>
@@ -24,16 +19,6 @@ const COMPOSER_VOICE_FAILURE_DETAILS: Readonly<
     actionLabel: 'Local speech transcription',
     reason:
       'The local model could not transcribe the captured audio. Falling back to system dictation',
-  }),
-  groq_capture: Object.freeze({
-    actionLabel: 'Groq dictation microphone',
-    reason:
-      'The Groq dictation recorder could not access a working microphone. Check microphone permission and the selected input device',
-  }),
-  groq_transcription: Object.freeze({
-    actionLabel: 'Groq speech transcription',
-    reason:
-      'Groq could not transcribe the captured audio. Check the connection and provider configuration, then try again',
   }),
 });
 

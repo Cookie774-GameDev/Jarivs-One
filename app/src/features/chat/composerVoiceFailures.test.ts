@@ -20,16 +20,6 @@ describe('Composer voice failure narration', () => {
       expected:
         'The action failed, sir. Action: Local speech transcription. Cause: The local model could not transcribe the captured audio. Falling back to system dictation.',
     },
-    {
-      kind: 'groq_capture' as const,
-      expected:
-        'The action failed, sir. Action: Groq dictation microphone. Cause: The Groq dictation recorder could not access a working microphone. Check microphone permission and the selected input device.',
-    },
-    {
-      kind: 'groq_transcription' as const,
-      expected:
-        'The action failed, sir. Action: Groq speech transcription. Cause: Groq could not transcribe the captured audio. Check the connection and provider configuration, then try again.',
-    },
   ])('formats $kind with exact actionable shared narration', ({ kind, expected }) => {
     expect(formatComposerVoiceFailure(kind)).toBe(expected);
   });
@@ -53,7 +43,5 @@ describe('Composer voice failure narration', () => {
     expect(sttSource).toContain("formatComposerVoiceFailure('system_startup')");
     expect(sttSource.match(/formatComposerVoiceFailure\('local_capture'\)/gu)).toHaveLength(2);
     expect(sttSource).toContain("formatComposerVoiceFailure('local_transcription')");
-    expect(sttSource).toContain("formatComposerVoiceFailure('groq_capture')");
-    expect(sttSource).toContain("formatComposerVoiceFailure('groq_transcription')");
   });
 });

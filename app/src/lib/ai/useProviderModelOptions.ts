@@ -44,6 +44,7 @@ export function useProviderModelOptions(args: {
   const ollamaOptions = useOllamaModelOptions();
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [catalogRevision, setCatalogRevision] = useState(0);
 
   const providerOptions: ProviderModelSelectOption[] = useMemo(() => {
     const list = args.providers ?? HIVE_STACK_PROVIDERS;
@@ -61,7 +62,7 @@ export function useProviderModelOptions(args: {
 
   const modelOptions: RegistryModelOption[] = useMemo(
     () => getModelsForProvider(args.providerId, ctx, args.savedModelId),
-    [args.providerId, args.savedModelId, ctx, ollamaOptions],
+    [args.providerId, args.savedModelId, catalogRevision, ctx, ollamaOptions],
   );
 
   const loadModels = useCallback(
@@ -70,6 +71,7 @@ export function useProviderModelOptions(args: {
       setLoadError(null);
       try {
         await loadProviderModels(args.providerId, ctx, { force });
+        setCatalogRevision((revision) => revision + 1);
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : 'Could not load models');
       } finally {

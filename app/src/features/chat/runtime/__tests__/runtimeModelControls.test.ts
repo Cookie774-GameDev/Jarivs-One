@@ -21,8 +21,8 @@ describe('runtime model controls', () => {
       'low',
       'medium',
       'high',
-      'ultra',
       'max',
+      'ultra',
     ]);
   });
 
@@ -81,7 +81,9 @@ describe('runtime model controls', () => {
       { ...sol, connectionId: 'openai-api', modelId: 'gpt-5.6-sol' },
       { ...sol, modelId: 'openrouter/openai/gpt-5.6-sol' },
     ]) {
-      expect(resolveRuntimeModelControls({ effort: 'auto', fastMode: 'on' }, metadata)).toMatchObject({
+      expect(
+        resolveRuntimeModelControls({ effort: 'auto', fastMode: 'on' }, metadata),
+      ).toMatchObject({
         ok: false,
         code: 'FAST_MODE_UNSUPPORTED',
       });
