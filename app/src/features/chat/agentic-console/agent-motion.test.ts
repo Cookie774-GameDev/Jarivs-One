@@ -27,5 +27,8 @@ describe('agent activity motion visual contract', () => {
   it('preserves hidden-window pausing and reduced-motion accessibility', () => {
     expect(stylesheet).toContain("html[data-app-visibility='hidden'] .agent-motion");
     expect(stylesheet).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(stylesheet).toMatch(
+      /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-motion,\s*\.agent-motion \*,\s*\.agent-motion \*::after \{[\s\S]*?animation:\s*none !important/,
+    );
   });
 });

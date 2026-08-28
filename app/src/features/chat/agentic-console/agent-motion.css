@@ -756,6 +756,7 @@ html[data-app-visibility='hidden'] .agent-motion *::after {
     opacity: 0;
   }
 
+  .agent-motion,
   .agent-motion *,
   .agent-motion *::after {
     animation: none !important;
