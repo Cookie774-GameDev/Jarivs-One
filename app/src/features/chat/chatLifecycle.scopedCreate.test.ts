@@ -8,6 +8,11 @@ const state = vi.hoisted(() => ({
   syncEnqueues: 0,
 }));
 
+vi.mock('@/lib/doctor/storageDoctor', () => ({
+  requireHealthyLocalChatStorage: vi.fn(async () => undefined),
+  runLocalChatStorageOperation: vi.fn(async <T>(operation: () => Promise<T>) => operation()),
+}));
+
 vi.mock('@/lib/db', () => ({
   db: {
     chats: {

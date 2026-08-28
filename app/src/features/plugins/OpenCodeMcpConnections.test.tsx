@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { OpenCodeHttpClient } from '@/lib/harness/openCodeClient';
+import type { OpenCodeHttpClient, OpenCodeMcpStatus } from '@/lib/harness/openCodeClient';
 import type { HarnessRuntimeManager } from '@/lib/harness/runtimeManager';
 import { OpenCodeMcpConnections } from './OpenCodeMcpConnections';
 
@@ -28,7 +28,7 @@ function runtimeHarness(): HarnessRuntimeManager {
 }
 
 function clientHarness() {
-  let statuses = {
+  let statuses: Record<string, OpenCodeMcpStatus> = {
     github: { status: 'connected' as const },
     docs: { status: 'failed' as const, error: 'Safe connection failure.' },
   };
