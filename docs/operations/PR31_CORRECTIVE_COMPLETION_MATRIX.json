@@ -323,11 +323,23 @@
         },
         {
           "kind": "test",
-          "ref": "Structured read/search motion adjacent matrix 59/59; structured mail/ship motion, ledger, and journal projection 47/47 plus AgenticConsole 22/22; full TypeScript, Prettier, diff, Gitleaks, and reduced-motion contract passed"
+          "ref": "Structured read/search motion adjacent matrix 59/59; structured mail/ship motion, ledger, and journal projection 47/47 plus AgenticConsole 22/22; after 8af4696c the focused root/descendant reduced-motion contract passes 6/6"
+        },
+        {
+          "kind": "commit",
+          "ref": "8af4696c fixes the native-proven accessibility defect where the root ship element retained agent-motion-ship-bob under prefers-reduced-motion even though descendant animations were disabled"
+        },
+        {
+          "kind": "native",
+          "ref": ".codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-19-chat-context-animations-9568b1f9/chat-motion-report-attempt-02.json passed 10/10 at exact HEAD 8af4696c for structured-only book/read, search/scan, mail/send, and ship/launch motion; normal and narrow layouts; decorative/focus-free ARIA truth; generic-prose exclusion; and zero root or descendant animation under reduced motion, with zero console/page events and zero Ollama/11434"
+        },
+        {
+          "kind": "screenshot",
+          "ref": "pass-19-chat-context-animations-9568b1f9 contains five fresh passing attempt-02 PNGs for book, search, mail, ship, and reduced-motion ship plus the immutable pre-fix failure packet and screenshot"
         },
         {
           "kind": "pending",
-          "ref": "Fresh official-native working, pause/resume, Context progress, book/search/mail/ship, reduced-motion, and animation-state visual evidence remains required"
+          "ref": "Structured motions and reduced-motion behavior are now natively verified. Fresh official-native working pause/resume and phase-aware Context progress evidence remains required before this combined row can be verified"
         }
       ]
     },
