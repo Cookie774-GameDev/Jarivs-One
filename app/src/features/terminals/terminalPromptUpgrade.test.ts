@@ -5,6 +5,7 @@ import {
   canInsertUpgradedPromptIntoTerminal,
   clipForUpgradeSource,
   prepareUpgradedPromptInsert,
+  selectTerminalPromptUpgradeSources,
   terminalDraftFromSession,
   terminalPromptUpgradeChatId,
 } from './terminalPromptUpgrade';
@@ -97,6 +98,35 @@ describe('terminalPromptUpgrade', () => {
     expect(sources.every((s) => s.projectScoped || s.id.includes('terminal'))).toBe(true);
   });
 
+  it('excludes retrieved RLM sources when disabled while preserving explicit terminal context', () => {
+    const source = (id: string) =>
+      ({
+        id,
+        kind: 'project_file',
+        label: id,
+        reference: id,
+        content: id,
+        verified: true,
+        explicit: id === 'explicit',
+        projectScoped: true,
+        trust: 'project',
+        lexicalScore: 1,
+        semanticScore: null,
+        observedAt: 1,
+        whySelected: 'Prompt Forge source-selection fixture',
+      }) satisfies Parameters<typeof selectTerminalPromptUpgradeSources>[0][number];
+    const session = [source('terminal')];
+    const related = [source('rlm-related')];
+    const explicit = [source('explicit')];
+
+    expect(
+      selectTerminalPromptUpgradeSources(session, related, explicit, false).map((item) => item.id),
+    ).toEqual(['terminal', 'explicit']);
+    expect(
+      selectTerminalPromptUpgradeSources(session, related, explicit, true).map((item) => item.id),
+    ).toEqual(['terminal', 'rlm-related', 'explicit']);
+  });
+
   it('clips long source text', () => {
     const long = 'x'.repeat(10_000);
     const clipped = clipForUpgradeSource(long, 100);
@@ -107,16 +137,14 @@ describe('terminalPromptUpgrade', () => {
   it('blocks insert when the shell is busy or interactive', () => {
     expect(canInsertUpgradedPromptIntoTerminal(baseEvidence()).ok).toBe(true);
     expect(canInsertUpgradedPromptIntoTerminal(baseEvidence({ atPrompt: false })).ok).toBe(false);
-    expect(
-      canInsertUpgradedPromptIntoTerminal(baseEvidence({ interactiveProgram: true })).ok,
-    ).toBe(false);
+    expect(canInsertUpgradedPromptIntoTerminal(baseEvidence({ interactiveProgram: true })).ok).toBe(
+      false,
+    );
     expect(canInsertUpgradedPromptIntoTerminal(baseEvidence({ passwordPrompt: true })).ok).toBe(
       false,
     );
     expect(canInsertUpgradedPromptIntoTerminal(baseEvidence({ sshSession: true })).ok).toBe(false);
-    expect(canInsertUpgradedPromptIntoTerminal(baseEvidence({ localShell: false })).ok).toBe(
-      false,
-    );
+    expect(canInsertUpgradedPromptIntoTerminal(baseEvidence({ localShell: false })).ok).toBe(false);
   });
 
   it('keeps related chat, context, repository, and links inside the same account and project', () => {

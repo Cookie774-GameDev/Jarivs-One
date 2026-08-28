@@ -18,6 +18,11 @@ import { cn } from '@/lib/utils';
 import type { Route } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
 import { useAccessibleChatModels } from '@/lib/ai/useAccessibleChatModels';
+import { ModelPickerTypeahead } from '@/features/chat/ModelPickerTypeahead';
+import {
+  buildPromptForgeModelPickerGroups,
+  promptForgePickerSelectedId,
+} from '@/features/prompt-forge/modelSelection';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { toast } from '@/components/ui/toast';
 import type { TerminalPromptEvidence } from './terminalCommandFoundation';
@@ -185,8 +190,23 @@ export function TerminalCommandPalette({
   const offlineMode = useAuthStore((s) => s.offlineMode);
   const defaultLocalModel = useAuthStore((s) => s.defaultLocalModel);
   const promptForgeModelSelection = useAuthStore((s) => s.promptForgeModelSelection);
+  const setPromptForgeModelSelection = useAuthStore((s) => s.setPromptForgeModelSelection);
+  const promptForgeUseRlmContext = useAuthStore((s) => s.promptForgeUseRlmContext);
+  const setPromptForgeUseRlmContext = useAuthStore((s) => s.setPromptForgeUseRlmContext);
   const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
   const accessibleChatModels = useAccessibleChatModels();
+  const promptForgeModelOptions = React.useMemo(
+    () => terminalModelOptionsFromPicker(accessibleChatModels.flatOptions),
+    [accessibleChatModels.flatOptions],
+  );
+  const promptForgePickerGroups = React.useMemo(
+    () => buildPromptForgeModelPickerGroups(promptForgeModelOptions),
+    [promptForgeModelOptions],
+  );
+  const promptForgeSelectedPickerId = React.useMemo(
+    () => promptForgePickerSelectedId(promptForgeModelSelection, promptForgePickerGroups),
+    [promptForgeModelSelection, promptForgePickerGroups],
+  );
   const accountId =
     resolveAccountIdentity({ localUserId, cloudSession })?.accountId ?? localUserId ?? 'local';
 
@@ -259,7 +279,6 @@ export function TerminalCommandPalette({
     setUpgradeStatus('Upgrading with terminal + project context…');
     setUpgradedText(null);
     try {
-      const modelOptions = terminalModelOptionsFromPicker(accessibleChatModels.flatOptions);
       const result = await runTerminalPromptUpgrade({
         scope: {
           accountId: accountId || 'local',
@@ -270,7 +289,7 @@ export function TerminalCommandPalette({
         originalDraft: draft,
         ...(instructions?.trim() ? { regenerationInstructions: instructions.trim() } : {}),
         modelSelection: promptForgeModelSelection,
-        modelOptions,
+        modelOptions: promptForgeModelOptions,
         currentChatSelection:
           chatModelSelection.mode === 'single'
             ? {
@@ -289,6 +308,7 @@ export function TerminalCommandPalette({
         // Prefer local when offline; otherwise allow provider if user has cloud models.
         privacyMode: offlineMode ? 'local_only' : 'provider_allowed',
         allowPublicResearch: !offlineMode,
+        useRlmContext: promptForgeUseRlmContext,
         projectName,
         projectRoot,
         agentSlug,
@@ -453,13 +473,120 @@ export function TerminalCommandPalette({
               ? 'Using the draft already typed in this terminal.'
               : 'Type your draft at the live terminal prompt first, then open Upgrade prompt.'}
           </p>
+          <section
+            aria-label="Terminal Prompt Forge model and context"
+            className="mt-3 rounded-lg border border-border/70 bg-paper-soft/70 p-2.5"
+          >
+            <div
+              role="radiogroup"
+              aria-label="Prompt upgrade model policy"
+              className="flex flex-wrap gap-1.5"
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={promptForgeModelSelection.mode === 'prefer_local'}
+                onClick={() => setPromptForgeModelSelection({ mode: 'prefer_local' })}
+                className={cn(
+                  'rounded-md border px-2.5 py-1.5 text-secondary',
+                  promptForgeModelSelection.mode === 'prefer_local'
+                    ? 'border-accent-copper/60 bg-accent-copper/10 text-accent-copper'
+                    : 'border-border text-foreground',
+                )}
+              >
+                Prefer local
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={promptForgeModelSelection.mode === 'current_chat_model'}
+                onClick={() => setPromptForgeModelSelection({ mode: 'current_chat_model' })}
+                className={cn(
+                  'rounded-md border px-2.5 py-1.5 text-secondary',
+                  promptForgeModelSelection.mode === 'current_chat_model'
+                    ? 'border-accent-copper/60 bg-accent-copper/10 text-accent-copper'
+                    : 'border-border text-foreground',
+                )}
+              >
+                Use current chat model
+              </button>
+            </div>
+            <div className="mt-2 max-h-64 overflow-auto rounded-lg border border-border/70 bg-background/40">
+              <ModelPickerTypeahead
+                groups={promptForgePickerGroups}
+                selectedId={promptForgeSelectedPickerId}
+                initialEffort={
+                  promptForgeModelSelection.mode === 'single'
+                    ? promptForgeModelSelection.effort
+                    : 'auto'
+                }
+                activeProvider={
+                  promptForgeModelSelection.mode === 'single'
+                    ? promptForgeModelSelection.providerId
+                    : undefined
+                }
+                activeModel={
+                  promptForgeModelSelection.mode === 'single'
+                    ? promptForgeModelSelection.modelId
+                    : undefined
+                }
+                compact
+                onSelect={(providerId, modelId, connection, effort) => {
+                  const exactOption = promptForgeModelOptions
+                    .flatMap((option) => option.alternativeRoutes ?? [option])
+                    .find(
+                      (option) =>
+                        option.providerId === providerId &&
+                        option.modelId === modelId &&
+                        (connection === undefined || option.connectionId === connection.id),
+                    );
+                  const connectionId = connection?.id ?? exactOption?.connectionId;
+                  setPromptForgeModelSelection({
+                    mode: 'single',
+                    providerId,
+                    modelId,
+                    ...(connectionId ? { connectionId } : {}),
+                    effort,
+                  });
+                }}
+              />
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3 border-t border-border/70 pt-2">
+              <div>
+                <div className="text-secondary font-medium text-foreground">Use RLM context</div>
+                <div className="text-metadata text-muted-foreground">
+                  Turn off for a draft-only upgrade; explicit added context remains available.
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={promptForgeUseRlmContext}
+                aria-label="Use RLM context"
+                onClick={() => setPromptForgeUseRlmContext(!promptForgeUseRlmContext)}
+                className={cn(
+                  'relative h-5 w-9 shrink-0 rounded-full border transition-colors',
+                  promptForgeUseRlmContext
+                    ? 'border-accent-copper/60 bg-accent-copper/30'
+                    : 'border-border bg-muted',
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute top-0.5 h-3.5 w-3.5 rounded-full bg-foreground transition-transform',
+                    promptForgeUseRlmContext ? 'left-4' : 'left-0.5',
+                  )}
+                />
+              </button>
+            </div>
+          </section>
           {upgradedText ? (
             <>
               <label
                 className="mt-3 block text-metadata text-muted-foreground"
                 htmlFor="terminal-upgrade-result"
               >
-                Upgraded prompt (what will be sent / inserted)
+                Upgraded prompt review
               </label>
               <textarea
                 id="terminal-upgrade-result"
@@ -508,20 +635,20 @@ export function TerminalCommandPalette({
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
-                aria-label="Accept upgraded prompt"
-                onClick={() => void insertUpgraded()}
+                aria-label="Keep upgraded prompt"
+                onClick={() => setUpgradeStatus('Kept in review · Insert explicitly when ready')}
                 className="rounded-md border border-accent-copper/60 bg-accent-copper/10 px-2.5 py-1.5 text-secondary text-accent-copper"
               >
-                Accept
+                Keep
               </button>
               <button
                 type="button"
-                aria-label="Retry prompt upgrade"
+                aria-label="Regenerate prompt upgrade"
                 disabled={upgradeBusy || !upgradeDraft.trim()}
                 onClick={() => void runUpgrade()}
                 className="rounded-md border border-border px-2.5 py-1.5 text-secondary text-foreground disabled:opacity-50"
               >
-                Retry
+                Regenerate
               </button>
               <button
                 type="button"

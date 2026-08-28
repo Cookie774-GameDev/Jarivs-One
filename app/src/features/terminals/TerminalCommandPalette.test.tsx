@@ -3,6 +3,44 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TerminalCommandPalette } from './TerminalCommandPalette';
 import { useTerminalTranscriptStore } from './transcriptStore';
 import { runTerminalPromptUpgrade } from './terminalPromptUpgrade';
+import { useAuthStore } from '@/stores/auth';
+
+vi.mock('@/lib/ai/useAccessibleChatModels', () => ({
+  useAccessibleChatModels: () => ({
+    flatOptions: [
+      {
+        id: 'ollama-local:qwen3:8b',
+        provider: 'ollama',
+        modelId: 'qwen3:8b',
+        label: 'Qwen 3 8B',
+        connectionId: 'ollama-local',
+        connection: {
+          id: 'ollama-local',
+          providerId: 'ollama',
+          displayName: 'Ollama local',
+          mode: 'local',
+        },
+        variants: ['auto'],
+        available: true,
+      },
+      {
+        id: 'opencode-cli:gpt-5.6-sol',
+        provider: 'openai',
+        modelId: 'gpt-5.6-sol',
+        label: 'GPT-5.6 Sol',
+        connectionId: 'opencode-cli',
+        connection: {
+          id: 'opencode-cli',
+          providerId: 'openai',
+          displayName: 'OpenCode Go',
+          mode: 'external-cli',
+        },
+        variants: ['high'],
+        available: true,
+      },
+    ],
+  }),
+}));
 
 vi.mock('./terminalPromptUpgrade', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./terminalPromptUpgrade')>();
@@ -33,6 +71,10 @@ describe('TerminalCommandPalette', () => {
   beforeEach(() => {
     vi.mocked(runTerminalPromptUpgrade).mockClear();
     useTerminalTranscriptStore.setState({ sessions: {} });
+    useAuthStore.setState({
+      promptForgeModelSelection: { mode: 'prefer_local' },
+      promptForgeUseRlmContext: true,
+    });
   });
 
   it('preserves ordinary overlay depth while flattening MonoChrome shadow and blur', () => {
@@ -281,13 +323,90 @@ describe('TerminalCommandPalette', () => {
       'value',
       'Build a polished HTML game with keyboard controls.',
     );
-    expect(await screen.findByRole('button', { name: 'Accept upgraded prompt' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Retry prompt upgrade' })).toBeTruthy();
+    const keep = await screen.findByRole('button', { name: 'Keep upgraded prompt' });
+    expect(screen.getByRole('button', { name: 'Regenerate prompt upgrade' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Add context to prompt upgrade' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Copy' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Insert at prompt' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: /Upgraded prompt/i }), {
+      target: { value: 'Edited upgrade remains in review.' },
+    });
+    fireEvent.click(keep);
     expect(onInsert).not.toHaveBeenCalled();
+    expect(screen.getByRole('textbox', { name: /Upgraded prompt/i })).toHaveProperty(
+      'value',
+      'Edited upgrade remains in review.',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Insert at prompt' }));
+    await waitFor(() => {
+      expect(onInsert).toHaveBeenCalledOnce();
+      expect(onInsert).toHaveBeenCalledWith('Edited upgrade remains in review.');
+    });
+  });
+
+  it('uses the shared exact model route and durable RLM policy for regeneration', async () => {
+    useTerminalTranscriptStore.setState({
+      sessions: {
+        'pty-1': {
+          sessionId: 'pty-1',
+          agentSlug: null,
+          command: null,
+          text: '',
+          lastWriteAt: 1,
+          bytesSeen: 0,
+          currentInput: 'upgrade this exact terminal draft',
+        },
+      },
+    });
+    render(
+      <TerminalCommandPalette
+        open
+        paneId="pane-1"
+        sessionId="pty-1"
+        projectId="project-1"
+        evidence={evidence}
+        onClose={vi.fn()}
+        onNavigate={vi.fn()}
+        onInsertUpgradedPrompt={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('option', { name: /Upgrade prompt/i }));
+    const search = screen.getByRole('searchbox', { name: 'Search providers and models' });
+    fireEvent.change(search, { target: { value: 'GPT-5.6 Sol' } });
+    fireEvent.click(screen.getByRole('option', { name: /GPT-5.6 Sol/ }));
+    fireEvent.click(screen.getByRole('option', { name: /high/i }));
+
+    expect(useAuthStore.getState().promptForgeModelSelection).toEqual({
+      mode: 'single',
+      providerId: 'openai',
+      modelId: 'gpt-5.6-sol',
+      connectionId: 'opencode-cli',
+      effort: 'high',
+    });
+    const rlm = screen.getByRole('switch', { name: 'Use RLM context' });
+    expect(rlm.getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(rlm);
+    expect(useAuthStore.getState().promptForgeUseRlmContext).toBe(false);
+
+    vi.mocked(runTerminalPromptUpgrade).mockClear();
+    fireEvent.click(await screen.findByRole('button', { name: 'Regenerate prompt upgrade' }));
+    await waitFor(() => {
+      expect(runTerminalPromptUpgrade).toHaveBeenCalledWith(
+        expect.objectContaining({
+          originalDraft: 'upgrade this exact terminal draft',
+          modelSelection: {
+            mode: 'single',
+            providerId: 'openai',
+            modelId: 'gpt-5.6-sol',
+            connectionId: 'opencode-cli',
+            effort: 'high',
+          },
+          useRlmContext: false,
+        }),
+      );
+    });
   });
 
   it('fails closed without rendering native setup error details', async () => {

@@ -15,7 +15,10 @@ import {
 } from '@/features/prompt-forge/promptUpgradeEngine';
 import { createPromptForgeJobStore } from '@/features/prompt-forge/jobStore';
 import { promptForgeModelOptionsFromPicker } from '@/features/prompt-forge/contextPreparation';
-import type { PromptForgeModelSelection, PromptForgePrivacyMode } from '@/features/prompt-forge/contracts';
+import type {
+  PromptForgeModelSelection,
+  PromptForgePrivacyMode,
+} from '@/features/prompt-forge/contracts';
 import type {
   PromptForgeCurrentChatSelection,
   PromptForgeModelOption,
@@ -121,11 +124,7 @@ export function buildTerminalRelatedSources(
   if (!projectId) return Object.freeze([]);
 
   const maps = input.contextMaps
-    .filter(
-      (map) =>
-        map.accountId === input.scope.accountId &&
-        map.projectId === projectId,
-    )
+    .filter((map) => map.accountId === input.scope.accountId && map.projectId === projectId)
     .sort((left, right) => right.updatedAt - left.updatedAt)
     .slice(0, MAX_RELATED_MAPS);
   const mapIds = new Set(maps.map((map) => map.id));
@@ -227,10 +226,7 @@ export async function collectTerminalRelatedSources(
 
   const [chatRows, mapRows] = await Promise.all([
     db.chats.where('project_id').equals(projectId).toArray(),
-    db.context_maps
-      .where('[accountId+projectId]')
-      .equals([scope.accountId, projectId])
-      .toArray(),
+    db.context_maps.where('[accountId+projectId]').equals([scope.accountId, projectId]).toArray(),
   ]);
 
   const recentChats = chatRows
@@ -310,9 +306,7 @@ export async function collectTerminalRelatedSources(
       projectId: map.projectId,
       name: map.name,
       summary: map.summary,
-      entryPoints: map.recommendedEntryPoints.map(
-        (entry) => entry.path ?? entry.label,
-      ),
+      entryPoints: map.recommendedEntryPoints.map((entry) => entry.path ?? entry.label),
       updatedAt: map.updatedAt,
     })),
     repositories,
@@ -462,6 +456,8 @@ export type TerminalPromptUpgradeRequest = Readonly<{
   defaultLocalModel: string;
   privacyMode: PromptForgePrivacyMode;
   allowPublicResearch: boolean;
+  /** Retrieve durable project/SiYuan evidence. Explicitly supplied context remains available. */
+  useRlmContext?: boolean;
   projectName?: string | null;
   projectRoot?: string | null;
   agentSlug?: string | null;
@@ -473,6 +469,19 @@ export type TerminalPromptUpgradeRequest = Readonly<{
   /** Extra sources (context maps, files) collected by the host. */
   additionalSources?: readonly PromptForgeSourceCandidate[];
 }>;
+
+export function selectTerminalPromptUpgradeSources(
+  sessionSources: readonly PromptForgeSourceCandidate[],
+  relatedSources: readonly PromptForgeSourceCandidate[],
+  additionalSources: readonly PromptForgeSourceCandidate[],
+  useRlmContext: boolean,
+): readonly PromptForgeSourceCandidate[] {
+  return Object.freeze([
+    ...sessionSources,
+    ...(useRlmContext ? relatedSources : []),
+    ...additionalSources,
+  ]);
+}
 
 export async function runTerminalPromptUpgrade(
   request: TerminalPromptUpgradeRequest,
@@ -486,14 +495,18 @@ export async function runTerminalPromptUpgrade(
     agentName: request.agentName,
     cwd: request.cwd,
   });
-  const relatedSources = await collectTerminalRelatedSources(request.scope).catch(
-    () => Object.freeze([]) as readonly PromptForgeSourceCandidate[],
+  const useRlmContext = request.useRlmContext ?? true;
+  const relatedSources = useRlmContext
+    ? await collectTerminalRelatedSources(request.scope).catch(
+        () => Object.freeze([]) as readonly PromptForgeSourceCandidate[],
+      )
+    : (Object.freeze([]) as readonly PromptForgeSourceCandidate[]);
+  const additionalSources = selectTerminalPromptUpgradeSources(
+    sessionSources,
+    relatedSources,
+    request.additionalSources ?? [],
+    useRlmContext,
   );
-  const additionalSources = Object.freeze([
-    ...sessionSources,
-    ...relatedSources,
-    ...(request.additionalSources ?? []),
-  ]);
 
   return runPromptUpgrade({
     accountId: request.scope.accountId,
