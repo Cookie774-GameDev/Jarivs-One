@@ -1191,10 +1191,10 @@ fn build_pet_overlay(app: &AppHandle, visible: bool) -> Result<WebviewWindow, St
     }
 }
 
-fn get_or_create_pet_panel(app: &AppHandle) -> Result<WebviewWindow, String> {
+fn get_or_create_pet_panel(app: &AppHandle) -> Result<(WebviewWindow, bool), String> {
     if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
         if should_reuse_pet_window(native_pet_window_exists(&win)) {
-            return Ok(win);
+            return Ok((win, false));
         }
         win.destroy()
             .map_err(|_| "failed to retire stale pet-mini-panel window".to_string())?;
@@ -1203,7 +1203,7 @@ fn get_or_create_pet_panel(app: &AppHandle) -> Result<WebviewWindow, String> {
     #[cfg(debug_assertions)]
     eprintln!("[pets] creating pet-mini-panel window");
 
-    build_pet_panel(app, false)
+    build_pet_panel(app, false).map(|window| (window, true))
 }
 
 fn build_pet_panel(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
@@ -1653,9 +1653,8 @@ fn open_or_focus_pet_panel_blocking(
     near_y: Option<f64>,
     panel_mode: Option<PetPanelMode>,
 ) -> Result<PetPanelOpenResult, String> {
-    let created = app.get_webview_window(PET_MINI_PANEL_LABEL).is_none();
-    let win = match get_or_create_pet_panel(&app) {
-        Ok(win) => win,
+    let (win, created) = match get_or_create_pet_panel(&app) {
+        Ok(acquired) => acquired,
         Err(_) => return Ok(PetPanelOpenResult::failed(false, "window_create_failed")),
     };
     if created {
@@ -1959,6 +1958,23 @@ mod tests {
             assert!(builder.contains("host.add_child("));
             assert!(!builder.contains("WebviewWindowBuilder::new"));
         }
+    }
+
+    #[test]
+    fn stale_panel_rebuild_is_reported_as_new_native_window() {
+        let source = include_str!("pets.rs");
+        let acquire_start = source
+            .find("fn get_or_create_pet_panel")
+            .expect("panel acquisition helper exists");
+        let acquire_end = source[acquire_start..]
+            .find("fn build_pet_panel")
+            .map(|offset| acquire_start + offset)
+            .expect("panel acquisition helper has a bounded source slice");
+        let acquire = &source[acquire_start..acquire_end];
+
+        assert!(acquire.contains("return Ok((win, false));"));
+        assert!(acquire.contains("build_pet_panel(app, false).map(|window| (window, true))"));
+        assert!(source.contains("let (win, created) = match get_or_create_pet_panel(&app)"));
     }
 
     #[test]
