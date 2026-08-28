@@ -487,11 +487,29 @@
     {
       "id": "reusable-native-acceptance-harness",
       "requirement": "Reusable semantic Playwright/CDP native acceptance harness and unit coverage",
-      "status": "Not implemented",
+      "status": "Implemented and verified",
+      "nativeRequired": true,
+      "visualRequired": true,
       "evidence": [
         {
-          "kind": "ownership",
-          "ref": "Active lock VS-CODEX-NATIVE-ACCEPTANCE-HARNESS-20260827 exclusively owns both required scripts; both files are absent at continuation and native-lane preflight"
+          "kind": "commit",
+          "ref": "ed9b7644 adds the reusable semantic official-native Playwright/CDP harness and fake-object unit suite"
+        },
+        {
+          "kind": "test",
+          "ref": "node --test scripts/pr31-native-acceptance-harness.test.mjs passed 20/20, covering exact official process/profile/CDP ownership, identity drift, zero-Ollama safety, semantic waits and locators, stable page selection, bounded redacted events/failures, immutable evidence, screenshots, Windows probes, CLI authorization, and read-only smoke"
+        },
+        {
+          "kind": "native",
+          "ref": ".codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-18-native-harness-smoke-postreview-ed9b7644/native-harness-smoke.json passed against jarvis PID 19612 and its exact official ai.jarvis.desktop\\EBWebView profile/CDP owner PID 9688 at HEAD ed9b7644; the current public Chat page was complete with Tauri authority and 1586x992 viewport, with zero Ollama processes and zero 11434 listeners before and after"
+        },
+        {
+          "kind": "screenshot",
+          "ref": "pass-18-native-harness-smoke-postreview-ed9b7644/00-native-harness-smoke.png is the immutable 1983x1240 official-native screenshot (1602885 bytes, SHA-256 f3a94fdb50f10ff938467f61ebf2639ba0fa0124a76ae58179db41d8416f205f) recorded by the harness"
+        },
+        {
+          "kind": "security",
+          "ref": "Harness diagnostics redact credential-shaped keys and secret-bearing values even under benign keys, store only bounded classifications/hashes for page events, never navigate or dispatch in smoke mode, and preserve the official app process"
         }
       ]
     },
