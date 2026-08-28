@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ProviderId } from '@/types';
 import { useAuthStore } from '@/stores/auth';
 import {
@@ -55,6 +55,7 @@ import {
   getDiscoveredConnectionModels,
   subscribeDiscoveredConnectionModels,
 } from './connectionCatalog';
+import { harnessRuntimeManager } from '@/lib/harness/runtimeManager';
 
 /** @deprecated Use getProviderDisplayName from providerRegistry */
 export const MODEL_PROVIDER_LABELS: Partial<Record<ProviderId, string>> = new Proxy(
@@ -583,6 +584,70 @@ export function requestOpenCodeModelCatalogRefresh(): void {
   }
 }
 
+type OpenCodeRuntimeCatalogAuthority = Readonly<{
+  generation: string | null;
+  ready: boolean;
+  revision: number;
+}>;
+
+let openCodeRuntimeCatalogAuthority: OpenCodeRuntimeCatalogAuthority | undefined;
+let releaseOpenCodeRuntimeSubscription: (() => void) | undefined;
+const openCodeRuntimeCatalogSubscribers = new Set<() => void>();
+
+function readOpenCodeRuntimeAuthority(): Omit<OpenCodeRuntimeCatalogAuthority, 'revision'> {
+  const snapshot = harnessRuntimeManager.getSnapshot();
+  const generation =
+    snapshot.kind === 'ready'
+      ? (harnessRuntimeManager.getConnection()?.generation ?? null)
+      : null;
+  return Object.freeze({
+    generation,
+    ready: snapshot.kind === 'checking' || generation !== null,
+  });
+}
+
+function currentOpenCodeRuntimeCatalogAuthority(): OpenCodeRuntimeCatalogAuthority {
+  if (!openCodeRuntimeCatalogAuthority) {
+    openCodeRuntimeCatalogAuthority = Object.freeze({
+      ...readOpenCodeRuntimeAuthority(),
+      revision: 0,
+    });
+  }
+  return openCodeRuntimeCatalogAuthority;
+}
+
+function reconcileOpenCodeRuntimeCatalogAuthority(): void {
+  const current = currentOpenCodeRuntimeCatalogAuthority();
+  const next = readOpenCodeRuntimeAuthority();
+  if (current.generation === next.generation && current.ready === next.ready) return;
+  openCodeRuntimeCatalogAuthority = Object.freeze({
+    ...next,
+    revision: current.revision + 1,
+  });
+  openCodeAccountGeneration += 1;
+  invalidateOpenCodeModelCatalog('authority-changed');
+  invalidateOpenCodePersistentModelCache();
+  clearOpenCodeCatalogEvidence();
+  openCodeRuntimeCatalogSubscribers.forEach((subscriber) => subscriber());
+}
+
+function subscribeOpenCodeRuntimeCatalogAuthority(subscriber: () => void): () => void {
+  openCodeRuntimeCatalogSubscribers.add(subscriber);
+  if (!releaseOpenCodeRuntimeSubscription) {
+    releaseOpenCodeRuntimeSubscription = harnessRuntimeManager.subscribe(
+      reconcileOpenCodeRuntimeCatalogAuthority,
+    );
+    reconcileOpenCodeRuntimeCatalogAuthority();
+  }
+  return () => {
+    openCodeRuntimeCatalogSubscribers.delete(subscriber);
+    if (openCodeRuntimeCatalogSubscribers.size === 0) {
+      releaseOpenCodeRuntimeSubscription?.();
+      releaseOpenCodeRuntimeSubscription = undefined;
+    }
+  };
+}
+
 function pickerCanonicalModelId(providerId: string, modelId: string): string {
   return canonicalProviderModelId(providerId, modelId);
 }
@@ -926,6 +991,11 @@ export function useAccessibleChatModels() {
   const [connectionRevision, setConnectionRevision] = useState(0);
   const [foundryRevision, setFoundryRevision] = useState(0);
   const [catalogRevision, setCatalogRevision] = useState(0);
+  const openCodeRuntimeAuthority = useSyncExternalStore(
+    subscribeOpenCodeRuntimeCatalogAuthority,
+    currentOpenCodeRuntimeCatalogAuthority,
+    currentOpenCodeRuntimeCatalogAuthority,
+  );
   const [openCodeCatalog, setOpenCodeCatalog] = useState<{
     readonly generation: number;
     readonly accountGeneration: number;
@@ -936,6 +1006,7 @@ export function useAccessibleChatModels() {
   const openCodeSessionChecked = isConnectionSessionChecked(OPENCODE_CLI_CONNECTION.id);
   const openCodeReady =
     !offlineMode &&
+    openCodeRuntimeAuthority.ready &&
     openCodeSessionChecked &&
     openCodeSessionState?.available === true &&
     openCodeSessionState.auth === 'authenticated';
@@ -1102,7 +1173,7 @@ export function useAccessibleChatModels() {
       cancelled = true;
       if (refreshTimer) clearTimeout(refreshTimer);
     };
-  }, [openCodeReady, connectionRevision, catalogRevision]);
+  }, [openCodeReady, openCodeRuntimeAuthority.revision, connectionRevision, catalogRevision]);
 
   const refreshModels = useCallback(() => requestOpenCodeModelCatalogRefresh(), []);
   const ollamaSignature = ollamaOptions.map((option) => option.id).join('\0');

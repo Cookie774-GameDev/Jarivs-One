@@ -39,6 +39,36 @@ const { invalidatePersistentModelCache, listPersistentOpenCodeModels } = vi.hois
 const { refreshConnectedProviderModelsMock } = vi.hoisted(() => ({
   refreshConnectedProviderModelsMock: vi.fn(async () => []),
 }));
+const runtimeManagerHarness = vi.hoisted(() => {
+  let snapshot: { kind: string; source?: string; version?: string } = { kind: 'checking' };
+  let connection:
+    | { version: string; source: 'system' | 'managed'; generation: string }
+    | undefined;
+  const listeners = new Set<() => void>();
+  return {
+    manager: {
+      subscribe: vi.fn((listener: () => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }),
+      getSnapshot: vi.fn(() => snapshot),
+      getConnection: vi.fn(() => connection),
+    },
+    reset() {
+      snapshot = { kind: 'checking' };
+      connection = undefined;
+      listeners.clear();
+    },
+    emit(
+      nextSnapshot: { kind: string; source?: string; version?: string },
+      nextConnection?: { version: string; source: 'system' | 'managed'; generation: string },
+    ) {
+      snapshot = nextSnapshot;
+      connection = nextConnection;
+      listeners.forEach((listener) => listener());
+    },
+  };
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -71,6 +101,10 @@ vi.mock('./providerModelCatalog', async (importOriginal) => ({
   refreshConnectedProviderModels: refreshConnectedProviderModelsMock,
 }));
 
+vi.mock('@/lib/harness/runtimeManager', () => ({
+  harnessRuntimeManager: runtimeManagerHarness.manager,
+}));
+
 describe('useAccessibleChatModels', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -83,6 +117,8 @@ describe('useAccessibleChatModels', () => {
     listPersistentOpenCodeModels.mockResolvedValue([]);
     refreshConnectedProviderModelsMock.mockClear();
     refreshConnectedProviderModelsMock.mockResolvedValue([]);
+    runtimeManagerHarness.reset();
+    runtimeManagerHarness.manager.subscribe.mockClear();
     requestOpenCodeModelCatalogRefresh();
     invalidatePersistentModelCache.mockClear();
     syncDiscoveredOllamaModels([]);
@@ -742,6 +778,96 @@ describe('useAccessibleChatModels', () => {
       unmount();
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it('fails closed and automatically revalidates the exact catalog after runtime replacement', async () => {
+    let now = Date.now() + 1_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      isConnectionSessionChecked.mockImplementation((id) => id === 'opencode-cli');
+      listPersistentOpenCodeModels.mockResolvedValue([
+        { id: 'opencode-go/deepseek-v4-flash-vision-exp', label: 'DeepSeek V4 Flash Vision Exp' },
+      ]);
+      writeConnectionMetadata({
+        'opencode-cli': {
+          installation: 'installed',
+          auth: 'authenticated',
+          lastCheckedAt: 1,
+        },
+      });
+      markConnectionSessionChecked(['opencode-cli']);
+      runtimeManagerHarness.emit(
+        { kind: 'ready', source: 'system', version: '1.18.23' },
+        {
+          version: '1.18.23',
+          source: 'system',
+          generation: 'opencode-server-before-reconnect',
+        },
+      );
+
+      const first = renderHook(() => useAccessibleChatModels());
+      const second = renderHook(() => useAccessibleChatModels());
+      await waitFor(() => expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(readOpenCodeCatalogEvidence()).toBeDefined());
+      expect(runtimeManagerHarness.manager.subscribe).toHaveBeenCalledTimes(1);
+      const before = readOpenCodeCatalogEvidence();
+      expect(before).toMatchObject({ routeCount: 1 });
+      expect(
+        first.result.current.flatOptions.find(
+          (option) => option.modelId === 'opencode-go/deepseek-v4-flash-vision-exp',
+        ),
+      ).toMatchObject({ connectionId: 'opencode-cli', available: true });
+
+      act(() => {
+        runtimeManagerHarness.emit({
+          kind: 'failed',
+        });
+      });
+      expect(readOpenCodeCatalogEvidence()).toBeUndefined();
+      expect(
+        first.result.current.flatOptions.some((option) => option.connectionId === 'opencode-cli'),
+      ).toBe(false);
+      expect(
+        second.result.current.flatOptions.some((option) => option.connectionId === 'opencode-cli'),
+      ).toBe(false);
+
+      now += 1_000;
+      act(() => {
+        runtimeManagerHarness.emit({ kind: 'starting' });
+        runtimeManagerHarness.emit(
+          { kind: 'ready', source: 'system', version: '1.18.23' },
+          {
+            version: '1.18.23',
+            source: 'system',
+            generation: 'opencode-server-after-reconnect',
+          },
+        );
+      });
+      await waitFor(() => expect(listPersistentOpenCodeModels).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(readOpenCodeCatalogEvidence()).toBeDefined());
+
+      const after = readOpenCodeCatalogEvidence();
+      expect(after).toMatchObject({
+        refreshReason: 'authority-changed',
+        routeCount: 1,
+        catalogSha256: before?.catalogSha256,
+      });
+      expect(Number(after?.lastVerifiedAt)).toBeGreaterThan(Number(before?.lastVerifiedAt));
+      expect(
+        first.result.current.flatOptions.find(
+          (option) => option.modelId === 'opencode-go/deepseek-v4-flash-vision-exp',
+        ),
+      ).toMatchObject({ connectionId: 'opencode-cli', available: true });
+      expect(
+        second.result.current.flatOptions.find(
+          (option) => option.modelId === 'opencode-go/deepseek-v4-flash-vision-exp',
+        ),
+      ).toMatchObject({ connectionId: 'opencode-cli', available: true });
+      first.unmount();
+      second.unmount();
+    } finally {
+      nowSpy.mockRestore();
     }
   });
 
