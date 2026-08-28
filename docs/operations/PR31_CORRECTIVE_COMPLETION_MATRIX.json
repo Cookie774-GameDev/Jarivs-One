@@ -1,0 +1,210 @@
+{
+  "schemaVersion": 1,
+  "branch": "integration/UnifiedChungus-final",
+  "baseHead": "71ed635102b76ddcbbfd2b94296b41754d826c6c",
+  "requirements": [
+    {
+      "id": "siyuan-durable-resumption",
+      "requirement": "SiYuan pause, durable checkpointing, verified node resumption, recycling, recovery, progress, ETA, and token provenance",
+      "status": "Implemented and verified",
+      "nativeRequired": true,
+      "evidence": [
+        { "kind": "commit", "ref": "40503619" },
+        { "kind": "test", "ref": "SiYuan frontend 68/68; surface 17/17; append authority 6/6" },
+        {
+          "kind": "native",
+          "ref": "official Tauri fixture resumed 7/13 to 13/13 with zero provider/token use"
+        }
+      ]
+    },
+    {
+      "id": "terminal-prompt-forge",
+      "requirement": "Terminal Prompt Forge parity with exact provider/model/effort/RLM review and explicit insertion",
+      "status": "Implemented and verified",
+      "nativeRequired": true,
+      "evidence": [
+        { "kind": "commit", "ref": "603cbef3" },
+        { "kind": "test", "ref": "terminal Prompt Forge focused 17/17" },
+        { "kind": "native", "ref": "official Tauri Playwright review/cancel/no-PTY-write scenario" }
+      ]
+    },
+    {
+      "id": "opencode-mcp-lifecycle",
+      "requirement": "Official project-scoped OpenCode MCP status/add/connect/disconnect UI and transport",
+      "status": "Implemented and verified",
+      "nativeRequired": true,
+      "evidence": [
+        { "kind": "commit", "ref": "91f77c6c" },
+        { "kind": "test", "ref": "renderer 41/41; native transport 20/20" },
+        {
+          "kind": "native",
+          "ref": "official Tauri read-only MCP status proof for four configured servers"
+        }
+      ]
+    },
+    {
+      "id": "acceptance-fixtures",
+      "requirement": "Scoped PR31 acceptance fixtures collect and typecheck without changing production behavior",
+      "status": "Implemented and verified",
+      "evidence": [
+        { "kind": "commit", "ref": "71ed6351" },
+        { "kind": "test", "ref": "17 suites / 195 tests plus TypeScript" }
+      ]
+    },
+    {
+      "id": "chat-activity-ledger",
+      "requirement": "Compact and expanded Chat activity ledger uses authoritative truthful activity data",
+      "status": "Implemented and verified",
+      "nativeRequired": true,
+      "visualRequired": true,
+      "evidence": [
+        { "kind": "commit", "ref": "63ba28c8 and bounded predecessor series" },
+        { "kind": "test", "ref": "activity ledger affected matrix 51/51" },
+        { "kind": "native", "ref": "official Tauri collapsed and expanded disclosure scenarios" },
+        {
+          "kind": "screenshot",
+          "ref": "%TEMP%/pr31-ledger-native-collapsed-final.png and expanded-final.png"
+        }
+      ]
+    },
+    {
+      "id": "chat-controls-and-workflows",
+      "requirement": "Chat reconnect, modes, questions, commands, child agents, schedules, Kanban, milestones, animations, and Context integration",
+      "status": "Implemented and verified",
+      "nativeRequired": true,
+      "visualRequired": true,
+      "evidence": [
+        { "kind": "commit", "ref": "71ed6351 and ancestor PR31 chat/control commits" },
+        { "kind": "test", "ref": "17/17 suites 195/195 and 43/43 suites 375/375" },
+        {
+          "kind": "native",
+          "ref": "official Tauri model/mode/slash/schedule/Kanban/Context scenarios"
+        },
+        {
+          "kind": "screenshot",
+          "ref": "%TEMP%/pr31-native-chat-mode-menu.png and grouped native evidence"
+        }
+      ]
+    },
+    {
+      "id": "plugin-catalog-auth-classification",
+      "requirement": "Every plugin has an exhaustive truthful authorization capability classification",
+      "status": "Not implemented",
+      "evidence": [
+        {
+          "kind": "audit",
+          "ref": "Corrective handoff: only five of about 112 entries were inspected"
+        }
+      ]
+    },
+    {
+      "id": "plugin-catalog-automated-auth-coverage",
+      "requirement": "Automated catalog-wide authorization verification covers every eligible plugin",
+      "status": "Not implemented",
+      "evidence": [
+        { "kind": "audit", "ref": "No prior exhaustive eligible-provider authorization matrix" }
+      ]
+    },
+    {
+      "id": "plugin-native-five-provider-proof",
+      "requirement": "Fresh native authorization proof covers at least five providers including GitHub and Supabase without fabricating success",
+      "status": "Not implemented",
+      "nativeRequired": true,
+      "visualRequired": true,
+      "evidence": [
+        {
+          "kind": "audit",
+          "ref": "Prior images show dialogs/recovery only, not successful authorization"
+        }
+      ]
+    },
+    {
+      "id": "workbench-browser-native",
+      "requirement": "Official native Workbench browser proves YouTube, ordinary sites, navigation, reload, errors, refusal classification, and recovery",
+      "status": "Not implemented",
+      "nativeRequired": true,
+      "visualRequired": true,
+      "evidence": [
+        {
+          "kind": "audit",
+          "ref": "Corrective handoff says fresh conclusive native evidence is absent"
+        }
+      ]
+    },
+    {
+      "id": "reusable-native-acceptance-harness",
+      "requirement": "Reusable semantic Playwright/CDP native acceptance harness and unit coverage",
+      "status": "Not implemented",
+      "evidence": [
+        {
+          "kind": "ownership",
+          "ref": "Active lock VS-CODEX-NATIVE-ACCEPTANCE-HARNESS-20260827; scripts absent at continuation preflight"
+        }
+      ]
+    },
+    {
+      "id": "whole-app-native-visual-matrix",
+      "requirement": "Fresh official-native whole-app and Chat visual matrix covers all mandated states and sizes",
+      "status": "Not implemented",
+      "nativeRequired": true,
+      "visualRequired": true,
+      "evidence": [
+        {
+          "kind": "audit",
+          "ref": "Corrective handoff rejects prior grouped screenshots as incomplete"
+        }
+      ]
+    },
+    {
+      "id": "authoritative-image-pixel-diff",
+      "requirement": "Deterministic screenshots are compared to every usable authoritative reference with thresholds and actual pixel results",
+      "status": "Not implemented",
+      "visualRequired": true,
+      "evidence": [
+        { "kind": "audit", "ref": "No prior recorded pixel-diff thresholds or actual results" }
+      ]
+    },
+    {
+      "id": "fresh-final-automated-gates",
+      "requirement": "Focused, affected frontend, Rust, typecheck, format, build, secret, and diff gates pass after final mutation",
+      "status": "Not implemented",
+      "evidence": [{ "kind": "audit", "ref": "Final post-corrective mutation gate has not run" }]
+    },
+    {
+      "id": "github-pr31-remote-ci-truth",
+      "requirement": "GitHub PR31 local-versus-remote commit state and CI are freshly inspected",
+      "status": "Implemented and verified",
+      "evidence": [
+        { "kind": "commit", "ref": "local HEAD 71ed6351; PR31 remote head 0ed01de9" },
+        {
+          "kind": "test",
+          "ref": "GitHub connector inspection of PR31 and all workflow runs for 0ed01de9"
+        },
+        {
+          "kind": "remote",
+          "ref": "CI, AI boundary, and CodeQL succeeded; Dependency Review failed because the repository dependency graph is disabled"
+        }
+      ]
+    },
+    {
+      "id": "github-pr31-local-commit-delivery",
+      "requirement": "Deliver the continuation commits to the remote PR31 branch and rerun CI on that exact head",
+      "status": "Externally blocked",
+      "evidence": [
+        {
+          "kind": "commit",
+          "ref": "local milestone chain 40503619 -> 603cbef3 -> 91f77c6c -> 71ed6351"
+        },
+        {
+          "kind": "remote",
+          "ref": "PR31 remains draft at remote head 0ed01de9 and does not contain the local milestone chain"
+        }
+      ],
+      "externalBlocker": {
+        "prerequisite": "Explicit authorization to push the local integration branch or update PR31's remote head, plus repository dependency-graph enablement for the Dependency Review workflow",
+        "localBoundary": "All local commits are preserved and remote PR/CI state was inspected read-only; no push, merge, setting change, or deployment was authorized",
+        "unblockAction": "Authorize the exact remote update, enable the repository dependency graph, push the reviewed commit chain, and rerun PR31 workflows on the resulting SHA"
+      }
+    }
+  ]
+}
