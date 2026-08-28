@@ -1100,8 +1100,21 @@ fn log_pet_window_metrics(label: &str, win: &WebviewWindow) {
     eprintln!("[pets] {label}: title={title:?} visible={visible} pos={pos} size={size}");
 }
 
-fn should_reuse_pet_window<E>(_visibility: Result<bool, E>) -> bool {
-    true
+fn should_reuse_pet_window(native_host_exists: bool) -> bool {
+    native_host_exists
+}
+
+#[cfg(target_os = "windows")]
+fn native_pet_window_exists(win: &WebviewWindow) -> bool {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::IsWindow;
+    let Ok(raw) = win.hwnd() else { return false };
+    unsafe { IsWindow(Some(HWND(raw.0 as *mut _))).as_bool() }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn native_pet_window_exists(win: &WebviewWindow) -> bool {
+    win.is_visible().is_ok()
 }
 
 fn overlay_acquire_failure_reason(error: &str) -> &'static str {
@@ -1121,7 +1134,7 @@ enum PetOverlayAcquire {
 
 fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
     if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
-        if should_reuse_pet_window(win.is_visible()) {
+        if should_reuse_pet_window(native_pet_window_exists(&win)) {
             return Ok(PetOverlayAcquire::Ready { created: false });
         }
         win.destroy()
@@ -1180,7 +1193,7 @@ fn build_pet_overlay(app: &AppHandle, visible: bool) -> Result<WebviewWindow, St
 
 fn get_or_create_pet_panel(app: &AppHandle) -> Result<WebviewWindow, String> {
     if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
-        if should_reuse_pet_window(win.is_visible()) {
+        if should_reuse_pet_window(native_pet_window_exists(&win)) {
             return Ok(win);
         }
         win.destroy()
@@ -1996,10 +2009,9 @@ mod tests {
     }
 
     #[test]
-    fn registered_pet_windows_are_reused_during_webview_initialization() {
-        assert!(should_reuse_pet_window(Err(())));
-        assert!(should_reuse_pet_window(Ok::<bool, ()>(false)));
-        assert!(should_reuse_pet_window(Ok::<bool, ()>(true)));
+    fn registered_pet_windows_require_a_live_native_host_before_reuse() {
+        assert!(should_reuse_pet_window(true));
+        assert!(!should_reuse_pet_window(false));
     }
 
     #[test]
