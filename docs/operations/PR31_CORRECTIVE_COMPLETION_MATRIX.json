@@ -176,16 +176,20 @@
           "ref": "Fresh exhaustive corrective run: six OpenCode catalog/runtime/selection files and 119/119 tests plus evidence validator 10/10 passed; full TypeScript, Prettier, syntax, diff, and Gitleaks passed. Contract rejects early/manual refresh, restart-as-reconnect, out-of-session disconnect, substitution, Ollama/11434, credentials, and production mutation"
         },
         {
-          "kind": "failure",
-          "ref": "Official-native pass-17 baseline at HEAD 2353d4c5 found system OpenCode 1.18.23 ready but current-session auth sessionChecked=false, available=false, auth=unknown and zero discovered connection rows while the public picker exposed 823 enabled opencode-cli routes (ordered SHA-256 aca7d341207ef3cffc96433df292da8fafa9f1bce4083af49e89973640a9a5a4)"
+          "kind": "commit",
+          "ref": "cb75639d makes unchecked/unknown current-session OpenCode state expose zero executable routes and adds a renderer-owned privacy-safe receipt containing only exact authenticated authority, refresh reason/timing, generations, route count, and ordered SHA-256"
         },
         {
           "kind": "native",
-          "ref": ".codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-17-opencode-refresh-reconnect-f03dd4bd/opencode-refresh-baseline.json and 00-opencode-refresh-baseline.png; official jarvis/CDP authority and zero Ollama/11434 passed, targeted Gitleaks found zero"
+          "ref": ".codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-17-opencode-refresh-reconnect-cb75639d/opencode-refresh-scheduled-final-attempt-02.json passed 6/6 at official jarvis PID 19612/WebView 9688: same-instance authenticated receipt generation 2 to 3, scheduled-only elapsed 301594 ms, exact catalog 841/hash 0a8d21...b37a4 and public executable picker 823/hash aca7d3...5a4 unchanged in order and enabled state, with zero console/page/network events and zero Ollama/11434"
+        },
+        {
+          "kind": "screenshot",
+          "ref": "pass-17-opencode-refresh-reconnect-cb75639d contains fresh baseline and scheduled official-native PNGs; the final 67.52 KB evidence packet passed targeted Gitleaks with zero findings"
         },
         {
           "kind": "pending",
-          "ref": "No trustworthy unforced-refresh timestamp/counter is exposed: cache loadedAt is module-private, picker omits verification time, and engineering logs conflate catalog/status/session requests. Product must expose safe refresh observability and fail closed on unchecked auth before official-native >=300000 ms refresh, same-session managed disconnect/reconnect, and identical route proof can pass"
+          "ref": "Five-minute automatic refresh and route stability are now natively verified. Automatic reconnect remains unimplemented or unproven: documented helpers stop the server and then invoke an explicit manager.refresh, which is a manual reconnect proxy forbidden by the acceptance contract. No runtime was disturbed; a genuine automatic same-session disconnect/reconnect path with identical routes is still required"
         }
       ]
     },
