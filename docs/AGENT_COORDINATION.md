@@ -2338,3 +2338,17 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Regression checks: Context keyboard zoom/pan/Enter selection and focus retention passed; axe-core 4.10.3 returned zero A/AA violations at 1904x915 and 390x844; all 10 inline scripts parsed, 149 IDs were unique, and fresh local/public console checks returned zero warnings/errors.
 - Exact-byte verification: local `site/index.html` and `https://vibespaceos.com/` both SHA-256 `950E3B7353264F76EC8A2D17AD662390F6EAC5ED03C3B1A8CEDF94E1E5B8B739` (603,479 bytes).
 - Boundaries honored: no app, PR #31, Stripe, Supabase, DNS, billing, release, or non-homepage route mutation.
+## 2026-08-28 — codex-vw5-20260828-a12 / official-site-single-sound-toggle-rev16
+
+- Status: active; exact `site/index.html` audio-control refinement claimed with no overlap against the active Task 21C application/smoke manifest.
+- Branch/upstream/base: `main` / `origin/main` / `ce04983c3097aef544a38a3ee1a6b6f7ce5a14d7`; clean worktree before claim, no merge/rebase/cherry-pick state.
+- Scope: replace the visible two-channel mixer popover with one explicit opt-in sound button, add a restrained one-shot copper/waveform response, preserve keyboard/ARIA/reduced-motion behavior and the verified Web Audio SFX engine, then republish the same homepage file.
+- Boundaries: no app, PR #31, Stripe, Supabase, DNS, billing, release, or non-homepage route mutation.
+
+### Implementation checkpoint
+
+- `site/index.html`: removed the visible two-channel mixer/panel, added one semantic Sound button with distinct OFF/ON treatment, a 620ms copper transmission ring and staggered five-bar waveform, and static reduced-motion behavior.
+- Audio state: retained explicit gesture-only initialization, the verified Web Audio engine and voice cap; migrated legacy rev15 channel mute state to the rev16 single-toggle contract so both music and interface cues follow one control.
+- Rendered verification: 1440x900, 390x844, and 320x568 returned zero document overflow and a fully bounded control; panel count and range-input count are zero. Pointer toggling, state/ARIA/status updates, one-shot animation cleanup, running `AudioContext`, cue generation, ambient start, and legacy preference migration passed. Reduced-motion reported no keyframe animation and zero transition duration.
+- Accessibility/runtime: axe-core 4.10.3 returned zero WCAG A/AA violations at 1440x900 and 390x844; fresh local console, page-exception, and network-failure checks returned zero events. All 10 inline scripts parse, all 149 IDs are unique, and `git diff --check` passes.
+- Next: commit/push the unchanged verified artifact, wait for Pages, then repeat exact-byte and public interaction verification before releasing the owned lock.
