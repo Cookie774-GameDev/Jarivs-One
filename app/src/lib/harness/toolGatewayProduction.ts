@@ -353,8 +353,6 @@ export function createProductionToolGatewayDependencies(): ToolGatewayDependenci
             ...(context.directory ? { activePaths: [context.directory] } : {}),
           });
         }
-        const port = rlmContextPort;
-        if (!port) throw new Error('rlm_context_unavailable');
         const lease =
           args.operation === 'investigate'
             ? (() => {
@@ -366,6 +364,8 @@ export function createProductionToolGatewayDependencies(): ToolGatewayDependenci
                 }) satisfies RlmContextLease;
               })()
             : baseLease;
+        const port = rlmContextPort;
+        if (!port) throw new Error('rlm_context_unavailable');
         return port.execute(args, lease);
       },
     },

@@ -368,6 +368,23 @@ describe('production tool gateway dependencies', () => {
     dispose();
   });
 
+  it('rejects investigate without observed identity before checking the optional RLM port', async () => {
+    await expect(
+      Promise.resolve().then(() =>
+        createProductionToolGatewayDependencies().context.rlm(
+          { operation: 'investigate', query: 'Trace the cross-source decision.' },
+          {
+            requestId: 'request-unbound-no-port',
+            sessionId: 'different-session',
+            messageId: 'message-1',
+            worktree: 'C:\\work\\project\\.worktrees\\feature',
+            mutationApproved: false,
+          },
+        ),
+      ),
+    ).rejects.toThrow('gateway_execution_identity_unavailable');
+  });
+
   it('rejects an observed high-level query when worktree scope is incomplete', async () => {
     const authority = captureToolGatewayAuthorityClaim()!;
     expect(
