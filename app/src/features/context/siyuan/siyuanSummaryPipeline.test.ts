@@ -271,6 +271,42 @@ describe('durable SiYuan summary pipeline', () => {
     }
   });
 
+  it('treats a picker verbatim drive root as the same summary authority and reads through the ordinary strict root', async () => {
+    const verbatimRoot = '\\\\?\\C:\\repo';
+    const sourceEntries = entries();
+    const read = vi.fn(async () => ({ ok: true as const, content: 'export const app = true;' }));
+    const generator = vi.fn(async () => ({
+      summary: 'Exports the application entry point.',
+      ...identity,
+      inputTokens: 12,
+      outputTokens: 7,
+      tokenProvenance: 'reported' as const,
+    }));
+
+    expect(
+      computeSiyuanCloudSummaryScope(sourceEntries, verbatimRoot, {
+        mode: 'selected',
+        selectedExtensions: [],
+        selectedPaths: ['C:/repo'],
+      }),
+    ).toMatchObject({ eligibleFileCount: 1 });
+
+    await runSiyuanSummaryPipeline({
+      projectId: 'project-1',
+      mapId: 'map-1',
+      root: verbatimRoot,
+      policy: { mode: 'selected', selectedExtensions: ['ts'], selectedPaths: [] },
+      entries: sourceEntries,
+      job: await job(),
+      identity,
+      generator,
+      read,
+    });
+
+    expect(read).toHaveBeenCalledWith('C:/repo/src/index.ts', 'C:/repo');
+    expect(generator).toHaveBeenCalledOnce();
+  });
+
   it('keeps binary and image files metadata-only even when their folder or all content is selected', () => {
     const candidates: SiyuanSafeIndexEntry[] = [
       entries()[1]!,

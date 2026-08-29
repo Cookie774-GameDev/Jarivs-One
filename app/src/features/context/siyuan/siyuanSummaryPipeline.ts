@@ -24,6 +24,7 @@ import {
 import { executeSiyuanSummaryBatches } from './siyuanSummaryBatchExecutor';
 import { generateSiyuanSummaryBatch } from './siyuanSummaryBatchGenerator';
 import { siyuanSummaryLaneCount } from './siyuanSummaryBatch';
+import { normalizeSiyuanFilesystemPath } from './siyuanPathAuthority';
 
 export interface SiyuanSummaryModelIdentity {
   providerId: string;
@@ -275,8 +276,7 @@ export const generateSiyuanSummaryWithApprovedCloudModel: SiyuanSummaryGenerator
 type SummaryReadResult = { ok: true; content: string } | { ok: false; reason?: string };
 
 function canonical(value: string): string {
-  return value
-    .replace(/\\/gu, '/')
+  return normalizeSiyuanFilesystemPath(value)
     .replace(/\/{2,}/gu, '/')
     .replace(/\/$/u, '');
 }
@@ -560,6 +560,7 @@ export async function runSiyuanSummaryPipeline(input: {
         ? { ok: true, content: result.content }
         : { ok: false, reason: result.error.code };
     });
+  const filesystemRoot = canonical(input.root);
   const pendingEligible = input.entries.filter((entry) =>
     isSiyuanSummaryEligible(entry, input.root, input.policy),
   ).length;
@@ -673,7 +674,7 @@ export async function runSiyuanSummaryPipeline(input: {
         await durableControl.checkpoint(input.signal);
         const entry = entries[index]!;
         if (!isSiyuanSummaryEligible(entry, input.root, input.policy)) continue;
-        const source = await read(entry.sourcePointer!, input.root);
+        const source = await read(entry.sourcePointer!, filesystemRoot);
         if (!source.ok) {
           const skipped = { ...entry, summaryState: 'skipped' as const };
           entries[index] = skipped;
@@ -732,7 +733,7 @@ export async function runSiyuanSummaryPipeline(input: {
     if (input.signal?.aborted) throw new Error('siyuan_index_cancelled');
     const entry = entries[index]!;
     if (!isSiyuanSummaryEligible(entry, input.root, input.policy)) continue;
-    const source = await read(entry.sourcePointer!, input.root);
+    const source = await read(entry.sourcePointer!, filesystemRoot);
     if (!source.ok) {
       const skipped = { ...entry, summaryState: 'skipped' as const };
       entries[index] = skipped;
