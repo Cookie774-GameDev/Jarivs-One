@@ -4,6 +4,16 @@
   color: hsl(var(--foreground));
 }
 
+.assistant-activity-ledger-sequence {
+  display: grid;
+  gap: 0.8rem;
+  width: 100%;
+}
+
+.assistant-activity-ledger-sequence .assistant-activity-ledger {
+  margin-top: 0.1rem;
+}
+
 .assistant-activity-ledger__phase-summary {
   margin: 0 0 0.42rem;
   max-width: 76ch;

@@ -224,7 +224,7 @@ describe('AgenticConsole', () => {
     expect(screen.getByRole('button', { name: 'Load 100 older events' })).toBeTruthy();
   });
 
-  it('coalesces live work into one continuous activity disclosure', () => {
+  it('persists live work as ordered continuous-response phase disclosures', () => {
     const activity: ChatActivityEvent[] = [
       {
         id: 'think',
@@ -301,8 +301,14 @@ describe('AgenticConsole', () => {
       sessionEvidence: { status: 'running', currentOperation: 'Working' },
     });
 
-    const disclosure = screen.getByRole('button', { name: /show activity details/i });
-    expect(disclosure.textContent).toContain('4 actions');
+    const disclosures = screen.getAllByRole('button', { name: /show activity details/i });
+    expect(disclosures).toHaveLength(3);
+    expect(disclosures.map((disclosure) => disclosure.textContent)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Context · 1 action'),
+        expect.stringContaining('Tools · 2 actions'),
+      ]),
+    );
     expect(rendered.container.querySelectorAll('[data-agent-motion]')).toHaveLength(1);
     expect(
       rendered.container.querySelector('[data-agent-motion]')?.getAttribute('data-agent-motion'),

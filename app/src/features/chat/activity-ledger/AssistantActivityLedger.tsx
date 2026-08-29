@@ -11,6 +11,7 @@ import {
 import {
   projectAssistantActivityLedger,
   type AssistantActivityReceipt,
+  type AssistantActivityLedgerProjection,
   type LedgerReceiptKind,
   type LedgerUsageValue,
 } from './ledgerProjection';
@@ -61,10 +62,7 @@ function joinedPhrases(phrases: readonly string[]): string {
   return `${phrases.slice(0, -1).join(', ')}, and ${phrases.at(-1)}`;
 }
 
-function phaseSummary(
-  ledger: ReturnType<typeof projectAssistantActivityLedger>,
-  active: boolean,
-): string {
+function phaseSummary(ledger: AssistantActivityLedgerProjection, active: boolean): string {
   const running = [...ledger.receipts]
     .reverse()
     .find((receipt) => receipt.status === 'running' || receipt.status === 'pending');
@@ -116,6 +114,153 @@ function phaseSummary(
   return `I completed ${formatCount(ledger.actionsTotal)} recorded ${ledger.actionsTotal === 1 ? 'action' : 'actions'}${phrases.length ? `: ${joinedPhrases(phrases)}` : ''}. No next action is recorded for this response.`;
 }
 
+type ActivityPhaseKind = 'context' | 'tools' | 'verification';
+
+type ActivityPhase = Readonly<{
+  kind: ActivityPhaseKind;
+  receipts: readonly AssistantActivityReceipt[];
+}>;
+
+function phaseKind(receipt: AssistantActivityReceipt): ActivityPhaseKind {
+  if (receipt.kind === 'read' || receipt.kind === 'search') return 'context';
+  if (receipt.kind === 'check') return 'verification';
+  return 'tools';
+}
+
+function partitionActivityPhases(
+  receipts: readonly AssistantActivityReceipt[],
+): readonly ActivityPhase[] {
+  const phases: Array<{ kind: ActivityPhaseKind; receipts: AssistantActivityReceipt[] }> = [];
+  for (const receipt of receipts) {
+    const kind = phaseKind(receipt);
+    const current = phases.at(-1);
+    if (!current || current.kind !== kind) phases.push({ kind, receipts: [receipt] });
+    else current.receipts.push(receipt);
+  }
+  return phases;
+}
+
+function phaseProjection(
+  base: AssistantActivityLedgerProjection,
+  phase: ActivityPhase,
+  terminalPhase: boolean,
+): AssistantActivityLedgerProjection {
+  const receipts = phase.receipts;
+  const reads = new Set(
+    receipts
+      .filter((receipt) => receipt.kind === 'read' && receipt.status === 'done')
+      .map((receipt) => receipt.filePath ?? receipt.fileLabel ?? receipt.id),
+  );
+  const edits = new Set(
+    receipts
+      .filter((receipt) => receipt.kind === 'edit')
+      .map((receipt) => receipt.filePath ?? receipt.fileLabel ?? receipt.id),
+  );
+  const checks = receipts.filter((receipt) => receipt.kind === 'check');
+  const startedAt = receipts[0]?.ts ?? base.startedAt;
+  const last = receipts.at(-1);
+  const endedAt = last
+    ? last.ts + (last.durationMs ?? 0)
+    : terminalPhase
+      ? base.endedAt
+      : undefined;
+  const status = terminalPhase
+    ? base.status
+    : receipts.some((receipt) => receipt.status === 'error')
+      ? 'error'
+      : receipts.some((receipt) => receipt.status === 'cancelled')
+        ? 'cancelled'
+        : 'done';
+  const running = receipts
+    .filter((receipt) => receipt.status === 'running' || receipt.status === 'pending')
+    .at(-1);
+  return {
+    status,
+    ...(running ? { currentOperation: running.label } : {}),
+    actionsTotal: receipts.length,
+    readsTotal: reads.size,
+    searchesTotal: receipts.filter((receipt) => receipt.kind === 'search').length,
+    commandsTotal: receipts.filter((receipt) => receipt.kind === 'command').length,
+    editedFilesTotal: edits.size,
+    verifiedChecksTotal: checks.filter((receipt) => receipt.status === 'done').length,
+    failedChecksTotal: checks.filter((receipt) => receipt.status === 'error').length,
+    subagentsTotal: receipts.filter((receipt) => receipt.kind === 'subagent').length,
+    usage: terminalPhase
+      ? base.usage
+      : {
+          input: { value: null, provenance: 'unavailable', source: 'unavailable' },
+          output: { value: null, provenance: 'unavailable', source: 'unavailable' },
+        },
+    startedAt,
+    ...(endedAt === undefined ? {} : { endedAt, durationMs: Math.max(0, endedAt - startedAt) }),
+    receipts,
+    omittedReceipts: 0,
+  };
+}
+
+function completedPhaseSummary(phase: ActivityPhase, next?: ActivityPhase): string {
+  const projection = phaseProjection(
+    {
+      status: 'done',
+      actionsTotal: 0,
+      readsTotal: 0,
+      searchesTotal: 0,
+      commandsTotal: 0,
+      editedFilesTotal: 0,
+      verifiedChecksTotal: 0,
+      failedChecksTotal: 0,
+      subagentsTotal: 0,
+      usage: {
+        input: { value: null, provenance: 'unavailable', source: 'unavailable' },
+        output: { value: null, provenance: 'unavailable', source: 'unavailable' },
+      },
+      startedAt: phase.receipts[0]?.ts ?? 0,
+      receipts: phase.receipts,
+      omittedReceipts: 0,
+    },
+    phase,
+    false,
+  );
+  const phrases = [
+    projection.readsTotal
+      ? `read ${formatCount(projection.readsTotal)} ${projection.readsTotal === 1 ? 'file' : 'files'}`
+      : '',
+    projection.searchesTotal
+      ? `completed ${formatCount(projection.searchesTotal)} ${projection.searchesTotal === 1 ? 'search' : 'searches'}`
+      : '',
+    projection.commandsTotal
+      ? `ran ${formatCount(projection.commandsTotal)} ${projection.commandsTotal === 1 ? 'command' : 'commands'}`
+      : '',
+    projection.editedFilesTotal
+      ? `edited ${formatCount(projection.editedFilesTotal)} ${projection.editedFilesTotal === 1 ? 'file' : 'files'}`
+      : '',
+    projection.verifiedChecksTotal
+      ? `verified ${formatCount(projection.verifiedChecksTotal)} ${projection.verifiedChecksTotal === 1 ? 'check' : 'checks'}`
+      : '',
+    projection.failedChecksTotal
+      ? `recorded ${formatCount(projection.failedChecksTotal)} failed ${projection.failedChecksTotal === 1 ? 'check' : 'checks'}`
+      : '',
+    projection.subagentsTotal
+      ? `recorded ${formatCount(projection.subagentsTotal)} ${projection.subagentsTotal === 1 ? 'subagent action' : 'subagent actions'}`
+      : '',
+  ].filter(Boolean);
+  const first = `I ${joinedPhrases(phrases) || `recorded ${actionLabel(projection.actionsTotal)}`}${phase.kind === 'context' ? ' to gather context' : ''}.`;
+  if (!next) return `${first} No next action is recorded for this response.`;
+  const nextText =
+    next.kind === 'context'
+      ? 'gathered the next recorded context'
+      : next.kind === 'verification'
+        ? `verified the recorded project ${next.receipts.length === 1 ? 'check' : 'checks'}`
+        : 'used the recorded project tools';
+  return `${first} Next, I ${nextText}.`;
+}
+
+function phaseTitle(kind: ActivityPhaseKind): string {
+  if (kind === 'context') return 'Context';
+  if (kind === 'verification') return 'Verification';
+  return 'Tools';
+}
+
 function receiptIcon(kind: LedgerReceiptKind) {
   if (kind === 'read' || kind === 'edit') return <FileText aria-hidden="true" />;
   if (kind === 'search') return <Search aria-hidden="true" />;
@@ -145,6 +290,71 @@ export function AssistantActivityLedger({
     () => projectAssistantActivityLedger(message, correlatedEvents),
     [message, correlatedEvents],
   );
+  const phases = React.useMemo(() => partitionActivityPhases(ledger.receipts), [ledger.receipts]);
+  const hasUsage = ledger.usage.input.value !== null || ledger.usage.output.value !== null;
+  if (ledger.actionsTotal === 0 && !hasUsage) return null;
+
+  if (phases.length > 1) {
+    return (
+      <div className="assistant-activity-ledger-sequence" data-activity-phase-count={phases.length}>
+        {phases.map((phase, index) => {
+          const terminalPhase = index === phases.length - 1;
+          const projected = phaseProjection(ledger, phase, terminalPhase);
+          const phaseActive = active && terminalPhase;
+          return (
+            <AssistantActivityLedgerBlock
+              key={`${phase.kind}:${phase.receipts[0]?.id ?? index}`}
+              ledger={projected}
+              summary={
+                phaseActive
+                  ? phaseSummary(projected, true)
+                  : completedPhaseSummary(phase, phases[index + 1])
+              }
+              title={`${phaseTitle(phase.kind)} · ${actionLabel(projected.actionsTotal)}`}
+              correlatedEvents={phaseActive ? correlatedEvents : []}
+              projectRoot={projectRoot}
+              compact={compact}
+              active={phaseActive}
+              authoritativeDurationMs={terminalPhase ? authoritativeDurationMs : undefined}
+            />
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <AssistantActivityLedgerBlock
+      ledger={ledger}
+      summary={phaseSummary(ledger, active)}
+      correlatedEvents={correlatedEvents}
+      projectRoot={projectRoot}
+      compact={compact}
+      active={active}
+      authoritativeDurationMs={authoritativeDurationMs}
+    />
+  );
+}
+
+function AssistantActivityLedgerBlock({
+  ledger,
+  summary,
+  title,
+  correlatedEvents = [],
+  projectRoot,
+  compact = false,
+  active = false,
+  authoritativeDurationMs,
+}: {
+  ledger: AssistantActivityLedgerProjection;
+  summary: string;
+  title?: string;
+  correlatedEvents?: readonly ChatActivityEvent[];
+  projectRoot?: string;
+  compact?: boolean;
+  active?: boolean;
+  authoritativeDurationMs?: number;
+}) {
   const [expanded, setExpanded] = React.useState(false);
   const [visibleCount, setVisibleCount] = React.useState(DETAIL_PAGE_SIZE);
   const [previewPath, setPreviewPath] = React.useState<string | null>(null);
@@ -152,7 +362,6 @@ export function AssistantActivityLedger({
   const titleId = React.useId();
   const metricsId = React.useId();
   const hasUsage = ledger.usage.input.value !== null || ledger.usage.output.value !== null;
-  if (ledger.actionsTotal === 0 && !hasUsage) return null;
 
   const visible = ledger.receipts.slice(0, visibleCount);
   const remaining = Math.max(0, ledger.receipts.length - visible.length);
@@ -171,11 +380,13 @@ export function AssistantActivityLedger({
           authoritativeDurationMs >= 0
         ? authoritativeDurationMs
         : ledger.durationMs;
-  const continuousResponseTitle = live
-    ? `${ledger.currentOperation ?? 'Working'} · ${actionLabel(ledger.actionsTotal)}`
-    : durationMs !== undefined
-      ? `Worked for ${formatDuration(durationMs)} · ${actionLabel(ledger.actionsTotal)}`
-      : `Activity · ${actionLabel(ledger.actionsTotal)}`;
+  const continuousResponseTitle =
+    title ??
+    (live
+      ? `${ledger.currentOperation ?? 'Working'} · ${actionLabel(ledger.actionsTotal)}`
+      : durationMs !== undefined
+        ? `Worked for ${formatDuration(durationMs)} · ${actionLabel(ledger.actionsTotal)}`
+        : `Activity · ${actionLabel(ledger.actionsTotal)}`);
   const motion = resolveAgentMotion(
     runningEvent
       ? {
@@ -204,7 +415,7 @@ export function AssistantActivityLedger({
       data-ledger-active={active ? 'true' : 'false'}
     >
       <p className="assistant-activity-ledger__phase-summary" aria-live={active ? 'polite' : 'off'}>
-        {phaseSummary(ledger, active)}
+        {summary}
       </p>
       <button
         type="button"

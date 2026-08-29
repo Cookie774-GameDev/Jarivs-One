@@ -158,6 +158,50 @@ describe('AssistantActivityLedger', () => {
     expect(document.body.textContent).not.toContain('C:\\private');
   });
 
+  it('persists ordered context, tool, and verification phases with truthful next-recorded summaries', () => {
+    render(
+      <AssistantActivityLedger
+        message={assistant([
+          {
+            kind: 'tool_call',
+            call_id: 'read-1',
+            tool: 'read_file',
+            args: { path: 'ChatThread.tsx' },
+          },
+          { kind: 'tool_result', call_id: 'read-1', result: { exitCode: 0 } },
+          { kind: 'tool_call', call_id: 'search-1', tool: 'search', args: {} },
+          { kind: 'tool_result', call_id: 'search-1', result: { exitCode: 0 } },
+          { kind: 'tool_call', call_id: 'command-1', tool: 'terminal.exec', args: {} },
+          { kind: 'tool_result', call_id: 'command-1', result: { exitCode: 0 } },
+          {
+            kind: 'tool_call',
+            call_id: 'edit-1',
+            tool: 'apply_patch',
+            args: { path: 'ChatThread.tsx' },
+          },
+          { kind: 'tool_result', call_id: 'edit-1', result: { exitCode: 0 } },
+          { kind: 'tool_call', call_id: 'check-1', tool: 'verify.test', args: {} },
+          { kind: 'tool_result', call_id: 'check-1', result: { exitCode: 0 } },
+        ])}
+      />,
+    );
+
+    expect(screen.getAllByRole('button', { name: /show activity details/i })).toHaveLength(3);
+    expect(
+      screen.getByText(
+        'I read 1 file and completed 1 search to gather context. Next, I used the recorded project tools.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'I ran 1 command and edited 1 file. Next, I verified the recorded project check.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('I verified 1 check. No next action is recorded for this response.'),
+    ).toBeTruthy();
+  });
+
   it('does not fabricate an action ledger from a generic persisted lifecycle event', () => {
     const rendered = render(
       <AssistantActivityLedger
