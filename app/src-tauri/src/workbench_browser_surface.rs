@@ -10,7 +10,7 @@ use async_lock::Mutex as AsyncMutex;
 use serde::{Deserialize, Serialize};
 use tauri::{
     webview::{PageLoadEvent, Webview, WebviewBuilder},
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl, WebviewWindow,
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl,
 };
 
 const EVENT_NAME: &str = "workbench-browser://state";
@@ -226,7 +226,7 @@ fn opening_loading_state(unchanged_url: bool, previous: Option<bool>) -> bool {
 #[tauri::command]
 pub async fn workbench_browser_surface_open(
     app: AppHandle,
-    caller: WebviewWindow,
+    caller: Webview,
     panel_id: String,
     operation_id: String,
     url: String,
@@ -348,7 +348,7 @@ fn with_surface(app: &AppHandle, panel_id: &str, operation_id: &str) -> Result<W
 #[tauri::command]
 pub async fn workbench_browser_surface_history(
     app: AppHandle,
-    caller: WebviewWindow,
+    caller: Webview,
     panel_id: String,
     operation_id: String,
     delta: i8,
@@ -370,7 +370,7 @@ pub async fn workbench_browser_surface_history(
 #[tauri::command]
 pub async fn workbench_browser_surface_reload(
     app: AppHandle,
-    caller: WebviewWindow,
+    caller: Webview,
     panel_id: String,
     operation_id: String,
 ) -> Result<(), String> {
@@ -383,7 +383,7 @@ pub async fn workbench_browser_surface_reload(
 #[tauri::command]
 pub async fn workbench_browser_surface_stop(
     app: AppHandle,
-    caller: WebviewWindow,
+    caller: Webview,
     panel_id: String,
     operation_id: String,
 ) -> Result<(), String> {
@@ -396,7 +396,7 @@ pub async fn workbench_browser_surface_stop(
 #[tauri::command]
 pub async fn workbench_browser_surface_hide(
     app: AppHandle,
-    caller: WebviewWindow,
+    caller: Webview,
     panel_id: String,
     operation_id: String,
 ) -> Result<(), String> {
@@ -442,6 +442,14 @@ mod tests {
         assert!(!source.contains(&external_window_builder));
         assert!(!source.contains(&external_open));
         assert!(INIT_SCRIPT.contains("delete window.__TAURI_INTERNALS__"));
+    }
+
+    #[test]
+    fn commands_accept_the_official_main_child_webview_caller() {
+        let source = include_str!("workbench_browser_surface.rs");
+        assert_eq!(source.matches("    caller: Webview,\n").count(), 5);
+        assert!(!source.contains("    caller: WebviewWindow,\n"));
+        assert!(source.contains("ensure_caller(caller.label())?;"));
     }
 
     #[test]
