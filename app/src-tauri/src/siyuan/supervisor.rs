@@ -371,6 +371,12 @@ impl SupervisorInner {
         })
     }
 
+    fn prepare_failed_relaunch(&mut self) {
+        if self.lifecycle.state() == RuntimeState::Failed && self.running.is_none() {
+            self.lifecycle.force_stopped();
+        }
+    }
+
     fn prepare_launch(&mut self, project_id: &str) -> Result<RuntimeLaunchPlan, SupervisorError> {
         self.ensure_payload_ready()?;
         require_publish_mode_disabled(false)?;
@@ -457,6 +463,7 @@ impl SupervisorInner {
         if self.running.is_some() {
             self.stop()?;
         }
+        self.prepare_failed_relaunch();
         let mut plan = self.prepare_launch(project_id)?;
         let transport = match HttpSiyuanTransport::new(
             plan.port(),
@@ -1013,6 +1020,36 @@ mod tests {
             SupervisorError::ProcessUnavailable.to_string(),
             "siyuan_process_unavailable"
         );
+    }
+
+    #[test]
+    fn failed_runtime_without_an_owned_process_can_prepare_an_authorized_relaunch() {
+        let base = std::env::temp_dir().join("vibespace-siyuan-failed-relaunch-test");
+        let exited = Arc::new(AtomicBool::new(false));
+        let state = SiyuanRuntimeState::with_availability(ready_availability());
+        state.configure_workspace_base(base).unwrap();
+        let mut inner = state.inner.lock().unwrap();
+        let plan = inner.prepare_launch("project-1").unwrap();
+        inner
+            .attach_running(
+                plan,
+                Box::new(MockProcess {
+                    exited: exited.clone(),
+                    terminated: Arc::new(AtomicBool::new(false)),
+                }),
+            )
+            .unwrap();
+
+        exited.store(true, Ordering::SeqCst);
+        inner.poll_crash().unwrap();
+        assert_eq!(inner.lifecycle.state(), RuntimeState::Failed);
+        assert!(inner.running.is_none());
+
+        inner.prepare_failed_relaunch();
+
+        assert_eq!(inner.lifecycle.state(), RuntimeState::Stopped);
+        let replacement = inner.prepare_launch("project-1").unwrap();
+        assert_eq!(replacement.project_id, "project-1");
     }
 
     #[test]
