@@ -196,4 +196,16 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(source).toContain('if (!forceReconcile || refreshIntentCleared)');
     expect(source).toContain('forceReconcile,');
   });
+
+  it('keeps Resume available exactly once while paused node creation can refresh scope', () => {
+    const actionsStart = source.indexOf("{job.phase !== 'completed' ? (");
+    const actionsEnd = source.indexOf('</section>', actionsStart);
+    const actions = source.slice(actionsStart, actionsEnd);
+
+    expect(actionsStart).toBeGreaterThan(-1);
+    expect(actions).toContain("job.phase === 'creating_nodes'");
+    expect(actions).toContain('onClick={onRefreshScope}');
+    expect(actions.match(/onClick=\{onResume\}/gu)).toHaveLength(1);
+    expect(actions).not.toContain("job.phase !== 'creating_nodes'");
+  });
 });

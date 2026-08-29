@@ -448,9 +448,7 @@ function SiyuanIndexProgressCard({
               {scopeRefreshPending ? 'Refreshing scope…' : 'Refresh file scope'}
             </Button>
           ) : null}
-          {job.status === 'paused' &&
-          job.phase !== 'creating_nodes' &&
-          !(job.phase === 'summarizing' && cloudDisclosure) ? (
+          {job.status === 'paused' && !(job.phase === 'summarizing' && cloudDisclosure) ? (
             <Button size="sm" variant="secondary" onClick={onResume}>
               Resume
             </Button>
