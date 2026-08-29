@@ -186,6 +186,41 @@ describe('SiYuan durable startup host', () => {
     expect(dispositions).toEqual(['auto_resumed', 'needs_repair']);
   });
 
+  it('binds an exhausted startup repair to the exact auto-resume attempt', async () => {
+    const expectedGuards: unknown[] = [];
+    const started = {
+      ...createSiyuanIndexJob({
+        projectId: 'project-1',
+        mapId: 'map-1',
+        canonicalRoot: 'C:/root',
+        policyFingerprint: 'policy-a',
+        now: 100,
+      }),
+      startupDisposition: 'auto_resumed' as const,
+      startupDispositionAt: 200,
+    };
+    await expect(
+      runSiyuanStartupResume({
+        projectId: 'project-1',
+        mapId: 'map-1',
+        run: async () => {
+          throw new Error('siyuan_runtime_unavailable');
+        },
+        isRunning: async () => true,
+        markDisposition: async (_projectId, _mapId, disposition, _now, expected) => {
+          if (disposition === 'auto_resumed') return started;
+          expectedGuards.push(expected);
+          return started;
+        },
+        maxAttempts: 1,
+      }),
+    ).rejects.toThrow('siyuan_runtime_unavailable');
+
+    expect(expectedGuards).toEqual([
+      { disposition: 'auto_resumed', dispositionAt: 200 },
+    ]);
+  });
+
   it('resumes only matching-account active local maps with running jobs', () => {
     const maps = [map('map-1'), map('map-2'), map('map-3')];
     const running = runningJob(maps[0]!);

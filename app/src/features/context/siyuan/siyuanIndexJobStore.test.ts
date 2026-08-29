@@ -1275,6 +1275,35 @@ describe('durable SiYuan index jobs', () => {
     expect((await readSiyuanIndexJob('project-1', 'map-1'))?.status).toBe('paused');
   });
 
+  it('rejects a stale startup repair after an explicit retry clears that attempt', async () => {
+    const job = createSiyuanIndexJob({
+      projectId: 'project-1',
+      mapId: 'map-1',
+      canonicalRoot: 'C:/root',
+      policyFingerprint: 'policy-a',
+      now: 100,
+    });
+    await replaceSiyuanIndexJob(job, {
+      path: 'C:/root',
+      relativePath: '',
+      parentNodeId: null,
+    });
+    await setSiyuanIndexJobStartupDisposition('project-1', 'map-1', 'auto_resumed', 200);
+    await updateSiyuanIndexJobStatus('project-1', 'map-1', 'running', 300);
+
+    await setSiyuanIndexJobStartupDisposition('project-1', 'map-1', 'needs_repair', 400, {
+      disposition: 'auto_resumed',
+      dispositionAt: 200,
+    });
+
+    expect(await readSiyuanIndexJob('project-1', 'map-1')).toMatchObject({
+      status: 'running',
+      startupDisposition: null,
+      startupDispositionAt: null,
+      updatedAt: 300,
+    });
+  });
+
   it('normalizes legacy or malformed pause reasons without losing the checkpoint', async () => {
     const legacy = {
       ...createSiyuanIndexJob({

@@ -1127,6 +1127,10 @@ export async function setSiyuanIndexJobStartupDisposition(
   mapId: string,
   disposition: NonNullable<SiyuanIndexJobRecord['startupDisposition']>,
   now = Date.now(),
+  expected?: {
+    disposition: NonNullable<SiyuanIndexJobRecord['startupDisposition']>;
+    dispositionAt: number;
+  },
 ): Promise<SiyuanIndexJobRecord | null> {
   const database = await openDatabase();
   if (!database) return null;
@@ -1139,6 +1143,14 @@ export async function setSiyuanIndexJobStartupDisposition(
     if (!job) {
       await transactionDone(transaction);
       return null;
+    }
+    if (
+      expected &&
+      (job.startupDisposition !== expected.disposition ||
+        job.startupDispositionAt !== expected.dispositionAt)
+    ) {
+      await transactionDone(transaction);
+      return job;
     }
     const updated: SiyuanIndexJobRecord = {
       ...job,

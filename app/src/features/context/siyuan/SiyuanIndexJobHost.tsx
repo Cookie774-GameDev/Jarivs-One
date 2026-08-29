@@ -80,7 +80,7 @@ export async function runSiyuanStartupResume<T>(options: {
   markDisposition?: typeof setSiyuanIndexJobStartupDisposition;
 }): Promise<T> {
   const markDisposition = options.markDisposition ?? setSiyuanIndexJobStartupDisposition;
-  await markDisposition(options.projectId, options.mapId, 'auto_resumed');
+  const startupAttempt = await markDisposition(options.projectId, options.mapId, 'auto_resumed');
   try {
     return await retryRunningSiyuanJob({
       run: options.run,
@@ -94,7 +94,19 @@ export async function runSiyuanStartupResume<T>(options: {
   } catch (error) {
     const shouldMarkNeedsRepair = options.shouldMarkNeedsRepair ?? options.isRunning;
     if (!options.signal?.aborted && (await shouldMarkNeedsRepair())) {
-      await markDisposition(options.projectId, options.mapId, 'needs_repair');
+      await markDisposition(
+        options.projectId,
+        options.mapId,
+        'needs_repair',
+        Date.now(),
+        startupAttempt?.startupDisposition === 'auto_resumed' &&
+          startupAttempt.startupDispositionAt !== null
+          ? {
+              disposition: 'auto_resumed',
+              dispositionAt: startupAttempt.startupDispositionAt,
+            }
+          : undefined,
+      );
     }
     throw error;
   }
