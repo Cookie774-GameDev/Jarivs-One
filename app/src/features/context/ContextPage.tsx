@@ -83,6 +83,7 @@ import {
   selectPersistedContextFile,
   selectPersistedContextMap,
 } from './contextPersistence';
+import { subscribeContextNavigation } from './contextNavigation';
 import type { ContextRecoverySummary } from './contextRecovery';
 import { NightlySecondBrainPanel } from './NightlySecondBrainPanel';
 import { searchContextNodes } from './contextSearch';
@@ -1710,6 +1711,17 @@ export function ContextPage() {
   const closeFocusedMap = React.useCallback(() => {
     setFocusedMap(false);
   }, []);
+
+  React.useEffect(() => {
+    return subscribeContextNavigation((intent) => {
+      if (intent.target === 'overview') {
+        setFocusedMap(false);
+        setWorkspaceSection('maps');
+        return;
+      }
+      void openFocusedMap(intent.mapId);
+    });
+  }, [openFocusedMap]);
 
   React.useEffect(() => {
     if (!focusedMap) return;

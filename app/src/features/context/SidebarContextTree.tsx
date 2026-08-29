@@ -23,6 +23,7 @@ import {
   selectPersistedContextFile,
   selectPersistedContextMap,
 } from './contextPersistence';
+import { requestContextNavigation } from './contextNavigation';
 
 interface SidebarContextTreeProps {
   navOpen: boolean;
@@ -86,6 +87,7 @@ export function SidebarContextTree({ navOpen, onOpenContext }: SidebarContextTre
           }
           refreshMaps();
           onOpenContext();
+          requestContextNavigation({ target: 'map', mapId });
         })
         .catch((error) =>
           toast.error(
@@ -97,13 +99,18 @@ export function SidebarContextTree({ navOpen, onOpenContext }: SidebarContextTre
     [onOpenContext, projectId, refreshMaps],
   );
 
+  const openOverview = React.useCallback(() => {
+    onOpenContext();
+    requestContextNavigation({ target: 'overview' });
+  }, [onOpenContext]);
+
   if (!navOpen) return null;
 
   if (maps.length === 0) {
     return (
       <button
         type="button"
-        onClick={onOpenContext}
+        onClick={openOverview}
         className="mx-1 rounded-lg border border-dashed border-border bg-paper-soft px-2 py-2 text-left text-metadata text-muted-foreground transition-colors hover:border-accent-copper/50 hover:text-foreground"
       >
         <span className="mb-1 flex items-center gap-1.5 text-accent-copper">
@@ -120,7 +127,7 @@ export function SidebarContextTree({ navOpen, onOpenContext }: SidebarContextTre
     <div className="space-y-1 px-1">
       <button
         type="button"
-        onClick={onOpenContext}
+        onClick={openOverview}
         className="flex w-full items-center gap-2 rounded-md bg-accent-copper/10 px-2 py-1.5 text-left text-metadata text-accent-copper transition-colors hover:bg-accent-copper/15"
       >
         <Zap className="h-3.5 w-3.5" />
