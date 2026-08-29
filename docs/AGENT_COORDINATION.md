@@ -4966,3 +4966,10 @@ completed_pr31_deferred_updates_intro_scope_2026-08-25: Product commit 3b5bc466 
 - AgenticConsole now places the existing compact ledger between real assistant text checkpoints, scopes each disclosure to the intervening call IDs, retains final usage on the last phase, and continues suppressing raw command/tool transcript cards.
 - TDD RED: adapter contract failed because no text-part tracker existed. GREEN: focused 4/4; full affected adapter/router/runtime/AgenticConsole matrix 255/255; direct installed `tsc -b --pretty false` passed. Repository `pnpm typecheck` wrapper remains preflight-blocked by existing ignored dependency build scripts; no dependency policy was changed.
 - Diff: 10 owned product/test files, approximately +344/-48 before formatting. Next: format/diff/security/build gates, exact-file commit, then official native exact-route game prompt and deterministic visual/function verification with zero Ollama/11434.
+
+### 2026-08-29 08:36 CDT — VS-CODEX-WORKBENCH-NORMAL-BROWSER-20260829 complete/released
+
+- Commits `adc1ee3a5b0e056ac6f5efc258afd6df5a25b4f8` and `d64747ed` preserve a user-edited address against stale native status, deduplicate settled native surface opens for unchanged bounds, avoid redundant parent updates, retain normalized arbitrary HTTP/HTTPS navigation plus an explicit external-browser action, and prove the existing minimize/close lifecycle callbacks.
+- Exact product/test scope: `app/src/features/workbench/BrowserPanel.tsx`, `BrowserPanel.test.tsx`, and `WorkbenchPanel.accessibility.test.tsx`; `WorkbenchPanel.tsx` required no source change. No unrelated dirty files were staged or committed.
+- Verification: focused BrowserPanel/WorkbenchPanel 13/13 PASS; full Workbench 30 files / 102 tests PASS; `tsc -b --pretty false` PASS; exact Prettier and diff checks PASS; implementation and formatting commit diffs Gitleaks PASS. Existing unrelated jsdom warnings did not fail the full suite. Native/live/Playwright acceptance remains intentionally deferred by the user's explicit instruction.
+- Final branch/HEAD: `integration/UnifiedChungus-final` at `d64747ed`; scope released.
