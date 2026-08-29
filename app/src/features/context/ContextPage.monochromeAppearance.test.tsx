@@ -125,4 +125,22 @@ describe('ContextPage MonoChrome appearance', () => {
     fireEvent.change(input, { target: { value: 'C:\\workspace\\vibespace' } });
     expect((input as HTMLInputElement).value).toBe('C:\\workspace\\vibespace');
   });
+
+  it('keeps a long selected summary path inside the panel with ellipsis and full hover text', async () => {
+    render(<ContextPage />);
+    const path =
+      '\\\\?\\C:\\Users\\viper\\Documents\\AccessRevamp Campaigns\\AR-OUTREACH\\campaigns\\enterprise\\contacts\\prospects.csv';
+    const input = await screen.findByPlaceholderText('Paste one or more file paths (one per line)');
+
+    fireEvent.change(input, { target: { value: path } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add pasted path' }));
+
+    const label = screen.getByTitle(path);
+    expect(label.textContent).toBe(path);
+    expect(label.className).toContain('truncate');
+    expect(label.className).toContain('text-[10px]');
+    expect(label.parentElement?.className).toContain('w-full');
+    expect(label.parentElement?.className).toContain('max-w-full');
+    expect(label.parentElement?.className).toContain('overflow-hidden');
+  });
 });

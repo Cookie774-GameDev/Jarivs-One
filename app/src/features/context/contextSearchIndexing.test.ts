@@ -79,6 +79,25 @@ function dependencies(contents: Record<string, string>, port = nativePort()) {
 }
 
 describe('bounded Context search index population', () => {
+  it('accepts a native Windows verbatim drive root without weakening the snapshot gate', async () => {
+    const deps = dependencies({});
+    const target = {
+      ...map([]),
+      rootDir: '\\\\?\\C:\\Users\\viper\\Documents\\AccessRevamp Campaigns\\AR-OUTREACH',
+    };
+
+    await expect(
+      createContextSearchIndexPopulationPort(deps).populateCreatedMap('account-1', target),
+    ).resolves.toEqual({
+      mapId: 'map-1',
+      documentCount: 0,
+      bodyBytes: 0,
+      status: 'ready',
+    });
+    expect(deps.stat).not.toHaveBeenCalled();
+    expect(deps.read).not.toHaveBeenCalled();
+  });
+
   it('indexes admitted files deterministically with stable physical hashes', async () => {
     const deps = dependencies({
       'C:\\repo\\a.txt': 'alpha',

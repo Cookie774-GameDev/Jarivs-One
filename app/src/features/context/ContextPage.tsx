@@ -2470,7 +2470,7 @@ export function ContextPage() {
                   </span>
                 ))}
               </div>
-              <fieldset className="rounded-lg border border-border bg-paper p-2.5">
+              <fieldset className="min-w-0 max-w-full overflow-hidden rounded-lg border border-border bg-paper p-2.5">
                 <legend className="px-1 text-metadata font-semibold text-foreground">
                   Summaries
                 </legend>
@@ -2508,7 +2508,7 @@ export function ContextPage() {
                   ))}
                 </div>
                 {summaryMode === 'selected' ? (
-                  <div className="mt-2 space-y-1.5">
+                  <div className="mt-2 min-w-0 max-w-full space-y-1.5 overflow-hidden">
                     <p className="text-metadata text-muted-foreground">
                       Add a folder to summarize only that folder. Leave this empty to use the
                       recommended file types across the map. Everything else stays searchable as
@@ -2550,14 +2550,18 @@ export function ContextPage() {
                     {summarySelectedPaths.map((path) => (
                       <div
                         key={path}
-                        className="flex items-center gap-2 rounded-md border border-border bg-paper-soft px-2 py-1 text-metadata"
+                        className="flex w-full min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-md border border-border bg-paper-soft px-2 py-1 text-metadata"
                       >
-                        <span className="min-w-0 flex-1 truncate" title={path}>
+                        <span
+                          className="min-w-0 flex-1 truncate font-mono text-[10px] leading-4"
+                          title={path}
+                        >
                           {path}
                         </span>
                         <Button
                           size="sm"
                           variant="ghost"
+                          className="shrink-0"
                           onClick={() =>
                             setSummarySelectedPaths((current) =>
                               current.filter((entry) => entry !== path),

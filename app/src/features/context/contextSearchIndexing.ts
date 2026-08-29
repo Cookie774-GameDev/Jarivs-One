@@ -122,12 +122,16 @@ function absolutePath(root: string, relative: string): string {
   return `${root.replace(/[\\/]+$/u, '')}${separator}${relative.split('/').join(separator)}`;
 }
 
+function validAbsoluteRoot(root: string): boolean {
+  return /^(?:[A-Za-z]:[\\/]|\/)/u.test(root) || /^\\\\\?\\[A-Za-z]:[\\/]/u.test(root);
+}
+
 function candidatesFor(map: ContextSearchIndexMap): Candidate[] {
   if (
     map.status !== 'active' ||
     !SAFE_ID.test(map.id) ||
     !map.rootDir ||
-    !/^(?:[A-Za-z]:[\\/]|\/)/u.test(map.rootDir) ||
+    !validAbsoluteRoot(map.rootDir) ||
     /[\u0000-\u001f\u007f-\u009f]/u.test(map.rootDir)
   ) {
     return fail('snapshot_invalid');
