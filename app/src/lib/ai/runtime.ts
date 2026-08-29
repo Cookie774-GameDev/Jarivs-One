@@ -5310,6 +5310,17 @@ export function startRuntimeListener(
     let activeShadowDeps: JarvisShadowCompilationDeps | null = null;
     const liveOpenCodePermissions: Array<Extract<Part, { kind: 'permission_request' }>> = [];
     const liveOpenCodeQuestions: Array<Extract<Part, { kind: 'question_block' }>> = [];
+    const liveOpenCodeTools = new Map<
+      string,
+      Readonly<{
+        call: Extract<Part, { kind: 'tool_call' }>;
+        result?: Extract<Part, { kind: 'tool_result' }>;
+      }>
+    >();
+    const currentOpenCodeToolParts = (): Part[] =>
+      [...liveOpenCodeTools.values()].flatMap(({ call, result }) =>
+        result ? [call, result] : [call],
+      );
     const currentOpenCodeQuestionParts = (): Part[] => [...liveOpenCodeQuestions];
     const currentOpenCodePermissionParts = (): Part[] =>
       liveOpenCodePermissions.map((part) => {
@@ -5360,6 +5371,7 @@ export function startRuntimeListener(
           bindings.updateMessage(placeholderId, {
             parts: [
               { kind: 'text', text: acc },
+              ...currentOpenCodeToolParts(),
               ...currentOpenCodeQuestionParts(),
               ...currentOpenCodePermissionParts(),
             ],
@@ -5952,6 +5964,7 @@ export function startRuntimeListener(
             bindings.updateMessage(placeholder.id, {
               parts: [
                 { kind: 'text', text: acc },
+                ...currentOpenCodeToolParts(),
                 ...currentOpenCodeQuestionParts(),
                 ...currentOpenCodePermissionParts(),
               ],
@@ -6267,6 +6280,7 @@ export function startRuntimeListener(
           await bindings.updateMessage(placeholder.id, {
             parts: [
               { kind: 'text', text: acc },
+              ...currentOpenCodeToolParts(),
               ...currentOpenCodeQuestionParts(),
               ...currentOpenCodePermissionParts(),
             ],
@@ -6292,6 +6306,40 @@ export function startRuntimeListener(
           await bindings.updateMessage(placeholder.id, {
             parts: [
               { kind: 'text', text: acc },
+              ...currentOpenCodeToolParts(),
+              ...currentOpenCodeQuestionParts(),
+              ...currentOpenCodePermissionParts(),
+            ],
+          });
+        },
+        onToolActivity: async (toolActivity) => {
+          controller.signal.throwIfAborted();
+          const callId = toolActivity.callId?.trim();
+          if (!callId) return;
+          const existing = liveOpenCodeTools.get(callId);
+          if (existing && existing.call.tool !== toolActivity.name) {
+            throw new Error('OpenCode tool identity changed during one call.');
+          }
+          const call: Extract<Part, { kind: 'tool_call' }> = existing?.call ?? {
+            kind: 'tool_call',
+            tool: toolActivity.name,
+            call_id: callId,
+            args: toolActivity.fileLabel ? { path: toolActivity.fileLabel } : {},
+          };
+          const result: Extract<Part, { kind: 'tool_result' }> | undefined =
+            toolActivity.status === 'completed'
+              ? { kind: 'tool_result', call_id: callId, result: { status: 'completed' } }
+              : toolActivity.status === 'failed'
+                ? { kind: 'tool_result', call_id: callId, error: 'Tool failed' }
+                : existing?.result;
+          liveOpenCodeTools.set(callId, { call, ...(result ? { result } : {}) });
+          cancelPendingFlush();
+          await settleStreamingWrites();
+          controller.signal.throwIfAborted();
+          await bindings.updateMessage(placeholder.id, {
+            parts: [
+              { kind: 'text', text: acc },
+              ...currentOpenCodeToolParts(),
               ...currentOpenCodeQuestionParts(),
               ...currentOpenCodePermissionParts(),
             ],
@@ -6477,6 +6525,7 @@ export function startRuntimeListener(
         : responseTextParts;
       const finalParts: Part[] = [
         ...displayResponseParts,
+        ...currentOpenCodeToolParts(),
         ...openCodeChecklistParts(response.checklist_evidence ?? []),
         ...currentOpenCodeQuestionParts(),
         ...currentOpenCodePermissionParts(),
@@ -6683,6 +6732,7 @@ export function startRuntimeListener(
           await bindings.updateMessage(placeholderId, {
             parts: [
               { kind: 'text', text: acc + sep + suffix },
+              ...currentOpenCodeToolParts(),
               ...currentOpenCodeQuestionParts(),
               ...currentOpenCodePermissionParts(),
             ],

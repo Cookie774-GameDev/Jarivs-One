@@ -778,6 +778,41 @@ describe('persistent OpenCode live authority', () => {
     expect(JSON.stringify(event)).not.toMatch(/private|must-not-survive/iu);
   });
 
+  it('retains only a privacy-safe leaf filename for file tool activity', () => {
+    const event = normalizeToolEvent(
+      {
+        type: 'message.part.updated',
+        properties: {
+          part: {
+            type: 'tool',
+            tool: 'read',
+            callID: 'read-call-1',
+            state: {
+              status: 'completed',
+              input: {
+                filePath: 'C:\\Users\\viper\\private-project\\src\\Composer.tsx',
+                content: 'must-not-survive',
+              },
+              output: 'private file contents',
+            },
+          },
+        },
+      },
+      {},
+    );
+
+    expect(event).toEqual({
+      type: 'tool',
+      name: 'read',
+      status: 'completed',
+      callId: 'read-call-1',
+      fileLabel: 'Composer.tsx',
+    });
+    expect(JSON.stringify(event)).not.toMatch(
+      /private-project|Users|file contents|must-not-survive/iu,
+    );
+  });
+
   it('reconciles persisted todo evidence when idle polling wins the live-event race', () => {
     const snapshots = openCodeChecklistSnapshotsFromMessages([
       {

@@ -65,12 +65,61 @@ describe('AssistantActivityLedger', () => {
     expect(screen.getByText('Ran 1 command')).toBeTruthy();
     expect(screen.getByText('In 100').getAttribute('title')).toBe('Exact response metadata');
     expect(screen.getByText('Out 25').getAttribute('title')).toBe('Exact response metadata');
+    expect(
+      screen.getByText(
+        'I completed 1 recorded action: ran 1 command. No next action is recorded for this response.',
+      ),
+    ).toBeTruthy();
     expect(document.body.textContent).not.toContain('secret-command');
     expect(document.body.textContent).not.toContain('secret-output');
 
     fireEvent.click(screen.getByRole('button', { name: /activity details/i }));
     expect(screen.getByText('Ran command')).toBeTruthy();
     expect(document.body.textContent).not.toContain('secret-command');
+  });
+
+  it('shows a truthful two-sentence live phase summary from the current receipt', () => {
+    render(
+      <AssistantActivityLedger
+        active
+        message={assistant([
+          {
+            kind: 'tool_call',
+            call_id: 'read-live',
+            tool: 'read',
+            args: { path: 'Composer.tsx' },
+          },
+        ])}
+      />,
+    );
+
+    expect(
+      screen.getByText('I’m reading Composer.tsx now. No next action is recorded yet.'),
+    ).toBeTruthy();
+  });
+
+  it('does not call an active response complete when no current receipt is recorded', () => {
+    render(
+      <AssistantActivityLedger
+        active
+        message={assistant([
+          {
+            kind: 'tool_call',
+            call_id: 'check-done',
+            tool: 'verify',
+            args: {},
+          },
+          { kind: 'tool_result', call_id: 'check-done', result: { status: 'completed' } },
+        ])}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        'I recorded 1 action in this active response. No current or next action is recorded yet.',
+      ),
+    ).toBeTruthy();
+    expect(document.body.textContent).not.toContain('I completed 1 recorded action');
   });
 
   it('shows the terminal duration and total actions in the continuous-response summary', () => {
@@ -179,7 +228,9 @@ describe('AssistantActivityLedger', () => {
     expect(screen.queryByRole('navigation', { name: 'Activity categories' })).toBeNull();
     expect(screen.queryByRole('searchbox')).toBeNull();
     expect(screen.queryByRole('separator')).toBeNull();
-    expect(screen.getByRole('region', { name: 'Assistant activity details' }).style.height).toBe('');
+    expect(screen.getByRole('region', { name: 'Assistant activity details' }).style.height).toBe(
+      '',
+    );
   });
 
   it('shows estimated and unavailable usage without mixing provenance', () => {

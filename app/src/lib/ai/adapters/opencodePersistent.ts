@@ -59,6 +59,7 @@ import type {
 } from '@/features/chat/runtime/runtimeModelControls';
 import { resolveRuntimeModelControls } from '@/features/chat/runtime/runtimeModelControls';
 import type { AccessLevel, InteractionMode } from '@/lib/permissions/OpenCodePermissionProfile';
+import { applySecretPolicy } from '@/lib/security/secretDetector';
 import { decideContextRoute } from '@/features/context/rlm/routeDecision';
 import { harnessRuntimeManager, type HarnessRuntimeManager } from '@/lib/harness/runtimeManager';
 import { nativeOpenCodeEvents, nativeOpenCodeRequest } from '@/lib/harness/openCodeNativeTransport';
@@ -947,6 +948,13 @@ export function normalizeToolEvent(
   const name = cleanIdentifier(part.tool ?? part.name, 256);
   if (!name) return undefined;
   const callId = cleanIdentifier(part.callID ?? part.callId ?? part.id);
+  const rawFilePath = recordOf(state?.input);
+  const filePathCandidate =
+    rawFilePath?.path ?? rawFilePath?.filePath ?? rawFilePath?.file_path ?? rawFilePath?.filepath;
+  const boundedFilePath = cleanIdentifier(filePathCandidate, 4096);
+  const rawLeaf = boundedFilePath?.split(/[\\/]/u).filter(Boolean).at(-1);
+  const redactedLeaf = rawLeaf ? applySecretPolicy(rawLeaf, 'redact').text : undefined;
+  const fileLabel = cleanIdentifier(redactedLeaf, 256);
   const scope = classifyExplicitRootInventoryScope({ name, status, input: state?.input }, request);
   const checklist = sanitizeOpenCodeChecklistSnapshot(name, callId, state?.input);
   return {
@@ -954,7 +962,7 @@ export function normalizeToolEvent(
     name,
     status,
     ...(callId ? { callId } : {}),
-    ...(status === 'completed' && state && 'output' in state ? { result: state.output } : {}),
+    ...(fileLabel ? { fileLabel } : {}),
     ...(scope ? { scope } : {}),
     ...(checklist ? { checklist } : {}),
   };
@@ -1086,14 +1094,18 @@ export function assertAuthoritativeOpenCodeIdentity(input: {
 
 const CATALOG_REVISION = /^sha256:[a-f0-9]{64}$/u;
 
-export function buildObservedOpenCodeGatewayAuthority(input: Readonly<{
-  connection: ProviderRequest['connection'];
-  model: Readonly<OpenCodeLiveModel>;
-  observed: Readonly<OpenCodeObservedIdentity>;
-  controls: Readonly<OpenCodeRequestControls>;
-  catalogRevision: string;
-}>): Readonly<{
-  executionIdentity: Readonly<import('@/features/context/gateway/contextGatewayContracts').ExecutionIdentity>;
+export function buildObservedOpenCodeGatewayAuthority(
+  input: Readonly<{
+    connection: ProviderRequest['connection'];
+    model: Readonly<OpenCodeLiveModel>;
+    observed: Readonly<OpenCodeObservedIdentity>;
+    controls: Readonly<OpenCodeRequestControls>;
+    catalogRevision: string;
+  }>,
+): Readonly<{
+  executionIdentity: Readonly<
+    import('@/features/context/gateway/contextGatewayContracts').ExecutionIdentity
+  >;
   performance: OpenCodeRequestControls['performance'];
 }> {
   if (
@@ -1113,7 +1125,7 @@ export function buildObservedOpenCodeGatewayAuthority(input: Readonly<{
     observed: input.observed,
   });
   const fastVariant = input.controls.openCodeFastMode
-    ? input.controls.serviceTier ?? input.controls.variant
+    ? (input.controls.serviceTier ?? input.controls.variant)
     : 'standard';
   if (!fastVariant) {
     throw new Error('OpenCode Fast execution completed without an exact observed route variant.');

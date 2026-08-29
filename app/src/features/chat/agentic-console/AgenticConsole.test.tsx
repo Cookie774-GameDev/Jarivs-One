@@ -38,9 +38,7 @@ describe('AgenticConsole', () => {
     expect(stylesheet).toMatch(
       /\.agentic-prompt-band\s*\{[^}]*border:\s*1px solid var\(--console-line\);/s,
     );
-    expect(stylesheet).toMatch(
-      /\.agentic-prompt-band\s*\{[^}]*background:\s*linear-gradient\(/s,
-    );
+    expect(stylesheet).toMatch(/\.agentic-prompt-band\s*\{[^}]*background:\s*linear-gradient\(/s);
     expect(stylesheet).toMatch(/\.agentic-answer\s*\{[^}]*border:\s*0;/s);
     expect(stylesheet).toMatch(/\.agentic-answer\.is-final\s*\{[^}]*background:\s*transparent;/s);
   });
@@ -390,6 +388,7 @@ describe('AgenticConsole', () => {
     const ledger = rendered.container.querySelector('[data-assistant-activity-ledger="true"]');
     const inspector = screen.getByRole('status', { name: 'Session completion status' });
     expect(ledger).toBeTruthy();
+    expect(ledger?.getAttribute('data-ledger-active')).toBe('false');
     expect(
       Boolean(answer.compareDocumentPosition(ledger as Node) & Node.DOCUMENT_POSITION_FOLLOWING),
     ).toBe(true);
@@ -401,6 +400,35 @@ describe('AgenticConsole', () => {
     fireEvent.click(screen.getByRole('button', { name: /show activity details/i }));
     expect(screen.getByText('Ran command')).toBeTruthy();
     expect(rendered.container.textContent).not.toContain('secret');
+  });
+
+  it('marks only the latest tool-bearing response ledger active while the session is running', () => {
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('user', 'user', 10, [{ kind: 'text', text: 'Read Composer.tsx.' }]),
+        message('assistant', 'assistant', 11, [
+          { kind: 'text', text: '' },
+          { kind: 'tool_call', call_id: 'read-live', tool: 'read', args: { path: 'Composer.tsx' } },
+        ]),
+      ],
+      activity: [
+        {
+          id: 'live-response',
+          chatId: 'chat-console',
+          kind: 'agent',
+          category: 'file',
+          status: 'running',
+          title: 'Reading project file',
+          ts: 11,
+        },
+      ],
+      sessionEvidence: { status: 'running', currentOperation: 'Reading project file' },
+    });
+
+    const ledger = rendered.container.querySelector('[data-assistant-activity-ledger="true"]');
+    expect(ledger?.getAttribute('data-ledger-active')).toBe('true');
+    expect(screen.getByText(/I’m reading Composer\.tsx now\./i)).toBeTruthy();
   });
 
   it('keeps the single turn ledger inline before assistant context references', () => {

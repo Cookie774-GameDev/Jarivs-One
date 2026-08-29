@@ -35,10 +35,7 @@ export interface ProviderConnection {
 }
 
 export type UsageProvenance =
-  | 'provider-reported'
-  | 'locally-observed'
-  | 'estimated'
-  | 'unavailable';
+  'provider-reported' | 'locally-observed' | 'estimated' | 'unavailable';
 
 export interface UsageValue<T> {
   value?: T;
@@ -92,6 +89,8 @@ export type ProviderEvent =
       name: string;
       status: 'started' | 'completed' | 'failed';
       callId?: string;
+      /** Privacy-safe leaf filename only; never a directory or raw provider argument. */
+      fileLabel?: string;
       result?: unknown;
       /** Sanitized request-local scope classification; never carries a path or reusable authority. */
       scope?: 'explicit_root_inventory';

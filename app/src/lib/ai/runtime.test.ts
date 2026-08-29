@@ -90,8 +90,7 @@ const mocks = vi.hoisted(() => ({
   buildRoutedMcpTaskContext: vi.fn(),
   bindPersistentOpenCodeQuestionRoute: vi.fn(),
   kernelRuntimeInterceptor: null as
-    | ((composition: JarvisKernelRuntimeComposition) => JarvisKernelRuntimeComposition)
-    | null,
+    ((composition: JarvisKernelRuntimeComposition) => JarvisKernelRuntimeComposition) | null,
 }));
 
 vi.mock('@/lib/nativeFetch', () => ({ nativeFetch: mocks.nativeFetch }));
@@ -1657,6 +1656,109 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       openCodeToolsForInteractionMode('agent'),
     );
 
+    stop();
+  });
+
+  it('persists one ordered safe receipt per OpenCode tool call through completion', async () => {
+    const openCodeConnection = PROVIDER_CONNECTIONS.find(
+      (connection) => connection.id === 'opencode-cli',
+    )!;
+    useAuthStore.setState({
+      chatModelSelection: selectionFromOption(
+        openCodeConnection.providerId as ProviderId,
+        'opencode-go/deepseek-v4-flash-vision-exp',
+        openCodeConnection,
+      ),
+    });
+    const jarvis = agent('agent_tool_receipts', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_opencode_tool_receipts' as ChatId;
+    const placeholderId = 'msg_opencode_tool_receipts' as MessageId;
+    const userMessage: Message = {
+      id: 'msg_opencode_tool_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'Read and refine Composer.tsx.' }],
+      created_at: 1,
+      updated_at: 1,
+    };
+    const durableWrites: Part[][] = [];
+    const updateMessage = vi.fn(async (_id: MessageId, patch: { parts?: Part[] }) => {
+      if (patch.parts) durableWrites.push(patch.parts);
+    });
+    mocks.runAgent.mockImplementationOnce(async (input) => {
+      await input.onToolActivity?.({
+        name: 'read',
+        status: 'started',
+        callId: 'read-1',
+        fileLabel: 'Composer.tsx',
+      });
+      await input.onToolActivity?.({
+        name: 'read',
+        status: 'completed',
+        callId: 'read-1',
+        fileLabel: 'Composer.tsx',
+      });
+      await input.onToolActivity?.({
+        name: 'read',
+        status: 'completed',
+        callId: 'read-1',
+        fileLabel: 'Composer.tsx',
+      });
+      input.onChunk?.({ delta: 'Refined.', first: true });
+      input.onChunk?.({ delta: '', done: true });
+      return {
+        text: 'Refined.',
+        usage: { input_tokens: 2, output_tokens: 1, cost_usd: 0 },
+        provider: 'opencode',
+        model: 'opencode-go/deepseek-v4-flash-vision-exp',
+      };
+    });
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: placeholderId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId, text: 'Read and refine Composer.tsx.', interactionMode: 'agent' },
+      }),
+    );
+
+    await vi.waitFor(() =>
+      expect(
+        durableWrites.some(
+          (parts) =>
+            parts.filter((part) => part.kind === 'tool_call' && part.call_id === 'read-1')
+              .length === 1 &&
+            parts.filter((part) => part.kind === 'tool_result' && part.call_id === 'read-1')
+              .length === 1,
+        ),
+      ).toBe(true),
+    );
+    const finalParts = durableWrites.at(-1) ?? [];
+    expect(finalParts).toContainEqual({
+      kind: 'tool_call',
+      tool: 'read',
+      call_id: 'read-1',
+      args: { path: 'Composer.tsx' },
+    });
+    expect(finalParts).toContainEqual({
+      kind: 'tool_result',
+      call_id: 'read-1',
+      result: { status: 'completed' },
+    });
+    expect(JSON.stringify(finalParts)).not.toMatch(/private|secret|file contents/iu);
     stop();
   });
 

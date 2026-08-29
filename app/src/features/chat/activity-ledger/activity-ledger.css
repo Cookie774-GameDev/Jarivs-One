@@ -4,6 +4,14 @@
   color: hsl(var(--foreground));
 }
 
+.assistant-activity-ledger__phase-summary {
+  margin: 0 0 0.42rem;
+  max-width: 76ch;
+  color: hsl(var(--foreground) / 0.88);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 .assistant-activity-ledger__disclosure {
   display: flex;
   width: 100%;

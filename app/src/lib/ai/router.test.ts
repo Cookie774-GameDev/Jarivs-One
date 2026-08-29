@@ -213,6 +213,43 @@ describe('canonical OpenCode AI routing', () => {
     );
   });
 
+  it('forwards ordered safe tool lifecycle receipts without retaining provider payloads', async () => {
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield {
+          type: 'tool',
+          name: 'read',
+          status: 'started',
+          callId: 'call-read-1',
+          fileLabel: 'Composer.tsx',
+          result: { secret: 'must-not-survive' },
+        } as const;
+        yield {
+          type: 'tool',
+          name: 'read',
+          status: 'completed',
+          callId: 'call-read-1',
+          fileLabel: 'Composer.tsx',
+          result: { secret: 'must-not-survive' },
+        } as const;
+        yield { type: 'done', finishReason: 'stop' } as const;
+      })(),
+    );
+    const onToolActivity = vi.fn(async () => undefined);
+
+    await runAgent({
+      agent: openaiAgent,
+      messages: [{ role: 'user', content: 'read the file' }],
+      onToolActivity,
+    });
+
+    expect(onToolActivity.mock.calls).toEqual([
+      [{ name: 'read', status: 'started', callId: 'call-read-1', fileLabel: 'Composer.tsx' }],
+      [{ name: 'read', status: 'completed', callId: 'call-read-1', fileLabel: 'Composer.tsx' }],
+    ]);
+    expect(JSON.stringify(onToolActivity.mock.calls)).not.toContain('must-not-survive');
+  });
+
   it('returns the latest bounded OpenCode todo snapshots without generic tool payloads', async () => {
     openCodeSend.mockImplementationOnce(() =>
       (async function* () {

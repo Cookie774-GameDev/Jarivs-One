@@ -55,6 +55,67 @@ function commandMetric(value: number): string {
   return `Ran ${formatCount(value)} ${value === 1 ? 'command' : 'commands'}`;
 }
 
+function joinedPhrases(phrases: readonly string[]): string {
+  if (phrases.length <= 1) return phrases[0] ?? '';
+  if (phrases.length === 2) return `${phrases[0]} and ${phrases[1]}`;
+  return `${phrases.slice(0, -1).join(', ')}, and ${phrases.at(-1)}`;
+}
+
+function phaseSummary(
+  ledger: ReturnType<typeof projectAssistantActivityLedger>,
+  active: boolean,
+): string {
+  const running = [...ledger.receipts]
+    .reverse()
+    .find((receipt) => receipt.status === 'running' || receipt.status === 'pending');
+  if (active && running) {
+    const target = running.fileLabel ? ` ${running.fileLabel}` : '';
+    const action =
+      running.kind === 'read'
+        ? `reading${target}`
+        : running.kind === 'edit'
+          ? `editing${target}`
+          : running.kind === 'search'
+            ? 'searching'
+            : running.kind === 'command'
+              ? 'running a command'
+              : running.kind === 'check'
+                ? 'verifying a check'
+                : running.kind === 'subagent'
+                  ? 'coordinating a subagent'
+                  : 'working on the current action';
+    return `I’m ${action} now. No next action is recorded yet.`;
+  }
+
+  if (active) {
+    return `I recorded ${actionLabel(ledger.actionsTotal)} in this active response. No current or next action is recorded yet.`;
+  }
+  if (ledger.status === 'cancelled') {
+    return `I recorded ${actionLabel(ledger.actionsTotal)} before this response was cancelled. No next action is recorded for this response.`;
+  }
+  if (ledger.status === 'error') {
+    return `I recorded ${actionLabel(ledger.actionsTotal)} before this response encountered an error. No next action is recorded for this response.`;
+  }
+  const phrases = [
+    ledger.readsTotal > 0
+      ? `read ${formatCount(ledger.readsTotal)} ${ledger.readsTotal === 1 ? 'file' : 'files'}`
+      : '',
+    ledger.searchesTotal > 0
+      ? `completed ${formatCount(ledger.searchesTotal)} ${ledger.searchesTotal === 1 ? 'search' : 'searches'}`
+      : '',
+    ledger.commandsTotal > 0
+      ? `ran ${formatCount(ledger.commandsTotal)} ${ledger.commandsTotal === 1 ? 'command' : 'commands'}`
+      : '',
+    ledger.editedFilesTotal > 0
+      ? `edited ${formatCount(ledger.editedFilesTotal)} ${ledger.editedFilesTotal === 1 ? 'file' : 'files'}`
+      : '',
+    ledger.verifiedChecksTotal > 0
+      ? `verified ${formatCount(ledger.verifiedChecksTotal)} ${ledger.verifiedChecksTotal === 1 ? 'check' : 'checks'}`
+      : '',
+  ].filter(Boolean);
+  return `I completed ${formatCount(ledger.actionsTotal)} recorded ${ledger.actionsTotal === 1 ? 'action' : 'actions'}${phrases.length ? `: ${joinedPhrases(phrases)}` : ''}. No next action is recorded for this response.`;
+}
+
 function receiptIcon(kind: LedgerReceiptKind) {
   if (kind === 'read' || kind === 'edit') return <FileText aria-hidden="true" />;
   if (kind === 'search') return <Search aria-hidden="true" />;
@@ -140,7 +201,11 @@ export function AssistantActivityLedger({
     <section
       className={cn('assistant-activity-ledger', compact && 'is-compact')}
       data-assistant-activity-ledger="true"
+      data-ledger-active={active ? 'true' : 'false'}
     >
+      <p className="assistant-activity-ledger__phase-summary" aria-live={active ? 'polite' : 'off'}>
+        {phaseSummary(ledger, active)}
+      </p>
       <button
         type="button"
         className="assistant-activity-ledger__disclosure"

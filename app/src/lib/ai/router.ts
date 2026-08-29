@@ -321,6 +321,15 @@ export interface RunAgentRequest {
     parentSessionId?: string;
   }) => void | Promise<void>;
   onQuestionRequested?: (projection: Readonly<OpenCodeQuestionProjection>) => void | Promise<void>;
+  /** Ordered, request-local, privacy-safe OpenCode tool lifecycle evidence for Chat UI receipts. */
+  onToolActivity?: (
+    activity: Readonly<{
+      name: string;
+      status: 'started' | 'completed' | 'failed';
+      callId?: string;
+      fileLabel?: string;
+    }>,
+  ) => void | Promise<void>;
   onProviderCompletionEvidence?: (
     evidence: Readonly<ProviderCompletionEvidence>,
   ) => void | Promise<void>;
@@ -605,6 +614,12 @@ async function executePersistentOpenCode(
             if (event.name === 'glob' || event.name === 'grep') boundedSearchObserved = true;
             if (event.name === 'read' && event.callId) representativeReads.add(event.callId);
           }
+          await req.onToolActivity?.({
+            name: event.name,
+            status: event.status,
+            ...(event.callId ? { callId: event.callId } : {}),
+            ...(event.fileLabel ? { fileLabel: event.fileLabel } : {}),
+          });
         } else if (event.type === 'error') {
           providerReportedFailure = true;
           throw new Error(event.message);

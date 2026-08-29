@@ -740,9 +740,7 @@ export function AgenticConsole({
         (message) =>
           message.role === 'assistant' &&
           message.created_at >= latestUserTurnStartedAt &&
-          message.parts.some(
-            (part) => part.kind === 'tool_call' || part.kind === 'tool_result',
-          ),
+          message.parts.some((part) => part.kind === 'tool_call' || part.kind === 'tool_result'),
       ),
     [latestUserTurnStartedAt, messages],
   );
@@ -753,6 +751,34 @@ export function AgenticConsole({
     summary.startedAt >= latestUserTurnStartedAt
       ? summary.durationMs
       : undefined;
+  const sessionIsActive =
+    summary.status === 'queued' ||
+    summary.status === 'planning' ||
+    summary.status === 'running' ||
+    summary.status === 'recovering';
+  const latestActiveEvidenceAt = React.useMemo(
+    () =>
+      turnActivity.reduce(
+        (latest, event) =>
+          event.status === 'running' || event.status === 'pending'
+            ? Math.max(latest, event.startedAt ?? event.ts)
+            : latest,
+        Number.NEGATIVE_INFINITY,
+      ),
+    [turnActivity],
+  );
+  const latestAssistantMessageId = React.useMemo(
+    () =>
+      [...messages]
+        .reverse()
+        .find(
+          (message) =>
+            message.role === 'assistant' &&
+            message.created_at >= latestUserTurnStartedAt &&
+            message.updated_at >= latestActiveEvidenceAt,
+        )?.id,
+    [latestActiveEvidenceAt, latestUserTurnStartedAt, messages],
+  );
   const turnActivityMessage = React.useMemo<Message | undefined>(() => {
     // Durable assistant message parts own their own response-phase ledgers.
     // Uncorrelated live events get one latest-turn fallback only when no such
@@ -972,10 +998,18 @@ export function AgenticConsole({
                   />
                 )}
                 {showLedger ? (
-                  <AssistantActivityLedger message={sourceMessage} compact={compact} />
+                  <AssistantActivityLedger
+                    message={sourceMessage}
+                    compact={compact}
+                    active={sessionIsActive && sourceMessage.id === latestAssistantMessageId}
+                  />
                 ) : null}
                 {inlineLegacyMessage ? (
-                  <AssistantActivityLedger message={inlineLegacyMessage} compact={compact} />
+                  <AssistantActivityLedger
+                    message={inlineLegacyMessage}
+                    compact={compact}
+                    active={sessionIsActive && inlineLegacyMessage.id === latestAssistantMessageId}
+                  />
                 ) : null}
                 {(block.id === inlineLedgerLegacyId ||
                   (!inlineLedgerLegacyId && block.id === finalAnswerId)) &&
@@ -985,12 +1019,7 @@ export function AgenticConsole({
                     correlatedEvents={turnActivity}
                     authoritativeDurationMs={turnAuthoritativeDurationMs}
                     compact={compact}
-                    active={
-                      summary.status === 'queued' ||
-                      summary.status === 'planning' ||
-                      summary.status === 'running' ||
-                      summary.status === 'recovering'
-                    }
+                    active={sessionIsActive}
                   />
                 ) : null}
                 {inlineLegacyMessage && inlineContextReferences?.length ? (
@@ -1018,12 +1047,7 @@ export function AgenticConsole({
               correlatedEvents={turnActivity}
               authoritativeDurationMs={turnAuthoritativeDurationMs}
               compact={compact}
-              active={
-                summary.status === 'queued' ||
-                summary.status === 'planning' ||
-                summary.status === 'running' ||
-                summary.status === 'recovering'
-              }
+              active={sessionIsActive}
             />
           ) : null}
         </div>
