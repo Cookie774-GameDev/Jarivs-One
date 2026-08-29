@@ -392,7 +392,12 @@ describe('AgenticConsole', () => {
         message('user', 'user', 1, [{ kind: 'text', text: 'Use the protected context.' }]),
         message('assistant', 'assistant', 2, [
           { kind: 'text', text: 'I found the relevant project evidence.' },
-          { kind: 'tool_call', call_id: 'context-read', tool: 'read', args: { path: 'private' } },
+          {
+            kind: 'tool_call',
+            call_id: 'context-read',
+            tool: 'read',
+            args: { path: 'C:\\private\\context\\ResolvedContext.ts' },
+          },
           { kind: 'tool_result', call_id: 'context-read', result: { content: 'private' } },
           {
             kind: 'jarvis_source_ref',
@@ -434,7 +439,8 @@ describe('AgenticConsole', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /show activity details/i }));
     expect(screen.getByText('Read file')).toBeTruthy();
-    expect(rendered.container.textContent).not.toContain('private');
+    expect(screen.getByText('ResolvedContext.ts')).toBeTruthy();
+    expect(rendered.container.textContent).not.toContain('C:\\private');
   });
 
   it('keeps each historical response-phase disclosure with its own durable evidence', () => {
@@ -842,7 +848,7 @@ describe('AgenticConsole', () => {
     expect(document.body.textContent).not.toContain('tool output');
     fireEvent.click(screen.getByRole('button', { name: /show activity details/i }));
     expect(screen.getByText('Read file')).toBeTruthy();
-    expect(document.body.textContent).not.toContain('README.md');
+    expect(screen.getByText('README.md')).toBeTruthy();
     expect(document.body.textContent).not.toContain('tool output');
   });
 

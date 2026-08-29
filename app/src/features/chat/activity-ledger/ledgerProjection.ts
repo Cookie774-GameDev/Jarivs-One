@@ -73,6 +73,17 @@ function safeFileLabel(filePath: string): string {
   return safeText(leaf, 256) || 'File';
 }
 
+function correlatedToolFileLabel(
+  kind: LedgerReceiptKind,
+  args: Record<string, unknown>,
+): string | undefined {
+  if (kind !== 'read' && kind !== 'edit') return undefined;
+  const candidate = args.path ?? args.filePath ?? args.file_path;
+  return typeof candidate === 'string' && candidate.trim().length > 0
+    ? safeFileLabel(candidate)
+    : undefined;
+}
+
 function positive(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
@@ -200,6 +211,7 @@ function messageReceipts(message: Message): AssistantActivityReceipt[] {
         ? { status: 'error' as const }
         : resultEvidence(result.result)
       : { status: 'running' as const };
+    const fileLabel = correlatedToolFileLabel(kind, part.args);
     return [
       {
         id: `message:${String(message.id)}:tool:${part.call_id}`,
@@ -208,6 +220,7 @@ function messageReceipts(message: Message): AssistantActivityReceipt[] {
         status: evidence.status,
         ts: message.created_at + index / 1000,
         ...(evidence.durationMs === undefined ? {} : { durationMs: evidence.durationMs }),
+        ...(fileLabel ? { fileLabel } : {}),
         countsAsAction: true,
       },
     ];

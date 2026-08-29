@@ -209,6 +209,28 @@ describe('projectAssistantActivityLedger', () => {
     expect(ledger.receipts.map((receipt) => receipt.fileLabel).join(' ')).not.toContain('private');
   });
 
+  it('projects only the safe basename from a message-correlated file tool argument', () => {
+    const ledger = projectAssistantActivityLedger(
+      assistant([
+        {
+          kind: 'tool_call',
+          call_id: 'message-read',
+          tool: 'read_file',
+          args: { path: 'C:\\private\\planning\\AgenticConsole.tsx' },
+        },
+        { kind: 'tool_result', call_id: 'message-read', result: { exitCode: 0 } },
+      ]),
+    );
+
+    expect(ledger.receipts[0]).toMatchObject({
+      kind: 'read',
+      label: 'Read file',
+      fileLabel: 'AgenticConsole.tsx',
+    });
+    expect(JSON.stringify(ledger)).not.toContain('private');
+    expect(JSON.stringify(ledger)).not.toContain('planning');
+  });
+
   it('counts unique completed files and distinct started subagent executions', () => {
     const ledger = projectAssistantActivityLedger(assistant([]), [
       event({ id: 'read-a', kind: 'file', filePath: 'src/a.ts', status: 'done' }),

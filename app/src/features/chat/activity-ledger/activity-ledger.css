@@ -71,14 +71,20 @@
 }
 
 .assistant-activity-ledger__inspector {
+  --activity-popover-bg: #181818;
+  --activity-popover-row: #202020;
+  --activity-popover-line: #303030;
+  --activity-popover-ink: #b7b7b7;
+  --activity-popover-muted: #858585;
   max-height: min(22rem, 46vh);
   overflow: auto hidden;
-  border: 1px solid hsl(var(--border) / 0.7);
+  border: 1px solid var(--activity-popover-line);
   border-top: 0;
   border-radius: 0 0 0.8rem 0.8rem;
-  background: color-mix(in srgb, hsl(var(--panel)) 91%, hsl(var(--background)));
+  background: var(--activity-popover-bg);
+  color: var(--activity-popover-ink);
   backdrop-filter: blur(14px);
-  box-shadow: 0 12px 28px hsl(var(--foreground) / 0.07);
+  box-shadow: 0 14px 34px rgb(0 0 0 / 0.28);
 }
 
 .assistant-activity-ledger__receipts {
@@ -100,7 +106,7 @@
 }
 
 button.assistant-activity-ledger__receipt:hover {
-  background: hsl(var(--muted) / 0.38);
+  background: var(--activity-popover-row);
 }
 
 .assistant-activity-ledger__receipt-icon svg,
@@ -117,22 +123,25 @@ button.assistant-activity-ledger__receipt:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: hsl(var(--muted-foreground));
+  color: var(--activity-popover-muted);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--activity-popover-muted) 60%, transparent);
+  text-underline-offset: 2px;
 }
 
 .assistant-activity-ledger__duration {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
-  color: hsl(var(--muted-foreground));
+  color: var(--activity-popover-muted);
 }
 
 .assistant-activity-ledger__status {
   border-radius: 999px;
   padding: 0.08rem 0.35rem;
   text-transform: capitalize;
-  color: hsl(var(--muted-foreground));
-  background: hsl(var(--muted) / 0.42);
+  color: var(--activity-popover-muted);
+  background: var(--activity-popover-row);
 }
 
 .assistant-activity-ledger__status.is-error {
@@ -143,7 +152,7 @@ button.assistant-activity-ledger__receipt:hover {
 .assistant-activity-ledger__usage,
 .assistant-activity-ledger__more {
   margin: 0.38rem 0.7rem;
-  color: hsl(var(--muted-foreground));
+  color: var(--activity-popover-muted);
   font-size: 0.68rem;
 }
 
@@ -156,7 +165,7 @@ button.assistant-activity-ledger__receipt:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem 0.8rem;
-  border-top: 1px solid hsl(var(--border) / 0.5);
+  border-top: 1px solid var(--activity-popover-line);
   padding-top: 0.45rem;
 }
 
@@ -167,7 +176,7 @@ button.assistant-activity-ledger__receipt:hover {
 }
 
 .assistant-activity-ledger__usage span {
-  color: hsl(var(--muted-foreground));
+  color: var(--activity-popover-muted);
 }
 
 .assistant-activity-ledger.is-compact .assistant-activity-ledger__metrics {

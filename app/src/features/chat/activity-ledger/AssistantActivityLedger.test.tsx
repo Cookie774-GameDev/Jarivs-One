@@ -81,7 +81,7 @@ describe('AssistantActivityLedger', () => {
             kind: 'tool_call',
             call_id: 'read-one',
             tool: 'read_file',
-            args: { path: 'private-path.ts' },
+            args: { path: 'C:\\private\\src\\ReviewPanel.tsx' },
           },
           { kind: 'tool_result', call_id: 'read-one', result: { exitCode: 0 } },
         ])}
@@ -100,12 +100,13 @@ describe('AssistantActivityLedger', () => {
       />,
     );
 
-    expect(
-      screen.getByRole('button', {
-        name: 'Show activity details Worked for 1m 1s · 2 actions',
-      }),
-    ).toBeTruthy();
-    expect(document.body.textContent).not.toContain('private-path.ts');
+    const disclosure = screen.getByRole('button', {
+      name: 'Show activity details Worked for 1m 1s · 2 actions',
+    });
+    expect(disclosure).toBeTruthy();
+    fireEvent.click(disclosure);
+    expect(screen.getByText('ReviewPanel.tsx')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('C:\\private');
   });
 
   it('does not fabricate an action ledger from a generic persisted lifecycle event', () => {
