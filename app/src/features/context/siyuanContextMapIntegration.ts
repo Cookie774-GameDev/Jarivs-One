@@ -414,6 +414,7 @@ async function readManagedDocumentWithDuplicateRecovery(
   port: ProductionSiyuanRlmPort,
   projectId: string,
   record: ContextMapRecord,
+  boundDocumentIds: readonly string[] = [],
 ): Promise<SiyuanManagedDocument | null> {
   const lookup = { query: record.id, marker: marker(record.id) };
   try {
@@ -436,10 +437,39 @@ async function readManagedDocumentWithDuplicateRecovery(
   }
   const duplicateGroups = [...byNotebook.values()].filter((group) => group.length > 1);
   if (duplicateGroups.length !== 1) throw new Error('siyuan_managed_document_ambiguous');
-  const [canonical, ...duplicates] = duplicateGroups[0]!.sort((left, right) =>
-    left.id.localeCompare(right.id, 'en-US'),
-  );
+  const duplicateGroup = duplicateGroups[0]!;
+  let bindingDocuments: SiyuanManagedDocument[] = [];
+  if (boundDocumentIds.length > 0) {
+    for (const id of [...new Set(boundDocumentIds)]) {
+      try {
+        bindingDocuments.push(await port.getBlock(projectId, id));
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== 'siyuan_block_not_found') throw error;
+      }
+    }
+    if (bindingDocuments.length === 0) throw new Error('siyuan_managed_document_ambiguous');
+  }
+  const bindingAuthorities = duplicateGroup.filter((candidate) => {
+    if (bindingDocuments.length === 0) return false;
+    const rootStem = candidate.path.endsWith('.sy') ? candidate.path.slice(0, -3) : '';
+    if (!rootStem) return false;
+    const childPrefix = `${rootStem}/`;
+    return bindingDocuments.every(
+      (document) =>
+        document.notebookId === candidate.notebookId &&
+        (document.id === candidate.id ||
+          (document.path.startsWith(childPrefix) &&
+            document.path.endsWith('.sy') &&
+            !document.path.split('/').some((segment) => segment === '.' || segment === '..'))),
+    );
+  });
+  if (bindingDocuments.length > 0 && bindingAuthorities.length !== 1) {
+    throw new Error('siyuan_managed_document_ambiguous');
+  }
+  const sorted = [...duplicateGroup].sort((left, right) => left.id.localeCompare(right.id, 'en-US'));
+  const canonical = bindingAuthorities[0] ?? sorted[0];
   if (!canonical) throw new Error('siyuan_managed_document_ambiguous');
+  const duplicates = sorted.filter((candidate) => candidate.id !== canonical.id);
   for (const duplicate of duplicates) {
     await port.deleteManagedDocument(projectId, duplicate.id, duplicate.markdown, duplicate.id);
   }
@@ -1430,11 +1460,29 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
           // reconciles survivors and recreates only blocks already deleted.
           managedDocumentIds.delete(documentKey(exactProjectId, record.id));
         }
+        const interruptedStatus = manifest.status;
+        const persistedBindings =
+          interruptedStatus === 'indexing' ||
+          interruptedStatus === 'paused' ||
+          interruptedStatus === 'error'
+            ? await readSiyuanNodeBindings(exactProjectId, record.id)
+            : {};
         manifest = updateSiyuanMapManifest(manifest, { status: 'indexing' });
         writeSiyuanMapManifest(manifest);
         const markdown = contextMapMarkdown(record);
+        const knownDocument = await readKnownDocument(exactProjectId, record);
+        const recoveredDocument =
+          Object.keys(persistedBindings).length > 0
+            ? await readManagedDocumentWithDuplicateRecovery(
+                port,
+                exactProjectId,
+                record,
+                Object.values(persistedBindings),
+              )
+            : null;
         const existing =
-          (await readKnownDocument(exactProjectId, record)) ??
+          recoveredDocument ??
+          knownDocument ??
           (await readManagedDocumentWithDuplicateRecovery(port, exactProjectId, record));
         const document = existing
           ? existing.markdown === markdown

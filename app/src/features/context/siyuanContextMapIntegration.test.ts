@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type {
   ProductionSiyuanRlmPort,
+  SiyuanManagedBlockAppendInput,
   SiyuanManagedDocumentCreateInput,
 } from './siyuanRlmProduction';
 import {
@@ -926,6 +927,93 @@ describe('SiYuan Context Map integration', () => {
       expect.stringContaining('payload='),
       'doc-a',
     );
+  });
+
+  it('recovers the canonical duplicate root before resuming persisted child bindings', async () => {
+    const record = map();
+    record.tree.fileCount = 12;
+    record.tree.nodes[0]!.children = Array.from({ length: 12 }, (_value, index) => ({
+      id: `file-${index + 1}`,
+      title: `file-${index + 1}.ts`,
+      kind: 'file' as const,
+      summary: `File ${index + 1}`,
+      path: `file-${index + 1}.ts`,
+    }));
+    const nativePort = port();
+    const integration = createSiyuanContextMapIntegration(nativePort);
+    const initial = await integration.sync('project-1', record);
+    const cachedDuplicate = { ...initial.document, path: '/maps/duplicate.sy' };
+    // The binding authority, not lexical ID order, identifies the safe root.
+    const canonical = { ...initial.document, id: 'zz-canonical', path: '/maps/canonical.sy' };
+    const boundNodes = ['root', ...Array.from({ length: 6 }, (_value, index) => `file-${index + 1}`)]
+      .map((nodeId) => ({
+        id: `bound-${nodeId}`,
+        notebookId: canonical.notebookId,
+        path: `/maps/canonical/nodes/${nodeId}.sy`,
+        markdown: `<!-- vibespace-context-node:v1 map=map-1 node=${nodeId} -->\nold ${nodeId}`,
+      }));
+    let documents = [cachedDuplicate, canonical, ...boundNodes];
+
+    vi.mocked(nativePort.getBlock).mockImplementation(async (_projectId, id) => {
+      const document = documents.find((candidate) => candidate.id === id);
+      if (!document) throw new Error('siyuan_block_not_found');
+      return document;
+    });
+    vi.mocked(nativePort.readManagedDocument).mockImplementation(async (_projectId, lookup) => {
+      const matches = documents.filter((document) => document.markdown.includes(lookup.marker));
+      if (matches.length > 1) throw new Error('siyuan_managed_document_ambiguous');
+      return matches[0] ?? null;
+    });
+    vi.mocked(nativePort.searchBlocks).mockResolvedValue([
+      { id: cachedDuplicate.id },
+      { id: canonical.id },
+    ] as never);
+    vi.mocked(nativePort.deleteManagedDocument).mockImplementation(async (_projectId, id) => {
+      documents = documents.filter((document) => document.id !== id);
+    });
+    nativePort.appendManagedBlocks = vi.fn(
+      async (_projectId, mapRootId, blocks: readonly SiyuanManagedBlockAppendInput[]) => {
+        if (mapRootId !== canonical.id) throw new Error('siyuan_response_type_mismatch');
+        return blocks.map((_block, index) => `block-new-${index + 1}`);
+      },
+    );
+
+    await clearSiyuanNodeBindings('project-1', record.id);
+    await writeSiyuanNodeBindings(
+      'project-1',
+      record.id,
+      Object.fromEntries(
+        ['root', ...Array.from({ length: 6 }, (_value, index) => `file-${index + 1}`)].map(
+          (nodeId) => [nodeId, `bound-${nodeId}`],
+        ),
+      ),
+    );
+    const interrupted = updateSiyuanMapManifest(
+      readSiyuanMapManifest('project-1', record.id)!,
+      { rootDocumentId: cachedDuplicate.id, status: 'error', nodeBindings: {} },
+    );
+    writeSiyuanMapManifest(interrupted);
+
+    const recovered = await integration.sync('project-1', record);
+
+    expect(recovered.document.id).toBe(canonical.id);
+    expect(nativePort.deleteManagedDocument).toHaveBeenCalledWith(
+      'project-1',
+      cachedDuplicate.id,
+      cachedDuplicate.markdown,
+      cachedDuplicate.id,
+    );
+    expect(nativePort.appendManagedBlocks).toHaveBeenCalledTimes(1);
+    expect(nativePort.appendManagedBlocks).toHaveBeenCalledWith(
+      'project-1',
+      canonical.id,
+      expect.arrayContaining([
+        expect.objectContaining({ parentId: 'bound-root' }),
+      ]),
+    );
+    expect(vi.mocked(nativePort.appendManagedBlocks).mock.calls[0]?.[2]).toHaveLength(6);
+    expect(Object.keys(await readSiyuanNodeBindings('project-1', record.id))).toHaveLength(13);
+    expect(recovered.manifest?.counts.indexed).toBe(13);
   });
 
   it('treats the old unversioned graph body as needing an in-place SiYuan refresh', async () => {
