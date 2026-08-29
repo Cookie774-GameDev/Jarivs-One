@@ -27,15 +27,20 @@ describe('Workbench browser isolation', () => {
     }
   });
 
-  it('routes ordinary remote pages to the normal browser instead of a credentialless iframe', () => {
+  it.each([
+    'https://vibespaceos.com',
+    'https://www.amazon.com',
+    'https://www.youtube.com',
+    'https://www.wikipedia.org',
+    'https://example.com',
+  ])('routes %s to the in-window native child instead of an iframe or external browser', (url) => {
     expect(EMBEDDED_BROWSER_SANDBOX).toContain('allow-scripts');
     expect(EMBEDDED_BROWSER_SANDBOX).not.toContain('allow-same-origin');
-    expect(browserFramePolicy('https://example.com')).toMatchObject({
-      src: 'https://example.com/',
+    expect(browserFramePolicy(url)).toMatchObject({
       referrerPolicy: 'no-referrer',
       sandbox: EMBEDDED_BROWSER_SANDBOX,
-      frameBlocked: true,
-      delivery: 'system-browser',
+      frameBlocked: false,
+      delivery: 'native-child',
     });
   });
 
@@ -53,13 +58,9 @@ describe('Workbench browser isolation', () => {
     expect(rewritten.src).toContain('youtube-nocookie.com/embed/dQw4w9WgXcQ');
 
     const policy = browserFramePolicy('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
-    expect(policy.usedEmbed).toBe(true);
+    expect(policy.usedEmbed).toBe(false);
     expect(policy.frameBlocked).toBe(false);
-    expect(policy.delivery).toBe('embedded');
-    expect(policy.src).toContain('/embed/');
-    expect(policy.sandbox).toBe(TRUSTED_MEDIA_EMBED_SANDBOX);
-    expect(policy.sandbox).toContain('allow-same-origin');
-    expect(policy.referrerPolicy).toBe('strict-origin-when-cross-origin');
+    expect(policy.delivery).toBe('native-child');
   });
 
   it('does not grant the trusted-media sandbox to arbitrary remote or loopback pages', () => {
@@ -69,9 +70,10 @@ describe('Workbench browser isolation', () => {
     expect(TRUSTED_MEDIA_EMBED_SANDBOX).not.toBe(EMBEDDED_BROWSER_SANDBOX);
   });
 
-  it('marks non-embeddable YouTube home pages as frame-blocked', () => {
+  it('keeps YouTube home pages in the native child without pretending iframe support', () => {
     const policy = browserFramePolicy('https://www.youtube.com/');
-    expect(policy.frameBlocked).toBe(true);
+    expect(policy.frameBlocked).toBe(false);
+    expect(policy.delivery).toBe('native-child');
     expect(policy.externalUrl).toContain('youtube.com');
   });
 });

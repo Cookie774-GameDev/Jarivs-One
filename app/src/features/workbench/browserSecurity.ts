@@ -120,14 +120,17 @@ export function browserFramePolicy(input: string): {
   frameBlocked: boolean;
   usedEmbed: boolean;
   externalUrl: string;
-  delivery: 'embedded' | 'system-browser';
+  delivery: 'embedded' | 'native-child';
 } {
   const externalUrl = normalizeBrowserUrl(input);
   const { src, usedEmbed } = toEmbeddableUrl(input);
   const frameHost = new URL(src).hostname;
   const loopback = isLoopbackHost(frameHost);
-  const delivery = loopback || usedEmbed ? 'embedded' : 'system-browser';
-  const frameBlocked = delivery === 'system-browser';
+  // Arbitrary remote pages cannot be made reliable in an iframe because sites
+  // legitimately enforce X-Frame-Options/CSP. They stay inside VibeSpace in a
+  // capability-free native child WebView instead.
+  const delivery = loopback ? 'embedded' : 'native-child';
+  const frameBlocked = false;
 
   return {
     src,
@@ -141,7 +144,7 @@ export function browserFramePolicy(input: string): {
       ? 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture'
       : "clipboard-read 'none'; clipboard-write 'none'; camera 'none'; microphone 'none'; geolocation 'none'",
     frameBlocked,
-    usedEmbed,
+    usedEmbed: delivery === 'embedded' && usedEmbed,
     externalUrl,
     delivery,
   };

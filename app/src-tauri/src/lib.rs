@@ -79,6 +79,7 @@ mod terminal;
 pub mod terminal_cli;
 mod terminal_snapshot;
 mod wallpaper_master;
+mod workbench_browser_surface;
 
 /// Sanity-check command. The JS bridge can call this during startup to verify
 /// invoke() round-trips. Wire it in as needed; it returns a friendly string.
@@ -626,6 +627,11 @@ fn run_ordinary(
             browser_chat_surface::browser_chat_surface_open,
             browser_chat_surface::browser_chat_surface_hide,
             browser_chat_surface::browser_chat_surface_hide_all,
+            workbench_browser_surface::workbench_browser_surface_open,
+            workbench_browser_surface::workbench_browser_surface_history,
+            workbench_browser_surface::workbench_browser_surface_reload,
+            workbench_browser_surface::workbench_browser_surface_stop,
+            workbench_browser_surface::workbench_browser_surface_hide,
             chat_temp_attachments::chat_temp_attachment_create,
             chat_temp_attachments::chat_temp_attachment_cleanup,
             runtime_profile_query,
@@ -912,6 +918,11 @@ refresh_app_branding
 browser_chat_surface::browser_chat_surface_open
 browser_chat_surface::browser_chat_surface_hide
 browser_chat_surface::browser_chat_surface_hide_all
+workbench_browser_surface::workbench_browser_surface_open
+workbench_browser_surface::workbench_browser_surface_history
+workbench_browser_surface::workbench_browser_surface_reload
+workbench_browser_surface::workbench_browser_surface_stop
+workbench_browser_surface::workbench_browser_surface_hide
 chat_temp_attachments::chat_temp_attachment_create
 chat_temp_attachments::chat_temp_attachment_cleanup
 runtime_profile_query
@@ -1113,9 +1124,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "ef3d3cee0cdcc9f9c303a6ebfb9943d0ce5627446715ad109c825cd82e749ab8";
+        "b3e635a3f0a492913c6825f7f575fdd44c4c1dd60bdb9c63e261a1e9dff5e2fa";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "42d81b0368c49c565e1ada67ec28fe52f9650406fa5e9b4deae0175f7a321d39";
+        "922f2d59e2452561d13f5e59c484d7a9c4f90e5489f8b5f2d05e65b18765d919";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {

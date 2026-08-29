@@ -796,6 +796,11 @@
   border: 0;
   background: white;
 }
+.workbench-browser-native-surface {
+  min-height: 0;
+  flex: 1;
+  background: white;
+}
 .workbench-browser-engine {
   height: 20px;
   margin: 0;
