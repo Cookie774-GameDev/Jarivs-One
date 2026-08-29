@@ -60,19 +60,29 @@ export function computeWorldBounds(
   if (panels.length === 0 && extras.length === 0) {
     return { left: 0, top: 0, width: 1200, height: 800 };
   }
-  const rects = [
-    ...panels.map((p) => ({
-      x: p.x,
-      y: p.y,
-      width: Math.max(1, p.width),
-      height: Math.max(1, p.minimized ? 42 : p.height),
-    })),
-    ...extras,
-  ];
-  const left = Math.min(...rects.map((r) => r.x)) - pad;
-  const top = Math.min(...rects.map((r) => r.y)) - pad;
-  const right = Math.max(...rects.map((r) => r.x + r.width)) + pad;
-  const bottom = Math.max(...rects.map((r) => r.y + r.height)) + pad;
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  const include = (x: number, y: number, width: number, height: number) => {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x + width);
+    maxY = Math.max(maxY, y + height);
+  };
+  for (const panel of panels) {
+    include(
+      panel.x,
+      panel.y,
+      Math.max(1, panel.width),
+      Math.max(1, panel.minimized ? 42 : panel.height),
+    );
+  }
+  for (const extra of extras) include(extra.x, extra.y, extra.width, extra.height);
+  const left = minX - pad;
+  const top = minY - pad;
+  const right = maxX + pad;
+  const bottom = maxY + pad;
   return {
     left,
     top,

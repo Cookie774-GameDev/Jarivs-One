@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useWorkbenchStore } from './store';
-import { WORKBENCH_PANEL_KINDS, type WorkbenchPanelKind } from './types';
+import { WORKBENCH_PANEL_KINDS, type WorkbenchPanelKind, type WorkbenchView } from './types';
 import { WORKBENCH_DRAG_MIME } from './PanelPalette';
 import { WorkbenchPanel } from './WorkbenchPanel';
 import {
@@ -30,6 +30,43 @@ export function WorkbenchCanvas() {
   const undo = useWorkbenchStore((state) => state.undo);
   const redo = useWorkbenchStore((state) => state.redo);
   const minimapRef = React.useRef<HTMLDivElement>(null);
+  const pendingViewRef = React.useRef<WorkbenchView | null>(null);
+  const viewFrameRef = React.useRef<number | null>(null);
+
+  const flushScheduledView = React.useCallback((): WorkbenchView => {
+    if (viewFrameRef.current != null) {
+      window.cancelAnimationFrame(viewFrameRef.current);
+      viewFrameRef.current = null;
+    }
+    const pending = pendingViewRef.current;
+    pendingViewRef.current = null;
+    if (pending) setView(pending);
+    return pending ?? useWorkbenchStore.getState().view;
+  }, [setView]);
+
+  const scheduleView = React.useCallback(
+    (update: (current: WorkbenchView) => WorkbenchView) => {
+      const current = pendingViewRef.current ?? useWorkbenchStore.getState().view;
+      pendingViewRef.current = update(current);
+      if (viewFrameRef.current != null) return;
+      viewFrameRef.current = window.requestAnimationFrame(() => {
+        viewFrameRef.current = null;
+        const pending = pendingViewRef.current;
+        pendingViewRef.current = null;
+        if (pending) setView(pending);
+      });
+    },
+    [setView],
+  );
+
+  React.useEffect(
+    () => () => {
+      if (viewFrameRef.current != null) window.cancelAnimationFrame(viewFrameRef.current);
+      viewFrameRef.current = null;
+      pendingViewRef.current = null;
+    },
+    [],
+  );
 
   const minimap = React.useMemo(
     () =>
@@ -60,13 +97,14 @@ export function WorkbenchCanvas() {
       const fractionX = (clientX - rect.left) / rect.width;
       const fractionY = (clientY - rect.top) / rect.height;
       const world = worldPointFromMinimapClick(fractionX, fractionY, minimap.bounds);
-      const next = panCameraToWorldPoint(world.x, world.y, view, {
+      const activeView = flushScheduledView();
+      const next = panCameraToWorldPoint(world.x, world.y, activeView, {
         width: canvasSize.width || rect.width,
         height: canvasSize.height || 700,
       });
       setView(next);
     },
-    [minimap.bounds, view, canvasSize.width, canvasSize.height, setView],
+    [minimap.bounds, canvasSize.width, canvasSize.height, flushScheduledView, setView],
   );
   const panning = React.useRef<null | { clientX: number; clientY: number; x: number; y: number }>(
     null,
@@ -197,16 +235,32 @@ export function WorkbenchCanvas() {
     if ((event.target as HTMLElement).closest('.workbench-panel')) return;
     clearSelection();
     if (event.button !== 0 && event.button !== 1) return;
-    panning.current = { clientX: event.clientX, clientY: event.clientY, x: view.x, y: view.y };
+    const activeView = flushScheduledView();
+    panning.current = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      x: activeView.x,
+      y: activeView.y,
+    };
     const move = (moveEvent: PointerEvent) => {
       const start = panning.current;
       if (!start) return;
-      setView({
+      scheduleView((current) => ({
+        ...current,
         x: start.x + moveEvent.clientX - start.clientX,
         y: start.y + moveEvent.clientY - start.clientY,
-      });
+      }));
     };
-    const up = () => {
+    const up = (upEvent: PointerEvent) => {
+      const start = panning.current;
+      if (start) {
+        scheduleView((current) => ({
+          ...current,
+          x: start.x + upEvent.clientX - start.clientX,
+          y: start.y + upEvent.clientY - start.clientY,
+        }));
+        flushScheduledView();
+      }
       panning.current = null;
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
@@ -238,9 +292,16 @@ export function WorkbenchCanvas() {
         }
         event.preventDefault();
         if (event.ctrlKey || event.metaKey) {
-          setView({ zoom: view.zoom - event.deltaY * 0.0012 });
+          scheduleView((current) => ({
+            ...current,
+            zoom: Math.max(0.25, Math.min(2, current.zoom - event.deltaY * 0.0012)),
+          }));
         } else {
-          setView({ x: view.x - event.deltaX, y: view.y - event.deltaY });
+          scheduleView((current) => ({
+            ...current,
+            x: current.x - event.deltaX,
+            y: current.y - event.deltaY,
+          }));
         }
       }}
       onDragOver={(event) => {
@@ -356,11 +417,7 @@ export function WorkbenchCanvas() {
               }}
             />
           ))}
-          <div
-            className="workbench-minimap-viewport"
-            aria-hidden
-            style={minimap.viewportStyle}
-          />
+          <div className="workbench-minimap-viewport" aria-hidden style={minimap.viewportStyle} />
         </div>
         <button
           type="button"

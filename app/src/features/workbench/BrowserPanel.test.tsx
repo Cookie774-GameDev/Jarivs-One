@@ -329,9 +329,7 @@ describe('Workbench BrowserPanel delivery', () => {
       ).toHaveLength(1),
     );
 
-    view.rerender(
-      <BrowserPanel panel={{ ...initialPanel, minimized: true }} onUpdate={vi.fn()} />,
-    );
+    view.rerender(<BrowserPanel panel={{ ...initialPanel, minimized: true }} onUpdate={vi.fn()} />);
     await waitFor(() =>
       expect(native.invoke).toHaveBeenCalledWith(
         'workbench_browser_surface_hide',
@@ -389,7 +387,9 @@ describe('Workbench BrowserPanel delivery', () => {
 
   it('retires a native child that moves outside the visible Workbench canvas', async () => {
     let surfaceLeft = 40;
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
       if (this.classList.contains('workbench-canvas')) {
         return {
           x: 0,

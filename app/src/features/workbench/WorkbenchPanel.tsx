@@ -17,7 +17,7 @@ interface WorkbenchPanelProps {
   onClose: () => void;
 }
 
-export function WorkbenchPanel({
+function WorkbenchPanelComponent({
   panel,
   selected,
   zoom,
@@ -179,3 +179,26 @@ export function WorkbenchPanel({
     </section>
   );
 }
+
+function workbenchPanelPropsEqual(
+  previous: WorkbenchPanelProps,
+  next: WorkbenchPanelProps,
+): boolean {
+  // Native browser surfaces reconcile their OS-level bounds after each canvas
+  // layout commit, including translation-only camera movement.
+  if (previous.panel.kind === 'browser' || next.panel.kind === 'browser') return false;
+  return (
+    previous.panel === next.panel &&
+    previous.selected === next.selected &&
+    previous.zoom === next.zoom &&
+    previous.onSelect === next.onSelect &&
+    previous.onBringToFront === next.onBringToFront &&
+    previous.onUpdate === next.onUpdate &&
+    previous.onRuntimeUpdate === next.onRuntimeUpdate &&
+    previous.onDuplicate === next.onDuplicate &&
+    previous.onClose === next.onClose
+  );
+}
+
+export const WorkbenchPanel = React.memo(WorkbenchPanelComponent, workbenchPanelPropsEqual);
+WorkbenchPanel.displayName = 'WorkbenchPanel';

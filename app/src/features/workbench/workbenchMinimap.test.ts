@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildMinimapModel,
+  computeWorldBounds,
   panCameraToWorldPoint,
   viewportWorldRect,
   worldPointFromMinimapClick,
@@ -42,5 +43,18 @@ describe('workbenchMinimap', () => {
     expect(model.placements).toHaveLength(2);
     expect(model.viewportStyle.left).toMatch(/%$/);
     expect(model.viewportStyle.width).toMatch(/%$/);
+  });
+
+  it('preserves exact padded bounds for panels, minimized panels, and extras', () => {
+    expect(
+      computeWorldBounds(
+        [
+          { id: 'wide', x: -20, y: 10, width: 100, height: 50 },
+          { id: 'minimized', x: 200, y: -30, width: 60, height: 500, minimized: true },
+        ],
+        [{ x: 40, y: 100, width: 20, height: 40 }],
+        10,
+      ),
+    ).toEqual({ left: -30, top: -40, width: 300, height: 190 });
   });
 });

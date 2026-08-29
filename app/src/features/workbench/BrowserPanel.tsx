@@ -182,7 +182,6 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
 
   const nativeSurfaceAllowed =
     route === 'workbench' && !panel.minimized && policy?.delivery === 'native-child';
-  if (policy?.delivery === 'native-child') nativeDesiredUrlRef.current = policy.externalUrl;
 
   const retireNativeSurface = React.useCallback(async () => {
     nativeSurfaceDesiredRef.current = false;
