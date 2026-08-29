@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils';
 import { UsageCard } from './UsageCard';
 import { ContextInspectorCard } from './ContextInspectorCard';
 import { TokenOptimizationReceiptView } from '@/features/token-optimizer';
+import { PluginUsageCard, resolvePluginActionEvidence } from './PluginUsageCard';
 
 function textForDisplay(text: string): string {
   if (!text.includes('```')) return text;
@@ -369,6 +370,10 @@ export function MessagePart({
     }
 
     case 'action_proposal': {
+      const pluginEvidence = resolvePluginActionEvidence(part, allParts);
+      if (pluginEvidence && part.status !== 'pending') {
+        return <PluginUsageCard part={part} allParts={allParts} />;
+      }
       // Without messageId/chatId we can't mutate the proposal's status,
       // so degrade to a read-only line. Practically every assistant
       // bubble passes both, but the optional contract keeps any

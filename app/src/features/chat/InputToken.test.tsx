@@ -4,22 +4,26 @@ import { describe, expect, it, vi } from 'vitest';
 import { InputToken, TokenList } from './InputToken';
 
 describe('InputToken visual variants', () => {
-  it('renders confirmed command tokens with a warm animated treatment', () => {
+  it('renders confirmed command tokens as compact theme-native composer attachments', () => {
     render(<InputToken type="command" label="/agents: Agents page/editor" />);
 
     const token = screen.getByText('/agents: Agents page/editor').closest('div');
-    expect(token?.className).toContain('jarvis-confirmed-token');
-    expect(token?.className).toContain('from-amber');
-    expect(token?.className).toMatch(/ring-amber|shadow-/);
+    expect(token?.getAttribute('data-composer-token-theme')).toBe('native');
+    expect(token?.className).toContain('rounded-md');
+    expect(token?.className).toContain('bg-accent-copper/10');
+    expect(token?.className).not.toContain('bg-gradient');
+    expect(token?.className).not.toContain('animate-[');
+    expect(token?.className).not.toContain('shadow-[');
     expect(screen.getByText('ok')).toBeTruthy();
   });
 
-  it('renders selected agent mentions as distinct colored tokens', () => {
+  it('renders selected agent mentions on the same bounded composer surface', () => {
     render(<InputToken type="agent" label="@builder" />);
 
     const token = screen.getByText('@builder').closest('div');
-    expect(token?.className).toContain('jarvis-agent-token');
-    expect(token?.className).toContain('from-cyan');
+    expect(token?.getAttribute('data-composer-token-theme')).toBe('native');
+    expect(token?.className).toContain('bg-muted/65');
+    expect(token?.className).toContain('max-w-full');
   });
 
   it('exposes an accessible activation target without making the remove button trigger it', () => {
