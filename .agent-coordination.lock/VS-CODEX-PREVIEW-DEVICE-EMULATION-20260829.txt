@@ -1,7 +1,7 @@
 agent_id: VS-CODEX-PREVIEW-DEVICE-EMULATION-20260829
 task_id: PR31-PREVIEW-DEVICE-EMULATION
 controller: /root
-status: active
+status: released
 worktree: C:\Users\viper\VibeSpace-UnifiedChungus-Final
 branch: integration/UnifiedChungus-final
 base_head: fbc2a63896e64f6eb6558a26d158b0c26d655083
@@ -25,3 +25,4 @@ exact_scope:
 intent: Make Preview Studio and Workbench device previews use generation-specific, truthful CSS viewport presets and native WebView2 device metrics so page media queries see the selected logical viewport while zoom remains visual only. Preserve persisted preset IDs and all unrelated agent work.
 protected: Running VibeSpace app; Firebase and all production services; credentials; Computer Use; live/native acceptance until separately authorized; active Workbench browser ownership; all unrelated dirty files and locks.
 verification_contract: Strict TDD RED/GREEN for catalog, frontend payload, and Rust parameter validation; focused frontend and Rust tests; format/type/build gates where safe; exact owned-only commit. No live app control.
+final_release_2026-08-29T10:23:00-05:00: Implemented and committed as 74f6ca7a. Added generation-specific iPhone 13/16, iPad Air/Pro, and MacBook layout presets while retaining existing IDs; shared the catalog with Workbench; preserved exact iframe logical dimensions under fractional zoom; threaded logical metrics through Preview Studio; and applied validated WebView2 CDP device metrics/touch emulation on create and bounds changes. Frontend 10/10 and Rust preview 4/4 passed; cargo fmt and diff checks passed; staged Gitleaks found no leaks. Repository typecheck reached only the unrelated active BrowserPanel.test.tsx implicit-this diagnostic. No live app, Computer Use, Firebase, production, credential, deployment, push, or unrelated process control occurred. Ownership released at commit 74f6ca7a.
