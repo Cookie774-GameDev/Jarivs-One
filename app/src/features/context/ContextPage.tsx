@@ -2565,8 +2565,11 @@ export function ContextPage() {
                       'running',
                     ).then((job) => {
                       if (job) setIndexJobSnapshot(job);
-                      if (indexControlRef.current) indexControlRef.current.resume();
-                      else setIndexResumeNonce((value) => value + 1);
+                      indexControlRef.current?.resume();
+                      // A controller can outlive the native work it once drove.
+                      // Always remount durable execution; sync() still deduplicates
+                      // a genuinely live operation while reviving a dormant one.
+                      setIndexResumeNonce((value) => value + 1);
                     });
                     setStatus('Resuming the SiYuan index…');
                   }}

@@ -208,4 +208,15 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(actions.match(/onClick=\{onResume\}/gu)).toHaveLength(1);
     expect(actions).not.toContain("job.phase !== 'creating_nodes'");
   });
+
+  it('restarts durable execution even when a stale controller still exists', () => {
+    const resumeStart = source.indexOf('onResume={() => {');
+    const resumeEnd = source.indexOf('onCancel={() => {', resumeStart);
+    const resume = source.slice(resumeStart, resumeEnd);
+
+    expect(resumeStart).toBeGreaterThan(-1);
+    expect(resume).toContain('indexControlRef.current?.resume();');
+    expect(resume).toContain('setIndexResumeNonce((value) => value + 1);');
+    expect(resume).not.toContain('else setIndexResumeNonce');
+  });
 });
