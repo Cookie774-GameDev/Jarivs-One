@@ -2282,3 +2282,11 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Public browser verification: desktop and 390x844 mobile rendered the official HTTPS domain with five plans, App coming soon / Payments opening later copy, zero forms, zero Stripe/checkout links, no horizontal document overflow, and zero fresh console warnings/errors.
 - Rollback: previous `site/index.html` preserved at `C:\Users\viper\Downloads\VibeSpace-Cinematic-Audit-2026-08-28\Official-Site-Publish-REV12\rollback-site-index-60b2118.html`; original remote blob `63cb20630ea5aa6ae3aeb5aa4e5f00a8470360c6` and base commit `60b2118` remain recoverable.
 - Boundaries honored: no DNS, Supabase, Stripe, billing, release, PR #31, application, or non-homepage site mutation.
+
+## 2026-08-28 — codex-vw5-20260828-a9 / official-site-overlap-fix-rev13
+
+- Status: active; exact `site/index.html` overlap-fix claim acquired with no overlap against the active Task 21C application/smoke manifest.
+- Branch/upstream/base: `main` / `origin/main` / `782b6254a27cfca146c284e009fe248bb82b207d`; clean worktree before claim, no merge/rebase/cherry-pick state.
+- Production reproduction at 1920x1080: `#terminalsTitle` has `clientWidth=935`, `scrollWidth=1177` (242px ink overflow into the adjacent copy column); `#contextInspector` overlaps `#contextCanvas` by its full 320px width.
+- Root cause: the terminal grid under-allocates the unbreakable oversized word “APPROVAL,” while the Context inspector is absolutely positioned on top of a full-width canvas instead of owning reserved layout space.
+- Scope: add a narrowly scoped REV13 responsive layout override and deterministic geometry assertions; preserve all content, behavior, runtime systems, public routes, and payment/release boundaries.

@@ -1654,6 +1654,31 @@
     .plan-source-note strong{color:var(--amber);font-weight:800}.plan-source-note a{color:inherit;text-decoration-thickness:1px;text-underline-offset:3px}
     @media(max-width:620px){.plan-launch-notice{grid-template-columns:1fr;gap:7px}.plan-launch-notice span{font-size:9px}.plan-card[data-availability="coming-soon"] .plan-laminate::after{right:10px;top:10px}}
   </style>
+  <style id="vibespace-rev13-overlap-fix">
+    /* Keep the oversized terminal typography dramatic without letting its ink escape into the copy rail. */
+    @media(min-width:901px){
+      .terminal-head{grid-template-columns:minmax(0,1.28fr) minmax(340px,.52fr);gap:clamp(38px,3.2vw,58px)}
+      #terminalsTitle{max-width:100%;font-size:clamp(4.2rem,8vw,10rem);overflow-wrap:normal}
+      .terminal-head .body-copy{align-self:end;justify-self:end;max-width:46ch}
+    }
+
+    /* The inspector owns a real editorial rail; the constellation never renders underneath it. */
+    .context-spread{--context-rail:clamp(284px,32%,340px)}
+    .context-map-viewport{position:absolute;z-index:1;inset:0 calc(var(--context-rail) + 24px) 0 0;overflow:hidden;border-right:1px solid rgba(239,229,214,.16)}
+    .context-map-viewport .context-canvas{inset:0;width:100%;height:100%}
+    .context-inspector{top:0;right:0;bottom:0;width:var(--context-rail);padding:clamp(22px,2.4vw,34px);display:flex;flex-direction:column;justify-content:center;border-width:0 0 0 1px;transform:translateX(16px);backdrop-filter:none}
+    .map-actions{right:calc(var(--context-rail) + 14px)}
+
+    @media(max-width:760px){
+      .context-spread{--context-panel-h:290px;min-height:740px}
+      .context-map-viewport{inset:0 0 var(--context-panel-h) 0;border-right:0;border-bottom:1px solid rgba(239,229,214,.16)}
+      .context-inspector{top:auto;right:0;bottom:0;width:100%;height:var(--context-panel-h);padding:20px;justify-content:flex-start;overflow:auto;border-width:1px 0 0;transform:translateY(14px)}
+      .map-actions{right:8px!important;bottom:calc(var(--context-panel-h) + 14px)!important}
+    }
+    @media(max-width:620px){
+      #terminalsTitle{font-size:clamp(2.65rem,12vw,4rem);letter-spacing:-.045em}
+    }
+  </style>
 </head>
 <body>
 
@@ -1971,7 +1996,7 @@ review the plan
 
         <figure class="context-spread reveal" data-delay="2" id="contextSpread" tabindex="0" aria-label="Interactive Context Map constellation. Drag to pan, use the wheel to zoom, and select a node for details.">
           <figcaption class="visually-hidden">A constellation of project sources, chats, agents, and memory connected by thin filaments.</figcaption>
-          <canvas class="context-canvas" id="contextCanvas" aria-hidden="true"></canvas>
+          <div class="context-map-viewport" id="contextMapViewport" aria-hidden="true"><canvas class="context-canvas" id="contextCanvas"></canvas></div>
           <aside class="context-inspector" id="contextInspector" aria-live="polite"><span id="contextType">Project file / Markdown</span><h3 id="contextName">Project brief</h3><p id="contextSummary">Select a moving node to inspect its type, relationship, and scoped contents.</p><p id="contextExcerpt">Connected to the current project and visible only where attached.</p><button id="contextOpen" type="button">Open workspace view</button></aside>
           <div class="map-actions" aria-label="Context Map controls">
             <button type="button" data-map="left" aria-label="Pan map left">←</button><button type="button" data-map="zoom-out" aria-label="Zoom out">−</button><span class="map-zoom" id="mapZoom">100%</span><button type="button" data-map="zoom-in" aria-label="Zoom in">+</button><button type="button" data-map="reset" aria-label="Reset map">○</button><button type="button" data-map="right" aria-label="Pan map right">→</button>
@@ -3658,7 +3683,7 @@ review the plan
     const core=window.__rev5Core,{runtime,clamp,fit,onscreen,audio,reduce}=core;
     class ContextConstellation{
       constructor(canvas,host){this.c=canvas;this.host=host;this.x=canvas.getContext('2d');this.pan={x:0,y:0};this.zoom=1;this.drag=null;this.down=null;this.selected=0;const records=[['Project brief','Markdown','Project source','Defines the release goal, audience, and non-negotiable constraints.','The smallest safe release path remains attached to Project Atlas.','chat',-.56,-.3],['Interface notes','Document','Project source','Warm editorial interaction notes and current visual decisions.','Copper, ivory, and signal green are constrained to the selected project.','tools',-.14,-.52],['Active chat','Conversation','Active consumer','The current conversation reads the selected project scope.','Route selection and decisions stay in one visible thread.','chat',.32,-.34],['Researcher','Agent','Active consumer','A focused role reads only the interface notes assigned to it.','Evidence returns separately before synthesis.','tools',.58,.02],['Release criteria','Checklist','Project source','Responsive, accessible, reversible, and error-free acceptance criteria.','The reviewer checks the exact final SHA.','kanban',-.38,.2],['Reviewer','Agent','Active consumer','Inspects implementation evidence and regression risks.','Approval remains visible before external effects.','kanban',.1,.16],['Project memory','Memory','Scoped decision','Stores the final approved decision inside this project.','Useful context stays close without leaking into every project.','chat',.5,.46],['Final evidence','Report','Output','Screenshots, diagnostics, checks, and rollback provenance.','One inspectable result closes the operating loop.','kanban',-.12,.55]];this.nodes=records.map((n,i)=>({name:n[0],type:n[1],relation:n[2],summary:n[3],excerpt:n[4],media:n[5],x:n[6],y:n[7],vx:Math.sin(i*2.3)*.00008,vy:Math.cos(i*1.9)*.00008,phase:i*.84}));this.edges=[[0,1],[0,2],[0,4],[1,3],[1,5],[2,5],[3,5],[4,5],[5,6],[5,7],[6,7]].map(([a,b])=>({a,b}));this.resize();this.bind();this.open(0,false);addEventListener('resize',()=>this.resize(),{passive:true})}
-      resize(){const s=fit(this.c,this.host);this.w=s.w;this.h=s.h}
+      resize(){const s=fit(this.c,document.getElementById('contextMapViewport')||this.host);this.w=s.w;this.h=s.h}
       screen(n){return{x:this.w*.5+(n.x*this.w*.38+this.pan.x)*this.zoom,y:this.h*.5+(n.y*this.h*.38+this.pan.y)*this.zoom}}
       hit(px,py){let best=-1,dist=28;this.nodes.forEach((n,i)=>{const p=this.screen(n),d=Math.hypot(px-p.x,py-p.y);if(d<dist){dist=d;best=i}});return best}
       bind(){const local=e=>{const r=this.host.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};this.host.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;const p=local(e),hit=this.hit(p.x,p.y);this.down={...p,hit};this.drag=hit>=0?{type:'node',index:hit}:{type:'pan',x:p.x,y:p.y,px:this.pan.x,py:this.pan.y};this.host.classList.add('is-dragging');this.host.setPointerCapture?.(e.pointerId)});this.host.addEventListener('pointermove',e=>{if(!this.drag)return;const p=local(e);if(this.drag.type==='node'){const n=this.nodes[this.drag.index];n.x=(p.x-this.w*.5)/this.zoom/(this.w*.38)-this.pan.x/(this.w*.38);n.y=(p.y-this.h*.5)/this.zoom/(this.h*.38)-this.pan.y/(this.h*.38);n.vx=n.vy=0}else{this.pan.x=this.drag.px+(p.x-this.drag.x)/this.zoom;this.pan.y=this.drag.py+(p.y-this.drag.y)/this.zoom}});const end=e=>{const p=local(e);if(this.down&&Math.hypot(p.x-this.down.x,p.y-this.down.y)<7&&this.down.hit>=0)this.open(this.down.hit,true);this.drag=this.down=null;this.host.classList.remove('is-dragging');if(this.host.hasPointerCapture?.(e.pointerId))this.host.releasePointerCapture(e.pointerId)};this.host.addEventListener('pointerup',end);this.host.addEventListener('pointercancel',end);this.host.addEventListener('wheel',e=>{if(e.target.closest('button'))return;e.preventDefault();this.zoom=clamp(this.zoom*Math.exp(-e.deltaY*.001),.62,2.25);this.updateZoom()},{passive:false});this.host.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'){e.preventDefault();this.pan.x+=24/this.zoom}if(e.key==='ArrowRight'){e.preventDefault();this.pan.x-=24/this.zoom}if(e.key==='ArrowUp'){e.preventDefault();this.pan.y+=24/this.zoom}if(e.key==='ArrowDown'){e.preventDefault();this.pan.y-=24/this.zoom}if(e.key==='+'||e.key==='='){e.preventDefault();this.zoom=clamp(this.zoom*1.14,.62,2.25);this.updateZoom()}if(e.key==='-'){e.preventDefault();this.zoom=clamp(this.zoom/1.14,.62,2.25);this.updateZoom()}if(e.key==='Enter'){e.preventDefault();this.open((this.selected+1)%this.nodes.length,true)}});document.querySelectorAll('[data-map]').forEach(b=>b.addEventListener('click',()=>{const a=b.dataset.map;if(a==='left')this.pan.x+=42/this.zoom;if(a==='right')this.pan.x-=42/this.zoom;if(a==='zoom-in')this.zoom=clamp(this.zoom*1.18,.62,2.25);if(a==='zoom-out')this.zoom=clamp(this.zoom/1.18,.62,2.25);if(a==='reset'){this.pan={x:0,y:0};this.zoom=1}this.updateZoom()}));document.getElementById('contextOpen')?.addEventListener('click',()=>{const key=this.nodes[this.selected].media;document.querySelector(`.warp-card[data-media-key="${key}"]`)?.click()})}
@@ -3680,7 +3705,11 @@ review the plan
       async copy(){const text=(this.finalText+' '+this.interim).trim();if(!text){this.setStatus('Nothing to copy');return}try{await navigator.clipboard.writeText(text)}catch{const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.append(ta);ta.select();document.execCommand('copy');ta.remove()}this.setStatus('Transcript copied');audio.cue('complete')}
       render(){const e=this.listening?this.energy():0;this.meter.forEach((bar,i)=>bar.style.setProperty('--energy',String(clamp(e*(.45+Math.sin(i*.9+performance.now()*.008)*.28)+.05))));runtime.speech.energy=Number(e.toFixed(3))}
     }
-    const contextCanvas=document.getElementById('contextCanvas'),context=contextCanvas?new ContextConstellation(contextCanvas,document.getElementById('contextSpread')):null,voice=new VoiceWorkspace();core.context=context;core.voice=voice;core.objects.push(context,voice);
+    const contextCanvas=document.getElementById('contextCanvas'),context=contextCanvas?new ContextConstellation(contextCanvas,document.getElementById('contextSpread')):null,voice=new VoiceWorkspace();
+    const contextInspector=document.getElementById('contextInspector');
+    contextInspector?.addEventListener('pointerdown',event=>event.stopPropagation());
+    contextInspector?.addEventListener('wheel',event=>event.stopPropagation(),{passive:true});
+    core.context=context;core.voice=voice;core.objects.push(context,voice);
   })();
   </script>
 
