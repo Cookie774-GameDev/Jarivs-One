@@ -52,6 +52,7 @@ pub struct WorkbenchBrowserStatus {
 struct SurfaceRecord {
     operation_id: String,
     loading: bool,
+    renderer: Webview,
 }
 
 static SURFACES: LazyLock<Mutex<HashMap<String, SurfaceRecord>>> =
@@ -177,15 +178,14 @@ fn current_operation(panel_id: &str, operation_id: &str) -> Result<(), String> {
 }
 
 fn emit_state(
-    app: &AppHandle,
+    renderer: &Webview,
     panel_id: &str,
     operation_id: &str,
     url: &url::Url,
     loading: bool,
     error: Option<String>,
 ) {
-    let _ = app.emit_to(
-        "main",
+    let _ = renderer.emit(
         EVENT_NAME,
         WorkbenchBrowserStatus {
             panel_id: panel_id.to_owned(),
@@ -197,21 +197,15 @@ fn emit_state(
     );
 }
 
-fn emit_current_state(
-    app: &AppHandle,
-    panel_id: &str,
-    url: &url::Url,
-    loading: bool,
-    error: Option<String>,
-) {
-    let operation_id = SURFACES.lock().ok().and_then(|mut state| {
+fn emit_current_state(panel_id: &str, url: &url::Url, loading: bool, error: Option<String>) {
+    let current = SURFACES.lock().ok().and_then(|mut state| {
         state.get_mut(panel_id).map(|record| {
             record.loading = loading;
-            record.operation_id.clone()
+            (record.operation_id.clone(), record.renderer.clone())
         })
     });
-    if let Some(operation_id) = operation_id {
-        emit_state(app, panel_id, &operation_id, url, loading, error);
+    if let Some((operation_id, renderer)) = current {
+        emit_state(&renderer, panel_id, &operation_id, url, loading, error);
     }
 }
 
@@ -263,6 +257,7 @@ pub async fn workbench_browser_surface_open(
             SurfaceRecord {
                 operation_id: operation_id.clone(),
                 loading,
+                renderer: caller.clone(),
             },
         );
         loading
@@ -287,9 +282,7 @@ pub async fn workbench_browser_surface_open(
             .join(&panel_id);
         std::fs::create_dir_all(&profile)
             .map_err(|_| "workbench_browser_profile_unavailable".to_owned())?;
-        let event_app = app.clone();
         let event_panel = panel_id.clone();
-        let load_app = app.clone();
         let load_panel = panel_id.clone();
         let builder = WebviewBuilder::new(surface_label, WebviewUrl::External(target.clone()))
             .data_directory(profile)
@@ -298,7 +291,7 @@ pub async fn workbench_browser_surface_open(
             .on_navigation(move |candidate| {
                 let allowed = navigation_allowed(candidate);
                 if allowed && candidate.as_str() != "about:blank" {
-                    emit_current_state(&event_app, &event_panel, candidate, true, None);
+                    emit_current_state(&event_panel, candidate, true, None);
                 }
                 allowed
             })
@@ -307,7 +300,6 @@ pub async fn workbench_browser_surface_open(
                     return;
                 }
                 emit_current_state(
-                    &load_app,
                     &load_panel,
                     payload.url(),
                     matches!(payload.event(), PageLoadEvent::Started),
@@ -327,7 +319,7 @@ pub async fn workbench_browser_surface_open(
     webview
         .show()
         .map_err(|_| "workbench_browser_window_unavailable".to_owned())?;
-    emit_state(&app, &panel_id, &operation_id, &target, loading, None);
+    emit_state(&caller, &panel_id, &operation_id, &target, loading, None);
     Ok(WorkbenchBrowserStatus {
         panel_id,
         operation_id,
@@ -450,6 +442,15 @@ mod tests {
         assert_eq!(source.matches("    caller: Webview,\n").count(), 5);
         assert!(!source.contains("    caller: WebviewWindow,\n"));
         assert!(source.contains("ensure_caller(caller.label())?;"));
+    }
+
+    #[test]
+    fn status_events_target_the_exact_current_renderer_webview() {
+        let source = include_str!("workbench_browser_surface.rs");
+        let broad_app_emission = ["app", ".emit_to("].concat();
+        assert!(source.contains("renderer: Webview,"));
+        assert!(source.contains("renderer.emit(EVENT_NAME,"));
+        assert!(!source.contains(&broad_app_emission));
     }
 
     #[test]
