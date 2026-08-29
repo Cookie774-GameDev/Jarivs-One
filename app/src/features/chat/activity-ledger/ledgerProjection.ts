@@ -5,13 +5,7 @@ import type { ChatActivityEvent, ChatActivityStatus } from '../activity/types';
 export const MAX_LEDGER_RECEIPTS = 500;
 
 export type LedgerReceiptKind =
-  | 'read'
-  | 'search'
-  | 'command'
-  | 'edit'
-  | 'check'
-  | 'subagent'
-  | 'other';
+  'read' | 'search' | 'command' | 'edit' | 'check' | 'subagent' | 'other';
 export type UsageProvenance = 'exact' | 'estimated' | 'unavailable';
 
 export type LedgerUsageValue = Readonly<{
@@ -257,7 +251,22 @@ function messageReceipts(message: Message): AssistantActivityReceipt[] {
   });
 }
 
-function latestEvents(events: readonly ChatActivityEvent[]): Map<string, ChatActivityEvent> {
+type LatestEventCollection = readonly ChatActivityEvent[] | ReadonlyMap<string, ChatActivityEvent>;
+
+function latestEvents(events: readonly ChatActivityEvent[]): LatestEventCollection {
+  let orderedAndUnique = true;
+  let previous: ChatActivityEvent | undefined;
+  const ids = new Set<string>();
+  for (const event of events) {
+    if (ids.has(event.id) || (previous && compareEvents(previous, event) > 0)) {
+      orderedAndUnique = false;
+      break;
+    }
+    ids.add(event.id);
+    previous = event;
+  }
+  if (orderedAndUnique) return events;
+
   const latestById = new Map<string, ChatActivityEvent>();
   for (const event of events) {
     const current = latestById.get(event.id);
@@ -394,7 +403,8 @@ export function projectAssistantActivityLedger(
   let latestRunningEvent: ChatActivityEvent | undefined;
   let hasEventError = false;
   let hasEventCancelled = false;
-  for (const event of eventsById.values()) {
+  const latestEventValues = Array.isArray(eventsById) ? eventsById : eventsById.values();
+  for (const event of latestEventValues) {
     const kind = activityKind(event);
     if (kind === 'command' && messageHasCommand) continue;
     const actionable = kind !== 'other';
@@ -483,7 +493,7 @@ export function projectAssistantActivityLedger(
         ? 'error'
         : hasCancelled
           ? 'cancelled'
-          : hasAnswer || allReceipts.length || eventsById.size > 0
+          : hasAnswer || allReceipts.length || explicitlyCorrelatedEvents.length > 0
             ? 'done'
             : 'idle';
   const terminal = status === 'done' || status === 'cancelled' || status === 'error';
