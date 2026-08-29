@@ -1,0 +1,31 @@
+agent_id: VS-CODEX-WORKBENCH-AUDIT-20260829
+task_id: WORKBENCH-DEEP-AUDIT-DEVICE-PREVIEW-CAPACITY
+controller: /root
+status: active
+worktree: C:\Users\viper\VibeSpace-UnifiedChungus-Final
+branch: integration/UnifiedChungus-final
+base_head: 41ddc50fce96f20cfb2d778f5215824309c7e763
+upstream: origin/UnifiedChungus
+claimed_at: 2026-08-29T16:48:44-05:00
+exact_scope:
+  - app/src/features/workbench/store.ts
+  - app/src/features/workbench/integration.test.ts
+  - append-only docs/AGENT_COORDINATION.md
+  - this lock file
+intent: Complete the controller's user-requested Workbench audit and repair one reproduced store boundary: an existing device preview must refresh at the panel limit because the operation allocates no new panel. Preserve UI, behavior, panel limits, preview identity, persistence, all native surfaces, and unrelated work.
+evidence: Fresh full Workbench Vitest passed 32 files/115 tests, exit 0; fresh repository typecheck exited 0. Source audit found openDevicePreview checks MAX_WORKBENCH_PANELS before resolving the existing source+device preview, returning null and leaving stale preview content at capacity.
+verification_contract: Strict TDD RED/GREEN on the real store, focused integration plus full Workbench suite, typecheck, build, exact diff/format/security review, exact commit, append-only completion checkpoint, and release only this lock. Per user instruction, do not start/restart/terminate VibeSpace.
+
+completed_at: 2026-08-29T17:07:29-05:00
+status: completed/released
+resulting_commit: 565658dc
+result: Existing same-source/same-device previews now reconcile before the allocation-only panel-cap guard, so refreshes keep their identity and update their document at MAX_WORKBENCH_PANELS while genuinely new previews still fail closed at capacity.
+verification:
+  - TDD RED: focused integration failed exactly because refresh returned null at capacity.
+  - Focused GREEN after formatting: 1 file / 5 tests, exit 0.
+  - Full Workbench: 32 files / 116 tests, exit 0.
+  - Direct TypeScript project build: tsc -b --pretty false, exit 0.
+  - Production Vite build: 5,012 modules, exit 0; only pre-existing repository-wide chunk/import warnings.
+  - Prettier exact files, git diff --check, and scoped Gitleaks: exit 0.
+runtime_boundary: VibeSpace was not started, restarted, rebuild-launched, or terminated. No native interactive acceptance was attempted under the user's explicit constraint.
+cleanup: Exclusive Workbench product ownership is released. The append-only ledger remains shared and unstaged; unrelated dirty and staged work was preserved exactly.
