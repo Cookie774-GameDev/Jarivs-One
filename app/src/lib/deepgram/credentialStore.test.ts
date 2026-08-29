@@ -102,6 +102,29 @@ describe('central Deepgram credential service', () => {
     expect(values.has('deepgram')).toBe(false);
   });
 
+  it('persists a service-scoped key when the optional project metadata probe is forbidden', async () => {
+    const { adapter, values } = memoryAdapter();
+    const publish = vi.fn();
+    const service = createDeepgramCredentialService({
+      adapter,
+      fetcher: vi.fn(async () => new Response('forbidden', { status: 403 })),
+      publish,
+      now: () => new Date('2026-08-29T22:23:00Z'),
+    });
+
+    const snapshot = await service.save('service-scoped-key');
+
+    expect(values.get('deepgram')).toBe('service-scoped-key');
+    expect(snapshot).toEqual({
+      configured: true,
+      health: 'unreachable',
+      source: 'saved',
+      checkedAt: '2026-08-29T22:23:00.000Z',
+      errorCode: 'permission',
+    });
+    expect(JSON.stringify(publish.mock.calls)).not.toContain('service-scoped-key');
+  });
+
   it('keeps a stored key on a temporary network failure but labels the state unreachable', async () => {
     const { adapter } = memoryAdapter({ deepgram: 'stored-secret' });
     const service = createDeepgramCredentialService({

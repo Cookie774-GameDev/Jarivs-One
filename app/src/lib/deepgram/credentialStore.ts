@@ -8,17 +8,9 @@ export const DEEPGRAM_LEGACY_CREDENTIAL_IDS = [
 ] as const;
 
 export type DeepgramCredentialHealth =
-  | 'missing'
-  | 'unknown'
-  | 'connected'
-  | 'invalid'
-  | 'unreachable';
+  'missing' | 'unknown' | 'connected' | 'invalid' | 'unreachable';
 export type DeepgramCredentialErrorCode =
-  | 'invalid_key'
-  | 'permission'
-  | 'network'
-  | 'provider_error'
-  | 'storage';
+  'invalid_key' | 'permission' | 'network' | 'provider_error' | 'storage';
 
 export interface DeepgramCredentialSnapshot {
   configured: boolean;
@@ -127,13 +119,22 @@ export function createDeepgramCredentialService(options: DeepgramCredentialServi
         headers: { Authorization: `Token ${key}` },
       });
       const checkedAt = now().toISOString();
-      if (response.status === 401 || response.status === 403) {
+      if (response.status === 401) {
         return emit({
           configured,
-          health: response.status === 401 ? 'invalid' : 'invalid',
+          health: 'invalid',
           source,
           checkedAt,
-          errorCode: response.status === 401 ? 'invalid_key' : 'permission',
+          errorCode: 'invalid_key',
+        });
+      }
+      if (response.status === 403) {
+        return emit({
+          configured,
+          health: 'unreachable',
+          source,
+          checkedAt,
+          errorCode: 'permission',
         });
       }
       if (!response.ok) {

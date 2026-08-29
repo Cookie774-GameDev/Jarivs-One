@@ -34,9 +34,13 @@ function statusMessage(snapshot: DeepgramCredentialSnapshot): string | null {
       : 'This Deepgram key is invalid or revoked. Replace it or remove it.';
   }
   if (snapshot.health === 'unreachable') {
-    return snapshot.errorCode === 'storage'
-      ? 'Secure credential storage is unavailable. Your key was not exposed or copied elsewhere.'
-      : 'Deepgram could not be reached. The stored key was preserved; retry when the connection recovers.';
+    if (snapshot.errorCode === 'storage') {
+      return 'Secure credential storage is unavailable. Your key was not exposed or copied elsewhere.';
+    }
+    if (snapshot.errorCode === 'permission') {
+      return 'The saved key cannot read project metadata. Usage details are unavailable, but speech services can still use the key when its Deepgram role allows them.';
+    }
+    return 'Deepgram could not be reached. The stored key was preserved; retry when the connection recovers.';
   }
   return null;
 }

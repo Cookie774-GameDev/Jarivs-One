@@ -128,4 +128,24 @@ describe('DeepgramCredentialCard', () => {
     expect(await screen.findByRole('button', { name: 'Test Deepgram' })).toBeTruthy();
     expect(screen.queryByDisplayValue('dg-private-key')).toBeNull();
   });
+
+  it('saves on Enter and explains when project metadata permission is unavailable', async () => {
+    mocks.save.mockResolvedValue({
+      configured: true,
+      health: 'unreachable',
+      source: 'saved',
+      checkedAt: '2026-08-29T22:23:00.000Z',
+      errorCode: 'permission',
+    });
+    render(<DeepgramCredentialCard />);
+
+    const input = await screen.findByLabelText('Deepgram API key');
+    fireEvent.change(input, { target: { value: 'service-scoped-key' } });
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledWith('service-scoped-key'));
+    expect(await screen.findByText(/cannot read project metadata/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Test Deepgram' })).toBeTruthy();
+    expect(document.body.textContent).not.toContain('service-scoped-key');
+  });
 });
