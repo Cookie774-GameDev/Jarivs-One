@@ -30,7 +30,7 @@ const panel: WorkbenchPanelModel = {
   settings: {},
 };
 
-function renderPanel(onUpdate = vi.fn()) {
+function renderPanel(onUpdate = vi.fn(), onClose = vi.fn()) {
   render(
     <WorkbenchPanel
       panel={panel}
@@ -41,11 +41,11 @@ function renderPanel(onUpdate = vi.fn()) {
       onUpdate={onUpdate}
       onRuntimeUpdate={vi.fn()}
       onDuplicate={vi.fn()}
-      onClose={vi.fn()}
+      onClose={onClose}
     />,
   );
 
-  return { onUpdate };
+  return { onUpdate, onClose };
 }
 
 afterEach(() => {
@@ -72,5 +72,15 @@ describe('WorkbenchPanel accessibility', () => {
     fireEvent.pointerUp(window, { clientX: 124, clientY: 116 });
 
     expect(onUpdate).toHaveBeenLastCalledWith({ width: 330, height: 220 });
+  });
+
+  it('keeps minimize and close as working panel lifecycle controls', () => {
+    const { onUpdate, onClose } = renderPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Minimize Console' }));
+    expect(onUpdate).toHaveBeenCalledWith({ minimized: true });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close Console' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,8 +1,17 @@
 import * as React from 'react';
-import { ArrowLeft, ArrowRight, ExternalLink, Globe2, RefreshCw, Square } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  CornerDownLeft,
+  ExternalLink,
+  Globe2,
+  RefreshCw,
+  Square,
+} from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
+import { openExternal } from '@/lib/tauri';
 import { isTauri } from '@/lib/utils';
 import { browserFramePolicy, normalizeBrowserUrl } from './browserSecurity';
 import type { WorkbenchPanel } from './types';
@@ -80,6 +89,8 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
   const operationId = React.useRef(createOperationId()).current;
   const onUpdateRef = React.useRef(onUpdate);
   const settingsRef = React.useRef(panel.settings);
+  const panelStatusRef = React.useRef(panel.status);
+  const draftDirtyRef = React.useRef(false);
   const nativeUrlRef = React.useRef(currentUrl);
   const nativeDesiredUrlRef = React.useRef(currentUrl);
   const nativeRequestGenerationRef = React.useRef(0);
@@ -88,9 +99,11 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
     active: NativeOpenRequest | null;
     pending: NativeOpenRequest | null;
     promise: Promise<void> | null;
-  }>({ active: null, pending: null, promise: null });
+    lastSettled: NativeOpenRequest | null;
+  }>({ active: null, pending: null, promise: null, lastSettled: null });
   onUpdateRef.current = onUpdate;
   settingsRef.current = panel.settings;
+  panelStatusRef.current = panel.status;
 
   const applyNativeState = React.useCallback(
     (payload: NativeBrowserState) => {
@@ -100,13 +113,16 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
       const normalized = normalizeBrowserUrl(payload.url);
       nativeUrlRef.current = normalized;
       nativeDesiredUrlRef.current = normalized;
-      setDraft(normalized);
+      if (!draftDirtyRef.current) setDraft(normalized);
       setError(payload.error ?? null);
       setLoadState(payload.error ? 'error' : payload.loading ? 'loading' : 'loaded');
-      onUpdateRef.current({
-        settings: { ...settingsRef.current, url: normalized },
-        status: payload.error ? 'error' : 'ready',
-      });
+      const nextStatus = payload.error ? 'error' : 'ready';
+      if (settingsRef.current.url !== normalized || panelStatusRef.current !== nextStatus) {
+        const nextSettings = { ...settingsRef.current, url: normalized };
+        settingsRef.current = nextSettings;
+        panelStatusRef.current = nextStatus;
+        onUpdateRef.current({ settings: nextSettings, status: nextStatus });
+      }
     },
     [operationId, panel.id],
   );
@@ -150,10 +166,11 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
       if (!isTauri) throw new Error('The in-window browser is available in the VibeSpace app.');
       const bounds = readBounds(surfaceRef.current);
       if (!bounds) return;
-      setLoadState('loading');
       const state = nativeOpenRef.current;
+      const requested = { url, bounds, generation: nativeRequestGenerationRef.current };
+      if (!state.promise && sameNativeOpenRequest(state.lastSettled, requested)) return;
+      setLoadState('loading');
       if (state.promise) {
-        const requested = { url, bounds, generation: nativeRequestGenerationRef.current };
         if (sameNativeOpenRequest(state.pending ?? state.active, requested)) return state.promise;
         state.pending = {
           url,
@@ -179,6 +196,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
             url: request.url,
             bounds: request.bounds,
           });
+          state.lastSettled = request;
           if (state.pending || nativeRequestGenerationRef.current !== request.generation) {
             request = state.pending;
             continue;
@@ -211,7 +229,9 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
     [applyNativeState, operationId, panel.id, reconcileNativeState],
   );
 
-  React.useEffect(() => setDraft(currentUrl), [currentUrl]);
+  React.useEffect(() => {
+    if (!draftDirtyRef.current) setDraft(currentUrl);
+  }, [currentUrl]);
 
   React.useEffect(() => {
     if (policy?.delivery !== 'native-child') return;
@@ -264,6 +284,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
   const commitUrl = (normalized: string, pushHistory: boolean) => {
     const nextPolicy = browserFramePolicy(normalized);
     nativeDesiredUrlRef.current = normalized;
+    draftDirtyRef.current = false;
     setError(null);
     setDraft(normalized);
     onUpdate({ settings: { ...panel.settings, url: normalized }, status: 'ready' });
@@ -294,6 +315,21 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
       const message = cause instanceof Error ? cause.message : 'That address cannot be opened.';
       setError(message);
       setLoadState('error');
+      toast.warning('Browser address blocked', message);
+    }
+  };
+
+  const openDraftExternally = () => {
+    try {
+      const normalized = normalizeBrowserUrl(draft);
+      void openExternal(normalized).catch((cause) => {
+        const message = nativeFailureMessage(cause, 'The page could not open externally.');
+        setError(message);
+        toast.warning('External browser could not open', message);
+      });
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'That address cannot be opened.';
+      setError(message);
       toast.warning('Browser address blocked', message);
     }
   };
@@ -367,10 +403,22 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
           className="[html[data-theme=warm]_&]:border-border-mid [html[data-theme=warm]_&]:bg-background [html[data-theme=warm]_&]:text-foreground [html[data-theme=warm]_&]:caret-foreground [html[data-theme=warm]_&]:placeholder:text-muted-foreground"
           aria-label="Browser address"
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            draftDirtyRef.current = event.target.value !== currentUrl;
+            setDraft(event.target.value);
+          }}
           spellCheck={false}
         />
         <Button type="submit" size="icon-sm" variant="ghost" aria-label="Go">
+          <CornerDownLeft />
+        </Button>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Open in external browser"
+          onClick={openDraftExternally}
+        >
           <ExternalLink />
         </Button>
         <Button

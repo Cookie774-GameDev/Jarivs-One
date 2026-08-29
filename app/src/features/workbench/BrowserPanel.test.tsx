@@ -7,9 +7,11 @@ import type { WorkbenchPanel } from './types';
 
 const native = vi.hoisted(() => ({
   invoke: vi.fn<(command: string, args?: Record<string, unknown>) => Promise<unknown>>(),
+  openExternal: vi.fn<(url: string) => Promise<void>>(),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: native.invoke }));
+vi.mock('@/lib/tauri', () => ({ openExternal: native.openExternal }));
 vi.mock('@/lib/utils', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/utils')>()),
   isTauri: true,
@@ -34,6 +36,8 @@ function panel(url: string): WorkbenchPanel {
 describe('Workbench BrowserPanel delivery', () => {
   beforeEach(() => {
     native.invoke.mockReset();
+    native.openExternal.mockReset();
+    native.openExternal.mockResolvedValue(undefined);
     native.invoke.mockImplementation(async (command, args) => {
       if (command === 'workbench_browser_surface_open') {
         return {
@@ -217,6 +221,93 @@ describe('Workbench BrowserPanel delivery', () => {
     );
     await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('does not replace a user-edited address when stale native status settles', async () => {
+    let finishStatus: ((payload: unknown) => void) | undefined;
+    native.invoke.mockImplementation(async (command, args) => {
+      if (command === 'workbench_browser_surface_open') {
+        return {
+          panelId: args?.panelId,
+          operationId: args?.operationId,
+          url: 'https://example.com/',
+          loading: true,
+          error: null,
+        };
+      }
+      if (command === 'workbench_browser_surface_status') {
+        return new Promise((resolve) => {
+          finishStatus = resolve;
+        });
+      }
+      return undefined;
+    });
+
+    render(<BrowserPanel panel={panel('https://example.com/')} onUpdate={vi.fn()} />);
+    await waitFor(() => expect(finishStatus).toEqual(expect.any(Function)));
+
+    const address = screen.getByLabelText('Browser address') as HTMLInputElement;
+    fireEvent.focus(address);
+    fireEvent.change(address, { target: { value: 'https://wikipedia.org/wiki/Browser' } });
+    act(() =>
+      finishStatus?.({
+        panelId: 'browser-1',
+        operationId: native.invoke.mock.calls.find(
+          ([command]) => command === 'workbench_browser_surface_open',
+        )?.[1]?.operationId,
+        url: 'https://example.com/',
+        loading: false,
+        error: null,
+      }),
+    );
+
+    await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+    expect(address.value).toBe('https://wikipedia.org/wiki/Browser');
+  });
+
+  it('does not reopen a settled native surface for unchanged resize bounds', async () => {
+    native.invoke.mockImplementation(async (command, args) => {
+      if (command === 'workbench_browser_surface_open') {
+        return {
+          panelId: args?.panelId,
+          operationId: args?.operationId,
+          url: args?.url,
+          loading: false,
+          error: null,
+        };
+      }
+      return undefined;
+    });
+
+    render(<BrowserPanel panel={panel('https://example.com/')} onUpdate={vi.fn()} />);
+    await waitFor(() =>
+      expect(
+        native.invoke.mock.calls.filter(
+          ([command]) => command === 'workbench_browser_surface_open',
+        ),
+      ).toHaveLength(1),
+    );
+
+    fireEvent(window, new Event('resize'));
+    fireEvent(window, new Event('resize'));
+
+    await act(async () => Promise.resolve());
+    expect(
+      native.invoke.mock.calls.filter(
+        ([command]) => command === 'workbench_browser_surface_open',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('retains an explicit external-browser action for any valid address draft', async () => {
+    render(<BrowserPanel panel={panel('https://example.com/')} onUpdate={vi.fn()} />);
+    const address = screen.getByLabelText('Browser address');
+    fireEvent.change(address, { target: { value: 'wikipedia.org/wiki/Browser' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Open in external browser' }));
+
+    await waitFor(() =>
+      expect(native.openExternal).toHaveBeenCalledWith('https://wikipedia.org/wiki/Browser'),
+    );
   });
 
   it('shows an exact native string rejection instead of masking it', async () => {
