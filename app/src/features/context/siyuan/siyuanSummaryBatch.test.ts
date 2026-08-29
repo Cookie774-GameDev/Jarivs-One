@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SIYUAN_SUMMARY_BATCH_LIMITS,
   planSiyuanSummaryBatches,
+  siyuanSummaryLaneCount,
   type SiyuanPreparedSummary,
 } from './siyuanSummaryBatch';
 
@@ -24,6 +25,11 @@ function prepared(index: number, bytes = 12_000): SiyuanPreparedSummary {
 }
 
 describe('SiYuan summary batch planner', () => {
+  it('scales selected-model OpenCode work from two through five bounded lanes', () => {
+    expect([1, 16, 17, 25, 33, 500].map(siyuanSummaryLaneCount)).toEqual([2, 2, 3, 4, 5, 5]);
+    expect(siyuanSummaryLaneCount(0)).toBe(1);
+  });
+
   it('creates deterministic isolated batches with no duplicate file assignment', () => {
     const source = Array.from({ length: 19 }, (_, index) => prepared(index));
     const first = planSiyuanSummaryBatches(source);

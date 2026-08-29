@@ -5432,6 +5432,16 @@ export function startRuntimeListener(
       [...liveOpenCodeTools.values()].flatMap(({ call, result }) =>
         result ? [call, result] : [call],
       );
+    const liveOpenCodeChronology: Part[] = [];
+    const liveOpenCodeTextIndexes = new Map<string, number>();
+    const liveOpenCodeToolIndexes = new Map<string, { call: number; result?: number }>();
+    let hasNativeOpenCodeTextIdentity = false;
+    const currentOpenCodeChronologyParts = (): Part[] =>
+      liveOpenCodeChronology.map((part) => ({ ...part }));
+    const currentOpenCodeResponseParts = (): Part[] =>
+      hasNativeOpenCodeTextIdentity
+        ? currentOpenCodeChronologyParts()
+        : [{ kind: 'text', text: acc }, ...currentOpenCodeToolParts()];
     const currentOpenCodeQuestionParts = (): Part[] => [...liveOpenCodeQuestions];
     const currentOpenCodePermissionParts = (): Part[] =>
       liveOpenCodePermissions.map((part) => {
@@ -5446,6 +5456,38 @@ export function startRuntimeListener(
             }
           : part;
       });
+    const currentOpenCodeStreamingParts = (): Part[] => [
+      ...currentOpenCodeResponseParts(),
+      ...currentOpenCodeQuestionParts(),
+      ...currentOpenCodePermissionParts(),
+    ];
+    const currentOpenCodeErrorParts = (suffix: string): Part[] => {
+      if (!hasNativeOpenCodeTextIdentity) {
+        const sep = acc.length > 0 ? '\n\n' : '';
+        return [
+          { kind: 'text', text: acc + sep + suffix },
+          ...currentOpenCodeToolParts(),
+          ...currentOpenCodeQuestionParts(),
+          ...currentOpenCodePermissionParts(),
+        ];
+      }
+      const parts = currentOpenCodeChronologyParts();
+      for (let index = parts.length - 1; index >= 0; index -= 1) {
+        const part = parts[index];
+        if (part?.kind !== 'text') continue;
+        parts[index] = {
+          kind: 'text',
+          text: `${part.text}${part.text.length > 0 ? '\n\n' : ''}${suffix}`,
+        };
+        return [...parts, ...currentOpenCodeQuestionParts(), ...currentOpenCodePermissionParts()];
+      }
+      return [
+        ...parts,
+        { kind: 'text', text: suffix },
+        ...currentOpenCodeQuestionParts(),
+        ...currentOpenCodePermissionParts(),
+      ];
+    };
 
     const mirrorShadowOutcome = async (
       status: 'completed' | 'failed' | 'cancelled',
@@ -5480,12 +5522,7 @@ export function startRuntimeListener(
         // store; the final awaited write below stamps the canonical version.
         const write = trackListenerOwnedTask(
           bindings.updateMessage(placeholderId, {
-            parts: [
-              { kind: 'text', text: acc },
-              ...currentOpenCodeToolParts(),
-              ...currentOpenCodeQuestionParts(),
-              ...currentOpenCodePermissionParts(),
-            ],
+            parts: currentOpenCodeStreamingParts(),
           }),
         );
         pendingStreamingWrites.add(write);
@@ -6082,12 +6119,7 @@ export function startRuntimeListener(
         const write = trackListenerOwnedTask(
           settleStreamingWrites().then(() =>
             bindings.updateMessage(placeholder.id, {
-              parts: [
-                { kind: 'text', text: acc },
-                ...currentOpenCodeToolParts(),
-                ...currentOpenCodeQuestionParts(),
-                ...currentOpenCodePermissionParts(),
-              ],
+              parts: currentOpenCodeStreamingParts(),
             }),
           ),
         );
@@ -6344,6 +6376,23 @@ export function startRuntimeListener(
                 ts: Date.now(),
               });
             }
+            if (chunk.streamPartId) {
+              hasNativeOpenCodeTextIdentity = true;
+              const existingIndex = liveOpenCodeTextIndexes.get(chunk.streamPartId);
+              if (existingIndex === undefined) {
+                liveOpenCodeTextIndexes.set(chunk.streamPartId, liveOpenCodeChronology.length);
+                liveOpenCodeChronology.push({ kind: 'text', text: chunk.delta });
+              } else {
+                const existingPart = liveOpenCodeChronology[existingIndex];
+                if (existingPart?.kind !== 'text') {
+                  throw new Error('OpenCode text-part chronology was corrupted.');
+                }
+                liveOpenCodeChronology[existingIndex] = {
+                  kind: 'text',
+                  text: existingPart.text + chunk.delta,
+                };
+              }
+            }
             acc += chunk.delta;
             if (!bufferExactLiteralStreaming) {
               scheduleFlush();
@@ -6398,12 +6447,7 @@ export function startRuntimeListener(
             request,
           });
           await bindings.updateMessage(placeholder.id, {
-            parts: [
-              { kind: 'text', text: acc },
-              ...currentOpenCodeToolParts(),
-              ...currentOpenCodeQuestionParts(),
-              ...currentOpenCodePermissionParts(),
-            ],
+            parts: currentOpenCodeStreamingParts(),
           });
         },
         onQuestionRequested: async (projection) => {
@@ -6424,12 +6468,7 @@ export function startRuntimeListener(
           await settleStreamingWrites();
           liveOpenCodeQuestions.push(projection.part);
           await bindings.updateMessage(placeholder.id, {
-            parts: [
-              { kind: 'text', text: acc },
-              ...currentOpenCodeToolParts(),
-              ...currentOpenCodeQuestionParts(),
-              ...currentOpenCodePermissionParts(),
-            ],
+            parts: currentOpenCodeStreamingParts(),
           });
         },
         onToolActivity: async (toolActivity) => {
@@ -6453,16 +6492,29 @@ export function startRuntimeListener(
                 ? { kind: 'tool_result', call_id: callId, error: 'Tool failed' }
                 : existing?.result;
           liveOpenCodeTools.set(callId, { call, ...(result ? { result } : {}) });
+          const indexes = liveOpenCodeToolIndexes.get(callId);
+          if (!indexes) {
+            const callIndex = liveOpenCodeChronology.length;
+            liveOpenCodeChronology.push(call);
+            const nextIndexes: { call: number; result?: number } = { call: callIndex };
+            if (result) {
+              nextIndexes.result = liveOpenCodeChronology.length;
+              liveOpenCodeChronology.push(result);
+            }
+            liveOpenCodeToolIndexes.set(callId, nextIndexes);
+          } else if (result) {
+            if (indexes.result === undefined) {
+              indexes.result = liveOpenCodeChronology.length;
+              liveOpenCodeChronology.push(result);
+            } else {
+              liveOpenCodeChronology[indexes.result] = result;
+            }
+          }
           cancelPendingFlush();
           await settleStreamingWrites();
           controller.signal.throwIfAborted();
           await bindings.updateMessage(placeholder.id, {
-            parts: [
-              { kind: 'text', text: acc },
-              ...currentOpenCodeToolParts(),
-              ...currentOpenCodeQuestionParts(),
-              ...currentOpenCodePermissionParts(),
-            ],
+            parts: currentOpenCodeStreamingParts(),
           });
         },
       };
@@ -6643,9 +6695,18 @@ export function startRuntimeListener(
             },
           ]
         : responseTextParts;
+      const chronologicalText = liveOpenCodeChronology
+        .flatMap((part) => (part.kind === 'text' ? [part.text] : []))
+        .join('');
+      const mayUseNativeChronology =
+        hasNativeOpenCodeTextIdentity &&
+        !oversizedResponseAttachment &&
+        displayResponseParts.every((part) => part.kind === 'text') &&
+        chronologicalText === finalText;
       const finalParts: Part[] = [
-        ...displayResponseParts,
-        ...currentOpenCodeToolParts(),
+        ...(mayUseNativeChronology
+          ? currentOpenCodeChronologyParts()
+          : [...displayResponseParts, ...currentOpenCodeToolParts()]),
         ...openCodeChecklistParts(response.checklist_evidence ?? []),
         ...currentOpenCodeQuestionParts(),
         ...currentOpenCodePermissionParts(),
@@ -6847,15 +6908,9 @@ export function startRuntimeListener(
 
       if (placeholderId) {
         const suffix = aborted ? '_[cancelled]_' : `_Error: ${safeErrorMessage(err)}_`;
-        const sep = acc.length > 0 ? '\n\n' : '';
         try {
           await bindings.updateMessage(placeholderId, {
-            parts: [
-              { kind: 'text', text: acc + sep + suffix },
-              ...currentOpenCodeToolParts(),
-              ...currentOpenCodeQuestionParts(),
-              ...currentOpenCodePermissionParts(),
-            ],
+            parts: currentOpenCodeErrorParts(suffix),
           });
         } catch (writeErr) {
           // The audit's medium finding: a DB failure inside the catch

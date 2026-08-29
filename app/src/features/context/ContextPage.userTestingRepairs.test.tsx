@@ -39,6 +39,25 @@ describe('Context Map focused user-testing repairs', () => {
     expect(source).toContain('Create map');
   });
 
+  it('opens multi-file selection for summary scope while preserving pasted path entry', () => {
+    const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
+
+    expect(source).toContain('chooseProjectFiles(true');
+    expect(source).toContain("title: 'Choose files to summarize'");
+    expect(source).toContain('mergeSiyuanSummaryPaths(current, picked)');
+    expect(source).toContain('parseSiyuanSummaryPathDraft(summaryPathDraft)');
+    expect(source).toContain('Add pasted path');
+    expect(source).toContain('Add files');
+  });
+
+  it('backs durable job polling off when maps are idle and pauses it while hidden', () => {
+    const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
+
+    expect(source).toContain('contextJobPollDelay({');
+    expect(source).toContain("document.addEventListener('visibilitychange', schedule)");
+    expect(source).not.toContain('window.setInterval(() => void refresh(), 1_000)');
+  });
+
   it('keeps an arbitrary Context source independent from the Files project root', () => {
     const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
 
@@ -89,7 +108,8 @@ describe('Context Map focused user-testing repairs', () => {
     const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
 
     expect(source).toContain('aria-label={`Index progress for ${map.name}`}');
-    expect(source).toContain('{visibleCountSummary} - {mapFilePath}');
+    expect(source).toContain('{exactFileCountSummary}');
+    expect(source).toContain('indexedItemSummary');
     expect(source).toContain(
       '`≈ ${compactRounded}% · ${compactEta} · ${job.createdNodes.toLocaleString()} nodes`',
     );

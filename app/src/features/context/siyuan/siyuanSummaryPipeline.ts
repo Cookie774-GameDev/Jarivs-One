@@ -23,6 +23,7 @@ import {
 } from './siyuanSummaryContent';
 import { executeSiyuanSummaryBatches } from './siyuanSummaryBatchExecutor';
 import { generateSiyuanSummaryBatch } from './siyuanSummaryBatchGenerator';
+import { siyuanSummaryLaneCount } from './siyuanSummaryBatch';
 
 export interface SiyuanSummaryModelIdentity {
   providerId: string;
@@ -587,6 +588,8 @@ export async function runSiyuanSummaryPipeline(input: {
   const durableControl = createDurableSiyuanIndexJobControl(input.projectId, input.mapId);
 
   if (cloudRoute && input.generator === generateSiyuanSummaryWithApprovedCloudModel) {
+    const summaryLaneCount = siyuanSummaryLaneCount(pendingEligible);
+    const summaryDispatchFileCount = summaryLaneCount * 8;
     const prepared: Array<{
       entry: SiyuanSafeIndexEntry;
       content: string;
@@ -606,7 +609,7 @@ export async function runSiyuanSummaryPipeline(input: {
           effort: input.identity.effort ?? 'minimal',
         },
         files,
-        laneCount: 3,
+        laneCount: summaryLaneCount,
         control: input.control,
         durableControl,
         signal: input.signal,
@@ -699,9 +702,9 @@ export async function runSiyuanSummaryPipeline(input: {
           content: safeInput.text,
           contentBytes: new TextEncoder().encode(safeInput.text).byteLength,
         });
-        // Three lanes × eight files keeps memory bounded and starts provider
-        // work without waiting for the full eligible corpus to be read.
-        if (prepared.length >= 24) await dispatchPrepared();
+        // Two to five selected-model OpenCode lanes keep memory bounded while
+        // scaling parallel summary chats to the amount of durable work.
+        if (prepared.length >= summaryDispatchFileCount) await dispatchPrepared();
       }
       await dispatchPrepared();
     } catch (error) {

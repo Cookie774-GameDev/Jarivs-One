@@ -87,6 +87,7 @@ import type { ContextRecoverySummary } from './contextRecovery';
 import { NightlySecondBrainPanel } from './NightlySecondBrainPanel';
 import { searchContextNodes } from './contextSearch';
 import { createContextSearchIndexPopulationPort } from './contextSearchIndexing';
+import { contextJobPollDelay } from './contextJobPolling';
 import {
   CONTEXT_CENTER_MODES,
   CONTEXT_INSPECTOR_TABS,
@@ -153,6 +154,10 @@ import {
   writeSiyuanSummaryRoutePreference,
 } from './siyuan/siyuanSummaryRoutePreference';
 import { formatSiyuanIndexCountSummary } from './siyuan/siyuanIndexCountSemantics';
+import {
+  mergeSiyuanSummaryPaths,
+  parseSiyuanSummaryPathDraft,
+} from './siyuan/siyuanSummaryPathSelection';
 import {
   canOpenPartialSiyuanSurface,
   hasSiyuanMapJobAuthority,
@@ -806,15 +811,41 @@ export function ContextPage() {
       return;
     }
     let active = true;
-    const refresh = async () => {
+    let timer: number | null = null;
+    let lastRunning = true;
+    const clearTimer = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+    };
+    const refresh = async (): Promise<SiyuanIndexJobRecord | null> => {
       const job = await readSiyuanIndexJob(projectId, selectedMap.id);
       if (active) setIndexJobSnapshot(job);
+      return job;
     };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 1_000);
+    const schedule = () => {
+      if (!active) return;
+      clearTimer();
+      const delay = contextJobPollDelay({
+        visible: document.visibilityState === 'visible',
+        running: lastRunning,
+      });
+      if (delay === null) return;
+      timer = window.setTimeout(() => {
+        void refresh().then((job) => {
+          lastRunning = job?.status === 'running';
+          schedule();
+        });
+      }, delay);
+    };
+    void refresh().then((job) => {
+      lastRunning = job?.status === 'running';
+      schedule();
+    });
+    document.addEventListener('visibilitychange', schedule);
     return () => {
       active = false;
-      window.clearInterval(timer);
+      clearTimer();
+      document.removeEventListener('visibilitychange', schedule);
     };
   }, [projectId, selectedMap]);
   const tree =
@@ -1792,6 +1823,28 @@ export function ContextPage() {
     toast.success('Context file selected', basename(picked));
   };
 
+  const addPastedSummaryPaths = React.useCallback(() => {
+    const pasted = parseSiyuanSummaryPathDraft(summaryPathDraft);
+    if (pasted.length === 0) return;
+    setSummarySelectedPaths((current) => mergeSiyuanSummaryPaths(current, pasted));
+    setSummaryPathDraft('');
+  }, [summaryPathDraft]);
+
+  const openSummaryFilePicker = React.useCallback(async () => {
+    const root = rootDraft.trim() || null;
+    const picked = await chooseProjectFiles(true, {
+      title: 'Choose files to summarize',
+      root,
+      initialPath: root,
+    });
+    if (picked.length === 0) return;
+    setSummarySelectedPaths((current) => mergeSiyuanSummaryPaths(current, picked));
+    setSummaryMode('selected');
+    setStatus(
+      `Added ${picked.length.toLocaleString()} ${picked.length === 1 ? 'file' : 'files'} to the summary scope.`,
+    );
+  }, [rootDraft]);
+
   const loadGitHubRepositories = React.useCallback(async () => {
     const installationId = githubInstallationId.trim();
     if (!accountId) {
@@ -2019,13 +2072,17 @@ export function ContextPage() {
             );
           },
         });
-        indexedFileCount = snapshot.manifest?.counts.indexed ?? generated.fileCount;
+        const indexedItemCount = snapshot.manifest?.counts.indexed ?? generated.fileCount;
+        const exactFileCount = (await readSiyuanIndexEntries(projectId, persistedMap.id)).filter(
+          (entry) => entry.kind === 'file',
+        ).length;
+        indexedFileCount = exactFileCount;
         const completedTree: ProjectContextTree = {
           ...generated,
           generatedAt: Date.now(),
           model: 'siyuan-managed-v1',
           fileCount: indexedFileCount,
-          summary: `SiYuan indexed ${indexedFileCount.toLocaleString()} allowed source items.`,
+          summary: `SiYuan indexed ${exactFileCount.toLocaleString()} files across ${indexedItemCount.toLocaleString()} allowed source items.`,
         };
         completedPersistence = await savePersistedContextTree(completedTree, {
           mapId: persistedMap.id,
@@ -2052,7 +2109,7 @@ export function ContextPage() {
       setSelectedId(PROJECT_ROOT_NODE_ID);
       setMapFlash(true);
       window.setTimeout(() => setMapFlash(false), 1250);
-      const contextBody = `${indexedFileCount.toLocaleString()} items indexed with SiYuan.`;
+      const contextBody = `${indexedFileCount.toLocaleString()} files indexed with SiYuan.`;
       const notifyState = useUIStore.getState();
       if (!notifyState.notificationMaster || !notifyState.doneNotifications.contextMaps) {
         toast.success('Context map ready', contextBody);
@@ -2454,27 +2511,34 @@ export function ContextPage() {
                         id="context-summary-path"
                         value={summaryPathDraft}
                         onChange={(event) => setSummaryPathDraft(event.target.value)}
-                        placeholder="Folder inside the source, or its full path"
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter') return;
+                          event.preventDefault();
+                          addPastedSummaryPaths();
+                        }}
+                        placeholder="Paste one or more file paths (one per line)"
                         className="h-8 min-w-0 text-metadata"
                       />
                       <Button
                         size="sm"
                         variant="secondary"
                         disabled={!summaryPathDraft.trim()}
-                        onClick={() => {
-                          const path = summaryPathDraft.trim();
-                          if (!path) return;
-                          setSummarySelectedPaths((current) =>
-                            current.some((entry) => entry.toLowerCase() === path.toLowerCase())
-                              ? current
-                              : [...current, path],
-                          );
-                          setSummaryPathDraft('');
-                        }}
+                        onClick={addPastedSummaryPaths}
                       >
-                        Add
+                        Add pasted path
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => void openSummaryFilePicker()}
+                      >
+                        Add files
                       </Button>
                     </div>
+                    <p className="text-metadata text-muted-foreground">
+                      {summarySelectedPaths.length.toLocaleString()} selected summary{' '}
+                      {summarySelectedPaths.length === 1 ? 'path' : 'paths'}
+                    </p>
                     {summarySelectedPaths.map((path) => (
                       <div
                         key={path}
@@ -3037,24 +3101,50 @@ function ContextMapList({
       return;
     }
     let mounted = true;
-    const refresh = async () => {
+    let timer: number | null = null;
+    let lastRunning = true;
+    const clearTimer = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+    };
+    const refresh = async (): Promise<boolean> => {
       const snapshots = await Promise.all(
         activeMaps.map(
           async (map) => [map.id, await readSiyuanIndexJob(projectId, map.id)] as const,
         ),
       );
-      if (!mounted) return;
+      if (!mounted) return false;
       setJobSnapshots(
         Object.fromEntries(
           snapshots.flatMap(([mapId, job]) => (job ? [[mapId, job] as const] : [])),
         ),
       );
+      return snapshots.some(([, job]) => job?.status === 'running');
     };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 1_000);
+    const schedule = () => {
+      if (!mounted) return;
+      clearTimer();
+      const delay = contextJobPollDelay({
+        visible: document.visibilityState === 'visible',
+        running: lastRunning,
+      });
+      if (delay === null) return;
+      timer = window.setTimeout(() => {
+        void refresh().then((running) => {
+          lastRunning = running;
+          schedule();
+        });
+      }, delay);
+    };
+    void refresh().then((running) => {
+      lastRunning = running;
+      schedule();
+    });
+    document.addEventListener('visibilitychange', schedule);
     return () => {
       mounted = false;
-      window.clearInterval(timer);
+      clearTimer();
+      document.removeEventListener('visibilitychange', schedule);
     };
   }, [activeMaps.map((map) => map.id).join('\u0000'), projectId]);
 
@@ -3064,10 +3154,13 @@ function ContextMapList({
     const deleted = map.status === 'deleted';
     const mapFilePath = map.filePath ?? contextMapFilePath(map.rootDir);
     const job = jobSnapshots[map.id];
-    const visibleCountSummary = formatSiyuanIndexCountSummary({
-      kind: job ? 'indexed-items' : 'files',
-      count: job?.indexed ?? map.tree.fileCount,
+    const exactFileCountSummary = formatSiyuanIndexCountSummary({
+      kind: 'files',
+      count: map.tree.fileCount,
     });
+    const indexedItemSummary = job
+      ? formatSiyuanIndexCountSummary({ kind: 'indexed-items', count: job.indexed })
+      : null;
     const compactPercent = job ? siyuanOverallProgressPercent(job) : null;
     const compactRounded = compactPercent === null ? null : Math.round(compactPercent);
     const compactEta = job ? formatSiyuanJobEta(job) : null;
@@ -3105,7 +3198,8 @@ function ContextMapList({
               {map.name}
             </span>
             <span className="block truncate font-mono text-metadata text-muted-foreground">
-              {visibleCountSummary} - {mapFilePath}
+              {exactFileCountSummary}
+              {indexedItemSummary ? ` · ${indexedItemSummary}` : ''} - {mapFilePath}
             </span>
             {!deleted && job && job.phase !== 'completed' ? (
               <span

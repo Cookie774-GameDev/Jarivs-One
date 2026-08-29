@@ -26,6 +26,14 @@ export const DEFAULT_SIYUAN_SUMMARY_BATCH_LIMITS = Object.freeze({
   laneCount: 3,
 }) satisfies SiyuanSummaryBatchLimits;
 
+export function siyuanSummaryLaneCount(fileCount: number): number {
+  if (!Number.isSafeInteger(fileCount) || fileCount < 0) {
+    throw new Error('siyuan_summary_batch_file_count_invalid');
+  }
+  if (fileCount === 0) return 1;
+  return Math.min(5, Math.max(2, Math.ceil(fileCount / 8)));
+}
+
 function boundedInteger(value: number, minimum: number, maximum: number, field: string): number {
   if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
     throw new Error(`siyuan_summary_batch_${field}_invalid`);

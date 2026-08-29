@@ -29,7 +29,13 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(source).toContain('Review privacy and exclusions');
     expect(source).toContain('Additional excluded paths');
     expect(source).toContain('expectedUpdatedAt: persistedMap.updatedAt');
-    expect(source).toContain('items indexed with SiYuan');
+    expect(source).toContain('files indexed with SiYuan');
+  });
+
+  it('keeps the exact-parent native creation repair in the official SiYuan path', () => {
+    expect(source).toContain('productionSiyuanContextMaps.sync(projectId, generatedMap, {');
+    expect(source).toContain('summarySelectedPaths');
+    expect(source).not.toContain('createCustomContextMap');
   });
 
   it('preserves fresh local ingestion eligibility through RLM and SiYuan creation', () => {

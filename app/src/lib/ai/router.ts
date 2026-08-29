@@ -566,7 +566,11 @@ async function executePersistentOpenCode(
         if (event.type === 'text') {
           diagnosticCode = 'router_chunk_delivery';
           text += event.delta;
-          req.onChunk?.({ delta: event.delta, first });
+          req.onChunk?.({
+            delta: event.delta,
+            first,
+            ...(event.streamPartId ? { streamPartId: event.streamPartId } : {}),
+          });
           first = false;
         } else if (event.type === 'usage') {
           diagnosticCode = 'router_usage_event';
@@ -823,7 +827,11 @@ async function runKernelSmokeCliConnection(
     if (args.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
     if (event.type === 'text') {
       text += event.delta;
-      args.onChunk?.({ delta: event.delta, first });
+      args.onChunk?.({
+        delta: event.delta,
+        first,
+        ...(event.streamPartId ? { streamPartId: event.streamPartId } : {}),
+      });
       first = false;
     } else if (event.type === 'usage') {
       usage = event.usage;

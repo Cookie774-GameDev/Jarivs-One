@@ -49,6 +49,7 @@ import {
   combineSystemPrompt,
   contextSystemAddendum,
   createGenerationSafeAsyncCache,
+  createOpenCodeTextStreamPartTracker,
   createPersistentOpenCodeRuntimeSupervisor,
   disposeOpenCodePersistentRuntimes,
   filterOpenCodeModelsToConnectedProviders,
@@ -810,6 +811,19 @@ describe('persistent OpenCode live authority', () => {
     });
     expect(JSON.stringify(event)).not.toMatch(
       /private-project|Users|file contents|must-not-survive/iu,
+    );
+  });
+
+  it('maps native OpenCode text parts to stable bounded opaque stream identities', () => {
+    const streamPartId = createOpenCodeTextStreamPartTracker();
+    const firstPart = streamPartId('["ses-private","msg-private","part-a","text"]');
+    const secondPart = streamPartId('["ses-private","msg-private","part-b","text"]');
+
+    expect(firstPart).toBe('opencode-text-1');
+    expect(streamPartId('["ses-private","msg-private","part-a","text"]')).toBe('opencode-text-1');
+    expect(secondPart).toBe('opencode-text-2');
+    expect(JSON.stringify([firstPart, secondPart])).not.toMatch(
+      /ses-private|msg-private|part-a|part-b/iu,
     );
   });
 

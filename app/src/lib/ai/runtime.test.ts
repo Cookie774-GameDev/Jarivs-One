@@ -2,6 +2,7 @@ import { vi } from 'vitest';
 import { createJarvisDb } from '@/lib/db';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import type { Agent, Message, Part } from '@/types';
+import type { LLMStreamChunk } from './types';
 import type { AgentId, ChatId, MessageId, ProviderId } from '@/types/common';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
@@ -1745,6 +1746,11 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       if (patch.parts) durableWrites.push(patch.parts);
     });
     mocks.runAgent.mockImplementationOnce(async (input) => {
+      input.onChunk?.({
+        delta: 'I inspected the existing game structure. ',
+        first: true,
+        streamPartId: 'opencode-text-1',
+      } as LLMStreamChunk & { streamPartId: string });
       await input.onToolActivity?.({
         name: 'read',
         status: 'started',
@@ -1763,10 +1769,13 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
         callId: 'read-1',
         fileLabel: 'Composer.tsx',
       });
-      input.onChunk?.({ delta: 'Refined.', first: true });
+      input.onChunk?.({
+        delta: 'The full HTML game is ready.',
+        streamPartId: 'opencode-text-2',
+      } as LLMStreamChunk & { streamPartId: string });
       input.onChunk?.({ delta: '', done: true });
       return {
-        text: 'Refined.',
+        text: 'I inspected the existing game structure. The full HTML game is ready.',
         usage: { input_tokens: 2, output_tokens: 1, cost_usd: 0 },
         provider: 'opencode',
         model: 'opencode-go/deepseek-v4-flash-vision-exp',
@@ -1806,6 +1815,17 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       ).toBe(true),
     );
     const finalParts = durableWrites.at(-1) ?? [];
+    expect(finalParts.slice(0, 4)).toEqual([
+      { kind: 'text', text: 'I inspected the existing game structure. ' },
+      {
+        kind: 'tool_call',
+        tool: 'read',
+        call_id: 'read-1',
+        args: { path: 'Composer.tsx' },
+      },
+      { kind: 'tool_result', call_id: 'read-1', result: { status: 'completed' } },
+      { kind: 'text', text: 'The full HTML game is ready.' },
+    ]);
     expect(finalParts).toContainEqual({
       kind: 'tool_call',
       tool: 'read',

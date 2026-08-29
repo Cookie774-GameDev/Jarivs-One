@@ -1021,6 +1021,48 @@ describe('AgenticConsole', () => {
     expect(rendered.container.querySelectorAll('[data-assistant-activity-ledger]')).toHaveLength(2);
   });
 
+  it('keeps one native checkpoint ledger chronologically between its assistant text parts', () => {
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('user-native-parts', 'user', 1, [
+          { kind: 'text', text: 'MAKE ME A FULL HTML GAME OKAY' },
+        ]),
+        message('assistant-native-parts', 'assistant', 2, [
+          { kind: 'text', text: 'I built the game shell and core loop.' },
+          {
+            kind: 'tool_call',
+            call_id: 'write-game',
+            tool: 'files.write',
+            args: { path: 'index.html' },
+          },
+          {
+            kind: 'tool_result',
+            call_id: 'write-game',
+            result: { status: 'completed' },
+          },
+          { kind: 'text', text: 'The complete HTML game is ready and verified.' },
+        ]),
+      ],
+      activity: [],
+      sessionEvidence: { status: 'completed' },
+    });
+
+    const firstCheckpoint = screen.getByText('I built the game shell and core loop.');
+    const finalCheckpoint = screen.getByText('The complete HTML game is ready and verified.');
+    const ledgers = rendered.container.querySelectorAll('[data-assistant-activity-ledger]');
+    expect(ledgers).toHaveLength(1);
+    const ledger = ledgers[0]!;
+    expect(
+      firstCheckpoint.compareDocumentPosition(ledger) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(ledger.compareDocumentPosition(finalCheckpoint) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(ledger.textContent).toContain('Edited 1');
+    expect(rendered.container.textContent).not.toContain('C:\\');
+  });
+
   it('pages older history without mounting the entire canonical transcript', () => {
     const messages = Array.from({ length: 450 }, (_, index) =>
       message(`m-${index}`, 'user', index, [{ kind: 'text', text: `Prompt ${index}` }]),

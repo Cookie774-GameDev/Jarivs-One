@@ -1221,6 +1221,22 @@ export function canonicalOpenCodeTextSuffix(streamed: string, canonical: string)
   return canonical.slice(streamed.length);
 }
 
+/**
+ * Maps private OpenCode message/part identity to bounded request-local labels.
+ * Native identifiers can contain session and file-adjacent data, so they must
+ * never cross the provider adapter boundary verbatim.
+ */
+export function createOpenCodeTextStreamPartTracker(): (partKey: string) => string {
+  const streamIds = new Map<string, string>();
+  return (partKey: string) => {
+    const existing = streamIds.get(partKey);
+    if (existing) return existing;
+    const streamPartId = `opencode-text-${streamIds.size + 1}`;
+    streamIds.set(partKey, streamPartId);
+    return streamPartId;
+  };
+}
+
 export function createGenerationSafeAsyncCache<Key, Value>(
   ttlMs: number,
 ): Readonly<{
@@ -1689,6 +1705,8 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     yield { type: 'session', sessionId: dispatch.sessionId };
 
     const accumulator = new OpenCodeTextAccumulator();
+    const streamPartIdFor = createOpenCodeTextStreamPartTracker();
+    let latestTextStreamPartId: string | undefined;
     let emittedText = '';
     let observedModelId: string | undefined;
     let done = false;
@@ -1737,7 +1755,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
                 byteLength: new TextEncoder().encode(delta).byteLength,
                 observedAt: Date.now(),
               });
-              yield { type: 'text', delta };
+              yield { type: 'text', delta, streamPartId: latestTextStreamPartId };
               emittedText = canonical;
             }
           }
@@ -1797,20 +1815,24 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       if (update) {
         const emission = accumulator.ingest(update);
         if (emission.kind === 'delta' && emission.channel === 'text' && emission.text) {
+          latestTextStreamPartId = streamPartIdFor(emission.partKey);
           emittedText = accumulator.fullText('text');
           request.onResponseObservation?.({
             kind: 'bytes',
             byteLength: new TextEncoder().encode(emission.text).byteLength,
             observedAt: Date.now(),
           });
-          yield { type: 'text', delta: emission.text };
+          yield { type: 'text', delta: emission.text, streamPartId: latestTextStreamPartId };
         } else if (emission.kind === 'replace' && emission.channel === 'text') {
           // The legacy ProviderEvent surface is append-only. Emit only a safe suffix when possible;
           // the final message poll below repairs any non-prefix correction canonically.
           const full = emission.fullText;
           if (full.startsWith(emittedText)) {
             const suffix = full.slice(emittedText.length);
-            if (suffix) yield { type: 'text', delta: suffix };
+            if (suffix) {
+              latestTextStreamPartId = streamPartIdFor(emission.partKey);
+              yield { type: 'text', delta: suffix, streamPartId: latestTextStreamPartId };
+            }
           }
           emittedText = full;
         } else if (emission.kind === 'delta' && emission.channel === 'reasoning' && emission.text) {
@@ -1882,7 +1904,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     });
     if (canonical && canonical !== emittedText) {
       const delta = canonicalOpenCodeTextSuffix(emittedText, canonical);
-      if (delta) yield { type: 'text', delta };
+      if (delta) yield { type: 'text', delta, streamPartId: latestTextStreamPartId };
     }
     const reconciledChecklists = openCodeChecklistSnapshotsFromMessages(messages);
     for (const checklist of reconciledChecklists) {

@@ -250,6 +250,44 @@ describe('canonical OpenCode AI routing', () => {
     expect(JSON.stringify(onToolActivity.mock.calls)).not.toContain('must-not-survive');
   });
 
+  it('preserves native OpenCode text-part boundaries on streamed chunks', async () => {
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield {
+          type: 'text',
+          delta: 'I built the game shell. ',
+          streamPartId: 'opencode-text-1',
+        } as const;
+        yield {
+          type: 'tool',
+          name: 'write',
+          status: 'completed',
+          callId: 'write-game',
+          fileLabel: 'index.html',
+        } as const;
+        yield {
+          type: 'text',
+          delta: 'The full game is ready.',
+          streamPartId: 'opencode-text-2',
+        } as const;
+        yield { type: 'done', finishReason: 'stop' } as const;
+      })(),
+    );
+    const onChunk = vi.fn();
+
+    await runAgent({
+      agent: openaiAgent,
+      messages: [{ role: 'user', content: 'MAKE ME A FULL HTML GAME OKAY' }],
+      onChunk,
+    });
+
+    expect(onChunk.mock.calls).toEqual([
+      [{ delta: 'I built the game shell. ', first: true, streamPartId: 'opencode-text-1' }],
+      [{ delta: 'The full game is ready.', first: false, streamPartId: 'opencode-text-2' }],
+      [{ delta: '', done: true }],
+    ]);
+  });
+
   it('returns the latest bounded OpenCode todo snapshots without generic tool payloads', async () => {
     openCodeSend.mockImplementationOnce(() =>
       (async function* () {

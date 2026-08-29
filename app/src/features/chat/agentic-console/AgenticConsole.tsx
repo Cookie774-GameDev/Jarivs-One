@@ -733,6 +733,69 @@ export function selectAssistantLedgerOwnerIds(messages: readonly Message[]): Rea
   return owners;
 }
 
+type NativeCheckpointLedgerPlacement = Readonly<{
+  sourceId: string;
+  message: Message;
+}>;
+
+function nativeCheckpointLedgerPlacements(
+  blocks: readonly TranscriptBlock[],
+  messagesBySource: ReadonlyMap<string, Message>,
+): ReadonlyMap<string, NativeCheckpointLedgerPlacement> {
+  const placements = new Map<string, NativeCheckpointLedgerPlacement>();
+  for (const [sourceId, message] of messagesBySource) {
+    if (message.role !== 'assistant') continue;
+    const sourceBlocks = blocks.filter((block) => block.sourceId === sourceId);
+    if (sourceBlocks.filter((block) => block.kind === 'answer').length < 2) continue;
+
+    let callIds = new Set<string>();
+    let lastToolBlockId: string | undefined;
+    let phaseIndex = 0;
+    const sourcePlacementIds: string[] = [];
+    const flush = () => {
+      if (!lastToolBlockId || callIds.size === 0) return;
+      const scopedParts = message.parts.filter(
+        (part) =>
+          (part.kind === 'tool_call' || part.kind === 'tool_result') && callIds.has(part.call_id),
+      );
+      if (scopedParts.length > 0) {
+        placements.set(lastToolBlockId, {
+          sourceId,
+          message: {
+            ...message,
+            id: `${String(message.id)}:checkpoint:${phaseIndex}` as Message['id'],
+            parts: scopedParts,
+            usage: undefined,
+          },
+        });
+        sourcePlacementIds.push(lastToolBlockId);
+        phaseIndex += 1;
+      }
+      callIds = new Set<string>();
+      lastToolBlockId = undefined;
+    };
+
+    for (const block of sourceBlocks) {
+      if (block.kind === 'answer') {
+        flush();
+      } else if (block.kind === 'command' || block.kind === 'tool') {
+        callIds.add(block.callId);
+        lastToolBlockId = block.id;
+      }
+    }
+    flush();
+    const finalPlacementId = sourcePlacementIds.at(-1);
+    const finalPlacement = finalPlacementId ? placements.get(finalPlacementId) : undefined;
+    if (finalPlacementId && finalPlacement && message.usage) {
+      placements.set(finalPlacementId, {
+        ...finalPlacement,
+        message: { ...finalPlacement.message, usage: message.usage },
+      });
+    }
+  }
+  return placements;
+}
+
 export function AgenticConsole({
   chatId,
   messages,
@@ -861,6 +924,14 @@ export function AgenticConsole({
   const assistantLedgerOwnerIds = React.useMemo(
     () => selectAssistantLedgerOwnerIds(messages),
     [messages],
+  );
+  const nativeCheckpointLedgers = React.useMemo(
+    () => nativeCheckpointLedgerPlacements(blocks, messagesBySource),
+    [blocks, messagesBySource],
+  );
+  const nativeCheckpointSourceIds = React.useMemo(
+    () => new Set([...nativeCheckpointLedgers.values()].map((placement) => placement.sourceId)),
+    [nativeCheckpointLedgers],
   );
   const lastVisibleIndexBySource = React.useMemo(() => {
     const indexes = new Map<string, number>();
@@ -1002,6 +1073,7 @@ export function AgenticConsole({
           ) : null}
           {blocks.map((block, index) => {
             const sourceMessage = messagesBySource.get(block.sourceId);
+            const nativeCheckpointLedger = nativeCheckpointLedgers.get(block.id);
             const inlineLegacyMessage =
               block.id === inlineLedgerLegacyId && block.kind === 'legacy'
                 ? block.message
@@ -1013,6 +1085,7 @@ export function AgenticConsole({
               sourceMessage?.role === 'assistant' &&
               lastVisibleIndexBySource.get(block.sourceId) === index &&
               assistantLedgerOwnerIds.has(String(sourceMessage.id)) &&
+              !nativeCheckpointSourceIds.has(block.sourceId) &&
               !(turnActivityMessage && sourceMessage.created_at >= latestUserTurnStartedAt);
             return (
               <React.Fragment key={block.id}>
@@ -1036,6 +1109,13 @@ export function AgenticConsole({
                     creatorDraftKind={creatorDraftKind}
                   />
                 )}
+                {nativeCheckpointLedger ? (
+                  <AssistantActivityLedger
+                    message={nativeCheckpointLedger.message}
+                    compact={compact}
+                    active={sessionIsActive && sourceMessage?.id === latestAssistantMessageId}
+                  />
+                ) : null}
                 {showLedger ? (
                   <AssistantActivityLedger
                     message={sourceMessage}

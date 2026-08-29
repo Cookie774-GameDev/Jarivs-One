@@ -81,7 +81,12 @@ export interface ProviderQuestionRequest {
 }
 
 export type ProviderEvent =
-  | { type: 'text'; delta: string }
+  | {
+      type: 'text';
+      delta: string;
+      /** Request-local opaque identity for one native provider text part. */
+      streamPartId?: string;
+    }
   | { type: 'reasoning'; delta: string }
   | { type: 'session'; sessionId: string }
   | {

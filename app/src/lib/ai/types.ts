@@ -149,6 +149,8 @@ export function observeResponseBody(
 export interface LLMStreamChunk {
   /** Text delta to append. Empty string is allowed (e.g., on the final chunk). */
   delta: string;
+  /** Request-local opaque identity for one native provider text part. */
+  streamPartId?: string;
   /** True only on the very first text chunk in a stream. */
   first?: boolean;
   /** True only on the terminal chunk. Implies the run is finished. */
