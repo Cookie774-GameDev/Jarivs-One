@@ -147,4 +147,74 @@ describe('Workbench BrowserPanel delivery', () => {
       ),
     );
   });
+
+  it('coalesces concurrent mount and bounds opens for the same native child', async () => {
+    let finishOpen: (() => void) | undefined;
+    native.invoke.mockImplementation(async (command) => {
+      if (command === 'workbench_browser_surface_open') {
+        await new Promise<void>((resolve) => {
+          finishOpen = resolve;
+        });
+      }
+    });
+
+    render(<BrowserPanel panel={panel('https://example.com/')} onUpdate={vi.fn()} />);
+
+    await waitFor(() => expect(finishOpen).toEqual(expect.any(Function)));
+    expect(
+      native.invoke.mock.calls.filter(([command]) => command === 'workbench_browser_surface_open'),
+    ).toHaveLength(1);
+    act(() => finishOpen?.());
+    await waitFor(() =>
+      expect(
+        native.invoke.mock.calls.filter(
+          ([command]) => command === 'workbench_browser_surface_open',
+        ),
+      ).toHaveLength(1),
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('shows an exact native string rejection instead of masking it', async () => {
+    native.invoke.mockImplementation(async (command) => {
+      if (command === 'workbench_browser_surface_open') {
+        throw 'workbench_browser_webview_unavailable';
+      }
+    });
+
+    render(<BrowserPanel panel={panel('https://example.com/')} onUpdate={vi.fn()} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toContain(
+        'workbench_browser_webview_unavailable',
+      ),
+    );
+  });
+
+  it('closes a child only after an in-flight open settles during unmount', async () => {
+    let finishOpen: (() => void) | undefined;
+    native.invoke.mockImplementation(async (command) => {
+      if (command === 'workbench_browser_surface_open') {
+        await new Promise<void>((resolve) => {
+          finishOpen = resolve;
+        });
+      }
+    });
+
+    const view = render(<BrowserPanel panel={panel('https://example.com/')} onUpdate={vi.fn()} />);
+    await waitFor(() => expect(finishOpen).toEqual(expect.any(Function)));
+    view.unmount();
+    expect(native.invoke).not.toHaveBeenCalledWith(
+      'workbench_browser_surface_hide',
+      expect.anything(),
+    );
+
+    act(() => finishOpen?.());
+    await waitFor(() =>
+      expect(native.invoke).toHaveBeenCalledWith(
+        'workbench_browser_surface_hide',
+        expect.objectContaining({ panelId: 'browser-1' }),
+      ),
+    );
+  });
 });

@@ -30,6 +30,11 @@ interface SurfaceBounds {
   height: number;
 }
 
+interface NativeOpenRequest {
+  url: string;
+  bounds: SurfaceBounds;
+}
+
 function readBounds(element: HTMLElement | null): SurfaceBounds | null {
   if (!element) return null;
   const rect = element.getBoundingClientRect();
@@ -40,6 +45,23 @@ function readBounds(element: HTMLElement | null): SurfaceBounds | null {
 function createOperationId(): string {
   const random = globalThis.crypto?.randomUUID?.().replaceAll('-', '');
   return `wb_${random ?? `${Date.now()}_${Math.random().toString(36).slice(2)}`}`;
+}
+
+function sameNativeOpenRequest(left: NativeOpenRequest | null, right: NativeOpenRequest): boolean {
+  if (!left) return false;
+  return (
+    left.url === right.url &&
+    left.bounds.x === right.bounds.x &&
+    left.bounds.y === right.bounds.y &&
+    left.bounds.width === right.bounds.width &&
+    left.bounds.height === right.bounds.height
+  );
+}
+
+function nativeFailureMessage(cause: unknown, fallback: string): string {
+  if (cause instanceof Error && cause.message.trim()) return cause.message;
+  if (typeof cause === 'string' && cause.trim()) return cause.trim();
+  return fallback;
 }
 
 export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
@@ -55,6 +77,11 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
   const onUpdateRef = React.useRef(onUpdate);
   const settingsRef = React.useRef(panel.settings);
   const nativeUrlRef = React.useRef(currentUrl);
+  const nativeOpenRef = React.useRef<{
+    active: NativeOpenRequest | null;
+    pending: NativeOpenRequest | null;
+    promise: Promise<void> | null;
+  }>({ active: null, pending: null, promise: null });
   onUpdateRef.current = onUpdate;
   settingsRef.current = panel.settings;
 
@@ -72,12 +99,35 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
       if (!bounds) return;
       if (!isTauri) throw new Error('The in-window browser is available in the VibeSpace app.');
       setLoadState('loading');
-      await invoke('workbench_browser_surface_open', {
-        panelId: panel.id,
-        operationId,
-        url,
-        bounds,
+      const next = { url, bounds };
+      const state = nativeOpenRef.current;
+      if (state.promise) {
+        state.pending = sameNativeOpenRequest(state.active, next) ? null : next;
+        return state.promise;
+      }
+      const run = async () => {
+        let request: NativeOpenRequest | null = next;
+        while (request) {
+          state.active = request;
+          state.pending = null;
+          await invoke('workbench_browser_surface_open', {
+            panelId: panel.id,
+            operationId,
+            url: request.url,
+            bounds: request.bounds,
+          });
+          request = state.pending;
+        }
+      };
+      const promise = run().finally(() => {
+        if (state.promise === promise) {
+          state.active = null;
+          state.pending = null;
+          state.promise = null;
+        }
       });
+      state.promise = promise;
+      return promise;
     },
     [operationId, panel.id],
   );
@@ -107,7 +157,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
     const refreshBounds = () =>
       void openNative(nativeUrlRef.current).catch((cause) => {
         if (disposed) return;
-        setError(cause instanceof Error ? cause.message : 'The page could not open.');
+        setError(nativeFailureMessage(cause, 'The page could not open.'));
         setLoadState('error');
       });
     const observer =
@@ -124,9 +174,11 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
       window.removeEventListener('scroll', refreshBounds, true);
       stopListening?.();
       if (isTauri) {
-        void invoke('workbench_browser_surface_hide', { panelId: panel.id, operationId }).catch(
-          () => undefined,
-        );
+        const closeAfterOpen = async () => {
+          await nativeOpenRef.current.promise?.catch(() => undefined);
+          await invoke('workbench_browser_surface_hide', { panelId: panel.id, operationId });
+        };
+        void closeAfterOpen().catch(() => undefined);
       }
     };
   }, [openNative, operationId, panel.id, policy?.delivery]);
@@ -135,7 +187,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
     if (policy?.delivery !== 'native-child') return;
     nativeUrlRef.current = policy.externalUrl;
     void openNative(policy.externalUrl).catch((cause) => {
-      const message = cause instanceof Error ? cause.message : 'The page could not open.';
+      const message = nativeFailureMessage(cause, 'The page could not open.');
       setError(message);
       setLoadState('error');
     });
@@ -162,7 +214,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
     if (nextPolicy.delivery === 'embedded') setFrameKey((value) => value + 1);
     else
       void openNative(nextPolicy.externalUrl).catch((cause) => {
-        const message = cause instanceof Error ? cause.message : 'The page could not open.';
+        const message = nativeFailureMessage(cause, 'The page could not open.');
         setError(message);
         setLoadState('error');
         toast.warning('Page could not open', message);
@@ -190,7 +242,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
         operationId,
         delta,
       }).catch((cause) => {
-        setError(cause instanceof Error ? cause.message : 'History is unavailable.');
+        setError(nativeFailureMessage(cause, 'History is unavailable.'));
         setLoadState('error');
       });
       return;
@@ -214,7 +266,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
       panelId: panel.id,
       operationId,
     }).catch((cause) => {
-      setError(cause instanceof Error ? cause.message : `Browser ${command} failed.`);
+      setError(nativeFailureMessage(cause, `Browser ${command} failed.`));
       setLoadState('error');
     });
   };
