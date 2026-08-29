@@ -2290,3 +2290,14 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Production reproduction at 1920x1080: `#terminalsTitle` has `clientWidth=935`, `scrollWidth=1177` (242px ink overflow into the adjacent copy column); `#contextInspector` overlaps `#contextCanvas` by its full 320px width.
 - Root cause: the terminal grid under-allocates the unbreakable oversized word “APPROVAL,” while the Context inspector is absolutely positioned on top of a full-width canvas instead of owning reserved layout space.
 - Scope: add a narrowly scoped REV13 responsive layout override and deterministic geometry assertions; preserve all content, behavior, runtime systems, public routes, and payment/release boundaries.
+
+### Final checkpoint
+
+- Status: complete; owned lock released after exact-byte public verification.
+- Implementation/deployment commit: `1e7f6c768895c9ec054caf9d3f281bb1c8f5d851` (`site: fix terminal and context overlaps`), pushed fast-forward to `origin/main` from base `782b6254a27cfca146c284e009fe248bb82b207d`.
+- Layout result: the Ten Terminals headline remains editorially oversized but is bounded to its own grid column; the Context Map canvas now owns a dedicated viewport beside (or above on mobile) a non-overlapping inspector rail.
+- Responsive geometry: 1920x1080, 1440x900, 1024x768, 900x900, 768x1024, 390x844, and 320x568 each returned zero document overflow, zero terminal headline ink overflow, and zero Context canvas/inspector collision area.
+- Interaction/accessibility: Context keyboard zoom, pan, Enter selection, inspector updates, and focus retention passed; axe-core 4.10.3 returned zero WCAG A/AA violations at 1440x900 and 390x844; fresh local and public console checks returned zero warnings/errors.
+- Static verification: all 10 inline scripts parsed, 149 IDs were unique, and `git diff --check` passed. GitHub Pages run `33225291825` completed successfully. Repository CI run `33225291819` had Rust check, frontend typecheck, and Vite build passing while the unchanged broader Vitest suite remained in progress at lock release.
+- Exact-byte verification: local `site/index.html` and `https://vibespaceos.com/` both SHA-256 `C0944A91E8EAE5860CBD17A3C21F0FEC9276BE0B4EC215CF81CEB7115C2D54AD` (603,163 bytes).
+- Boundaries honored: no app, PR #31, Stripe, Supabase, DNS, billing, release, or non-homepage route mutation.
