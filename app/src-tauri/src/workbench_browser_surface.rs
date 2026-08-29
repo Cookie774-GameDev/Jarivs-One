@@ -6,6 +6,7 @@
 
 use std::{collections::HashMap, sync::LazyLock, sync::Mutex};
 
+use async_lock::Mutex as AsyncMutex;
 use serde::{Deserialize, Serialize};
 use tauri::{
     webview::{PageLoadEvent, Webview, WebviewBuilder},
@@ -55,6 +56,7 @@ struct SurfaceRecord {
 
 static SURFACES: LazyLock<Mutex<HashMap<String, SurfaceRecord>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+static SURFACE_MUTATION: AsyncMutex<()> = AsyncMutex::new(());
 
 #[cfg(windows)]
 const WEBVIEW2_BROWSER_ARGUMENTS: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
@@ -231,6 +233,7 @@ pub async fn workbench_browser_surface_open(
     bounds: WorkbenchBrowserBounds,
 ) -> Result<WorkbenchBrowserStatus, String> {
     ensure_caller(caller.label())?;
+    let _mutation = SURFACE_MUTATION.lock().await;
     validate_id(&panel_id, "workbench_browser_panel_invalid")?;
     validate_id(&operation_id, "workbench_browser_operation_invalid")?;
     validate_bounds(&bounds)?;
@@ -398,6 +401,7 @@ pub async fn workbench_browser_surface_hide(
     operation_id: String,
 ) -> Result<(), String> {
     ensure_caller(caller.label())?;
+    let _mutation = SURFACE_MUTATION.lock().await;
     let webview = with_surface(&app, &panel_id, &operation_id)?;
     webview
         .hide()
@@ -458,6 +462,25 @@ mod tests {
         assert!(opening_loading_state(true, Some(true)));
         assert!(opening_loading_state(true, None));
         assert!(opening_loading_state(false, Some(false)));
+    }
+
+    #[test]
+    fn child_creation_and_close_are_serialized_across_renderer_lifecycles() {
+        let source = include_str!("workbench_browser_surface.rs");
+        for command in [
+            "pub async fn workbench_browser_surface_open(",
+            "pub async fn workbench_browser_surface_hide(",
+        ] {
+            let start = source.find(command).expect("surface command is registered");
+            let remaining = &source[start..];
+            let end = remaining
+                .find("\n}\n")
+                .expect("surface command has a bounded body");
+            assert!(
+                remaining[..end].contains("SURFACE_MUTATION.lock().await"),
+                "{command} is not serialized",
+            );
+        }
     }
 
     #[cfg(windows)]
