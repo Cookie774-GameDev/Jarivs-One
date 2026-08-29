@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "suiteId": "pr31-deepseek-native-terminal-latency-v1",
-  "generatedAt": "2026-08-28T15:48:21.801Z",
+  "generatedAt": "2026-08-29T09:40:42.377Z",
   "status": "complete",
   "rawOutputStored": false,
   "expectedModelId": "opencode-go/deepseek-v4-flash-vision-exp",
@@ -38,8 +38,8 @@
         "cold": {
           "phase": "cold",
           "status": "completed",
-          "durationMs": 7058,
-          "timeToFirstTextMs": 6973,
+          "durationMs": 8877,
+          "timeToFirstTextMs": 8762,
           "identity": {
             "providerId": "opencode-go",
             "modelId": "deepseek-v4-flash-vision-exp",
@@ -66,13 +66,13 @@
               }
             ]
           },
-          "sessionSha256": "9abdce0c8cc5d11f8e8245fd312d033f865f619739710e3a9d4e493a60e045a6"
+          "sessionSha256": "a3e67eebdaa3d65f62ac2bbeb740b6a882889403c6fc196b17a485c75f445ff2"
         },
         "warm": {
           "phase": "warm",
           "status": "completed",
-          "durationMs": 6104,
-          "timeToFirstTextMs": 6018,
+          "durationMs": 7144,
+          "timeToFirstTextMs": 7063,
           "identity": {
             "providerId": "opencode-go",
             "modelId": "deepseek-v4-flash-vision-exp",
@@ -99,7 +99,7 @@
               }
             ]
           },
-          "sessionSha256": "9abdce0c8cc5d11f8e8245fd312d033f865f619739710e3a9d4e493a60e045a6",
+          "sessionSha256": "a3e67eebdaa3d65f62ac2bbeb740b6a882889403c6fc196b17a485c75f445ff2",
           "sessionContinuity": true
         }
       }
@@ -115,8 +115,8 @@
         "cold": {
           "phase": "cold",
           "status": "completed",
-          "durationMs": 11322,
-          "timeToFirstTextMs": 11233,
+          "durationMs": 9916,
+          "timeToFirstTextMs": 9823,
           "identity": {
             "providerId": "opencode-go",
             "modelId": "deepseek-v4-flash-vision-exp",
@@ -143,13 +143,13 @@
               }
             ]
           },
-          "sessionSha256": "5e74954781310a5ad1f9cd8d9da96c9f2c52b122731d9efda0b699ae4666e3d8"
+          "sessionSha256": "badcf9250e40f85cad6d50352db92058695e21e284101eacf17255b92127324d"
         },
         "warm": {
           "phase": "warm",
           "status": "completed",
-          "durationMs": 7102,
-          "timeToFirstTextMs": 7011,
+          "durationMs": 7181,
+          "timeToFirstTextMs": 7104,
           "identity": {
             "providerId": "opencode-go",
             "modelId": "deepseek-v4-flash-vision-exp",
@@ -176,7 +176,7 @@
               }
             ]
           },
-          "sessionSha256": "5e74954781310a5ad1f9cd8d9da96c9f2c52b122731d9efda0b699ae4666e3d8",
+          "sessionSha256": "badcf9250e40f85cad6d50352db92058695e21e284101eacf17255b92127324d",
           "sessionContinuity": true
         }
       },
@@ -187,7 +187,7 @@
     },
     {
       "id": "disposable-write",
-      "promptSha256": "5c9bc3226e0f3b105ad71f90abc248ad001bb2bc96625c306bc02c2cc24536e8",
+      "promptSha256": "2ecb044c3b731fd7b93ce802497f604ea55b29f77d86843d8e7f3faa9560d777",
       "bounds": {
         "timeoutMs": 35000,
         "maxOutputChars": 2000
@@ -196,8 +196,8 @@
         "cold": {
           "phase": "cold",
           "status": "completed",
-          "durationMs": 9212,
-          "timeToFirstTextMs": 9143,
+          "durationMs": 21212,
+          "timeToFirstTextMs": 21115,
           "identity": {
             "providerId": "opencode-go",
             "modelId": "deepseek-v4-flash-vision-exp",
@@ -228,13 +228,13 @@
               }
             ]
           },
-          "sessionSha256": "1fab8a0cffca1080c069a61e6d3d4b3f2cd7a237a6fd34934213d331f759e305"
+          "sessionSha256": "c984ca1b76a13ed565d12a530b747a21f3ef593dc3c5f87eb8380a8911fae74e"
         },
         "warm": {
           "phase": "warm",
           "status": "completed",
-          "durationMs": 8861,
-          "timeToFirstTextMs": 8771,
+          "durationMs": 10621,
+          "timeToFirstTextMs": 10541,
           "identity": {
             "providerId": "opencode-go",
             "modelId": "deepseek-v4-flash-vision-exp",
@@ -265,7 +265,7 @@
               }
             ]
           },
-          "sessionSha256": "1fab8a0cffca1080c069a61e6d3d4b3f2cd7a237a6fd34934213d331f759e305",
+          "sessionSha256": "c984ca1b76a13ed565d12a530b747a21f3ef593dc3c5f87eb8380a8911fae74e",
           "sessionContinuity": true
         }
       },
@@ -277,7 +277,7 @@
   ],
   "execution": {
     "budgetMs": 270000,
-    "elapsedMs": 61565,
+    "elapsedMs": 78596,
     "tempDirectoryRemoved": true
   },
   "comparisonBoundary": {
@@ -299,7 +299,7 @@
       },
       {
         "id": "disposable-write",
-        "promptSha256": "5c9bc3226e0f3b105ad71f90abc248ad001bb2bc96625c306bc02c2cc24536e8"
+        "promptSha256": "2ecb044c3b731fd7b93ce802497f604ea55b29f77d86843d8e7f3faa9560d777"
       }
     ],
     "requiredSampleFields": [

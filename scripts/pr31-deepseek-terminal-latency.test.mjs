@@ -220,6 +220,48 @@ test('runs a secret-safe terminal suite and removes only its disposable director
   }
 });
 
+test('revalidates warm write state instead of trusting the reused session filesystem memory', async () => {
+  const parent = await mkdtemp(path.join(os.tmpdir(), 'pr31-latency-test-parent-'));
+  const invocations = [];
+  try {
+    const report = await runTerminalMeasurementSuite({
+      tempParent: parent,
+      cliVersion: 'test-cli',
+      measure: async ({ promptCase, phase, sessionId, tempRoot }) => {
+        invocations.push({ promptId: promptCase.id, phase, sessionId });
+        if (promptCase.id === 'disposable-write') {
+          if (phase === 'warm') {
+            assert.equal(
+              await readFile(path.join(tempRoot, 'output.txt'), 'utf8'),
+              'WARM_REWRITE_REQUIRED\n',
+            );
+          }
+          await writeFile(path.join(tempRoot, 'output.txt'), 'LATENCY_OK\n', 'utf8');
+        }
+        return {
+          sessionId: sessionId ?? `ses_${promptCase.id}`,
+          output: promptCase.expectedResponse,
+          durationMs: phase === 'cold' ? 120 : 80,
+          timeToFirstTextMs: phase === 'cold' ? 30 : 20,
+          identity: TERMINAL_IDENTITY,
+        };
+      },
+    });
+
+    for (const prompt of LATENCY_PROMPTS) {
+      const samples = invocations.filter(({ promptId }) => promptId === prompt.id);
+      assert.equal(samples[0]?.sessionId, undefined);
+      assert.equal(samples[1]?.sessionId, `ses_${prompt.id}`);
+    }
+    assert.equal(
+      report.prompts.every(({ samples }) => samples.warm.sessionContinuity),
+      true,
+    );
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test('cleans the disposable directory even when observed identity is wrong', async () => {
   const parent = await mkdtemp(path.join(os.tmpdir(), 'pr31-latency-test-parent-'));
   try {

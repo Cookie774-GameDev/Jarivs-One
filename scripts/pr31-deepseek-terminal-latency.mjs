@@ -56,7 +56,7 @@ SOURCE: input.txt`,
   }),
   promptCase({
     id: 'disposable-write',
-    prompt: `Write a UTF-8 file named output.txt in the current working directory containing exactly LATENCY_OK followed by one newline. Do not inspect any other path. Then return exactly this line and nothing else:
+    prompt: `Read output.txt in the current working directory if it exists; do not rely on any earlier turn's filesystem state. Then write that file as UTF-8 containing exactly LATENCY_OK followed by one newline. Do not inspect any other path. Then return exactly this line and nothing else:
 WRITE: output.txt`,
     expectedResponse: 'WRITE: output.txt',
   }),
@@ -304,10 +304,11 @@ async function preparePromptFilesystem(prompt, tempRoot) {
   }
 }
 
-async function clearWarmWriteOutput(prompt, tempRoot) {
+async function prepareWarmWriteState(prompt, tempRoot) {
   if (prompt.id !== 'disposable-write') return;
-  await unlink(path.join(tempRoot, 'output.txt')).catch((error) => {
-    if (error?.code !== 'ENOENT') throw error;
+  await writeFile(path.join(tempRoot, 'output.txt'), 'WARM_REWRITE_REQUIRED\n', {
+    encoding: 'utf8',
+    flag: 'w',
   });
 }
 
@@ -372,7 +373,7 @@ export async function runTerminalMeasurementSuite({
       const coldQuality = await assessPromptQuality(prompt, cold, tempRoot);
       if (!coldQuality.passed) throw new LatencyContractError(`quality_failed_${prompt.id}_cold`);
 
-      await clearWarmWriteOutput(prompt, tempRoot);
+      await prepareWarmWriteState(prompt, tempRoot);
       const warm = await measure({
         promptCase: prompt,
         phase: 'warm',
@@ -746,14 +747,30 @@ export async function measureTerminalSample({ promptCase, phase, sessionId, temp
     ...(phase === 'warm' ? ['--session', sessionId] : []),
     promptCase.prompt,
   ];
-  const run = await executeOpenCode(args, {
-    timeoutMs: promptCase.bounds.timeoutMs,
-    trackFirstText: true,
-  });
+  let run;
+  try {
+    run = await executeOpenCode(args, {
+      timeoutMs: promptCase.bounds.timeoutMs,
+      trackFirstText: true,
+    });
+  } catch (error) {
+    if (error instanceof LatencyContractError && error.code === 'opencode_process_failed') {
+      throw new LatencyContractError(`opencode_run_failed_${promptCase.id}_${phase}`);
+    }
+    throw error;
+  }
   const observedSessionId = await sessionIdFromRunOutput(run.stdout);
-  const exported = await executeOpenCode(['export', '--pure', '--sanitize', observedSessionId], {
-    timeoutMs: 10_000,
-  });
+  let exported;
+  try {
+    exported = await executeOpenCode(['export', '--pure', '--sanitize', observedSessionId], {
+      timeoutMs: 10_000,
+    });
+  } catch (error) {
+    if (error instanceof LatencyContractError && error.code === 'opencode_process_failed') {
+      throw new LatencyContractError(`opencode_export_failed_${promptCase.id}_${phase}`);
+    }
+    throw error;
+  }
   return parseOpenCodeMeasurement({
     runOutput: run.stdout,
     sanitizedExport: exported.stdout,
