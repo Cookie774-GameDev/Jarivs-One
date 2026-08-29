@@ -22,6 +22,7 @@ function dependencies(approved = true) {
     context: { list: call, read: call, attach: call, rlm: call },
     skills: { list: call, load: call },
     plugins: { list: call, run: call },
+    mcp: { list: call, run: call },
     tasks: { create: call, update: call },
     schedule: { create: call },
     app: { navigate: call, getState: call },
@@ -51,6 +52,13 @@ const argumentsByTool: Record<ToolGatewayTool, Record<string, unknown>> = {
   'skills.load': { skillId: 's-1' },
   'plugins.list': {},
   'plugins.run': { pluginId: 'p-1', operation: 'status' },
+  'mcp.list': {},
+  'mcp.run': {
+    connectionId: 'docs-server',
+    toolName: 'search',
+    classification: 'read',
+    input: { query: 'VibeSpace' },
+  },
   'tasks.create': { title: 'Task' },
   'tasks.update': { taskId: 't-1', status: 'done' },
   'schedule.create': { title: 'Daily', schedule: 'daily', action: 'test' },
@@ -125,6 +133,21 @@ describe('tool gateway semantic runtime', () => {
 
     const denied = dependencies(false);
     const response = await createToolGatewayRuntime(denied.deps).execute(request('tasks.create'));
+    expect(response).toMatchObject({ ok: false, code: 'permission_denied' });
+    expect(denied.call).not.toHaveBeenCalled();
+  });
+
+  it('requires Tool Gateway approval before any custom MCP invocation', async () => {
+    const allowed = dependencies(true);
+    await createToolGatewayRuntime(allowed.deps).execute(request('mcp.run'));
+    expect(allowed.deps.authorizeMutation).toHaveBeenCalledWith(request('mcp.run'));
+    expect(allowed.call).toHaveBeenCalledWith(
+      argumentsByTool['mcp.run'],
+      expect.objectContaining({ mutationApproved: true }),
+    );
+
+    const denied = dependencies(false);
+    const response = await createToolGatewayRuntime(denied.deps).execute(request('mcp.run'));
     expect(response).toMatchObject({ ok: false, code: 'permission_denied' });
     expect(denied.call).not.toHaveBeenCalled();
   });

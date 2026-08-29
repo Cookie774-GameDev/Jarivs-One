@@ -572,6 +572,7 @@ fn scoped_provider_config(
             "vibespace_context": "allow",
             "skills_list": "allow",
             "plugins_list": "allow",
+            "mcp_list": "allow",
             "app_getState": "allow",
             "terminal_open": "ask",
             "terminal_focus": "ask",
@@ -584,6 +585,7 @@ fn scoped_provider_config(
             "context_attach": "ask",
             "skills_load": "ask",
             "plugins_run": "ask",
+            "mcp_run": "ask",
             "tasks_create": "ask",
             "tasks_update": "ask",
             "schedule_create": "ask",
@@ -603,7 +605,11 @@ fn scoped_provider_config(
                 "steps": 12,
                 "permission": {
                     "*": "deny",
-                    "vibespace_context": "allow"
+                    "vibespace_context": "allow",
+                    "plugins_list": "allow",
+                    "plugins_run": "ask",
+                    "mcp_list": "allow",
+                    "mcp_run": "ask"
                 }
             }
         }),
@@ -706,8 +712,10 @@ export const VibeSpaceToolGateway = async () => ({
     }),
     "skills_list": define("skills.list", "List VibeSpace skills.", { limit: integer(100).optional() }),
     "skills_load": define("skills.load", "Load one VibeSpace skill for this chat.", { skillId: id() }),
-    "plugins_list": define("plugins.list", "List connected VibeSpace plugins.", { limit: integer(100).optional() }),
-    "plugins_run": define("plugins.run", "Run one allowed VibeSpace plugin operation.", { pluginId: id(), operation: text(128), input: tool.schema.record(tool.schema.string(), tool.schema.unknown()).optional() }),
+    "plugins_list": define("plugins.list", "List only plugins currently connected and enabled for this exact VibeSpace project. Call this before plugins_run; use only returned plugin IDs and operations. Authentication stays in VibeSpace and credentials must never be requested.", { limit: integer(100).optional() }),
+    "plugins_run": define("plugins.run", "Run one operation returned by plugins_list for the exact connected VibeSpace project. Never request, pass, or reveal provider credentials.", { pluginId: id(), operation: text(128), input: tool.schema.record(tool.schema.string(), tool.schema.unknown()).optional() }),
+    "mcp_list": define("mcp.list", "Restore and list only approved, healthy, explicitly exposed custom MCP tools for this exact VibeSpace project. Call this before mcp_run and follow the returned input schema. Credentials remain managed by VibeSpace.", { limit: integer(100).optional() }),
+    "mcp_run": define("mcp.run", "Run one exact custom MCP tool returned by mcp_list. Use its returned connection ID, tool name, classification, and input schema; never request or pass credentials.", { connectionId: id(), toolName: id(), classification: tool.schema.enum(["read", "write", "mutation"]), input: tool.schema.record(tool.schema.string(), tool.schema.unknown()).optional() }),
     "tasks_create": define("tasks.create", "Create a VibeSpace task.", { title: text(512), notes: text(10000).optional(), dueAt: text(128).optional() }),
     "tasks_update": define("tasks.update", "Update one VibeSpace task.", { taskId: id(), title: text(512).optional(), status: text(64).optional() }),
     "schedule_create": define("schedule.create", "Create a VibeSpace schedule.", { title: text(512), schedule: text(512), action: text(32768) }),
@@ -2538,6 +2546,23 @@ mod tests {
         assert_eq!(config["permission"]["terminal_list"], "allow");
         assert_eq!(config["permission"]["terminal_write"], "ask");
         assert_eq!(config["permission"]["vibespace_context"], "allow");
+        assert_eq!(config["permission"]["plugins_list"], "allow");
+        assert_eq!(config["permission"]["plugins_run"], "ask");
+        assert_eq!(config["permission"]["mcp_list"], "allow");
+        assert_eq!(config["permission"]["mcp_run"], "ask");
+        assert_eq!(
+            config["agent"]["vibespace"]["permission"]["plugins_list"],
+            "allow"
+        );
+        assert_eq!(
+            config["agent"]["vibespace"]["permission"]["plugins_run"],
+            "ask"
+        );
+        assert_eq!(
+            config["agent"]["vibespace"]["permission"]["mcp_list"],
+            "allow"
+        );
+        assert_eq!(config["agent"]["vibespace"]["permission"]["mcp_run"], "ask");
 
         let plugin = fs::read_to_string(
             spec.config_dir
@@ -2550,6 +2575,10 @@ mod tests {
             ("terminal_write", "terminal.write"),
             ("context_read", "context.read"),
             ("vibespace_context", "vibespace_context"),
+            ("plugins_list", "plugins.list"),
+            ("plugins_run", "plugins.run"),
+            ("mcp_list", "mcp.list"),
+            ("mcp_run", "mcp.run"),
             ("profile_allAboutMe_update", "profile.allAboutMe.update"),
             ("memory_learning_update", "memory.learning.update"),
             ("app_getState", "app.getState"),
@@ -2573,6 +2602,11 @@ mod tests {
         assert!(!plugin.contains("\"context.update\""));
         assert!(plugin.contains("Bounded lossless VibeSpace context"));
         assert!(plugin.contains("\"investigate\""));
+        assert!(plugin.contains("Call this before plugins_run"));
+        assert!(plugin.contains("Call this before mcp_run"));
+        assert!(plugin
+            .contains("classification: tool.schema.enum([\"read\", \"write\", \"mutation\"])"));
+        assert!(plugin.contains("credentials must never be requested"));
         assert!(config["permission"].get("context.update").is_none());
         assert_eq!(
             spec.tool_gateway_environment,

@@ -43,6 +43,7 @@ export interface ToolGatewayDependencies {
   };
   skills: { list: SemanticMethod; load: SemanticMethod };
   plugins: { list: SemanticMethod; run: SemanticMethod };
+  mcp: { list: SemanticMethod; run: SemanticMethod };
   tasks: { create: SemanticMethod; update: SemanticMethod };
   schedule: { create: SemanticMethod };
   app: { navigate: SemanticMethod; getState: SemanticMethod };
@@ -87,6 +88,8 @@ export function createToolGatewayRuntime(deps: ToolGatewayDependencies): {
     'skills.load': deps.skills.load,
     'plugins.list': deps.plugins.list,
     'plugins.run': deps.plugins.run,
+    'mcp.list': deps.mcp.list,
+    'mcp.run': deps.mcp.run,
     'tasks.create': deps.tasks.create,
     'tasks.update': deps.tasks.update,
     'schedule.create': deps.schedule.create,

@@ -57,6 +57,13 @@ describe('tool gateway protocol', () => {
       'skills.load': { skillId: 'skill-1' },
       'plugins.list': {},
       'plugins.run': { pluginId: 'plugin-1', operation: 'status' },
+      'mcp.list': {},
+      'mcp.run': {
+        connectionId: 'docs-server',
+        toolName: 'search',
+        classification: 'read',
+        input: { query: 'VibeSpace' },
+      },
       'tasks.create': { title: 'Ship gateway' },
       'tasks.update': { taskId: 'task-1' },
       'schedule.create': { title: 'Tests', schedule: 'daily', action: 'npm test' },
@@ -366,6 +373,27 @@ describe('tool gateway protocol', () => {
     expect(() =>
       parseToolGatewayRequest(
         request({ tool: 'plugins.run', args: { pluginId: 'p', operation: 'x', input: [] } }),
+      ),
+    ).toThrow();
+    expect(() =>
+      parseToolGatewayRequest(
+        request({
+          tool: 'mcp.run',
+          args: { connectionId: 'docs', toolName: 'search', classification: 'execute' },
+        }),
+      ),
+    ).toThrow();
+    expect(() =>
+      parseToolGatewayRequest(
+        request({
+          tool: 'mcp.run',
+          args: {
+            connectionId: 'docs',
+            toolName: 'search',
+            classification: 'read',
+            input: { apiKey: 'must-never-cross-the-gateway' },
+          },
+        }),
       ),
     ).toThrow();
   });

@@ -4,17 +4,19 @@ import { loadPersistedContextMaps } from '@/features/context';
 import { useAllAboutMeStore } from '@/features/all-about-me/store';
 import { useJarvisLearningStore } from '@/features/jarvis-memory/learningStore';
 import { APP_ROUTES, type Route } from '@/features/navigation/routeSchema';
-import {
-  PLUGIN_CATALOG,
-  selectPluginConnectionsForAccount,
-  usePluginStore,
-} from '@/features/plugins';
+import { PLUGIN_CATALOG, isPluginActive } from '@/features/plugins';
 import { getAllCatalogSkills } from '@/features/skills';
 import { createTask, completeTask, reopenTask, updateTask } from '@/features/tasks/TaskService';
 import { enqueueTerminalCommand } from '@/features/terminals/terminalCommandQueue';
 import { useTerminalSchedulerStore } from '@/features/terminals/terminalScheduler';
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
 import { useAuthStore } from '@/stores/auth';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import {
+  getVibeSpaceMcpGateway,
+  type VibeSpaceGatewayConnection,
+  type VibeSpaceMcpInvocationClassification,
+} from '@/lib/mcp/vibeSpaceGateway';
 import { useUIStore } from '@/stores/ui';
 import type { TaskId } from '@/types/common';
 import type { ActionResult } from '@/lib/actions/types';
@@ -72,6 +74,67 @@ export function clearToolGatewayMutationGrants(): void {
 
 function stringArg(args: Record<string, unknown>, key: string): string {
   return args[key] as string;
+}
+
+function activeToolGatewayScope(): { accountId: string; projectId: string } {
+  const auth = useAuthStore.getState();
+  const identity = resolveAccountIdentity(auth);
+  const projectId = auth.projectId ? String(auth.projectId) : '';
+  if (!identity || !projectId) throw new Error('tool_gateway_scope_unavailable');
+  return { accountId: identity.accountId, projectId };
+}
+
+const SECRET_SCHEMA_KEY =
+  /secret|token|password|authorization|authentication|authheader|cookie|credential|api.?key/i;
+
+function safeMcpInputSchema(value: unknown, depth = 0): unknown {
+  if (depth > 8) throw new Error('mcp_schema_invalid');
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') return value;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('mcp_schema_invalid');
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > 100) throw new Error('mcp_schema_invalid');
+    return value
+      .filter((item) => !(typeof item === 'string' && SECRET_SCHEMA_KEY.test(item)))
+      .map((item) => safeMcpInputSchema(item, depth + 1));
+  }
+  if (!value || typeof value !== 'object' || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new Error('mcp_schema_invalid');
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > 100) throw new Error('mcp_schema_invalid');
+  return Object.fromEntries(
+    entries
+      .filter(
+        ([key]) =>
+          key !== '__proto__' &&
+          key !== 'prototype' &&
+          key !== 'constructor' &&
+          !SECRET_SCHEMA_KEY.test(key),
+      )
+      .map(([key, item]) => [key, safeMcpInputSchema(item, depth + 1)]),
+  );
+}
+
+function connectedMcpTools(connection: Readonly<VibeSpaceGatewayConnection>) {
+  if (
+    connection.state !== 'connected' ||
+    connection.trust !== 'approved' ||
+    !connection.durableApproval
+  ) {
+    return [];
+  }
+  const exposed = new Set(connection.exposedTools);
+  return connection.tools
+    .filter((tool) => tool.exposed && exposed.has(tool.name))
+    .map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      classification: (tool.classification ?? 'write') as VibeSpaceMcpInvocationClassification,
+      inputSchema: safeMcpInputSchema(tool.inputSchema),
+    }));
 }
 
 function terminalId(args: Record<string, unknown>): string {
@@ -387,24 +450,36 @@ export function createProductionToolGatewayDependencies(): ToolGatewayDependenci
     },
     plugins: {
       list: (args) => {
-        const accountId = useAuthStore.getState().cloudSession?.user_id ?? '';
-        const connections = selectPluginConnectionsForAccount(usePluginStore.getState(), accountId);
-        return PLUGIN_CATALOG.slice(0, (args.limit as number | undefined) ?? 100).map((plugin) => ({
-          id: plugin.id,
-          name: plugin.name,
-          status: plugin.status,
-          connected: Boolean(connections[plugin.id]?.enabled),
-          operations: plugin.tools.map(({ name, description, readOnly }) => ({
-            name,
-            description,
-            readOnly,
-          })),
-        }));
+        const { accountId, projectId } = activeToolGatewayScope();
+        return PLUGIN_CATALOG.filter((plugin) => isPluginActive(accountId, plugin.id, projectId))
+          .slice(0, (args.limit as number | undefined) ?? 100)
+          .map((plugin) => ({
+            id: plugin.id,
+            name: plugin.name,
+            status: plugin.status,
+            connected: true,
+            operations: plugin.tools.map(({ name, description, readOnly }) => ({
+              name,
+              description,
+              readOnly,
+            })),
+          }));
       },
       run: async (args, context) => {
+        const { accountId, projectId } = activeToolGatewayScope();
+        const pluginId = stringArg(args, 'pluginId');
+        const operation = stringArg(args, 'operation');
+        const manifest = PLUGIN_CATALOG.find((plugin) => plugin.id === pluginId);
+        if (
+          !manifest ||
+          !isPluginActive(accountId, pluginId, projectId) ||
+          !manifest.tools.some((tool) => tool.name === operation)
+        ) {
+          throw new Error('plugin_operation_unavailable');
+        }
         const port = pluginReadPort;
         if (!port) throw new Error('plugin_operation_unavailable');
-        const parsed = args.input ? JSON.parse(stringArg(args, 'input')) : {};
+        const parsed = args.input ?? {};
         if (
           typeof parsed !== 'object' ||
           parsed === null ||
@@ -414,13 +489,58 @@ export function createProductionToolGatewayDependencies(): ToolGatewayDependenci
           throw new Error('plugin_input_invalid');
         }
         const result = await port.run({
-          pluginId: stringArg(args, 'pluginId'),
-          operation: stringArg(args, 'operation'),
+          pluginId,
+          operation,
           params: parsed as Record<string, unknown>,
           context,
         });
         if (!result.ok) throw new Error('plugin_operation_failed');
         return { summary: result.summary, data: result.data };
+      },
+    },
+    mcp: {
+      list: async (args) => {
+        const scope = activeToolGatewayScope();
+        const gateway = getVibeSpaceMcpGateway(scope);
+        await gateway.restoreApprovedConnections();
+        return gateway
+          .getSnapshot()
+          .map((connection) => ({
+            connectionId: connection.id,
+            tools: connectedMcpTools(connection),
+          }))
+          .filter((connection) => connection.tools.length > 0)
+          .slice(0, (args.limit as number | undefined) ?? 100);
+      },
+      run: async (args, context) => {
+        const scope = activeToolGatewayScope();
+        const gateway = getVibeSpaceMcpGateway(scope);
+        await gateway.restoreApprovedConnections();
+        const connectionId = stringArg(args, 'connectionId');
+        const toolName = stringArg(args, 'toolName');
+        const classification = stringArg(
+          args,
+          'classification',
+        ) as VibeSpaceMcpInvocationClassification;
+        const connection = gateway.getSnapshot().find((candidate) => candidate.id === connectionId);
+        const tool = connection
+          ? connectedMcpTools(connection).find((candidate) => candidate.name === toolName)
+          : undefined;
+        if (!tool || tool.classification !== classification) {
+          throw new Error('mcp_tool_unavailable');
+        }
+        return gateway.invoke({
+          ...scope,
+          taskId: context.requestId,
+          connectionId,
+          toolName,
+          arguments: (args.input as Record<string, unknown> | undefined) ?? {},
+          allowedTools: [`${connectionId}.${toolName}`],
+          classification,
+          ...(classification === 'read'
+            ? {}
+            : { approval: { confirmedByUser: context.mutationApproved } }),
+        });
       },
     },
     tasks: {

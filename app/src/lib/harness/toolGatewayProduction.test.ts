@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
+import { usePluginStore } from '@/features/plugins';
+import * as mcpGatewayModule from '@/lib/mcp/vibeSpaceGateway';
 import type { ProjectId, WorkspaceId } from '@/types/common';
 import {
   clearToolGatewayMutationGrants,
@@ -46,7 +48,23 @@ function mutation() {
 
 describe('production tool gateway dependencies', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     clearToolGatewayMutationGrants();
+    usePluginStore.setState({
+      connectionsByAccount: {
+        'account-a': {
+          github: {
+            accountId: 'account-a',
+            pluginId: 'github',
+            state: 'connected',
+            enabled: true,
+            enabledProjectIds: ['project-a'],
+            configuredFields: [],
+            updatedAt: 1,
+          },
+        },
+      },
+    });
     useAuthStore.setState({
       localUserId: 'account-a',
       cloudSession: null,
@@ -159,7 +177,7 @@ describe('production tool gateway dependencies', () => {
           {
             pluginId: 'github',
             operation: 'identity',
-            input: JSON.stringify({}),
+            input: { owner: 'vibespace' },
           },
           context,
         ),
@@ -171,15 +189,198 @@ describe('production tool gateway dependencies', () => {
     expect(run).toHaveBeenCalledWith({
       pluginId: 'github',
       operation: 'identity',
-      params: {},
+      params: { owner: 'vibespace' },
       context,
     });
     dispose();
     await expect(
       Promise.resolve(
-        deps.plugins.run({ pluginId: 'github', operation: 'identity', input: '{}' }, context),
+        deps.plugins.run({ pluginId: 'github', operation: 'identity', input: {} }, context),
       ),
     ).rejects.toThrow('plugin_operation_unavailable');
+  });
+
+  it('lists only plugins connected and enabled for the exact local account and project', async () => {
+    usePluginStore.setState({
+      connectionsByAccount: {
+        'account-a': {
+          github: {
+            accountId: 'account-a',
+            pluginId: 'github',
+            state: 'connected',
+            enabled: true,
+            enabledProjectIds: ['project-a'],
+            configuredFields: [],
+            updatedAt: 1,
+          },
+          gmail: {
+            accountId: 'account-a',
+            pluginId: 'gmail',
+            state: 'connected',
+            enabled: true,
+            enabledProjectIds: ['different-project'],
+            configuredFields: [],
+            updatedAt: 1,
+          },
+        },
+      },
+    });
+
+    const listed = await Promise.resolve(
+      createProductionToolGatewayDependencies().plugins.list({}, {} as never),
+    );
+    expect(listed).toEqual([expect.objectContaining({ id: 'github', connected: true })]);
+  });
+
+  it('restores approved MCPs automatically and exposes only connected approved tools', async () => {
+    const restoreApprovedConnections = vi.fn(async () => ({
+      restoredIds: ['docs-server'],
+      skippedIds: [],
+      failedIds: [],
+    }));
+    const getSnapshot = vi.fn(() => [
+      {
+        id: 'docs-server',
+        endpoint: 'https://mcp.example.test',
+        state: 'connected',
+        trust: 'approved',
+        durableApproval: true,
+        schemaDigest: 'schema-1',
+        reconnectAttempt: 0,
+        exposedTools: ['search'],
+        tools: [
+          {
+            name: 'search',
+            description: 'Search project documentation.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: { type: 'string' },
+                apiKey: { type: 'string' },
+              },
+              required: ['query', 'apiKey'],
+            },
+            exposed: true,
+            classification: 'read',
+          },
+          {
+            name: 'hidden',
+            description: 'Must stay hidden.',
+            inputSchema: { type: 'object' },
+            exposed: false,
+            classification: 'read',
+          },
+        ],
+      },
+      {
+        id: 'changed-server',
+        endpoint: 'https://changed.example.test',
+        state: 'connected',
+        trust: 'changed',
+        durableApproval: true,
+        schemaDigest: 'schema-2',
+        reconnectAttempt: 0,
+        exposedTools: ['unsafe'],
+        tools: [],
+      },
+    ]);
+    vi.spyOn(mcpGatewayModule, 'getVibeSpaceMcpGateway').mockReturnValue({
+      restoreApprovedConnections,
+      getSnapshot,
+    } as never);
+
+    const result = await Promise.resolve(
+      createProductionToolGatewayDependencies().mcp.list({}, {} as never),
+    );
+
+    expect(restoreApprovedConnections).toHaveBeenCalledOnce();
+    expect(result).toEqual([
+      {
+        connectionId: 'docs-server',
+        tools: [
+          {
+            name: 'search',
+            description: 'Search project documentation.',
+            classification: 'read',
+            inputSchema: {
+              type: 'object',
+              properties: { query: { type: 'string' } },
+              required: ['query'],
+            },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('invokes the exact restored MCP tool with project scope, classification, and approval', async () => {
+    const invoke = vi.fn(async () => ({
+      result: { matches: 2 },
+      receipt: { receiptId: 'mcpinv-1', status: 'succeeded' },
+    }));
+    const gateway = {
+      restoreApprovedConnections: vi.fn(async () => ({
+        restoredIds: [],
+        skippedIds: ['docs-server'],
+        failedIds: [],
+      })),
+      getSnapshot: vi.fn(() => [
+        {
+          id: 'docs-server',
+          state: 'connected',
+          trust: 'approved',
+          durableApproval: true,
+          schemaDigest: 'schema-1',
+          exposedTools: ['search'],
+          tools: [
+            {
+              name: 'search',
+              description: 'Search project documentation.',
+              inputSchema: { type: 'object' },
+              exposed: true,
+              classification: 'write',
+            },
+          ],
+        },
+      ]),
+      invoke,
+    };
+    vi.spyOn(mcpGatewayModule, 'getVibeSpaceMcpGateway').mockReturnValue(gateway as never);
+    const context = {
+      requestId: 'request-mcp',
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      mutationApproved: true,
+    };
+
+    await expect(
+      Promise.resolve(
+        createProductionToolGatewayDependencies().mcp.run(
+          {
+            connectionId: 'docs-server',
+            toolName: 'search',
+            classification: 'write',
+            input: { query: 'VibeSpace' },
+          },
+          context,
+        ),
+      ),
+    ).resolves.toEqual({
+      result: { matches: 2 },
+      receipt: { receiptId: 'mcpinv-1', status: 'succeeded' },
+    });
+    expect(gateway.restoreApprovedConnections).toHaveBeenCalledOnce();
+    expect(invoke).toHaveBeenCalledWith({
+      accountId: 'account-a',
+      projectId: 'project-a',
+      taskId: 'request-mcp',
+      connectionId: 'docs-server',
+      toolName: 'search',
+      arguments: { query: 'VibeSpace' },
+      allowedTools: ['docs-server.search'],
+      classification: 'write',
+      approval: { confirmedByUser: true },
+    });
   });
 
   it('does not let a stale plugin-port disposer revoke a newer host', async () => {
@@ -193,7 +394,7 @@ describe('production tool gateway dependencies', () => {
     await expect(
       Promise.resolve(
         createProductionToolGatewayDependencies().plugins.run(
-          { pluginId: 'mock-connector', operation: 'ping', input: '{}' },
+          { pluginId: 'github', operation: 'identity', input: {} },
           {
             requestId: 'request-2',
             sessionId: 'session-2',

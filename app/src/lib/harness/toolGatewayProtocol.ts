@@ -20,6 +20,8 @@ export const TOOL_GATEWAY_CATALOG = [
   'skills.load',
   'plugins.list',
   'plugins.run',
+  'mcp.list',
+  'mcp.run',
   'tasks.create',
   'tasks.update',
   'schedule.create',
@@ -41,6 +43,7 @@ export const MUTATING_TOOL_GATEWAY_TOOLS: ReadonlySet<ToolGatewayTool> = new Set
   'context.attach',
   'skills.load',
   'plugins.run',
+  'mcp.run',
   'tasks.create',
   'tasks.update',
   'schedule.create',
@@ -258,6 +261,7 @@ function validateArgs(tool: ToolGatewayTool, input: unknown): Record<string, unk
     case 'memory.learning.read':
     case 'skills.list':
     case 'plugins.list':
+    case 'mcp.list':
       args = exactKeys(input, [], ['limit']);
       optionalInteger(args.limit, 'limit', 100);
       return args;
@@ -447,6 +451,17 @@ function validateArgs(tool: ToolGatewayTool, input: unknown): Record<string, unk
       stringField(args.operation, 'operation', 128, { id: true });
       if (args.input !== undefined && (!plainObject(args.input) || !safeJson(args.input))) {
         invalid('plugin input is invalid.');
+      }
+      return args;
+    case 'mcp.run':
+      args = exactKeys(input, ['connectionId', 'toolName', 'classification'], ['input']);
+      stringField(args.connectionId, 'connectionId', 160, { id: true });
+      stringField(args.toolName, 'toolName', 200, { id: true });
+      if (!['read', 'write', 'mutation'].includes(args.classification as string)) {
+        invalid('MCP classification is invalid.');
+      }
+      if (args.input !== undefined && (!plainObject(args.input) || !safeJson(args.input))) {
+        invalid('MCP input is invalid.');
       }
       return args;
     case 'tasks.create':
