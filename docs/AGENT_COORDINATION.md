@@ -2272,3 +2272,13 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Candidate: `C:\Users\viper\Downloads\VibeSpace-Final-Website.html`, SHA-256 `78CBBDA1344B416A89F8CB23678300AB97D098C5CEEFE5FD3D1B99ADCB502A58`.
 - Scope: replace only `site/index.html`, preserve every other public route and repository system, commit to `main`, allow the existing Pages workflow to deploy, then verify `https://vibespaceos.com/` against the unchanged candidate.
 - Boundaries: no PR #31 merge, app release, billing activation, Supabase/Stripe/DNS mutation, or unrelated staging.
+
+### Final checkpoint
+
+- Status: complete; owned lock released after public verification.
+- Deployment commit: `34a0d5d658f9ea92de2d377b175498e0f8d000a0` (`site: publish cinematic VibeSpace homepage`), pushed fast-forward to `origin/main` from base `60b211820c6d6d1d5d0632621af8839bbc82bc7c`.
+- Pages workflow: run `33224481105` completed successfully; checkout, configure, artifact upload, and deployment steps all passed.
+- Exact-byte verification: `https://vibespaceos.com/` returned HTTP 200 from GitHub Pages and downloaded SHA-256 `78CBBDA1344B416A89F8CB23678300AB97D098C5CEEFE5FD3D1B99ADCB502A58`, exactly matching the verified candidate.
+- Public browser verification: desktop and 390x844 mobile rendered the official HTTPS domain with five plans, App coming soon / Payments opening later copy, zero forms, zero Stripe/checkout links, no horizontal document overflow, and zero fresh console warnings/errors.
+- Rollback: previous `site/index.html` preserved at `C:\Users\viper\Downloads\VibeSpace-Cinematic-Audit-2026-08-28\Official-Site-Publish-REV12\rollback-site-index-60b2118.html`; original remote blob `63cb20630ea5aa6ae3aeb5aa4e5f00a8470360c6` and base commit `60b2118` remain recoverable.
+- Boundaries honored: no DNS, Supabase, Stripe, billing, release, PR #31, application, or non-homepage site mutation.
