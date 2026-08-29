@@ -831,16 +831,24 @@ export function ContextPage() {
       });
       if (delay === null) return;
       timer = window.setTimeout(() => {
-        void refresh().then((job) => {
-          lastRunning = job?.status === 'running';
-          schedule();
-        });
+        void refresh()
+          .then((job) => {
+            lastRunning = job?.status === 'running';
+          })
+          .catch(() => {
+            lastRunning = false;
+          })
+          .finally(schedule);
       }, delay);
     };
-    void refresh().then((job) => {
-      lastRunning = job?.status === 'running';
-      schedule();
-    });
+    void refresh()
+      .then((job) => {
+        lastRunning = job?.status === 'running';
+      })
+      .catch(() => {
+        lastRunning = false;
+      })
+      .finally(schedule);
     document.addEventListener('visibilitychange', schedule);
     return () => {
       active = false;
@@ -3130,16 +3138,24 @@ function ContextMapList({
       });
       if (delay === null) return;
       timer = window.setTimeout(() => {
-        void refresh().then((running) => {
-          lastRunning = running;
-          schedule();
-        });
+        void refresh()
+          .then((running) => {
+            lastRunning = running;
+          })
+          .catch(() => {
+            lastRunning = false;
+          })
+          .finally(schedule);
       }, delay);
     };
-    void refresh().then((running) => {
-      lastRunning = running;
-      schedule();
-    });
+    void refresh()
+      .then((running) => {
+        lastRunning = running;
+      })
+      .catch(() => {
+        lastRunning = false;
+      })
+      .finally(schedule);
     document.addEventListener('visibilitychange', schedule);
     return () => {
       mounted = false;
