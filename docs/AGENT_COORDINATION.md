@@ -2309,6 +2309,18 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Live reproduction: opt-in creates a running `AudioContext`, but the default node cue peaks at only `0.001995 RMS`; the 0.18 cue envelope is multiplied by a 0.036 SFX bus, making output functionally inaudible on typical speakers. Cue wiring also covers only a narrow subset of interactive controls.
 - Scope: preserve explicit opt-in/no autoplay, improve gain staging and cue timbre, migrate weak stored defaults, recover from suspended contexts, expand restrained control coverage, expose deterministic cue diagnostics, and republish the same single homepage file.
 
+### Final checkpoint
+
+- Status: complete; owned lock released after exact-byte public audio verification.
+- Root cause: the existing oscillator cues were functional but effectively inaudible because a 0.18 envelope was multiplied by a 0.036 SFX bus (`0.001995 RMS` measured), while only a small subset of controls exposed cues.
+- Implementation/deployment commit: `48b548f` (`site: restore audible interface SFX`), pushed fast-forward to `origin/main`; GitHub Pages run `33228604910` completed successfully.
+- Fix: revised gain staging with a 58% audible default and legacy-level migration, layered per-action cue voices, six-voice cap, dynamics limiter, reliable suspended-context resume, broader restrained hover/click coverage, interactive shockwave deduplication, accurate opt-in status/ARIA labels, and deterministic cue diagnostics.
+- Public audio verification: no autoplay (`Audio / Off`, no context before gesture); explicit enable produced a running context, 0.035420 SFX-bus RMS and 0.044051 post-limiter master RMS; mute produced zero new cues and zero bus gain; the public console returned zero warnings/errors.
+- Responsive/accessibility: axe-core 4.10.3 returned zero A/AA violations at 1440x900 and 390x844; both viewports retained zero document overflow. All 10 inline scripts parsed and all 149 IDs remained unique.
+- Exact-byte verification: local `site/index.html` and `https://vibespaceos.com/` both SHA-256 `81C229E4F5CD76205016671E8100C862CD91689B5D2885D0C2B450F4EF0E6085` (605,939 bytes).
+- Licensing boundary preserved: no Epidemic binary was embedded because the available Creator plan did not establish commercial brand-site coverage; the working SFX are locally generated Web Audio cues and do not autoplay.
+- Boundaries honored: no app, PR #31, Stripe, Supabase, DNS, billing, release, or non-homepage route mutation.
+
 ## 2026-08-28 — codex-vw5-20260828-a10 / official-site-context-grid-overlap-rev14
 
 - Status: active; exact `site/index.html` Context-grid fix claimed with no overlap against the active Task 21C application/smoke manifest.
