@@ -195,12 +195,42 @@ function resultEvidence(result: unknown): { status: ChatActivityStatus; duration
 
 function messageReceipts(message: Message): AssistantActivityReceipt[] {
   const seenCallIds = new Set<string>();
+  const canonicalToolCallIds = new Set(
+    message.parts.flatMap((part) => (part.kind === 'tool_call' ? [part.call_id] : [])),
+  );
   const results = new Map(
     message.parts.flatMap((part) =>
       part.kind === 'tool_result' ? [[part.call_id, part] as const] : [],
     ),
   );
   return message.parts.flatMap((part, index) => {
+    if (part.kind === 'action_proposal' && !canonicalToolCallIds.has(part.call_id)) {
+      if (seenCallIds.has(part.call_id)) return [];
+      seenCallIds.add(part.call_id);
+      const kind = toolKind(part.action_id);
+      const status: ChatActivityStatus =
+        part.status === 'success'
+          ? 'done'
+          : part.status === 'error'
+            ? 'error'
+            : part.status === 'cancelled'
+              ? 'cancelled'
+              : part.status === 'pending'
+                ? 'pending'
+                : 'running';
+      const fileLabel = correlatedToolFileLabel(kind, part.params);
+      return [
+        {
+          id: `message:${String(message.id)}:action:${part.call_id}`,
+          kind,
+          label: receiptLabel(kind, status),
+          status,
+          ts: message.created_at + index / 1000,
+          ...(fileLabel ? { fileLabel } : {}),
+          countsAsAction: true,
+        },
+      ];
+    }
     if (part.kind !== 'tool_call') return [];
     if (seenCallIds.has(part.call_id)) return [];
     seenCallIds.add(part.call_id);

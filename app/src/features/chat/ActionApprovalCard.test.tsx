@@ -173,6 +173,7 @@ describe('ActionApprovalCard canonical adapter', () => {
     expect(events).not.toContainEqual({ chatId: 'chat_1', status: 'done' });
     expect(sends[0]).toMatchObject({
       chatId: 'chat_1',
+      interactionMode: 'ask',
       approvalContinuation: {
         messageId: 'message_1',
         callId: 'jarvisapproval:jappr_1',

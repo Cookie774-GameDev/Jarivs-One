@@ -222,9 +222,9 @@ function continueAfterSettledApproval(input: {
     chatId: input.chatId,
     text: [
       'Continue the same user request after the approved protected action.',
-      'Inspect the verified action result already persisted in chat history, report only what it proves, and propose only the next necessary registered action if work remains. Do not repeat the completed action.',
+      'Inspect the verified action result already persisted in chat history and report only what it proves. Do not propose, request, or repeat an action in this finalization turn.',
     ].join(' '),
-    interactionMode: 'agent',
+    interactionMode: 'ask',
     runtimeSettings: { ...policy.settings, rlmEnabled: false },
     accessLevel: policy.access,
     approvalContinuation: {

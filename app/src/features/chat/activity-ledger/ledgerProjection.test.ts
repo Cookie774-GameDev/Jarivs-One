@@ -29,6 +29,37 @@ function event(
 }
 
 describe('projectAssistantActivityLedger', () => {
+  it('projects a settled protected file action as one truthful receipt without raw content', () => {
+    const ledger = projectAssistantActivityLedger(
+      assistant([
+        {
+          kind: 'action_proposal',
+          call_id: 'jarvisapproval:read-1',
+          action_id: 'files.read',
+          params: { path: 'C:\\project\\brief.md' },
+          status: 'success',
+          result: {
+            ok: true,
+            summary: 'Read the approved file.',
+            data: { path: 'C:\\project\\brief.md', content: 'private file contents' },
+          },
+        },
+      ]),
+    );
+
+    expect(ledger.actionsTotal).toBe(1);
+    expect(ledger.readsTotal).toBe(1);
+    expect(ledger.receipts).toEqual([
+      expect.objectContaining({
+        kind: 'read',
+        label: 'Read file',
+        fileLabel: 'brief.md',
+        status: 'done',
+      }),
+    ]);
+    expect(JSON.stringify(ledger)).not.toContain('private file contents');
+  });
+
   it('projects a command once and never retains its body, args, output, or secrets', () => {
     const ledger = projectAssistantActivityLedger(
       assistant([
