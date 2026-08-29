@@ -305,6 +305,7 @@ import {
   type ModelSelectionContext,
 } from '@/lib/ai/modelSelection';
 import type { ReasoningMode, ReasoningSelection } from '@/lib/ai/reasoningControls';
+import { restoreExactChatSelection, type ExactChatSelection } from './chatSelectionAuthority';
 import { ModeIndicator } from '@/features/jarvis-interaction/ModeIndicator';
 import { cycleInteractionMode, PERMISSION_MODE_OPTIONS } from '@/features/jarvis-interaction/modes';
 import { useJarvisInteractionStore } from '@/features/jarvis-interaction/sessionStore';
@@ -1134,6 +1135,7 @@ export function Composer({
   const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
   const setChatModelSelection = useAuthStore((s) => s.setChatModelSelection);
   const [modelSelectionReadyChatId, setModelSelectionReadyChatId] = useState('');
+  const retainedExactChatSelectionRef = useRef<ExactChatSelection | null>(null);
   const promptForgeModelSelection = useAuthStore((s) => s.promptForgeModelSelection);
   const setPromptForgeModelSelection = useAuthStore((s) => s.setPromptForgeModelSelection);
   const promptForgeAutoUpgradeOnSend = useAuthStore((s) => s.promptForgeAutoUpgradeOnSend);
@@ -1303,6 +1305,7 @@ export function Composer({
   // A chat's exact connection is local-only metadata. Restore it when switching chats.
   useEffect(() => {
     let cancelled = false;
+    retainedExactChatSelectionRef.current = null;
     setModelSelectionReadyChatId('');
     void chatRepo
       .getById(chatId as ChatId)
@@ -1316,9 +1319,14 @@ export function Composer({
             : '') ??
           '';
         if (!modelId) return;
-        setChatModelSelection(
-          selectionFromOption(chat.connection.providerId as ProviderId, modelId, chat.connection),
+        const restored = selectionFromOption(
+          chat.connection.providerId as ProviderId,
+          modelId,
+          chat.connection,
         );
+        if (restored.mode !== 'single') return;
+        retainedExactChatSelectionRef.current = restored;
+        setChatModelSelection(restored);
       })
       .catch(() => undefined)
       .finally(() => {
@@ -1328,6 +1336,17 @@ export function Composer({
       cancelled = true;
     };
   }, [chatId, setChatModelSelection]);
+
+  // Account-store hydration can finish after the chat picker. Keep the exact
+  // chat-scoped route selected instead of visibly reverting to Choose model.
+  useEffect(() => {
+    if (modelSelectionReadyChatId !== String(chatId)) return;
+    const restored = restoreExactChatSelection(
+      chatModelSelection,
+      retainedExactChatSelectionRef.current,
+    );
+    if (restored !== chatModelSelection) setChatModelSelection(restored);
+  }, [chatId, chatModelSelection, modelSelectionReadyChatId, setChatModelSelection]);
 
   // Generate options for option picker based on current command
   const optionPickerOptions = useMemo<SlashCommandOption[]>(() => {
@@ -5151,6 +5170,7 @@ export function Composer({
                         writeChatReasoningEffort(String(chatId), effort === 'auto' ? null : effort);
                         setReasoningPreference(readChatReasoningPreference(String(chatId)));
                       }
+                      retainedExactChatSelectionRef.current = next.mode === 'single' ? next : null;
                       setChatModelSelection(next);
                       if (next.mode === 'single' && next.connectionId) {
                         const descriptor = getProviderConnectionDescriptor(next.connectionId);

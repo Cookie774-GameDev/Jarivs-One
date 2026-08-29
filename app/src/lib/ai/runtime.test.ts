@@ -4230,7 +4230,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     stop();
   });
 
-  it('completes a bounded current-directory read without a Context rewrite or approval card', async () => {
+  it('uses the persisted exact chat connection when global model selection is not ready', async () => {
     const projectId = 'project_deepseek_cwd_read' as never;
     const workingDirectory = 'C:\\Users\\viper\\Documents\\Codex\\2026-08-21';
     const openCodeConnection = PROVIDER_CONNECTIONS.find(
@@ -4261,11 +4261,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     setStoredProjectRoot(projectId, workingDirectory);
     useAuthStore.setState({
       projectId,
-      chatModelSelection: selectionFromOption(
-        openCodeConnection.providerId as ProviderId,
-        'opencode-go/deepseek-v4-flash-vision-exp',
-        openCodeConnection,
-      ),
+      chatModelSelection: { mode: 'none' },
     });
     const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
     const chatId = 'chat_deepseek_cwd_read' as ChatId;
@@ -4286,6 +4282,10 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       title: 'DeepSeek cwd read',
       mode: 'chat',
       active_agent_ids: [jarvis.id],
+      connection: {
+        ...openCodeConnection,
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+      },
       created_at: 1,
       updated_at: 1,
     });
@@ -4317,6 +4317,11 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     await stop.whenIdle();
 
     const providerInput = mocks.runAgent.mock.calls[0]![0];
+    expect(providerInput.agent.model).toEqual({
+      provider: 'opencode',
+      model: 'opencode-go/deepseek-v4-flash-vision-exp',
+    });
+    expect(providerInput.connectionId).toBe('opencode-cli');
     expect(providerInput.workingDirectory).toBe(workingDirectory);
     expect(providerInput.messages.at(-1)?.content).toBe(userText);
     expect(
