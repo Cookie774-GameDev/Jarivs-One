@@ -960,6 +960,67 @@ describe('AgenticConsole', () => {
     expect(shouldRenderInlineLegacyLedger(usageOnly, false)).toBe(true);
   });
 
+  it('renders one ledger per user turn when a tool response is followed by finalization prose', () => {
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('user-1', 'user', 1, [{ kind: 'text', text: 'Read the file.' }]),
+        message('tool-1', 'assistant', 2, [
+          { kind: 'text', text: 'I am reading the requested file.' },
+          { kind: 'tool_call', call_id: 'read-1', tool: 'files.read', args: {} },
+          { kind: 'tool_result', call_id: 'read-1', result: { ok: true } },
+        ]),
+        message(
+          'final-1',
+          'assistant',
+          3,
+          [
+            { kind: 'text', text: 'The approved read completed successfully.' },
+            {
+              kind: 'jarvis_source_ref',
+              source: {
+                id: 'context-1',
+                kind: 'context_node',
+                label: 'Project context map',
+                trust: 'app_verified',
+                sensitivity: 'private',
+              },
+            },
+          ],
+          { input_tokens: 10, output_tokens: 5 },
+        ),
+        message('user-2', 'user', 4, [{ kind: 'text', text: 'Edit the file.' }]),
+        message('tool-2', 'assistant', 5, [
+          { kind: 'text', text: 'I am applying the requested edit.' },
+          { kind: 'tool_call', call_id: 'edit-1', tool: 'files.edit', args: {} },
+          { kind: 'tool_result', call_id: 'edit-1', result: { ok: true } },
+        ]),
+        message(
+          'final-2',
+          'assistant',
+          6,
+          [
+            { kind: 'text', text: 'The approved edit completed successfully.' },
+            {
+              kind: 'jarvis_source_ref',
+              source: {
+                id: 'context-2',
+                kind: 'context_node',
+                label: 'Project context map',
+                trust: 'app_verified',
+                sensitivity: 'private',
+              },
+            },
+          ],
+          { input_tokens: 12, output_tokens: 6 },
+        ),
+      ],
+      activity: [],
+    });
+
+    expect(rendered.container.querySelectorAll('[data-assistant-activity-ledger]')).toHaveLength(2);
+  });
+
   it('pages older history without mounting the entire canonical transcript', () => {
     const messages = Array.from({ length: 450 }, (_, index) =>
       message(`m-${index}`, 'user', index, [{ kind: 'text', text: `Prompt ${index}` }]),

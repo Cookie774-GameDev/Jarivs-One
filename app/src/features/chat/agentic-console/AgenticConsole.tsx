@@ -581,6 +581,7 @@ function BlockView({
         message={block.message}
         compact={compact}
         creatorDraftKind={creatorDraftKind}
+        showActivityLedger={false}
       />
     </div>
   );
@@ -705,6 +706,33 @@ export function shouldRenderInlineLegacyLedger(
   );
 }
 
+export function selectAssistantLedgerOwnerIds(messages: readonly Message[]): ReadonlySet<string> {
+  const owners = new Set<string>();
+  let turn: Message[] = [];
+  const commitTurn = () => {
+    const assistants = turn.filter((message) => message.role === 'assistant');
+    const owner =
+      [...assistants]
+        .reverse()
+        .find((message) =>
+          message.parts.some(
+            (part) =>
+              part.kind === 'action_proposal' ||
+              part.kind === 'tool_call' ||
+              part.kind === 'tool_result',
+          ),
+        ) ?? assistants.at(-1);
+    if (owner) owners.add(String(owner.id));
+    turn = [];
+  };
+  for (const message of messages) {
+    if (message.role === 'user') commitTurn();
+    turn.push(message);
+  }
+  commitTurn();
+  return owners;
+}
+
 export function AgenticConsole({
   chatId,
   messages,
@@ -822,13 +850,16 @@ export function AgenticConsole({
     [blocks, latestUserTurnStartedAt],
   );
   const inlineLedgerLegacyId = inlineLedgerLegacyBlock?.id;
-  const inlineLedgerSourceId = inlineLedgerLegacyBlock?.sourceId;
   const loadCount = Math.min(TRANSCRIPT_PAGE_SIZE, transcriptWindow.remaining);
   const messagesBySource = React.useMemo(
     () =>
       new Map<string, Message>(
         messages.map((message) => [`message:${String(message.id)}`, message] as const),
       ),
+    [messages],
+  );
+  const assistantLedgerOwnerIds = React.useMemo(
+    () => selectAssistantLedgerOwnerIds(messages),
     [messages],
   );
   const lastVisibleIndexBySource = React.useMemo(() => {
@@ -979,13 +1010,10 @@ export function AgenticConsole({
               (part) => part.kind === 'jarvis_source_ref',
             );
             const showLedger =
-              block.kind !== 'legacy' &&
-              block.sourceId !== inlineLedgerSourceId &&
               sourceMessage?.role === 'assistant' &&
               lastVisibleIndexBySource.get(block.sourceId) === index &&
-              sourceMessage.parts.some(
-                (part) => part.kind === 'tool_call' || part.kind === 'tool_result',
-              );
+              assistantLedgerOwnerIds.has(String(sourceMessage.id)) &&
+              !(turnActivityMessage && sourceMessage.created_at >= latestUserTurnStartedAt);
             return (
               <React.Fragment key={block.id}>
                 {inlineLegacyMessage ? (
@@ -1013,14 +1041,6 @@ export function AgenticConsole({
                     message={sourceMessage}
                     compact={compact}
                     active={sessionIsActive && sourceMessage.id === latestAssistantMessageId}
-                  />
-                ) : null}
-                {inlineLegacyMessage &&
-                shouldRenderInlineLegacyLedger(inlineLegacyMessage, hasTurnToolEvidence) ? (
-                  <AssistantActivityLedger
-                    message={inlineLegacyMessage}
-                    compact={compact}
-                    active={sessionIsActive && inlineLegacyMessage.id === latestAssistantMessageId}
                   />
                 ) : null}
                 {(block.id === inlineLedgerLegacyId ||

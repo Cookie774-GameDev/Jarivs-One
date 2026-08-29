@@ -54,7 +54,6 @@ export function MessageBubble({
       ? message.parts.filter((part) => {
           if (part.kind === 'tool_call' || part.kind === 'tool_result') return false;
           if (
-            showActivityLedger &&
             part.kind === 'action_proposal' &&
             (part.status === 'success' || part.status === 'error' || part.status === 'cancelled') &&
             !resolvePluginActionEvidence(part, message.parts)
