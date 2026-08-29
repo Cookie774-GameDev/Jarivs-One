@@ -5,9 +5,7 @@ import type {
   ContextScope,
   ContextSearchItem,
 } from './contextQueryService';
-
-export const RLM_CHILD_PROVIDER = 'ollama' as const;
-export const RLM_CHILD_MODEL = 'llama3.2:latest' as const;
+import type { ExecutionIdentity } from './gateway/contextGatewayContracts';
 
 export interface RlmBudget {
   maxDepth: number;
@@ -24,8 +22,7 @@ export interface RlmChildRequest {
   question: string;
   evidence: readonly ContextOpenResult[];
   sourcePointers: readonly ContextPointer[];
-  provider: typeof RLM_CHILD_PROVIDER;
-  model: typeof RLM_CHILD_MODEL;
+  executionIdentity: Readonly<ExecutionIdentity>;
   depth: number;
   budget: Readonly<{
     maxInputTokens?: number;
@@ -93,6 +90,8 @@ export type RlmRuntimeErrorCode =
   | 'cancelled'
   | 'wall_time_exceeded'
   | 'budget_invalid'
+  | 'execution_identity_invalid'
+  | 'execution_route_unavailable'
   | 'no_evidence';
 
 export class RlmRuntimeError extends Error {
@@ -128,6 +127,58 @@ function validateBudget(budget: RlmBudget): Readonly<RlmBudget> {
     throw new RlmRuntimeError('budget_invalid');
   }
   return Object.freeze({ ...budget });
+}
+
+const EXECUTION_IDENTITY_FIELDS = Object.freeze([
+  'transportConnectionId',
+  'transportAdapterId',
+  'upstreamProviderId',
+  'upstreamModelId',
+  'providerQualifiedModelId',
+  'authBillingRoute',
+  'effort',
+  'fastVariant',
+  'catalogRevision',
+] as const satisfies readonly (keyof ExecutionIdentity)[]);
+const SAFE_IDENTITY_VALUE = /^[^\u0000-\u001f\u007f]{1,512}$/u;
+
+function immutableExecutionIdentity(value: unknown): Readonly<ExecutionIdentity> {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new RlmRuntimeError('execution_identity_invalid');
+  }
+  const record = value as Record<string, unknown>;
+  const allowed = new Set<string>([...EXECUTION_IDENTITY_FIELDS, 'observedProviderIdentity']);
+  if (
+    Object.keys(record).some((key) => !allowed.has(key)) ||
+    EXECUTION_IDENTITY_FIELDS.some((field) => {
+      const candidate = record[field];
+      return (
+        typeof candidate !== 'string' ||
+        candidate.trim() !== candidate ||
+        !SAFE_IDENTITY_VALUE.test(candidate)
+      );
+    }) ||
+    (record.observedProviderIdentity !== undefined &&
+      (typeof record.observedProviderIdentity !== 'string' ||
+        record.observedProviderIdentity.trim() !== record.observedProviderIdentity ||
+        !SAFE_IDENTITY_VALUE.test(record.observedProviderIdentity)))
+  ) {
+    throw new RlmRuntimeError('execution_identity_invalid');
+  }
+  const providerQualifiedModelId = `${String(record.upstreamProviderId)}/${String(record.upstreamModelId)}`;
+  if (
+    record.providerQualifiedModelId !== providerQualifiedModelId ||
+    (record.observedProviderIdentity !== undefined &&
+      record.observedProviderIdentity !== providerQualifiedModelId)
+  ) {
+    throw new RlmRuntimeError('execution_identity_invalid');
+  }
+  return Object.freeze({ ...(record as unknown as ExecutionIdentity) });
 }
 
 function byteLength(value: string): number {
@@ -191,10 +242,12 @@ export function createRlmRuntime(dependencies: {
   const investigate = async (input: {
     question: string;
     scope: ContextScope;
+    executionIdentity: Readonly<ExecutionIdentity>;
     budget: RlmBudget;
     signal?: AbortSignal;
   }): Promise<RlmRuntimeResult> => {
     const budget = validateBudget(input.budget);
+    const executionIdentity = immutableExecutionIdentity(input.executionIdentity);
     if (!input.question.trim()) throw new RlmRuntimeError('no_evidence', 'question_missing');
     const startedAt = Date.now();
     const runId = `rlm-${startedAt.toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -230,7 +283,11 @@ export function createRlmRuntime(dependencies: {
         signal,
         () => timedOut,
       );
-      event('search_completed', 0, `strategy=exact_anchor query=${searchQuery} hits=${found.items.length}`);
+      event(
+        'search_completed',
+        0,
+        `strategy=exact_anchor query=${searchQuery} hits=${found.items.length}`,
+      );
 
       const evidence: ContextOpenResult[] = [];
       for (const item of found.items as readonly ContextSearchItem[]) {
@@ -301,7 +358,7 @@ export function createRlmRuntime(dependencies: {
         event(
           'child_started',
           depth,
-          `provider=${RLM_CHILD_PROVIDER} model=${RLM_CHILD_MODEL} evidence=${narrowEvidence.length}`,
+          `provider=${executionIdentity.upstreamProviderId} model=${executionIdentity.upstreamModelId} evidence=${narrowEvidence.length}`,
         );
         try {
           const analysis = await abortable(
@@ -309,8 +366,7 @@ export function createRlmRuntime(dependencies: {
               question,
               evidence: narrowEvidence,
               sourcePointers: narrowEvidence.map((item) => item.pointer),
-              provider: RLM_CHILD_PROVIDER,
-              model: RLM_CHILD_MODEL,
+              executionIdentity,
               depth,
               budget: {
                 ...(budget.maxInputTokens === undefined
@@ -337,6 +393,13 @@ export function createRlmRuntime(dependencies: {
           }
         } catch (error) {
           if (signal.aborted) throw abortError(signal, timedOut);
+          if (
+            error instanceof RlmRuntimeError &&
+            (error.code === 'execution_identity_invalid' ||
+              error.code === 'execution_route_unavailable')
+          ) {
+            throw error;
+          }
           event('child_failed', depth, error instanceof Error ? error.name : 'unknown');
         }
       };

@@ -2,11 +2,23 @@ import { describe, expect, it, vi } from 'vitest';
 import { createRlmOpenCodeTool } from './rlmOpenCodeTool';
 
 const HASH = 'a'.repeat(64);
+const executionIdentity = Object.freeze({
+  transportConnectionId: 'opencode-cli',
+  transportAdapterId: 'opencode-persistent',
+  upstreamProviderId: 'opencode-go',
+  upstreamModelId: 'deepseek-v4-flash-vision-exp',
+  providerQualifiedModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+  authBillingRoute: 'opencode-provider-session',
+  effort: 'high',
+  fastVariant: 'standard',
+  catalogRevision: `sha256:${'b'.repeat(64)}`,
+});
 const lease = {
   sessionId: 'session-1',
   accountId: 'account-1',
   projectId: 'project-1',
   worktreeId: 'worktree-1',
+  executionIdentity,
   expiresAt: 2_000,
 };
 
@@ -119,6 +131,7 @@ describe('OpenCode RLM context tool adapter', () => {
     expect(deps.rlmRuntime.investigate).toHaveBeenCalledWith(
       expect.objectContaining({
         question: 'Investigate the entire project history for the leak',
+        executionIdentity,
       }),
     );
   });
@@ -134,6 +147,7 @@ describe('OpenCode RLM context tool adapter', () => {
     expect(deps.rlmRuntime.investigate).toHaveBeenCalledWith(
       expect.objectContaining({
         question: 'cross-source root cause',
+        executionIdentity,
         scope: expect.objectContaining({ accountId: 'account-1' }),
         budget: expect.objectContaining({
           maxDepth: 1,
@@ -143,6 +157,18 @@ describe('OpenCode RLM context tool adapter', () => {
       }),
     );
     expect(result).toMatchObject({ answer: 'investigated:cross-source root cause' });
+  });
+
+  it('fails closed before recursive retrieval when the trusted lease lacks execution identity', async () => {
+    const deps = dependencies();
+    const tool = createRlmOpenCodeTool({ ...deps, now: () => 1_000 });
+    const { executionIdentity: _omitted, ...unboundLease } = lease;
+
+    await expect(
+      tool.execute({ operation: 'investigate', query: 'cross-source root cause' }, unboundLease),
+    ).rejects.toThrow('rlm_execution_identity_required');
+    expect(deps.rlmRuntime.investigate).not.toHaveBeenCalled();
+    expect(deps.queryService.search).not.toHaveBeenCalled();
   });
 
   it.each([

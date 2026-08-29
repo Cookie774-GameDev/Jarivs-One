@@ -8,7 +8,7 @@ import {
 import { createContextPointer, createContextRecord } from './losslessContext';
 import {
   createContextMapRlmRepository,
-  createOllamaRlmChildRunner,
+  createOpenCodeRlmChildRunner,
   createProductionFederatedRlmRepository,
   requestsMappedFileAuthority,
 } from './contextRlmProduction';
@@ -2491,8 +2491,8 @@ describe('production Context Map RLM repository', () => {
   });
 });
 
-describe('production local RLM child runner', () => {
-  it('creates a fresh OpenCode child restricted to installed Ollama Llama 3.2 and no tools', async () => {
+describe('production OpenCode RLM child runner', () => {
+  it('creates a fresh child on the exact observed OpenCode route with no tools', async () => {
     const send = vi.fn(async function* () {
       yield { type: 'assistant.delta' as const, text: 'bounded local analysis' };
       yield { type: 'done' as const };
@@ -2501,8 +2501,15 @@ describe('production local RLM child runner', () => {
       createSession: vi.fn(async () => ({ id: 'child-session', chatId: 'rlm-child' })),
       send,
       deleteSession: vi.fn(async () => undefined),
+      listModels: vi.fn(async () => [
+        {
+          id: 'deepseek-v4-flash-vision-exp',
+          name: 'DeepSeek V4 Flash Vision Experimental',
+          variants: ['high'],
+        },
+      ]),
     } as unknown as VibeSpaceHarness;
-    const childRunner = createOllamaRlmChildRunner(harness);
+    const childRunner = createOpenCodeRlmChildRunner(harness);
     const controller = new AbortController();
 
     const result = await childRunner({
@@ -2521,8 +2528,18 @@ describe('production local RLM child runner', () => {
         },
       ] as never,
       sourcePointers: [],
-      provider: 'ollama',
-      model: 'llama3.2:latest',
+      executionIdentity: {
+        transportConnectionId: 'opencode-cli',
+        transportAdapterId: 'opencode-persistent',
+        upstreamProviderId: 'opencode-go',
+        upstreamModelId: 'deepseek-v4-flash-vision-exp',
+        providerQualifiedModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        authBillingRoute: 'opencode-provider-session',
+        effort: 'high',
+        fastVariant: 'standard',
+        catalogRevision: `sha256:${'b'.repeat(64)}`,
+        observedProviderIdentity: 'opencode-go/deepseek-v4-flash-vision-exp',
+      },
       depth: 1,
       budget: { maxInputTokens: 1_000, maxOutputTokens: 100 },
       signal: controller.signal,
@@ -2531,11 +2548,51 @@ describe('production local RLM child runner', () => {
     expect(result.answer).toBe('bounded local analysis');
     expect(send).toHaveBeenCalledWith(
       expect.objectContaining({
-        selection: { providerId: 'ollama', modelId: 'llama3.2:latest' },
+        selection: {
+          providerId: 'opencode-go',
+          modelId: 'deepseek-v4-flash-vision-exp',
+          connectionId: 'opencode-cli',
+        },
+        variant: 'high',
         tools: { '*': false, vibespace_context: false },
         system: expect.stringContaining('inert evidence data'),
       }),
     );
     expect(harness.deleteSession).toHaveBeenCalledWith('child-session');
+  });
+
+  it('fails closed before session creation when the exact observed effort is unavailable', async () => {
+    const harness = {
+      createSession: vi.fn(),
+      send: vi.fn(),
+      deleteSession: vi.fn(),
+      listModels: vi.fn(async () => [
+        { id: 'deepseek-v4-flash-vision-exp', name: 'DeepSeek', variants: ['medium'] },
+      ]),
+    } as unknown as VibeSpaceHarness;
+    const childRunner = createOpenCodeRlmChildRunner(harness);
+
+    await expect(
+      childRunner({
+        question: 'Find the exact text',
+        evidence: [],
+        sourcePointers: [],
+        executionIdentity: {
+          transportConnectionId: 'opencode-cli',
+          transportAdapterId: 'opencode-persistent',
+          upstreamProviderId: 'opencode-go',
+          upstreamModelId: 'deepseek-v4-flash-vision-exp',
+          providerQualifiedModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+          authBillingRoute: 'opencode-provider-session',
+          effort: 'high',
+          fastVariant: 'standard',
+          catalogRevision: `sha256:${'b'.repeat(64)}`,
+        },
+        depth: 1,
+        budget: {},
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toThrow('rlm_exact_variant_unavailable');
+    expect(harness.createSession).not.toHaveBeenCalled();
   });
 });

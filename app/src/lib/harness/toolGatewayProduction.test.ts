@@ -314,6 +314,60 @@ describe('production tool gateway dependencies', () => {
     dispose();
   });
 
+  it('binds low-level recursive investigate to the same observed session identity', async () => {
+    const authority = captureToolGatewayAuthorityClaim()!;
+    expect(
+      bindToolGatewayObservedExecutionAuthority('session-1', authority, {
+        executionIdentity: observedIdentity,
+        performance: 'quality',
+      }),
+    ).toBe(true);
+    const execute = vi.fn(async () => ({ mode: 'rlm', bounded: true }));
+    const dispose = installToolGatewayRlmContextPort({ execute });
+
+    await expect(
+      Promise.resolve(
+        createProductionToolGatewayDependencies().context.rlm(
+          { operation: 'investigate', query: 'Trace the cross-source decision.' },
+          {
+            requestId: 'request-investigate',
+            sessionId: 'session-1',
+            messageId: 'message-1',
+            worktree: 'C:\\work\\project\\.worktrees\\feature',
+            mutationApproved: false,
+          },
+        ),
+      ),
+    ).resolves.toEqual({ mode: 'rlm', bounded: true });
+    expect(execute).toHaveBeenCalledWith(
+      { operation: 'investigate', query: 'Trace the cross-source decision.' },
+      expect.objectContaining({ executionIdentity: observedIdentity }),
+    );
+    dispose();
+  });
+
+  it('rejects low-level recursive investigate without observed session identity', async () => {
+    const execute = vi.fn(async () => ({ mode: 'legacy' }));
+    const dispose = installToolGatewayRlmContextPort({ execute });
+
+    await expect(
+      Promise.resolve().then(() =>
+        createProductionToolGatewayDependencies().context.rlm(
+          { operation: 'investigate', query: 'Trace the cross-source decision.' },
+          {
+            requestId: 'request-unbound-investigate',
+            sessionId: 'different-session',
+            messageId: 'message-1',
+            worktree: 'C:\\work\\project\\.worktrees\\feature',
+            mutationApproved: false,
+          },
+        ),
+      ),
+    ).rejects.toThrow('gateway_execution_identity_unavailable');
+    expect(execute).not.toHaveBeenCalled();
+    dispose();
+  });
+
   it('rejects an observed high-level query when worktree scope is incomplete', async () => {
     const authority = captureToolGatewayAuthorityClaim()!;
     expect(

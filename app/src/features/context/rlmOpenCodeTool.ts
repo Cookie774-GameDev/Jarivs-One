@@ -1,5 +1,6 @@
 import { createContextPointer, type ContextPointer } from './losslessContext';
 import type { ContextScope } from './contextQueryService';
+import type { ExecutionIdentity } from './gateway/contextGatewayContracts';
 import { routeDefaultContextQuery } from './adaptiveContextRouter';
 import { recordRlmRoute, resolveRlmEnabled } from './rlmPreferenceStore';
 import type { RlmBudget } from './rlmRuntime';
@@ -28,6 +29,7 @@ export interface RlmContextLease {
   workspaceId?: string;
   projectId?: string;
   worktreeId?: string;
+  executionIdentity?: Readonly<ExecutionIdentity>;
   expiresAt: number;
 }
 
@@ -171,6 +173,11 @@ function leaseScope(lease: RlmContextLease, now: number): ContextScope {
   };
 }
 
+function leaseExecutionIdentity(lease: RlmContextLease): Readonly<ExecutionIdentity> {
+  if (!lease.executionIdentity) throw new Error('rlm_execution_identity_required');
+  return lease.executionIdentity;
+}
+
 export function createRlmOpenCodeTool(dependencies: {
   queryService: QueryPort;
   rlmRuntime: RlmPort;
@@ -223,6 +230,7 @@ export function createRlmOpenCodeTool(dependencies: {
           return dependencies.rlmRuntime.investigate({
             question,
             scope,
+            executionIdentity: leaseExecutionIdentity(lease),
             budget: rlmBudget,
             signal,
             decision,
@@ -336,6 +344,7 @@ export function createRlmOpenCodeTool(dependencies: {
         return dependencies.rlmRuntime.investigate({
           question: text(args.query),
           scope,
+          executionIdentity: leaseExecutionIdentity(lease),
           budget: rlmBudget,
           signal,
         });

@@ -11,6 +11,18 @@ import {
 
 const HASH = 'a'.repeat(64);
 const scope: ContextScope = { accountId: 'account-1', projectId: 'project-1' };
+const executionIdentity = Object.freeze({
+  transportConnectionId: 'opencode-cli',
+  transportAdapterId: 'opencode-persistent',
+  upstreamProviderId: 'opencode-go',
+  upstreamModelId: 'deepseek-v4-flash-vision-exp',
+  providerQualifiedModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+  authBillingRoute: 'opencode-provider-session',
+  effort: 'high',
+  fastVariant: 'standard',
+  catalogRevision: `sha256:${'b'.repeat(64)}`,
+  observedProviderIdentity: 'opencode-go/deepseek-v4-flash-vision-exp',
+});
 
 function searchItem(id: string): ContextSearchItem {
   const record = createContextRecord({
@@ -79,7 +91,7 @@ function tools(items: ContextSearchItem[]) {
 }
 
 describe('RLM runtime', () => {
-  it('runs root search -> selected evidence -> bounded local Ollama children -> root synthesis', async () => {
+  it('runs bounded children on the exact caller-supplied OpenCode execution identity', async () => {
     const items = [searchItem('one'), searchItem('two'), searchItem('three')];
     const contextTools = tools(items);
     const childRunner = vi.fn(async (request: RlmChildRequest) => ({
@@ -100,13 +112,13 @@ describe('RLM runtime', () => {
     const result = await runtime.investigate({
       question: 'Explain the cross-source sequence',
       scope,
+      executionIdentity,
       budget,
     });
 
     expect(childRunner).toHaveBeenCalledTimes(3);
     for (const [request] of childRunner.mock.calls) {
-      expect(request.provider).toBe('ollama');
-      expect(request.model).toBe('llama3.2:latest');
+      expect(request.executionIdentity).toEqual(executionIdentity);
       expect(request.evidence).toHaveLength(1);
       expect(request.question).toBe('Explain the cross-source sequence');
       expect(request.depth).toBe(1);
@@ -132,7 +144,9 @@ describe('RLM runtime', () => {
         }),
         expect.objectContaining({
           type: 'child_started',
-          detail: expect.stringContaining('provider=ollama model=llama3.2:latest'),
+          detail: expect.stringContaining(
+            'provider=opencode-go model=deepseek-v4-flash-vision-exp',
+          ),
         }),
       ]),
     );
@@ -151,6 +165,7 @@ describe('RLM runtime', () => {
       question:
         'Find the unique passage containing [talk ceased and all eyes were fixed on\nKutúzov]. Return the next words.',
       scope,
+      executionIdentity,
       budget,
     });
 
@@ -183,6 +198,7 @@ describe('RLM runtime', () => {
     const result = await runtime.investigate({
       question: 'bounded',
       scope,
+      executionIdentity,
       budget: {
         ...budget,
         maxSubcalls: 2,
@@ -219,6 +235,7 @@ describe('RLM runtime', () => {
     const result = await runtime.investigate({
       question: 'root',
       scope,
+      executionIdentity,
       budget: { ...budget, maxDepth: 2 },
     });
     expect(childRunner.mock.calls.map(([request]) => request.depth)).toEqual([1, 2]);
@@ -251,6 +268,7 @@ describe('RLM runtime', () => {
     const pending = runtime.investigate({
       question: 'cancel me',
       scope,
+      executionIdentity,
       budget,
       signal: controller.signal,
     });
@@ -284,6 +302,7 @@ describe('RLM runtime', () => {
       const pending = runtime.investigate({
         question: 'time out',
         scope,
+        executionIdentity,
         budget: { ...budget, maxWallTimeMs: 50 },
       });
       const assertion = expect(pending).rejects.toMatchObject({ code: 'wall_time_exceeded' });
@@ -312,9 +331,39 @@ describe('RLM runtime', () => {
       partitionSize: 1,
     });
 
-    const result = await runtime.investigate({ question: 'validate sources', scope, budget });
+    const result = await runtime.investigate({
+      question: 'validate sources',
+      scope,
+      executionIdentity,
+      budget,
+    });
     expect(result.answer).toBe('root validates');
     expect(result.citations.every((citation) => citation.recordId !== 'invented')).toBe(true);
     expect(result.trace.events.some((event) => event.type === 'child_failed')).toBe(true);
+  });
+
+  it('fails the whole run closed when the exact child execution route is unavailable', async () => {
+    const item = searchItem('one');
+    const synthesize = vi.fn();
+    const runtime = createRlmRuntime({
+      contextTools: tools([item]),
+      childRunner: vi.fn(async () => {
+        throw new RlmRuntimeError('execution_route_unavailable', 'rlm_exact_variant_unavailable');
+      }),
+      synthesize,
+    });
+
+    await expect(
+      runtime.investigate({
+        question: 'preserve exact route',
+        scope,
+        executionIdentity,
+        budget,
+      }),
+    ).rejects.toMatchObject({
+      code: 'execution_route_unavailable',
+      message: 'rlm_exact_variant_unavailable',
+    });
+    expect(synthesize).not.toHaveBeenCalled();
   });
 });

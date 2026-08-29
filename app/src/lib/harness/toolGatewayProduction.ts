@@ -319,7 +319,7 @@ export function createProductionToolGatewayDependencies(): ToolGatewayDependenci
       rlm: (args, context) => {
         const auth = useAuthStore.getState();
         if (!auth.localUserId) throw new Error('rlm_context_authority_unavailable');
-        const lease = {
+        const baseLease = {
           sessionId: context.sessionId,
           accountId: auth.localUserId,
           ...(auth.workspaceId ? { workspaceId: String(auth.workspaceId) } : {}),
@@ -330,17 +330,17 @@ export function createProductionToolGatewayDependencies(): ToolGatewayDependenci
         if (args.operation === 'query') {
           const observed = readToolGatewayObservedExecutionAuthority(context.sessionId);
           if (!observed) throw new Error('gateway_execution_identity_unavailable');
-          if (!lease.workspaceId || !lease.projectId || !lease.worktreeId) {
+          if (!baseLease.workspaceId || !baseLease.projectId || !baseLease.worktreeId) {
             throw new Error('gateway_scope_unavailable');
           }
           return productionContextGateway.ask({
             requestId: context.requestId,
             question: stringArg(args, 'query'),
             scope: {
-              accountId: lease.accountId,
-              workspaceId: lease.workspaceId,
-              projectId: lease.projectId,
-              worktreeId: lease.worktreeId,
+              accountId: baseLease.accountId,
+              workspaceId: baseLease.workspaceId,
+              projectId: baseLease.projectId,
+              worktreeId: baseLease.worktreeId,
               revision: observed.scopeRevision,
             },
             taskKind: 'answer',
@@ -355,6 +355,17 @@ export function createProductionToolGatewayDependencies(): ToolGatewayDependenci
         }
         const port = rlmContextPort;
         if (!port) throw new Error('rlm_context_unavailable');
+        const lease =
+          args.operation === 'investigate'
+            ? (() => {
+                const observed = readToolGatewayObservedExecutionAuthority(context.sessionId);
+                if (!observed) throw new Error('gateway_execution_identity_unavailable');
+                return Object.freeze({
+                  ...baseLease,
+                  executionIdentity: observed.executionIdentity,
+                }) satisfies RlmContextLease;
+              })()
+            : baseLease;
         return port.execute(args, lease);
       },
     },

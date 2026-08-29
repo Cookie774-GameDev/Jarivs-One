@@ -610,8 +610,6 @@ export {
   type RlmSlashAction,
 } from './rlmPreferenceStore';
 export {
-  RLM_CHILD_MODEL,
-  RLM_CHILD_PROVIDER,
   RlmRuntimeError,
   createRlmRuntime,
   type RlmBudget,
@@ -636,7 +634,7 @@ export {
 } from './rlmOpenCodeTool';
 export {
   createContextMapRlmRepository,
-  createOllamaRlmChildRunner,
+  createOpenCodeRlmChildRunner,
   createProductionRlmContextTool,
   productionRlmContextTool,
 } from './contextRlmProduction';
