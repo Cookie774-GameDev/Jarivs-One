@@ -13,6 +13,7 @@ export interface MessageBubbleProps {
   message: Message;
   compact?: boolean;
   creatorDraftKind?: JarvisCreatorKind;
+  showActivityLedger?: boolean;
 }
 
 const SPRING = 'spring' as const;
@@ -26,7 +27,12 @@ function extractText(message: Message): string {
     .trim();
 }
 
-export function MessageBubble({ message, compact = false, creatorDraftKind }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  compact = false,
+  creatorDraftKind,
+  showActivityLedger = true,
+}: MessageBubbleProps) {
   const agent = useAgentStore((s) => (message.agent_id ? s.agents[message.agent_id] : undefined));
   const messageLayout = useThemeMotionLayout(true);
   const messageTransition = useThemeMotionTransition(MESSAGE_TRANSITION);
@@ -230,7 +236,7 @@ export function MessageBubble({ message, compact = false, creatorDraftKind }: Me
                   creatorDraftKind={assistantCreatorDraftKind}
                 />
               ))}
-              {message.role === 'assistant' ? (
+              {message.role === 'assistant' && showActivityLedger ? (
                 <AssistantActivityLedger message={message} compact={compact} />
               ) : null}
             </div>

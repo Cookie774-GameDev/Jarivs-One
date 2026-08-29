@@ -695,6 +695,16 @@ function SessionCompletionInspector({ summary }: { summary: AgenticSessionSummar
   );
 }
 
+export function shouldRenderInlineLegacyLedger(
+  message: Message,
+  hasTurnToolEvidence: boolean,
+): boolean {
+  return (
+    !hasTurnToolEvidence ||
+    message.parts.some((part) => part.kind === 'tool_call' || part.kind === 'tool_result')
+  );
+}
+
 export function AgenticConsole({
   chatId,
   messages,
@@ -987,6 +997,7 @@ export function AgenticConsole({
                       }}
                       compact={compact}
                       creatorDraftKind={creatorDraftKind}
+                      showActivityLedger={false}
                     />
                   </div>
                 ) : (
@@ -1004,7 +1015,8 @@ export function AgenticConsole({
                     active={sessionIsActive && sourceMessage.id === latestAssistantMessageId}
                   />
                 ) : null}
-                {inlineLegacyMessage ? (
+                {inlineLegacyMessage &&
+                shouldRenderInlineLegacyLedger(inlineLegacyMessage, hasTurnToolEvidence) ? (
                   <AssistantActivityLedger
                     message={inlineLegacyMessage}
                     compact={compact}

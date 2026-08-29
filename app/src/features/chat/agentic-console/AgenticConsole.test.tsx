@@ -7,7 +7,11 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import type { ChatActivityEvent } from '../activity/types';
 import { AgentChecklistBar } from '../AgentChecklistBar';
 import type { Message } from '@/types';
-import { AgenticConsole, AgenticConsoleErrorBoundary } from './AgenticConsole';
+import {
+  AgenticConsole,
+  AgenticConsoleErrorBoundary,
+  shouldRenderInlineLegacyLedger,
+} from './AgenticConsole';
 import { DEFAULT_CONSOLE_PREFERENCES, saveConsolePreferences } from './preferences';
 
 function message(
@@ -902,6 +906,58 @@ describe('AgenticConsole', () => {
     expect(screen.getByText('Read file')).toBeTruthy();
     expect(screen.getByText('README.md')).toBeTruthy();
     expect(document.body.textContent).not.toContain('tool output');
+  });
+
+  it('renders one authoritative ledger for a usage-bearing legacy assistant response', () => {
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('user', 'user', 0, [{ kind: 'text', text: 'Refine the fixture.' }]),
+        message(
+          'assistant',
+          'assistant',
+          1,
+          [
+            { kind: 'text', text: 'Refinement complete.' },
+            {
+              kind: 'jarvis_source_ref',
+              source: {
+                id: 'source-context',
+                kind: 'context_node',
+                label: 'Project context map',
+                trust: 'app_verified',
+                sensitivity: 'private',
+              },
+            },
+          ],
+          {
+            input_tokens: 247,
+            output_tokens: 47,
+            model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          },
+        ),
+      ],
+      activity: [],
+    });
+
+    expect(rendered.container.querySelectorAll('[data-assistant-activity-ledger]')).toHaveLength(1);
+    expect(screen.getAllByText(/I completed 0 recorded actions/)).toHaveLength(1);
+  });
+
+  it('omits a usage-only legacy ledger when the turn already owns tool evidence', () => {
+    const usageOnly = message('final', 'assistant', 2, [{ kind: 'text', text: 'Complete.' }], {
+      input_tokens: 344,
+      output_tokens: 127,
+      model: 'opencode-go/deepseek-v4-flash-vision-exp',
+    });
+    const withToolEvidence = message('action', 'assistant', 1, [
+      { kind: 'tool_call', call_id: 'edit-1', tool: 'files.edit', args: {} },
+      { kind: 'tool_result', call_id: 'edit-1', result: { ok: true } },
+    ]);
+
+    expect(shouldRenderInlineLegacyLedger(usageOnly, true)).toBe(false);
+    expect(shouldRenderInlineLegacyLedger(withToolEvidence, true)).toBe(true);
+    expect(shouldRenderInlineLegacyLedger(usageOnly, false)).toBe(true);
   });
 
   it('pages older history without mounting the entire canonical transcript', () => {
