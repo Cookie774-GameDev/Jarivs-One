@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ProviderId } from '@/types';
 import type { ChatModelSelection } from '@/lib/ai/modelSelection';
@@ -33,5 +35,16 @@ describe('restoreExactChatSelection', () => {
   it('stays fail-closed when no exact chat route was retained', () => {
     const none = { mode: 'none' } as const;
     expect(restoreExactChatSelection(none, null)).toBe(none);
+  });
+
+  it('keeps the effective chat route visible and passes it explicitly to dispatch', () => {
+    const composer = readFileSync(resolve(process.cwd(), 'src/features/chat/Composer.tsx'), 'utf8');
+    expect(composer).toContain(
+      'restoreExactChatSelection(globalChatModelSelection, retainedExactChatSelection)',
+    );
+    expect(composer).toContain('modelSelectionOverride: selectedForSend');
+    expect(composer).not.toContain(
+      'modelSelectionOverride: useAuthStore.getState().chatModelSelection',
+    );
   });
 });

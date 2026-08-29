@@ -1132,10 +1132,15 @@ export function Composer({
   const agents = useAgentStore((s) => s.agents);
   const provider = useAuthStore((s) => s.defaultProvider);
   const selectedModels = useAuthStore((s) => s.selectedModels);
-  const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
+  const globalChatModelSelection = useAuthStore((s) => s.chatModelSelection);
   const setChatModelSelection = useAuthStore((s) => s.setChatModelSelection);
   const [modelSelectionReadyChatId, setModelSelectionReadyChatId] = useState('');
-  const retainedExactChatSelectionRef = useRef<ExactChatSelection | null>(null);
+  const [retainedExactChatSelection, setRetainedExactChatSelection] =
+    useState<ExactChatSelection | null>(null);
+  const chatModelSelection = useMemo(
+    () => restoreExactChatSelection(globalChatModelSelection, retainedExactChatSelection),
+    [globalChatModelSelection, retainedExactChatSelection],
+  );
   const promptForgeModelSelection = useAuthStore((s) => s.promptForgeModelSelection);
   const setPromptForgeModelSelection = useAuthStore((s) => s.setPromptForgeModelSelection);
   const promptForgeAutoUpgradeOnSend = useAuthStore((s) => s.promptForgeAutoUpgradeOnSend);
@@ -1305,7 +1310,7 @@ export function Composer({
   // A chat's exact connection is local-only metadata. Restore it when switching chats.
   useEffect(() => {
     let cancelled = false;
-    retainedExactChatSelectionRef.current = null;
+    setRetainedExactChatSelection(null);
     setModelSelectionReadyChatId('');
     void chatRepo
       .getById(chatId as ChatId)
@@ -1325,7 +1330,7 @@ export function Composer({
           chat.connection,
         );
         if (restored.mode !== 'single') return;
-        retainedExactChatSelectionRef.current = restored;
+        setRetainedExactChatSelection(restored);
         setChatModelSelection(restored);
       })
       .catch(() => undefined)
@@ -1342,11 +1347,17 @@ export function Composer({
   useEffect(() => {
     if (modelSelectionReadyChatId !== String(chatId)) return;
     const restored = restoreExactChatSelection(
-      chatModelSelection,
-      retainedExactChatSelectionRef.current,
+      globalChatModelSelection,
+      retainedExactChatSelection,
     );
-    if (restored !== chatModelSelection) setChatModelSelection(restored);
-  }, [chatId, chatModelSelection, modelSelectionReadyChatId, setChatModelSelection]);
+    if (restored !== globalChatModelSelection) setChatModelSelection(restored);
+  }, [
+    chatId,
+    globalChatModelSelection,
+    modelSelectionReadyChatId,
+    retainedExactChatSelection,
+    setChatModelSelection,
+  ]);
 
   // Generate options for option picker based on current command
   const optionPickerOptions = useMemo<SlashCommandOption[]>(() => {
@@ -3089,12 +3100,15 @@ export function Composer({
       .trim();
 
     let auth = useAuthStore.getState();
+    let selectedForSend = restoreExactChatSelection(
+      auth.chatModelSelection,
+      retainedExactChatSelection,
+    );
     // Refresh Ollama discovery before gating local sends so a connected
     // daemon is not blocked by a stale empty catalog.
     if (
-      auth.chatModelSelection.mode === 'single' &&
-      (auth.chatModelSelection.providerId === 'ollama' ||
-        auth.chatModelSelection.providerId === 'local')
+      selectedForSend.mode === 'single' &&
+      (selectedForSend.providerId === 'ollama' || selectedForSend.providerId === 'local')
     ) {
       try {
         const { bootstrapOllamaConnection } = await import('@/lib/ai/ollamaBootstrap');
@@ -3103,10 +3117,14 @@ export function Composer({
         // Validation / provider still report a clear local-model error.
       }
       auth = useAuthStore.getState();
+      selectedForSend = restoreExactChatSelection(
+        auth.chatModelSelection,
+        retainedExactChatSelection,
+      );
     }
     const sendCheck = validateSendModelAccess(
       sendText,
-      auth.chatModelSelection,
+      selectedForSend,
       modelSelectionContextFromAuth(auth),
       auth.stackCustomSteps,
       {
@@ -3318,7 +3336,7 @@ export function Composer({
         attachedFiles: nextAttachedFiles,
         sendText,
         ...(oversizedAttachment ? { oversizedPath: oversizedAttachment.path } : {}),
-        supportsFiles: connectionSupportsFileAttachments(auth.chatModelSelection),
+        supportsFiles: connectionSupportsFileAttachments(selectedForSend),
       });
       activeCancellationKeyRef.current = String(userMessage.id);
       const tokenOptimizationPreferences = browserTokenOptimizationPreferences.getSnapshot();
@@ -3342,7 +3360,7 @@ export function Composer({
             interactionMode: interactionModeForSend,
             speakReply: voiceReplyRequestedRef.current || useAuthStore.getState().speakReplies,
             autoApproveActions: useAuthStore.getState().jarvisAutoApprove,
-            modelSelectionOverride: useAuthStore.getState().chatModelSelection,
+            modelSelectionOverride: selectedForSend,
             reasoningPreference: readChatReasoningPreference(String(chatId)),
             runtimeSettings: runtimePolicy.settings,
             accessLevel: runtimePolicy.access,
@@ -5170,7 +5188,7 @@ export function Composer({
                         writeChatReasoningEffort(String(chatId), effort === 'auto' ? null : effort);
                         setReasoningPreference(readChatReasoningPreference(String(chatId)));
                       }
-                      retainedExactChatSelectionRef.current = next.mode === 'single' ? next : null;
+                      setRetainedExactChatSelection(next.mode === 'single' ? next : null);
                       setChatModelSelection(next);
                       if (next.mode === 'single' && next.connectionId) {
                         const descriptor = getProviderConnectionDescriptor(next.connectionId);
