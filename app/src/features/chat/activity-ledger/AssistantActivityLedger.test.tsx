@@ -129,8 +129,8 @@ describe('AssistantActivityLedger', () => {
     expect(rendered.container.querySelector('[data-assistant-activity-ledger="true"]')).toBeNull();
   });
 
-  it('keeps an authoritative active turn live during a quiet gap between receipts', () => {
-    render(
+  it('does not render an empty activity surface before a truthful receipt exists', () => {
+    const rendered = render(
       <AssistantActivityLedger
         active
         message={assistant([])}
@@ -138,10 +138,10 @@ describe('AssistantActivityLedger', () => {
           {
             id: 'completed-read',
             chatId: 'chat-ledger-ui',
-            kind: 'file',
+            kind: 'agent',
+            category: 'response',
             status: 'done',
-            title: 'Opaque file activity',
-            filePath: 'src/a.ts',
+            title: 'Opaque provider lifecycle activity',
             ts: 100,
             startedAt: 100,
             endedAt: 1_100,
@@ -150,13 +150,10 @@ describe('AssistantActivityLedger', () => {
       />,
     );
 
-    expect(
-      screen.getByRole('button', { name: 'Show activity details Working · 1 action' }),
-    ).toBeTruthy();
-    expect(document.body.textContent).not.toContain('Worked for');
+    expect(rendered.container.querySelector('[data-assistant-activity-ledger="true"]')).toBeNull();
   });
 
-  it('provides keyboard-accessible filters and bounds mounted detail rows', () => {
+  it('expands into one compact ordered receipt transcript and bounds mounted rows', () => {
     const events: ChatActivityEvent[] = Array.from(
       { length: DETAIL_PAGE_SIZE + 12 },
       (_, index) => ({
@@ -174,121 +171,14 @@ describe('AssistantActivityLedger', () => {
     fireEvent.click(screen.getByRole('button', { name: /activity details/i }));
 
     expect(screen.getAllByTestId('activity-ledger-receipt')).toHaveLength(DETAIL_PAGE_SIZE);
-    expect(screen.getByRole('tab', { name: `Files ${DETAIL_PAGE_SIZE + 12}` })).toBeTruthy();
-    expect(screen.getByRole('navigation', { name: 'Activity categories' })).toBeTruthy();
     expect(screen.getByRole('list', { name: 'Activity receipts' })).toBeTruthy();
     expect(screen.getAllByRole('listitem')).toHaveLength(DETAIL_PAGE_SIZE);
-    expect(screen.getByPlaceholderText('Filter actions…')).toBeTruthy();
     expect(screen.getByRole('button', { name: /show 12 more/i })).toBeTruthy();
-    const resizeHandle = screen.getByRole('separator', { name: 'Resize activity details' });
-    expect(resizeHandle.getAttribute('aria-valuemax')).toBe('420');
-    for (let index = 0; index < 10; index += 1) {
-      fireEvent.keyDown(resizeHandle, { key: 'ArrowDown' });
-    }
-    expect(resizeHandle.getAttribute('aria-valuenow')).toBe('420');
-    expect(screen.getByRole('region', { name: 'Assistant activity details' }).style.height).toBe(
-      '420px',
-    );
-  });
-
-  it('uses a roving keyboard tablist for the bounded inspector categories', () => {
-    render(
-      <AssistantActivityLedger
-        message={assistant([])}
-        correlatedEvents={[
-          {
-            id: 'read-keyboard',
-            chatId: 'chat-ledger-ui',
-            kind: 'file',
-            status: 'done',
-            title: 'Read file',
-            filePath: 'src/keyboard.ts',
-            ts: 100,
-          },
-        ]}
-      />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /activity details/i }));
-
-    const allTab = screen.getByRole('tab', { name: 'All 1' });
-    const readsTab = screen.getByRole('tab', { name: 'Files 1' });
-    expect(allTab.getAttribute('aria-selected')).toBe('true');
-    expect(allTab.getAttribute('tabindex')).toBe('0');
-    expect(readsTab.getAttribute('tabindex')).toBe('-1');
-
-    allTab.focus();
-    fireEvent.keyDown(allTab, { key: 'ArrowRight' });
-
-    expect(readsTab.getAttribute('aria-selected')).toBe('true');
-    expect(readsTab.getAttribute('tabindex')).toBe('0');
-    expect(document.activeElement).toBe(readsTab);
-    expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(readsTab.id);
-  });
-
-  it('distinguishes an empty selected category from an empty search result', () => {
-    render(
-      <AssistantActivityLedger
-        message={assistant([
-          {
-            kind: 'tool_call',
-            call_id: 'command-only',
-            tool: 'terminal.exec',
-            args: { command: 'private command' },
-          },
-          { kind: 'tool_result', call_id: 'command-only', result: { exitCode: 0 } },
-        ])}
-      />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /activity details/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Reads 0' }));
-
-    expect(screen.getByText('No read activity for this turn.')).toBeTruthy();
-    expect(document.body.textContent).not.toContain('private command');
-
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search activity' }), {
-      target: { value: 'missing' },
-    });
-    expect(screen.getByText('No matching activity receipts.')).toBeTruthy();
-    expect(screen.queryByText('No read activity for this turn.')).toBeNull();
-  });
-
-  it('searches only the bounded privacy-safe receipt projection and resets paging', () => {
-    const events: ChatActivityEvent[] = [
-      {
-        id: 'read-alpha',
-        chatId: 'chat-ledger-ui',
-        kind: 'file',
-        category: 'file',
-        status: 'done',
-        title: 'Read file',
-        filePath: 'C:\\private\\AlphaPlan.ts',
-        ts: 100,
-      },
-      {
-        id: 'edit-beta',
-        chatId: 'chat-ledger-ui',
-        kind: 'file',
-        category: 'file',
-        status: 'done',
-        title: 'Edited file',
-        filePath: 'C:\\private\\BetaBuild.ts',
-        ts: 200,
-      },
-    ];
-    render(<AssistantActivityLedger message={assistant([])} correlatedEvents={events} />);
-    fireEvent.click(screen.getByRole('button', { name: /activity details/i }));
-
-    const search = screen.getByRole('searchbox', { name: 'Search activity' });
-    expect(search.getAttribute('maxlength')).toBe('80');
-    fireEvent.change(search, { target: { value: 'beta' } });
-
-    expect(screen.getAllByTestId('activity-ledger-receipt')).toHaveLength(1);
-    expect(screen.getByText('BetaBuild.ts')).toBeTruthy();
-    expect(screen.queryByText('AlphaPlan.ts')).toBeNull();
-    expect(document.body.textContent).not.toContain('C:\\private');
-
-    fireEvent.change(search, { target: { value: 'does-not-exist' } });
-    expect(screen.getByText('No matching activity receipts.')).toBeTruthy();
+    expect(screen.queryByRole('tablist')).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Activity categories' })).toBeNull();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.queryByRole('separator')).toBeNull();
+    expect(screen.getByRole('region', { name: 'Assistant activity details' }).style.height).toBe('');
   });
 
   it('shows estimated and unavailable usage without mixing provenance', () => {
@@ -320,7 +210,6 @@ describe('AssistantActivityLedger', () => {
     );
     expect(screen.getByText('In ≈15').getAttribute('title')).toBe('Estimated locally');
     fireEvent.click(screen.getByRole('button', { name: /activity details/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Usage' }));
     expect(screen.getByText('Output usage unavailable')).toBeTruthy();
   });
 
@@ -332,7 +221,19 @@ describe('AssistantActivityLedger', () => {
     (semanticIntent, motion) => {
       render(
         <AssistantActivityLedger
-          message={assistant([])}
+          message={assistant([
+            {
+              kind: 'tool_call',
+              call_id: `structured-${semanticIntent}`,
+              tool: 'terminal.exec',
+              args: { command: 'private' },
+            },
+            {
+              kind: 'tool_result',
+              call_id: `structured-${semanticIntent}`,
+              result: { exitCode: 0 },
+            },
+          ])}
           active
           correlatedEvents={[
             {

@@ -734,6 +734,18 @@ export function AgenticConsole({
     () => activity.filter((event) => (event.startedAt ?? event.ts) >= latestUserTurnStartedAt),
     [activity, latestUserTurnStartedAt],
   );
+  const hasTurnToolEvidence = React.useMemo(
+    () =>
+      messages.some(
+        (message) =>
+          message.role === 'assistant' &&
+          message.created_at >= latestUserTurnStartedAt &&
+          message.parts.some(
+            (part) => part.kind === 'tool_call' || part.kind === 'tool_result',
+          ),
+      ),
+    [latestUserTurnStartedAt, messages],
+  );
   const turnAuthoritativeDurationMs =
     typeof summary.durationMs === 'number' &&
     summary.durationMs > 0 &&
@@ -742,7 +754,10 @@ export function AgenticConsole({
       ? summary.durationMs
       : undefined;
   const turnActivityMessage = React.useMemo<Message | undefined>(() => {
-    if (turnActivity.length === 0) return undefined;
+    // Durable assistant message parts own their own response-phase ledgers.
+    // Uncorrelated live events get one latest-turn fallback only when no such
+    // evidence exists, preventing duplicate or guessed receipts.
+    if (turnActivity.length === 0 || hasTurnToolEvidence) return undefined;
     let startedAt = turnActivity[0]!.startedAt ?? turnActivity[0]!.ts;
     let updatedAt = turnActivity[0]!.endedAt ?? turnActivity[0]!.ts;
     for (let index = 1; index < turnActivity.length; index += 1) {
@@ -752,41 +767,26 @@ export function AgenticConsole({
       if (eventStartedAt < startedAt) startedAt = eventStartedAt;
       if (eventUpdatedAt > updatedAt) updatedAt = eventUpdatedAt;
     }
-    const toolParts = messages.reduce<Message['parts']>((parts, message) => {
-      if (message.role !== 'assistant' || message.created_at < latestUserTurnStartedAt)
-        return parts;
-      const prefix = `${String(message.id)}:`;
-      for (const part of message.parts) {
-        if (part.kind === 'tool_call') {
-          parts.push({ ...part, call_id: `${prefix}${part.call_id}` });
-        }
-        if (part.kind === 'tool_result') {
-          parts.push({ ...part, call_id: `${prefix}${part.call_id}` });
-        }
-      }
-      return parts;
-    }, []);
     return {
       id: `session-activity:${chatId}` as Message['id'],
       chat_id: chatId as Message['chat_id'],
       role: 'assistant',
       // Activity events are not durably correlated to one assistant message.
-      // Bound them to the latest user turn and aggregate only that turn's
-      // already-authorized tool receipts without rendering raw payloads.
-      parts: toolParts,
+      // Bound the fallback to the latest user turn without guessing a phase.
+      parts: [],
       created_at: startedAt,
       updated_at: updatedAt,
     };
-  }, [chatId, latestUserTurnStartedAt, messages, turnActivity]);
-  const inlineLedgerLegacyId = React.useMemo(
+  }, [chatId, hasTurnToolEvidence, turnActivity]);
+  const inlineLedgerLegacyBlock = React.useMemo(
     () =>
-      turnActivityMessage
-        ? [...blocks]
-            .reverse()
-            .find((block) => isInlineLedgerLegacyBlock(block, latestUserTurnStartedAt))?.id
-        : undefined,
-    [blocks, latestUserTurnStartedAt, turnActivityMessage],
+      [...blocks]
+        .reverse()
+        .find((block) => isInlineLedgerLegacyBlock(block, latestUserTurnStartedAt)),
+    [blocks, latestUserTurnStartedAt],
   );
+  const inlineLedgerLegacyId = inlineLedgerLegacyBlock?.id;
+  const inlineLedgerSourceId = inlineLedgerLegacyBlock?.sourceId;
   const loadCount = Math.min(TRANSCRIPT_PAGE_SIZE, transcriptWindow.remaining);
   const messagesBySource = React.useMemo(
     () =>
@@ -943,8 +943,8 @@ export function AgenticConsole({
               (part) => part.kind === 'jarvis_source_ref',
             );
             const showLedger =
-              activity.length === 0 &&
               block.kind !== 'legacy' &&
+              block.sourceId !== inlineLedgerSourceId &&
               sourceMessage?.role === 'assistant' &&
               lastVisibleIndexBySource.get(block.sourceId) === index &&
               sourceMessage.parts.some(
@@ -973,6 +973,9 @@ export function AgenticConsole({
                 )}
                 {showLedger ? (
                   <AssistantActivityLedger message={sourceMessage} compact={compact} />
+                ) : null}
+                {inlineLegacyMessage ? (
+                  <AssistantActivityLedger message={inlineLegacyMessage} compact={compact} />
                 ) : null}
                 {(block.id === inlineLedgerLegacyId ||
                   (!inlineLedgerLegacyId && block.id === finalAnswerId)) &&

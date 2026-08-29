@@ -335,7 +335,7 @@ describe('AgenticConsole', () => {
     });
 
     expect(screen.getByText('Build the game.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /show activity details/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /show activity details/i })).toBeNull();
     expect(screen.queryByText('Jarvis status')).toBeNull();
     expect(screen.queryByText('Jarvis model activity')).toBeNull();
     expect(screen.queryByText('The protected request is being compiled.')).toBeNull();
@@ -437,7 +437,7 @@ describe('AgenticConsole', () => {
     expect(rendered.container.textContent).not.toContain('private');
   });
 
-  it('keeps the activity disclosure scoped to the latest user turn', () => {
+  it('keeps each historical response-phase disclosure with its own durable evidence', () => {
     renderConsole({
       chatId: 'chat-console',
       messages: [
@@ -475,7 +475,7 @@ describe('AgenticConsole', () => {
       sessionEvidence: { status: 'completed', currentOperation: 'Complete' },
     });
 
-    expect(screen.queryByRole('button', { name: /show activity details/i })).toBeNull();
+    expect(screen.getAllByRole('button', { name: /show activity details/i })).toHaveLength(1);
   });
 
   it('uses a same-turn canonical duration when correlated event timestamps have no interval', () => {
@@ -542,7 +542,7 @@ describe('AgenticConsole', () => {
     expect(screen.queryByRole('button', { name: /show activity details/i })).toBeNull();
   });
 
-  it('switches motion on a rapid structured activity transition and becomes still at completion', () => {
+  it('does not fabricate an activity animation from receipt-free lifecycle transitions', () => {
     const baseActivity: ChatActivityEvent = {
       id: 'phase',
       chatId: 'chat-console',
@@ -560,14 +560,7 @@ describe('AgenticConsole', () => {
       sessionEvidence: { status: 'running', currentOperation: 'Working' },
     });
 
-    expect(
-      rendered.container.querySelector('[data-agent-motion]')?.getAttribute('data-agent-motion'),
-    ).toBe('cursor-forge');
-    expect(
-      rendered.container
-        .querySelector('[data-agent-motion]')
-        ?.getAttribute('data-agent-motion-size'),
-    ).toBe('compact');
+    expect(rendered.container.querySelector('[data-agent-motion]')).toBeNull();
 
     rendered.rerender(
       <TooltipProvider>
@@ -587,9 +580,7 @@ describe('AgenticConsole', () => {
         />
       </TooltipProvider>,
     );
-    expect(
-      rendered.container.querySelector('[data-agent-motion]')?.getAttribute('data-agent-motion'),
-    ).toBe('glyph-current');
+    expect(rendered.container.querySelector('[data-agent-motion]')).toBeNull();
 
     rendered.rerender(
       <TooltipProvider>
@@ -646,7 +637,7 @@ describe('AgenticConsole', () => {
     expect(rendered.container.querySelector('[data-agent-motion]')).toBeNull();
   });
 
-  it('keeps statusless historical tool evidence private and reasoning still during later live work', () => {
+  it('keeps historical tool evidence private without inventing current receipt motion', () => {
     const rendered = renderConsole({
       chatId: 'chat-console',
       messages: [
@@ -682,11 +673,7 @@ describe('AgenticConsole', () => {
     ).toBeNull();
     expect(screen.getByRole('button', { name: /show activity details/i })).toBeTruthy();
     expect(document.body.textContent).not.toContain('npm test');
-    expect(
-      [...rendered.container.querySelectorAll('[data-agent-motion]')].map((motion) =>
-        motion.getAttribute('data-agent-motion'),
-      ),
-    ).toEqual(['glyph-current']);
+    expect(rendered.container.querySelectorAll('[data-agent-motion]')).toHaveLength(0);
   });
 
   it('changes only the scoped console profile and exposes classic view', () => {
