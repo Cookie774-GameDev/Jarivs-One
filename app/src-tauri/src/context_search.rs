@@ -583,6 +583,33 @@ fn prepare_root(root: &Path) -> Result<PathBuf, String> {
         .map_err(|error| format!("context_search_root_canonicalize:{error}"))
 }
 
+#[cfg(windows)]
+fn canonical_path_identity_eq(left: &Path, right: &Path) -> bool {
+    fn comparable(path: &Path) -> String {
+        let normalized = path.as_os_str().to_string_lossy().replace('/', "\\");
+        if let Some(unc) = normalized.strip_prefix(r"\\?\UNC\") {
+            return format!(r"\\{unc}");
+        }
+        normalized
+            .strip_prefix(r"\\?\")
+            .unwrap_or(&normalized)
+            .to_string()
+    }
+
+    comparable(left).eq_ignore_ascii_case(&comparable(right))
+}
+
+#[cfg(not(windows))]
+fn canonical_path_identity_eq(left: &Path, right: &Path) -> bool {
+    left == right
+}
+
+fn canonical_child_belongs_to_parent(canonical_child: &Path, canonical_parent: &Path) -> bool {
+    canonical_child
+        .parent()
+        .is_some_and(|parent| canonical_path_identity_eq(parent, canonical_parent))
+}
+
 fn prepare_trusted_descendant(
     trusted_base: &Path,
     relative_path: &Path,
@@ -624,7 +651,7 @@ fn prepare_trusted_descendant(
         let canonical_child = child
             .canonicalize()
             .map_err(|error| format!("context_search_root_component_canonicalize:{error}"))?;
-        if canonical_child.parent() != Some(current.as_path()) {
+        if !canonical_child_belongs_to_parent(&canonical_child, &current) {
             return Err("context_search_root_component_escape".to_string());
         }
         harden_path_permissions(&canonical_child, true)?;
@@ -1752,6 +1779,19 @@ mod tests {
             );
         }
         assert!(prepared.windows(2).all(|paths| paths[0] == paths[1]));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn accepts_an_equivalent_windows_canonical_parent_identity() {
+        assert!(canonical_child_belongs_to_parent(
+            Path::new(r"\\?\C:\Users\Viper\AppData\Local\ai.jarvis.desktop"),
+            Path::new(r"c:\users\viper\appdata\local")
+        ));
+        assert!(!canonical_child_belongs_to_parent(
+            Path::new(r"\\?\C:\Users\Viper\AppData\LocalElsewhere\ai.jarvis.desktop"),
+            Path::new(r"c:\users\viper\appdata\local")
+        ));
     }
 
     #[test]

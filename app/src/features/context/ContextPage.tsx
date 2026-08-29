@@ -1865,6 +1865,18 @@ export function ContextPage() {
     );
   }, [rootDraft]);
 
+  const openSummaryFolderPicker = React.useCallback(async () => {
+    const root = rootDraft.trim() || null;
+    const picked = await chooseProjectFolder({
+      title: 'Choose a folder root to summarize',
+      initialPath: root,
+    });
+    if (!picked) return;
+    setSummarySelectedPaths((current) => mergeSiyuanSummaryPaths(current, [picked]));
+    setSummaryMode('selected');
+    setStatus(`Added ${basename(picked)} as a summary folder root.`);
+  }, [rootDraft]);
+
   const loadGitHubRepositories = React.useCallback(async () => {
     const installationId = githubInstallationId.trim();
     if (!accountId) {
@@ -2526,7 +2538,7 @@ export function ContextPage() {
                       recommended file types across the map. Everything else stays searchable as
                       structure and metadata.
                     </p>
-                    <div className="flex gap-1.5">
+                    <div className="space-y-1.5">
                       <Input
                         id="context-summary-path"
                         value={summaryPathDraft}
@@ -2537,23 +2549,32 @@ export function ContextPage() {
                           addPastedSummaryPaths();
                         }}
                         placeholder="Paste one or more file paths (one per line)"
-                        className="h-8 min-w-0 text-metadata"
+                        className="h-8 w-full min-w-0 text-metadata"
                       />
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        disabled={!summaryPathDraft.trim()}
-                        onClick={addPastedSummaryPaths}
-                      >
-                        Add pasted path
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => void openSummaryFilePicker()}
-                      >
-                        Add files
-                      </Button>
+                      <div className="flex flex-wrap gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={!summaryPathDraft.trim()}
+                          onClick={addPastedSummaryPaths}
+                        >
+                          Add pasted path
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => void openSummaryFolderPicker()}
+                        >
+                          Add folders
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => void openSummaryFilePicker()}
+                        >
+                          Add files
+                        </Button>
+                      </div>
                     </div>
                     <p className="text-metadata text-muted-foreground">
                       {summarySelectedPaths.length.toLocaleString()} selected summary{' '}

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const authState = vi.hoisted(() => ({
@@ -11,6 +11,7 @@ const uiState = vi.hoisted(() => ({
   notificationMaster: false,
   doneNotifications: { contextMaps: false },
 }));
+const chooseProjectFolder = vi.hoisted(() => vi.fn());
 
 vi.mock('@/stores/auth', () => {
   const useAuthStore = Object.assign(
@@ -39,7 +40,8 @@ vi.mock('@/lib/notifications', () => ({
 
 vi.mock('@/features/files/projectFiles', () => ({
   basename: (path: string) => path,
-  chooseProjectFolder: vi.fn(),
+  chooseProjectFolder,
+  chooseProjectFiles: vi.fn(async () => []),
   getStoredProjectRoot: () => '',
   setStoredProjectRoot: vi.fn(),
 }));
@@ -72,7 +74,10 @@ vi.mock('./contextPersistence', () => ({
 import { ContextPage } from './ContextPage';
 
 describe('ContextPage MonoChrome appearance', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    chooseProjectFolder.mockReset();
+  });
 
   it('gates every rendered empty-state shadow, gradient, and blur without removing content', async () => {
     render(<ContextPage />);
@@ -142,5 +147,16 @@ describe('ContextPage MonoChrome appearance', () => {
     expect(label.parentElement?.className).toContain('w-full');
     expect(label.parentElement?.className).toContain('max-w-full');
     expect(label.parentElement?.className).toContain('overflow-hidden');
+  });
+
+  it('adds a picked folder root to the real selected summary scope', async () => {
+    const folder = '\\\\?\\C:\\Users\\viper\\projects\\aether-drift\\src';
+    chooseProjectFolder.mockResolvedValueOnce(folder);
+    render(<ContextPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Add folders' }));
+
+    await waitFor(() => expect(screen.getByTitle(folder)).toBeTruthy());
+    expect(screen.getByText('1 selected summary path')).toBeTruthy();
   });
 });
