@@ -77,6 +77,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
   const onUpdateRef = React.useRef(onUpdate);
   const settingsRef = React.useRef(panel.settings);
   const nativeUrlRef = React.useRef(currentUrl);
+  const nativeListenerReadyRef = React.useRef<Promise<void>>(Promise.resolve());
   const nativeOpenRef = React.useRef<{
     active: NativeOpenRequest | null;
     pending: NativeOpenRequest | null;
@@ -95,9 +96,10 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
 
   const openNative = React.useCallback(
     async (url: string) => {
+      if (!isTauri) throw new Error('The in-window browser is available in the VibeSpace app.');
+      await nativeListenerReadyRef.current;
       const bounds = readBounds(surfaceRef.current);
       if (!bounds) return;
-      if (!isTauri) throw new Error('The in-window browser is available in the VibeSpace app.');
       setLoadState('loading');
       const next = { url, bounds };
       const state = nativeOpenRef.current;
@@ -138,6 +140,13 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
     if (policy?.delivery !== 'native-child') return;
     let disposed = false;
     let stopListening: (() => void) | undefined;
+    let resolveListener: (() => void) | undefined;
+    let rejectListener: ((cause: Error) => void) | undefined;
+    let listenerSettled = false;
+    nativeListenerReadyRef.current = new Promise<void>((resolve, reject) => {
+      resolveListener = resolve;
+      rejectListener = reject;
+    });
     void listen<NativeBrowserState>('workbench-browser://state', ({ payload }) => {
       if (disposed || payload.panelId !== panel.id || payload.operationId !== operationId) return;
       const normalized = normalizeBrowserUrl(payload.url);
@@ -149,10 +158,24 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
         settings: { ...settingsRef.current, url: normalized },
         status: payload.error ? 'error' : 'ready',
       });
-    }).then((unlisten) => {
-      if (disposed) unlisten();
-      else stopListening = unlisten;
-    });
+    })
+      .then((unlisten) => {
+        if (disposed) {
+          unlisten();
+          return;
+        }
+        stopListening = unlisten;
+        listenerSettled = true;
+        resolveListener?.();
+      })
+      .catch((cause) => {
+        if (disposed) return;
+        const failure = new Error(nativeFailureMessage(cause, 'Browser state is unavailable.'));
+        listenerSettled = true;
+        rejectListener?.(failure);
+        setError(failure.message);
+        setLoadState('error');
+      });
 
     const refreshBounds = () =>
       void openNative(nativeUrlRef.current).catch((cause) => {
@@ -169,6 +192,10 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
 
     return () => {
       disposed = true;
+      if (!listenerSettled) {
+        listenerSettled = true;
+        rejectListener?.(new Error('workbench_browser_listener_disposed'));
+      }
       observer?.disconnect();
       window.removeEventListener('resize', refreshBounds);
       window.removeEventListener('scroll', refreshBounds, true);
@@ -273,10 +300,30 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
 
   const showFrame = policy?.delivery === 'embedded' && loadState !== 'idle';
   return (
-    <div className="workbench-browser" data-testid="workbench-browser-panel" onWheel={(event) => event.stopPropagation()}>
+    <div
+      className="workbench-browser"
+      data-testid="workbench-browser-panel"
+      onWheel={(event) => event.stopPropagation()}
+    >
       <form className="workbench-browser-bar" onSubmit={navigate}>
-        <Button type="button" size="icon-sm" variant="ghost" aria-label="Back" onClick={() => goHistory(-1)}><ArrowLeft /></Button>
-        <Button type="button" size="icon-sm" variant="ghost" aria-label="Forward" onClick={() => goHistory(1)}><ArrowRight /></Button>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Back"
+          onClick={() => goHistory(-1)}
+        >
+          <ArrowLeft />
+        </Button>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Forward"
+          onClick={() => goHistory(1)}
+        >
+          <ArrowRight />
+        </Button>
         <Globe2 aria-hidden="true" />
         <input
           className="[html[data-theme=warm]_&]:border-border-mid [html[data-theme=warm]_&]:bg-background [html[data-theme=warm]_&]:text-foreground [html[data-theme=warm]_&]:caret-foreground [html[data-theme=warm]_&]:placeholder:text-muted-foreground"
@@ -285,17 +332,61 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
           onChange={(event) => setDraft(event.target.value)}
           spellCheck={false}
         />
-        <Button type="submit" size="icon-sm" variant="ghost" aria-label="Go"><ExternalLink /></Button>
-        <Button type="button" size="icon-sm" variant="ghost" aria-label="Reload browser" onClick={() => nativeControl('reload')}><RefreshCw /></Button>
-        <Button type="button" size="icon-sm" variant="ghost" aria-label="Stop loading" onClick={() => nativeControl('stop')}><Square /></Button>
+        <Button type="submit" size="icon-sm" variant="ghost" aria-label="Go">
+          <ExternalLink />
+        </Button>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Reload browser"
+          onClick={() => nativeControl('reload')}
+        >
+          <RefreshCw />
+        </Button>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          aria-label="Stop loading"
+          onClick={() => nativeControl('stop')}
+        >
+          <Square />
+        </Button>
       </form>
-      {loadState === 'loading' ? <p className="workbench-browser-status" aria-live="polite">Loading…</p> : null}
-      {error ? <div className="workbench-panel-empty" role="alert"><strong>Page could not open</strong><span>{error}</span></div> : null}
-      {policy?.delivery === 'native-child' ? <div ref={surfaceRef} className="workbench-browser-native-surface" data-testid="workbench-browser-native-surface" aria-label="In-window web page" /> : null}
-      {showFrame && policy ? (
-        <iframe key={`${policy.src}-${frameKey}`} title={`${panel.title} web page`} src={policy.src} sandbox={policy.sandbox} referrerPolicy={policy.referrerPolicy} allow={policy.allow} onLoad={() => setLoadState('loaded')} />
+      {loadState === 'loading' ? (
+        <p className="workbench-browser-status" aria-live="polite">
+          Loading…
+        </p>
       ) : null}
-      <p className="workbench-browser-engine">Remote pages stay inside a capability-free VibeSpace child WebView.</p>
+      {error ? (
+        <div className="workbench-panel-empty" role="alert">
+          <strong>Page could not open</strong>
+          <span>{error}</span>
+        </div>
+      ) : null}
+      {policy?.delivery === 'native-child' ? (
+        <div
+          ref={surfaceRef}
+          className="workbench-browser-native-surface"
+          data-testid="workbench-browser-native-surface"
+          aria-label="In-window web page"
+        />
+      ) : null}
+      {showFrame && policy ? (
+        <iframe
+          key={`${policy.src}-${frameKey}`}
+          title={`${panel.title} web page`}
+          src={policy.src}
+          sandbox={policy.sandbox}
+          referrerPolicy={policy.referrerPolicy}
+          allow={policy.allow}
+          onLoad={() => setLoadState('loaded')}
+        />
+      ) : null}
+      <p className="workbench-browser-engine">
+        Remote pages stay inside a capability-free VibeSpace child WebView.
+      </p>
     </div>
   );
 }

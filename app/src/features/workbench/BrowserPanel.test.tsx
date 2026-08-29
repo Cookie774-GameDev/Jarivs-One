@@ -10,11 +10,18 @@ const native = vi.hoisted(() => ({
     async () => undefined,
   ),
   stateHandler: null as null | ((event: { payload: Record<string, unknown> }) => void),
+  deferListen: false,
+  finishListen: null as null | (() => void),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: native.invoke }));
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(async (_event: string, handler: typeof native.stateHandler) => {
+    if (native.deferListen) {
+      await new Promise<void>((resolve) => {
+        native.finishListen = resolve;
+      });
+    }
     native.stateHandler = handler;
     return vi.fn();
   }),
@@ -44,6 +51,8 @@ describe('Workbench BrowserPanel delivery', () => {
   beforeEach(() => {
     native.invoke.mockClear();
     native.stateHandler = null;
+    native.deferListen = false;
+    native.finishListen = null;
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 20,
       y: 80,
@@ -173,6 +182,25 @@ describe('Workbench BrowserPanel delivery', () => {
       ).toHaveLength(1),
     );
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('subscribes to terminal native state before opening a fast child page', async () => {
+    native.deferListen = true;
+    render(<BrowserPanel panel={panel('https://example.com/')} onUpdate={vi.fn()} />);
+
+    await waitFor(() => expect(native.finishListen).toEqual(expect.any(Function)));
+    expect(native.invoke).not.toHaveBeenCalledWith(
+      'workbench_browser_surface_open',
+      expect.anything(),
+    );
+
+    act(() => native.finishListen?.());
+    await waitFor(() =>
+      expect(native.invoke).toHaveBeenCalledWith(
+        'workbench_browser_surface_open',
+        expect.objectContaining({ url: 'https://example.com/' }),
+      ),
+    );
   });
 
   it('shows an exact native string rejection instead of masking it', async () => {
