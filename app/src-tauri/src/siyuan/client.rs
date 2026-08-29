@@ -24,6 +24,7 @@ pub const MAX_BATCH_BLOCK_TOTAL_BYTES: usize = 262_144;
 const MAX_HTTP_RESPONSE_BYTES: u64 = 1_100_000;
 const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
 const SEARCH_HTTP_TIMEOUT: Duration = Duration::from_secs(45);
+static DOCUMENT_CREATE_MOVE_GUARD: Mutex<()> = Mutex::new(());
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -698,6 +699,12 @@ impl HttpSiyuanTransport {
         markdown: &str,
         marker: &str,
     ) -> Result<String, ClientError> {
+        // SiYuan's document move path flushes and refreshes shared filesystem/index state.
+        // Tauri commands construct independent transports, so keep the complete
+        // receipt/create/move/verify boundary single-flight across those instances.
+        let _guard = DOCUMENT_CREATE_MOVE_GUARD
+            .lock()
+            .map_err(|_| ClientError::TransportUnavailable)?;
         let root = self.map_root_info(map_root_id)?;
         if root.notebook_id != notebook_id {
             return Err(ClientError::ResponseTypeMismatch);
@@ -707,6 +714,7 @@ impl HttpSiyuanTransport {
             Self::require_append_parent(&root, parent_id, &parent)?;
         }
         let mut recovered = Vec::new();
+        let mut staged = Vec::new();
         for candidate in self.search(marker, MAX_SEARCH_RESULTS)? {
             if candidate.notebook_id != notebook_id {
                 continue;
@@ -719,10 +727,16 @@ impl HttpSiyuanTransport {
                 .ok_or(ClientError::ResponseTypeMismatch)?;
             validate_identifier(document_id)?;
             let info = self.block_info(document_id)?;
-            if Self::require_append_parent(&root, document_id, &info).is_ok()
-                && self.block_markdown(document_id)? == markdown
+            if info.notebook_id != notebook_id
+                || info.root_id != document_id
+                || self.block_markdown(document_id)? != markdown
             {
+                continue;
+            }
+            if Self::require_append_parent(&root, document_id, &info).is_ok() {
                 recovered.push(document_id.to_owned());
+            } else if self.document_hpath(document_id)? == staging_path {
+                staged.push(document_id.to_owned());
             }
         }
         recovered.sort();
@@ -732,7 +746,13 @@ impl HttpSiyuanTransport {
             [] => {}
             _ => return Err(ClientError::ResponseTypeMismatch),
         }
-        let id = self.create_document(notebook_id, staging_path, markdown)?;
+        staged.sort();
+        staged.dedup();
+        let id = match staged.as_slice() {
+            [id] => id.clone(),
+            [] => self.create_document(notebook_id, staging_path, markdown)?,
+            _ => return Err(ClientError::ResponseTypeMismatch),
+        };
         let staged = self.block_info(&id)?;
         if staged.notebook_id != notebook_id || staged.root_id != id {
             return Err(ClientError::ResponseTypeMismatch);
@@ -740,13 +760,22 @@ impl HttpSiyuanTransport {
         if self.block_markdown(&id)? != markdown {
             return Err(ClientError::Conflict);
         }
-        let _: Value = self.post(
+        let move_result: Result<Value, ClientError> = self.post(
             "/api/filetree/moveDocsByID",
             json!({ "fromIDs": [id], "toID": parent_id }),
-        )?;
+        );
         let moved = self.block_info(&id)?;
-        Self::require_append_parent(&root, &id, &moved)?;
+        if let Err(error) = Self::require_append_parent(&root, &id, &moved) {
+            return Err(move_result.err().unwrap_or(error));
+        }
+        // A non-zero/lost move response is ambiguous. Exact post-move notebook/path
+        // authority is the receipt; never issue a second move when it proves success.
+        let _ = move_result;
         Ok(id)
+    }
+
+    fn document_hpath(&self, id: &str) -> Result<String, ClientError> {
+        self.post("/api/filetree/getHPathByID", json!({ "id": id }))
     }
 
     fn batch_append_blocks(
@@ -2191,6 +2220,67 @@ mod tests {
             assert!(!request.contains("/api/query/sql"));
         }
         server.join().unwrap();
+    }
+
+    #[test]
+    fn exact_parent_create_recovers_the_unique_staged_receipt_and_reconciles_a_lost_move_response()
+    {
+        let token = "s".repeat(48);
+        let marker = "vibespace-context-node:v1 map=map-1 node=child";
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/20260820-maproot.sy","rootID":"20260820-maproot"}}"#
+                .to_owned(),
+            format!(
+                r#"{{"code":0,"msg":"","data":{{"blocks":[{{"id":"marker-block","box":"20260820-notebook","path":"/20260820-stage/20260820-child.sy","content":"{marker}"}}]}}}}"#
+            ),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/20260820-stage/20260820-child.sy","rootID":"20260820-child"}}"#
+                .to_owned(),
+            r##"{"code":0,"msg":"","data":{"id":"20260820-child","kramdown":"# Node"}}"##
+                .to_owned(),
+            r#"{"code":0,"msg":"","data":"/VibeSpace Staging/20260820-maproot/node"}"#
+                .to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/20260820-stage/20260820-child.sy","rootID":"20260820-child"}}"#
+                .to_owned(),
+            r##"{"code":0,"msg":"","data":{"id":"20260820-child","kramdown":"# Node"}}"##
+                .to_owned(),
+            r#"{"code":-1,"msg":"response delivery failed","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/20260820-maproot/20260820-child.sy","rootID":"20260820-child"}}"#
+                .to_owned(),
+        ]);
+        let client =
+            SiyuanClient::new(true, HttpSiyuanTransport::new(port, token.clone()).unwrap());
+
+        assert_eq!(
+            client
+                .create_document_under_parent(
+                    "20260820-notebook",
+                    "20260820-maproot",
+                    "20260820-maproot",
+                    "/VibeSpace Staging/20260820-maproot/node",
+                    "# Node",
+                    marker,
+                )
+                .unwrap(),
+            "20260820-child"
+        );
+
+        let captured = (0..10)
+            .map(|_| requests.recv().unwrap())
+            .collect::<Vec<_>>();
+        assert!(captured[5].starts_with("POST /api/filetree/getHPathByID HTTP/1.1"));
+        assert!(captured[8].starts_with("POST /api/filetree/moveDocsByID HTTP/1.1"));
+        assert!(!captured
+            .iter()
+            .any(|request| request.contains("createDocWithMd")));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn exact_parent_document_mutations_share_one_process_guard() {
+        let first = DOCUMENT_CREATE_MOVE_GUARD.lock().unwrap();
+        assert!(DOCUMENT_CREATE_MOVE_GUARD.try_lock().is_err());
+        drop(first);
     }
 
     #[test]
