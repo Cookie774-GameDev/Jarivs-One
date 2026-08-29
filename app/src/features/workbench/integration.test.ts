@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveInitialRoute } from '@/stores/ui';
 import { getAllActions, performAction } from '@/features/command-palette/actions';
 import { useWorkbenchStore } from './store';
+import { MAX_WORKBENCH_PANELS } from './types';
 import './registerCommandActions';
 
 describe('Workbench integration seams', () => {
@@ -52,5 +53,33 @@ describe('Workbench integration seams', () => {
     const editor = useWorkbenchStore.getState().panels.find((p) => p.id === editorId);
     expect(editor?.kind).toBe('editor');
     expect(editor?.settings.filePath).toContain('readme.md');
+  });
+
+  it('refreshes an existing device preview when the panel limit is already full', () => {
+    const previewId = useWorkbenchStore.getState().openDevicePreview({
+      sourcePanelId: 'editor-source',
+      deviceId: 'iphone-15',
+      language: 'html',
+      content: '<p>first preview</p>',
+    });
+    expect(previewId).toBeTruthy();
+
+    while (useWorkbenchStore.getState().panels.length < MAX_WORKBENCH_PANELS) {
+      expect(useWorkbenchStore.getState().addPanel('notes')).toBeTruthy();
+    }
+
+    const refreshedId = useWorkbenchStore.getState().openDevicePreview({
+      sourcePanelId: 'editor-source',
+      deviceId: 'iphone-15',
+      language: 'html',
+      content: '<p>updated preview</p>',
+    });
+
+    expect(refreshedId).toBe(previewId);
+    expect(useWorkbenchStore.getState().panels).toHaveLength(MAX_WORKBENCH_PANELS);
+    expect(
+      useWorkbenchStore.getState().panels.find((panel) => panel.id === previewId)?.settings
+        .previewDocument,
+    ).toContain('updated preview');
   });
 });

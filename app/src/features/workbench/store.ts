@@ -484,10 +484,6 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
   },
 
   openDevicePreview: (input) => {
-    if (get().panels.length >= MAX_WORKBENCH_PANELS) {
-      set({ persistenceError: `Panel limit reached (${MAX_WORKBENCH_PANELS}).` });
-      return null;
-    }
     const deviceId = input.deviceId || 'iphone-15';
     const preset = getDevicePreset(deviceId);
     const orientation = input.orientation ?? 'portrait';
@@ -524,6 +520,11 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
       get().bringToFront(existing.id);
       get().selectPanel(existing.id);
       return existing.id;
+    }
+
+    if (get().panels.length >= MAX_WORKBENCH_PANELS) {
+      set({ persistenceError: `Panel limit reached (${MAX_WORKBENCH_PANELS}).` });
+      return null;
     }
 
     const id = createWorkbenchId('device-preview');
