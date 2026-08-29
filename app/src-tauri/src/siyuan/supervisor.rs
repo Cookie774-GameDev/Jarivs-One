@@ -23,6 +23,115 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(120);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(200);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(15);
 
+#[cfg(windows)]
+mod windows_process_job {
+    use super::SupervisorError;
+    use std::ffi::c_void;
+    use std::mem::size_of;
+    use std::os::windows::io::AsRawHandle;
+    use std::os::windows::process::CommandExt;
+    use std::process::{Child, Command};
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
+    };
+    use windows::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    use windows::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME};
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    const CREATE_SUSPENDED: u32 = 0x0000_0004;
+
+    struct OwnedHandle(HANDLE);
+
+    // SAFETY: this wrapper has unique ownership, does not expose the raw handle,
+    // and CloseHandle is valid from any thread.
+    unsafe impl Send for OwnedHandle {}
+
+    impl Drop for OwnedHandle {
+        fn drop(&mut self) {
+            // SAFETY: each successful Win32 handle creation is wrapped exactly once.
+            let _ = unsafe { CloseHandle(self.0) };
+        }
+    }
+
+    pub(super) struct KillOnCloseJob(OwnedHandle);
+
+    impl KillOnCloseJob {
+        pub(super) fn create() -> Result<Self, SupervisorError> {
+            // SAFETY: an unnamed job needs no borrowed name or security descriptor.
+            let handle = unsafe { CreateJobObjectW(None, PCWSTR::null()) }
+                .map_err(|_| SupervisorError::ProcessUnavailable)?;
+            let job = Self(OwnedHandle(handle));
+            let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            // SAFETY: limits matches the requested information class for the full call.
+            unsafe {
+                SetInformationJobObject(
+                    job.0 .0,
+                    JobObjectExtendedLimitInformation,
+                    (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast::<c_void>(),
+                    size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                )
+            }
+            .map_err(|_| SupervisorError::ProcessUnavailable)?;
+            Ok(job)
+        }
+
+        pub(super) fn assign_and_resume(&self, child: &Child) -> Result<(), SupervisorError> {
+            // SAFETY: Child owns a live process handle and was created suspended below.
+            unsafe { AssignProcessToJobObject(self.0 .0, HANDLE(child.as_raw_handle())) }
+                .map_err(|_| SupervisorError::ProcessUnavailable)?;
+            let thread_id = suspended_primary_thread_id(child.id())?;
+            // SAFETY: the enumerated thread belongs to the still-suspended child.
+            let thread = OwnedHandle(
+                unsafe { OpenThread(THREAD_SUSPEND_RESUME, false, thread_id) }
+                    .map_err(|_| SupervisorError::ProcessUnavailable)?,
+            );
+            let prior = unsafe { ResumeThread(thread.0) };
+            if prior == 1 {
+                Ok(())
+            } else {
+                Err(SupervisorError::ProcessUnavailable)
+            }
+        }
+    }
+
+    fn suspended_primary_thread_id(process_id: u32) -> Result<u32, SupervisorError> {
+        // SAFETY: the snapshot has no borrowed input and is closed by OwnedHandle.
+        let snapshot = OwnedHandle(
+            unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) }
+                .map_err(|_| SupervisorError::ProcessUnavailable)?,
+        );
+        let mut entry = THREADENTRY32 {
+            dwSize: size_of::<THREADENTRY32>() as u32,
+            ..Default::default()
+        };
+        let mut matching = None;
+        if unsafe { Thread32First(snapshot.0, &mut entry) }.is_ok() {
+            loop {
+                if entry.th32OwnerProcessID == process_id {
+                    if matching.replace(entry.th32ThreadID).is_some() {
+                        return Err(SupervisorError::ProcessUnavailable);
+                    }
+                }
+                if unsafe { Thread32Next(snapshot.0, &mut entry) }.is_err() {
+                    break;
+                }
+            }
+        }
+        matching.ok_or(SupervisorError::ProcessUnavailable)
+    }
+
+    pub(super) fn configure_suspended(command: &mut Command) {
+        command.creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SupervisorError {
     FeatureDisabled,
@@ -119,11 +228,24 @@ pub(crate) trait RuntimeProcess: Send {
 pub(crate) struct ChildRuntimeProcess {
     child: Child,
     terminated: bool,
+    #[cfg(windows)]
+    _job: windows_process_job::KillOnCloseJob,
 }
 
 impl ChildRuntimeProcess {
+    #[cfg(windows)]
     #[allow(dead_code)]
-    pub(crate) fn new(child: Child) -> Self {
+    fn new(child: Child, job: windows_process_job::KillOnCloseJob) -> Self {
+        Self {
+            child,
+            terminated: false,
+            _job: job,
+        }
+    }
+
+    #[cfg(not(windows))]
+    #[allow(dead_code)]
+    fn new(child: Child) -> Self {
         Self {
             child,
             terminated: false,
@@ -223,13 +345,25 @@ impl RuntimeLaunchPlan {
             .stderr(Stdio::null());
         #[cfg(windows)]
         {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x0800_0000);
+            windows_process_job::configure_suspended(&mut command);
+            let job = windows_process_job::KillOnCloseJob::create()?;
+            let mut child = command
+                .spawn()
+                .map_err(|_| SupervisorError::ProcessUnavailable)?;
+            if let Err(error) = job.assign_and_resume(&child) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(error);
+            }
+            Ok(ChildRuntimeProcess::new(child, job))
         }
-        command
-            .spawn()
-            .map(ChildRuntimeProcess::new)
-            .map_err(|_| SupervisorError::ProcessUnavailable)
+        #[cfg(not(windows))]
+        {
+            command
+                .spawn()
+                .map(ChildRuntimeProcess::new)
+                .map_err(|_| SupervisorError::ProcessUnavailable)
+        }
     }
 
     fn command_arguments(&self) -> Vec<OsString> {
@@ -1050,6 +1184,21 @@ mod tests {
         assert_eq!(inner.lifecycle.state(), RuntimeState::Stopped);
         let replacement = inner.prepare_launch("project-1").unwrap();
         assert_eq!(replacement.project_id, "project-1");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn managed_kernel_is_suspended_before_kill_on_close_containment() {
+        let source = include_str!("supervisor.rs");
+        for required in [
+            ["JOB_OBJECT_LIMIT_", "KILL_ON_JOB_CLOSE"].concat(),
+            ["CREATE_", "SUSPENDED"].concat(),
+            ["AssignProcessTo", "JobObject"].concat(),
+            ["Resume", "Thread"].concat(),
+            ["job.assign_and_", "resume(&child)"].concat(),
+        ] {
+            assert!(source.contains(&required), "missing {required}");
+        }
     }
 
     #[test]
