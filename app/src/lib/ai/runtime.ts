@@ -1931,14 +1931,18 @@ export async function installJarvisKernelRuntimeHost(
             approvalId: approval.id,
             runId: parentRun.id,
             status: 'queued',
+            continuation: 'waiting',
           };
         }
+        const finalizedRun = await repositories.run.getById(request.accountId, parentRun.id);
+        if (!finalizedRun) return unavailable();
         return {
           version: 1,
           kind: 'approval_execution',
           approvalId: approval.id,
           runId: parentRun.id,
           status: executed.value.result.ok ? 'completed' : 'failed',
+          continuation: finalizedRun.status === 'awaiting_approval' ? 'waiting' : 'ready',
         };
       }
       if (request.kind === 'cancel') {

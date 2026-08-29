@@ -102,6 +102,7 @@ export type KernelClientResponseV1 =
       approvalId: string;
       runId: string;
       status: 'queued' | 'running' | 'completed' | 'failed';
+      continuation: 'ready' | 'waiting';
     }>
   | Readonly<{
       version: 1;
@@ -340,11 +341,19 @@ export function isKernelClientResponseV1(value: unknown): value is KernelClientR
       );
     case 'approval_execution':
       return (
-        exactKeys(record, ['version', 'kind', 'approvalId', 'runId', 'status']) &&
+        exactKeys(record, [
+          'version',
+          'kind',
+          'approvalId',
+          'runId',
+          'status',
+          'continuation',
+        ]) &&
         id(record.approvalId) &&
         id(record.runId) &&
         typeof record.status === 'string' &&
-        ['queued', 'running', 'completed', 'failed'].includes(record.status)
+        ['queued', 'running', 'completed', 'failed'].includes(record.status) &&
+        (record.continuation === 'ready' || record.continuation === 'waiting')
       );
     case 'cancellation_state':
       return (

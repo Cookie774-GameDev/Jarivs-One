@@ -109,6 +109,7 @@ describe('ActionApprovalCard canonical adapter', () => {
       approvalId: 'jappr_1',
       runId: 'jrun_1',
       status: 'running',
+      continuation: 'waiting',
     });
     const { container } = renderCard(part('jarvisapproval:jappr_1'), {
       actionId: 'terminal.create',
@@ -146,12 +147,7 @@ describe('ActionApprovalCard canonical adapter', () => {
       approvalId: 'jappr_1',
       runId: 'jrun_1',
       status: 'completed',
-    });
-    messageRepository.getById.mockResolvedValueOnce({
-      id: 'message_1',
-      chat_id: 'chat_1',
-      role: 'assistant',
-      parts: [{ ...part('jarvisapproval:jappr_1'), status: 'success' }],
+      continuation: 'ready',
     });
     const events: Array<{ chatId?: string; status?: string }> = [];
     const sends: Array<Record<string, unknown>> = [];

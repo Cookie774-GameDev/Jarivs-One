@@ -203,35 +203,19 @@ async function persistVerifiedDenial(messageId: MessageId, callId: string): Prom
   await messageRepo.update(messageId, { parts });
 }
 
-async function continueAfterSettledApproval(input: {
+function continueAfterSettledApproval(input: {
   chatId: string;
   messageId: MessageId;
   callId: string;
   approvalId: string;
-}): Promise<void> {
-  const message = await messageRepo.getById(input.messageId);
-  if (!message || String(message.chat_id) !== input.chatId || message.role !== 'assistant') {
-    throw new Error('approval_continuation_message_missing');
-  }
-  const settled = message.parts.find(
-    (candidate): candidate is ActionPart =>
-      candidate.kind === 'action_proposal' && candidate.call_id === input.callId,
-  );
-  if (!settled || (settled.status !== 'success' && settled.status !== 'error')) {
-    throw new Error('approval_continuation_result_missing');
-  }
-  const stillWaiting = message.parts.some(
-    (candidate) =>
-      candidate.kind === 'action_proposal' &&
-      candidate.call_id !== input.callId &&
-      (candidate.status === 'pending' || candidate.status === 'queued'),
-  );
+  continuation: 'ready' | 'waiting';
+}): void {
   window.dispatchEvent(
     new CustomEvent('jarvis:run-state', {
       detail: { chatId: input.chatId, status: 'running' },
     }),
   );
-  if (stillWaiting) return;
+  if (input.continuation === 'waiting') return;
 
   const policy = readChatRuntimePolicyState(input.chatId);
   const detail: SendDetail = {
@@ -434,11 +418,12 @@ export function ActionApprovalCard({
         setDecisionState('submitted');
         if (execution.status === 'completed' || execution.status === 'failed') {
           failureKind = 'persistence';
-          await continueAfterSettledApproval({
+          continueAfterSettledApproval({
             chatId,
             messageId,
             callId: part.call_id,
             approvalId,
+            continuation: execution.continuation,
           });
         }
       } finally {
