@@ -31,6 +31,7 @@
 import { create } from 'zustand';
 import { MAX_PENDING_ESCAPE_CHARS, splitTrailingIncompleteEscape } from './terminalEscape';
 import { sanitizePersistedDraft, sanitizePersistedTerminalText } from './terminalContentSanitizer';
+import { appendTerminalScrollbackDurably } from './terminalScrollbackDurability';
 
 /* -------------------------------------------------------------------------- */
 /*  Constants                                                                 */
@@ -514,9 +515,11 @@ export const useTerminalTranscriptStore = create<TranscriptState>()((set) => ({
   },
 
   appendOutput: (sessionId, raw) => {
+    let accepted = false;
     set((state) => {
       const cur = state.sessions[sessionId];
       if (!cur) return {};
+      accepted = true;
       const cleaned = sanitizeTerminalOutputChunk(raw, cur.pendingEscape);
       const nextSessions = {
         ...state.sessions,
@@ -534,6 +537,11 @@ export const useTerminalTranscriptStore = create<TranscriptState>()((set) => ({
       // happens in the debounced storage flush.
       return { sessions: nextSessions };
     });
+    if (accepted && raw) {
+      // IndexedDB is the durable authority; the bounded Zustand/localStorage
+      // transcript remains a synchronous hot cache for rendering and context.
+      void appendTerminalScrollbackDurably(sessionId, raw).catch(() => undefined);
+    }
     scheduleTranscriptStorageFlush();
   },
 

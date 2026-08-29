@@ -6,6 +6,7 @@ import { terminalScrollbackRepo } from '@/lib/db/repositories';
 import { createDirectory, readTextFile, writeTextFile } from '@/lib/fs';
 import { getStoredProjectRoot, joinPath } from '@/features/files/projectFiles';
 import { loadAllAboutMeFile, saveAllAboutMeFile } from '@/features/all-about-me/allAboutMeFile';
+import { decodeTerminalScrollbackChunk } from '@/features/terminals/terminalScrollbackDurability';
 import { terminalRestoreText } from '@/features/terminals/transcriptStore';
 import { useAuthStore } from '@/stores/auth';
 import {
@@ -340,7 +341,7 @@ async function collectProductionSources(
       text: chunks
         .map((chunk) => {
           try {
-            return atob(chunk.data);
+            return decodeTerminalScrollbackChunk(chunk.data);
           } catch {
             return '';
           }

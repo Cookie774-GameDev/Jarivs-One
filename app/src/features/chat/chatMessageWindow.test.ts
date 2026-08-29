@@ -29,6 +29,10 @@ describe('classic chat message window', () => {
     expect(nextChatMessageWindowCount(messages.length, 400)).toBe(messages.length);
   });
 
+  it('requests another DB page when the mounted window already covers loaded history', () => {
+    expect(nextChatMessageWindowCount(400, 400, true)).toBe(500);
+  });
+
   it('preserves the visible scroll anchor when older content is prepended', () => {
     expect(anchoredChatScrollTop(2_000, 12, 2_750)).toBe(762);
     expect(anchoredChatScrollTop(2_000, 0, 1_900)).toBe(0);

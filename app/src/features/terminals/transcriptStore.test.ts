@@ -14,6 +14,15 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+const durableScrollback = vi.hoisted(() => ({
+  append: vi.fn<(...args: unknown[]) => Promise<void>>(),
+}));
+
+vi.mock('./terminalScrollbackDurability', () => ({
+  appendTerminalScrollbackDurably: durableScrollback.append,
+}));
+
 import {
   MAX_BYTES_PER_SESSION,
   MAX_PERSISTED_SESSIONS,
@@ -28,6 +37,8 @@ import {
 } from '@/features/terminals/transcriptStore';
 
 beforeEach(() => {
+  durableScrollback.append.mockReset();
+  durableScrollback.append.mockResolvedValue(undefined);
   useTerminalTranscriptStore.getState().reset();
 });
 
@@ -334,6 +345,35 @@ describe('transcript store persistence performance', () => {
 });
 
 describe('transcript store — append + retrieve', () => {
+  it('mirrors accepted PTY output to durable IndexedDB scrollback', async () => {
+    const store = useTerminalTranscriptStore.getState();
+    store.registerSession('pty_durable', { agentSlug: 'builder' });
+
+    store.appendOutput('pty_durable', 'raw \u001b[32mUnicode λ\u001b[0m\n');
+
+    expect(durableScrollback.append).toHaveBeenCalledWith(
+      'pty_durable',
+      'raw \u001b[32mUnicode λ\u001b[0m\n',
+    );
+  });
+
+  it('does not create durable scrollback for unregistered late output', () => {
+    useTerminalTranscriptStore.getState().appendOutput('pty_late', 'late output\n');
+
+    expect(durableScrollback.append).not.toHaveBeenCalled();
+  });
+
+  it('keeps the hot transcript available when durable persistence rejects', async () => {
+    durableScrollback.append.mockRejectedValueOnce(new Error('indexeddb unavailable'));
+    const store = useTerminalTranscriptStore.getState();
+    store.registerSession('pty_offline', { agentSlug: null });
+
+    store.appendOutput('pty_offline', 'still rendered\n');
+    await Promise.resolve();
+
+    expect(getSessionTranscript('pty_offline')?.text).toBe('still rendered\n');
+  });
+
   it('stores stripped output for a registered session', () => {
     const store = useTerminalTranscriptStore.getState();
     store.registerSession('pty_abc', { agentSlug: 'builder', command: 'claude' });

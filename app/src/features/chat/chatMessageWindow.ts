@@ -9,8 +9,13 @@ export function windowChatMessages<T>(
   return messages.slice(messages.length - count);
 }
 
-export function nextChatMessageWindowCount(total: number, mountedCount: number): number {
-  return Math.min(total, Math.max(0, mountedCount) + CHAT_MESSAGE_WINDOW_PAGE);
+export function nextChatMessageWindowCount(
+  total: number,
+  mountedCount: number,
+  hasOlder = false,
+): number {
+  const next = Math.max(0, mountedCount) + CHAT_MESSAGE_WINDOW_PAGE;
+  return hasOlder ? next : Math.min(total, next);
 }
 
 export function anchoredChatScrollTop(

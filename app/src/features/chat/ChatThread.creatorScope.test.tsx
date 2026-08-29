@@ -9,7 +9,11 @@ const mockState = vi.hoisted(() => ({
 }));
 
 vi.mock('./hooks', () => ({
-  useChatMessages: () => mockState.messages,
+  usePagedChatMessages: () => ({
+    messages: mockState.messages,
+    hasOlder: false,
+    loadOlder: vi.fn(),
+  }),
 }));
 
 import { ChatThread } from './ChatThread';

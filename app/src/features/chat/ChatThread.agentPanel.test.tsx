@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Message } from '@/types/chat';
 import { useJarvisInteractionStore } from '@/features/jarvis-interaction/sessionStore';
@@ -6,10 +6,16 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 
 const mockState = vi.hoisted(() => ({
   messages: [] as Message[],
+  hasOlder: false,
+  loadOlder: vi.fn(),
 }));
 
 vi.mock('./hooks', () => ({
-  useChatMessages: () => mockState.messages,
+  usePagedChatMessages: () => ({
+    messages: mockState.messages,
+    hasOlder: mockState.hasOlder,
+    loadOlder: mockState.loadOlder,
+  }),
 }));
 
 import { ChatThread } from './ChatThread';
@@ -35,11 +41,43 @@ const baseAgent = {
 describe('ChatThread agent panel attachment', () => {
   beforeEach(() => {
     mockState.messages = [];
+    mockState.hasOlder = false;
+    mockState.loadOlder.mockReset();
     useJarvisInteractionStore.setState({
       modesByChat: {},
       planSafeApprovalsByChat: {},
       agentsByChat: {},
     });
+  });
+
+  it('requests the next bounded database page when the user scrolls to older history', () => {
+    mockState.messages = [
+      {
+        id: 'msg_recent' as Message['id'],
+        chat_id: 'chat_parent' as Message['chat_id'],
+        role: 'assistant',
+        parts: [{ kind: 'text', text: 'Recent message' }],
+        created_at: 2,
+        updated_at: 2,
+      },
+    ];
+    mockState.hasOlder = true;
+
+    render(
+      <TooltipProvider>
+        <ChatThread chatId="chat_parent" />
+      </TooltipProvider>,
+    );
+
+    const log = screen.getByRole('log');
+    Object.defineProperties(log, {
+      scrollTop: { configurable: true, writable: true, value: 0 },
+      scrollHeight: { configurable: true, value: 1_000 },
+      clientHeight: { configurable: true, value: 600 },
+    });
+    fireEvent.scroll(log);
+
+    expect(mockState.loadOlder).toHaveBeenCalledOnce();
   });
 
   it('renders multitask and subagent activity as one connected chat panel', () => {

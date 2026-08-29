@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
 import { ArrowDown, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useChatMessages } from './hooks';
+import { usePagedChatMessages } from './hooks';
 import { MessageBubble } from './MessageBubble';
 import { ChatActivityTimeline, useUnifiedChatActivity } from './activity';
 import { ChatAgentActivityPanel } from '@/features/jarvis-interaction/AgentActivityCard';
@@ -249,8 +249,8 @@ function roughPayloadSize(value: unknown): number {
  * has scrolled up to read history, we do not yank them.
  */
 export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThreadProps) {
-  const persistedMessages = useChatMessages(fixtureMessages ? null : chatId);
-  const messages = fixtureMessages ?? persistedMessages;
+  const persistedPage = usePagedChatMessages(fixtureMessages ? null : chatId);
+  const messages = fixtureMessages ?? persistedPage.messages;
   const chatKey = String(chatId);
   const commandCenterBinding = useJarvisCommandCenterBinding();
   const hasProjectedCanonicalRun = useJarvisTaskRunStore((state) =>
@@ -450,23 +450,30 @@ export function ChatThread({ chatId, compact = false, fixtureMessages }: ChatThr
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
+    const hasLoadedClassicHistory =
+      consoleView === 'classic' && classicMessages.length < messages.length;
+    const shouldLoadOlderPage =
+      !fixtureMessages && !hasLoadedClassicHistory && persistedPage.hasOlder;
     if (
-      consoleView === 'classic' &&
       el.scrollTop <= 48 &&
-      classicMessages.length < messages.length &&
+      (hasLoadedClassicHistory || shouldLoadOlderPage) &&
       !pendingHistoryAnchorRef.current
     ) {
       pendingHistoryAnchorRef.current = {
         scrollHeight: el.scrollHeight,
         scrollTop: el.scrollTop,
       };
-      setClassicWindow((current) => ({
-        chatId: chatKey,
-        mountedCount: nextChatMessageWindowCount(
-          messages.length,
-          current.chatId === chatKey ? current.mountedCount : INITIAL_CHAT_MESSAGE_WINDOW,
-        ),
-      }));
+      if (consoleView === 'classic') {
+        setClassicWindow((current) => ({
+          chatId: chatKey,
+          mountedCount: nextChatMessageWindowCount(
+            messages.length,
+            current.chatId === chatKey ? current.mountedCount : INITIAL_CHAT_MESSAGE_WINDOW,
+            shouldLoadOlderPage,
+          ),
+        }));
+      }
+      if (shouldLoadOlderPage) persistedPage.loadOlder();
     }
     const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     stickyRef.current = distFromBottom < 80;

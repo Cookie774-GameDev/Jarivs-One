@@ -17,7 +17,13 @@ import { ChatThread } from './ChatThread';
 
 const hookState = vi.hoisted(() => ({ messages: [] as Message[] }));
 
-vi.mock('./hooks', () => ({ useChatMessages: () => hookState.messages }));
+vi.mock('./hooks', () => ({
+  usePagedChatMessages: () => ({
+    messages: hookState.messages,
+    hasOlder: false,
+    loadOlder: vi.fn(),
+  }),
+}));
 vi.mock('./MessageBubble', () => ({ MessageBubble: () => <div>message</div> }));
 vi.mock('./activity', () => ({
   ChatActivityTimeline: () => <div data-testid="legacy-timeline">Legacy timeline</div>,
