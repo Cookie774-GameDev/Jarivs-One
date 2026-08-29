@@ -56,6 +56,47 @@ struct SurfaceRecord {
 static SURFACES: LazyLock<Mutex<HashMap<String, SurfaceRecord>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+#[cfg(windows)]
+const WEBVIEW2_BROWSER_ARGUMENTS: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+#[cfg(windows)]
+static CHILD_WEBVIEW2_ENVIRONMENT_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+#[cfg(windows)]
+struct WebView2EnvironmentRestore(Option<std::ffi::OsString>);
+
+#[cfg(windows)]
+impl Drop for WebView2EnvironmentRestore {
+    fn drop(&mut self) {
+        match self.0.take() {
+            Some(value) => std::env::set_var(WEBVIEW2_BROWSER_ARGUMENTS, value),
+            None => std::env::remove_var(WEBVIEW2_BROWSER_ARGUMENTS),
+        }
+    }
+}
+
+fn with_isolated_child_webview2_environment<T>(create: impl FnOnce() -> T) -> T {
+    #[cfg(windows)]
+    {
+        // The acceptance harness exposes only the already-created trusted main
+        // environment over CDP. WebView2 appends this process variable to every
+        // newly-created environment, so a dedicated child profile would
+        // otherwise contend for the main port. Environment creation in WRY is
+        // synchronous; serialize it and restore the host setting immediately.
+        let _lock = CHILD_WEBVIEW2_ENVIRONMENT_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let restore = WebView2EnvironmentRestore(std::env::var_os(WEBVIEW2_BROWSER_ARGUMENTS));
+        std::env::remove_var(WEBVIEW2_BROWSER_ARGUMENTS);
+        let created = create();
+        drop(restore);
+        created
+    }
+    #[cfg(not(windows))]
+    {
+        create()
+    }
+}
+
 fn validate_id(value: &str, code: &'static str) -> Result<(), String> {
     if value.is_empty()
         || value.len() > 120
@@ -270,11 +311,13 @@ pub async fn workbench_browser_surface_open(
                     None,
                 );
             });
-        main.add_child(
-            builder,
-            LogicalPosition::new(bounds.x, bounds.y),
-            LogicalSize::new(bounds.width, bounds.height),
-        )
+        with_isolated_child_webview2_environment(|| {
+            main.add_child(
+                builder,
+                LogicalPosition::new(bounds.x, bounds.y),
+                LogicalSize::new(bounds.width, bounds.height),
+            )
+        })
         .map_err(|_| "workbench_browser_webview_unavailable".to_owned())?
     };
     apply_bounds(&webview, &bounds)?;
@@ -415,5 +458,28 @@ mod tests {
         assert!(opening_loading_state(true, Some(true)));
         assert!(opening_loading_state(true, None));
         assert!(opening_loading_state(false, Some(false)));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn child_environment_does_not_inherit_the_main_cdp_endpoint() {
+        const KEY: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+        let previous = std::env::var_os(KEY);
+        std::env::set_var(
+            KEY,
+            "--remote-debugging-address=127.0.0.1 --remote-debugging-port=9223",
+        );
+
+        let observed = with_isolated_child_webview2_environment(|| std::env::var_os(KEY));
+
+        assert_eq!(observed, None);
+        assert_eq!(
+            std::env::var_os(KEY),
+            Some("--remote-debugging-address=127.0.0.1 --remote-debugging-port=9223".into())
+        );
+        match previous {
+            Some(value) => std::env::set_var(KEY, value),
+            None => std::env::remove_var(KEY),
+        }
     }
 }
