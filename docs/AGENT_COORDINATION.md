@@ -2308,3 +2308,14 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Branch/upstream/base: `main` / `origin/main` / `698510708fbd68d8d0d3db28d38fe08a3b9e49eb`; clean worktree before claim, no merge/rebase/cherry-pick state.
 - User evidence: at a roughly 1904x915 CSS viewport, the oversized `#memoryTitle` reaches the Context Map boundary and the copy column loses its intended breathing room even though the inspector/canvas rail itself no longer overlaps.
 - Scope: reproduce the headline/map collision at the user's real short-desktop viewport, correct the parent Context grid/typography geometry, verify responsive behavior, and republish the same single homepage file.
+
+### Final checkpoint
+
+- Status: complete; owned lock released after exact-byte public verification.
+- Root cause: `#memoryTitle` had a 424px layout box but 700px `scrollWidth`; the visible word “CONTEXT” escaped the box by 276px and crossed 162px into the map despite a nominal 114px grid gap.
+- Implementation/deployment commit: `e36789b` (`site: contain context headline ink`), pushed fast-forward to `origin/main`; GitHub Pages run `33226093066` completed successfully.
+- Fix: the desktop Context grid now allocates a deliberate 0.8/1.2 editorial split and scales the headline with a bounded 4.15rem–7rem type range, preserving the composition while containing the actual rendered ink.
+- Public geometry: 1904x915, 1920x1080, 1440x900, 1116x1050, 1024x768, 390x844, and 320x568 each returned zero headline ink overflow, zero headline/map collision area, and zero document overflow; the screenshot-matched 1904x915 viewport retains a 104px clear zone.
+- Regression checks: Context keyboard zoom/pan/Enter selection and focus retention passed; axe-core 4.10.3 returned zero A/AA violations at 1904x915 and 390x844; all 10 inline scripts parsed, 149 IDs were unique, and fresh local/public console checks returned zero warnings/errors.
+- Exact-byte verification: local `site/index.html` and `https://vibespaceos.com/` both SHA-256 `950E3B7353264F76EC8A2D17AD662390F6EAC5ED03C3B1A8CEDF94E1E5B8B739` (603,479 bytes).
+- Boundaries honored: no app, PR #31, Stripe, Supabase, DNS, billing, release, or non-homepage route mutation.
