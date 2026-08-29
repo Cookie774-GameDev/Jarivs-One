@@ -2352,3 +2352,13 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Rendered verification: 1440x900, 390x844, and 320x568 returned zero document overflow and a fully bounded control; panel count and range-input count are zero. Pointer toggling, state/ARIA/status updates, one-shot animation cleanup, running `AudioContext`, cue generation, ambient start, and legacy preference migration passed. Reduced-motion reported no keyframe animation and zero transition duration.
 - Accessibility/runtime: axe-core 4.10.3 returned zero WCAG A/AA violations at 1440x900 and 390x844; fresh local console, page-exception, and network-failure checks returned zero events. All 10 inline scripts parse, all 149 IDs are unique, and `git diff --check` passes.
 - Next: commit/push the unchanged verified artifact, wait for Pages, then repeat exact-byte and public interaction verification before releasing the owned lock.
+
+### Final checkpoint
+
+- Status: complete; owned lock released after exact-byte public verification.
+- Implementation/deployment commit: `60636620ebc25632646fe605baed182aa0f8b240` (`site: simplify sound to animated toggle`), pushed fast-forward to `origin/main`; GitHub Pages run `33229334566` completed successfully.
+- Public behavior: `https://vibespaceos.com/?rev=6063662#one-space` loads with one `SOUND / OFF` button, zero mixer panels and zero audio sliders. No `AudioContext` exists before the gesture; clicking changes the state to ON, creates one running context, starts the ambient bed, emits the enable cue, and updates the live status. The response animation is one-shot and reduced motion disables its keyframes.
+- Public runtime: 1440x900 returned zero document overflow and zero fresh console warnings/errors, page exceptions, or network failures. Local responsive checks passed at 390x844 and 320x568; axe-core 4.10.3 returned zero WCAG A/AA violations at desktop and mobile.
+- Exact-byte verification: local `site/index.html` and the deployed homepage both SHA-256 `E8DE62DD6A43BDF43118CC96553404CA2A29207745016A88323654D250F20FAA` (608,126 bytes).
+- Rollback: base commit `ce04983c3097aef544a38a3ee1a6b6f7ce5a14d7` preserves the previous mixer implementation; no unrelated files or systems were changed.
+- Boundaries honored: no app, PR #31, Stripe, Supabase, DNS, billing, release, or non-homepage route mutation.
