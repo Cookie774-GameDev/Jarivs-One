@@ -31,42 +31,6 @@ const PET_NATIVE_FRAME_STYLE_BITS: isize = 0x00CF_0000;
 const PET_NATIVE_FRAME_EX_STYLE_BITS: isize = 0x0002_0301;
 
 #[cfg(target_os = "windows")]
-const WEBVIEW2_BROWSER_ARGUMENTS: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
-#[cfg(target_os = "windows")]
-static PET_CHILD_WEBVIEW2_ENVIRONMENT_LOCK: Mutex<()> = Mutex::new(());
-
-#[cfg(target_os = "windows")]
-struct PetWebView2EnvironmentRestore(Option<std::ffi::OsString>);
-
-#[cfg(target_os = "windows")]
-impl Drop for PetWebView2EnvironmentRestore {
-    fn drop(&mut self) {
-        match self.0.take() {
-            Some(value) => std::env::set_var(WEBVIEW2_BROWSER_ARGUMENTS, value),
-            None => std::env::remove_var(WEBVIEW2_BROWSER_ARGUMENTS),
-        }
-    }
-}
-
-fn with_isolated_pet_webview2_environment<T>(create: impl FnOnce() -> T) -> T {
-    #[cfg(target_os = "windows")]
-    {
-        let _lock = PET_CHILD_WEBVIEW2_ENVIRONMENT_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let restore = PetWebView2EnvironmentRestore(std::env::var_os(WEBVIEW2_BROWSER_ARGUMENTS));
-        std::env::remove_var(WEBVIEW2_BROWSER_ARGUMENTS);
-        let created = create();
-        drop(restore);
-        created
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        create()
-    }
-}
-
-#[cfg(target_os = "windows")]
 const PET_TOPMOST_POS_FLAGS: windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS =
     windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS(
         windows::Win32::UI::WindowsAndMessaging::SWP_NOMOVE.0
@@ -1247,19 +1211,18 @@ fn build_pet_overlay(app: &AppHandle, _visible: bool) -> Result<WebviewWindow, S
         .build()
         .map_err(|e| format!("failed to create pet-overlay host: {e}"))?;
     let webview = WebviewBuilder::new(PET_OVERLAY_LABEL, webview_url)
-    .transparent(true)
-    .focused(false)
-    .background_color(tauri::window::Color(0, 0, 0, 0))
-    .additional_browser_args(
-        "--default-background-color=00000000 --disable-features=CalculateNativeWinOcclusion --autoplay-policy=no-user-gesture-required",
-    );
-    let child = match with_isolated_pet_webview2_environment(|| {
-        host.add_child(
-            webview,
-            LogicalPosition::new(0.0, 0.0),
-            LogicalSize::new(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64),
-        )
-    }) {
+        .transparent(true)
+        .focused(false)
+        .background_color(tauri::window::Color(0, 0, 0, 0));
+    // The child shares the main controller's WebView2 profile. Do not mutate
+    // WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS or add child-only browser options:
+    // WebView2 rejects different environment options for the same user-data
+    // folder, leaving only the transparent native host and no rendered pet.
+    let child = match host.add_child(
+        webview,
+        LogicalPosition::new(0.0, 0.0),
+        LogicalSize::new(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64),
+    ) {
         Ok(child) => child,
         Err(error) => {
             let _ = host.destroy();
@@ -1323,13 +1286,11 @@ fn build_pet_panel(app: &AppHandle, _visible: bool) -> Result<WebviewWindow, Str
         .build()
         .map_err(|e| format!("failed to create pet-mini-panel host: {e}"))?;
     let webview = WebviewBuilder::new(PET_MINI_PANEL_LABEL, webview_url).focused(false);
-    let child = match with_isolated_pet_webview2_environment(|| {
-        host.add_child(
-            webview,
-            LogicalPosition::new(0.0, 0.0),
-            LogicalSize::new(PANEL_DEFAULT_W, PANEL_DEFAULT_H),
-        )
-    }) {
+    let child = match host.add_child(
+        webview,
+        LogicalPosition::new(0.0, 0.0),
+        LogicalSize::new(PANEL_DEFAULT_W, PANEL_DEFAULT_H),
+    ) {
         Ok(child) => child,
         Err(error) => {
             let _ = host.destroy();
@@ -2070,7 +2031,8 @@ mod tests {
                 .expect("same-label child webview is built");
             assert!(host_index < webview_index);
             assert!(builder.contains("host.add_child("));
-            assert!(builder.contains("with_isolated_pet_webview2_environment(||"));
+            assert!(!builder.contains("additional_browser_args"));
+            assert!(!builder.contains("std::env::remove_var"));
             assert!(builder.contains("child.show()"));
             assert!(builder.contains(".visible(false)"));
             assert!(builder.contains("child.set_size("));
