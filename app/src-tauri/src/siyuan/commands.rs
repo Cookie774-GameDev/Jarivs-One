@@ -219,6 +219,38 @@ pub async fn siyuan_create_document(
 }
 
 #[tauri::command]
+pub async fn siyuan_create_document_under_parent(
+    project_id: String,
+    notebook_id: String,
+    map_root_id: String,
+    parent_id: String,
+    staging_path: String,
+    markdown: String,
+    marker: String,
+    state: State<'_, SiyuanRuntimeState>,
+) -> Result<SiyuanDocumentResponse, String> {
+    let runtime = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let transport = runtime
+            .runtime_transport(&project_id)
+            .map_err(public_error)?;
+        SiyuanClient::new(true, transport)
+            .create_document_under_parent(
+                &notebook_id,
+                &map_root_id,
+                &parent_id,
+                &staging_path,
+                &markdown,
+                &marker,
+            )
+            .map(|id| SiyuanDocumentResponse { id })
+            .map_err(client_error)
+    })
+    .await
+    .map_err(|_| "siyuan_state_unavailable".to_owned())?
+}
+
+#[tauri::command]
 pub async fn siyuan_batch_append_blocks(
     project_id: String,
     notebook_id: String,
@@ -431,6 +463,25 @@ mod tests {
             serde_json::to_value(response).unwrap(),
             serde_json::json!({ "ids": ["child-1", "child-2"] })
         );
+    }
+
+    #[test]
+    fn exact_parent_document_create_is_closed_and_offloads_blocking_http() {
+        let source = include_str!("commands.rs");
+        let command = source
+            .split("pub async fn siyuan_create_document_under_parent")
+            .nth(1)
+            .and_then(|remainder| {
+                remainder
+                    .split("pub async fn siyuan_batch_append_blocks")
+                    .next()
+            })
+            .expect("exact-parent create command is registered");
+        assert!(command.contains("tauri::async_runtime::spawn_blocking"));
+        assert!(command.contains("runtime_transport(&project_id)"));
+        assert!(command.contains("map_root_id: String"));
+        assert!(command.contains("parent_id: String"));
+        assert!(command.contains("create_document_under_parent("));
     }
 
     #[test]

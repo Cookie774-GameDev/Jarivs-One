@@ -62,6 +62,12 @@ function mockBridge(projectId: string, events: string[]): SiyuanNativeBridge {
       events.push(`create-document:${projectId}:${path}`);
       return { id: `document-${projectId}` };
     }),
+    createDocumentUnderParent: vi.fn(async (_notebookId, mapRootId, parentId, stagingPath) => {
+      events.push(
+        `create-document-under-parent:${projectId}:${mapRootId}:${parentId}:${stagingPath}`,
+      );
+      return { id: `document-${projectId}` };
+    }),
     batchAppendBlocks: vi.fn(
       async (_notebookId, _mapRootId, blocks: readonly SiyuanAppendBlockInput[]) => {
         events.push(`batch-append:${projectId}:${blocks.length}`);
@@ -280,6 +286,77 @@ describe('production SiYuan RLM port', () => {
     await expect(
       port.createManagedDocuments!('project-a', [inputs[0]!, inputs[0]!]),
     ).rejects.toThrow('siyuan_managed_document_batch_duplicate');
+  });
+
+  it('creates managed documents under exact active-map parents instead of ambiguous hpaths', async () => {
+    const events: string[] = [];
+    const bridge = mockBridge('project-a', events);
+    vi.mocked(bridge.listNotebooks).mockResolvedValue([
+      { id: 'notebook-project-a', name: 'VibeSpace Project Vault', closed: false },
+    ]);
+    vi.mocked(bridge.getBlock).mockImplementation(async (id) => ({
+      id,
+      notebookId: 'notebook-project-a',
+      path: id === 'map-root-1' ? '/20260828182841-tbwq3n7.sy' : `/20260828182841-tbwq3n7/${id}.sy`,
+      markdown: '# Node',
+    }));
+    const port = createProductionSiyuanRlmPort({
+      featureEnabled: true,
+      createBridge: () => bridge,
+    });
+
+    const results = await port.createManagedDocumentsUnderParents!('project-a', 'map-root-1', [
+      {
+        parentId: 'map-root-1',
+        path: '/staging/node-1',
+        markdown: '# Node',
+        marker: 'vibespace-context-node:v1 map=map-1 node=root',
+      },
+    ]);
+
+    expect(results).toEqual([
+      expect.objectContaining({
+        ok: true,
+        document: expect.objectContaining({ id: 'document-project-a' }),
+      }),
+    ]);
+    expect(bridge.createDocumentUnderParent).toHaveBeenCalledExactlyOnceWith(
+      'notebook-project-a',
+      'map-root-1',
+      'map-root-1',
+      '/staging/node-1',
+      '# Node',
+      'vibespace-context-node:v1 map=map-1 node=root',
+    );
+  });
+
+  it('rejects an exact-parent create receipt whose physical document remains outside the active root', async () => {
+    const bridge = mockBridge('project-a', []);
+    vi.mocked(bridge.listNotebooks).mockResolvedValue([
+      { id: 'notebook-project-a', name: 'VibeSpace Project Vault', closed: false },
+    ]);
+    vi.mocked(bridge.getBlock).mockImplementation(async (id) => ({
+      id,
+      notebookId: 'notebook-project-a',
+      path:
+        id === 'map-root-1'
+          ? '/20260828182841-tbwq3n7.sy'
+          : `/20260827200803-5gqj8rz/${id}.sy`,
+      markdown: '# Node',
+    }));
+    const port = createProductionSiyuanRlmPort({
+      featureEnabled: true,
+      createBridge: () => bridge,
+    });
+
+    await expect(
+      port.createManagedDocumentUnderParent!('project-a', 'map-root-1', {
+        parentId: 'map-root-1',
+        path: '/staging/node-1',
+        markdown: '# Node',
+        marker: 'vibespace-context-node:v1 map=map-1 node=root',
+      }),
+    ).rejects.toThrow('siyuan_managed_document_authority_invalid');
   });
 
   it('appends an ordered file-node batch through one notebook lookup and one bridge call', async () => {

@@ -11,6 +11,7 @@ export const SIYUAN_NATIVE_COMMANDS = Object.freeze({
   getBlock: 'siyuan_get_block',
   listInboundBacklinks: 'siyuan_list_inbound_backlinks',
   createDocument: 'siyuan_create_document',
+  createDocumentUnderParent: 'siyuan_create_document_under_parent',
   batchAppendBlocks: 'siyuan_batch_append_blocks',
   updateBlock: 'siyuan_update_block',
   deleteBlock: 'siyuan_delete_block',

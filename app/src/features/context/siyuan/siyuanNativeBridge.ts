@@ -50,6 +50,14 @@ export interface SiyuanNativeBridge {
     path: string,
     markdown: string,
   ): Promise<SiyuanDocumentMutation>;
+  createDocumentUnderParent(
+    notebookId: string,
+    mapRootId: string,
+    parentId: string,
+    stagingPath: string,
+    markdown: string,
+    marker: string,
+  ): Promise<SiyuanDocumentMutation>;
   batchAppendBlocks(
     notebookId: string,
     mapRootId: string,
@@ -180,6 +188,28 @@ export function createSiyuanNativeBridge(
           notebookId: assertSiyuanIdentifier(notebookId, 'siyuan_notebook_id_invalid'),
           path: assertSiyuanDocumentPath(documentPath),
           markdown: assertSiyuanMarkdown(markdown),
+        }),
+      );
+    },
+
+    async createDocumentUnderParent(
+      notebookId: string,
+      mapRootId: string,
+      parentId: string,
+      stagingPath: string,
+      markdown: string,
+      marker: string,
+    ) {
+      if (!featureEnabled) return featureDisabled();
+      return parseSiyuanDocumentMutation(
+        await invokeNative(SIYUAN_NATIVE_COMMANDS.createDocumentUnderParent, {
+          ...projectArguments(),
+          notebookId: assertSiyuanIdentifier(notebookId, 'siyuan_notebook_id_invalid'),
+          mapRootId: assertSiyuanIdentifier(mapRootId, 'siyuan_map_root_id_invalid'),
+          parentId: assertSiyuanIdentifier(parentId, 'siyuan_parent_id_invalid'),
+          stagingPath: assertSiyuanDocumentPath(stagingPath),
+          markdown: assertSiyuanMarkdown(markdown),
+          marker: assertSiyuanQuery(marker),
         }),
       );
     },

@@ -652,6 +652,7 @@ fn run_ordinary(
             siyuan::commands::siyuan_get_block,
             siyuan::commands::siyuan_list_inbound_backlinks,
             siyuan::commands::siyuan_create_document,
+            siyuan::commands::siyuan_create_document_under_parent,
             siyuan::commands::siyuan_batch_append_blocks,
             siyuan::commands::siyuan_update_block,
             siyuan::commands::siyuan_delete_block,
@@ -943,6 +944,7 @@ siyuan::commands::siyuan_search_blocks
 siyuan::commands::siyuan_get_block
 siyuan::commands::siyuan_list_inbound_backlinks
 siyuan::commands::siyuan_create_document
+siyuan::commands::siyuan_create_document_under_parent
 siyuan::commands::siyuan_batch_append_blocks
 siyuan::commands::siyuan_update_block
 siyuan::commands::siyuan_delete_block
@@ -1306,6 +1308,7 @@ wallpaper_master::wallpaper_full_cache_path";
         assert!(ordinary.contains("siyuan::commands::siyuan_get_block,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_list_inbound_backlinks,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_create_document,"));
+        assert!(ordinary.contains("siyuan::commands::siyuan_create_document_under_parent,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_batch_append_blocks,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_update_block,"));
         assert!(ordinary.contains("siyuan::commands::siyuan_delete_block,"));

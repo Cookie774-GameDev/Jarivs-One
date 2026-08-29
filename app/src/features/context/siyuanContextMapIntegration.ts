@@ -95,6 +95,14 @@ function stableNodeSlug(value: string): string {
   return `${slug(value).slice(0, 52)}-${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
+function nodeStagingPath(
+  record: ContextMapRecord,
+  rootDocument: SiyuanManagedDocument,
+  entry: SiyuanSafeIndexEntry,
+): string {
+  return `/VibeSpace Context Staging/${slug(record.id)}-${slug(rootDocument.id)}/${stableNodeSlug(entry.nodeId)}`;
+}
+
 const SIYUAN_NATIVE_DOCUMENT_ID = /^\d{14}-[a-z0-9]{7}$/u;
 
 function nativeSiyuanDocumentSegments(path: string): readonly string[] | null {
@@ -731,7 +739,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
             rootDocument.id,
           );
     };
-    if (port.createManagedDocuments) {
+    if (port.createManagedDocumentsUnderParents || port.createManagedDocuments) {
       const pendingEntries = new Map(unboundDocumentEntries.map((entry) => [entry.nodeId, entry]));
       while (pendingEntries.size > 0) {
         await options.control?.checkpoint(options.signal);
@@ -740,15 +748,20 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
           .filter((entry) => !entry.parentNodeId || Boolean(bindings[entry.parentNodeId]))
           .slice(0, SIYUAN_NODE_WRITE_CONCURRENCY);
         if (batch.length === 0) throw new Error('siyuan_node_parent_binding_unavailable');
-        const requests = batch.map((entry) => ({
-          path: `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
-          markdown: nodeDocumentMarkdown(
-            record.id,
-            entry,
-            entry.parentNodeId ? bindings[entry.parentNodeId]! : rootDocument.id,
-          ),
-        }));
-        const results = await port.createManagedDocuments(projectId, requests);
+        const requests = batch.map((entry) => {
+          const parentId = entry.parentNodeId ? bindings[entry.parentNodeId]! : rootDocument.id;
+          return {
+            parentId,
+            path: port.createManagedDocumentsUnderParents
+              ? nodeStagingPath(record, rootDocument, entry)
+              : `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
+            markdown: nodeDocumentMarkdown(record.id, entry, parentId),
+            marker: nodeMarker(record.id, entry.nodeId),
+          };
+        });
+        const results = port.createManagedDocumentsUnderParents
+          ? await port.createManagedDocumentsUnderParents(projectId, rootDocument.id, requests)
+          : await port.createManagedDocuments!(projectId, requests);
         if (results.length !== batch.length) {
           throw new Error('siyuan_managed_document_batch_response_invalid');
         }
@@ -798,11 +811,18 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
               // native mutation instead of a serialized search plus mutation.
               // If a crash occurred after SiYuan committed but before our
               // IndexedDB binding checkpoint, recover the exact marker below.
-              document = await port.createManagedDocument(
-                projectId,
-                `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
-                markdown,
-              );
+              document = port.createManagedDocumentUnderParent
+                ? await port.createManagedDocumentUnderParent(projectId, rootDocument.id, {
+                    parentId: parentDocumentId,
+                    path: nodeStagingPath(record, rootDocument, entry),
+                    markdown,
+                    marker: nodeMarker(record.id, entry.nodeId),
+                  })
+                : await port.createManagedDocument(
+                    projectId,
+                    `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
+                    markdown,
+                  );
             } catch (createError) {
               const existing = await recoverCreatedNode(entry, markdown);
               if (!existing) throw createError;

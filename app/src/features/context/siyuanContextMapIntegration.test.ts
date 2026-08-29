@@ -945,13 +945,15 @@ describe('SiYuan Context Map integration', () => {
     const cachedDuplicate = { ...initial.document, path: '/maps/duplicate.sy' };
     // The binding authority, not lexical ID order, identifies the safe root.
     const canonical = { ...initial.document, id: 'zz-canonical', path: '/maps/canonical.sy' };
-    const boundNodes = ['root', ...Array.from({ length: 6 }, (_value, index) => `file-${index + 1}`)]
-      .map((nodeId) => ({
-        id: `bound-${nodeId}`,
-        notebookId: canonical.notebookId,
-        path: `/maps/canonical/nodes/${nodeId}.sy`,
-        markdown: `<!-- vibespace-context-node:v1 map=map-1 node=${nodeId} -->\nold ${nodeId}`,
-      }));
+    const boundNodes = [
+      'root',
+      ...Array.from({ length: 6 }, (_value, index) => `file-${index + 1}`),
+    ].map((nodeId) => ({
+      id: `bound-${nodeId}`,
+      notebookId: canonical.notebookId,
+      path: `/maps/canonical/nodes/${nodeId}.sy`,
+      markdown: `<!-- vibespace-context-node:v1 map=map-1 node=${nodeId} -->\nold ${nodeId}`,
+    }));
     let documents = [cachedDuplicate, canonical, ...boundNodes];
 
     vi.mocked(nativePort.getBlock).mockImplementation(async (_projectId, id) => {
@@ -988,10 +990,11 @@ describe('SiYuan Context Map integration', () => {
         ),
       ),
     );
-    const interrupted = updateSiyuanMapManifest(
-      readSiyuanMapManifest('project-1', record.id)!,
-      { rootDocumentId: cachedDuplicate.id, status: 'error', nodeBindings: {} },
-    );
+    const interrupted = updateSiyuanMapManifest(readSiyuanMapManifest('project-1', record.id)!, {
+      rootDocumentId: cachedDuplicate.id,
+      status: 'error',
+      nodeBindings: {},
+    });
     writeSiyuanMapManifest(interrupted);
 
     const recovered = await integration.sync('project-1', record);
@@ -1007,9 +1010,7 @@ describe('SiYuan Context Map integration', () => {
     expect(nativePort.appendManagedBlocks).toHaveBeenCalledWith(
       'project-1',
       canonical.id,
-      expect.arrayContaining([
-        expect.objectContaining({ parentId: 'bound-root' }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ parentId: 'bound-root' })]),
     );
     expect(vi.mocked(nativePort.appendManagedBlocks).mock.calls[0]?.[2]).toHaveLength(6);
     expect(Object.keys(await readSiyuanNodeBindings('project-1', record.id))).toHaveLength(13);
@@ -1045,7 +1046,17 @@ describe('SiYuan Context Map integration', () => {
       if (id === recreatedDirectory.id) return recreatedDirectory;
       throw new Error('siyuan_block_not_found');
     });
-    vi.mocked(nativePort.createManagedDocument).mockResolvedValue(recreatedDirectory);
+    nativePort.createManagedDocumentsUnderParents = vi.fn(async (_projectId, mapRootId, inputs) => {
+      expect(mapRootId).toBe(activeRoot.id);
+      expect(inputs).toEqual([
+        expect.objectContaining({
+          parentId: activeRoot.id,
+          path: expect.stringContaining(activeRoot.id),
+          marker: 'vibespace-context-node:v1 map=map-1 node=root',
+        }),
+      ]);
+      return [{ ok: true as const, document: recreatedDirectory }];
+    });
     nativePort.appendManagedBlocks = vi.fn(
       async (_projectId, mapRootId, blocks: readonly SiyuanManagedBlockAppendInput[]) => {
         expect(mapRootId).toBe(activeRoot.id);
@@ -1065,7 +1076,8 @@ describe('SiYuan Context Map integration', () => {
 
     const recovered = await integration.sync('project-1', record);
 
-    expect(nativePort.createManagedDocument).toHaveBeenCalledTimes(4);
+    expect(nativePort.createManagedDocument).toHaveBeenCalledTimes(3);
+    expect(nativePort.createManagedDocumentsUnderParents).toHaveBeenCalledTimes(1);
     expect(nativePort.appendManagedBlocks).toHaveBeenCalledTimes(1);
     expect(nativePort.deleteManagedDocument).not.toHaveBeenCalledWith(
       'project-1',

@@ -28,6 +28,16 @@ describe('SiYuan native bridge boundary', () => {
       /siyuan_feature_disabled/u,
     );
     await expect(
+      bridge.createDocumentUnderParent(
+        'notebook-1',
+        'map-root-1',
+        'parent-1',
+        '/staging/note',
+        '# Note',
+        'vibespace-context-node:v1 map=map-1 node=note',
+      ),
+    ).rejects.toThrow(/siyuan_feature_disabled/u);
+    await expect(
       bridge.batchAppendBlocks('notebook-1', 'map-root-1', [
         { parentId: 'parent-1', markdown: '# Note' },
       ]),
@@ -214,6 +224,37 @@ describe('SiYuan native bridge boundary', () => {
         { parentId: 'parent-1', markdown: '# First' },
       ],
     });
+  });
+
+  it('creates a document through one exact map-root and parent-scoped command', async () => {
+    const invokeNative = vi.fn<SiyuanNativeInvoker>().mockResolvedValue({ id: 'document-1' });
+    const bridge = createSiyuanNativeBridge(invokeNative, {
+      featureEnabled: true,
+      projectId: 'project-1',
+    });
+
+    await expect(
+      bridge.createDocumentUnderParent(
+        'notebook-1',
+        'map-root-1',
+        'parent-1',
+        '/VibeSpace Staging/map-root-1/node-1',
+        '# Node',
+        'vibespace-context-node:v1 map=map-1 node=node-1',
+      ),
+    ).resolves.toEqual({ id: 'document-1' });
+    expect(invokeNative).toHaveBeenCalledExactlyOnceWith(
+      SIYUAN_NATIVE_COMMANDS.createDocumentUnderParent,
+      {
+        projectId: 'project-1',
+        notebookId: 'notebook-1',
+        mapRootId: 'map-root-1',
+        parentId: 'parent-1',
+        stagingPath: '/VibeSpace Staging/map-root-1/node-1',
+        markdown: '# Node',
+        marker: 'vibespace-context-node:v1 map=map-1 node=node-1',
+      },
+    );
   });
 
   it('fails closed on incomplete or duplicate native batch IDs', async () => {

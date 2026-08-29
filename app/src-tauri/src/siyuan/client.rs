@@ -94,6 +94,14 @@ pub enum BrokerRequest<'a> {
         path: &'a str,
         markdown: &'a str,
     },
+    CreateDocumentUnderParent {
+        notebook_id: &'a str,
+        map_root_id: &'a str,
+        parent_id: &'a str,
+        staging_path: &'a str,
+        markdown: &'a str,
+        marker: &'a str,
+    },
     BatchAppendBlocks {
         notebook_id: &'a str,
         map_root_id: &'a str,
@@ -681,6 +689,66 @@ impl HttpSiyuanTransport {
         )
     }
 
+    fn create_document_under_parent(
+        &self,
+        notebook_id: &str,
+        map_root_id: &str,
+        parent_id: &str,
+        staging_path: &str,
+        markdown: &str,
+        marker: &str,
+    ) -> Result<String, ClientError> {
+        let root = self.map_root_info(map_root_id)?;
+        if root.notebook_id != notebook_id {
+            return Err(ClientError::ResponseTypeMismatch);
+        }
+        if parent_id != map_root_id {
+            let parent = self.block_info(parent_id)?;
+            Self::require_append_parent(&root, parent_id, &parent)?;
+        }
+        let mut recovered = Vec::new();
+        for candidate in self.search(marker, MAX_SEARCH_RESULTS)? {
+            if candidate.notebook_id != notebook_id {
+                continue;
+            }
+            let document_id = candidate
+                .path
+                .rsplit('/')
+                .next()
+                .and_then(|filename| filename.strip_suffix(".sy"))
+                .ok_or(ClientError::ResponseTypeMismatch)?;
+            validate_identifier(document_id)?;
+            let info = self.block_info(document_id)?;
+            if Self::require_append_parent(&root, document_id, &info).is_ok()
+                && self.block_markdown(document_id)? == markdown
+            {
+                recovered.push(document_id.to_owned());
+            }
+        }
+        recovered.sort();
+        recovered.dedup();
+        match recovered.as_slice() {
+            [id] => return Ok(id.clone()),
+            [] => {}
+            _ => return Err(ClientError::ResponseTypeMismatch),
+        }
+        let id = self.create_document(notebook_id, staging_path, markdown)?;
+        let staged = self.block_info(&id)?;
+        if staged.notebook_id != notebook_id || staged.root_id != id {
+            return Err(ClientError::ResponseTypeMismatch);
+        }
+        if self.block_markdown(&id)? != markdown {
+            return Err(ClientError::Conflict);
+        }
+        let _: Value = self.post(
+            "/api/filetree/moveDocsByID",
+            json!({ "fromIDs": [id], "toID": parent_id }),
+        )?;
+        let moved = self.block_info(&id)?;
+        Self::require_append_parent(&root, &id, &moved)?;
+        Ok(id)
+    }
+
     fn batch_append_blocks(
         &self,
         notebook_id: &str,
@@ -819,6 +887,23 @@ impl SiyuanTransport for HttpSiyuanTransport {
                 markdown,
             } => self
                 .create_document(notebook_id, path, markdown)
+                .map(BrokerResponse::Identifier),
+            BrokerRequest::CreateDocumentUnderParent {
+                notebook_id,
+                map_root_id,
+                parent_id,
+                staging_path,
+                markdown,
+                marker,
+            } => self
+                .create_document_under_parent(
+                    notebook_id,
+                    map_root_id,
+                    parent_id,
+                    staging_path,
+                    markdown,
+                    marker,
+                )
                 .map(BrokerResponse::Identifier),
             BrokerRequest::BatchAppendBlocks {
                 notebook_id,
@@ -973,6 +1058,40 @@ impl<T: SiyuanTransport> SiyuanClient<T> {
             path: document_path,
             markdown,
         })? {
+            BrokerResponse::Identifier(id) => {
+                validate_identifier(&id)?;
+                Ok(id)
+            }
+            _ => Err(ClientError::ResponseTypeMismatch),
+        }
+    }
+
+    pub fn create_document_under_parent(
+        &self,
+        notebook_id: &str,
+        map_root_id: &str,
+        parent_id: &str,
+        staging_path: &str,
+        markdown: &str,
+        marker: &str,
+    ) -> Result<String, ClientError> {
+        self.require_enabled()?;
+        validate_identifier(notebook_id)?;
+        validate_identifier(map_root_id)?;
+        validate_identifier(parent_id)?;
+        validate_document_path(staging_path)?;
+        validate_markdown(markdown)?;
+        validate_query(marker)?;
+        match self
+            .transport
+            .send(BrokerRequest::CreateDocumentUnderParent {
+                notebook_id,
+                map_root_id,
+                parent_id,
+                staging_path,
+                markdown,
+                marker,
+            })? {
             BrokerResponse::Identifier(id) => {
                 validate_identifier(&id)?;
                 Ok(id)
@@ -1217,6 +1336,17 @@ mod tests {
                     path,
                     markdown,
                 } => format!("create:{notebook_id}:{path}:{}", markdown.len()),
+                BrokerRequest::CreateDocumentUnderParent {
+                    notebook_id,
+                    map_root_id,
+                    parent_id,
+                    staging_path,
+                    markdown,
+                    marker,
+                } => format!(
+                    "create_under_parent:{notebook_id}:{map_root_id}:{parent_id}:{staging_path}:{}:{}",
+                    markdown.len(), marker.len()
+                ),
                 BrokerRequest::BatchAppendBlocks {
                     notebook_id,
                     map_root_id,
@@ -1416,6 +1546,28 @@ mod tests {
         assert_eq!(
             create.transport.requests.borrow().as_slice(),
             ["create:20260820-notebook:/Decision:14"]
+        );
+
+        let create_under_parent = SiyuanClient::new(
+            true,
+            MockTransport::new(BrokerResponse::Identifier("20260820-child".to_owned())),
+        );
+        assert_eq!(
+            create_under_parent
+                .create_document_under_parent(
+                    "20260820-notebook",
+                    "20260820-maproot",
+                    "20260820-parent",
+                    "/VibeSpace Staging/20260820-maproot/node",
+                    "# confidential",
+                    "vibespace-context-node:v1 map=map-1 node=child",
+                )
+                .unwrap(),
+            "20260820-child"
+        );
+        assert_eq!(
+            create_under_parent.transport.requests.borrow().as_slice(),
+            ["create_under_parent:20260820-notebook:20260820-maproot:20260820-parent:/VibeSpace Staging/20260820-maproot/node:14:46"]
         );
 
         let update = SiyuanClient::new(true, MockTransport::new(BrokerResponse::MutationApplied));
@@ -1981,6 +2133,107 @@ mod tests {
             assert!(!request.to_ascii_lowercase().contains("authorization:"));
             assert!(!request.contains("/api/query/sql"));
         }
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn native_document_create_moves_and_verifies_the_exact_active_map_parent() {
+        let token = "p".repeat(48);
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/20260820-maproot.sy","rootID":"20260820-maproot"}}"#
+                .to_owned(),
+            r#"{"code":0,"msg":"","data":{"blocks":[]}}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":"20260820-child"}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/20260820-staging.sy","rootID":"20260820-child"}}"#
+                .to_owned(),
+            r##"{"code":0,"msg":"","data":{"id":"20260820-child","kramdown":"# Node"}}"##
+                .to_owned(),
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/20260820-maproot/20260820-child.sy","rootID":"20260820-child"}}"#
+                .to_owned(),
+        ]);
+        let client =
+            SiyuanClient::new(true, HttpSiyuanTransport::new(port, token.clone()).unwrap());
+
+        assert_eq!(
+            client
+                .create_document_under_parent(
+                    "20260820-notebook",
+                    "20260820-maproot",
+                    "20260820-maproot",
+                    "/VibeSpace Staging/20260820-maproot/node",
+                    "# Node",
+                    "vibespace-context-node:v1 map=map-1 node=child",
+                )
+                .unwrap(),
+            "20260820-child"
+        );
+
+        let captured = (0..8).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(captured[0].starts_with("POST /api/system/loginAuth HTTP/1.1"));
+        assert!(captured[1].starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
+        assert!(captured[2].starts_with("POST /api/search/fullTextSearchBlock HTTP/1.1"));
+        assert!(captured[3].starts_with("POST /api/filetree/createDocWithMd HTTP/1.1"));
+        assert!(captured[4].starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
+        assert!(captured[5].starts_with("POST /api/block/getBlockKramdown HTTP/1.1"));
+        assert!(captured[6].starts_with("POST /api/filetree/moveDocsByID HTTP/1.1"));
+        assert!(captured[7].starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
+        let move_body: Value =
+            serde_json::from_str(&captured[6][captured[6].find('{').expect("move request body")..])
+                .unwrap();
+        assert_eq!(
+            move_body,
+            json!({ "fromIDs": ["20260820-child"], "toID": "20260820-maproot" })
+        );
+        for request in captured.iter().skip(1) {
+            assert!(!request.contains(&token));
+            assert!(!request.contains("/api/query/sql"));
+        }
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn exact_parent_create_recovers_one_marker_receipt_before_any_second_mutation() {
+        let token = "r".repeat(48);
+        let marker = "vibespace-context-node:v1 map=map-1 node=child";
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/20260820-maproot.sy","rootID":"20260820-maproot"}}"#
+                .to_owned(),
+            format!(
+                r#"{{"code":0,"msg":"","data":{{"blocks":[{{"id":"marker-block","box":"20260820-notebook","path":"/20260820-maproot/20260820-child.sy","content":"{marker}"}}]}}}}"#
+            ),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/20260820-maproot/20260820-child.sy","rootID":"20260820-child"}}"#
+                .to_owned(),
+            r##"{"code":0,"msg":"","data":{"id":"20260820-child","kramdown":"# Node"}}"##
+                .to_owned(),
+        ]);
+        let client =
+            SiyuanClient::new(true, HttpSiyuanTransport::new(port, token.clone()).unwrap());
+
+        assert_eq!(
+            client
+                .create_document_under_parent(
+                    "20260820-notebook",
+                    "20260820-maproot",
+                    "20260820-maproot",
+                    "/VibeSpace Staging/20260820-maproot/node",
+                    "# Node",
+                    marker,
+                )
+                .unwrap(),
+            "20260820-child"
+        );
+
+        let captured = (0..5).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(captured[2].starts_with("POST /api/search/fullTextSearchBlock HTTP/1.1"));
+        assert!(!captured
+            .iter()
+            .any(|request| request.contains("createDocWithMd")));
+        assert!(!captured
+            .iter()
+            .any(|request| request.contains("moveDocsByID")));
         server.join().unwrap();
     }
 

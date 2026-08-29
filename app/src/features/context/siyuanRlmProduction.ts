@@ -25,14 +25,18 @@ export interface SiyuanManagedDocumentCreateInput {
   markdown: string;
 }
 
+export interface SiyuanManagedDocumentCreateUnderParentInput extends SiyuanManagedDocumentCreateInput {
+  parentId: string;
+  marker: string;
+}
+
 export interface SiyuanManagedBlockAppendInput {
   parentId: string;
   markdown: string;
 }
 
 export type SiyuanManagedDocumentCreateResult =
-  | Readonly<{ ok: true; document: SiyuanManagedDocument }>
-  | Readonly<{ ok: false; error: unknown }>;
+  Readonly<{ ok: true; document: SiyuanManagedDocument }> | Readonly<{ ok: false; error: unknown }>;
 
 const SIYUAN_MANAGED_CREATE_BATCH_LIMIT = 4;
 const SIYUAN_DOCUMENT_ROOT_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u;
@@ -53,6 +57,20 @@ function documentRootIdFromPath(path: string): string {
   return id;
 }
 
+function documentBelongsToMapRoot(
+  root: SiyuanManagedDocument,
+  document: SiyuanManagedDocument,
+): boolean {
+  const rootStem = root.path.endsWith('.sy') ? root.path.slice(0, -3) : '';
+  return (
+    root.notebookId === document.notebookId &&
+    rootStem.length > 0 &&
+    document.path.startsWith(`${rootStem}/`) &&
+    document.path.endsWith('.sy') &&
+    !document.path.split('/').some((segment) => segment === '.' || segment === '..')
+  );
+}
+
 export interface ProductionSiyuanRlmPort extends SiyuanRlmPort {
   readManagedDocument(
     projectId: string,
@@ -66,6 +84,16 @@ export interface ProductionSiyuanRlmPort extends SiyuanRlmPort {
   createManagedDocuments?(
     projectId: string,
     inputs: readonly SiyuanManagedDocumentCreateInput[],
+  ): Promise<readonly SiyuanManagedDocumentCreateResult[]>;
+  createManagedDocumentUnderParent?(
+    projectId: string,
+    mapRootId: string,
+    input: SiyuanManagedDocumentCreateUnderParentInput,
+  ): Promise<SiyuanManagedDocument>;
+  createManagedDocumentsUnderParents?(
+    projectId: string,
+    mapRootId: string,
+    inputs: readonly SiyuanManagedDocumentCreateUnderParentInput[],
   ): Promise<readonly SiyuanManagedDocumentCreateResult[]>;
   appendManagedBlocks?(
     projectId: string,
@@ -250,11 +278,78 @@ export function createProductionSiyuanRlmPort(
         ) {
           throw (settled[0] as PromiseRejectedResult).reason;
         }
-        return settled.map(
-          (result): SiyuanManagedDocumentCreateResult =>
-            result.status === 'fulfilled'
-              ? Object.freeze({ ok: true, document: result.value })
-              : Object.freeze({ ok: false, error: result.reason }),
+        return settled.map((result): SiyuanManagedDocumentCreateResult =>
+          result.status === 'fulfilled'
+            ? Object.freeze({ ok: true, document: result.value })
+            : Object.freeze({ ok: false, error: result.reason }),
+        );
+      });
+    },
+    createManagedDocumentUnderParent(projectId, mapRootId, input) {
+      return enqueue(projectId, async (bridge) => {
+        const notebook = await exactNotebook(bridge, true);
+        if (!notebook) throw new Error('siyuan_managed_notebook_unavailable');
+        const root = await bridge.getBlock(mapRootId);
+        if (root.id !== mapRootId || root.notebookId !== notebook.id) {
+          throw new Error('siyuan_managed_document_authority_invalid');
+        }
+        const mutation = await bridge.createDocumentUnderParent(
+          notebook.id,
+          mapRootId,
+          input.parentId,
+          input.path,
+          input.markdown,
+          input.marker,
+        );
+        const document = await bridge.getBlock(mutation.id);
+        if (!documentBelongsToMapRoot(root, document)) {
+          throw new Error('siyuan_managed_document_authority_invalid');
+        }
+        return document;
+      });
+    },
+    createManagedDocumentsUnderParents(projectId, mapRootId, inputs) {
+      if (inputs.length === 0 || inputs.length > SIYUAN_MANAGED_CREATE_BATCH_LIMIT) {
+        return Promise.reject(new Error('siyuan_managed_document_batch_invalid'));
+      }
+      if (new Set(inputs.map((input) => input.path)).size !== inputs.length) {
+        return Promise.reject(new Error('siyuan_managed_document_batch_duplicate'));
+      }
+      return enqueue(projectId, async (bridge) => {
+        const notebook = await exactNotebook(bridge, true);
+        if (!notebook) throw new Error('siyuan_managed_notebook_unavailable');
+        const root = await bridge.getBlock(mapRootId);
+        if (root.id !== mapRootId || root.notebookId !== notebook.id) {
+          throw new Error('siyuan_managed_document_authority_invalid');
+        }
+        const settled = await Promise.allSettled(
+          inputs.map(async (input) => {
+            const mutation = await bridge.createDocumentUnderParent(
+              notebook.id,
+              mapRootId,
+              input.parentId,
+              input.path,
+              input.markdown,
+              input.marker,
+            );
+            const document = await bridge.getBlock(mutation.id);
+            if (!documentBelongsToMapRoot(root, document)) {
+              throw new Error('siyuan_managed_document_authority_invalid');
+            }
+            return document;
+          }),
+        );
+        if (
+          settled.every(
+            (result) => result.status === 'rejected' && isTransportUnavailable(result.reason),
+          )
+        ) {
+          throw (settled[0] as PromiseRejectedResult).reason;
+        }
+        return settled.map((result): SiyuanManagedDocumentCreateResult =>
+          result.status === 'fulfilled'
+            ? Object.freeze({ ok: true, document: result.value })
+            : Object.freeze({ ok: false, error: result.reason }),
         );
       });
     },
