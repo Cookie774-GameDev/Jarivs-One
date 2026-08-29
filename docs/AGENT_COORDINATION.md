@@ -2302,6 +2302,13 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Exact-byte verification: local `site/index.html` and `https://vibespaceos.com/` both SHA-256 `C0944A91E8EAE5860CBD17A3C21F0FEC9276BE0B4EC215CF81CEB7115C2D54AD` (603,163 bytes).
 - Boundaries honored: no app, PR #31, Stripe, Supabase, DNS, billing, release, or non-homepage route mutation.
 
+## 2026-08-28 — codex-vw5-20260828-a11 / official-site-sfx-runtime-rev15
+
+- Status: active; exact `site/index.html` SFX runtime claim acquired with no overlap against the active Task 21C application/smoke manifest.
+- Branch/upstream/base: `main` / `origin/main` / `a819ccac35f55e8342dcc554d4aff5f752c84faf`; clean worktree before claim, no merge/rebase/cherry-pick state.
+- Live reproduction: opt-in creates a running `AudioContext`, but the default node cue peaks at only `0.001995 RMS`; the 0.18 cue envelope is multiplied by a 0.036 SFX bus, making output functionally inaudible on typical speakers. Cue wiring also covers only a narrow subset of interactive controls.
+- Scope: preserve explicit opt-in/no autoplay, improve gain staging and cue timbre, migrate weak stored defaults, recover from suspended contexts, expand restrained control coverage, expose deterministic cue diagnostics, and republish the same single homepage file.
+
 ## 2026-08-28 — codex-vw5-20260828-a10 / official-site-context-grid-overlap-rev14
 
 - Status: active; exact `site/index.html` Context-grid fix claimed with no overlap against the active Task 21C application/smoke manifest.
