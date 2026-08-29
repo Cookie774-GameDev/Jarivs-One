@@ -161,6 +161,7 @@ function rawResponse(input: Readonly<JarvisKernelTurnInput>): RawProviderRespons
   return {
     text: 'Verified answer.',
     provider: input.model,
+    usage: { input_tokens: 21, output_tokens: 8, cost_usd: 0.0042 },
     verifiedFacts: {
       executionState: {
         status: 'completed',
@@ -398,6 +399,13 @@ describe('runJarvisKernelTurn explicit kernel integration', () => {
     expect(harness.commitKernelTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         assistantMessage: expect.objectContaining({
+          usage: {
+            input_tokens: 21,
+            output_tokens: 8,
+            cost_usd: 0.0042,
+            provider: input.agent.model.provider,
+            model: PROVIDER_RECEIPT.modelId,
+          },
           parts: expect.arrayContaining([
             expect.objectContaining({
               kind: 'action_proposal',

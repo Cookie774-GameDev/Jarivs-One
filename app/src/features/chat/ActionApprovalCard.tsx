@@ -28,6 +28,8 @@ import type { MessageId } from '@/types/common';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
 import { SIK_CONTROL, SIK_EVIDENCE } from '@/lib/jarvis/smoke/evidenceIds';
 import { messageRepo } from '@/lib/db/repositories';
+import { readChatRuntimePolicyState } from './runtime/chatRuntimeSettingsStore';
+import type { SendDetail } from '@/lib/ai/runtime';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
@@ -199,6 +201,55 @@ async function persistVerifiedDenial(messageId: MessageId, callId: string): Prom
     return { ...part, status: 'cancelled' as const, error: undefined };
   });
   await messageRepo.update(messageId, { parts });
+}
+
+async function continueAfterSettledApproval(input: {
+  chatId: string;
+  messageId: MessageId;
+  callId: string;
+  approvalId: string;
+}): Promise<void> {
+  const message = await messageRepo.getById(input.messageId);
+  if (!message || String(message.chat_id) !== input.chatId || message.role !== 'assistant') {
+    throw new Error('approval_continuation_message_missing');
+  }
+  const settled = message.parts.find(
+    (candidate): candidate is ActionPart =>
+      candidate.kind === 'action_proposal' && candidate.call_id === input.callId,
+  );
+  if (!settled || (settled.status !== 'success' && settled.status !== 'error')) {
+    throw new Error('approval_continuation_result_missing');
+  }
+  const stillWaiting = message.parts.some(
+    (candidate) =>
+      candidate.kind === 'action_proposal' &&
+      candidate.call_id !== input.callId &&
+      (candidate.status === 'pending' || candidate.status === 'queued'),
+  );
+  window.dispatchEvent(
+    new CustomEvent('jarvis:run-state', {
+      detail: { chatId: input.chatId, status: 'running' },
+    }),
+  );
+  if (stillWaiting) return;
+
+  const policy = readChatRuntimePolicyState(input.chatId);
+  const detail: SendDetail = {
+    chatId: input.chatId,
+    text: [
+      'Continue the same user request after the approved protected action.',
+      'Inspect the verified action result already persisted in chat history, report only what it proves, and propose only the next necessary registered action if work remains. Do not repeat the completed action.',
+    ].join(' '),
+    interactionMode: 'agent',
+    runtimeSettings: { ...policy.settings, rlmEnabled: false },
+    accessLevel: policy.access,
+    approvalContinuation: {
+      messageId: String(input.messageId),
+      callId: input.callId,
+      approvalId: input.approvalId,
+    },
+  };
+  window.dispatchEvent(new CustomEvent('jarvis:send', { detail }));
 }
 
 /** Canonical cards load bounded presentation and mutate only through the host bridge. */
@@ -382,17 +433,13 @@ export function ActionApprovalCard({
         );
         setDecisionState('submitted');
         if (execution.status === 'completed' || execution.status === 'failed') {
-          window.dispatchEvent(
-            new CustomEvent('jarvis:run-state', {
-              detail: {
-                chatId,
-                status: execution.status === 'completed' ? 'done' : 'error',
-                ...(execution.status === 'failed'
-                  ? { errorCode: 'kernel_runtime_action_execution' }
-                  : {}),
-              },
-            }),
-          );
+          failureKind = 'persistence';
+          await continueAfterSettledApproval({
+            chatId,
+            messageId,
+            callId: part.call_id,
+            approvalId,
+          });
         }
       } finally {
         client.dispose();

@@ -466,7 +466,21 @@ describe('createKernelTurnCommit', () => {
     expect(finalized).toMatchObject({
       committed: true,
       run: { status: 'completed', completedAt: NOW + 13 },
-      message: { parts: [expect.anything(), expect.objectContaining({ status: 'success' })] },
+      message: {
+        parts: [
+          expect.anything(),
+          expect.objectContaining({ status: 'success' }),
+          expect.objectContaining({
+            kind: 'tool_call',
+            call_id: 'jarvisapproval:jappr_action-ready',
+            tool: 'terminal.create',
+          }),
+          expect.objectContaining({
+            kind: 'tool_result',
+            call_id: 'jarvisapproval:jappr_action-ready',
+          }),
+        ],
+      },
     });
     expect(fromJarvisRunRow((await db.jarvis_runs.get('run-kernel'))!).status).toBe('completed');
     expect((await db.messages.get('message-kernel' as MessageId))?.parts).toEqual(
@@ -551,6 +565,20 @@ describe('createKernelTurnCommit', () => {
             status: 'success',
             result: actionResult,
           }),
+          expect.objectContaining({
+            kind: 'tool_call',
+            tool: 'files.read',
+            call_id: 'jarvisapproval:jappr_action-ready',
+            args: { path: 'C:\\project\\build-corpus.mjs' },
+          }),
+          expect.objectContaining({
+            kind: 'tool_result',
+            call_id: 'jarvisapproval:jappr_action-ready',
+            result: {
+              status: 'completed',
+              summary: 'Read C:\\project\\build-corpus.mjs.',
+            },
+          }),
         ],
       },
     });
@@ -633,6 +661,14 @@ describe('createKernelTurnCommit', () => {
             status: 'success',
             result: firstResult,
           }),
+          expect.objectContaining({
+            kind: 'tool_call',
+            call_id: `jarvisapproval:${firstId}`,
+          }),
+          expect.objectContaining({
+            kind: 'tool_result',
+            call_id: `jarvisapproval:${firstId}`,
+          }),
           expect.objectContaining({ action_id: 'files.read', status: 'pending' }),
         ],
       },
@@ -668,9 +704,25 @@ describe('createKernelTurnCommit', () => {
             result: firstResult,
           }),
           expect.objectContaining({
+            kind: 'tool_call',
+            call_id: `jarvisapproval:${firstId}`,
+          }),
+          expect.objectContaining({
+            kind: 'tool_result',
+            call_id: `jarvisapproval:${firstId}`,
+          }),
+          expect.objectContaining({
             action_id: 'files.read',
             status: 'success',
             result: lastResult,
+          }),
+          expect.objectContaining({
+            kind: 'tool_call',
+            call_id: `jarvisapproval:${lastId}`,
+          }),
+          expect.objectContaining({
+            kind: 'tool_result',
+            call_id: `jarvisapproval:${lastId}`,
           }),
         ],
       },

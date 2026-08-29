@@ -55,6 +55,11 @@ import {
 export interface RawProviderResponse {
   text: string;
   provider: JarvisModelSnapshot;
+  usage?: Readonly<{
+    input_tokens: number;
+    output_tokens: number;
+    cost_usd: number;
+  }>;
   verifiedFacts: JarvisVerifiedFacts;
   completedAt: number;
 }

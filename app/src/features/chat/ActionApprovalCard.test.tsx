@@ -135,7 +135,7 @@ describe('ActionApprovalCard canonical adapter', () => {
     expect(kernelClient.dispose).toHaveBeenCalledOnce();
   });
 
-  it('releases the public chat run after a settled canonical action', async () => {
+  it('continues the public chat run after a settled canonical action', async () => {
     kernelClient.decideApproval.mockResolvedValueOnce({
       kind: 'approval_decided',
       approvalId: 'jappr_1',
@@ -147,11 +147,22 @@ describe('ActionApprovalCard canonical adapter', () => {
       runId: 'jrun_1',
       status: 'completed',
     });
+    messageRepository.getById.mockResolvedValueOnce({
+      id: 'message_1',
+      chat_id: 'chat_1',
+      role: 'assistant',
+      parts: [{ ...part('jarvisapproval:jappr_1'), status: 'success' }],
+    });
     const events: Array<{ chatId?: string; status?: string }> = [];
+    const sends: Array<Record<string, unknown>> = [];
     const listener = (event: Event) => {
       events.push((event as CustomEvent<{ chatId?: string; status?: string }>).detail);
     };
+    const sendListener = (event: Event) => {
+      sends.push((event as CustomEvent<Record<string, unknown>>).detail);
+    };
     window.addEventListener('jarvis:run-state', listener);
+    window.addEventListener('jarvis:send', sendListener);
     renderCard(part('jarvisapproval:jappr_1'), {
       actionId: 'files.read',
       expectedEffect: 'Read one approved file.',
@@ -161,8 +172,20 @@ describe('ActionApprovalCard canonical adapter', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Approve fixed action' }));
 
-    await waitFor(() => expect(events).toContainEqual({ chatId: 'chat_1', status: 'done' }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    expect(events).toContainEqual({ chatId: 'chat_1', status: 'running' });
+    expect(events).not.toContainEqual({ chatId: 'chat_1', status: 'done' });
+    expect(sends[0]).toMatchObject({
+      chatId: 'chat_1',
+      approvalContinuation: {
+        messageId: 'message_1',
+        callId: 'jarvisapproval:jappr_1',
+        approvalId: 'jappr_1',
+      },
+      runtimeSettings: { rlmEnabled: false },
+    });
     window.removeEventListener('jarvis:run-state', listener);
+    window.removeEventListener('jarvis:send', sendListener);
   });
 
   it('loads the bounded canonical presentation before exposing production controls', async () => {

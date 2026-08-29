@@ -723,9 +723,9 @@ export function createKernelTurnCommit(dependencies: CommitDependencies): Jarvis
                 : input.outcome === 'handoff'
                   ? ('queued' as const)
                   : ('error' as const);
-          const parts = storedMessage.parts.map((part) => {
+          const parts = storedMessage.parts.flatMap((part): Message['parts'] => {
             if (part.kind !== 'action_proposal' || part.call_id !== expectedCallId) {
-              return structuredClone(part);
+              return [structuredClone(part)];
             }
             matched += 1;
             if (
@@ -735,7 +735,7 @@ export function createKernelTurnCommit(dependencies: CommitDependencies): Jarvis
               throw new TypeError('action_response_finalize_projection_conflict');
             }
             const projectedResult = approvedFileReadResult(part.action_id, part.params, input.result);
-            return {
+            const finalizedAction = {
               ...structuredClone(part),
               status: partStatus,
               ...(projectedResult === undefined ? {} : { result: projectedResult }),
@@ -743,6 +743,43 @@ export function createKernelTurnCommit(dependencies: CommitDependencies): Jarvis
                 ? { error: 'The protected action did not complete.' }
                 : {}),
             };
+            if (input.outcome !== 'completed' && input.outcome !== 'degraded') {
+              return [finalizedAction];
+            }
+            const safeArgs =
+              (part.action_id === 'files.read' || part.action_id === 'files.create') &&
+              typeof part.params.path === 'string'
+                ? { path: part.params.path }
+                : {};
+            const summary =
+              input.result?.ok &&
+              typeof input.result.summary === 'string' &&
+              input.result.summary.length <= 2_048
+                ? input.result.summary
+                : undefined;
+            return [
+              finalizedAction,
+              {
+                kind: 'tool_call' as const,
+                call_id: part.call_id,
+                tool: part.action_id,
+                args: safeArgs,
+              },
+              input.outcome === 'completed'
+                ? {
+                    kind: 'tool_result' as const,
+                    call_id: part.call_id,
+                    result: {
+                      status: 'completed',
+                      ...(summary === undefined ? {} : { summary }),
+                    },
+                  }
+                : {
+                    kind: 'tool_result' as const,
+                    call_id: part.call_id,
+                    error: 'The protected action did not complete.',
+                  },
+            ];
           });
           if (matched !== 1) {
             return {

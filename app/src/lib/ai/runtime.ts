@@ -1551,6 +1551,7 @@ export async function installJarvisKernelRuntimeHost(
                 const raw = Object.freeze({
                   text: result.text,
                   provider: providerInput.model,
+                  usage: Object.freeze({ ...result.usage }),
                   verifiedFacts: Object.freeze({
                     ...(partial
                       ? {
@@ -2152,6 +2153,12 @@ export interface SendDetail {
   voiceSessionId?: string;
   /** Raw user text. */
   text: string;
+  /** Exact settled approval that authorizes one hidden post-action continuation turn. */
+  approvalContinuation?: {
+    messageId: string;
+    callId: string;
+    approvalId: string;
+  };
   /** Optional agent override (otherwise routed by @mention or chat default). */
   agentId?: AgentId;
   /** Agent ids resolved by the composer mention/typeahead path. */
@@ -4101,6 +4108,7 @@ export function startRuntimeListener(
 
   const inFlight = new Map<MessageId, AbortController>();
   const activeControllers = new Set<AbortController>();
+  const acceptedApprovalContinuations = new Set<string>();
   const controllersByChatId = new Map<string, Set<AbortController>>();
   const activeSendDetails = new Map<AbortController, SendDetail>();
   const suspendedSendDetails = new Map<string, SendDetail>();
@@ -4347,6 +4355,66 @@ export function startRuntimeListener(
       dispatchRunState(chatId, 'cancelled');
       releaseOperationTracking();
       return;
+    }
+    if (detail.approvalContinuation) {
+      const continuation = detail.approvalContinuation;
+      const continuationKey = [
+        String(chatId),
+        continuation.messageId,
+        continuation.callId,
+        continuation.approvalId,
+      ].join(':');
+      try {
+        if (
+          continuation.callId !==
+            `jarvisapproval:${encodeURIComponent(continuation.approvalId)}` ||
+          acceptedApprovalContinuations.has(continuationKey)
+        ) {
+          throw new Error('approval_continuation_scope_invalid');
+        }
+        const messages = await bindings.getMessages(chatId);
+        const source = messages.find(
+          (message) =>
+            String(message.id) === continuation.messageId &&
+            String(message.chat_id) === String(chatId) &&
+            message.role === 'assistant',
+        );
+        const action = source?.parts.find(
+          (part): part is Extract<Part, { kind: 'action_proposal' }> =>
+            part.kind === 'action_proposal' && part.call_id === continuation.callId,
+        );
+        const toolCall = source?.parts.find(
+          (part): part is Extract<Part, { kind: 'tool_call' }> =>
+            part.kind === 'tool_call' && part.call_id === continuation.callId,
+        );
+        const toolResult = source?.parts.find(
+          (part): part is Extract<Part, { kind: 'tool_result' }> =>
+            part.kind === 'tool_result' && part.call_id === continuation.callId,
+        );
+        const pendingSibling = source?.parts.some(
+          (part) =>
+            part.kind === 'action_proposal' &&
+            part.call_id !== continuation.callId &&
+            (part.status === 'pending' || part.status === 'queued'),
+        );
+        if (
+          !action ||
+          (action.status !== 'success' && action.status !== 'error') ||
+          !toolCall ||
+          toolCall.tool !== action.action_id ||
+          !toolResult ||
+          pendingSibling
+        ) {
+          throw new Error('approval_continuation_evidence_invalid');
+        }
+        acceptedApprovalContinuations.add(continuationKey);
+        if (acceptedApprovalContinuations.size > 2_000) {
+          acceptedApprovalContinuations.delete(acceptedApprovalContinuations.values().next().value!);
+        }
+      } catch (error) {
+        failEarlySetup('context', error);
+        return;
+      }
     }
     dispatchKernelSmokeRuntimeStage('chat');
     const interactionMode =
@@ -5667,9 +5735,9 @@ export function startRuntimeListener(
             const kernelMessages = prepareOpenCodeMessagesForInteractionMode(llmMessages, {
               contextToolEnabled: !explicitReadRoot,
             });
-            const kernelUserText = [...kernelMessages]
-              .reverse()
-              .find((message) => message.role === 'user')?.content;
+            const kernelUserText = detail.approvalContinuation
+              ? text
+              : [...kernelMessages].reverse().find((message) => message.role === 'user')?.content;
             const turn = await createRuntimeKernelTurn({
               host,
               agent: runnable,

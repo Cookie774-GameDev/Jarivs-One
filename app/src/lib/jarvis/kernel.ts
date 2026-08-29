@@ -913,6 +913,17 @@ async function runJarvisKernelExecution(
       artifactIds: artifacts.map((artifact) => artifact.id),
     }) as Readonly<JarvisResponseEnvelope>;
     const messageParts = projectJarvisEnvelopeToMessageParts({ response, artifacts });
+    if (
+      raw.usage !== undefined &&
+      (!Number.isSafeInteger(raw.usage.input_tokens) ||
+        raw.usage.input_tokens < 0 ||
+        !Number.isSafeInteger(raw.usage.output_tokens) ||
+        raw.usage.output_tokens < 0 ||
+        !Number.isFinite(raw.usage.cost_usd) ||
+        raw.usage.cost_usd < 0)
+    ) {
+      throw new Error('kernel_provider_usage_invalid');
+    }
     const expectedProviderResultSource = providerResultSource({
       accountId: input.accountId,
       runId: input.run.id,
@@ -929,6 +940,17 @@ async function runJarvisKernelExecution(
       role: 'assistant',
       agent_id: input.agent.id,
       parts: [...messageParts],
+      ...(raw.usage === undefined
+        ? {}
+        : {
+            usage: {
+              input_tokens: raw.usage.input_tokens,
+              output_tokens: raw.usage.output_tokens,
+              cost_usd: raw.usage.cost_usd,
+              provider: input.agent.model.provider,
+              model: raw.provider.modelId,
+            },
+          }),
       created_at: response.completedAt,
       updated_at: response.completedAt,
     };
