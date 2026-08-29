@@ -2301,3 +2301,10 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Static verification: all 10 inline scripts parsed, 149 IDs were unique, and `git diff --check` passed. GitHub Pages run `33225291825` completed successfully. Repository CI run `33225291819` had Rust check, frontend typecheck, and Vite build passing while the unchanged broader Vitest suite remained in progress at lock release.
 - Exact-byte verification: local `site/index.html` and `https://vibespaceos.com/` both SHA-256 `C0944A91E8EAE5860CBD17A3C21F0FEC9276BE0B4EC215CF81CEB7115C2D54AD` (603,163 bytes).
 - Boundaries honored: no app, PR #31, Stripe, Supabase, DNS, billing, release, or non-homepage route mutation.
+
+## 2026-08-28 — codex-vw5-20260828-a10 / official-site-context-grid-overlap-rev14
+
+- Status: active; exact `site/index.html` Context-grid fix claimed with no overlap against the active Task 21C application/smoke manifest.
+- Branch/upstream/base: `main` / `origin/main` / `698510708fbd68d8d0d3db28d38fe08a3b9e49eb`; clean worktree before claim, no merge/rebase/cherry-pick state.
+- User evidence: at a roughly 1904x915 CSS viewport, the oversized `#memoryTitle` reaches the Context Map boundary and the copy column loses its intended breathing room even though the inspector/canvas rail itself no longer overlaps.
+- Scope: reproduce the headline/map collision at the user's real short-desktop viewport, correct the parent Context grid/typography geometry, verify responsive behavior, and republish the same single homepage file.

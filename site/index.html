@@ -1678,6 +1678,12 @@
     @media(max-width:620px){
       #terminalsTitle{font-size:clamp(2.65rem,12vw,4rem);letter-spacing:-.045em}
     }
+
+    /* Measure the Context headline by its visible ink, not only its grid box. */
+    @media(min-width:981px){
+      .memory .issue-inner{grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:clamp(32px,4vw,64px)}
+      #memoryTitle{max-width:100%;font-size:clamp(4.15rem,5.8vw,7rem);overflow-wrap:normal}
+    }
   </style>
 </head>
 <body>
