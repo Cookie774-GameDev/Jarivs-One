@@ -158,3 +158,65 @@ Each test receives a monotonically increasing ID. Entries record UTC/local time,
 - Fresh focused evidence: pure contract plus full response pipeline pass 92/92; installed-kernel preview/minimum-floor/exact-control regression passes 1/1; legacy explicit-root test remains green
 - Typecheck boundary: rerun reaches only the same four concurrent SiYuan test errors in `siyuanRlmProduction.test.ts` and `siyuanRlmRepository.test.ts`; no owned-file TypeScript error is reported
 - Native boundary: app remains intentionally stopped at the user's storage-clearing request; no native rescore is claimed
+
+### PR31-NATIVE-006 — Question A quality pass with latency still red
+
+- Recorded: 2026-08-23T04:59:00-05:00
+- Official-native route: `opencode` / `opencode-cli` / `opencode-go/deepseek-v4-flash-vision-exp`, High, Quality, Fast off; no substitute route was attempted
+- Result: terminal `done`, 724 visible words, independent 92/100, zero validator/security issues; backend session `ses_fd1f4227cffe19AOtuXG1tNc16`
+- Timing: 156,963 ms total; approximately 41.2 s initial evidence, 13.9 s evidence repair, and 99.2 s final synthesis
+- Evidence: `D:\VibeSpace-Testing\SiYuan-Context-OpenCode-RLM-Feature-Testing\acceptance-evidence\pr31-native-question-a.jsonl`
+- Acceptance boundary: quality passes the >=90 target, but latency and the paired direct-harness comparison remain red/unrun; this is not a complete Test A pass
+
+### PR31-CODE-008 — sanitized exact-root read inventory classification green
+
+- Recorded: 2026-08-23T05:20:00-05:00
+- Root cause: a completed read of the exact approved root was stripped to an unscoped provider event, forcing a redundant repair even when grep and representative reads were complete
+- Repair: the OpenCode adapter compares the completed read target with the explicit request root, emits only `explicit_root_inventory`, and the router accepts only that sanitized completed-read classification; raw paths never cross the adapter boundary
+- Negative boundaries: child/file reads, started reads, and non-explicit turns remain unclassified; route, provider, connection, model, effort, performance, Fast, session, and tool authority are unchanged
+- Evidence: focused adapter/router matrix passes 42/42; `git diff --check` passes; broad typecheck reaches only the same four existing SiYuan test nullability diagnostics and reports no owned-file diagnostic
+- Remaining acceptance: fresh official-native Question A rerun is required to prove the redundant repair disappears and to measure the real latency delta
+
+### PR31-NATIVE-007 — Test B exact Luna Fast Max catalog/auth preflight
+
+- Recorded: 2026-08-23T05:20:00-05:00
+- Fresh native authority after managed OpenCode generation restart: adapter authentication passed and the live catalog registered exact `openai/gpt-5.6-luna-fast` with effort variant `max`
+- Identity boundary: Fast is encoded by the exact `-fast` model route; this route does not advertise a separate Fast toggle/service tier, so `/fast on` must fail closed and the base Luna model must not be substituted
+- Acceptance boundary: catalog/auth is preflight only, not live execution or provider-event attestation; Test B remains pending exact native dispatch plus isolated disposable project actions and terminal receipts
+
+### PR31-NATIVE-008 — post-fix Question A quality pass, repair removed, latency red
+
+- Recorded: 2026-08-23T05:24:00-05:00
+- Official-native identity: chat `cht_ElD0XnF9FPIz8aQw`, backend session `ses_fd1ded03effeahnl8SqtimBA4o`, exact `opencode` / `opencode-cli` / `opencode-go/deepseek-v4-flash-vision-exp`, High, Quality, Fast off, RLM on
+- Result: terminal `done`, 724 visible words (716 raw backend), independent 92/100, all required categories present, zero runtime quality issues, URLs, emails, or internal markers
+- Repair proof: backend contains only the initial evidence user turn and one synthesis follow-up; no evidence-repair user turn occurred, so commit `b9ae45c5` removed the redundant repair path in the real app
+- Timing: 197,730 ms total; initial evidence approximately 62.665 s and no-tools synthesis approximately 130.532 s. This is 40.767 s / 25.97% slower than the prior 156.963 s sample despite removing the prior ~13.9 s repair
+- Acceptance boundary: quality/security pass; latency remains severely non-green and provider-dominated/stochastic. Direct-harness paired baseline and the required warm sample set remain pending
+
+### PR31-NATIVE-009 — Test B exact Fast route hidden behind logical picker row
+
+- Recorded: 2026-08-23T05:29:00-05:00
+- Authority: authenticated adapter catalog contains exact `openai/gpt-5.6-luna-fast` with `max`; native picker search matched its logical Luna row but rendered only base `opencode-cli:openai/gpt-5.6-luna`
+- Failure: exact Fast `data-value` count was zero at the catalog level and the guarded driver stopped at `configure_model_failed` before any provider dispatch; no base Luna substitution occurred
+- Root cause: logical grouping retained Fast only in `alternativeRoutes`, while the visible row always began effort selection for the preferred base route and exposed no route-choice surface
+- Repair checkpoint: logical rows with multiple routes now expose a separate exact-route group, visible exact model IDs, disabled unavailable routes, keyboard navigation, cancellation, then the existing effort stage. Native HMR proof exposes both base and exact Fast route IDs under the retained OpenAI header
+- Fresh focused evidence: picker smoke 13/13 and guarded driver 10/10 pass; formatting/diff checks pass; typecheck reports only the same four unrelated SiYuan test diagnostics
+- Remaining acceptance: commit the exact four-file slice, then perform exact Fast + Max native dispatch and isolated project file/terminal verification
+
+### PR31-NATIVE-010 — Test B exact provider reached; todo permission and stale project root blocked execution
+
+- Recorded: 2026-08-23T05:48:00-05:00
+- Exact identity observed: `opencode` / `opencode-cli` / `openai/gpt-5.6-luna-fast`, Max, Quality, Fast encoded in the model ID, RLM on; request `jreq_4620840a-...`, backend session `ses_fd1cedf65ffevGJbRW0M8vKlRC`
+- Failure: the provider's first `todowrite` request inherited managed OpenCode's global `*=ask`, received no valid approval path, and the turn stopped after approximately 13.9 seconds with zero visible output and zero files written
+- Scope defect: Ctrl+T created the attempted chat under stale project `prj_wd1kZ1n42eQ1BUbi` and cwd `C:\Users\viper\Documents\Codex\2026-08-21`, not disposable Test B project `prj_leBT3oqNPBtoSMmf`; direct store mutation raced the tab strip, while semantic native UI project selection correctly binds the new project/chat/root
+- Repair in progress: allow only non-filesystem todo tools globally; transmit VibeSpace's already-computed exact request permission rules to the owned session before prompt dispatch; retain global edit/bash/task deny, external-directory and sensitive-read denies, immutable one-run approval authority, and one-active-turn-per-chat isolation
+- Acceptance boundary: exact provider reach is proven, but Test B remains failed until the rebuilt official native app accepts the scoped session update, writes only inside `D:\VibeSpace-Testing\PR31-Test-B-Luna-Fast-Max-20260823`, verifies the files, and attests the same exact provider/model/variant
+
+### PR31-NATIVE-011 — Test B recovered and accepted after scoped permission, fallback-path, and collector repairs
+
+- Recorded: 2026-08-23T07:14:02-05:00
+- Official-native proof: chat `cht_xCa7A4R1lMGqZzMN`, backend `ses_fd179deeaffeuGwj21t4vDWo5W`, exact `opencode` / `opencode-cli` / `openai/gpt-5.6-luna-fast`, variant `max`, Quality, RLM on, request-scoped Approve All
+- Result: collector `ok=true`, terminal `done`, 246,146 ms, zero approval cards or fallback mismatch; backend final `stop` with 20/20 completed tools and no pending/rejected tool
+- Artifact proof: only the disposable Test B root was used; `index.html` 8,215 bytes, `styles.css` 17,980 bytes, and `game.js` 20,255 bytes; fresh `node --check`, HTML linkage, and root-isolation checks passed
+- Recovery proof: the earlier false `/restart/index.html` approval remains preserved as failure evidence; the fresh run did not recreate it. One-shot runtime controls cleared only after dispatch, while immutable dispatch and durable exact route/visible identity remained authoritative
+- Remaining boundary: this accepts Test B only. The two-managed-terminal receipt/evidence/cancellation isolation required by Test C remains pending

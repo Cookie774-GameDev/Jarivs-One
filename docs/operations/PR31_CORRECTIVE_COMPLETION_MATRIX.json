@@ -172,7 +172,7 @@
     {
       "id": "opencode-model-refresh-and-reconnect",
       "requirement": "OpenCode connects automatically, refreshes models on the five-minute policy, and reconnects without random model disappearance",
-      "status": "Not implemented",
+      "status": "Implemented and verified",
       "nativeRequired": true,
       "evidence": [
         {
@@ -196,8 +196,16 @@
           "ref": "pass-17-opencode-refresh-reconnect-cb75639d contains fresh baseline and scheduled official-native PNGs; the final 67.52 KB evidence packet passed targeted Gitleaks with zero findings"
         },
         {
-          "kind": "pending",
-          "ref": "Five-minute automatic refresh and route stability are now natively verified. Automatic reconnect remains unimplemented or unproven: documented helpers stop the server and then invoke an explicit manager.refresh, which is a manual reconnect proxy forbidden by the acceptance contract. No runtime was disturbed; a genuine automatic same-session disconnect/reconnect path with identical routes is still required"
+          "kind": "commit",
+          "ref": "dfb525ed binds the renderer catalog to the supervised OpenCode runtime generation, fails closed while the runtime is unavailable, and automatically revalidates the authenticated catalog after a replacement generation without a manual refresh proxy"
+        },
+        {
+          "kind": "native",
+          "ref": ".codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-26-opencode-semantic-reconnect-d8f8e86d/opencode-automatic-reconnect-report.json passed 9/9 at exact HEAD d8f8e86d: only Jarvis-owned OpenCode PID 38476 was stopped, the supervisor emitted failed→starting→ready and replaced it with PID 29328/new generation, the current-session authenticated receipt advanced with authority-changed provenance, all 843 current routes and their ordered hash were stable, and exact opencode-go/deepseek-v4-flash-vision-exp remained available. Jarvis stayed live; page events, Ollama, and 11434 were zero"
+        },
+        {
+          "kind": "screenshot",
+          "ref": "pass-26-opencode-semantic-reconnect-d8f8e86d contains before/ready official-native screenshots and a 33.88 KB sanitized evidence packet"
         }
       ]
     },
@@ -563,7 +571,7 @@
         },
         {
           "kind": "failure",
-          "ref": "Workbench is now independently verified at 96959d56, and exact 1586x992 Chat collapsed/expanded semantics passed at HEAD 400564c7; the whole-app gate remains red because Schedule, SiYuan, reconnect, commands/modes/subagent, motion, and pixel-parity scenarios remain unproven or failed"
+          "ref": "Workbench, Schedule/Kanban, Context pause/resume and motion, automatic OpenCode reconnect, and Chat's 16-state fixture are now independently verified. At exact d8f8e86d, pass-25 Chat has 0 console/page errors, 26 axe passes/0 violations, exact DeepSeek identity, narrow/normal/expanded states, reduced motion, and clean fixture removal. The whole-app gate remains red because real-activity commands/modes/subagent lifecycles, SiYuan paid-summary charging boundaries, genuine RLM/SiYuan System Log activity, final DeepSeek latency, and accepted reference pixel parity remain incomplete"
         }
       ]
     },

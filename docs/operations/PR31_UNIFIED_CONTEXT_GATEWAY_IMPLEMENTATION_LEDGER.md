@@ -389,3 +389,9 @@
 - Release-manifest verification passed all 45 security and publication tests, including Authenticode, path-identity, mutation, interruption, rollback, and recovery cases.
 - `cargo check --manifest-path app/src-tauri/Cargo.toml` reached native dependency compilation but failed when `time` attempted to load the newly compiled `time_macros` proc-macro (`E0463`). A package-only verbose check compiled `time-macros 0.2.32` successfully and produced the DLL, but a full retry still could not load it. This is consistent with the already-recorded Windows Application Control rejection of newly compiled native hashes; no Rust source diagnostic was emitted.
 - No Windows security setting was changed, no trusted running VibeSpace process was closed, and the native check is not claimed as passing. Official current-source native acceptance therefore remains unavailable while the trusted existing VibeSpace app continues running.
+
+## 2026-08-22 — Structured concurrent-isolation proof checkpoint
+
+- Final acceptance now requires build-bound official-desktop proof for simultaneous Chat, Codex terminal, and Claude terminal runs. The three scopes are represented only by distinct opaque SHA-256 hashes; raw account, workspace, project, worktree, prompt, and output values remain excluded.
+- Proof must show the runs were concurrent, cross-scope context access was blocked, cross-scope evidence-handle reuse was blocked, and late post-cancel events were blocked. Its unique evidence ID, canonical timestamp, commit SHA, and runtime generation bind it to the evaluated native build.
+- Duplicate/malformed scope hashes are rejected before scoring and each false invariant is reported separately. TDD RED reproduced the global-boolean bypass, duplicate-scope acceptance, and missing schema support before implementation; focused closure/schema verification passed 2 files / 27 tests.
