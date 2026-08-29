@@ -2362,3 +2362,19 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Exact-byte verification: local `site/index.html` and the deployed homepage both SHA-256 `E8DE62DD6A43BDF43118CC96553404CA2A29207745016A88323654D250F20FAA` (608,126 bytes).
 - Rollback: base commit `ce04983c3097aef544a38a3ee1a6b6f7ce5a14d7` preserves the previous mixer implementation; no unrelated files or systems were changed.
 - Boundaries honored: no app, PR #31, Stripe, Supabase, DNS, billing, release, or non-homepage route mutation.
+## 2026-08-28 — codex-vw5-20260828-a13 / official-site-expanded-sfx-rev17
+
+- Status: active; exact `site/index.html` sound-design claim acquired with no overlap against the active Task 21C application/smoke manifest.
+- Branch/upstream/base: `main` / `origin/main` / `49635ca8d67a8c83d77c801e02190c4b685bf78a`; clean worktree before claim, no merge/rebase/cherry-pick state.
+- Scope: reproduce current cue routing, restore a mechanical keycap character for hover/word reconstruction, add at least three distinct interface cues, preserve explicit opt-in/no autoplay and the single Sound control, then deploy and verify the exact public artifact.
+- Licensing boundary: use self-generated Web Audio synthesis only; no third-party/Epidemic binary is embedded without established commercial website coverage.
+- Boundaries: no app, PR #31, Stripe, Supabase, DNS, billing, release, or non-homepage route mutation.
+
+### Implementation checkpoint
+
+- Root cause/red baseline: one footer-directory word reconstruction emitted only one generic sine `tick`; its interval changed glyphs without producing any sound, so the audible event was disconnected from the visible letter cadence.
+- Fix: word reconstruction now emits a throttled mechanical `keycap` sequence from the letter interval itself. A short filtered-noise transient and tonal key-body create the satisfying keyboard character without external assets.
+- Added cue identities: `press` for ordinary controls, `page` for links/navigation, and `drawer` for index/dialog transitions; specialized node, plan, approval, completion, voice, and cinematic cues remain intact. Cue output stays behind the single explicit Sound toggle, a six-voice cap, per-kind throttles, limiter, visibility muting, and background-audio suppression.
+- Green evidence: the same reconstruction emitted seven bounded `keycap` cues and returned to zero active voices; real controls incremented `press`, `page`, and `drawer` diagnostics. Post-limiter RMS measured `keycap=0.015931`, `press=0.042174`, `page=0.084064`, and `drawer=0.064473`.
+- Safety/accessibility: sound-off produced no context and no cues; disabling sound stopped ambient audio and rejected subsequent cue requests. Axe-core 4.10.3 returned zero WCAG A/AA violations at 1440x900 and 390x844; fresh console, page-exception, and network-failure checks returned zero events; mobile document overflow remained zero.
+- Next: run final static verification, deploy the exact HTML, repeat public audio/console checks, record the final SHA-256, and release only this task's lock.
