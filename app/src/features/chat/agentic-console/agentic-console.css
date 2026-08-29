@@ -409,9 +409,10 @@ html[data-theme='origami'] [data-agentic-console] {
 
 .agentic-prompt-band {
   padding: 13px 16px 14px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
+  border: 1px solid var(--console-line);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, var(--console-accent-soft), transparent 65%), var(--console-panel);
 }
 
 .agentic-prompt-band__meta {

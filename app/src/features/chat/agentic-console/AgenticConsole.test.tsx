@@ -29,14 +29,18 @@ function message(
 }
 
 describe('AgenticConsole', () => {
-  it('keeps prompt and response phases flat so activity reads as one continuous transcript', () => {
+  it('keeps the warm prompt band while response phases read as one continuous transcript', () => {
     const stylesheet = readFileSync(
       resolve(process.cwd(), 'src/features/chat/agentic-console/agentic-console.css'),
       'utf8',
     );
 
-    expect(stylesheet).toMatch(/\.agentic-prompt-band\s*\{[^}]*border:\s*0;/s);
-    expect(stylesheet).toMatch(/\.agentic-prompt-band\s*\{[^}]*background:\s*transparent;/s);
+    expect(stylesheet).toMatch(
+      /\.agentic-prompt-band\s*\{[^}]*border:\s*1px solid var\(--console-line\);/s,
+    );
+    expect(stylesheet).toMatch(
+      /\.agentic-prompt-band\s*\{[^}]*background:\s*linear-gradient\(/s,
+    );
     expect(stylesheet).toMatch(/\.agentic-answer\s*\{[^}]*border:\s*0;/s);
     expect(stylesheet).toMatch(/\.agentic-answer\.is-final\s*\{[^}]*background:\s*transparent;/s);
   });
