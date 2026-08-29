@@ -45,6 +45,7 @@ import {
   restoreJarvisStructuredRegions,
   tokenizeJarvisResponse,
 } from './tokenizer';
+import { bindExplicitFileTargetAuthority } from '@/lib/ai/explicitFileTargetAuthority';
 import { enforceJarvisOutputReferencePolicy } from './outputReferencePolicy';
 import {
   assessExplicitResponseContract,
@@ -434,7 +435,9 @@ function validatedParts(
     }
   }
   const nonEmptyParts = parts.length > 0 ? parts : textParts(displayText);
-  return nonEmptyParts.map((part) => withoutUndefined(part) as Part);
+  return bindExplicitFileTargetAuthority(request.userText, nonEmptyParts).map(
+    (part) => withoutUndefined(part) as Part,
+  );
 }
 
 export async function processJarvisResponse(

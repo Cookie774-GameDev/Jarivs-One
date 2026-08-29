@@ -228,7 +228,15 @@ export function extractExplicitDestination(text: string): string | undefined {
   const standalone = text.match(
     /(?:^|\r?\n)\s*([A-Za-z]:\\[^\s\r\n,;!?]+|\/[A-Za-z0-9._~/-]+)\s*(?:$|\r?\n)/m,
   )?.[1];
-  const value = (quoted ?? standalone)?.trim().replace(/[.,;]+$/, '');
+  const midSentenceFiles = text.match(
+    /[A-Za-z]:\\[^\r\n<>:"|?*]+?\.(?:json|cs|ts|tsx|js|jsx|md|txt|html|css|scss|py|rs|go|java|cpp|c|h|hpp|xml|yaml|yml|toml|ini|sql)\b/gi,
+  );
+  const exactCurrentFile =
+    /\b(?:create|write|save|edit|refine|rewrite|revise|update|upgrade|modify)\b/i.test(text) &&
+    new Set(midSentenceFiles ?? []).size === 1
+      ? midSentenceFiles?.[0]
+      : undefined;
+  const value = (quoted ?? standalone ?? exactCurrentFile)?.trim().replace(/[.,;]+$/, '');
   if (!value) return undefined;
   const lastSegment = value.split(/[\\/]/).pop() ?? '';
   return /\.[A-Za-z0-9]{1,8}$/.test(lastSegment)
@@ -239,7 +247,7 @@ export function extractExplicitDestination(text: string): string | undefined {
 const EXPLICIT_READ_INTENT =
   /\b(?:read|audit|inspect|review|analy[sz]e|summari[sz]e|summary|inventory|list)\b/i;
 const EXPLICIT_WRITE_INTENT =
-  /\b(?:create|write|save|edit|modify|delete|remove|move|rename|export)\b/i;
+  /\b(?:create|write|save|edit|refine|rewrite|revise|update|upgrade|modify|delete|remove|move|rename|export)\b/i;
 
 /**
  * Recognize a folder the user deliberately places at the start of the current

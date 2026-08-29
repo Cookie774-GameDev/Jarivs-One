@@ -131,6 +131,13 @@ describe('AI explicit file context safeguards', () => {
     expect(
       extractExplicitDestination('C:\\Users\\viper Hi, please read your context and summarize it.'),
     ).toBeUndefined();
+    const exactFile =
+      'C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\Projects\\.vibespace-native-acceptance\\brief.md';
+    expect(
+      extractExplicitDestination(`Refine the same exact authorized file at ${exactFile}.`),
+    ).toBe(
+      'C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\Projects\\.vibespace-native-acceptance',
+    );
     const remembered = await resolveJarvisContext({
       projectId: null,
       chatId: 'chat_1',
@@ -146,6 +153,16 @@ describe('AI explicit file context safeguards', () => {
     });
     expect(active.preferredDestination).toBe('C:\\Users\\viper\\projects\\NewProject');
     expect(formatResolvedJarvisContext(active)).toContain('Preferred new-file destination');
+
+    const exactTarget = await resolveJarvisContext({
+      projectId: 'project_new' as never,
+      chatId: 'chat_1',
+      currentText: `Upgrade ${exactFile} and preserve its exact target.`,
+    });
+    expect(exactTarget.preferredDestination).toBe(
+      'C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\Projects\\.vibespace-native-acceptance',
+    );
+    expect(exactTarget.sourceReasons).toContain('current request destination');
   });
 
   it('recognizes only an explicit leading read root without turning prose paths into authority', () => {
