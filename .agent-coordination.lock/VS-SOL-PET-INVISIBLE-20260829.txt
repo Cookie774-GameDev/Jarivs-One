@@ -1,0 +1,21 @@
+agent_id: VS-SOL-PET-INVISIBLE-20260829
+task_id: PR31-PET-NATIVE-RUNTIME-ACCEPTANCE-REPAIR
+controller: /root
+status: active
+claimed_at: 2026-08-29T16:20:29-05:00
+worktree: C:\Users\viper\VibeSpace-UnifiedChungus-Final
+branch: integration/UnifiedChungus-final
+base_head: 41ddc50fce96f20cfb2d778f5215824309c7e763
+upstream: origin/UnifiedChungus
+operation_state: no merge, rebase, cherry-pick, revert, or bisect state observed
+exclusive_scope: app/src-tauri/src/pets.rs; app/src/features/pets/petTauriBridge.ts and its exact focused Pet tests only if runtime evidence proves that boundary; this lock; append-only Pet checkpoints in docs/AGENT_COORDINATION.md; append-only transfer/final lines in the historical Pet lock.
+inherited_dirty_scope: app/src-tauri/src/pets.rs contains a controller-transferred 31-insertion/43-deletion diff that replaces isolated child-WebView2 environment mutation with host-environment reuse, removes overlay-only additional browser args, and adds a Windows environment regression. Every inherited hunk is preserved and must be audited/tested before commit.
+read_only_dependencies: app/src/main.tsx; app/src/bootstrapPet.tsx; app/src/bootstrapRoute.ts; app/src/bootstrapRoute.test.ts; app/src/features/pets/PetHost.tsx; app/src/features/pets/PetOverlayWindow.tsx; app/src/features/pets/PetMiniPanelWindow.tsx; app/src/features/pets/petRuntimeEvents.ts; app/src-tauri/src/lib.rs; packaged Pet manifests and sprite assets unless deterministic validation proves corruption.
+intent: Find the first evidenced failure from Pet preferences through manifest/asset decode, renderer mount, child WebView creation, native bounds/visibility, and Windows topmost lifecycle; keep the existing transparent no-focus desktop-overlay design and implement only the single root-cause repair with a failing regression first.
+process_boundary: Preserve the Chat-owned official native process PID 33864 and all related WebView/Cargo/Node processes. Controlled Playwright may invoke/read only Pet commands without changing Chat state. Do not terminate, rebuild over, or launch a competing official app until the live-process owner/controller explicitly coordinates that boundary.
+excluded_scope: Chat/OpenCode/five-stage, Workbench, Plugin/MCP, provider/Deepgram, RLM, SiYuan, Context routing, Jarvis prompts/personality/normal response behavior, runtime-profile policy, unrelated Settings, production, credentials, billing, deployment, push, and every unrelated dirty or staged file.
+next: Reproduce against the official native process, audit the inherited diff against actual WebView2 failure evidence and nearest working host-child pattern, prove the failing test RED/GREEN, then run focused native/frontend gates and coordinate post-build visual/topmost/no-focus evidence.
+
+transfer_2026-08-29T17:10:00-05:00: The delegated worker is no longer live. Controller `/root` resumes the exact inherited scope as `VS-CODEX-PET-RUNTIME-AUDIT-20260829`; no new subagent is spawned. Existing dirty hunks and historical evidence remain preserved. The user's current boundary forbids starting, restarting, rebuild-launching, or terminating VibeSpace, so only offline tests/builds, logs, and read-only inspection of an already-running process are authorized.
+
+release_2026-08-29T17:15:00-05:00: Transfer completed by `/root` in commit `bee8a04a`; historical delegated ownership is released. Native visual acceptance is unclaimed because no VibeSpace process was running and launch/restart is user-forbidden.
