@@ -1217,144 +1217,147 @@ function useBoot() {
       // Phase 2: Supabase. Do not block the chat chrome on this import.
       if (plan.cloudSyncEnabled) {
         void (async () => {
-        try {
-          const { isSupabaseConfigured } = await withTimeout(
-            import('@/lib/supabase/env').then((m) => m),
-            5_000,
-            'supabaseCheck',
-          );
-          if (cancelled) return;
-          if (!isSupabaseConfigured()) {
-            settleInitialAccountAuthority(null);
-          } else {
-            const supabaseModules = await withTimeout(
-              Promise.all([import('@/lib/supabase/client'), import('@/lib/sync')]),
-              15_000,
-              'supabaseImport',
-            ).catch(() => null);
-            if (supabaseModules && !cancelled) {
-              const [{ getSupabaseClient }, { pruneSyncQueue, retrySyncErrors, startSyncLoop }] =
-                supabaseModules;
-              const supa = getSupabaseClient();
-              const isCloudSyncAuthorityCurrent = (authority: CloudSyncAuthorityLifecycle) =>
-                !cancelled &&
-                activeCloudSyncAuthority === authority &&
-                !authority.controller.signal.aborted &&
-                authority.generation === cloudAuthGeneration &&
-                useAuthStore.getState().cloudSession?.user_id.trim() === authority.userId;
-              const startCloudSyncForAuthority = async (
-                authority: CloudSyncAuthorityLifecycle,
-                priorSettlement: Promise<void>,
-              ): Promise<void> => {
-                await priorSettlement;
-                if (!isCloudSyncAuthorityCurrent(authority)) return;
-                const syncAuthority = {
-                  userId: authority.userId,
-                  signal: authority.controller.signal,
+          try {
+            const { isSupabaseConfigured } = await withTimeout(
+              import('@/lib/supabase/env').then((m) => m),
+              5_000,
+              'supabaseCheck',
+            );
+            if (cancelled) return;
+            if (!isSupabaseConfigured()) {
+              settleInitialAccountAuthority(null);
+            } else {
+              const supabaseModules = await withTimeout(
+                Promise.all([import('@/lib/supabase/client'), import('@/lib/sync')]),
+                15_000,
+                'supabaseImport',
+              ).catch(() => null);
+              if (supabaseModules && !cancelled) {
+                const [{ getSupabaseClient }, { pruneSyncQueue, retrySyncErrors, startSyncLoop }] =
+                  supabaseModules;
+                const supa = getSupabaseClient();
+                const isCloudSyncAuthorityCurrent = (authority: CloudSyncAuthorityLifecycle) =>
+                  !cancelled &&
+                  activeCloudSyncAuthority === authority &&
+                  !authority.controller.signal.aborted &&
+                  authority.generation === cloudAuthGeneration &&
+                  useAuthStore.getState().cloudSession?.user_id.trim() === authority.userId;
+                const startCloudSyncForAuthority = async (
+                  authority: CloudSyncAuthorityLifecycle,
+                  priorSettlement: Promise<void>,
+                ): Promise<void> => {
+                  await priorSettlement;
+                  if (!isCloudSyncAuthorityCurrent(authority)) return;
+                  const syncAuthority = {
+                    userId: authority.userId,
+                    signal: authority.controller.signal,
+                  };
+                  await retrySyncErrors(syncAuthority).catch((err) =>
+                    console.warn('[sync] retrySyncErrors failed:', err),
+                  );
+                  if (!isCloudSyncAuthorityCurrent(authority)) return;
+                  await pruneSyncQueue(syncAuthority).catch((err) =>
+                    console.warn('[sync] prune failed:', err),
+                  );
+                  if (!isCloudSyncAuthorityCurrent(authority)) return;
+                  try {
+                    authority.stopLoop = startSyncLoop(syncAuthority);
+                  } catch (err) {
+                    console.warn('[sync] loop startup failed:', err);
+                  }
                 };
-                await retrySyncErrors(syncAuthority).catch((err) =>
-                  console.warn('[sync] retrySyncErrors failed:', err),
-                );
-                if (!isCloudSyncAuthorityCurrent(authority)) return;
-                await pruneSyncQueue(syncAuthority).catch((err) =>
-                  console.warn('[sync] prune failed:', err),
-                );
-                if (!isCloudSyncAuthorityCurrent(authority)) return;
-                try {
-                  authority.stopLoop = startSyncLoop(syncAuthority);
-                } catch (err) {
-                  console.warn('[sync] loop startup failed:', err);
-                }
-              };
-              const reconcileCloudSyncAuthority = (
-                session: SupabaseSessionLike,
-                generation: number,
-              ): void => {
-                const userId = cloudSessionUserId(session);
-                if (!userId) {
-                  void stopActiveCloudSyncLoop();
-                  return;
-                }
-                const current = activeCloudSyncAuthority;
-                if (current && current.userId === userId && !current.controller.signal.aborted) {
-                  current.generation = generation;
-                  return;
-                }
+                const reconcileCloudSyncAuthority = (
+                  session: SupabaseSessionLike,
+                  generation: number,
+                ): void => {
+                  const userId = cloudSessionUserId(session);
+                  if (!userId) {
+                    void stopActiveCloudSyncLoop();
+                    return;
+                  }
+                  const current = activeCloudSyncAuthority;
+                  if (current && current.userId === userId && !current.controller.signal.aborted) {
+                    current.generation = generation;
+                    return;
+                  }
 
-                const priorSettlement = stopActiveCloudSyncLoop();
-                const authority: CloudSyncAuthorityLifecycle = {
-                  userId,
-                  generation,
-                  controller: new AbortController(),
-                  startup: Promise.resolve(),
+                  const priorSettlement = stopActiveCloudSyncLoop();
+                  const authority: CloudSyncAuthorityLifecycle = {
+                    userId,
+                    generation,
+                    controller: new AbortController(),
+                    startup: Promise.resolve(),
+                  };
+                  activeCloudSyncAuthority = authority;
+                  authority.startup = startCloudSyncForAuthority(authority, priorSettlement).catch(
+                    (err) => {
+                      if (activeCloudSyncAuthority === authority) {
+                        activeCloudSyncAuthority = undefined;
+                        releaseEnqueueCloudAuthority(authority.userId);
+                      }
+                      console.warn('[sync] authority startup failed:', err);
+                    },
+                  );
                 };
-                activeCloudSyncAuthority = authority;
-                authority.startup = startCloudSyncForAuthority(authority, priorSettlement).catch(
-                  (err) => {
-                    if (activeCloudSyncAuthority === authority) {
-                      activeCloudSyncAuthority = undefined;
-                      releaseEnqueueCloudAuthority(authority.userId);
-                    }
-                    console.warn('[sync] authority startup failed:', err);
-                  },
-                );
-              };
-              if (supa) {
-                const sessionGeneration = ++cloudAuthGeneration;
-                void supa.auth
-                  .getSession()
-                  .then(({ data }) => {
-                    if (cancelled || sessionGeneration !== cloudAuthGeneration) return;
-                    const session = data.session as SupabaseSessionLike;
-                    if (!settleInitialAccountAuthority(session)) return;
-                    reconcileCloudSyncAuthority(session, sessionGeneration);
-                    const userId = cloudSessionUserId(session);
-                    // Startup routing: when cloud auth is configured but no one is
-                    // signed in, open the Account page so the user can sign up /
-                    // sign in. When signed in, the persisted last route is restored
-                    // automatically (route is persisted in the UI store).
-                    if (!data.session) {
-                      useUIStore.getState().setRoute('account');
-                    } else if (userId) {
+                if (supa) {
+                  const sessionGeneration = ++cloudAuthGeneration;
+                  void supa.auth
+                    .getSession()
+                    .then(({ data }) => {
+                      if (cancelled || sessionGeneration !== cloudAuthGeneration) return;
+                      const session = data.session as SupabaseSessionLike;
+                      if (!settleInitialAccountAuthority(session)) return;
+                      reconcileCloudSyncAuthority(session, sessionGeneration);
+                      const userId = cloudSessionUserId(session);
+                      // Startup routing: when cloud auth is configured but no one is
+                      // signed in, open the Account page so the user can sign up /
+                      // sign in. When signed in, the persisted last route is restored
+                      // automatically (route is persisted in the UI store).
+                      if (!data.session) {
+                        useUIStore.getState().setRoute('account');
+                      } else if (userId) {
+                        void import('@/lib/launchPromo').then((m) => m.claimLaunchPromo(userId));
+                      }
+                    })
+                    .catch((error) => {
+                      if (cancelled || sessionGeneration !== cloudAuthGeneration) return;
+                      releaseEnqueueCloudAuthority();
+                      applyCloudSession(null);
+                      console.warn('[auth] initial Supabase session unavailable:', error);
+                      syncAccountScopedListeners();
+                    });
+                  const sub = supa.auth.onAuthStateChange((_event, session) => {
+                    if (cancelled) return;
+                    cloudAuthGeneration += 1;
+                    publishVerifiedEnqueueCloudAuthority(session as SupabaseSessionLike);
+                    applyCloudSession(session as SupabaseSessionLike);
+                    accountIdentityReady = true;
+                    ensurePersistenceCoordinatorStarted();
+                    syncAccountScopedListeners();
+                    reconcileCloudSyncAuthority(
+                      session as SupabaseSessionLike,
+                      cloudAuthGeneration,
+                    );
+                    const userId = cloudSessionUserId(session as SupabaseSessionLike);
+                    if (userId) {
                       void import('@/lib/launchPromo').then((m) => m.claimLaunchPromo(userId));
                     }
-                  })
-                  .catch((error) => {
-                    if (cancelled || sessionGeneration !== cloudAuthGeneration) return;
-                    releaseEnqueueCloudAuthority();
-                    applyCloudSession(null);
-                    console.warn('[auth] initial Supabase session unavailable:', error);
-                    syncAccountScopedListeners();
                   });
-                const sub = supa.auth.onAuthStateChange((_event, session) => {
-                  if (cancelled) return;
-                  cloudAuthGeneration += 1;
-                  publishVerifiedEnqueueCloudAuthority(session as SupabaseSessionLike);
-                  applyCloudSession(session as SupabaseSessionLike);
-                  accountIdentityReady = true;
-                  ensurePersistenceCoordinatorStarted();
-                  syncAccountScopedListeners();
-                  reconcileCloudSyncAuthority(session as SupabaseSessionLike, cloudAuthGeneration);
-                  const userId = cloudSessionUserId(session as SupabaseSessionLike);
-                  if (userId) {
-                    void import('@/lib/launchPromo').then((m) => m.claimLaunchPromo(userId));
-                  }
-                });
-                stopCloudAuth = () => sub.data.subscription.unsubscribe();
-              } else {
+                  stopCloudAuth = () => sub.data.subscription.unsubscribe();
+                } else {
+                  releaseEnqueueCloudAuthority();
+                  applyCloudSession(null);
+                }
+              } else if (!cancelled) {
                 releaseEnqueueCloudAuthority();
                 applyCloudSession(null);
               }
-            } else if (!cancelled) {
-              releaseEnqueueCloudAuthority();
-              applyCloudSession(null);
             }
+          } catch {
+            releaseEnqueueCloudAuthority();
+            applyCloudSession(null);
+            /* Supabase unavailable, app works offline */
           }
-        } catch {
-          releaseEnqueueCloudAuthority();
-          applyCloudSession(null);
-          /* Supabase unavailable, app works offline */
-        }
         })();
       } else {
         releaseEnqueueCloudAuthority();
@@ -1704,8 +1707,7 @@ function KernelBridgeBootstrap() {
             });
 
             let kernelPluginArtifacts:
-              | import('@/features/plugins/runtime').CanonicalPluginArtifactCapability
-              | undefined;
+              import('@/features/plugins/runtime').CanonicalPluginArtifactCapability | undefined;
             securityRuntime = createJarvisSecurityRuntime({
               repositories: createJarvisRepositories(db),
               catalog,

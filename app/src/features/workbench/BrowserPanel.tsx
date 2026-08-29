@@ -32,6 +32,7 @@ interface SurfaceBounds {
 interface NativeOpenRequest {
   url: string;
   bounds: SurfaceBounds;
+  generation: number;
 }
 
 function readBounds(element: HTMLElement | null): SurfaceBounds | null {
@@ -80,6 +81,8 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
   const onUpdateRef = React.useRef(onUpdate);
   const settingsRef = React.useRef(panel.settings);
   const nativeUrlRef = React.useRef(currentUrl);
+  const nativeDesiredUrlRef = React.useRef(currentUrl);
+  const nativeRequestGenerationRef = React.useRef(0);
   const nativeStatusGenerationRef = React.useRef(0);
   const nativeOpenRef = React.useRef<{
     active: NativeOpenRequest | null;
@@ -96,6 +99,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
       }
       const normalized = normalizeBrowserUrl(payload.url);
       nativeUrlRef.current = normalized;
+      nativeDesiredUrlRef.current = normalized;
       setDraft(normalized);
       setError(payload.error ?? null);
       setLoadState(payload.error ? 'error' : payload.loading ? 'loading' : 'loaded');
@@ -107,21 +111,31 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
     [operationId, panel.id],
   );
 
-  const reconcileNativeState = React.useCallback(async () => {
-    const generation = ++nativeStatusGenerationRef.current;
-    let delayMs = 200;
-    while (nativeStatusGenerationRef.current === generation) {
-      const payload = await invoke<NativeBrowserState>('workbench_browser_surface_status', {
-        panelId: panel.id,
-        operationId,
-      });
-      if (nativeStatusGenerationRef.current !== generation) return;
-      applyNativeState(payload);
-      if (!payload.loading || payload.error) return;
-      await waitForNativeStatus(delayMs);
-      delayMs = Math.min(delayMs * 2, 1_000);
-    }
-  }, [applyNativeState, operationId, panel.id]);
+  const reconcileNativeState = React.useCallback(
+    async (requestGeneration: number) => {
+      const statusGeneration = ++nativeStatusGenerationRef.current;
+      let delayMs = 200;
+      while (
+        nativeStatusGenerationRef.current === statusGeneration &&
+        nativeRequestGenerationRef.current === requestGeneration
+      ) {
+        const payload = await invoke<NativeBrowserState>('workbench_browser_surface_status', {
+          panelId: panel.id,
+          operationId,
+        });
+        if (
+          nativeStatusGenerationRef.current !== statusGeneration ||
+          nativeRequestGenerationRef.current !== requestGeneration
+        )
+          return;
+        applyNativeState(payload);
+        if (!payload.loading || payload.error) return;
+        await waitForNativeStatus(delayMs);
+        delayMs = Math.min(delayMs * 2, 1_000);
+      }
+    },
+    [applyNativeState, operationId, panel.id],
+  );
 
   const policy = React.useMemo(() => {
     try {
@@ -137,12 +151,23 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
       const bounds = readBounds(surfaceRef.current);
       if (!bounds) return;
       setLoadState('loading');
-      const next = { url, bounds };
       const state = nativeOpenRef.current;
       if (state.promise) {
-        state.pending = sameNativeOpenRequest(state.active, next) ? null : next;
+        const requested = { url, bounds, generation: nativeRequestGenerationRef.current };
+        if (sameNativeOpenRequest(state.pending ?? state.active, requested)) return state.promise;
+        state.pending = {
+          url,
+          bounds,
+          generation: ++nativeRequestGenerationRef.current,
+        };
+        nativeStatusGenerationRef.current += 1;
         return state.promise;
       }
+      const next = {
+        url,
+        bounds,
+        generation: ++nativeRequestGenerationRef.current,
+      };
       const run = async () => {
         let request: NativeOpenRequest | null = next;
         while (request) {
@@ -154,10 +179,18 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
             url: request.url,
             bounds: request.bounds,
           });
+          if (state.pending || nativeRequestGenerationRef.current !== request.generation) {
+            request = state.pending;
+            continue;
+          }
           applyNativeState(opened);
           if (opened.loading && !opened.error) {
-            void reconcileNativeState().catch((cause) => {
-              if (nativeStatusGenerationRef.current === 0) return;
+            void reconcileNativeState(request.generation).catch((cause) => {
+              if (
+                nativeStatusGenerationRef.current === 0 ||
+                nativeRequestGenerationRef.current !== request?.generation
+              )
+                return;
               setError(nativeFailureMessage(cause, 'Browser state is unavailable.'));
               setLoadState('error');
             });
@@ -185,7 +218,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
     let disposed = false;
 
     const refreshBounds = () =>
-      void openNative(nativeUrlRef.current).catch((cause) => {
+      void openNative(nativeDesiredUrlRef.current).catch((cause) => {
         if (disposed) return;
         setError(nativeFailureMessage(cause, 'The page could not open.'));
         setLoadState('error');
@@ -216,6 +249,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
   React.useEffect(() => {
     if (policy?.delivery !== 'native-child') return;
     nativeUrlRef.current = policy.externalUrl;
+    nativeDesiredUrlRef.current = policy.externalUrl;
     void openNative(policy.externalUrl).catch((cause) => {
       const message = nativeFailureMessage(cause, 'The page could not open.');
       setError(message);
@@ -229,6 +263,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
 
   const commitUrl = (normalized: string, pushHistory: boolean) => {
     const nextPolicy = browserFramePolicy(normalized);
+    nativeDesiredUrlRef.current = normalized;
     setError(null);
     setDraft(normalized);
     onUpdate({ settings: { ...panel.settings, url: normalized }, status: 'ready' });

@@ -157,7 +157,8 @@ export function PetHost({
     };
   }, [claimed, runtimeEffectsEnabled, tauri]);
 
-  // Shutdown: never briefly respawn the pet while the app is hiding/exiting.
+  // Renderer teardown only: tray hides and persistence checkpoints must leave the
+  // detached desktop Pet alive while VibeSpace is out of the way.
   React.useEffect(() => {
     if (!runtimeEffectsEnabled || !claimed) return;
     const markShutdown = () => {
@@ -168,17 +169,11 @@ export function PetHost({
     };
     const onPageHide = () => markShutdown();
     const onBeforeUnload = () => markShutdown();
-    const onPersist = () => markShutdown();
-    const onBeforeHide = () => markShutdown();
     window.addEventListener('pagehide', onPageHide);
     window.addEventListener('beforeunload', onBeforeUnload);
-    window.addEventListener('jarvis:persist-now', onPersist);
-    window.addEventListener('jarvis:before-hide', onBeforeHide);
     return () => {
       window.removeEventListener('pagehide', onPageHide);
       window.removeEventListener('beforeunload', onBeforeUnload);
-      window.removeEventListener('jarvis:persist-now', onPersist);
-      window.removeEventListener('jarvis:before-hide', onBeforeHide);
     };
   }, [claimed, runtimeEffectsEnabled]);
 

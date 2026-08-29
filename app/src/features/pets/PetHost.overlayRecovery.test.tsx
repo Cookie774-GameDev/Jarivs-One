@@ -199,6 +199,31 @@ describe('PetHost native overlay recovery', () => {
     expect(bridge.reassertPetOverlayTopmost).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps the detached Pet alive when the main VibeSpace window enters the tray', async () => {
+    bridge.showPetOverlay.mockResolvedValue(visibleNativeOverlay());
+    bridge.isPetOverlayVisible.mockResolvedValue(true);
+
+    render(<PetHost />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      bridge.hidePetOverlay.mockClear();
+      window.dispatchEvent(new Event('jarvis:before-hide'));
+      window.dispatchEvent(new Event('jarvis:persist-now'));
+      await Promise.resolve();
+    });
+
+    expect(bridge.hidePetOverlay).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(bridge.reassertPetOverlayTopmost).toHaveBeenCalled();
+  });
+
   it('keeps the 400ms native panel visibility poll single-flight when the bridge is slow', async () => {
     render(<PetHost />);
     await act(async () => {
