@@ -2,6 +2,7 @@
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useUIStore } from '@/stores/ui';
 import { BrowserPanel } from './BrowserPanel';
 import type { WorkbenchPanel } from './types';
 
@@ -35,6 +36,7 @@ function panel(url: string): WorkbenchPanel {
 
 describe('Workbench BrowserPanel delivery', () => {
   beforeEach(() => {
+    useUIStore.setState({ route: 'workbench' });
     native.invoke.mockReset();
     native.openExternal.mockReset();
     native.openExternal.mockResolvedValue(undefined);
@@ -295,6 +297,150 @@ describe('Workbench BrowserPanel delivery', () => {
     expect(
       native.invoke.mock.calls.filter(([command]) => command === 'workbench_browser_surface_open'),
     ).toHaveLength(1);
+  });
+
+  it('retires the native child immediately when the immediate route leaves Workbench', async () => {
+    render(<BrowserPanel panel={panel('https://example.com/')} onUpdate={vi.fn()} />);
+    await waitFor(() =>
+      expect(native.invoke).toHaveBeenCalledWith(
+        'workbench_browser_surface_open',
+        expect.objectContaining({ panelId: 'browser-1' }),
+      ),
+    );
+
+    act(() => useUIStore.setState({ route: 'context' }));
+
+    await waitFor(() =>
+      expect(native.invoke).toHaveBeenCalledWith(
+        'workbench_browser_surface_hide',
+        expect.objectContaining({ panelId: 'browser-1' }),
+      ),
+    );
+  });
+
+  it('retires the native child while minimized and recreates it after restore', async () => {
+    const initialPanel = panel('https://example.com/');
+    const view = render(<BrowserPanel panel={initialPanel} onUpdate={vi.fn()} />);
+    await waitFor(() =>
+      expect(
+        native.invoke.mock.calls.filter(
+          ([command]) => command === 'workbench_browser_surface_open',
+        ),
+      ).toHaveLength(1),
+    );
+
+    view.rerender(
+      <BrowserPanel panel={{ ...initialPanel, minimized: true }} onUpdate={vi.fn()} />,
+    );
+    await waitFor(() =>
+      expect(native.invoke).toHaveBeenCalledWith(
+        'workbench_browser_surface_hide',
+        expect.objectContaining({ panelId: 'browser-1' }),
+      ),
+    );
+
+    view.rerender(<BrowserPanel panel={initialPanel} onUpdate={vi.fn()} />);
+    await waitFor(() =>
+      expect(
+        native.invoke.mock.calls.filter(
+          ([command]) => command === 'workbench_browser_surface_open',
+        ),
+      ).toHaveLength(2),
+    );
+  });
+
+  it('synchronizes React-driven panel movement without waiting for resize or scroll', async () => {
+    let left = 20;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({
+      x: left,
+      y: 80,
+      top: 80,
+      left,
+      right: left + 640,
+      bottom: 480,
+      width: 640,
+      height: 400,
+      toJSON: () => ({}),
+    }));
+    const initialPanel = panel('https://example.com/');
+    const view = render(<BrowserPanel panel={initialPanel} onUpdate={vi.fn()} />);
+    await waitFor(() =>
+      expect(native.invoke).toHaveBeenCalledWith(
+        'workbench_browser_surface_open',
+        expect.objectContaining({ bounds: expect.objectContaining({ x: 20 }) }),
+      ),
+    );
+
+    left = 140;
+    view.rerender(
+      <BrowserPanel
+        panel={{ ...initialPanel, x: 120, title: 'Moved browser' }}
+        onUpdate={vi.fn()}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(native.invoke).toHaveBeenCalledWith(
+        'workbench_browser_surface_open',
+        expect.objectContaining({ bounds: expect.objectContaining({ x: 140 }) }),
+      ),
+    );
+  });
+
+  it('retires a native child that moves outside the visible Workbench canvas', async () => {
+    let surfaceLeft = 40;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      if (this.classList.contains('workbench-canvas')) {
+        return {
+          x: 0,
+          y: 40,
+          top: 40,
+          left: 0,
+          right: 800,
+          bottom: 640,
+          width: 800,
+          height: 600,
+          toJSON: () => ({}),
+        };
+      }
+      return {
+        x: surfaceLeft,
+        y: 80,
+        top: 80,
+        left: surfaceLeft,
+        right: surfaceLeft + 640,
+        bottom: 480,
+        width: 640,
+        height: 400,
+        toJSON: () => ({}),
+      };
+    });
+    const initialPanel = panel('https://example.com/');
+    const view = render(
+      <div className="workbench-canvas">
+        <BrowserPanel panel={initialPanel} onUpdate={vi.fn()} />
+      </div>,
+    );
+    await waitFor(() =>
+      expect(native.invoke).toHaveBeenCalledWith(
+        'workbench_browser_surface_open',
+        expect.objectContaining({ panelId: 'browser-1' }),
+      ),
+    );
+
+    surfaceLeft = 240;
+    view.rerender(
+      <div className="workbench-canvas">
+        <BrowserPanel panel={{ ...initialPanel, x: 200 }} onUpdate={vi.fn()} />
+      </div>,
+    );
+
+    await waitFor(() =>
+      expect(native.invoke).toHaveBeenCalledWith(
+        'workbench_browser_surface_hide',
+        expect.objectContaining({ panelId: 'browser-1' }),
+      ),
+    );
   });
 
   it('retains an explicit external-browser action for any valid address draft', async () => {
