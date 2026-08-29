@@ -293,9 +293,7 @@ describe('Workbench BrowserPanel delivery', () => {
 
     await act(async () => Promise.resolve());
     expect(
-      native.invoke.mock.calls.filter(
-        ([command]) => command === 'workbench_browser_surface_open',
-      ),
+      native.invoke.mock.calls.filter(([command]) => command === 'workbench_browser_surface_open'),
     ).toHaveLength(1);
   });
 
