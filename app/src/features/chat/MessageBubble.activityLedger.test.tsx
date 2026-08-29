@@ -77,4 +77,55 @@ describe('MessageBubble assistant activity ledger', () => {
     expect(document.body.textContent).not.toContain('hidden-payload');
     expect(document.body.textContent).not.toContain('hidden-result');
   });
+
+  it('replaces a settled generic action card with the compact safe receipt ledger', () => {
+    const rendered = render(
+      <TooltipProvider>
+        <MessageBubble
+          message={message('assistant', [
+            { kind: 'text', text: 'The file update completed.' },
+            {
+              kind: 'action_proposal',
+              call_id: 'edit-call-1',
+              action_id: 'files.edit',
+              params: {
+                path: 'C:\\private\\project\\brief.md',
+                content: 'private replacement content',
+              },
+              rationale: 'private raw rationale',
+              status: 'success',
+            },
+          ])}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(screen.getByText('The file update completed.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /show activity details/i })).toBeTruthy();
+    expect(rendered.container.querySelector('[data-action-id="files.edit"]')).toBeNull();
+    expect(document.body.textContent).not.toContain('private replacement content');
+    expect(document.body.textContent).not.toContain('private raw rationale');
+    expect(document.body.textContent).not.toContain('C:\\private\\project');
+  });
+
+  it('keeps a settled plugin action as the compact provider card', () => {
+    render(
+      <TooltipProvider>
+        <MessageBubble
+          message={message('assistant', [
+            {
+              kind: 'action_proposal',
+              call_id: 'github-plugin-call',
+              action_id: 'github.identity',
+              params: {},
+              status: 'success',
+            },
+          ])}
+        />
+      </TooltipProvider>,
+    );
+
+    expect(screen.getByLabelText('GitHub plugin activity')).toBeTruthy();
+    expect(screen.getByText('Connected')).toBeTruthy();
+  });
 });

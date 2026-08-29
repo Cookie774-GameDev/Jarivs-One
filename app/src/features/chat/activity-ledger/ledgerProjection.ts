@@ -251,28 +251,44 @@ function messageReceipts(message: Message): AssistantActivityReceipt[] {
   });
 }
 
-type LatestEventCollection = readonly ChatActivityEvent[] | ReadonlyMap<string, ChatActivityEvent>;
+type LatestEventCollection = Readonly<{
+  values: Iterable<ChatActivityEvent>;
+  newestFirst: boolean;
+}>;
 
 function latestEvents(events: readonly ChatActivityEvent[]): LatestEventCollection {
-  let orderedAndUnique = true;
+  let ordered = true;
   let previous: ChatActivityEvent | undefined;
-  const ids = new Set<string>();
   for (const event of events) {
-    if (ids.has(event.id) || (previous && compareEvents(previous, event) > 0)) {
-      orderedAndUnique = false;
+    if (previous && compareEvents(previous, event) > 0) {
+      ordered = false;
       break;
     }
-    ids.add(event.id);
     previous = event;
   }
-  if (orderedAndUnique) return events;
+  if (ordered) {
+    return {
+      newestFirst: true,
+      values: {
+        *[Symbol.iterator]() {
+          const seen = new Set<string>();
+          for (let index = events.length - 1; index >= 0; index -= 1) {
+            const event = events[index];
+            if (seen.has(event.id)) continue;
+            seen.add(event.id);
+            yield event;
+          }
+        },
+      },
+    };
+  }
 
   const latestById = new Map<string, ChatActivityEvent>();
   for (const event of events) {
     const current = latestById.get(event.id);
     if (!current || event.ts >= current.ts) latestById.set(event.id, event);
   }
-  return latestById;
+  return { values: latestById.values(), newestFirst: false };
 }
 
 function compareEvents(left: ChatActivityEvent, right: ChatActivityEvent): number {
@@ -403,8 +419,7 @@ export function projectAssistantActivityLedger(
   let latestRunningEvent: ChatActivityEvent | undefined;
   let hasEventError = false;
   let hasEventCancelled = false;
-  const latestEventValues = Array.isArray(eventsById) ? eventsById : eventsById.values();
-  for (const event of latestEventValues) {
+  for (const event of eventsById.values) {
     const kind = activityKind(event);
     if (kind === 'command' && messageHasCommand) continue;
     const actionable = kind !== 'other';
@@ -438,7 +453,12 @@ export function projectAssistantActivityLedger(
       latestEvidenceEnd = Math.max(latestEvidenceEnd ?? eventEnd, eventEnd);
     }
     if (actionable) {
-      if (eventsAreChronological && (!previousEvent || compareEvents(previousEvent, event) <= 0)) {
+      if (eventsById.newestFirst) {
+        if (recentEvents.length < MAX_LEDGER_RECEIPTS) recentEvents.push(event);
+      } else if (
+        eventsAreChronological &&
+        (!previousEvent || compareEvents(previousEvent, event) <= 0)
+      ) {
         recentEvents.push(event);
         if (recentEvents.length >= MAX_LEDGER_RECEIPTS * 2) {
           recentEvents = recentEvents.slice(-MAX_LEDGER_RECEIPTS);
@@ -471,7 +491,12 @@ export function projectAssistantActivityLedger(
   }
   const allReceipts = [
     ...fromMessage,
-    ...(eventsAreChronological ? recentEvents.slice(-MAX_LEDGER_RECEIPTS) : recentEvents)
+    ...(eventsById.newestFirst
+      ? recentEvents
+      : eventsAreChronological
+        ? recentEvents.slice(-MAX_LEDGER_RECEIPTS)
+        : recentEvents
+    )
       .sort(compareEvents)
       .map(eventReceipt),
   ]

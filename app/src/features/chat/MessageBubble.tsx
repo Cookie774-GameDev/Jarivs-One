@@ -6,6 +6,7 @@ import { useAgentStore } from '@/stores/agents';
 import { cn, formatRelative, hueFromString } from '@/lib/utils';
 import { MessagePart } from './MessagePart';
 import { AssistantActivityLedger } from './activity-ledger/AssistantActivityLedger';
+import { resolvePluginActionEvidence } from './PluginUsageCard';
 import type { Message } from '@/types';
 import type { JarvisCreatorKind } from '@/features/jarvis-creator/contracts';
 
@@ -50,7 +51,18 @@ export function MessageBubble({
   const isHiveResponse = message.parts.some((p) => p.kind === 'stack_step');
   const assistantVisibleParts =
     message.role === 'assistant'
-      ? message.parts.filter((part) => part.kind !== 'tool_call' && part.kind !== 'tool_result')
+      ? message.parts.filter((part) => {
+          if (part.kind === 'tool_call' || part.kind === 'tool_result') return false;
+          if (
+            showActivityLedger &&
+            part.kind === 'action_proposal' &&
+            (part.status === 'success' || part.status === 'error' || part.status === 'cancelled') &&
+            !resolvePluginActionEvidence(part, message.parts)
+          ) {
+            return false;
+          }
+          return true;
+        })
       : message.parts;
 
   const slug = agent?.slug ?? message.agent_id ?? 'jarvis';
