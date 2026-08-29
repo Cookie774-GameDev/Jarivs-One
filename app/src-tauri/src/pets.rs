@@ -31,6 +31,42 @@ const PET_NATIVE_FRAME_STYLE_BITS: isize = 0x00CF_0000;
 const PET_NATIVE_FRAME_EX_STYLE_BITS: isize = 0x0002_0301;
 
 #[cfg(target_os = "windows")]
+const WEBVIEW2_BROWSER_ARGUMENTS: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+#[cfg(target_os = "windows")]
+static PET_CHILD_WEBVIEW2_ENVIRONMENT_LOCK: Mutex<()> = Mutex::new(());
+
+#[cfg(target_os = "windows")]
+struct PetWebView2EnvironmentRestore(Option<std::ffi::OsString>);
+
+#[cfg(target_os = "windows")]
+impl Drop for PetWebView2EnvironmentRestore {
+    fn drop(&mut self) {
+        match self.0.take() {
+            Some(value) => std::env::set_var(WEBVIEW2_BROWSER_ARGUMENTS, value),
+            None => std::env::remove_var(WEBVIEW2_BROWSER_ARGUMENTS),
+        }
+    }
+}
+
+fn with_isolated_pet_webview2_environment<T>(create: impl FnOnce() -> T) -> T {
+    #[cfg(target_os = "windows")]
+    {
+        let _lock = PET_CHILD_WEBVIEW2_ENVIRONMENT_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let restore = PetWebView2EnvironmentRestore(std::env::var_os(WEBVIEW2_BROWSER_ARGUMENTS));
+        std::env::remove_var(WEBVIEW2_BROWSER_ARGUMENTS);
+        let created = create();
+        drop(restore);
+        created
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        create()
+    }
+}
+
+#[cfg(target_os = "windows")]
 const PET_TOPMOST_POS_FLAGS: windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS =
     windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS(
         windows::Win32::UI::WindowsAndMessaging::SWP_NOMOVE.0
@@ -1189,7 +1225,7 @@ fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
     Ok(PetOverlayAcquire::Ready { created: true })
 }
 
-fn build_pet_overlay(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
+fn build_pet_overlay(app: &AppHandle, _visible: bool) -> Result<WebviewWindow, String> {
     let webview_url = pet_webview_url(app, "pet-overlay")?;
     let host = WindowBuilder::new(app, PET_OVERLAY_LABEL)
         .title("VibeSpace Pet")
@@ -1201,7 +1237,10 @@ fn build_pet_overlay(app: &AppHandle, visible: bool) -> Result<WebviewWindow, St
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
-        .visible(visible)
+        // Keep the native host hidden until its child WebView has a real
+        // client-area size. Showing the host first exposes a blank Windows
+        // caption/client surface while WebView2 is still attaching.
+        .visible(false)
         .focused(false)
         .shadow(false)
         .background_color(tauri::window::Color(0, 0, 0, 0))
@@ -1214,14 +1253,33 @@ fn build_pet_overlay(app: &AppHandle, visible: bool) -> Result<WebviewWindow, St
     .additional_browser_args(
         "--default-background-color=00000000 --disable-features=CalculateNativeWinOcclusion --autoplay-policy=no-user-gesture-required",
     );
-    if let Err(error) = host.add_child(
-        webview,
-        LogicalPosition::new(0.0, 0.0),
-        LogicalSize::new(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64),
-    ) {
+    let child = match with_isolated_pet_webview2_environment(|| {
+        host.add_child(
+            webview,
+            LogicalPosition::new(0.0, 0.0),
+            LogicalSize::new(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64),
+        )
+    }) {
+        Ok(child) => child,
+        Err(error) => {
+            let _ = host.destroy();
+            return Err(format!("failed to create pet-overlay webview: {error}"));
+        }
+    };
+    if let Err(error) = child.set_size(LogicalSize::new(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)) {
         let _ = host.destroy();
-        return Err(format!("failed to create pet-overlay webview: {error}"));
+        return Err(format!("failed to size pet-overlay webview: {error}"));
     }
+    let _ = child.set_position(LogicalPosition::new(0.0, 0.0));
+    if let Err(error) = child.show() {
+        let _ = host.destroy();
+        return Err(format!("failed to show pet-overlay webview: {error}"));
+    }
+    // Reassert the host contract after WebView2 attachment. On Windows the
+    // child controller can otherwise cause the tiny host caption to repaint.
+    let _ = host.set_size(LogicalSize::new(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64));
+    let _ = host.set_decorations(false);
+    let _ = host.set_shadow(false);
     match app.get_webview_window(PET_OVERLAY_LABEL) {
         Some(window) => Ok(window),
         None => {
@@ -1246,7 +1304,7 @@ fn get_or_create_pet_panel(app: &AppHandle) -> Result<(WebviewWindow, bool), Str
     build_pet_panel(app, false).map(|window| (window, true))
 }
 
-fn build_pet_panel(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
+fn build_pet_panel(app: &AppHandle, _visible: bool) -> Result<WebviewWindow, String> {
     let webview_url = pet_webview_url(app, "pet-mini-panel")?;
     let host = WindowBuilder::new(app, PET_MINI_PANEL_LABEL)
         .title("VibeSpace Pet Panel")
@@ -1257,23 +1315,39 @@ fn build_pet_panel(app: &AppHandle, visible: bool) -> Result<WebviewWindow, Stri
         .transparent(false)
         .always_on_top(true)
         .skip_taskbar(true)
-        .visible(visible)
+        // The panel is revealed only after its child WebView has been sized.
+        // This prevents the native white host rectangle from flashing or
+        // remaining visible when WebView2 attaches slowly.
+        .visible(false)
         .focused(false)
         .build()
         .map_err(|e| format!("failed to create pet-mini-panel host: {e}"))?;
     let webview = WebviewBuilder::new(PET_MINI_PANEL_LABEL, webview_url).focused(false);
-    let child = match host.add_child(
-        webview,
-        LogicalPosition::new(0.0, 0.0),
-        LogicalSize::new(PANEL_DEFAULT_W, PANEL_DEFAULT_H),
-    ) {
+    let child = match with_isolated_pet_webview2_environment(|| {
+        host.add_child(
+            webview,
+            LogicalPosition::new(0.0, 0.0),
+            LogicalSize::new(PANEL_DEFAULT_W, PANEL_DEFAULT_H),
+        )
+    }) {
         Ok(child) => child,
         Err(error) => {
             let _ = host.destroy();
             return Err(format!("failed to create pet-mini-panel webview: {error}"));
         }
     };
+    if let Err(error) = child.set_size(LogicalSize::new(PANEL_DEFAULT_W, PANEL_DEFAULT_H)) {
+        let _ = host.destroy();
+        return Err(format!("failed to size pet-mini-panel webview: {error}"));
+    }
+    let _ = child.set_position(LogicalPosition::new(0.0, 0.0));
     let resize_child = child.clone();
+    if let Err(error) = child.show() {
+        let _ = host.destroy();
+        return Err(format!("failed to show pet-mini-panel webview: {error}"));
+    }
+    let _ = host.set_size(LogicalSize::new(PANEL_DEFAULT_W, PANEL_DEFAULT_H));
+    let _ = host.set_decorations(false);
     host.on_window_event(move |event| {
         if let tauri::WindowEvent::Resized(size) = event {
             let _ = resize_child.set_size(*size);
@@ -1996,6 +2070,11 @@ mod tests {
                 .expect("same-label child webview is built");
             assert!(host_index < webview_index);
             assert!(builder.contains("host.add_child("));
+            assert!(builder.contains("with_isolated_pet_webview2_environment(||"));
+            assert!(builder.contains("child.show()"));
+            assert!(builder.contains(".visible(false)"));
+            assert!(builder.contains("child.set_size("));
+            assert!(builder.contains("host.set_decorations(false)"));
             assert!(!builder.contains("WebviewWindowBuilder::new"));
         }
     }
