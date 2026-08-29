@@ -202,6 +202,7 @@ import {
   actionPartToLlmText,
   buildBroadRootAuditWordAllocation,
   buildBroadRootAuditCorrectionGuidance,
+  buildApprovalContinuationProviderText,
   buildExplicitRootCorrectionLengthGuidance,
   responseAwaitsApproval,
   createCanonicalProviderEvidenceAuthority,
@@ -242,6 +243,20 @@ function startRuntimeListener(
   const [bindings, options] = args;
   return startKernelAwareRuntimeListener(bindings, options ?? { jarvisKernelMode: 'legacy' });
 }
+
+describe('approval continuation provider evidence', () => {
+  it('binds only the validated canonical status and never raw action payloads', () => {
+    const success = buildApprovalContinuationProviderText('Finalize the response.', 'success');
+    const failure = buildApprovalContinuationProviderText('Finalize the response.', 'error');
+
+    expect(success).toContain('completed successfully');
+    expect(success).toContain('Do not claim that access, approval, or execution is still required');
+    expect(failure).toContain('previously approved action failed');
+    expect(failure).toContain('Do not claim that it completed successfully');
+    expect(`${success}${failure}`).not.toContain('C:\\');
+    expect(`${success}${failure}`).not.toContain('call_id');
+  });
+});
 
 describe('approved action history context', () => {
   it.each([

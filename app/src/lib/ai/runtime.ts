@@ -2220,6 +2220,17 @@ export interface SendDetail {
   automaticModelRoutingEligible?: boolean;
 }
 
+export function buildApprovalContinuationProviderText(
+  instruction: string,
+  status: 'success' | 'error',
+): string {
+  const fact =
+    status === 'success'
+      ? 'Canonical persisted action fact: the exact previously approved action completed successfully, and matching action, tool-call, and tool-result records were validated before this finalization turn. Do not claim that access, approval, or execution is still required.'
+      : 'Canonical persisted action fact: the exact previously approved action failed, and matching action, tool-call, and tool-result records were validated before this finalization turn. Do not claim that it completed successfully or request a duplicate action.';
+  return `${instruction} ${fact}`;
+}
+
 export function resolveOptimizedOutputLimit(
   mode: TokenOptimizationMode,
   requestedLimit: number | undefined,
@@ -4339,6 +4350,7 @@ export function startRuntimeListener(
 
     const authState = useAuthStore.getState();
     let chatRecord: Chat | undefined;
+    let continuationProviderText: string | undefined;
     try {
       chatRecord = await chatRepo.getById(chatId as ChatId);
     } catch {
@@ -4370,8 +4382,7 @@ export function startRuntimeListener(
       ].join(':');
       try {
         if (
-          continuation.callId !==
-            `jarvisapproval:${encodeURIComponent(continuation.approvalId)}` ||
+          continuation.callId !== `jarvisapproval:${encodeURIComponent(continuation.approvalId)}` ||
           acceptedApprovalContinuations.has(continuationKey)
         ) {
           throw new Error('approval_continuation_scope_invalid');
@@ -4411,9 +4422,12 @@ export function startRuntimeListener(
         ) {
           throw new Error('approval_continuation_evidence_invalid');
         }
+        continuationProviderText = buildApprovalContinuationProviderText(text, action.status);
         acceptedApprovalContinuations.add(continuationKey);
         if (acceptedApprovalContinuations.size > 2_000) {
-          acceptedApprovalContinuations.delete(acceptedApprovalContinuations.values().next().value!);
+          acceptedApprovalContinuations.delete(
+            acceptedApprovalContinuations.values().next().value!,
+          );
         }
       } catch (error) {
         failEarlySetup('context', error);
@@ -5740,7 +5754,7 @@ export function startRuntimeListener(
               contextToolEnabled: !explicitReadRoot,
             });
             const kernelUserText = detail.approvalContinuation
-              ? text
+              ? (continuationProviderText ?? text)
               : [...kernelMessages].reverse().find((message) => message.role === 'user')?.content;
             const turn = await createRuntimeKernelTurn({
               host,
