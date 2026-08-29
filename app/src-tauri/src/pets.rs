@@ -27,6 +27,8 @@ const PANEL_MIN_H: f64 = 360.0;
 const MAIN_NAV_EXCLUSION_LOGICAL_W: f64 = 240.0;
 const PET_AUTOSTART_VALUE_NAME: &str = "VibeSpace";
 const TOPMOST_WATCHDOG_INTERVAL_MS: u64 = 1000;
+const PET_NATIVE_FRAME_STYLE_BITS: isize = 0x00CF_0000;
+const PET_NATIVE_FRAME_EX_STYLE_BITS: isize = 0x0002_0301;
 
 #[cfg(target_os = "windows")]
 const PET_TOPMOST_POS_FLAGS: windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS =
@@ -838,6 +840,42 @@ fn is_pet_native_title(title: &str) -> bool {
     title == "VibeSpace Pet" || title == "VibeSpace Pet Panel"
 }
 
+fn strip_pet_native_frame_style(style: isize) -> isize {
+    style & !PET_NATIVE_FRAME_STYLE_BITS
+}
+
+fn strip_pet_native_frame_ex_style(ex_style: isize) -> isize {
+    ex_style & !PET_NATIVE_FRAME_EX_STYLE_BITS
+}
+
+#[cfg(target_os = "windows")]
+fn native_restore_pet_window_chrome(hwnd: windows::Win32::Foundation::HWND) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, GWL_STYLE,
+        SET_WINDOW_POS_FLAGS, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    };
+
+    unsafe {
+        let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+        let repaired_style = strip_pet_native_frame_style(style);
+        let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let repaired_ex_style = strip_pet_native_frame_ex_style(ex_style);
+        if repaired_style == style && repaired_ex_style == ex_style {
+            return;
+        }
+        if repaired_style != style {
+            let _ = SetWindowLongPtrW(hwnd, GWL_STYLE, repaired_style);
+        }
+        if repaired_ex_style != ex_style {
+            let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, repaired_ex_style);
+        }
+        let flags = SET_WINDOW_POS_FLAGS(
+            SWP_FRAMECHANGED.0 | SWP_NOMOVE.0 | SWP_NOSIZE.0 | SWP_NOACTIVATE.0,
+        );
+        let _ = SetWindowPos(hwnd, None, 0, 0, 0, 0, flags);
+    }
+}
+
 /// Ensure the pet-overlay WebView paints a fully transparent chrome (Windows).
 ///
 /// On Windows 8+, WebView2 treats any non-zero alpha as opaque 255 for the
@@ -920,6 +958,7 @@ fn native_configure_pet_window(
         SWP_SHOWWINDOW | SWP_NOACTIVATE
     };
     unsafe {
+        native_restore_pet_window_chrome(hwnd);
         let _ = SetWindowTextW(hwnd, PCWSTR(title.as_ptr()));
         let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), x, y, width, height, flags);
         if focus {
@@ -1012,6 +1051,7 @@ fn native_pin_visible_pet_hwnds() {
                 let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style | topmost_bit);
             }
         }
+        native_restore_pet_window_chrome(hwnd);
         unsafe {
             let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, PET_TOPMOST_POS_FLAGS);
         }
@@ -2005,6 +2045,23 @@ mod tests {
         assert!(!is_pet_native_title("VibeSpace"));
         assert!(!is_pet_native_title("Pet"));
         assert!(!is_pet_native_title(""));
+    }
+
+    #[test]
+    fn native_pet_chrome_repair_removes_caption_and_edge_styles() {
+        assert_eq!(strip_pet_native_frame_style(0x14CB0000), 0x14000000);
+        assert_eq!(strip_pet_native_frame_ex_style(0x40118), 0x40018);
+
+        let source = include_str!("pets.rs");
+        let configure_start = source
+            .find("fn native_configure_pet_window")
+            .expect("native configure helper exists");
+        let configure_end = source[configure_start..]
+            .find("#[cfg(not(target_os = \"windows\"))]")
+            .map(|offset| configure_start + offset)
+            .expect("native configure helper has a bounded source slice");
+        assert!(source[configure_start..configure_end]
+            .contains("native_restore_pet_window_chrome(hwnd)"));
     }
 
     #[test]

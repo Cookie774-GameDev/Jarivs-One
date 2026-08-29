@@ -149,6 +149,18 @@ describe('PixiAtlasPlayer', () => {
     host.remove();
   });
 
+  it('caps the renderer ticker without changing the 12 FPS sprite cadence', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const p = new PixiAtlasPlayer();
+    await p.init(host, { displaySize: 128, resolution: 1 });
+
+    expect((p.application?.ticker as unknown as { maxFPS: number }).maxFPS).toBe(24);
+
+    p.dispose();
+    host.remove();
+  });
+
   it('prevents re-init after dispose', async () => {
     const host = document.createElement('div');
     const p = new PixiAtlasPlayer();

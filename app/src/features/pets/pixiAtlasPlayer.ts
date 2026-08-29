@@ -387,6 +387,10 @@ export class PixiAtlasPlayer {
       multiView: false,
     });
 
+    // The sprite advances at 12 FPS; rendering at 24 FPS preserves every visual
+    // frame while avoiding a wasteful 60/120 Hz transparent WebGL loop.
+    app.ticker.maxFPS = 24;
+
     // Re-assert transparent background after init (some Pixi paths reset it).
     this.forceTransparentBackground(app);
 
