@@ -1535,9 +1535,12 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
       const exactMapId = mapId.trim();
       if (!exactProjectId || !exactMapId) throw new Error('siyuan_context_map_scope_invalid');
       const key = documentKey(exactProjectId, exactMapId);
-      syncControllers.get(key)?.abort('siyuan_index_paused');
-      await synchronizing.get(key)?.catch(() => undefined);
+      // The native operation may be blocked below JavaScript and therefore
+      // unable to settle its promise promptly. Persist the user's pause first;
+      // lifecycle-protected checkpoints then cannot resurrect the job while
+      // abort remains best-effort cancellation of the in-flight operation.
       await updateSiyuanIndexJobStatus(exactProjectId, exactMapId, 'paused');
+      syncControllers.get(key)?.abort('siyuan_index_paused');
       const manifest = readSiyuanMapManifest(exactProjectId, exactMapId);
       if (manifest) {
         writeSiyuanMapManifest(updateSiyuanMapManifest(manifest, { status: 'paused' }));

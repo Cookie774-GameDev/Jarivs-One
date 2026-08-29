@@ -181,7 +181,7 @@ describe('SiYuan Context Map integration', () => {
     );
   });
 
-  it('aborts an active sync before waiting on the durable pause write', () => {
+  it('persists a durable pause before aborting a possibly hung active sync', () => {
     const source = readFileSync(
       resolve('src/features/context/siyuanContextMapIntegration.ts'),
       'utf8',
@@ -190,13 +190,13 @@ describe('SiYuan Context Map integration', () => {
     const pauseEnd = source.indexOf('async retire(', pauseStart);
     const pause = source.slice(pauseStart, pauseEnd);
     const abort = pause.indexOf("syncControllers.get(key)?.abort('siyuan_index_paused')");
-    const waitForSync = pause.indexOf('await synchronizing.get(key)?.catch');
     const durablePause = pause.indexOf(
       "await updateSiyuanIndexJobStatus(exactProjectId, exactMapId, 'paused')",
     );
     expect(abort).toBeGreaterThan(-1);
-    expect(waitForSync).toBeGreaterThan(abort);
-    expect(durablePause).toBeGreaterThan(waitForSync);
+    expect(durablePause).toBeGreaterThan(-1);
+    expect(durablePause).toBeLessThan(abort);
+    expect(pause).not.toContain('await synchronizing.get(key)?.catch');
   });
 
   it('accounts for renderer-offline time before discovery can overwrite the checkpoint', () => {
@@ -1694,16 +1694,15 @@ describe('SiYuan Context Map integration', () => {
         })
         .catch((error: unknown) => error);
       await listStarted;
-      const pausing = integration.pause('project-1', record.id);
-      releaseList();
-      await pausing;
-      await expect(running).resolves.toMatchObject({ message: 'siyuan_index_cancelled' });
+      await integration.pause('project-1', record.id);
       expect(await readSiyuanIndexJob('project-1', record.id)).toMatchObject({
         status: 'paused',
         pauseReason: 'user',
         completedAt: null,
       });
       expect(readSiyuanMapManifest('project-1', record.id)?.status).toBe('paused');
+      releaseList();
+      await expect(running).resolves.toMatchObject({ message: 'siyuan_index_cancelled' });
     } finally {
       if (previousInternals === undefined) {
         delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
