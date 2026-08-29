@@ -698,26 +698,32 @@ impl HttpSiyuanTransport {
                 Self::require_append_parent(&root, &block.parent_id, &info)?;
             }
         }
-        let transactions: Vec<TransactionWire> = self.post(
-            "/api/block/batchAppendBlock",
-            json!({
-                "blocks": blocks
-                    .iter()
-                    .map(|block| json!({
-                        "data": block.markdown,
-                        "dataType": "markdown",
-                        "parentID": block.parent_id,
-                    }))
-                    .collect::<Vec<_>>()
-            }),
-        )?;
-        if transactions.len() != blocks.len() {
-            return Err(ClientError::ResponseTypeMismatch);
-        }
-        transactions
-            .into_iter()
-            .zip(blocks)
-            .map(|(transaction, input)| {
+        let mut ids = Vec::with_capacity(blocks.len());
+        let mut cursor = 0;
+        while cursor < blocks.len() {
+            let parent_id = blocks[cursor].parent_id.as_str();
+            let end = blocks[cursor..]
+                .iter()
+                .position(|block| block.parent_id != parent_id)
+                .map_or(blocks.len(), |offset| cursor + offset);
+            let parent_batch = &blocks[cursor..end];
+            let transactions: Vec<TransactionWire> = self.post(
+                "/api/block/batchAppendBlock",
+                json!({
+                    "blocks": parent_batch
+                        .iter()
+                        .map(|block| json!({
+                            "data": block.markdown,
+                            "dataType": "markdown",
+                            "parentID": block.parent_id,
+                        }))
+                        .collect::<Vec<_>>()
+                }),
+            )?;
+            if transactions.len() != parent_batch.len() {
+                return Err(ClientError::ResponseTypeMismatch);
+            }
+            for (transaction, input) in transactions.into_iter().zip(parent_batch) {
                 if transaction.do_operations.len() != 1 {
                     return Err(ClientError::ResponseTypeMismatch);
                 }
@@ -733,9 +739,11 @@ impl HttpSiyuanTransport {
                 if operation.action != "insert" || operation.parent_id != input.parent_id {
                     return Err(ClientError::ResponseTypeMismatch);
                 }
-                Ok(operation.id)
-            })
-            .collect()
+                ids.push(operation.id);
+            }
+            cursor = end;
+        }
+        Ok(ids)
     }
 
     fn update_block(
@@ -1985,7 +1993,9 @@ mod tests {
                 .to_owned(),
             r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/one.sy","rootID":"parent-1"}}"#
                 .to_owned(),
-            r#"{"code":0,"msg":"","data":[{"doOperations":[{"action":"insert","id":"child-1","parentID":"parent-1"}]},{"doOperations":[{"action":"insert","id":"child-2","parentID":"parent-1"}]},{"doOperations":[{"action":"insert","id":"child-3","parentID":"parent-2"}]}]}"#
+            r#"{"code":0,"msg":"","data":[{"doOperations":[{"action":"insert","id":"child-1","parentID":"parent-1"}]},{"doOperations":[{"action":"insert","id":"child-2","parentID":"parent-1"}]}]}"#
+                .to_owned(),
+            r#"{"code":0,"msg":"","data":[{"doOperations":[{"action":"insert","id":"child-3","parentID":"parent-2"}]}]}"#
                 .to_owned(),
         ]);
         let client =
@@ -2012,11 +2022,12 @@ mod tests {
             .unwrap();
         assert_eq!(ids, ["child-1", "child-2", "child-3"]);
 
-        let captured = (0..4).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        let captured = (0..5).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
         assert!(captured[0].starts_with("POST /api/system/loginAuth HTTP/1.1"));
         assert!(captured[1].starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
         assert!(captured[2].starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
         assert!(captured[3].starts_with("POST /api/block/batchAppendBlock HTTP/1.1"));
+        assert!(captured[4].starts_with("POST /api/block/batchAppendBlock HTTP/1.1"));
         assert_eq!(
             captured
                 .iter()
@@ -2036,7 +2047,7 @@ mod tests {
                 .iter()
                 .filter(|request| request.contains("/api/block/batchAppendBlock"))
                 .count(),
-            1
+            2
         );
         let first_parent: Value = serde_json::from_str(
             &captured[1][captured[1].find('{').expect("first parent request body")..],
@@ -2058,6 +2069,17 @@ mod tests {
                 "blocks": [
                     { "data": "# First", "dataType": "markdown", "parentID": "parent-1" },
                     { "data": "# Second", "dataType": "markdown", "parentID": "parent-1" },
+                ]
+            })
+        );
+        let second_batch: Value = serde_json::from_str(
+            &captured[4][captured[4].find('{').expect("second batch request body")..],
+        )
+        .unwrap();
+        assert_eq!(
+            second_batch,
+            json!({
+                "blocks": [
                     { "data": "# Third", "dataType": "markdown", "parentID": "parent-2" },
                 ]
             })
