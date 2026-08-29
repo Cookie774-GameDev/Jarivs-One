@@ -1,3 +1,4 @@
+import Dexie from 'dexie';
 import type { JarvisDexie } from '@/lib/db';
 import { db, openDb } from '@/lib/db';
 import { getActiveAccountIdentity } from '@/lib/accountIdentity';
@@ -336,6 +337,15 @@ function persistedMessageText(message: Message): string {
 let runtimeStarted = false;
 
 /**
+ * Dexie table hooks inherit the transaction that triggered them. Analytics writes use separate
+ * tables, so they must leave that transaction explicitly or Dexie rejects them as a subtransaction.
+ * Analytics is best-effort and must never turn a successful product write into an unhandled error.
+ */
+export function runStatusAnalyticsHookOperation(operation: () => Promise<void>): Promise<void> {
+  return Dexie.ignoreTransaction(operation).catch(() => undefined);
+}
+
+/**
  * Hooks existing lifecycle writes. Only aggregate lengths/counts are copied;
  * content is inspected transiently and never persisted in analytics.
  */
@@ -348,34 +358,42 @@ export async function startStatusAnalyticsRuntime(): Promise<() => void> {
   const onMessageCreated = (_key: unknown, message: Message) => {
     const text = persistedMessageText(message);
     if (message.role === 'user') {
-      void recordForActiveAccount({
-        category: 'chat',
-        action: 'message_sent',
-        chatId: message.chat_id,
-        characters: text.length,
-        count: 1,
-      });
+      void runStatusAnalyticsHookOperation(() =>
+        recordForActiveAccount({
+          category: 'chat',
+          action: 'message_sent',
+          chatId: message.chat_id,
+          characters: text.length,
+          count: 1,
+        }),
+      );
     } else if (message.role === 'assistant') {
-      void recordForActiveAccount({
-        category: 'chat',
-        action: 'assistant_response_saved',
-        chatId: message.chat_id,
-        generatedLines: codeBlockLines(text),
-        count: 1,
-        outcome: 'completed',
-      });
+      void runStatusAnalyticsHookOperation(() =>
+        recordForActiveAccount({
+          category: 'chat',
+          action: 'assistant_response_saved',
+          chatId: message.chat_id,
+          generatedLines: codeBlockLines(text),
+          count: 1,
+          outcome: 'completed',
+        }),
+      );
     }
   };
   const onTerminalCreated = () => {
-    void recordForActiveAccount({ category: 'terminal', action: 'session_opened', count: 1 });
+    void runStatusAnalyticsHookOperation(() =>
+      recordForActiveAccount({ category: 'terminal', action: 'session_opened', count: 1 }),
+    );
   };
   const onRunCreated = (_key: unknown, run: JarvisRunRow) => {
-    void recordForActiveAccount({
-      category: 'agent',
-      action: 'run_started',
-      chatId: run.chat_id,
-      count: 1,
-    });
+    void runStatusAnalyticsHookOperation(() =>
+      recordForActiveAccount({
+        category: 'agent',
+        action: 'run_started',
+        chatId: run.chat_id,
+        count: 1,
+      }),
+    );
   };
   db.messages.hook('creating', onMessageCreated);
   db.terminal_sessions.hook('creating', onTerminalCreated);
