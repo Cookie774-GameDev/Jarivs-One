@@ -83,6 +83,7 @@ import {
   selectPersistedContextFile,
   selectPersistedContextMap,
 } from './contextPersistence';
+import { populatePersistedCreatedContextMap } from './contextMapCreationLifecycle';
 import { subscribeContextNavigation } from './contextNavigation';
 import type { ContextRecoverySummary } from './contextRecovery';
 import { NightlySecondBrainPanel } from './NightlySecondBrainPanel';
@@ -2059,29 +2060,18 @@ export function ContextPage() {
         return;
       }
       const persisted = await savePersistedContextTree(generated);
-      const persistedMap = persisted.maps.find(
-        (map) => map.id === persisted.selectedMapId && map.status === 'active',
-      );
-      if (!persistedMap) throw new Error('context_search_index_snapshot_invalid');
-      // The v2 graph persistence projection intentionally stores portable
-      // entity metadata, but it does not retain local ingestion eligibility.
-      // Keep the persisted map identity while using this freshly scanned tree
-      // so oversized, media, and binary-like files remain metadata-only for
-      // both RLM indexing and the SiYuan canonical snapshot.
-      const generatedMap = { ...persistedMap, tree: generated };
       let completedPersistence = persisted;
       let indexedFileCount = generated.fileCount;
       setStatus(`Indexing ${generated.fileCount} Context files...`);
-      try {
-        await contextSearchIndexPopulation.populateCreatedMap(
-          persisted.accountId,
-          generatedMap,
-          controller.signal,
-        );
-      } catch (indexError) {
-        await deletePersistedContextMap(projectId, persistedMap.id).catch(() => undefined);
-        throw indexError;
-      }
+      const { persistedMap, generatedMap } = await populatePersistedCreatedContextMap({
+        persisted,
+        tree: generated,
+        signal: controller.signal,
+        populateCreatedMap: (persistedAccountId, map, signal) =>
+          contextSearchIndexPopulation.populateCreatedMap(persistedAccountId, map, signal),
+        repairCreatedMap: (persistedAccountId, map, signal) =>
+          contextSearchIndexPopulation.repairEmptyMap(persistedAccountId, map, signal),
+      });
       if (projectId && SIYUAN_CONTEXT_VAULT_ENABLED) {
         setStatus('Adding this map to the SiYuan Context Vault...');
         setSiyuanIndexing(true);

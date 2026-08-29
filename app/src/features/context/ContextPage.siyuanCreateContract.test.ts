@@ -3,6 +3,10 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const source = readFileSync(resolve(__dirname, 'ContextPage.tsx'), 'utf8');
+const creationLifecycleSource = readFileSync(
+  resolve(__dirname, 'contextMapCreationLifecycle.ts'),
+  'utf8',
+);
 
 describe('ContextPage SiYuan creation contract', () => {
   it('creates native maps without a provider credential gate or legacy source writer', () => {
@@ -39,8 +43,13 @@ describe('ContextPage SiYuan creation contract', () => {
   });
 
   it('preserves fresh local ingestion eligibility through RLM and SiYuan creation', () => {
-    expect(source).toContain('const generatedMap = { ...persistedMap, tree: generated }');
-    expect(source).toContain('persisted.accountId,\n          generatedMap,');
+    expect(source).toContain('populatePersistedCreatedContextMap({');
+    expect(creationLifecycleSource).toContain(
+      'const generatedMap: ContextMapRecord = { ...persistedMap, tree: input.tree }',
+    );
+    expect(creationLifecycleSource).toContain(
+      'input.populateCreatedMap(input.persisted.accountId, generatedMap, input.signal)',
+    );
   });
 
   it('labels a bounded source preview honestly instead of claiming every source file was mapped', () => {

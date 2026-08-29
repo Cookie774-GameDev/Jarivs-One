@@ -26,6 +26,14 @@ const HTTP_TIMEOUT: Duration = Duration::from_secs(15);
 const SEARCH_HTTP_TIMEOUT: Duration = Duration::from_secs(45);
 static DOCUMENT_CREATE_MOVE_GUARD: Mutex<()> = Mutex::new(());
 
+fn markdown_matches_managed_marker(observed: &str, requested: &str, marker: &str) -> bool {
+    if observed == requested {
+        return true;
+    }
+    let marker_comment = format!("<!-- {marker} -->");
+    requested.contains(&marker_comment) && observed.contains(&marker_comment)
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeStatus {
@@ -727,9 +735,10 @@ impl HttpSiyuanTransport {
                 .ok_or(ClientError::ResponseTypeMismatch)?;
             validate_identifier(document_id)?;
             let info = self.block_info(document_id)?;
+            let observed_markdown = self.block_markdown(document_id)?;
             if info.notebook_id != notebook_id
                 || info.root_id != document_id
-                || self.block_markdown(document_id)? != markdown
+                || !markdown_matches_managed_marker(&observed_markdown, markdown, marker)
             {
                 continue;
             }
@@ -757,7 +766,8 @@ impl HttpSiyuanTransport {
         if staged.notebook_id != notebook_id || staged.root_id != id {
             return Err(ClientError::ResponseTypeMismatch);
         }
-        if self.block_markdown(&id)? != markdown {
+        let observed_markdown = self.block_markdown(&id)?;
+        if !markdown_matches_managed_marker(&observed_markdown, markdown, marker) {
             return Err(ClientError::Conflict);
         }
         let move_result: Result<Value, ClientError> = self.post(
@@ -2325,6 +2335,74 @@ mod tests {
             .iter()
             .any(|request| request.contains("moveDocsByID")));
         server.join().unwrap();
+    }
+
+    #[test]
+    fn exact_parent_create_accepts_marker_bound_kramdown_normalization() {
+        let token = "n".repeat(48);
+        let marker = "vibespace-context-node:v1 map=map-1 node=child";
+        let requested = format!("<!-- {marker} -->\n# Node\n\nPath: `C:\\\\Projects\\\\demo`\n");
+        let normalized = format!("<!-- {marker} -->\n# Node\n\nPath: C:\\\\Projects\\\\demo\n");
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/20260820-maproot.sy","rootID":"20260820-maproot"}}"#
+                .to_owned(),
+            format!(
+                r#"{{"code":0,"msg":"","data":{{"blocks":[{{"id":"marker-block","box":"20260820-notebook","path":"/20260820-maproot/20260820-child.sy","content":"{marker}"}}]}}}}"#
+            ),
+            r#"{"code":0,"msg":"","data":{"box":"20260820-notebook","path":"/20260820-maproot/20260820-child.sy","rootID":"20260820-child"}}"#
+                .to_owned(),
+            format!(
+                r#"{{"code":0,"msg":"","data":{{"id":"20260820-child","kramdown":{}}}}}"#,
+                serde_json::to_string(&normalized).unwrap()
+            ),
+        ]);
+        let client =
+            SiyuanClient::new(true, HttpSiyuanTransport::new(port, token.clone()).unwrap());
+
+        assert_eq!(
+            client
+                .create_document_under_parent(
+                    "20260820-notebook",
+                    "20260820-maproot",
+                    "20260820-maproot",
+                    "/VibeSpace Staging/20260820-maproot/node",
+                    &requested,
+                    marker,
+                )
+                .unwrap(),
+            "20260820-child"
+        );
+
+        let captured = (0..5).map(|_| requests.recv().unwrap()).collect::<Vec<_>>();
+        assert!(!captured
+            .iter()
+            .any(|request| request.contains("createDocWithMd")));
+        assert!(!captured
+            .iter()
+            .any(|request| request.contains("moveDocsByID")));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn managed_marker_matching_rejects_prefix_collisions() {
+        let marker = "vibespace-context-node:v1 map=map-1 node=child";
+        let requested = format!("<!-- {marker} -->\n# Node\n");
+        let normalized = format!("<!-- {marker} -->\n# Normalized Node\n");
+        let colliding =
+            "<!-- vibespace-context-node:v1 map=map-1 node=child-extra -->\n# Other Node\n";
+
+        assert!(markdown_matches_managed_marker(
+            &requested, &requested, marker
+        ));
+        assert!(markdown_matches_managed_marker(
+            &normalized,
+            &requested,
+            marker
+        ));
+        assert!(!markdown_matches_managed_marker(
+            colliding, &requested, marker
+        ));
     }
 
     #[test]

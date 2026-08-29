@@ -71,10 +71,7 @@ describe('Context Map focused user-testing repairs', () => {
   it('populates the physical search index before presenting a new local map as ready', () => {
     const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
     const saveIndex = source.indexOf('const persisted = await savePersistedContextTree(generated)');
-    const populateIndex = source.indexOf(
-      'await contextSearchIndexPopulation.populateCreatedMap(',
-      saveIndex,
-    );
+    const populateIndex = source.indexOf('await populatePersistedCreatedContextMap({', saveIndex);
     const applyIndex = source.indexOf(
       'if (!applyPersistenceState(completedPersistence)) return',
       saveIndex,
@@ -88,9 +85,7 @@ describe('Context Map focused user-testing repairs', () => {
     expect(populateIndex).toBeGreaterThan(saveIndex);
     expect(applyIndex).toBeGreaterThan(populateIndex);
     expect(readyIndex).toBeGreaterThan(applyIndex);
-    expect(source).toContain(
-      'await deletePersistedContextMap(projectId, persistedMap.id).catch(() => undefined)',
-    );
+    expect(source).toContain('populatePersistedCreatedContextMap({');
   });
 
   it('shows a warm three-step first-project tutorial without replacing Context systems', () => {
