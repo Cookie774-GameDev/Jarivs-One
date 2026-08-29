@@ -1,0 +1,45 @@
+agent_id: VS-CODEX-ROOT-OPENCODE-PLUGIN-MCP-AUTO-BRIDGE-20260829
+task_id: PR31-OPENCODE-PLUGIN-MCP-AUTOMATIC-BRIDGE
+controller: /root
+status: active
+worktree: C:\Users\viper\VibeSpace-UnifiedChungus-Final
+branch: integration/UnifiedChungus-final
+base_head: dd5c2af9dae5e0cd50b777e521d831e4ceb6c94f
+upstream: origin/UnifiedChungus
+claimed_at: 2026-08-29T09:21:17-05:00
+exact_scope:
+  - app/src/lib/harness/toolGatewayProtocol.ts
+  - app/src/lib/harness/toolGatewayProtocol.test.ts
+  - app/src/lib/harness/toolGatewayRuntime.ts
+  - app/src/lib/harness/toolGatewayRuntime.test.ts
+  - app/src/lib/harness/toolGatewayProduction.ts
+  - app/src/lib/harness/toolGatewayProduction.test.ts
+  - app/src-tauri/src/harness/server.rs
+  - append-only docs/AGENT_COORDINATION.md
+  - this lock file
+ownership_reconciliation:
+  - The historical SiYuan/RLM implementation transfer for toolGatewayProduction.ts and its test completed in commit 0203b58d and explicitly held those paths only through native acceptance; no child agent remains live and both paths are clean at this base HEAD. Root resumes the exact pair without altering the completed Context/RLM route.
+  - Historical root-owned server.rs records are preserved. The file is clean at this base HEAD and the current root controller narrows this claim to generated Tool Gateway plugin declarations and their in-file assertions only.
+intent:
+  - Automatically expose only currently connected and project-enabled VibeSpace plugins to the exact OpenCode session, accept structured plugin arguments without a JSON boundary failure, and fail closed on stale/disconnected scope.
+  - Add automatic, idempotent restore/discovery/invocation of explicitly approved and exposed project-scoped custom MCP tools through OpenCode, preserving schema-drift, classification, approval, account, and project authority.
+  - Teach the generated OpenCode Tool Gateway plugin to list before use and never request or expose credentials.
+protected:
+  - OAuth provider registration, credentials, secrets, production services, billing, deployment, provider/model routing, Chat UI, Pet and Workbench files, native app/process control, Ollama/11434, all unrelated dirty files, and every other lock.
+verification:
+  - Focused protocol/runtime/production TDD, native server in-file tests, TypeScript, formatting/diff, build where affected, exact-stage secret scan, and official native Playwright proof only after explicit user confirmation.
+checkpoint_2026-08-29T10:08:00-05:00:
+  - Product implementation is complete in the exact seven-file scope. Structured plugin input no longer crosses an incompatible JSON-string boundary; plugin list/run require the canonical current account, exact project activation, a connected enabled state, and a declared catalog operation.
+  - OpenCode now receives mcp.list/mcp.run semantic tools. Listing lazily invokes the existing idempotent approved-profile restoration, returns only connected + durable-approved + explicitly exposed tools, and strips secret-bearing schema fields. Invocation revalidates the exact live tool/classification and delegates to the existing gateway with exact account/project/task allowlist and approval authority.
+  - Automated evidence: focused TDD 141/141; affected runtime/plugin/MCP matrix 313/313; generated Rust plugin contract 1/1; cargo fmt and diff checks pass; direct Vite production build succeeds (5,008 modules). Repository-wide TypeScript/full npm build is blocked only by pre-existing unowned BrowserPanel.test.tsx:393 TS2683. An unrestricted Cargo test attempted to replace the running official jarvis.exe and correctly failed access-denied; the equivalent --lib exact test passed without process interference. Ollama/11434 remains absent.
+  - Next: exact stage, staged secret scan, coherent commit, then request the user's explicit confirmation before official-native Playwright testing.
+checkpoint_2026-08-29T10:06:00-05:00:
+  - Commit 56dc33be contains exactly the seven owned product/test files (452 insertions, 28 deletions). Exact staged scan and commit-scoped Gitleaks each found zero leaks; post-format focused tests are 141/141.
+  - Status remains active only for the user-requested official-native proof. No production/provider credentials were used, no remote push/deploy occurred, and Ollama/11434 remained absent.
+  - Awaiting the user's explicit confirmation to control the official local VibeSpace app with Playwright and test connected plugin discovery/execution plus managed custom MCP discovery/invocation.
+
+qa_release_2026-08-29T17:19:00-05:00:
+  - Controller `/root` completed a fresh read-only/source/test audit of commit `56dc33be`. Plugin listing and execution remain exact account+project scoped and active-only; structured inputs remain object-typed; MCP restore is idempotent; only connected, approved, durably approved, explicitly exposed tools are listed; schemas strip secret-bearing fields; invocation revalidates connection/tool/classification and preserves existing mutation approval authority.
+  - Fresh bridge tests: 3 files / 141 tests, exit 0. Fresh authority/host/MCP tests: 15 files / 137 tests, exit 0. Fresh complete Plugin manager + MCP lifecycle/registry/restore/Settings/Jarvis capability matrix: 48 files / 358 tests, exit 0. Generated native Tool Gateway plugin contract: 1 test, exit 0.
+  - No product change was required. Native connected-service proof remains intentionally unclaimed because the user now forbids starting/restarting VibeSpace and no app process is running. No credential, provider, production service, billing, deployment, push, Chat file, or unrelated state was touched.
+  - status: completed/released at existing product commit `56dc33be`; only this stale QA lock is released.
