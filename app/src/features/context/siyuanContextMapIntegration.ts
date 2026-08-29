@@ -95,6 +95,33 @@ function stableNodeSlug(value: string): string {
   return `${slug(value).slice(0, 52)}-${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
+const SIYUAN_NATIVE_DOCUMENT_ID = /^\d{14}-[a-z0-9]{7}$/u;
+
+function nativeSiyuanDocumentSegments(path: string): readonly string[] | null {
+  if (!path.startsWith('/') || !path.endsWith('.sy')) return null;
+  const segments = path.slice(1, -3).split('/');
+  return segments.length > 0 && segments.every((segment) => SIYUAN_NATIVE_DOCUMENT_ID.test(segment))
+    ? segments
+    : null;
+}
+
+function isInsideNativeSiyuanRoot(
+  rootDocument: SiyuanManagedDocument,
+  document: SiyuanManagedDocument,
+): boolean | null {
+  const rootSegments = nativeSiyuanDocumentSegments(rootDocument.path);
+  const documentSegments = nativeSiyuanDocumentSegments(document.path);
+  if (!rootSegments || !documentSegments) return null;
+  if (document.notebookId !== rootDocument.notebookId) return false;
+  // A file binding is a block inside its parent document, so getBlock returns
+  // the parent's .sy path even though the block ID differs from the document ID.
+  if (document.id === rootDocument.id || document.path === rootDocument.path) return true;
+  return (
+    documentSegments.length > rootSegments.length &&
+    rootSegments.every((segment, index) => documentSegments[index] === segment)
+  );
+}
+
 function marker(mapId: string): string {
   return `vibespace-context-map:v1 map=${safeText(mapId, 200)}`;
 }
@@ -605,6 +632,32 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
       ...manifest.nodeBindings,
       ...(await readSiyuanNodeBindings(projectId, record.id)),
     };
+    const staleBindingNodeIds: string[] = [];
+    if (nativeSiyuanDocumentSegments(rootDocument.path)) {
+      for (const entry of index.entries) {
+        const documentId = bindings[entry.nodeId];
+        if (!documentId) continue;
+        try {
+          const document = await port.getBlock(projectId, documentId);
+          if (isInsideNativeSiyuanRoot(rootDocument, document) === false) {
+            staleBindingNodeIds.push(entry.nodeId);
+          }
+        } catch (error) {
+          if (!(error instanceof Error) || error.message !== 'siyuan_block_not_found') throw error;
+          staleBindingNodeIds.push(entry.nodeId);
+        }
+      }
+    }
+    if (staleBindingNodeIds.length > 0) {
+      for (const nodeId of staleBindingNodeIds) delete bindings[nodeId];
+      await deleteSiyuanNodeBindings(projectId, record.id, staleBindingNodeIds);
+      devConsole.log({
+        channel: 'ai',
+        level: 'warn',
+        message: 'SiYuan stale node bindings detached from the active map root',
+        detail: { mapId: record.id, detached: staleBindingNodeIds.length },
+      });
+    }
     const previouslyBoundNodeIds = new Set(Object.keys(bindings));
     durableJob = nativeFilesystemAvailable ? await readSiyuanIndexJob(projectId, record.id) : null;
     if (durableJob) {
