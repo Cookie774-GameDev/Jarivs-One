@@ -769,6 +769,45 @@ describe('SiYuan Context Map integration', () => {
     }
   });
 
+  it('uses the exact parent receipt before an unavailable global marker search on retry', async () => {
+    const record = { ...map(), id: 'map-batch-parent-receipt-first' };
+    const policy = await seedPendingNativeFileRecovery(record);
+    const nativePort = port();
+    nativePort.appendManagedBlocks = vi.fn(async () => ['recovered-block']);
+    vi.mocked(nativePort.readManagedDocument).mockImplementation(async (_projectId, lookup) => {
+      if (lookup.marker.includes('vibespace-context-node:v1')) {
+        throw new Error('siyuan_marker_search_unavailable');
+      }
+      return null;
+    });
+    const previousInternals = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    try {
+      await expect(
+        createSiyuanContextMapIntegration(nativePort).sync('project-1', record, {
+          accountId: 'account-1',
+          summaryPolicy: policy,
+        }),
+      ).resolves.toMatchObject({ manifest: { status: 'ready' } });
+      expect(nativePort.appendManagedBlocks).toHaveBeenCalledOnce();
+      expect(nativePort.readManagedDocument).not.toHaveBeenCalledWith(
+        'project-1',
+        expect.objectContaining({ marker: expect.stringContaining('vibespace-context-node:v1') }),
+      );
+      expect(await readSiyuanIndexJob('project-1', record.id)).toMatchObject({
+        status: 'completed',
+        pendingNativeNodeIds: [],
+        createdNodes: 1,
+      });
+    } finally {
+      if (previousInternals === undefined) {
+        delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+      } else {
+        (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = previousInternals;
+      }
+    }
+  });
+
   it('never re-appends a pending file when post-crash marker recovery is stale', async () => {
     const record = { ...map(), id: 'map-batch-crash-stale-search' };
     const policy = await seedPendingNativeFileRecovery(record);
@@ -807,6 +846,13 @@ describe('SiYuan Context Map integration', () => {
     const policy = await seedPendingNativeFileRecovery(record);
     const nativePort = port();
     nativePort.appendManagedBlocks = vi.fn(async () => ['duplicate-block']);
+    vi.mocked(nativePort.getBlock).mockImplementation(async (_projectId, id) => ({
+      id,
+      notebookId: 'notebook-1',
+      path: '/map-root',
+      markdown:
+        'vibespace-context-node:v1 map=map-batch-crash-duplicate-markers node=path%3Aindex.ts',
+    }));
     vi.mocked(nativePort.readManagedDocument).mockImplementation(async (_projectId, lookup) => {
       if (lookup.marker.includes('vibespace-context-node:v1')) {
         throw new Error('siyuan_managed_document_ambiguous');
@@ -849,8 +895,8 @@ describe('SiYuan Context Map integration', () => {
     vi.mocked(nativePort.searchBlocks).mockResolvedValue(
       documents.map((document) => ({ id: document.id })) as never,
     );
-    vi.mocked(nativePort.getBlock).mockImplementation(
-      async (_projectId, id) => documents.find((document) => document.id === id)!,
+    vi.mocked(nativePort.getBlock).mockImplementation(async (_projectId, id) =>
+      documents.find((document) => document.id === id)!,
     );
     vi.mocked(nativePort.deleteManagedDocument).mockImplementation(async (_projectId, id) => {
       documents = documents.filter((document) => document.id !== id);
