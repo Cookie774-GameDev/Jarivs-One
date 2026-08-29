@@ -26,6 +26,7 @@ import type {
   JarvisApprovalV1,
   JarvisCapabilitySnapshot,
   JarvisContextItem,
+  JarvisResponseEnvelope,
   JarvisRun,
 } from '@/lib/jarvis/contracts';
 import type {
@@ -217,6 +218,7 @@ import {
   mayAutoApproveOpenCodeRequest,
   openCodeToolsForInteractionMode,
   prepareOpenCodeMessagesForInteractionMode,
+  reconcileApprovalContinuationResponse,
   resolveRuntimeReasoningPolicy,
   missingExplicitRootAuditCategories,
   explicitRootAuditQualityIssues,
@@ -255,6 +257,48 @@ describe('approval continuation provider evidence', () => {
     expect(failure).toContain('Do not claim that it completed successfully');
     expect(`${success}${failure}`).not.toContain('C:\\');
     expect(`${success}${failure}`).not.toContain('call_id');
+  });
+
+  it('replaces stale denial prose with the exact validated action outcome', () => {
+    const response = {
+      schemaVersion: 1,
+      requestId: 'jreq_1',
+      runId: 'jrun_1',
+      mode: 'direct_answer',
+      displayText: 'Access is required and no file was modified.',
+      parts: [{ kind: 'text', text: 'Access is required and no file was modified.' }],
+      artifactIds: [],
+      sourceRefs: [],
+      provider: {
+        providerId: 'opencode',
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        capturedAt: 1,
+        connectionMode: 'external-cli',
+        capabilities: {},
+      },
+      enforcement: {
+        linted: true,
+        violations: [],
+        repairAttempted: false,
+        repairSucceeded: false,
+        fallbackUsed: false,
+      },
+      completedAt: 2,
+    } satisfies JarvisResponseEnvelope;
+
+    const success = reconcileApprovalContinuationResponse(response, 'success');
+    const failure = reconcileApprovalContinuationResponse(response, 'error');
+
+    expect(success.displayText).toBe(
+      'The approved action completed successfully. I verified the canonical action result and recorded the matching tool receipt.',
+    );
+    expect(success.parts).toEqual([{ kind: 'text', text: success.displayText }]);
+    expect(success.displayText).not.toContain('Access is required');
+    expect(failure.displayText).toBe(
+      'The approved action did not complete. I recorded the canonical failure and did not repeat the action.',
+    );
+    expect(success.provider).toBe(response.provider);
+    expect(success.enforcement).toBe(response.enforcement);
   });
 });
 

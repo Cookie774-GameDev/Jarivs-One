@@ -1633,6 +1633,11 @@ export async function installJarvisKernelRuntimeHost(
           throw new Error('kernel_response_repair_provider_unavailable');
         },
       });
+      const approvalContinuationOutcome = approvalContinuationOutcomesByRun.get(request.runId);
+      if (approvalContinuationOutcome) {
+        approvalContinuationOutcomesByRun.delete(request.runId);
+        return reconcileApprovalContinuationResponse(envelope, approvalContinuationOutcome);
+      }
       const controls = providerControlEvidence.get(raw);
       if (
         extractExplicitReadRoot(request.userText) &&
@@ -2229,6 +2234,24 @@ export function buildApprovalContinuationProviderText(
       ? 'Canonical persisted action fact: the exact previously approved action completed successfully, and matching action, tool-call, and tool-result records were validated before this finalization turn. Do not claim that access, approval, or execution is still required.'
       : 'Canonical persisted action fact: the exact previously approved action failed, and matching action, tool-call, and tool-result records were validated before this finalization turn. Do not claim that it completed successfully or request a duplicate action.';
   return `${instruction} ${fact}`;
+}
+
+const approvalContinuationOutcomesByRun = new Map<string, 'success' | 'error'>();
+
+export function reconcileApprovalContinuationResponse(
+  response: import('@/lib/jarvis/contracts').JarvisResponseEnvelope,
+  status: 'success' | 'error',
+): import('@/lib/jarvis/contracts').JarvisResponseEnvelope {
+  const text =
+    status === 'success'
+      ? 'The approved action completed successfully. I verified the canonical action result and recorded the matching tool receipt.'
+      : 'The approved action did not complete. I recorded the canonical failure and did not repeat the action.';
+  return Object.freeze({
+    ...response,
+    displayText: text,
+    ...(response.spokenText === undefined ? {} : { spokenText: text }),
+    parts: Object.freeze([{ kind: 'text' as const, text }]),
+  });
 }
 
 export function resolveOptimizedOutputLimit(
@@ -4351,6 +4374,7 @@ export function startRuntimeListener(
     const authState = useAuthStore.getState();
     let chatRecord: Chat | undefined;
     let continuationProviderText: string | undefined;
+    let continuationOutcome: 'success' | 'error' | undefined;
     try {
       chatRecord = await chatRepo.getById(chatId as ChatId);
     } catch {
@@ -4422,6 +4446,7 @@ export function startRuntimeListener(
         ) {
           throw new Error('approval_continuation_evidence_invalid');
         }
+        continuationOutcome = action.status;
         continuationProviderText = buildApprovalContinuationProviderText(text, action.status);
         acceptedApprovalContinuations.add(continuationKey);
         if (acceptedApprovalContinuations.size > 2_000) {
@@ -5782,6 +5807,14 @@ export function startRuntimeListener(
               providerOptions: reasoningPolicy?.providerOptions,
               runtimeSettings,
             });
+            if (continuationOutcome) {
+              approvalContinuationOutcomesByRun.set(turn.run.id, continuationOutcome);
+              while (approvalContinuationOutcomesByRun.size > 2_000) {
+                approvalContinuationOutcomesByRun.delete(
+                  approvalContinuationOutcomesByRun.keys().next().value!,
+                );
+              }
+            }
             await bindCanonicalCancellation(host, turn);
             await persistRouteDisclosureBeforeProviderUse();
             controller.signal.throwIfAborted();
@@ -5839,6 +5872,7 @@ export function startRuntimeListener(
                 response = outcome.value.response;
               }
             } finally {
+              approvalContinuationOutcomesByRun.delete(turn.run.id);
               releaseLiveRun();
             }
             setLiveAgentActivityPhase(chatId, agentActivityId, {
