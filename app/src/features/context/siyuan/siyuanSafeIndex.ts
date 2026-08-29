@@ -19,7 +19,7 @@ import {
   type SiyuanIndexDirectory,
   type SiyuanIndexJobRecord,
 } from './siyuanIndexJobStore';
-import { canonicalSiyuanAuthorityRoot } from './siyuanPathAuthority';
+import { canonicalSiyuanAuthorityRoot, normalizeSiyuanFilesystemPath } from './siyuanPathAuthority';
 import { estimateSiyuanDiscoveryProgress } from './siyuanProgress';
 
 export interface SiyuanSafeIndexEntry {
@@ -212,8 +212,7 @@ const DIRECTORY_SCAN_BATCH_SIZE = 64;
 const DURABLE_CHECKPOINT_ITEM_INTERVAL = 250;
 
 function canonical(value: string): string {
-  return value
-    .replace(/\\/gu, '/')
+  return normalizeSiyuanFilesystemPath(value)
     .replace(/\/{2,}/gu, '/')
     .replace(/\/$/u, '');
 }
@@ -332,6 +331,28 @@ function legacySiyuanIndexPolicyFingerprint(
     legacyNormalizedSummaryPolicy(root, policy),
     excludedPaths,
     1,
+  );
+}
+
+function isEmptyMalformedVerbatimDiscoveryCheckpoint(
+  job: SiyuanIndexJobRecord,
+  root: string,
+): boolean {
+  const storedRoot = job.canonicalRoot.replace(/\\/gu, '/');
+  return (
+    normalizeSiyuanFilesystemPath(storedRoot) !== storedRoot &&
+    canonicalSiyuanAuthorityRoot(storedRoot) === canonicalSiyuanAuthorityRoot(root) &&
+    job.phase === 'discovering' &&
+    job.cursor === 0 &&
+    job.frontierLength === 1 &&
+    job.indexed === 0 &&
+    job.createdNodes === 0 &&
+    job.summarized === 0 &&
+    job.summaryEligible === 0 &&
+    job.inputTokens === 0 &&
+    job.outputTokens === 0 &&
+    job.totalTokens === 0 &&
+    job.pendingNativeNodeIds.length === 0
   );
 }
 
@@ -480,6 +501,21 @@ export async function scanSiyuanFilesystemIndex(
     if (existing && existing.accountId === null && accountId !== null) {
       existing = { ...existing, accountId, updatedAt: Date.now() };
       await checkpointSiyuanIndexJob({ job: existing });
+    }
+    if (
+      existing &&
+      existing.policyFingerprint !== policyFingerprint &&
+      isEmptyMalformedVerbatimDiscoveryCheckpoint(existing, root)
+    ) {
+      existing = {
+        ...existing,
+        canonicalRoot: root,
+        policyFingerprint,
+        updatedAt: Date.now(),
+      };
+      // The malformed root was rejected before the first directory read, so
+      // replacing this single empty frontier cannot discard indexed evidence.
+      await replaceSiyuanIndexJob(existing, queue[0]!);
     }
     if (existing?.policyFingerprint === legacyPolicyFingerprint) {
       existing = { ...existing, policyFingerprint, updatedAt: Date.now() };

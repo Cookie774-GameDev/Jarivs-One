@@ -9,6 +9,18 @@ describe('SiYuan path authority', () => {
     );
   });
 
+  it('treats picker verbatim drive roots and the legacy malformed scanner root as the same drive authority', () => {
+    expect(canonicalSiyuanAuthorityRoot('\\\\?\\C:\\Users\\Viper\\Projects')).toBe(
+      'c:/users/viper/projects',
+    );
+    expect(canonicalSiyuanAuthorityRoot('/?/C:/Users/Viper/Projects')).toBe(
+      'c:/users/viper/projects',
+    );
+    expect(canonicalSiyuanAuthorityRoot('\\\\.\\C:\\Users\\Viper\\Projects')).not.toBe(
+      'c:/users/viper/projects',
+    );
+  });
+
   it('preserves case sensitivity for non-Windows roots', () => {
     expect(canonicalSiyuanAuthorityRoot('/Users/Viper')).not.toBe(
       canonicalSiyuanAuthorityRoot('/users/viper'),

@@ -194,6 +194,120 @@ describe('SiYuan safe read-only index', () => {
     ).resolves.toBeDefined();
   });
 
+  it('opens a picker verbatim drive root through the ordinary strict filesystem authority', async () => {
+    const record = {
+      ...map(),
+      rootDir: '\\\\?\\C:\\Users\\viper\\Documents\\Projects',
+      tree: {
+        ...map().tree,
+        rootDir: '\\\\?\\C:\\Users\\viper\\Documents\\Projects',
+      },
+    };
+    const requestedBatches: Array<{
+      paths: readonly string[];
+      options: Readonly<{ root: string; strictProjectBoundary: true }>;
+    }> = [];
+
+    const index = await scanSiyuanFilesystemIndex(
+      record,
+      { mode: 'none', selectedExtensions: [], selectedPaths: [] },
+      {
+        listBatch: async (paths, options) => {
+          requestedBatches.push({ paths: [...paths], options });
+          return [
+            {
+              ok: true,
+              path: paths[0]!,
+              entries: [
+                {
+                  name: 'README.md',
+                  path: 'C:/Users/viper/Documents/Projects/README.md',
+                  isDir: false,
+                  size: 12,
+                  modifiedMs: 42,
+                },
+              ],
+            },
+          ];
+        },
+      },
+    );
+
+    expect(requestedBatches).toEqual([
+      {
+        paths: ['C:/Users/viper/Documents/Projects'],
+        options: {
+          root: 'C:/Users/viper/Documents/Projects',
+          strictProjectBoundary: true,
+        },
+      },
+    ]);
+    expect(index.entries).toEqual([
+      expect.objectContaining({
+        nodeId: 'path:README.md',
+        relativePath: 'README.md',
+        sourcePointer: 'C:/Users/viper/Documents/Projects/README.md',
+      }),
+    ]);
+    expect(
+      siyuanIndexPolicyFingerprint(
+        record.rootDir,
+        {
+          mode: 'none',
+          selectedExtensions: [],
+          selectedPaths: [],
+        },
+        [],
+      ),
+    ).toContain('"root":"c:/users/viper/documents/projects"');
+  });
+
+  it('repairs an empty durable discovery checkpoint written with the malformed verbatim root', async () => {
+    const record = {
+      ...map(),
+      rootDir: '\\\\?\\C:\\Users\\viper\\Documents\\Projects',
+      tree: {
+        ...map().tree,
+        rootDir: '\\\\?\\C:\\Users\\viper\\Documents\\Projects',
+      },
+    };
+    const policy = { mode: 'none' as const, selectedExtensions: [], selectedPaths: [] };
+    const malformedFingerprint = JSON.stringify({
+      schemaVersion: 2,
+      root: '/?/c:/users/viper/documents/projects',
+      summaryMode: 'none',
+      selectedExtensions: [],
+      selectedPaths: [],
+      excludedPaths: [],
+    });
+    const malformed = createSiyuanIndexJob({
+      projectId: 'project-1',
+      mapId: record.id,
+      canonicalRoot: '/?/C:/Users/viper/Documents/Projects',
+      policyFingerprint: malformedFingerprint,
+      now: 100,
+    });
+    await replaceSiyuanIndexJob(malformed, {
+      path: '/?/C:/Users/viper/Documents/Projects',
+      relativePath: '',
+      parentNodeId: null,
+    });
+
+    await expect(
+      scanSiyuanFilesystemIndex(record, policy, {
+        durableJob: { accountId: null, projectId: 'project-1', mapId: record.id },
+        listBatch: async (paths) => paths.map((path) => ({ ok: true as const, path, entries: [] })),
+      }),
+    ).resolves.toMatchObject({ entries: [] });
+
+    expect(await readSiyuanIndexJob('project-1', record.id)).toMatchObject({
+      canonicalRoot: 'C:/Users/viper/Documents/Projects',
+      policyFingerprint: siyuanIndexPolicyFingerprint(record.rootDir, policy, []),
+      cursor: 1,
+      indexed: 0,
+    });
+  });
+
   it('maps structure without sending any summaries when the user chooses none', () => {
     const index = buildSiyuanSafeIndex(map(), {
       mode: 'none',
