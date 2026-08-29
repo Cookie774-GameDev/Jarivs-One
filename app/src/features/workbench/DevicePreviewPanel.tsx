@@ -3,8 +3,11 @@ import { Monitor, RotateCw, Smartphone, Tablet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   WORKBENCH_DEVICE_PRESETS,
+  classifyAndroidWindow,
   defaultOrientationForPreset,
+  deviceVerificationLabel,
   getDevicePreset,
+  groupDevicePresets,
   orientSize,
 } from '@/features/preview/previewDevices';
 import type { WorkbenchPanel } from './types';
@@ -29,6 +32,12 @@ export function DevicePreviewPanel({ panel, onUpdate }: DevicePreviewPanelProps)
   const label = panel.settings.previewLabel || 'Preview';
 
   const logical = orientSize(preset, orientation, 390, 844, 800, 600);
+  const deviceGroups = groupDevicePresets(WORKBENCH_DEVICE_PRESETS);
+  const androidWindow =
+    preset.platform === 'android' || preset.platform === 'adaptive'
+      ? classifyAndroidWindow(logical.width, logical.height)
+      : null;
+  const verificationLabel = deviceVerificationLabel(preset);
 
   const patch = (next: Record<string, unknown>) => {
     onUpdate({ settings: { ...panel.settings, ...next } });
@@ -73,13 +82,15 @@ export function DevicePreviewPanel({ panel, onUpdate }: DevicePreviewPanelProps)
               });
             }}
           >
-            {WORKBENCH_DEVICE_PRESETS.map((d) => {
-              return (
-                <option key={d.id} value={d.id}>
-                  {d.name} ({d.width > 0 ? `${d.width}×${d.height}` : 'fluid'})
-                </option>
-              );
-            })}
+            {deviceGroups.map((group) => (
+              <optgroup key={group.id} label={group.label}>
+                {group.devices.map((device) => (
+                  <option key={device.id} value={device.id}>
+                    {`${device.name} (${device.width > 0 ? `${device.width}×${device.height}` : 'fluid'})`}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
         </label>
         <Button
@@ -121,6 +132,11 @@ export function DevicePreviewPanel({ panel, onUpdate }: DevicePreviewPanelProps)
           {orientation === 'landscape' ? ' landscape' : ' portrait'}
           {' · '}
           DPR {preset.dpr}
+          {preset.touch ? ' · touch' : ''}
+          {androidWindow
+            ? ` · Android ${androidWindow.width} width · ${androidWindow.height} height`
+            : ''}
+          {verificationLabel ? ` · ${verificationLabel}` : ''}
           {' · '}
           zoom {Math.round(zoom * 100)}%
         </span>
@@ -131,6 +147,10 @@ export function DevicePreviewPanel({ panel, onUpdate }: DevicePreviewPanelProps)
           className="workbench-device-preview-shell"
           data-frame={showFrame ? 'true' : 'false'}
           data-category={preset.category}
+          data-platform={preset.platform}
+          data-window-width-class={androidWindow?.width}
+          data-window-height-class={androidWindow?.height}
+          data-dpr={preset.dpr}
         >
           {showFrame ? (
             <div className="workbench-device-preview-chrome">
@@ -165,7 +185,8 @@ export function DevicePreviewPanel({ panel, onUpdate }: DevicePreviewPanelProps)
         </div>
         <p className="workbench-device-preview-hint">
           Exact CSS viewport {logical.width}×{logical.height}. Zoom only scales the display — not
-          the layout size reported to the page.
+          the layout size reported to the page. Web/PWA preview; native APK testing uses Android
+          platform tooling.
         </p>
       </div>
     </div>

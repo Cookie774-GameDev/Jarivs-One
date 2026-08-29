@@ -17,6 +17,7 @@ import {
   ZOOM_STEPS,
   createPreviewEmulation,
   getDevicePreset,
+  groupDevicePresets,
   orientSize,
 } from './previewDevices';
 import { normalizePreviewUrl } from './previewUrl';
@@ -84,6 +85,7 @@ export function PreviewStudio() {
   const [historyIdx, setHistoryIdx] = React.useState(-1);
 
   const preset = getDevicePreset(deviceId);
+  const deviceGroups = groupDevicePresets(DEVICE_PRESETS);
   const logical = orientSize(
     preset,
     orientation,
@@ -362,13 +364,19 @@ export function PreviewStudio() {
         </form>
         <select
           aria-label="Device preset"
+          title={`${preset.name}: CSS ${logical.width}×${logical.height}, DPR ${preset.dpr}${preset.touch ? ', touch' : ''}`}
           value={deviceId}
           onChange={(e) => setDeviceId(e.target.value)}
         >
-          {DEVICE_PRESETS.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
+          {deviceGroups.map((group) => (
+            <optgroup key={group.id} label={group.label}>
+              {group.devices.map((device) => (
+                <option key={device.id} value={device.id}>
+                  {device.name}
+                  {device.id === 'responsive' ? '' : ` (${device.width}×${device.height})`}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
         <Button

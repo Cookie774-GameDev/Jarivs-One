@@ -1,8 +1,29 @@
 /**
  * CSS viewport presets (logical CSS pixels — not physical screen pixels).
- * Sources: iOS resolution tables, Chrome DevTools, yesviz/ios-resolution.
+ * Sources: platform CSS resolution tables, Chrome DevTools, Playwright device descriptors,
+ * and Android's official window-size classes.
  */
-export type DeviceCategory = 'responsive' | 'phone' | 'tablet' | 'laptop' | 'desktop' | 'custom';
+export type DeviceCategory =
+  'responsive' | 'phone' | 'tablet' | 'adaptive' | 'laptop' | 'desktop' | 'custom';
+
+export type DevicePlatform = 'responsive' | 'apple' | 'android' | 'adaptive' | 'desktop' | 'custom';
+
+export type DeviceVerificationAuthority =
+  | 'chrome-devtools'
+  | 'playwright'
+  | 'android-window-size-classes'
+  | 'platform-spec'
+  | 'common-layout'
+  | 'user-defined';
+
+export type DevicePresetGroupId =
+  | 'responsive'
+  | 'apple-phones'
+  | 'android-phones'
+  | 'tablets'
+  | 'adaptive'
+  | 'computers'
+  | 'custom';
 
 export interface DevicePreset {
   id: string;
@@ -15,7 +36,20 @@ export interface DevicePreset {
   dpr: number;
   touch: boolean;
   userAgentProfile: 'mobile' | 'desktop';
+  platform?: DevicePlatform;
+  verifiedBy?: DeviceVerificationAuthority;
   safeArea?: { top: number; bottom: number };
+}
+
+export interface DevicePresetGroup {
+  id: DevicePresetGroupId;
+  label: string;
+  devices: DevicePreset[];
+}
+
+export interface AndroidWindowClasses {
+  width: 'compact' | 'medium' | 'expanded' | 'large' | 'extra-large';
+  height: 'compact' | 'medium' | 'expanded';
 }
 
 export interface PreviewEmulation {
@@ -40,6 +74,8 @@ export const DEVICE_PRESETS: DevicePreset[] = [
     dpr: 1,
     touch: false,
     userAgentProfile: 'desktop',
+    platform: 'responsive',
+    verifiedBy: 'user-defined',
   },
   // iPhone SE (3rd gen) — 375×667 @2x
   {
@@ -132,16 +168,79 @@ export const DEVICE_PRESETS: DevicePreset[] = [
     userAgentProfile: 'mobile',
     safeArea: { top: 62, bottom: 34 },
   },
-  // Pixel 7 / 8 class — 412×915 @2.625
+  // Playwright's maintained Chromium device descriptor — CSS screen 393×851 @2.75.
+  {
+    id: 'pixel-5',
+    name: 'Google Pixel 5',
+    category: 'phone',
+    width: 393,
+    height: 851,
+    dpr: 2.75,
+    touch: true,
+    userAgentProfile: 'mobile',
+    platform: 'android',
+    verifiedBy: 'playwright',
+  },
+  // Chrome DevTools current Pixel 7 / 8 descriptors — 412×915 @2.625.
   {
     id: 'pixel',
-    name: 'Pixel phone',
+    name: 'Google Pixel 7 / 8',
     category: 'phone',
     width: 412,
     height: 915,
     dpr: 2.625,
     touch: true,
     userAgentProfile: 'mobile',
+    platform: 'android',
+    verifiedBy: 'chrome-devtools',
+  },
+  {
+    id: 'pixel-8-pro',
+    name: 'Google Pixel 8 Pro',
+    category: 'phone',
+    width: 448,
+    height: 997,
+    dpr: 3,
+    touch: true,
+    userAgentProfile: 'mobile',
+    platform: 'android',
+    verifiedBy: 'chrome-devtools',
+  },
+  {
+    id: 'pixel-9',
+    name: 'Google Pixel 9',
+    category: 'phone',
+    width: 412,
+    height: 924,
+    dpr: 2.625,
+    touch: true,
+    userAgentProfile: 'mobile',
+    platform: 'android',
+    verifiedBy: 'chrome-devtools',
+  },
+  {
+    id: 'pixel-9-pro-xl',
+    name: 'Google Pixel 9 Pro XL',
+    category: 'phone',
+    width: 448,
+    height: 997,
+    dpr: 3,
+    touch: true,
+    userAgentProfile: 'mobile',
+    platform: 'android',
+    verifiedBy: 'chrome-devtools',
+  },
+  {
+    id: 'galaxy-s20',
+    name: 'Samsung Galaxy S20',
+    category: 'phone',
+    width: 412,
+    height: 915,
+    dpr: 3.5,
+    touch: true,
+    userAgentProfile: 'mobile',
+    platform: 'android',
+    verifiedBy: 'chrome-devtools',
   },
   // iPad mini (6th / A17 Pro) — 744×1133 @2x
   {
@@ -195,6 +294,44 @@ export const DEVICE_PRESETS: DevicePreset[] = [
     dpr: 2,
     touch: true,
     userAgentProfile: 'mobile',
+  },
+  // Exact probes around Google's official adaptive width/height class boundaries.
+  // These are layout canvases, not claims about a physical device model.
+  {
+    id: 'android-compact',
+    name: 'Android compact boundary',
+    category: 'adaptive',
+    width: 599,
+    height: 899,
+    dpr: 1,
+    touch: true,
+    userAgentProfile: 'mobile',
+    platform: 'adaptive',
+    verifiedBy: 'android-window-size-classes',
+  },
+  {
+    id: 'android-medium',
+    name: 'Android medium boundary',
+    category: 'adaptive',
+    width: 600,
+    height: 900,
+    dpr: 1,
+    touch: true,
+    userAgentProfile: 'mobile',
+    platform: 'adaptive',
+    verifiedBy: 'android-window-size-classes',
+  },
+  {
+    id: 'android-expanded',
+    name: 'Android expanded boundary',
+    category: 'adaptive',
+    width: 840,
+    height: 900,
+    dpr: 1,
+    touch: true,
+    userAgentProfile: 'mobile',
+    platform: 'adaptive',
+    verifiedBy: 'android-window-size-classes',
   },
   // Common Windows / Chromebook laptop CSS layout
   {
@@ -287,6 +424,64 @@ export function getDevicePreset(id: string): DevicePreset {
 export const WORKBENCH_DEVICE_PRESETS = DEVICE_PRESETS.filter(
   (device) => device.category !== 'responsive',
 );
+
+const DEVICE_GROUP_ORDER: ReadonlyArray<{ id: DevicePresetGroupId; label: string }> = [
+  { id: 'responsive', label: 'Responsive' },
+  { id: 'apple-phones', label: 'Apple phones' },
+  { id: 'android-phones', label: 'Android phones' },
+  { id: 'tablets', label: 'Tablets' },
+  { id: 'adaptive', label: 'Google adaptive layouts' },
+  { id: 'computers', label: 'Laptops & desktops' },
+  { id: 'custom', label: 'Custom' },
+];
+
+function deviceGroupId(device: DevicePreset): DevicePresetGroupId {
+  if (device.category === 'responsive') return 'responsive';
+  if (device.category === 'custom') return 'custom';
+  if (device.category === 'adaptive') return 'adaptive';
+  if (device.category === 'tablet') return 'tablets';
+  if (device.category === 'laptop' || device.category === 'desktop') return 'computers';
+  return device.platform === 'android' ? 'android-phones' : 'apple-phones';
+}
+
+export function groupDevicePresets(presets: readonly DevicePreset[]): DevicePresetGroup[] {
+  return DEVICE_GROUP_ORDER.map(({ id, label }) => ({
+    id,
+    label,
+    devices: presets.filter((device) => deviceGroupId(device) === id),
+  })).filter((group) => group.devices.length > 0);
+}
+
+export function classifyAndroidWindow(width: number, height: number): AndroidWindowClasses {
+  const safeWidth = Number.isFinite(width) ? Math.max(0, width) : 0;
+  const safeHeight = Number.isFinite(height) ? Math.max(0, height) : 0;
+  return {
+    width:
+      safeWidth < 600
+        ? 'compact'
+        : safeWidth < 840
+          ? 'medium'
+          : safeWidth < 1200
+            ? 'expanded'
+            : safeWidth < 1600
+              ? 'large'
+              : 'extra-large',
+    height: safeHeight < 480 ? 'compact' : safeHeight < 900 ? 'medium' : 'expanded',
+  };
+}
+
+export function deviceVerificationLabel(preset: DevicePreset): string | null {
+  switch (preset.verifiedBy) {
+    case 'chrome-devtools':
+      return 'Chrome DevTools verified';
+    case 'playwright':
+      return 'Playwright verified';
+    case 'android-window-size-classes':
+      return 'Google adaptive boundary';
+    default:
+      return null;
+  }
+}
 
 function boundedNumber(value: number, fallback: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return fallback;

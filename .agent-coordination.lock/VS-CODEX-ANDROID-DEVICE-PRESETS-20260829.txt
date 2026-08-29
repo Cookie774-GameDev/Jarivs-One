@@ -1,0 +1,20 @@
+agent_id: VS-CODEX-ANDROID-DEVICE-PRESETS-20260829
+task_id: PR31-ANDROID-DEVICE-PRESETS
+controller: /root
+status: active
+worktree: C:\Users\viper\VibeSpace-UnifiedChungus-Final
+branch: integration/UnifiedChungus-final
+base_head: 52d30ea5b01391a4b340734c429fc10c873e0d25
+upstream: origin/UnifiedChungus
+claimed_at: 2026-08-29T10:59:56-05:00
+exact_scope:
+  - app/src/features/preview/previewDevices.ts
+  - app/src/features/preview/previewDevices.test.ts
+  - app/src/features/preview/PreviewStudio.tsx
+  - app/src/features/workbench/DevicePreviewPanel.tsx
+  - app/src/features/workbench/DevicePreviewPanel.test.tsx
+  - append-only docs/AGENT_COORDINATION.md
+  - this lock file
+intent: Extend the approved shared preview catalog with source-verified Android/Google hardware presets, clearly labeled Google adaptive window-class canvases, grouped device pickers, and truthful viewport/DPR/touch/window-class metadata without changing the existing native emulation contract.
+protected: Running VibeSpace app; Firebase and all production services; Computer Use; native/live acceptance; Android Studio/Firebase Test Lab integration; all unrelated dirty files, locks, processes, credentials, and deployments.
+verification_contract: TDD RED/GREEN for catalog, classification, grouping, exact iframe viewport, and visible metadata; focused frontend tests; type/format/build checks where safe; exact owned-only commit. No live app control.

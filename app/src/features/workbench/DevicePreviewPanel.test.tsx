@@ -38,4 +38,44 @@ describe('DevicePreviewPanel logical viewport', () => {
     expect(scaleBox?.style.width).toBe('136.5px');
     expect(scaleBox?.style.height).toBe('295.4px');
   });
+
+  it('groups verified Android devices and exposes exact emulation metadata', () => {
+    const panel: WorkbenchPanel = {
+      id: 'preview-android',
+      kind: 'device-preview',
+      title: 'Preview',
+      x: 0,
+      y: 0,
+      width: 900,
+      height: 700,
+      z: 1,
+      minimized: false,
+      status: 'ready',
+      settings: {
+        previewDeviceId: 'pixel-9',
+        previewOrientation: 'portrait',
+        previewZoom: 0.5,
+        previewDocument: '<!doctype html><html><body>Android test</body></html>',
+      },
+    };
+
+    const { container } = render(<DevicePreviewPanel panel={panel} onUpdate={vi.fn()} />);
+
+    expect(screen.getByRole('group', { name: 'Android phones' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Google adaptive layouts' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Google Pixel 9 (412×924)' })).toBeTruthy();
+    expect(screen.getByText(/Android compact width · expanded height/i)).toBeTruthy();
+    expect(screen.getByText(/Chrome DevTools verified/i)).toBeTruthy();
+
+    const shell = container.querySelector<HTMLElement>('.workbench-device-preview-shell');
+    expect(shell?.dataset.platform).toBe('android');
+    expect(shell?.dataset.windowWidthClass).toBe('compact');
+    expect(shell?.dataset.windowHeightClass).toBe('expanded');
+    expect(shell?.dataset.dpr).toBe('2.625');
+
+    const iframe = screen.getByTitle('Google Pixel 9 preview');
+    expect(iframe.style.width).toBe('412px');
+    expect(iframe.style.height).toBe('924px');
+    expect(iframe.style.transform).toBe('scale(0.5)');
+  });
 });
