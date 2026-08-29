@@ -50,6 +50,7 @@ pub struct WorkbenchBrowserStatus {
 #[derive(Clone, Debug)]
 struct SurfaceRecord {
     operation_id: String,
+    loading: bool,
 }
 
 static SURFACES: LazyLock<Mutex<HashMap<String, SurfaceRecord>>> =
@@ -160,13 +161,22 @@ fn emit_current_state(
     loading: bool,
     error: Option<String>,
 ) {
-    let operation_id = SURFACES.lock().ok().and_then(|state| {
-        state
-            .get(panel_id)
-            .map(|record| record.operation_id.clone())
+    let operation_id = SURFACES.lock().ok().and_then(|mut state| {
+        state.get_mut(panel_id).map(|record| {
+            record.loading = loading;
+            record.operation_id.clone()
+        })
     });
     if let Some(operation_id) = operation_id {
         emit_state(app, panel_id, &operation_id, url, loading, error);
+    }
+}
+
+fn opening_loading_state(unchanged_url: bool, previous: Option<bool>) -> bool {
+    if unchanged_url {
+        previous.unwrap_or(true)
+    } else {
+        true
     }
 }
 
@@ -185,23 +195,37 @@ pub async fn workbench_browser_surface_open(
     validate_bounds(&bounds)?;
     let target = validate_url(&url)?;
     let surface_label = label(&panel_id);
+    let existing = app.get_webview(&surface_label);
+    let unchanged_url = match existing.as_ref() {
+        Some(webview) => {
+            webview
+                .url()
+                .map_err(|_| "workbench_browser_navigation_unavailable".to_owned())?
+                == target
+        }
+        None => false,
+    };
 
-    SURFACES
-        .lock()
-        .map_err(|_| "workbench_browser_state_unavailable".to_owned())?
-        .insert(
+    let loading = {
+        let mut state = SURFACES
+            .lock()
+            .map_err(|_| "workbench_browser_state_unavailable".to_owned())?;
+        let loading = opening_loading_state(
+            unchanged_url,
+            state.get(&panel_id).map(|record| record.loading),
+        );
+        state.insert(
             panel_id.clone(),
             SurfaceRecord {
                 operation_id: operation_id.clone(),
+                loading,
             },
         );
+        loading
+    };
 
-    let webview = if let Some(existing) = app.get_webview(&surface_label) {
-        if existing
-            .url()
-            .map_err(|_| "workbench_browser_navigation_unavailable".to_owned())?
-            != target
-        {
+    let webview = if let Some(existing) = existing {
+        if !unchanged_url {
             existing
                 .navigate(target.clone())
                 .map_err(|_| "workbench_browser_navigation_unavailable".to_owned())?;
@@ -257,12 +281,12 @@ pub async fn workbench_browser_surface_open(
     webview
         .show()
         .map_err(|_| "workbench_browser_window_unavailable".to_owned())?;
-    emit_state(&app, &panel_id, &operation_id, &target, true, None);
+    emit_state(&app, &panel_id, &operation_id, &target, loading, None);
     Ok(WorkbenchBrowserStatus {
         panel_id,
         operation_id,
         url: target.to_string(),
-        loading: true,
+        loading,
         error: None,
     })
 }
@@ -383,5 +407,13 @@ mod tests {
         assert!(validate_id("../panel", "invalid").is_err());
         assert!(matches!(-1_i8, -1 | 1));
         assert!(matches!(1_i8, -1 | 1));
+    }
+
+    #[test]
+    fn bounds_refresh_preserves_the_real_load_state_for_an_unchanged_url() {
+        assert!(!opening_loading_state(true, Some(false)));
+        assert!(opening_loading_state(true, Some(true)));
+        assert!(opening_loading_state(true, None));
+        assert!(opening_loading_state(false, Some(false)));
     }
 }
