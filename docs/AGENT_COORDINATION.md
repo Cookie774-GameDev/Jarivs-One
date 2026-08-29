@@ -2378,3 +2378,15 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Green evidence: the same reconstruction emitted seven bounded `keycap` cues and returned to zero active voices; real controls incremented `press`, `page`, and `drawer` diagnostics. Post-limiter RMS measured `keycap=0.015931`, `press=0.042174`, `page=0.084064`, and `drawer=0.064473`.
 - Safety/accessibility: sound-off produced no context and no cues; disabling sound stopped ambient audio and rejected subsequent cue requests. Axe-core 4.10.3 returned zero WCAG A/AA violations at 1440x900 and 390x844; fresh console, page-exception, and network-failure checks returned zero events; mobile document overflow remained zero.
 - Next: run final static verification, deploy the exact HTML, repeat public audio/console checks, record the final SHA-256, and release only this task's lock.
+
+### Final checkpoint
+
+- Status: complete; owned lock released after exact-byte public audio verification.
+- Implementation/deployment commit: `38ae52cd8230d9e4496bea7139813dae83d2e2b6` (`site: expand authored interface sound cues`), pushed fast-forward to `origin/main`; GitHub Pages run `33229886372` completed successfully.
+- Live sound behavior: `https://vibespaceos.com/?rev=38ae52c#one-space` starts OFF with no `AudioContext`. Explicit opt-in creates one running context, two internal buffers, the ambient bed, limiter, and the expanded cue palette. One directory word reconstruction emits seven `keycap` cues and settles at zero active voices.
+- Added live routes: opening/closing Index produced two `drawer` cues; Review plan produced one `press` cue; App Soon navigation produced one `page` cue. Existing specialized cues remain routed independently.
+- Public runtime: zero fresh console warnings/errors, runtime exceptions, network failures, or horizontal overflow. Local axe-core 4.10.3 audits returned zero WCAG A/AA violations at 1440x900 and 390x844.
+- Exact-byte verification: local `site/index.html` and the deployed homepage both SHA-256 `9A00ABF738F520471B96A06609C359A17902C369BF4D2EAAA6492A2F8677EA8B` (609,914 bytes).
+- Licensing boundary preserved: all added sounds are procedural Web Audio synthesis; no Epidemic/third-party binary is embedded or redistributed.
+- Rollback: base commit `49635ca8d67a8c83d77c801e02190c4b685bf78a` preserves the prior cue routing.
+- Boundaries honored: no app, PR #31, Stripe, Supabase, DNS, billing, release, or non-homepage route mutation.
