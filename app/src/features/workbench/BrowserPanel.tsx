@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { ArrowLeft, ArrowRight, ExternalLink, Globe2, RefreshCw, Square } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { isTauri } from '@/lib/utils';
@@ -64,6 +63,10 @@ function nativeFailureMessage(cause: unknown, fallback: string): string {
   return fallback;
 }
 
+function waitForNativeStatus(delayMs: number): Promise<void> {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, delayMs));
+}
+
 export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
   const currentUrl = panel.settings.url ?? 'https://developer.mozilla.org';
   const [draft, setDraft] = React.useState(currentUrl);
@@ -77,7 +80,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
   const onUpdateRef = React.useRef(onUpdate);
   const settingsRef = React.useRef(panel.settings);
   const nativeUrlRef = React.useRef(currentUrl);
-  const nativeListenerReadyRef = React.useRef<Promise<void>>(Promise.resolve());
+  const nativeStatusGenerationRef = React.useRef(0);
   const nativeOpenRef = React.useRef<{
     active: NativeOpenRequest | null;
     pending: NativeOpenRequest | null;
@@ -85,6 +88,40 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
   }>({ active: null, pending: null, promise: null });
   onUpdateRef.current = onUpdate;
   settingsRef.current = panel.settings;
+
+  const applyNativeState = React.useCallback(
+    (payload: NativeBrowserState) => {
+      if (payload.panelId !== panel.id || payload.operationId !== operationId) {
+        throw new Error('workbench_browser_operation_stale');
+      }
+      const normalized = normalizeBrowserUrl(payload.url);
+      nativeUrlRef.current = normalized;
+      setDraft(normalized);
+      setError(payload.error ?? null);
+      setLoadState(payload.error ? 'error' : payload.loading ? 'loading' : 'loaded');
+      onUpdateRef.current({
+        settings: { ...settingsRef.current, url: normalized },
+        status: payload.error ? 'error' : 'ready',
+      });
+    },
+    [operationId, panel.id],
+  );
+
+  const reconcileNativeState = React.useCallback(async () => {
+    const generation = ++nativeStatusGenerationRef.current;
+    let delayMs = 200;
+    while (nativeStatusGenerationRef.current === generation) {
+      const payload = await invoke<NativeBrowserState>('workbench_browser_surface_status', {
+        panelId: panel.id,
+        operationId,
+      });
+      if (nativeStatusGenerationRef.current !== generation) return;
+      applyNativeState(payload);
+      if (!payload.loading || payload.error) return;
+      await waitForNativeStatus(delayMs);
+      delayMs = Math.min(delayMs * 2, 1_000);
+    }
+  }, [applyNativeState, operationId, panel.id]);
 
   const policy = React.useMemo(() => {
     try {
@@ -97,7 +134,6 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
   const openNative = React.useCallback(
     async (url: string) => {
       if (!isTauri) throw new Error('The in-window browser is available in the VibeSpace app.');
-      await nativeListenerReadyRef.current;
       const bounds = readBounds(surfaceRef.current);
       if (!bounds) return;
       setLoadState('loading');
@@ -112,12 +148,20 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
         while (request) {
           state.active = request;
           state.pending = null;
-          await invoke('workbench_browser_surface_open', {
+          const opened = await invoke<NativeBrowserState>('workbench_browser_surface_open', {
             panelId: panel.id,
             operationId,
             url: request.url,
             bounds: request.bounds,
           });
+          applyNativeState(opened);
+          if (opened.loading && !opened.error) {
+            void reconcileNativeState().catch((cause) => {
+              if (nativeStatusGenerationRef.current === 0) return;
+              setError(nativeFailureMessage(cause, 'Browser state is unavailable.'));
+              setLoadState('error');
+            });
+          }
           request = state.pending;
         }
       };
@@ -131,7 +175,7 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
       state.promise = promise;
       return promise;
     },
-    [operationId, panel.id],
+    [applyNativeState, operationId, panel.id, reconcileNativeState],
   );
 
   React.useEffect(() => setDraft(currentUrl), [currentUrl]);
@@ -139,43 +183,6 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
   React.useEffect(() => {
     if (policy?.delivery !== 'native-child') return;
     let disposed = false;
-    let stopListening: (() => void) | undefined;
-    let resolveListener: (() => void) | undefined;
-    let rejectListener: ((cause: Error) => void) | undefined;
-    let listenerSettled = false;
-    nativeListenerReadyRef.current = new Promise<void>((resolve, reject) => {
-      resolveListener = resolve;
-      rejectListener = reject;
-    });
-    void listen<NativeBrowserState>('workbench-browser://state', ({ payload }) => {
-      if (disposed || payload.panelId !== panel.id || payload.operationId !== operationId) return;
-      const normalized = normalizeBrowserUrl(payload.url);
-      nativeUrlRef.current = normalized;
-      setDraft(normalized);
-      setError(payload.error ?? null);
-      setLoadState(payload.error ? 'error' : payload.loading ? 'loading' : 'loaded');
-      onUpdateRef.current({
-        settings: { ...settingsRef.current, url: normalized },
-        status: payload.error ? 'error' : 'ready',
-      });
-    })
-      .then((unlisten) => {
-        if (disposed) {
-          unlisten();
-          return;
-        }
-        stopListening = unlisten;
-        listenerSettled = true;
-        resolveListener?.();
-      })
-      .catch((cause) => {
-        if (disposed) return;
-        const failure = new Error(nativeFailureMessage(cause, 'Browser state is unavailable.'));
-        listenerSettled = true;
-        rejectListener?.(failure);
-        setError(failure.message);
-        setLoadState('error');
-      });
 
     const refreshBounds = () =>
       void openNative(nativeUrlRef.current).catch((cause) => {
@@ -192,14 +199,10 @@ export function BrowserPanel({ panel, onUpdate }: BrowserPanelProps) {
 
     return () => {
       disposed = true;
-      if (!listenerSettled) {
-        listenerSettled = true;
-        rejectListener?.(new Error('workbench_browser_listener_disposed'));
-      }
+      nativeStatusGenerationRef.current = 0;
       observer?.disconnect();
       window.removeEventListener('resize', refreshBounds);
       window.removeEventListener('scroll', refreshBounds, true);
-      stopListening?.();
       if (isTauri) {
         const closeAfterOpen = async () => {
           await nativeOpenRef.current.promise?.catch(() => undefined);

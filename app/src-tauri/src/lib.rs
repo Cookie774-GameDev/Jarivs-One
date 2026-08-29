@@ -628,6 +628,7 @@ fn run_ordinary(
             browser_chat_surface::browser_chat_surface_hide,
             browser_chat_surface::browser_chat_surface_hide_all,
             workbench_browser_surface::workbench_browser_surface_open,
+            workbench_browser_surface::workbench_browser_surface_status,
             workbench_browser_surface::workbench_browser_surface_history,
             workbench_browser_surface::workbench_browser_surface_reload,
             workbench_browser_surface::workbench_browser_surface_stop,
@@ -920,6 +921,7 @@ browser_chat_surface::browser_chat_surface_open
 browser_chat_surface::browser_chat_surface_hide
 browser_chat_surface::browser_chat_surface_hide_all
 workbench_browser_surface::workbench_browser_surface_open
+workbench_browser_surface::workbench_browser_surface_status
 workbench_browser_surface::workbench_browser_surface_history
 workbench_browser_surface::workbench_browser_surface_reload
 workbench_browser_surface::workbench_browser_surface_stop
@@ -1126,9 +1128,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "b3e635a3f0a492913c6825f7f575fdd44c4c1dd60bdb9c63e261a1e9dff5e2fa";
+        "9b5810657bfdcecf4ad61ea10dcf52199bcb585743f394d1fdd615da8bae10d5";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "922f2d59e2452561d13f5e59c484d7a9c4f90e5489f8b5f2d05e65b18765d919";
+        "fb3f67c24754853337acd4f2c9e99cb88ab2f97be4945c7519a1ddd065c9f965";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {

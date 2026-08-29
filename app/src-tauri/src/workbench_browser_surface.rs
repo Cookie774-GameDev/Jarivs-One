@@ -10,10 +10,9 @@ use async_lock::Mutex as AsyncMutex;
 use serde::{Deserialize, Serialize};
 use tauri::{
     webview::{PageLoadEvent, Webview, WebviewBuilder},
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, WebviewUrl,
+    AppHandle, LogicalPosition, LogicalSize, Manager, WebviewUrl,
 };
 
-const EVENT_NAME: &str = "workbench-browser://state";
 const INIT_SCRIPT: &str = r#"
 (() => {
   try { delete window.__TAURI_INTERNALS__; } catch (_) {}
@@ -51,8 +50,9 @@ pub struct WorkbenchBrowserStatus {
 #[derive(Clone, Debug)]
 struct SurfaceRecord {
     operation_id: String,
+    url: String,
     loading: bool,
-    renderer: Webview,
+    error: Option<String>,
 }
 
 static SURFACES: LazyLock<Mutex<HashMap<String, SurfaceRecord>>> =
@@ -177,36 +177,33 @@ fn current_operation(panel_id: &str, operation_id: &str) -> Result<(), String> {
     }
 }
 
-fn emit_state(
-    renderer: &Webview,
-    panel_id: &str,
-    operation_id: &str,
-    url: &url::Url,
-    loading: bool,
-    error: Option<String>,
-) {
-    let _ = renderer.emit(
-        EVENT_NAME,
-        WorkbenchBrowserStatus {
-            panel_id: panel_id.to_owned(),
-            operation_id: operation_id.to_owned(),
-            url: url.to_string(),
-            loading,
-            error,
-        },
-    );
+fn update_current_state(panel_id: &str, url: &url::Url, loading: bool, error: Option<String>) {
+    if let Ok(mut state) = SURFACES.lock() {
+        if let Some(record) = state.get_mut(panel_id) {
+            record.url = url.to_string();
+            record.loading = loading;
+            record.error = error;
+        }
+    }
 }
 
-fn emit_current_state(panel_id: &str, url: &url::Url, loading: bool, error: Option<String>) {
-    let current = SURFACES.lock().ok().and_then(|mut state| {
-        state.get_mut(panel_id).map(|record| {
-            record.loading = loading;
-            (record.operation_id.clone(), record.renderer.clone())
-        })
-    });
-    if let Some((operation_id, renderer)) = current {
-        emit_state(&renderer, panel_id, &operation_id, url, loading, error);
-    }
+fn current_status(panel_id: &str, operation_id: &str) -> Result<WorkbenchBrowserStatus, String> {
+    validate_id(panel_id, "workbench_browser_panel_invalid")?;
+    validate_id(operation_id, "workbench_browser_operation_invalid")?;
+    let state = SURFACES
+        .lock()
+        .map_err(|_| "workbench_browser_state_unavailable".to_owned())?;
+    let record = state
+        .get(panel_id)
+        .filter(|record| record.operation_id == operation_id)
+        .ok_or_else(|| "workbench_browser_operation_stale".to_owned())?;
+    Ok(WorkbenchBrowserStatus {
+        panel_id: panel_id.to_owned(),
+        operation_id: operation_id.to_owned(),
+        url: record.url.clone(),
+        loading: record.loading,
+        error: record.error.clone(),
+    })
 }
 
 fn opening_loading_state(unchanged_url: bool, previous: Option<bool>) -> bool {
@@ -244,7 +241,7 @@ pub async fn workbench_browser_surface_open(
         None => false,
     };
 
-    let loading = {
+    {
         let mut state = SURFACES
             .lock()
             .map_err(|_| "workbench_browser_state_unavailable".to_owned())?;
@@ -256,12 +253,12 @@ pub async fn workbench_browser_surface_open(
             panel_id.clone(),
             SurfaceRecord {
                 operation_id: operation_id.clone(),
+                url: target.to_string(),
                 loading,
-                renderer: caller.clone(),
+                error: None,
             },
         );
-        loading
-    };
+    }
 
     let webview = if let Some(existing) = existing {
         if !unchanged_url {
@@ -291,7 +288,7 @@ pub async fn workbench_browser_surface_open(
             .on_navigation(move |candidate| {
                 let allowed = navigation_allowed(candidate);
                 if allowed && candidate.as_str() != "about:blank" {
-                    emit_current_state(&event_panel, candidate, true, None);
+                    update_current_state(&event_panel, candidate, true, None);
                 }
                 allowed
             })
@@ -299,7 +296,7 @@ pub async fn workbench_browser_surface_open(
                 if payload.url().as_str() == "about:blank" || !navigation_allowed(payload.url()) {
                     return;
                 }
-                emit_current_state(
+                update_current_state(
                     &load_panel,
                     payload.url(),
                     matches!(payload.event(), PageLoadEvent::Started),
@@ -319,14 +316,17 @@ pub async fn workbench_browser_surface_open(
     webview
         .show()
         .map_err(|_| "workbench_browser_window_unavailable".to_owned())?;
-    emit_state(&caller, &panel_id, &operation_id, &target, loading, None);
-    Ok(WorkbenchBrowserStatus {
-        panel_id,
-        operation_id,
-        url: target.to_string(),
-        loading,
-        error: None,
-    })
+    current_status(&panel_id, &operation_id)
+}
+
+#[tauri::command]
+pub async fn workbench_browser_surface_status(
+    caller: Webview,
+    panel_id: String,
+    operation_id: String,
+) -> Result<WorkbenchBrowserStatus, String> {
+    ensure_caller(caller.label())?;
+    current_status(&panel_id, &operation_id)
 }
 
 fn with_surface(app: &AppHandle, panel_id: &str, operation_id: &str) -> Result<Webview, String> {
@@ -439,18 +439,49 @@ mod tests {
     #[test]
     fn commands_accept_the_official_main_child_webview_caller() {
         let source = include_str!("workbench_browser_surface.rs");
-        assert_eq!(source.matches("    caller: Webview,\n").count(), 5);
+        assert_eq!(source.matches("    caller: Webview,\n").count(), 6);
         assert!(!source.contains("    caller: WebviewWindow,\n"));
         assert!(source.contains("ensure_caller(caller.label())?;"));
     }
 
     #[test]
-    fn status_events_target_the_exact_current_renderer_webview() {
+    fn operation_bound_status_does_not_depend_on_renderer_event_callbacks() {
         let source = include_str!("workbench_browser_surface.rs");
-        let broad_app_emission = ["app", ".emit_to("].concat();
-        assert!(source.contains("renderer: Webview,"));
-        assert!(source.contains("renderer.emit(EVENT_NAME,"));
-        assert!(!source.contains(&broad_app_emission));
+        let legacy_event = ["workbench-browser", "://state"].concat();
+        let event_emit = [".", "emit("].concat();
+        assert!(source.contains("pub async fn workbench_browser_surface_status("));
+        assert!(source.contains("current_status(&panel_id, &operation_id)"));
+        assert!(!source.contains(&legacy_event));
+        assert!(!source.contains(&event_emit));
+    }
+
+    #[test]
+    fn status_reconciles_the_latest_native_page_load_for_one_operation() {
+        let panel_id = "status-test-panel";
+        let operation_id = "status-test-operation";
+        SURFACES.lock().unwrap().insert(
+            panel_id.to_owned(),
+            SurfaceRecord {
+                operation_id: operation_id.to_owned(),
+                url: "https://example.com/".to_owned(),
+                loading: true,
+                error: None,
+            },
+        );
+
+        update_current_state(
+            panel_id,
+            &url::Url::parse("https://example.com/finished").unwrap(),
+            false,
+            None,
+        );
+
+        let status = current_status(panel_id, operation_id).unwrap();
+        assert_eq!(status.url, "https://example.com/finished");
+        assert!(!status.loading);
+        assert_eq!(status.error, None);
+        assert!(current_status(panel_id, "stale-operation").is_err());
+        SURFACES.lock().unwrap().remove(panel_id);
     }
 
     #[test]

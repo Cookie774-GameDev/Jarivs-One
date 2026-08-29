@@ -6,26 +6,10 @@ import { BrowserPanel } from './BrowserPanel';
 import type { WorkbenchPanel } from './types';
 
 const native = vi.hoisted(() => ({
-  invoke: vi.fn<(command: string, args?: Record<string, unknown>) => Promise<void>>(
-    async () => undefined,
-  ),
-  stateHandler: null as null | ((event: { payload: Record<string, unknown> }) => void),
-  deferListen: false,
-  finishListen: null as null | (() => void),
+  invoke: vi.fn<(command: string, args?: Record<string, unknown>) => Promise<unknown>>(),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: native.invoke }));
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn(async (_event: string, handler: typeof native.stateHandler) => {
-    if (native.deferListen) {
-      await new Promise<void>((resolve) => {
-        native.finishListen = resolve;
-      });
-    }
-    native.stateHandler = handler;
-    return vi.fn();
-  }),
-}));
 vi.mock('@/lib/utils', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/utils')>()),
   isTauri: true,
@@ -49,10 +33,28 @@ function panel(url: string): WorkbenchPanel {
 
 describe('Workbench BrowserPanel delivery', () => {
   beforeEach(() => {
-    native.invoke.mockClear();
-    native.stateHandler = null;
-    native.deferListen = false;
-    native.finishListen = null;
+    native.invoke.mockReset();
+    native.invoke.mockImplementation(async (command, args) => {
+      if (command === 'workbench_browser_surface_open') {
+        return {
+          panelId: args?.panelId,
+          operationId: args?.operationId,
+          url: args?.url,
+          loading: true,
+          error: null,
+        };
+      }
+      if (command === 'workbench_browser_surface_status') {
+        return {
+          panelId: args?.panelId,
+          operationId: args?.operationId,
+          url: 'https://example.com/',
+          loading: false,
+          error: null,
+        };
+      }
+      return undefined;
+    });
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 20,
       y: 80,
@@ -94,6 +96,29 @@ describe('Workbench BrowserPanel delivery', () => {
 
   it('keeps ordinary remote navigation in a bounded native child and accepts native link state', async () => {
     const onUpdate = vi.fn();
+    let nativeUrl = 'https://example.com/';
+    native.invoke.mockImplementation(async (command, args) => {
+      if (command === 'workbench_browser_surface_open') {
+        nativeUrl = String(args?.url);
+        return {
+          panelId: args?.panelId,
+          operationId: args?.operationId,
+          url: nativeUrl,
+          loading: true,
+          error: null,
+        };
+      }
+      if (command === 'workbench_browser_surface_status') {
+        return {
+          panelId: args?.panelId,
+          operationId: args?.operationId,
+          url: nativeUrl === 'https://github.com/' ? 'https://github.com/openai/' : nativeUrl,
+          loading: false,
+          error: null,
+        };
+      }
+      return undefined;
+    });
     render(<BrowserPanel panel={panel('https://example.com/')} onUpdate={onUpdate} />);
 
     expect(screen.queryByTitle('Browser web page')).toBeNull();
@@ -131,17 +156,6 @@ describe('Workbench BrowserPanel delivery', () => {
     const openedOperationId = openCall?.[1]?.operationId;
     expect(openedOperationId).toEqual(expect.any(String));
 
-    act(() => {
-      native.stateHandler?.({
-        payload: {
-          panelId: 'browser-1',
-          operationId: openedOperationId,
-          url: 'https://github.com/openai/',
-          loading: false,
-          error: null,
-        },
-      });
-    });
     await waitFor(() =>
       expect((screen.getByLabelText('Browser address') as HTMLInputElement).value).toBe(
         'https://github.com/openai/',
@@ -150,7 +164,7 @@ describe('Workbench BrowserPanel delivery', () => {
 
     fireEvent(window, new Event('resize'));
     await waitFor(() =>
-      expect(native.invoke).toHaveBeenLastCalledWith(
+      expect(native.invoke).toHaveBeenCalledWith(
         'workbench_browser_surface_open',
         expect.objectContaining({ url: 'https://github.com/openai/' }),
       ),
@@ -159,12 +173,20 @@ describe('Workbench BrowserPanel delivery', () => {
 
   it('coalesces concurrent mount and bounds opens for the same native child', async () => {
     let finishOpen: (() => void) | undefined;
-    native.invoke.mockImplementation(async (command) => {
+    native.invoke.mockImplementation(async (command, args) => {
       if (command === 'workbench_browser_surface_open') {
         await new Promise<void>((resolve) => {
           finishOpen = resolve;
         });
+        return {
+          panelId: args?.panelId,
+          operationId: args?.operationId,
+          url: args?.url,
+          loading: false,
+          error: null,
+        };
       }
+      return undefined;
     });
 
     render(<BrowserPanel panel={panel('https://example.com/')} onUpdate={vi.fn()} />);
@@ -184,23 +206,17 @@ describe('Workbench BrowserPanel delivery', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('subscribes to terminal native state before opening a fast child page', async () => {
-    native.deferListen = true;
+  it('reconciles terminal native state without a renderer event callback', async () => {
     render(<BrowserPanel panel={panel('https://example.com/')} onUpdate={vi.fn()} />);
 
-    await waitFor(() => expect(native.finishListen).toEqual(expect.any(Function)));
-    expect(native.invoke).not.toHaveBeenCalledWith(
-      'workbench_browser_surface_open',
-      expect.anything(),
-    );
-
-    act(() => native.finishListen?.());
     await waitFor(() =>
       expect(native.invoke).toHaveBeenCalledWith(
-        'workbench_browser_surface_open',
-        expect.objectContaining({ url: 'https://example.com/' }),
+        'workbench_browser_surface_status',
+        expect.objectContaining({ panelId: 'browser-1' }),
       ),
     );
+    await waitFor(() => expect(screen.queryByText('Loading…')).toBeNull());
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('shows an exact native string rejection instead of masking it', async () => {
@@ -221,12 +237,20 @@ describe('Workbench BrowserPanel delivery', () => {
 
   it('closes a child only after an in-flight open settles during unmount', async () => {
     let finishOpen: (() => void) | undefined;
-    native.invoke.mockImplementation(async (command) => {
+    native.invoke.mockImplementation(async (command, args) => {
       if (command === 'workbench_browser_surface_open') {
         await new Promise<void>((resolve) => {
           finishOpen = resolve;
         });
+        return {
+          panelId: args?.panelId,
+          operationId: args?.operationId,
+          url: args?.url,
+          loading: false,
+          error: null,
+        };
       }
+      return undefined;
     });
 
     const view = render(<BrowserPanel panel={panel('https://example.com/')} onUpdate={vi.fn()} />);
