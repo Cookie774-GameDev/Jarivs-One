@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Monitor, RotateCw, Smartphone, Tablet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
+  WORKBENCH_DEVICE_PRESETS,
   defaultOrientationForPreset,
   getDevicePreset,
   orientSize,
@@ -13,21 +14,6 @@ interface DevicePreviewPanelProps {
   onUpdate: (patch: Partial<WorkbenchPanel>) => void;
 }
 
-const PICKER_IDS = [
-  'iphone-se',
-  'iphone-15',
-  'iphone-15-pro-max',
-  'pixel',
-  'ipad-mini',
-  'ipad-pro-11',
-  'ipad-pro-13',
-  'small-laptop',
-  'macbook',
-  'desktop-1080',
-  'desktop-1440',
-  'custom',
-] as const;
-
 /**
  * Separate Workbench tab/panel that shows one device viewport at exact CSS sizes.
  * Visual zoom uses transform:scale so media queries still see real width/height.
@@ -35,11 +21,11 @@ const PICKER_IDS = [
 export function DevicePreviewPanel({ panel, onUpdate }: DevicePreviewPanelProps) {
   const deviceId = panel.settings.previewDeviceId || 'iphone-15';
   const preset = getDevicePreset(deviceId);
-  const orientation =
-    panel.settings.previewOrientation || defaultOrientationForPreset(preset);
+  const orientation = panel.settings.previewOrientation || defaultOrientationForPreset(preset);
   const showFrame = panel.settings.previewShowFrame !== false;
   const zoom = Math.min(1, Math.max(0.25, Number(panel.settings.previewZoom || 0.5)));
-  const doc = panel.settings.previewDocument || '<!doctype html><html><body><p>No content</p></body></html>';
+  const doc =
+    panel.settings.previewDocument || '<!doctype html><html><body><p>No content</p></body></html>';
   const label = panel.settings.previewLabel || 'Preview';
 
   const logical = orientSize(preset, orientation, 390, 844, 800, 600);
@@ -67,8 +53,8 @@ export function DevicePreviewPanel({ panel, onUpdate }: DevicePreviewPanelProps)
     );
 
   // Exact CSS viewport inside iframe; visual scale via transform.
-  const scaledW = Math.round(logical.width * zoom);
-  const scaledH = Math.round(logical.height * zoom);
+  const scaledW = logical.width * zoom;
+  const scaledH = logical.height * zoom;
 
   return (
     <div className="workbench-device-preview" data-testid="workbench-device-preview-panel">
@@ -87,10 +73,9 @@ export function DevicePreviewPanel({ panel, onUpdate }: DevicePreviewPanelProps)
               });
             }}
           >
-            {PICKER_IDS.map((id) => {
-              const d = getDevicePreset(id);
+            {WORKBENCH_DEVICE_PRESETS.map((d) => {
               return (
-                <option key={id} value={id}>
+                <option key={d.id} value={d.id}>
                   {d.name} ({d.width > 0 ? `${d.width}×${d.height}` : 'fluid'})
                 </option>
               );
@@ -179,8 +164,8 @@ export function DevicePreviewPanel({ panel, onUpdate }: DevicePreviewPanelProps)
           </div>
         </div>
         <p className="workbench-device-preview-hint">
-          Exact CSS viewport {logical.width}×{logical.height}. Zoom only scales the display — not the
-          layout size reported to the page.
+          Exact CSS viewport {logical.width}×{logical.height}. Zoom only scales the display — not
+          the layout size reported to the page.
         </p>
       </div>
     </div>

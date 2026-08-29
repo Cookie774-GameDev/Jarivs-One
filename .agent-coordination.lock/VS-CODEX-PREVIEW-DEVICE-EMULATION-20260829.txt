@@ -1,0 +1,27 @@
+agent_id: VS-CODEX-PREVIEW-DEVICE-EMULATION-20260829
+task_id: PR31-PREVIEW-DEVICE-EMULATION
+controller: /root
+status: active
+worktree: C:\Users\viper\VibeSpace-UnifiedChungus-Final
+branch: integration/UnifiedChungus-final
+base_head: fbc2a63896e64f6eb6558a26d158b0c26d655083
+upstream: origin/UnifiedChungus
+claimed_at: 2026-08-29T09:50:34-05:00
+exact_scope:
+  - docs/superpowers/specs/2026-08-29-preview-device-emulation-design.md
+  - docs/superpowers/plans/2026-08-29-preview-device-emulation.md
+  - app/src/features/preview/previewDevices.ts
+  - app/src/features/preview/previewDevices.test.ts
+  - app/src/features/preview/PreviewStudio.tsx
+  - app/src/features/preview/PreviewStudio.lifecycle.test.tsx
+  - app/src/features/preview/previewBridge.ts
+  - app/src/features/preview/previewBridge.test.ts
+  - app/src/features/workbench/DevicePreviewPanel.tsx
+  - app/src/features/workbench/DevicePreviewPanel.test.tsx
+  - app/src/features/workbench/EditorPanel.tsx
+  - app/src-tauri/src/preview.rs
+  - append-only docs/AGENT_COORDINATION.md
+  - this lock file
+intent: Make Preview Studio and Workbench device previews use generation-specific, truthful CSS viewport presets and native WebView2 device metrics so page media queries see the selected logical viewport while zoom remains visual only. Preserve persisted preset IDs and all unrelated agent work.
+protected: Running VibeSpace app; Firebase and all production services; credentials; Computer Use; live/native acceptance until separately authorized; active Workbench browser ownership; all unrelated dirty files and locks.
+verification_contract: Strict TDD RED/GREEN for catalog, frontend payload, and Rust parameter validation; focused frontend and Rust tests; format/type/build gates where safe; exact owned-only commit. No live app control.

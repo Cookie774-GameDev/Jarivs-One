@@ -12,7 +12,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { useUIStore } from '@/stores/ui';
-import { DEVICE_PRESETS, ZOOM_STEPS, getDevicePreset, orientSize } from './previewDevices';
+import {
+  DEVICE_PRESETS,
+  ZOOM_STEPS,
+  createPreviewEmulation,
+  getDevicePreset,
+  orientSize,
+} from './previewDevices';
 import { normalizePreviewUrl } from './previewUrl';
 import {
   isTauriRuntime,
@@ -97,6 +103,10 @@ export function PreviewStudio() {
     : zoom;
   const frameW = Math.round(logical.width * displayZoom);
   const frameH = Math.round(logical.height * displayZoom);
+  const emulation = React.useMemo(
+    () => createPreviewEmulation(preset, orientation, logical, displayZoom),
+    [displayZoom, logical.height, logical.width, orientation, preset],
+  );
 
   // Host size observer
   React.useEffect(() => {
@@ -138,7 +148,7 @@ export function PreviewStudio() {
 
     const sync = () => {
       const bounds = measurePreviewBounds(el);
-      void previewSetBounds(bounds);
+      void previewSetBounds(bounds, emulation);
     };
     sync();
     const ro = new ResizeObserver(sync);
@@ -148,7 +158,7 @@ export function PreviewStudio() {
       ro.disconnect();
       window.removeEventListener('resize', sync);
     };
-  }, [route, url, frameW, frameH, showDeviceFrame, fitToWorkspace, displayZoom]);
+  }, [route, url, frameW, frameH, showDeviceFrame, fitToWorkspace, displayZoom, emulation]);
 
   const navigateTo = React.useCallback(
     async (raw: string, pushHist = true) => {
@@ -201,7 +211,7 @@ export function PreviewStudio() {
         // Still try to create so user can hard-retry when server starts
       }
 
-      const created = await previewCreate(norm.url, bounds);
+      const created = await previewCreate(norm.url, bounds, emulation);
       if (!created.ok) {
         setLoading(false);
         setError({
@@ -215,7 +225,17 @@ export function PreviewStudio() {
       setLoading(false);
       void previewShow();
     },
-    [frameH, frameW, historyIdx, pushDiagnostic, pushRecent, setError, setLoading, setUrl],
+    [
+      emulation,
+      frameH,
+      frameW,
+      historyIdx,
+      pushDiagnostic,
+      pushRecent,
+      setError,
+      setLoading,
+      setUrl,
+    ],
   );
 
   const onSubmit = (event: React.FormEvent) => {

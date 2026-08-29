@@ -10,7 +10,7 @@ import {
   getStoredProjectRoot,
   isPopularTextFile,
 } from '@/features/files/projectFiles';
-import { DEVICE_PRESETS, getDevicePreset } from '@/features/preview/previewDevices';
+import { WORKBENCH_DEVICE_PRESETS, getDevicePreset } from '@/features/preview/previewDevices';
 import type { WorkbenchPanel } from './types';
 import { EDITOR_LANGUAGES } from './editorLanguages';
 import { buildDevicePreviewDocument } from './editorPreview';
@@ -31,22 +31,6 @@ interface EditorPanelProps {
   onUpdate: (patch: Partial<WorkbenchPanel>) => void;
 }
 
-const EDITOR_DEVICES = DEVICE_PRESETS.filter((d) =>
-  [
-    'iphone-se',
-    'iphone-15',
-    'iphone-15-pro-max',
-    'pixel',
-    'ipad-mini',
-    'ipad-pro-11',
-    'ipad-pro-13',
-    'small-laptop',
-    'macbook',
-    'desktop-1080',
-    'desktop-1440',
-  ].includes(d.id),
-);
-
 /**
  * Editor stays code-only. Choosing a device + Preview opens a **separate**
  * Workbench panel tab that renders exact CSS viewport sizes for that device.
@@ -62,13 +46,17 @@ export function EditorPanel({ panel, onUpdate }: EditorPanelProps) {
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
 
-  const lang = (panel.settings.language || (filePath ? extension(filePath) : 'html') || 'html').toLowerCase();
+  const lang = (
+    panel.settings.language ||
+    (filePath ? extension(filePath) : 'html') ||
+    'html'
+  ).toLowerCase();
   const deviceId = String(panel.settings.previewDeviceId || 'iphone-15');
   const dirty = content !== savedContent;
   const preset = getDevicePreset(deviceId);
-  const suggestedSaveName = (filePath ? basename(filePath) : panel.title || 'untitled')
-    .replace(/\.[^.]+$/, '')
-    .trim() || 'untitled';
+  const suggestedSaveName =
+    (filePath ? basename(filePath) : panel.title || 'untitled').replace(/\.[^.]+$/, '').trim() ||
+    'untitled';
 
   React.useEffect(() => {
     if (!filePath) {
@@ -269,7 +257,9 @@ export function EditorPanel({ panel, onUpdate }: EditorPanelProps) {
           <select
             aria-label="File type"
             value={lang}
-            onChange={(e) => onUpdate({ settings: { ...panel.settings, language: e.target.value } })}
+            onChange={(e) =>
+              onUpdate({ settings: { ...panel.settings, language: e.target.value } })
+            }
           >
             {EDITOR_LANGUAGES.map((l) => (
               <option key={l.id} value={l.id}>
@@ -291,7 +281,7 @@ export function EditorPanel({ panel, onUpdate }: EditorPanelProps) {
               onUpdate({ settings: { ...panel.settings, previewDeviceId: e.target.value } })
             }
           >
-            {EDITOR_DEVICES.map((d) => (
+            {WORKBENCH_DEVICE_PRESETS.map((d) => (
               <option key={d.id} value={d.id}>
                 {d.name} ({d.width}×{d.height})
               </option>

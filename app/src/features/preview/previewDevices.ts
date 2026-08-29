@@ -18,6 +18,18 @@ export interface DevicePreset {
   safeArea?: { top: number; bottom: number };
 }
 
+export interface PreviewEmulation {
+  viewportWidth: number;
+  viewportHeight: number;
+  screenWidth: number;
+  screenHeight: number;
+  deviceScaleFactor: number;
+  displayScale: number;
+  mobile: boolean;
+  touch: boolean;
+  orientation: 'portrait' | 'landscape';
+}
+
 export const DEVICE_PRESETS: DevicePreset[] = [
   {
     id: 'responsive',
@@ -32,7 +44,7 @@ export const DEVICE_PRESETS: DevicePreset[] = [
   // iPhone SE (3rd gen) — 375×667 @2x
   {
     id: 'iphone-se',
-    name: 'iPhone SE',
+    name: 'iPhone SE (3rd generation)',
     category: 'phone',
     width: 375,
     height: 667,
@@ -40,6 +52,39 @@ export const DEVICE_PRESETS: DevicePreset[] = [
     touch: true,
     userAgentProfile: 'mobile',
     safeArea: { top: 20, bottom: 0 },
+  },
+  {
+    id: 'iphone-13-mini',
+    name: 'iPhone 13 mini',
+    category: 'phone',
+    width: 360,
+    height: 780,
+    dpr: 3,
+    touch: true,
+    userAgentProfile: 'mobile',
+    safeArea: { top: 50, bottom: 34 },
+  },
+  {
+    id: 'iphone-13',
+    name: 'iPhone 13 / 13 Pro',
+    category: 'phone',
+    width: 390,
+    height: 844,
+    dpr: 3,
+    touch: true,
+    userAgentProfile: 'mobile',
+    safeArea: { top: 47, bottom: 34 },
+  },
+  {
+    id: 'iphone-13-pro-max',
+    name: 'iPhone 13 Pro Max',
+    category: 'phone',
+    width: 428,
+    height: 926,
+    dpr: 3,
+    touch: true,
+    userAgentProfile: 'mobile',
+    safeArea: { top: 47, bottom: 34 },
   },
   // iPhone 14 / 15 / 16 standard — 393×852 @3x
   {
@@ -65,6 +110,28 @@ export const DEVICE_PRESETS: DevicePreset[] = [
     userAgentProfile: 'mobile',
     safeArea: { top: 59, bottom: 34 },
   },
+  {
+    id: 'iphone-16-pro',
+    name: 'iPhone 16 Pro',
+    category: 'phone',
+    width: 402,
+    height: 874,
+    dpr: 3,
+    touch: true,
+    userAgentProfile: 'mobile',
+    safeArea: { top: 62, bottom: 34 },
+  },
+  {
+    id: 'iphone-16-pro-max',
+    name: 'iPhone 16 Pro Max',
+    category: 'phone',
+    width: 440,
+    height: 956,
+    dpr: 3,
+    touch: true,
+    userAgentProfile: 'mobile',
+    safeArea: { top: 62, bottom: 34 },
+  },
   // Pixel 7 / 8 class — 412×915 @2.625
   {
     id: 'pixel',
@@ -79,10 +146,30 @@ export const DEVICE_PRESETS: DevicePreset[] = [
   // iPad mini (6th / A17 Pro) — 744×1133 @2x
   {
     id: 'ipad-mini',
-    name: 'iPad Mini',
+    name: 'iPad mini (6th generation / A17 Pro)',
     category: 'tablet',
     width: 744,
     height: 1133,
+    dpr: 2,
+    touch: true,
+    userAgentProfile: 'mobile',
+  },
+  {
+    id: 'ipad-air-11',
+    name: 'iPad Air 11-inch',
+    category: 'tablet',
+    width: 820,
+    height: 1180,
+    dpr: 2,
+    touch: true,
+    userAgentProfile: 'mobile',
+  },
+  {
+    id: 'ipad-air-13',
+    name: 'iPad Air 13-inch',
+    category: 'tablet',
+    width: 1024,
+    height: 1366,
     dpr: 2,
     touch: true,
     userAgentProfile: 'mobile',
@@ -117,6 +204,36 @@ export const DEVICE_PRESETS: DevicePreset[] = [
     width: 1366,
     height: 768,
     dpr: 1,
+    touch: false,
+    userAgentProfile: 'desktop',
+  },
+  {
+    id: 'macbook-air-13',
+    name: 'MacBook Air 13-inch screen layout',
+    category: 'laptop',
+    width: 1280,
+    height: 832,
+    dpr: 2,
+    touch: false,
+    userAgentProfile: 'desktop',
+  },
+  {
+    id: 'macbook-pro-14',
+    name: 'MacBook Pro 14-inch screen layout',
+    category: 'laptop',
+    width: 1512,
+    height: 982,
+    dpr: 2,
+    touch: false,
+    userAgentProfile: 'desktop',
+  },
+  {
+    id: 'macbook-pro-16',
+    name: 'MacBook Pro 16-inch screen layout',
+    category: 'laptop',
+    width: 1728,
+    height: 1117,
+    dpr: 2,
     touch: false,
     userAgentProfile: 'desktop',
   },
@@ -167,9 +284,37 @@ export function getDevicePreset(id: string): DevicePreset {
   return DEVICE_PRESETS.find((d) => d.id === id) ?? DEVICE_PRESETS[0]!;
 }
 
-export function defaultOrientationForPreset(
+export const WORKBENCH_DEVICE_PRESETS = DEVICE_PRESETS.filter(
+  (device) => device.category !== 'responsive',
+);
+
+function boundedNumber(value: number, fallback: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+export function createPreviewEmulation(
   preset: DevicePreset,
-): 'portrait' | 'landscape' {
+  orientation: 'portrait' | 'landscape',
+  logical: { width: number; height: number },
+  displayScale: number,
+): PreviewEmulation {
+  const viewportWidth = Math.round(boundedNumber(logical.width, 390, 200, 3840));
+  const viewportHeight = Math.round(boundedNumber(logical.height, 844, 200, 2400));
+  return {
+    viewportWidth,
+    viewportHeight,
+    screenWidth: viewportWidth,
+    screenHeight: viewportHeight,
+    deviceScaleFactor: boundedNumber(preset.dpr, 1, 0.5, 8),
+    displayScale: boundedNumber(displayScale, 1, 0.1, 2),
+    mobile: preset.userAgentProfile === 'mobile',
+    touch: preset.touch,
+    orientation,
+  };
+}
+
+export function defaultOrientationForPreset(preset: DevicePreset): 'portrait' | 'landscape' {
   return preset.category === 'laptop' ||
     preset.category === 'desktop' ||
     preset.category === 'responsive'

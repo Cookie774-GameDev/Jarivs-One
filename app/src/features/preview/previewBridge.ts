@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { PreviewEmulation } from './previewDevices';
 import { normalizePreviewUrl } from './previewUrl';
 
 export interface PreviewBounds {
@@ -41,24 +42,39 @@ export function measurePreviewBounds(el: HTMLElement): PreviewBounds {
   };
 }
 
-export async function previewCreate(url: string, bounds: PreviewBounds) {
+export async function previewCreate(
+  url: string,
+  bounds: PreviewBounds,
+  emulation: PreviewEmulation,
+) {
   if (!isTauriRuntime()) {
-    return { ok: false as const, error: { code: 'not_tauri', message: 'Native preview requires the desktop app.', recoverable: true } };
+    return {
+      ok: false as const,
+      error: {
+        code: 'not_tauri',
+        message: 'Native preview requires the desktop app.',
+        recoverable: true,
+      },
+    };
   }
   const norm = normalizePreviewUrl(url);
-  if (!norm.ok) return { ok: false as const, error: { code: norm.code, message: norm.message, recoverable: true } };
+  if (!norm.ok)
+    return {
+      ok: false as const,
+      error: { code: norm.code, message: norm.message, recoverable: true },
+    };
   try {
-    const status = await invoke('preview_create', { url: norm.url, bounds });
+    const status = await invoke('preview_create', { url: norm.url, bounds, emulation });
     return { ok: true as const, status };
   } catch (e) {
     return { ok: false as const, error: asError(e) };
   }
 }
 
-export async function previewSetBounds(bounds: PreviewBounds) {
+export async function previewSetBounds(bounds: PreviewBounds, emulation: PreviewEmulation) {
   if (!isTauriRuntime()) return false;
   try {
-    return await invoke<boolean>('preview_set_bounds', { bounds });
+    return await invoke<boolean>('preview_set_bounds', { bounds, emulation });
   } catch {
     return false;
   }
@@ -66,8 +82,16 @@ export async function previewSetBounds(bounds: PreviewBounds) {
 
 export async function previewNavigate(url: string) {
   const norm = normalizePreviewUrl(url);
-  if (!norm.ok) return { ok: false as const, error: { code: norm.code, message: norm.message, recoverable: true } };
-  if (!isTauriRuntime()) return { ok: false as const, error: { code: 'not_tauri', message: 'Desktop shell required.', recoverable: true } };
+  if (!norm.ok)
+    return {
+      ok: false as const,
+      error: { code: norm.code, message: norm.message, recoverable: true },
+    };
+  if (!isTauriRuntime())
+    return {
+      ok: false as const,
+      error: { code: 'not_tauri', message: 'Desktop shell required.', recoverable: true },
+    };
   try {
     const status = await invoke('preview_navigate', { url: norm.url });
     return { ok: true as const, status, url: norm.url };
@@ -114,7 +138,11 @@ export async function previewDestroy() {
 
 export async function previewProbeUrl(url: string) {
   const norm = normalizePreviewUrl(url);
-  if (!norm.ok) return { ok: false as const, error: { code: norm.code, message: norm.message, recoverable: true } };
+  if (!norm.ok)
+    return {
+      ok: false as const,
+      error: { code: norm.code, message: norm.message, recoverable: true },
+    };
   if (!isTauriRuntime()) {
     // Browser fallback: try fetch (may CORS-fail for external)
     try {
@@ -141,10 +169,20 @@ export async function previewProbeUrl(url: string) {
 
 export async function startStaticServer(root: string) {
   if (!isTauriRuntime()) {
-    return { ok: false as const, error: { code: 'not_tauri', message: 'Static preview needs the desktop app.', recoverable: true } };
+    return {
+      ok: false as const,
+      error: {
+        code: 'not_tauri',
+        message: 'Static preview needs the desktop app.',
+        recoverable: true,
+      },
+    };
   }
   try {
-    const info = await invoke<{ port: number; root: string; url: string }>('preview_start_static_server', { root });
+    const info = await invoke<{ port: number; root: string; url: string }>(
+      'preview_start_static_server',
+      { root },
+    );
     return { ok: true as const, info };
   } catch (e) {
     return { ok: false as const, error: asError(e) };
@@ -163,7 +201,9 @@ export async function stopStaticServer() {
 export async function probeDevServers() {
   if (!isTauriRuntime()) return [] as Array<{ url: string; host: string; port: string }>;
   try {
-    return await invoke<Array<{ url: string; host: string; port: string }>>('preview_probe_dev_servers');
+    return await invoke<Array<{ url: string; host: string; port: string }>>(
+      'preview_probe_dev_servers',
+    );
   } catch {
     return [];
   }
