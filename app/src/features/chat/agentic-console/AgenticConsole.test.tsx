@@ -1,4 +1,6 @@
 import * as React from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -27,6 +29,18 @@ function message(
 }
 
 describe('AgenticConsole', () => {
+  it('keeps prompt and response phases flat so activity reads as one continuous transcript', () => {
+    const stylesheet = readFileSync(
+      resolve(process.cwd(), 'src/features/chat/agentic-console/agentic-console.css'),
+      'utf8',
+    );
+
+    expect(stylesheet).toMatch(/\.agentic-prompt-band\s*\{[^}]*border:\s*0;/s);
+    expect(stylesheet).toMatch(/\.agentic-prompt-band\s*\{[^}]*background:\s*transparent;/s);
+    expect(stylesheet).toMatch(/\.agentic-answer\s*\{[^}]*border:\s*0;/s);
+    expect(stylesheet).toMatch(/\.agentic-answer\.is-final\s*\{[^}]*background:\s*transparent;/s);
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });

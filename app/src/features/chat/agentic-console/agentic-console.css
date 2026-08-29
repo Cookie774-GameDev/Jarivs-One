@@ -409,10 +409,9 @@ html[data-theme='origami'] [data-agentic-console] {
 
 .agentic-prompt-band {
   padding: 13px 16px 14px;
-  border: 1px solid var(--console-line);
-  border-radius: 8px;
-  background:
-    linear-gradient(90deg, var(--console-accent-soft), transparent 65%), var(--console-panel);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .agentic-prompt-band__meta {
@@ -461,13 +460,13 @@ html[data-theme='origami'] [data-agentic-console] {
 
 .agentic-answer {
   padding: 15px 16px;
-  border: 1px solid color-mix(in srgb, var(--console-line) 76%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--console-panel) 78%, transparent);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .agentic-answer.is-final {
-  background: color-mix(in srgb, var(--console-accent) 5%, transparent);
+  background: transparent;
 }
 
 .agentic-answer__meta {
