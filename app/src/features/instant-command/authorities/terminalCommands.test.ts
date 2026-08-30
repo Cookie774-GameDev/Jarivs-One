@@ -1,0 +1,77 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { LiveTerminalTarget } from '../types';
+import { executeTerminalCommand, type TerminalCommandAuthorityPort } from './terminalCommands';
+
+const target: LiveTerminalTarget = {
+  paneId: 'pane_2',
+  sessionId: 'sess_2',
+  ordinal: 2,
+  provider: 'codex',
+  label: 'Reviewer',
+  projectId: 'proj',
+  processIdentity: {
+    projectId: 'proj',
+    processInstanceId: 'proc_2',
+    pid: 202,
+    processStartedAt: 20,
+    runtimeGeneration: 'generation_3',
+  },
+};
+
+function authority(): TerminalCommandAuthorityPort {
+  return {
+    readTargets: vi.fn(async () => [target]),
+    dispatch: vi.fn(async () => ({
+      ok: true as const,
+      code: 'queued' as const,
+      message: 'Queued.',
+    })),
+  };
+}
+
+describe('executeTerminalCommand', () => {
+  it('returns status from the verified live snapshot without dispatching a side effect', async () => {
+    const port = authority();
+    await expect(
+      executeTerminalCommand({ id: 'terminal.status', slots: { selector: { ordinal: 2 } } }, port),
+    ).resolves.toEqual({
+      ok: true,
+      code: 'opened',
+      message: 'Terminal 2 is available (Codex, pane pane_2, session sess_2).',
+    });
+    expect(port.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on ambiguous targets and active prompt interlocks', async () => {
+    const port = authority();
+    vi.mocked(port.readTargets).mockResolvedValue([
+      target,
+      { ...target, paneId: 'pane_3', sessionId: 'sess_3', ordinal: 3 },
+    ]);
+    await expect(
+      executeTerminalCommand(
+        { id: 'agent.status', slots: { selector: { provider: 'codex' } } },
+        port,
+      ),
+    ).resolves.toMatchObject({ ok: false, code: 'target_ambiguous' });
+
+    await expect(
+      executeTerminalCommand(
+        {
+          id: 'agent.message',
+          slots: { selector: { ordinal: 2 }, payload: 'continue' },
+          promptState: 'approval',
+        },
+        authority(),
+      ),
+    ).resolves.toMatchObject({ ok: false, code: 'target_not_ready' });
+  });
+
+  it('requires a bound confirmation before destructive lifecycle dispatch', async () => {
+    const port = authority();
+    await expect(
+      executeTerminalCommand({ id: 'terminal.close', slots: { selector: { ordinal: 2 } } }, port),
+    ).resolves.toMatchObject({ ok: false, code: 'confirmation_required' });
+    expect(port.dispatch).not.toHaveBeenCalled();
+  });
+});

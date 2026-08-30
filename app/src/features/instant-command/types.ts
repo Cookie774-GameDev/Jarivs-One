@@ -40,6 +40,8 @@ export type InstantResultCode =
   | 'opened'
   | 'target_missing'
   | 'target_ambiguous'
+  | 'target_not_ready'
+  | 'confirmation_required'
   | 'queue_failed';
 
 export type InstantResult = Readonly<{

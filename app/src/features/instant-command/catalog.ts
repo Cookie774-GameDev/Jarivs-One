@@ -1,4 +1,5 @@
 import { NAVIGATION_COMMAND_INPUTS } from './catalog/navigation';
+import { TERMINAL_AGENT_COMMAND_INPUTS } from './catalog/terminals';
 import { buildCatalogIndex } from './catalogIndex';
 import type {
   CatalogMatch,
@@ -562,7 +563,12 @@ const teamCommands = TEAM_COMMANDS.map((name) =>
 
 export const INSTANT_COMMAND_CATALOG: readonly CommandDefinition[] = Object.freeze([
   ...navigationCommands,
-  ...FAMILY_COMMANDS.map(command),
+  ...TERMINAL_AGENT_COMMAND_INPUTS.map(command),
+  ...FAMILY_COMMANDS.filter(
+    (input) =>
+      (input.family !== 'terminal' && input.family !== 'agent') ||
+      ['terminal.open', 'terminal.message', 'terminal.broadcast', 'agent.open'].includes(input.id),
+  ).map(command),
   ...teamCommands,
 ]);
 

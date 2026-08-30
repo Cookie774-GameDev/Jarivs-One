@@ -16,6 +16,10 @@ import {
   executeNavigationCommand,
   type NavigationCommandRequest,
 } from './authorities/navigationCommands';
+import {
+  executeTerminalCommand,
+  type TerminalCommandRequest,
+} from './authorities/terminalCommands';
 import type {
   InstantCommand,
   InstantCommandExecutionContext,
@@ -35,6 +39,10 @@ export type InstantCommandDependencies = Readonly<{
     request: NavigationCommandRequest,
     signal?: AbortSignal,
   ) => Promise<InstantResult>;
+  executeTerminal?: (
+    request: TerminalCommandRequest,
+    signal?: AbortSignal,
+  ) => Promise<InstantResult>;
 }>;
 
 const defaultDependencies: InstantCommandDependencies = {
@@ -51,6 +59,19 @@ const defaultDependencies: InstantCommandDependencies = {
   },
   readTargets: readLiveTargetSnapshot,
   executeNavigation: (request, signal) => executeNavigationCommand(request, undefined, signal),
+  executeTerminal: (request, signal) =>
+    executeTerminalCommand(
+      request,
+      {
+        readTargets: readLiveTargetSnapshot,
+        dispatch: async () => ({
+          ok: false,
+          code: 'queue_failed',
+          message: 'That Instant Command is not available yet.',
+        }),
+      },
+      signal,
+    ),
 };
 
 function targetRef(target: LiveTerminalTarget): TerminalRef {
@@ -78,14 +99,21 @@ export async function executeInstantCommand(
     return { ok: result.ok, code: result.ok ? 'legacy' : 'legacy_failed', message: result.message };
   }
   if (command.kind === 'catalog') {
-    if (command.family !== 'navigation') {
+    if (command.family === 'navigation') {
+      return dependencies.executeNavigation({ id: command.id, slots: command.slots }, signal);
+    }
+    if (command.family === 'terminal' || command.family === 'agent') {
+      const executeTerminalDependency =
+        dependencies.executeTerminal ?? defaultDependencies.executeTerminal!;
+      return executeTerminalDependency({ id: command.id, slots: command.slots }, signal);
+    }
+    {
       return {
         ok: false,
         code: 'queue_failed',
         message: 'That Instant Command is not available yet.',
       };
     }
-    return dependencies.executeNavigation({ id: command.id, slots: command.slots }, signal);
   }
   if (command.kind === 'open-model-picker') {
     if (signal?.aborted) {
