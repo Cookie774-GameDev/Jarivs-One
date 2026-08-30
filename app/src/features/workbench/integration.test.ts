@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveInitialRoute } from '@/stores/ui';
 import { getAllActions, performAction } from '@/features/command-palette/actions';
+import * as artifactAccess from '@/features/jarvis-command-center/artifactAccess';
 import { ArtifactReferenceResolverProvider, ReferencePanel } from './ReferencePanel';
 import { useWorkbenchStore } from './store';
 import type {
@@ -67,6 +68,7 @@ function renderArtifactReference(
 
 describe('Workbench integration seams', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     window.localStorage.clear();
     useWorkbenchStore.getState().resetWorkbench();
   });
@@ -161,6 +163,33 @@ describe('Workbench integration seams', () => {
     expect(screen.getByText(/approved content/i)).toBeTruthy();
     expect(screen.queryByText(/private\\verified-design/i)).toBeNull();
     expect(screen.queryByText('must never render')).toBeNull();
+    expect(document.querySelector('a')).toBeNull();
+  });
+
+  it('binds the provider to the canonical account-scoped artifact preview authority', async () => {
+    const repository = {
+      getById: vi.fn(),
+    } as unknown as Parameters<typeof artifactAccess.resolveAccountJarvisArtifactPreview>[0];
+    const resolvePreview = vi
+      .spyOn(artifactAccess, 'resolveAccountJarvisArtifactPreview')
+      .mockResolvedValue(resolvedArtifact());
+
+    render(
+      React.createElement(
+        ArtifactReferenceResolverProvider,
+        { accountId: 'account-alpha', repository },
+        React.createElement(ReferencePanel, {
+          panel: artifactPanel(),
+          onUpdate: () => undefined,
+        }),
+      ),
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Verified design document' })).toBeTruthy();
+    expect(resolvePreview).toHaveBeenCalledWith(repository, {
+      accountId: 'account-alpha',
+      artifactId: 'jart_opaque-alpha',
+    });
     expect(document.querySelector('a')).toBeNull();
   });
 

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { NotebookPen } from 'lucide-react';
+import { resolveAccountJarvisArtifactPreview } from '@/features/jarvis-command-center/artifactAccess';
 import { DevicePreviewPanel } from './DevicePreviewPanel';
 import { EditorPanel } from './EditorPanel';
 import { EmbeddedSurface, isEmbeddedSurfaceKind } from './EmbeddedSurface';
@@ -17,14 +18,28 @@ interface ArtifactReferenceResolverContextValue {
   resolve: WorkbenchArtifactReferenceResolver;
 }
 
+type ArtifactPreviewRepository = Parameters<typeof resolveAccountJarvisArtifactPreview>[0];
+type ArtifactReferenceResolverProviderProps = React.PropsWithChildren<
+  { accountId: string } & (
+    | { repository: ArtifactPreviewRepository; resolve?: never }
+    | { resolve: WorkbenchArtifactReferenceResolver; repository?: never }
+  )
+>;
+
 const ArtifactReferenceResolverContext =
   React.createContext<ArtifactReferenceResolverContextValue | null>(null);
 
-export function ArtifactReferenceResolverProvider({
-  accountId,
-  resolve,
-  children,
-}: ArtifactReferenceResolverContextValue & React.PropsWithChildren) {
+export function ArtifactReferenceResolverProvider(props: ArtifactReferenceResolverProviderProps) {
+  const { accountId, children } = props;
+  const repository = props.repository;
+  const injectedResolver = props.resolve;
+  const resolve = React.useMemo<WorkbenchArtifactReferenceResolver>(() => {
+    if (repository) {
+      return async (input) =>
+        (await resolveAccountJarvisArtifactPreview(repository, input)) ?? null;
+    }
+    return injectedResolver ?? (async () => null);
+  }, [injectedResolver, repository]);
   const value = React.useMemo(() => ({ accountId, resolve }), [accountId, resolve]);
   return (
     <ArtifactReferenceResolverContext.Provider value={value}>
