@@ -1,3 +1,6 @@
+import { INSTANT_COMMAND_CATALOG } from './catalog';
+import type { CommandSafety } from './catalogTypes';
+
 export type AuthorityInventoryEntry = Readonly<{
   id: string;
   canonicalSeam: string;
@@ -44,3 +47,48 @@ export const AUTHORITY_INVENTORY: readonly AuthorityInventoryEntry[] = Object.fr
     'capability-gated',
   ),
 ]);
+
+export type CommandAuthorityInventoryEntry = Readonly<{
+  commandId: string;
+  authorityId: string;
+  canonicalSeam: string;
+  safety: CommandSafety;
+  requiredContext: readonly string[];
+  testSeam: string;
+  currentState: 'ready' | 'blocked' | 'capability-gated';
+}>;
+
+const authorityById = new Map(AUTHORITY_INVENTORY.map((entry) => [entry.id, entry]));
+
+function requiredContext(authorityId: string): readonly string[] {
+  if (authorityId === 'ui.route') return Object.freeze(['account session']);
+  if (authorityId.startsWith('terminal.')) {
+    return Object.freeze(['account session', 'active project', 'verified terminal snapshot']);
+  }
+  if (authorityId === 'terminal-peer-fabric') {
+    return Object.freeze(['account session', 'active project', 'compatible native capability']);
+  }
+  return Object.freeze(['account session', 'workspace/project scope', 'authority capability']);
+}
+
+export const COMMAND_AUTHORITY_INVENTORY: readonly CommandAuthorityInventoryEntry[] = Object.freeze(
+  INSTANT_COMMAND_CATALOG.map((command) => {
+    const authority = authorityById.get(command.authority);
+    if (!authority) throw new Error(`Missing authority inventory for ${command.id}`);
+    return Object.freeze({
+      commandId: command.id,
+      authorityId: authority.id,
+      canonicalSeam: authority.canonicalSeam,
+      safety: command.safety,
+      requiredContext: requiredContext(authority.id),
+      testSeam: `instant-command catalog and ${authority.id} authority tests`,
+      currentState:
+        command.availability === 'blocked'
+          ? 'blocked'
+          : authority.currentState === 'capability-gated' ||
+              command.availability === 'capability-gated'
+            ? 'capability-gated'
+            : 'ready',
+    });
+  }),
+);

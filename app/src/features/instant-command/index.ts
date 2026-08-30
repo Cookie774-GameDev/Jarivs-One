@@ -1,3 +1,9 @@
 export { classifyInstantCommandInput, parseInstantCommand } from './parse';
-export { executeInstantCommand } from './execute';
-export type { InstantCommand, InstantResult, TerminalSelector } from './types';
+export { executeInstantCommand, executeInstantCommandWithReceipt } from './execute';
+export type { InstantCommandReceipt } from './receipt';
+export type {
+  InstantCommand,
+  InstantCommandExecutionContext,
+  InstantResult,
+  TerminalSelector,
+} from './types';

@@ -17,6 +17,8 @@ function definition(overrides: Partial<CommandDefinition> = {}): CommandDefiniti
       authorization: ['open chat as another account'],
       latencyBudgetMs: 500,
     },
+    slotGrammar: 'remainder',
+    parseSlots: (match) => ({ status: 'parsed', slots: { remainder: match.remainder } }),
     ...overrides,
   };
 }
@@ -33,6 +35,12 @@ describe('buildCatalogIndex', () => {
         definition({ id: 'navigation.history.open', aliases: ['  OPEN   CHAT  '] }),
       ]),
     ).toThrow(/alias collision/i);
+  });
+
+  it('rejects duplicate normalized aliases within one command as unreachable', () => {
+    expect(() =>
+      buildCatalogIndex([definition({ aliases: ['open chat', '  OPEN   CHAT  '] })]),
+    ).toThrow(/duplicate alias|unreachable/i);
   });
 
   it('rejects entries without a canonical authority or complete fixtures', () => {
@@ -58,5 +66,23 @@ describe('buildCatalogIndex', () => {
       'terminal.message',
     ]);
     expect(index.match('explain message queues')).toEqual([]);
+  });
+
+  it('returns original-text offsets and remainder without changing casing or punctuation', () => {
+    const index = buildCatalogIndex([
+      definition({
+        id: 'terminal.message',
+        family: 'terminal',
+        aliases: ['message terminal'],
+        authority: 'terminal.prompt-delivery',
+      }),
+    ]);
+    const source = '  MESSAGE   terminal two: Run NPM --Flag!  ';
+    const match = index.matchWithOffsets(source)[0];
+
+    expect(match).toMatchObject({ alias: 'message terminal', remainder: 'two: Run NPM --Flag!' });
+    expect(source.slice(match!.sourceStart, match!.sourceEnd).replace(/\s+/gu, ' ')).toBe(
+      'MESSAGE terminal',
+    );
   });
 });

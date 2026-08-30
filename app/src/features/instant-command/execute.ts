@@ -9,7 +9,15 @@ import type { TerminalRef } from '@/features/terminals/terminalRefs';
 import { useUIStore } from '@/stores/ui';
 import { readLiveTargetSnapshot } from './targetSnapshot';
 import { resolveTerminalTarget } from './terminalTargetResolver';
-import type { InstantCommand, InstantResult, LiveTerminalTarget } from './types';
+import { InstantCommandLedger, type InstantCommandBinding } from './commandLedger';
+import { runWithInstantCommandDeadline } from './deadline';
+import { createInstantCommandReceipt, type InstantCommandReceipt } from './receipt';
+import type {
+  InstantCommand,
+  InstantCommandExecutionContext,
+  InstantResult,
+  LiveTerminalTarget,
+} from './types';
 
 type ShellCommandInput = Omit<Extract<TerminalCommand, { kind: 'shell' }>, 'id' | 'kind'>;
 
@@ -51,12 +59,19 @@ function targetRef(target: LiveTerminalTarget): TerminalRef {
 export async function executeInstantCommand(
   command: InstantCommand,
   dependencies: InstantCommandDependencies = defaultDependencies,
+  signal?: AbortSignal,
 ): Promise<InstantResult> {
+  if (signal?.aborted) {
+    return { ok: false, code: 'queue_failed', message: 'The instant command deadline elapsed.' };
+  }
   if (command.kind === 'legacy') {
     const result = await dependencies.executeLegacy(command.intent);
     return { ok: result.ok, code: result.ok ? 'legacy' : 'legacy_failed', message: result.message };
   }
   if (command.kind === 'open-model-picker') {
+    if (signal?.aborted) {
+      return { ok: false, code: 'queue_failed', message: 'The instant command deadline elapsed.' };
+    }
     dependencies.openModelPicker();
     return { ok: true, code: 'opened', message: 'Opened provider and model selection.' };
   }
@@ -65,6 +80,13 @@ export async function executeInstantCommand(
       const preset = getTerminalCliPreset(command.provider);
       if (!preset || !Number.isInteger(command.count) || command.count < 1 || command.count > 10) {
         return { ok: false, code: 'queue_failed', message: 'That terminal CLI is not supported.' };
+      }
+      if (signal?.aborted) {
+        return {
+          ok: false,
+          code: 'queue_failed',
+          message: 'The instant command deadline elapsed.',
+        };
       }
       dependencies.enqueueBatch(
         Array.from({ length: command.count }, (_, index) => ({
@@ -81,7 +103,11 @@ export async function executeInstantCommand(
       };
     }
 
-    const resolution = resolveTerminalTarget(command.target, await dependencies.readTargets());
+    const liveTargets = await dependencies.readTargets();
+    if (signal?.aborted) {
+      return { ok: false, code: 'queue_failed', message: 'The instant command deadline elapsed.' };
+    }
+    const resolution = resolveTerminalTarget(command.target, liveTargets);
     if (resolution.kind === 'missing') {
       return {
         ok: false,
@@ -112,5 +138,116 @@ export async function executeInstantCommand(
       code: 'queue_failed',
       message: 'The terminal command could not be queued.',
     };
+  }
+}
+
+const sharedLedger = new InstantCommandLedger();
+
+function commandId(command: InstantCommand): string {
+  if (command.kind === 'legacy') return `legacy.${command.intent.kind}`;
+  if (command.kind === 'open-agent-cli') return 'terminal.open';
+  if (command.kind === 'open-model-picker') return 'model.picker.open';
+  if (command.kind === 'agent-message') return 'agent.message';
+  if (command.kind === 'terminal-broadcast') return 'terminal.broadcast';
+  return 'terminal.message';
+}
+
+function digestCommand(command: InstantCommand): string {
+  const source = JSON.stringify(command);
+  let hash = 2_166_136_261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function targetIds(command: InstantCommand): readonly string[] {
+  if (command.kind === 'open-agent-cli') return Object.freeze([command.provider]);
+  if (
+    command.kind === 'agent-message' ||
+    command.kind === 'terminal-message' ||
+    command.kind === 'terminal-broadcast'
+  ) {
+    return Object.freeze(
+      [command.target.sessionId, command.target.paneId, command.target.agentSlug]
+        .filter((value): value is string => Boolean(value))
+        .sort(),
+    );
+  }
+  return Object.freeze([]);
+}
+
+function resultStatus(result: InstantResult): InstantCommandReceipt['status'] {
+  if (result.code === 'queued') return 'queued';
+  if (result.code === 'target_missing' || result.code === 'target_ambiguous') {
+    return 'needs_clarification';
+  }
+  if (result.ok) return 'completed';
+  return 'rejected';
+}
+
+function receiptFor(
+  id: string,
+  context: InstantCommandExecutionContext,
+  result: InstantResult,
+  targets: readonly string[],
+  acceptedAtMs: number,
+): InstantCommandReceipt {
+  const status = resultStatus(result);
+  return createInstantCommandReceipt({
+    commandId: id,
+    correlationId: context.correlationId,
+    status,
+    acceptedAtMs,
+    targetIds: targets,
+    ...(status === 'needs_clarification'
+      ? { followUp: { kind: 'clarification' as const, prompt: result.message } }
+      : {}),
+  });
+}
+
+export async function executeInstantCommandWithReceipt(
+  command: InstantCommand,
+  context: InstantCommandExecutionContext,
+  dependencies: InstantCommandDependencies = defaultDependencies,
+  ledger: InstantCommandLedger = sharedLedger,
+): Promise<InstantCommandReceipt> {
+  const id = commandId(command);
+  const targets = targetIds(command);
+  const acceptedAtMs = Date.now();
+  const binding: InstantCommandBinding = {
+    accountId: context.accountId,
+    workspaceId: context.workspaceId,
+    projectId: context.projectId,
+    commandId: id,
+    targetIds: targets,
+    argumentDigest: digestCommand(command),
+  };
+  try {
+    return await ledger.runOnce(context.correlationId, binding, async () => {
+      const deadline = await runWithInstantCommandDeadline(
+        (signal) => executeInstantCommand(command, dependencies, signal),
+        500,
+      );
+      if (deadline.status === 'timed_out') {
+        return createInstantCommandReceipt({
+          commandId: id,
+          correlationId: context.correlationId,
+          status: 'timed_out',
+          acceptedAtMs,
+          targetIds: targets,
+        });
+      }
+      return receiptFor(id, context, deadline.value, targets, acceptedAtMs);
+    });
+  } catch {
+    return createInstantCommandReceipt({
+      commandId: id,
+      correlationId: context.correlationId,
+      status: 'rejected',
+      acceptedAtMs,
+      targetIds: targets,
+    });
   }
 }

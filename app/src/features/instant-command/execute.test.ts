@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { InstantCommand, LiveTerminalTarget } from './types';
-import { executeInstantCommand, type InstantCommandDependencies } from './execute';
+import { InstantCommandLedger } from './commandLedger';
+import {
+  executeInstantCommand,
+  executeInstantCommandWithReceipt,
+  type InstantCommandDependencies,
+} from './execute';
 
 const codex: LiveTerminalTarget = {
   sessionId: 'tty-codex',
@@ -136,5 +141,100 @@ describe('executeInstantCommand', () => {
     expect(h.enqueueBatch).toHaveBeenCalledOnce();
     expect((h.enqueueBatch.mock.calls as unknown[][])[0]?.[0]).toHaveLength(3);
     expect(h.routeToTerminal).not.toHaveBeenCalled();
+  });
+});
+
+describe('executeInstantCommandWithReceipt', () => {
+  const context = {
+    correlationId: 'instant-1',
+    accountId: 'account-a',
+    workspaceId: 'workspace-a',
+    projectId: 'project-a',
+  } as const;
+
+  it('deduplicates the same scoped correlation before invoking authority', async () => {
+    const h = dependencies();
+    const ledger = new InstantCommandLedger();
+    const command: InstantCommand = { kind: 'open-agent-cli', provider: 'codex', count: 1 };
+    const [first, replay] = await Promise.all([
+      executeInstantCommandWithReceipt(command, context, h.deps, ledger),
+      executeInstantCommandWithReceipt(command, context, h.deps, ledger),
+    ]);
+
+    expect(replay).toEqual(first);
+    expect(first).toMatchObject({
+      commandId: 'terminal.open',
+      correlationId: 'instant-1',
+      status: 'queued',
+    });
+    expect(h.enqueueBatch).toHaveBeenCalledOnce();
+  });
+
+  it('rejects correlation reuse for a different command without a second side effect', async () => {
+    const h = dependencies();
+    const ledger = new InstantCommandLedger();
+    await executeInstantCommandWithReceipt(
+      { kind: 'open-agent-cli', provider: 'codex', count: 1 },
+      context,
+      h.deps,
+      ledger,
+    );
+
+    await expect(
+      executeInstantCommandWithReceipt({ kind: 'open-model-picker' }, context, h.deps, ledger),
+    ).resolves.toMatchObject({ status: 'rejected', commandId: 'model.picker.open' });
+    expect(h.enqueueBatch).toHaveBeenCalledOnce();
+    expect(h.openModelPicker).not.toHaveBeenCalled();
+  });
+
+  it('times out by 500 ms and prevents authority invocation after a late target snapshot', async () => {
+    vi.useFakeTimers();
+    try {
+      const h = dependencies();
+      h.readTargets.mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve([codex]), 700)),
+      );
+      const receiptPromise = executeInstantCommandWithReceipt(
+        {
+          kind: 'agent-message',
+          target: { provider: 'codex' },
+          payload: 'audit',
+        },
+        context,
+        h.deps,
+        new InstantCommandLedger(),
+      );
+
+      await vi.advanceTimersByTimeAsync(500);
+      await expect(receiptPromise).resolves.toMatchObject({ status: 'timed_out' });
+      await vi.advanceTimersByTimeAsync(200);
+      expect(h.enqueueBatch).not.toHaveBeenCalled();
+      expect(h.routeToTerminal).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('returns a compact clarification receipt for ambiguous targets', async () => {
+    const h = dependencies([codex, { ...codex, sessionId: 'tty-2', paneId: 'pane-2', ordinal: 2 }]);
+    const receipt = await executeInstantCommandWithReceipt(
+      { kind: 'agent-message', target: { provider: 'codex' }, payload: 'audit' },
+      context,
+      h.deps,
+      new InstantCommandLedger(),
+    );
+
+    expect(receipt).toEqual({
+      commandId: 'agent.message',
+      correlationId: 'instant-1',
+      status: 'needs_clarification',
+      acceptedAtMs: expect.any(Number),
+      targetIds: [],
+      followUp: {
+        kind: 'clarification',
+        prompt: 'More than one live terminal matches that target.',
+      },
+    });
+    expect(JSON.stringify(receipt)).not.toContain('audit');
   });
 });

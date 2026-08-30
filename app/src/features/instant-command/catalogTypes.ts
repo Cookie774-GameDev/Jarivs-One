@@ -15,6 +15,10 @@ export type CommandFamily =
 
 export type CommandSafety = 'read' | 'reversible' | 'confirm' | 'approval';
 export type CommandAvailability = 'available' | 'capability-gated' | 'blocked';
+export type CommandSlotGrammar = 'none' | 'remainder';
+
+export type CatalogParseResult<TSlots extends object = Readonly<Record<string, unknown>>> =
+  Readonly<{ status: 'parsed'; slots: TSlots }> | Readonly<{ status: 'rejected'; reason: string }>;
 
 export type CommandFixtures = Readonly<{
   negative: readonly string[];
@@ -36,10 +40,24 @@ export type CommandDefinition = Readonly<{
   availability: CommandAvailability;
   examples: readonly string[];
   fixtures: CommandFixtures;
+  slotGrammar: CommandSlotGrammar;
+  parseSlots: (
+    match: CatalogMatch,
+    source: string,
+  ) => CatalogParseResult<Readonly<Record<string, unknown>>>;
   target?: string;
+}>;
+
+export type CatalogMatch = Readonly<{
+  definition: CommandDefinition;
+  alias: string;
+  sourceStart: number;
+  sourceEnd: number;
+  remainder: string;
 }>;
 
 export type CommandCatalogIndex = Readonly<{
   entries: readonly CommandDefinition[];
   match: (source: string) => readonly CommandDefinition[];
+  matchWithOffsets: (source: string) => readonly CatalogMatch[];
 }>;

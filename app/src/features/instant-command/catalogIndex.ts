@@ -1,4 +1,4 @@
-import type { CommandCatalogIndex, CommandDefinition } from './catalogTypes';
+import type { CatalogMatch, CommandCatalogIndex, CommandDefinition } from './catalogTypes';
 
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/u;
 
@@ -44,7 +44,8 @@ export function buildCatalogIndex(definitions: readonly CommandDefinition[]): Co
       const alias = normalizeCatalogPhrase(rawAlias);
       if (!alias || CONTROL_CHARACTER.test(alias)) throw new Error(`${id} has an invalid alias`);
       const owner = aliases.get(alias);
-      if (owner && owner.id !== id) {
+      if (owner) {
+        if (owner.id === id) throw new Error(`Duplicate alias is unreachable: ${rawAlias}`);
         throw new Error(`Alias collision: ${rawAlias} belongs to ${owner.id} and ${id}`);
       }
       aliases.set(alias, definition);
@@ -59,24 +60,48 @@ export function buildCatalogIndex(definitions: readonly CommandDefinition[]): Co
     bucket.sort((left, right) => right.alias.length - left.alias.length);
   }
 
+  function matchWithOffsets(source: string): readonly CatalogMatch[] {
+    if (typeof source !== 'string' || CONTROL_CHARACTER.test(source)) return [];
+    const normalized = normalizeCatalogPhrase(source);
+    const firstToken = normalized.split(' ', 1)[0];
+    const bucket = byFirstToken.get(firstToken) ?? [];
+    const matches = new Map<string, CatalogMatch>();
+    for (const candidate of bucket) {
+      if (
+        normalized !== candidate.alias &&
+        !normalized.startsWith(`${candidate.alias} `) &&
+        !normalized.startsWith(`${candidate.alias}:`)
+      ) {
+        continue;
+      }
+      const aliasPattern = candidate.alias
+        .split(' ')
+        .map((token) => token.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'))
+        .join('\\s+');
+      const originalMatch = new RegExp(`^\\s*${aliasPattern}(?=\\s|:|$)`, 'iu').exec(source);
+      if (!originalMatch) continue;
+      const sourceStart = source.search(/\S/u);
+      const sourceEnd = originalMatch[0].length;
+      const remainder = source
+        .slice(sourceEnd)
+        .replace(/^\s*:\s*/u, '')
+        .trim();
+      matches.set(candidate.definition.id, {
+        definition: candidate.definition,
+        alias: candidate.alias,
+        sourceStart: Math.max(0, sourceStart),
+        sourceEnd,
+        remainder,
+      });
+    }
+    return [...matches.values()];
+  }
+
   return Object.freeze({
     entries: Object.freeze([...definitions]),
+    matchWithOffsets,
     match(source: string): readonly CommandDefinition[] {
-      if (typeof source !== 'string' || CONTROL_CHARACTER.test(source)) return [];
-      const normalized = normalizeCatalogPhrase(source);
-      const firstToken = normalized.split(' ', 1)[0];
-      const bucket = byFirstToken.get(firstToken) ?? [];
-      const matches = new Map<string, CommandDefinition>();
-      for (const candidate of bucket) {
-        if (
-          normalized === candidate.alias ||
-          normalized.startsWith(`${candidate.alias} `) ||
-          normalized.startsWith(`${candidate.alias}:`)
-        ) {
-          matches.set(candidate.definition.id, candidate.definition);
-        }
-      }
-      return [...matches.values()];
+      return matchWithOffsets(source).map((match) => match.definition);
     },
   });
 }

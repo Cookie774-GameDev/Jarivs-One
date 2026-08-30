@@ -72,4 +72,21 @@ describe('INSTANT_COMMAND_CATALOG', () => {
     expect(byId.get('tool.run')?.safety).toBe('approval');
     expect(byId.get('file.delete')).toBeUndefined();
   });
+
+  it('declares a slot grammar and parses original-text remainder for every command', () => {
+    for (const command of INSTANT_COMMAND_CATALOG) {
+      expect(command.slotGrammar).toBeTruthy();
+      expect(command.parseSlots).toBeTypeOf('function');
+    }
+
+    const source = 'message terminal two: Run NPM --Flag!';
+    const match = INSTANT_COMMAND_INDEX.matchWithOffsets(source).find(
+      (candidate) => candidate.definition.id === 'terminal.message',
+    );
+    expect(match).toBeDefined();
+    expect(match!.definition.parseSlots(match!, source)).toEqual({
+      status: 'parsed',
+      slots: { remainder: 'two: Run NPM --Flag!' },
+    });
+  });
 });

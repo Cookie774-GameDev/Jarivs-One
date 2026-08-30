@@ -1,0 +1,52 @@
+export type InstantCommandReceiptStatus =
+  'completed' | 'queued' | 'needs_confirmation' | 'needs_clarification' | 'rejected' | 'timed_out';
+
+export type InstantCommandFollowUp = Readonly<{
+  kind: 'confirmation' | 'clarification';
+  prompt: string;
+}>;
+
+export type InstantCommandReceipt = Readonly<{
+  commandId: string;
+  correlationId: string;
+  status: InstantCommandReceiptStatus;
+  acceptedAtMs: number;
+  targetIds: readonly string[];
+  followUp?: InstantCommandFollowUp;
+}>;
+
+const SAFE_IDENTIFIER = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,255}$/u;
+
+export function createInstantCommandReceipt(input: InstantCommandReceipt): InstantCommandReceipt {
+  if (!SAFE_IDENTIFIER.test(input.commandId)) throw new Error('Invalid command id');
+  if (!SAFE_IDENTIFIER.test(input.correlationId)) throw new Error('Invalid correlation id');
+  if (!Number.isFinite(input.acceptedAtMs) || input.acceptedAtMs < 0) {
+    throw new Error('Invalid accepted time');
+  }
+  if (input.targetIds.some((target) => !SAFE_IDENTIFIER.test(target))) {
+    throw new Error('Invalid target id');
+  }
+  const requiredFollowUp =
+    input.status === 'needs_confirmation'
+      ? 'confirmation'
+      : input.status === 'needs_clarification'
+        ? 'clarification'
+        : undefined;
+  if (
+    (requiredFollowUp && input.followUp?.kind !== requiredFollowUp) ||
+    (!requiredFollowUp && input.followUp)
+  ) {
+    throw new Error('Receipt follow-up does not match status');
+  }
+  const followUp = input.followUp
+    ? Object.freeze({ kind: input.followUp.kind, prompt: input.followUp.prompt })
+    : undefined;
+  return Object.freeze({
+    commandId: input.commandId,
+    correlationId: input.correlationId,
+    status: input.status,
+    acceptedAtMs: input.acceptedAtMs,
+    targetIds: Object.freeze([...input.targetIds]),
+    ...(followUp ? { followUp } : {}),
+  });
+}

@@ -1,10 +1,12 @@
 import { APP_ROUTES, type Route } from '@/features/navigation/routeSchema';
 import { buildCatalogIndex } from './catalogIndex';
 import type {
+  CatalogMatch,
   CommandAvailability,
   CommandDefinition,
   CommandFamily,
   CommandSafety,
+  CommandSlotGrammar,
 } from './catalogTypes';
 
 type DefinitionInput = Readonly<{
@@ -16,10 +18,12 @@ type DefinitionInput = Readonly<{
   availability?: CommandAvailability;
   target?: string;
   example?: string;
+  slotGrammar?: CommandSlotGrammar;
 }>;
 
 function command(input: DefinitionInput): CommandDefinition {
   const example = input.example ?? input.aliases[0];
+  const slotGrammar = input.slotGrammar ?? 'remainder';
   return Object.freeze({
     id: input.id,
     family: input.family,
@@ -34,6 +38,15 @@ function command(input: DefinitionInput): CommandDefinition {
       authorization: Object.freeze([`${example} as another account`]),
       latencyBudgetMs: 500,
     }),
+    slotGrammar,
+    parseSlots: Object.freeze((match: CatalogMatch) =>
+      slotGrammar === 'none'
+        ? Object.freeze({ status: 'parsed' as const, slots: Object.freeze({}) })
+        : Object.freeze({
+            status: 'parsed' as const,
+            slots: Object.freeze({ remainder: match.remainder }),
+          }),
+    ),
     ...(input.target ? { target: input.target } : {}),
   });
 }
@@ -68,6 +81,7 @@ const navigationCommands = APP_ROUTES.map((route) =>
     aliases: ROUTE_ALIASES[route],
     authority: 'ui.route',
     safety: 'read',
+    slotGrammar: 'none',
     target: route,
   }),
 );

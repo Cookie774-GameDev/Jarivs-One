@@ -39,6 +39,13 @@ export type InstantResult = Readonly<{
   message: string;
 }>;
 
+export type InstantCommandExecutionContext = Readonly<{
+  correlationId: string;
+  accountId: string;
+  workspaceId: string;
+  projectId: string;
+}>;
+
 export type LiveTerminalTarget = Readonly<{
   sessionId: string;
   paneId: string;
