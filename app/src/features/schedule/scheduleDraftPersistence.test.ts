@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   clearScheduleDraft,
   readScheduleDraft,
+  scheduleDraftsEqual,
   scheduleDraftStorageKey,
   writeScheduleDraft,
   type ScheduleDraft,
@@ -60,6 +61,61 @@ describe('Schedule draft persistence', () => {
       scheduleDraftStorageKey('workspace_1'),
       JSON.stringify({ ...draft, intervalAmount: 10_000 }),
     );
+    expect(readScheduleDraft('workspace_1')).toBeNull();
+  });
+
+  it('round-trips a revision-bound CAO edit and compares its mutable policy', () => {
+    const caoDraft = {
+      ...draft,
+      scheduleMode: 'jarvis' as const,
+      editing: {
+        eventId: 'event_cao_1',
+        updatedAt: 1_750_000_000_000,
+        caoSupervision: {
+          schemaVersion: 1 as const,
+          mode: 'cao_supervision' as const,
+          scheduleId: 'schedule-cao',
+          policyId: 'policy-strict',
+          targetId: 'learning-md',
+          projectId: 'project-a',
+        },
+      },
+    };
+
+    expect(writeScheduleDraft('workspace_1', caoDraft)).toBe(true);
+    expect(readScheduleDraft('workspace_1')).toEqual(caoDraft);
+    expect(
+      scheduleDraftsEqual(caoDraft, {
+        ...caoDraft,
+        editing: {
+          ...caoDraft.editing,
+          caoSupervision: { ...caoDraft.editing.caoSupervision, policyId: 'policy-balanced' },
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it('fails closed when a persisted CAO edit token is malformed', () => {
+    window.localStorage.setItem(
+      scheduleDraftStorageKey('workspace_1'),
+      JSON.stringify({
+        ...draft,
+        scheduleMode: 'jarvis',
+        editing: {
+          eventId: 'event_cao_1',
+          updatedAt: 1_750_000_000_000,
+          caoSupervision: {
+            schemaVersion: 1,
+            mode: 'cao_supervision',
+            scheduleId: 'schedule-cao',
+            policyId: 'unsafe policy value',
+            targetId: 'learning-md',
+            projectId: 'project-a',
+          },
+        },
+      }),
+    );
+
     expect(readScheduleDraft('workspace_1')).toBeNull();
   });
 });

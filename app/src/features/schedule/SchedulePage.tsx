@@ -81,6 +81,7 @@ import {
   intervalMsFromParts,
   isJarvisScheduleEvent,
   parseJarvisScheduleMetadata,
+  serializeJarvisScheduleMetadata,
   type JarvisScheduleRecurrence,
 } from './jarvisSchedules';
 import { describeJarvisScheduleModelIdentity } from './jarvisScheduleModelIdentity';
@@ -102,6 +103,7 @@ import {
   writeScheduleDraft,
   type ScheduleDraft,
 } from './scheduleDraftPersistence';
+import { runManualCaoLearningChecks } from '@/features/jarvis-memory/caoScheduledLearningRuntime';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -137,8 +139,11 @@ function cleanScheduleDraft(draft: ScheduleDraft): ScheduleDraft {
     title: '',
     description: '',
     eventRecurrenceRule: undefined,
+    editing: undefined,
   };
 }
+
+const CAO_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 function formatScheduleSuccess(summary: string): string {
   return formatJarvisVerifiedNarration({ kind: 'success', summary }).text;
@@ -461,7 +466,15 @@ export function SchedulePage() {
       parseCustomRecurrence(initialScheduleDraft.eventRecurrenceRule) ??
       defaultCustomRecurrence(initialScheduleDraft.startInput),
   );
-  const [editingEventId, setEditingEventId] = React.useState<EventRow['id'] | null>(null);
+  const [editingEventId, setEditingEventId] = React.useState<EventRow['id'] | null>(
+    () => (initialScheduleDraft.editing?.eventId as EventRow['id'] | undefined) ?? null,
+  );
+  const [editingToken, setEditingToken] = React.useState<ScheduleDraft['editing']>(
+    initialScheduleDraft.editing,
+  );
+  const [caoPolicyId, setCaoPolicyId] = React.useState(
+    initialScheduleDraft.editing?.caoSupervision?.policyId ?? '',
+  );
   const [editingJarvisModelSelection, setEditingJarvisModelSelection] =
     React.useState<ChatModelSelection | null>(null);
   const [description, setDescription] = React.useState(initialScheduleDraft.description);
@@ -484,6 +497,9 @@ export function SchedulePage() {
   const [timelineView, setTimelineView] = React.useState<'timeline' | 'jarvis'>('timeline');
   const [openJarvisEventId, setOpenJarvisEventId] = React.useState<string | null>(null);
   const [kernelSmokeDispatching, setKernelSmokeDispatching] = React.useState(false);
+  const [caoRunStates, setCaoRunStates] = React.useState<
+    Record<string, 'running' | 'completed' | 'failed' | 'cancelled'>
+  >({});
   const [kernelSmokeScheduleState, setKernelSmokeScheduleState] = React.useState<
     | 'idle'
     | 'creating'
@@ -547,7 +563,9 @@ export function SchedulePage() {
       parseCustomRecurrence(nextDraft.eventRecurrenceRule) ??
         defaultCustomRecurrence(nextDraft.startInput),
     );
-    setEditingEventId(null);
+    setEditingEventId((nextDraft.editing?.eventId as EventRow['id'] | undefined) ?? null);
+    setEditingToken(nextDraft.editing);
+    setCaoPolicyId(nextDraft.editing?.caoSupervision?.policyId ?? '');
     setDescription(nextDraft.description);
     setReminderOffsets([...nextDraft.reminderOffsets]);
     setScheduleMode(nextDraft.scheduleMode);
@@ -580,6 +598,21 @@ export function SchedulePage() {
       intervalAmount,
       intervalUnit,
       jarvisModelOptionId,
+      ...(editingToken
+        ? {
+            editing: {
+              ...editingToken,
+              ...(editingToken.caoSupervision
+                ? {
+                    caoSupervision: {
+                      ...editingToken.caoSupervision,
+                      policyId: caoPolicyId,
+                    },
+                  }
+                : {}),
+            },
+          }
+        : {}),
     };
     if (scheduleDraftsEqual(draft, cleanScheduleDraftRef.current)) {
       clearScheduleDraft(workspaceId);
@@ -590,6 +623,7 @@ export function SchedulePage() {
     allDay,
     description,
     endInput,
+    editingToken,
     eventRecurrenceRule,
     intervalAmount,
     intervalUnit,
@@ -599,8 +633,18 @@ export function SchedulePage() {
     scheduleMode,
     startInput,
     title,
+    caoPolicyId,
     workspaceId,
   ]);
+
+  React.useEffect(() => {
+    if (!editingToken) return;
+    const event = jarvisEvents.find((candidate) => String(candidate.id) === editingToken.eventId);
+    const metadata = event ? parseJarvisScheduleMetadata(event) : null;
+    if (!metadata) return;
+    setEditingJarvisModelSelection(metadata.modelSelection);
+    setJarvisModelOptionId(selectionOptionId(metadata.modelSelection) ?? '');
+  }, [editingToken, jarvisEvents]);
   const selectedJarvisModel = React.useMemo(() => {
     const exact = jarvisModelOptions.find((option) => option.id === jarvisModelOptionId);
     if (exact) return exact;
@@ -715,6 +759,8 @@ export function SchedulePage() {
     setEventRecurrenceRule(undefined);
     setCustomRecurrence(defaultCustomRecurrence(nextStartInput));
     setEditingEventId(null);
+    setEditingToken(undefined);
+    setCaoPolicyId('');
     setEditingJarvisModelSelection(null);
   }, []);
 
@@ -724,6 +770,15 @@ export function SchedulePage() {
     setStartInput(nextStartInput);
     setEndInput(toLocalDateTimeInput(event.end_at));
     const jarvisMetadata = parseJarvisScheduleMetadata(event);
+    const editing: ScheduleDraft['editing'] = jarvisMetadata?.caoSupervision
+      ? {
+          eventId: String(event.id),
+          updatedAt: event.updated_at,
+          caoSupervision: { ...jarvisMetadata.caoSupervision },
+        }
+      : undefined;
+    setEditingToken(editing);
+    setCaoPolicyId(jarvisMetadata?.caoSupervision?.policyId ?? '');
     if (jarvisMetadata) {
       setScheduleMode('jarvis');
       setTitle(jarvisEventDisplayTitle(event));
@@ -761,6 +816,16 @@ export function SchedulePage() {
         editor.scrollIntoView({ behavior: 'smooth' });
     });
   }, []);
+
+  const handleCancelEditing = React.useCallback(() => {
+    if (
+      editingToken?.caoSupervision &&
+      !window.confirm('Discard this CAO schedule edit and restore the saved revision?')
+    ) {
+      return;
+    }
+    resetManualEditor();
+  }, [editingToken, resetManualEditor]);
 
   const handleScheduleModeChange = React.useCallback(
     (nextMode: 'event' | 'jarvis') => {
@@ -818,6 +883,14 @@ export function SchedulePage() {
       jarvisAction && editingEventId
         ? jarvisEvents.find((event) => String(event.id) === String(editingEventId))
         : undefined;
+    const editingCao = editingToken?.caoSupervision;
+    if (editingCao && !CAO_ID_PATTERN.test(caoPolicyId.trim())) {
+      toast.warning(
+        'Check the CAO policy',
+        'Use a bounded policy identity containing only letters, numbers, dots, underscores, colons, or hyphens.',
+      );
+      return;
+    }
 
     if (jarvisAction) {
       // Duplicate guard: repeated saves of the same action at the same time must not stack runs.
@@ -842,28 +915,80 @@ export function SchedulePage() {
     }
 
     try {
+      let safeEditingJarvisEvent = editingJarvisEvent;
+      let safeEditingJarvisMetadata = safeEditingJarvisEvent
+        ? parseJarvisScheduleMetadata(safeEditingJarvisEvent)
+        : null;
+      if (editingCao) {
+        if (!safeEditingJarvisEvent || !editingToken) {
+          throw new Error('This CAO schedule edit no longer has a valid revision.');
+        }
+        const latest = await eventRepo.getById(safeEditingJarvisEvent.id);
+        const latestMetadata = latest ? parseJarvisScheduleMetadata(latest) : null;
+        const latestCao = latestMetadata?.caoSupervision;
+        if (
+          !latest ||
+          latest.updated_at !== editingToken.updatedAt ||
+          !latestCao ||
+          latestCao.scheduleId !== editingCao.scheduleId ||
+          latestCao.projectId !== editingCao.projectId ||
+          latestCao.targetId !== editingCao.targetId
+        ) {
+          throw new Error(
+            'This CAO schedule changed after you opened it. Reopen the latest revision before saving.',
+          );
+        }
+        safeEditingJarvisEvent = latest;
+        safeEditingJarvisMetadata = latestMetadata;
+      }
       const protectedJarvis = findProtectedJarvisAgent(
         Object.values(useAgentStore.getState().agents),
       );
       const protectedJarvisId = protectedJarvis?.id ?? 'agent_jarvis';
       if (jarvisAction) {
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-        if (editingJarvisEvent) {
-          const patch = buildJarvisScheduleEventUpdate(editingJarvisEvent, {
+        if (safeEditingJarvisEvent) {
+          const patch = buildJarvisScheduleEventUpdate(safeEditingJarvisEvent, {
             title: title.trim(),
             prompt: description.trim() || title.trim(),
             startAt: start,
             durationMs: Math.max(
-              editingJarvisEvent.end_at - editingJarvisEvent.start_at,
+              safeEditingJarvisEvent.end_at - safeEditingJarvisEvent.start_at,
               5 * 60 * 1000,
             ),
             recurrence: jarvisRecurrence,
             ...(customIntervalMs !== undefined ? { intervalMs: customIntervalMs } : {}),
             timezone,
-            modelSelection: jarvisModelSelectionForSave!,
+            modelSelection:
+              editingCao && safeEditingJarvisMetadata
+                ? safeEditingJarvisMetadata.modelSelection
+                : jarvisModelSelectionForSave!,
           });
           if (!patch) throw new Error('This saved action can no longer be edited safely.');
-          await eventRepo.update(editingJarvisEvent.id, patch);
+          if (editingCao) {
+            const patchedMetadata = parseJarvisScheduleMetadata({
+              ...safeEditingJarvisEvent,
+              ...patch,
+            } as EventRow);
+            const patchContext = patch.source_ref?.context;
+            if (!patchedMetadata?.caoSupervision || !patchContext) {
+              throw new Error('This CAO schedule can no longer be edited safely.');
+            }
+            patch.source_ref = {
+              ...patch.source_ref,
+              context: {
+                ...patchContext,
+                id: serializeJarvisScheduleMetadata({
+                  ...patchedMetadata,
+                  caoSupervision: {
+                    ...patchedMetadata.caoSupervision,
+                    policyId: caoPolicyId.trim(),
+                  },
+                }),
+              },
+            };
+          }
+          await eventRepo.update(safeEditingJarvisEvent.id, patch);
         } else {
           await eventRepo.create(
             buildJarvisScheduleEventInput({
@@ -1057,19 +1182,46 @@ export function SchedulePage() {
   };
 
   const handleDeleteEvent = async (event: EventRow) => {
+    if (
+      parseJarvisScheduleMetadata(event)?.caoSupervision &&
+      !window.confirm(`Delete CAO schedule “${jarvisEventDisplayTitle(event)}”?`)
+    ) {
+      return false;
+    }
     try {
       await eventRepo.delete(event.id);
       toast.success('Event removed', formatScheduleSuccess(`“${event.title}” is gone.`));
+      return true;
     } catch (err) {
       toast.error('Could not delete', err instanceof Error ? err.message : 'Try again.');
+      return false;
+    }
+  };
+
+  const handleRunCaoCheck = async (event: EventRow) => {
+    if (!parseJarvisScheduleMetadata(event)?.caoSupervision) return;
+    const key = String(event.id);
+    setCaoRunStates((current) => ({ ...current, [key]: 'running' }));
+    try {
+      const result = await runManualCaoLearningChecks();
+      setCaoRunStates((current) => ({ ...current, [key]: result.status }));
+    } catch {
+      setCaoRunStates((current) => ({ ...current, [key]: 'failed' }));
     }
   };
 
   const handleScheduleStatus = async (event: EventRow, status: 'scheduled' | 'cancelled') => {
+    const caoSchedule = Boolean(parseJarvisScheduleMetadata(event)?.caoSupervision);
     try {
       await eventRepo.update(event.id, { status });
       toast.success(
-        status === 'cancelled' ? 'Schedule cancelled' : 'Schedule reopened',
+        caoSchedule
+          ? status === 'cancelled'
+            ? 'CAO schedule paused'
+            : 'CAO schedule resumed'
+          : status === 'cancelled'
+            ? 'Schedule cancelled'
+            : 'Schedule reopened',
         formatScheduleSuccess(
           status === 'cancelled'
             ? `“${event.title}” will no longer run.`
@@ -1219,9 +1371,12 @@ export function SchedulePage() {
                 onBack={() => setOpenJarvisEventId(null)}
                 onEdit={handleEditEvent}
                 onStatusChange={handleScheduleStatus}
+                caoRunState={caoRunStates[String(openJarvisEvent.id)]}
+                onRunCaoCheck={(event) => void handleRunCaoCheck(event)}
                 onDelete={(event) => {
-                  setOpenJarvisEventId(null);
-                  void handleDeleteEvent(event);
+                  void handleDeleteEvent(event).then((deleted) => {
+                    if (deleted) setOpenJarvisEventId(null);
+                  });
                 }}
               />
             ) : (
@@ -1389,16 +1544,65 @@ export function SchedulePage() {
                   One clear title, the instruction {personaName} should follow, a model you can
                   access, and when to run.
                 </p>
+                {editingToken?.caoSupervision ? (
+                  <div className="mt-3 rounded-lg border border-accent-cyan/35 bg-accent-cyan/5 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-display text-ui-strong text-foreground">
+                        CAO supervision
+                      </span>
+                      <Badge variant="outline">Revision {editingToken.updatedAt}</Badge>
+                    </div>
+                    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 text-metadata">
+                      <div>
+                        <dt className="text-muted-foreground">Schedule</dt>
+                        <dd className="truncate text-foreground">
+                          {editingToken.caoSupervision.scheduleId}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Project</dt>
+                        <dd className="truncate text-foreground">
+                          {editingToken.caoSupervision.projectId}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-muted-foreground">Target</dt>
+                        <dd className="truncate text-foreground">
+                          {editingToken.caoSupervision.targetId}
+                        </dd>
+                      </div>
+                    </dl>
+                    <div className="mt-3 space-y-1.5">
+                      <Label htmlFor="cao-policy-id" className={SECTION_TITLE_CLASS}>
+                        CAO policy
+                      </Label>
+                      <Input
+                        id="cao-policy-id"
+                        value={caoPolicyId}
+                        onChange={(event) => setCaoPolicyId(event.target.value)}
+                      />
+                      <p className={FIELD_HINT_CLASS}>
+                        Schedule, project, target, and saved model identity stay fixed.
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="mt-3 space-y-1.5">
                   <Label htmlFor="jarvis-action-model" className={SECTION_TITLE_CLASS}>
                     Model
                   </Label>
                   {jarvisModelOptions.length > 0 ? (
-                    <Popover open={modelPickerOpen} onOpenChange={setModelPickerOpen}>
+                    <Popover
+                      open={modelPickerOpen && !editingToken?.caoSupervision}
+                      onOpenChange={(open) => {
+                        if (!editingToken?.caoSupervision) setModelPickerOpen(open);
+                      }}
+                    >
                       <PopoverTrigger asChild>
                         <button
                           id="jarvis-action-model"
                           type="button"
+                          disabled={Boolean(editingToken?.caoSupervision)}
                           aria-label={`${personaName} action model`}
                           className={cn(
                             'flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-left text-body text-foreground',
@@ -1904,7 +2108,7 @@ export function SchedulePage() {
                   : 'Save event'}
             </Button>
             {editingEventId ? (
-              <Button type="button" variant="ghost" onClick={resetManualEditor}>
+              <Button type="button" variant="ghost" onClick={handleCancelEditing}>
                 Cancel editing
               </Button>
             ) : null}
@@ -2214,6 +2418,11 @@ function JarvisActionsList({
                   <Badge variant="outline" className="shrink-0 text-metadata">
                     {jarvisRecurrenceLabel(metadata?.recurrence ?? 'once', metadata?.intervalMs)}
                   </Badge>
+                  {metadata?.caoSupervision ? (
+                    <Badge variant="secondary" className="shrink-0 text-metadata">
+                      CAO · {metadata.caoSupervision.targetId}
+                    </Badge>
+                  ) : null}
                   {event.status === 'done' && (
                     <Badge variant="secondary" className="shrink-0 text-metadata">
                       Completed
@@ -2261,23 +2470,49 @@ function JarvisActionsList({
   );
 }
 
+function formatCaoRunGrade(status: string): string {
+  const labels: Record<string, string> = {
+    success: 'Completed',
+    completed: 'Completed',
+    dispatched: 'Dispatched',
+    partial: 'Partial',
+    error: 'Failed',
+    failed: 'Failed',
+    cancelled: 'Cancelled',
+    timed_out: 'Timed out',
+  };
+  return labels[status] ?? 'Unknown';
+}
+
 function JarvisActionOutputView({
   event,
   onBack,
   onEdit,
   onStatusChange,
   onDelete,
+  onRunCaoCheck,
+  caoRunState,
 }: {
   event: EventRow;
   onBack: () => void;
   onEdit: (event: EventRow) => void;
   onStatusChange: (event: EventRow, status: 'scheduled' | 'cancelled') => void;
   onDelete: (event: EventRow) => void;
+  onRunCaoCheck: (event: EventRow) => void;
+  caoRunState?: 'running' | 'completed' | 'failed' | 'cancelled';
 }) {
   const metadata = parseJarvisScheduleMetadata(event);
+  const cao = metadata?.caoSupervision;
   const modelIdentity = metadata
     ? describeJarvisScheduleModelIdentity(metadata.modelSelection)
     : null;
+  const statusAction = cao
+    ? event.status === 'cancelled'
+      ? 'Resume'
+      : 'Pause'
+    : event.status === 'cancelled'
+      ? 'Reopen'
+      : 'Cancel';
 
   return (
     <div className="flex h-[560px] min-h-0 flex-col">
@@ -2328,7 +2563,7 @@ function JarvisActionOutputView({
               onClick={() =>
                 onStatusChange(event, event.status === 'cancelled' ? 'scheduled' : 'cancelled')
               }
-              aria-label={`${event.status === 'cancelled' ? 'Reopen' : 'Cancel'} ${event.title}`}
+              aria-label={`${statusAction} ${event.title}`}
             >
               {event.status === 'cancelled' ? (
                 <RotateCcw className="h-3.5 w-3.5" />
@@ -2348,6 +2583,87 @@ function JarvisActionOutputView({
           </Button>
         </div>
       </div>
+
+      {cao ? (
+        <section
+          aria-label="CAO schedule inspector"
+          className="border-b border-border/70 bg-accent-cyan/5 px-4 py-3"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-display text-ui-strong text-foreground">CAO supervision</span>
+              <Badge variant={event.status === 'cancelled' ? 'secondary' : 'outline'}>
+                {event.status === 'cancelled' ? 'Paused' : 'Active'}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-2">
+              {caoRunState ? (
+                <span className="text-metadata text-muted-foreground" aria-live="polite">
+                  {caoRunState === 'running' ? 'Check running' : `Check ${caoRunState}`}
+                </span>
+              ) : null}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={caoRunState === 'running'}
+                onClick={() => onRunCaoCheck(event)}
+              >
+                Run check now
+              </Button>
+            </div>
+          </div>
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-metadata sm:grid-cols-4">
+            {[
+              ['Schedule', cao.scheduleId],
+              ['Project', cao.projectId],
+              ['Target', cao.targetId],
+              ['Policy', cao.policyId],
+            ].map(([label, value]) => (
+              <div key={label} className="min-w-0">
+                <dt className="text-muted-foreground">{label}</dt>
+                <dd className="truncate font-medium text-foreground" title={value}>
+                  {value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          {modelIdentity ? (
+            <p className="mt-3 text-metadata text-muted-foreground">
+              <span className="font-medium text-foreground">Model</span> ·{' '}
+              <span aria-label="CAO saved model identity">{modelIdentity.summary}</span>
+            </p>
+          ) : null}
+          <div className="mt-3">
+            <div className="text-metadata font-semibold uppercase tracking-wide text-muted-foreground">
+              Run history · categorical grade
+            </div>
+            {metadata.runHistory.length ? (
+              <ul className="mt-1.5 space-y-1.5">
+                {[...metadata.runHistory]
+                  .slice(-5)
+                  .reverse()
+                  .map((entry, index) => (
+                    <li
+                      key={entry.schemaVersion === 1 ? entry.runId : `${entry.at}:${index}`}
+                      className="flex flex-wrap items-center gap-x-2 rounded-md border border-border/70 bg-background/60 px-2.5 py-1.5 text-metadata"
+                    >
+                      <Badge variant="outline">{formatCaoRunGrade(entry.status)}</Badge>
+                      <span className="text-muted-foreground">{formatLocalDateTime(entry.at)}</span>
+                      {entry.summary ? (
+                        <span className="min-w-0 flex-1 truncate text-foreground">
+                          {entry.summary}
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+              </ul>
+            ) : (
+              <p className="mt-1 text-metadata text-muted-foreground">No graded runs yet.</p>
+            )}
+          </div>
+        </section>
+      ) : null}
 
       {metadata?.errorHistory.length ? (
         <div className="border-b border-border/70 bg-destructive/5 px-4 py-2">

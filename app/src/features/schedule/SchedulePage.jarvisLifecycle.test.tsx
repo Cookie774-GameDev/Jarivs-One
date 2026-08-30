@@ -16,14 +16,18 @@ const {
   accessibleModelsState,
   createEvent,
   deleteEvent,
+  getEventById,
   jarvisEventsState,
+  runManualCaoCheck,
   updateEvent,
   upcomingEventsState,
 } = vi.hoisted(() => ({
   accessibleModelsState: { current: null as object | null },
   createEvent: vi.fn(),
   deleteEvent: vi.fn(),
+  getEventById: vi.fn(),
   jarvisEventsState: { rows: [] as EventRow[] },
+  runManualCaoCheck: vi.fn(),
   updateEvent: vi.fn(),
   upcomingEventsState: { rows: [] as RecurrenceInstance[] },
 }));
@@ -38,6 +42,7 @@ vi.mock('@/lib/db', async () => {
     ...actual,
     eventRepo: {
       create: createEvent,
+      getById: getEventById,
       update: updateEvent,
       delete: deleteEvent,
     },
@@ -47,6 +52,10 @@ vi.mock('@/lib/db', async () => {
 vi.mock('@/features/tasks', () => ({
   completeTask: vi.fn(),
   useUpcomingTasks: () => [],
+}));
+
+vi.mock('@/features/jarvis-memory/caoScheduledLearningRuntime', () => ({
+  runManualCaoLearningChecks: runManualCaoCheck,
 }));
 
 vi.mock('./hooks', () => ({
@@ -111,6 +120,53 @@ function buildJarvisEvent(status: EventRow['status']): EventRow {
   } as EventRow;
 }
 
+function buildCaoEvent(status: EventRow['status'] = 'scheduled'): EventRow {
+  const event = buildJarvisEvent(status);
+  const metadata = parseJarvisScheduleMetadata(event)!;
+  return {
+    ...event,
+    id: 'event_cao_inspector' as EventRow['id'],
+    title: 'Jarvis Scheduled — CAO learning review',
+    updated_at: 1_750_000_000_000,
+    source_ref: {
+      context: {
+        kind: 'memory',
+        id: serializeJarvisScheduleMetadata({
+          ...metadata,
+          prompt: 'Review durable learning changes.',
+          caoSupervision: {
+            schemaVersion: 1,
+            mode: 'cao_supervision',
+            scheduleId: 'schedule-cao',
+            policyId: 'policy-strict',
+            targetId: 'learning-md',
+            projectId: 'project-a',
+          },
+          runHistory: [
+            {
+              schemaVersion: 1,
+              at: event.start_at - 1_000,
+              runId: 'run_cao_1',
+              requestId: 'request_cao_1',
+              status: 'completed',
+              summary: 'Durable learning review completed.',
+            },
+            {
+              schemaVersion: 1,
+              at: event.start_at - 500,
+              runId: 'run_cao_2',
+              requestId: 'request_cao_2',
+              status: 'partial',
+              summary: 'One recommendation needs review.',
+            },
+          ],
+        }),
+        excerpt: 'Review durable learning changes.',
+      },
+    },
+  } as EventRow;
+}
+
 describe('SchedulePage Jarvis lifecycle', () => {
   const savedRouteReceipt =
     'Provider: OpenCode · Connection: opencode-cli · Model: openai/gpt-5.6-sol-fast · Fast: exact route · Effort: provider default';
@@ -120,6 +176,8 @@ describe('SchedulePage Jarvis lifecycle', () => {
     createEvent.mockReset().mockResolvedValue({});
     updateEvent.mockReset().mockResolvedValue({});
     deleteEvent.mockReset().mockResolvedValue(undefined);
+    getEventById.mockReset();
+    runManualCaoCheck.mockReset().mockResolvedValue({ status: 'completed' });
 
     const route = {
       id: `${OPENCODE_CLI_CONNECTION.id}:openai/gpt-5.6-sol-fast`,
@@ -154,6 +212,7 @@ describe('SchedulePage Jarvis lifecycle', () => {
         isRecurrence: false,
       },
     ];
+    getEventById.mockResolvedValue(event);
     useAuthStore.setState({
       workspaceId: 'workspace_1' as WorkspaceId,
       localUserId: 'usr_local',
@@ -287,5 +346,154 @@ describe('SchedulePage Jarvis lifecycle', () => {
       connectionMode: OPENCODE_CLI_CONNECTION.mode,
       authSource: OPENCODE_CLI_CONNECTION.authSource,
     });
+  });
+
+  it('inspects, manually runs, pauses, and confirms deletion of a CAO schedule', async () => {
+    const event = buildCaoEvent();
+    jarvisEventsState.rows = [event];
+    upcomingEventsState.rows = [];
+    getEventById.mockResolvedValue(event);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    render(<SchedulePage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Jarvis Actions1/i }));
+    fireEvent.click(screen.getByText('CAO learning review').closest('button')!);
+
+    expect(screen.getByText('CAO supervision')).toBeTruthy();
+    expect(screen.getByText('schedule-cao')).toBeTruthy();
+    expect(screen.getByText('project-a')).toBeTruthy();
+    expect(screen.getByText('learning-md')).toBeTruthy();
+    expect(screen.getByText('policy-strict')).toBeTruthy();
+    expect(screen.getByText('Active')).toBeTruthy();
+    expect(screen.getByText('Completed')).toBeTruthy();
+    expect(screen.getByText('Partial')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Run check now' }));
+    await waitFor(() => expect(runManualCaoCheck).toHaveBeenCalledOnce());
+    expect(await screen.findByText('Check completed')).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Pause Jarvis Scheduled — CAO learning review' }),
+    );
+    await waitFor(() =>
+      expect(updateEvent).toHaveBeenCalledWith('event_cao_inspector', { status: 'cancelled' }),
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Delete Jarvis Scheduled — CAO learning review' }),
+    );
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/delete.*CAO learning review/i));
+    expect(deleteEvent).not.toHaveBeenCalled();
+
+    confirm.mockReturnValueOnce(true);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Delete Jarvis Scheduled — CAO learning review' }),
+    );
+    await waitFor(() => expect(deleteEvent).toHaveBeenCalledWith('event_cao_inspector'));
+    confirm.mockRestore();
+  });
+
+  it('edits only mutable CAO policy and timing fields while preserving exact identity', async () => {
+    const event = buildCaoEvent();
+    jarvisEventsState.rows = [event];
+    upcomingEventsState.rows = [];
+    getEventById.mockResolvedValue(event);
+    render(<SchedulePage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Jarvis Actions1/i }));
+    fireEvent.click(screen.getByText('CAO learning review').closest('button')!);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Edit Jarvis Scheduled — CAO learning review' }),
+    );
+    fireEvent.change(screen.getByLabelText('CAO policy'), {
+      target: { value: 'policy-balanced' },
+    });
+    fireEvent.change(screen.getByLabelText(/instruction/i), {
+      target: { value: 'Review only durable, high-confidence learning changes.' },
+    });
+    fireEvent.change(screen.getByLabelText('Run at'), {
+      target: { value: '2026-09-03T12:30' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Update Jarvis Action/i }));
+
+    await waitFor(() => expect(updateEvent).toHaveBeenCalledOnce());
+    const updated = parseJarvisScheduleMetadata({
+      ...event,
+      ...updateEvent.mock.calls[0]![1],
+    } as EventRow)!;
+    expect(updated.prompt).toBe('Review only durable, high-confidence learning changes.');
+    expect(updated.caoSupervision).toEqual({
+      schemaVersion: 1,
+      mode: 'cao_supervision',
+      scheduleId: 'schedule-cao',
+      policyId: 'policy-balanced',
+      targetId: 'learning-md',
+      projectId: 'project-a',
+    });
+  });
+
+  it('fails a stale CAO edit closed before writing', async () => {
+    const event = buildCaoEvent();
+    jarvisEventsState.rows = [event];
+    upcomingEventsState.rows = [];
+    getEventById.mockResolvedValue({ ...event, updated_at: event.updated_at + 1 });
+    render(<SchedulePage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Jarvis Actions1/i }));
+    fireEvent.click(screen.getByText('CAO learning review').closest('button')!);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Edit Jarvis Scheduled — CAO learning review' }),
+    );
+    fireEvent.change(screen.getByLabelText('CAO policy'), {
+      target: { value: 'policy-balanced' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Update Jarvis Action/i }));
+
+    await waitFor(() => expect(getEventById).toHaveBeenCalledWith('event_cao_inspector'));
+    expect(updateEvent).not.toHaveBeenCalled();
+  });
+
+  it('restores a workspace-scoped CAO edit draft with its revision and policy', async () => {
+    const event = buildCaoEvent();
+    jarvisEventsState.rows = [event];
+    upcomingEventsState.rows = [];
+    getEventById.mockResolvedValue(event);
+    const first = render(<SchedulePage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Jarvis Actions1/i }));
+    fireEvent.click(screen.getByText('CAO learning review').closest('button')!);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Edit Jarvis Scheduled — CAO learning review' }),
+    );
+    fireEvent.change(screen.getByLabelText('CAO policy'), {
+      target: { value: 'policy-draft' },
+    });
+    fireEvent.change(screen.getByLabelText(/instruction/i), {
+      target: { value: 'Unfinished CAO draft instruction.' },
+    });
+    await waitFor(() =>
+      expect(window.localStorage.getItem('vibespace-schedule-draft-v1:workspace_1')).toContain(
+        'policy-draft',
+      ),
+    );
+
+    first.unmount();
+    render(<SchedulePage />);
+    expect((screen.getByLabelText('CAO policy') as HTMLInputElement).value).toBe('policy-draft');
+    expect((screen.getByLabelText(/instruction/i) as HTMLTextAreaElement).value).toBe(
+      'Unfinished CAO draft instruction.',
+    );
+    expect(screen.getByText(`Revision ${event.updated_at}`)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Update Jarvis Action/i })).toBeTruthy();
+
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel editing' }));
+    expect(screen.getByLabelText('CAO policy')).toBeTruthy();
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/discard.*CAO schedule edit/i));
+
+    confirm.mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel editing' }));
+    expect(screen.queryByLabelText('CAO policy')).toBeNull();
+    confirm.mockRestore();
   });
 });

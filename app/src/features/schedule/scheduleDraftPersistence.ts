@@ -1,4 +1,4 @@
-import type { JarvisScheduleRecurrence } from './jarvisSchedules';
+import type { CaoSupervisionScheduleMetadataV1, JarvisScheduleRecurrence } from './jarvisSchedules';
 
 const SCHEDULE_DRAFT_PREFIX = 'vibespace-schedule-draft-v1:';
 const DATE_TIME_INPUT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
@@ -6,6 +6,13 @@ const MAX_QUICK_LENGTH = 2_000;
 const MAX_TITLE_LENGTH = 500;
 const MAX_DESCRIPTION_LENGTH = 20_000;
 const MAX_MODEL_OPTION_LENGTH = 1_000;
+const CAO_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+export interface ScheduleDraftEditingToken {
+  readonly eventId: string;
+  readonly updatedAt: number;
+  readonly caoSupervision: CaoSupervisionScheduleMetadataV1;
+}
 
 export interface ScheduleDraft {
   readonly schemaVersion: 1;
@@ -23,6 +30,7 @@ export interface ScheduleDraft {
   readonly intervalAmount: number;
   readonly intervalUnit: 'minutes' | 'hours' | 'days';
   readonly jarvisModelOptionId: string;
+  readonly editing?: ScheduleDraftEditingToken;
 }
 
 const RECURRENCES: readonly JarvisScheduleRecurrence[] = [
@@ -36,6 +44,34 @@ const RECURRENCES: readonly JarvisScheduleRecurrence[] = [
 
 function boundedString(value: unknown, maximum: number): value is string {
   return typeof value === 'string' && value.length <= maximum;
+}
+
+function isCaoSupervisionMetadata(value: unknown): value is CaoSupervisionScheduleMetadataV1 {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const candidate = value as Partial<CaoSupervisionScheduleMetadataV1>;
+  return (
+    Object.keys(value).every((key) =>
+      ['schemaVersion', 'mode', 'scheduleId', 'policyId', 'targetId', 'projectId'].includes(key),
+    ) &&
+    candidate.schemaVersion === 1 &&
+    candidate.mode === 'cao_supervision' &&
+    CAO_ID_PATTERN.test(String(candidate.scheduleId ?? '')) &&
+    CAO_ID_PATTERN.test(String(candidate.policyId ?? '')) &&
+    CAO_ID_PATTERN.test(String(candidate.targetId ?? '')) &&
+    CAO_ID_PATTERN.test(String(candidate.projectId ?? ''))
+  );
+}
+
+function isEditingToken(value: unknown): value is ScheduleDraftEditingToken {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const candidate = value as Partial<ScheduleDraftEditingToken>;
+  return (
+    Object.keys(value).every((key) => ['eventId', 'updatedAt', 'caoSupervision'].includes(key)) &&
+    CAO_ID_PATTERN.test(String(candidate.eventId ?? '')) &&
+    Number.isSafeInteger(candidate.updatedAt) &&
+    Number(candidate.updatedAt) >= 0 &&
+    isCaoSupervisionMetadata(candidate.caoSupervision)
+  );
 }
 
 function isScheduleDraft(value: unknown): value is ScheduleDraft {
@@ -66,7 +102,25 @@ function isScheduleDraft(value: unknown): value is ScheduleDraft {
     Number(candidate.intervalAmount) <= 999 &&
     (candidate.intervalUnit === 'minutes' ||
       candidate.intervalUnit === 'hours' ||
-      candidate.intervalUnit === 'days')
+      candidate.intervalUnit === 'days') &&
+    (candidate.editing === undefined || isEditingToken(candidate.editing))
+  );
+}
+
+function editingTokensEqual(
+  left: ScheduleDraftEditingToken | undefined,
+  right: ScheduleDraftEditingToken | undefined,
+): boolean {
+  if (!left || !right) return left === right;
+  return (
+    left.eventId === right.eventId &&
+    left.updatedAt === right.updatedAt &&
+    left.caoSupervision.schemaVersion === right.caoSupervision.schemaVersion &&
+    left.caoSupervision.mode === right.caoSupervision.mode &&
+    left.caoSupervision.scheduleId === right.caoSupervision.scheduleId &&
+    left.caoSupervision.policyId === right.caoSupervision.policyId &&
+    left.caoSupervision.targetId === right.caoSupervision.targetId &&
+    left.caoSupervision.projectId === right.caoSupervision.projectId
   );
 }
 
@@ -119,6 +173,7 @@ export function scheduleDraftsEqual(left: ScheduleDraft, right: ScheduleDraft): 
     left.intervalAmount === right.intervalAmount &&
     left.intervalUnit === right.intervalUnit &&
     left.jarvisModelOptionId === right.jarvisModelOptionId &&
+    editingTokensEqual(left.editing, right.editing) &&
     left.reminderOffsets.length === right.reminderOffsets.length &&
     left.reminderOffsets.every((offset, index) => offset === right.reminderOffsets[index])
   );

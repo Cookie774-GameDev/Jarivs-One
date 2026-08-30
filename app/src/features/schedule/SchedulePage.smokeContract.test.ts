@@ -22,9 +22,14 @@ describe('native-bound schedule smoke controls', () => {
     expect(scheduleSource).toContain('SIK_CONTROL.scheduleRetryFixture');
     expect(scheduleSource).toContain('buildJarvisScheduleEventInput');
     expect(scheduleSource).toContain('runDueJarvisSchedules');
+    expect(scheduleSource).toContain('runManualCaoLearningChecks');
+    expect(scheduleSource).toContain('CAO supervision');
+    expect(scheduleSource).not.toContain('runCaoScheduledLearning(');
     expect(scheduleSource).toContain('const protectedJarvisAgent = useAgentStore(');
     expect(scheduleSource).toContain('kernelSmokeUnavailableState');
-    expect(scheduleSource).toContain('disabled={kernelSmokeDispatching || !!kernelSmokeUnavailableState}');
+    expect(scheduleSource).toContain(
+      'disabled={kernelSmokeDispatching || !!kernelSmokeUnavailableState}',
+    );
     expect(scheduleSource).toContain('flushUiStatePersistence();');
     expect(runtimeSource).toContain("messageHistory: [{ role: 'user', content: metadata.prompt }]");
     expect(scheduleSource).not.toContain('jarvisRunRepo');
