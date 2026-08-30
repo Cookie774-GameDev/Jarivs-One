@@ -320,6 +320,14 @@ html[data-theme='warm'] [data-vibespace-page='chat'] [data-tour='chat-composer']
 }
 
 html[data-theme='warm']
+  [data-vibespace-page='chat']
+  [data-tour='chat-composer']
+  [data-terminal-drop='chat'] {
+  border-radius: 16px;
+  overflow: clip;
+}
+
+html[data-theme='warm']
   [data-vibespace-page='chat']:has(.warm-chat-welcome)
   [data-testid='jarvis-session-panel'],
 html[data-theme='warm']

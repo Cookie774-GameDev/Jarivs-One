@@ -405,6 +405,12 @@ describe('Warm theme presentation contract', () => {
     );
   });
 
+  it('softens and clips the inner Warm chat composer corners', () => {
+    expect(css).toMatch(
+      /\[data-tour='chat-composer'\]\s+\[data-terminal-drop='chat'\]\s*\{[\s\S]*?border-radius:\s*16px[\s\S]*?overflow:\s*clip/u,
+    );
+  });
+
   it('composes Schedule as one naturally scrolling illustrated shell without a repeated scene', () => {
     const landscape = resolve(warmAssetRoot, 'schedule/schedule-shell-scene-v2.webp');
 
