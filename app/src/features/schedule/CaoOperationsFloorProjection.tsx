@@ -73,6 +73,19 @@ function formatTimestamp(value: number): string {
   }).format(value);
 }
 
+function formatTrigger(trigger: CaoScheduledLearningSnapshot['completions'][number]['trigger']) {
+  if (trigger === 'manual_force') return 'Manual force';
+  if (trigger === 'learning_threshold') return 'Learning threshold';
+  return 'Scheduled';
+}
+
+function formatDuration(milliseconds: number): string {
+  if (milliseconds < 1_000) return `${milliseconds} ms`;
+  const seconds = milliseconds / 1_000;
+  if (seconds < 60) return `${Number(seconds.toFixed(1))} s`;
+  return `${Number((seconds / 60).toFixed(1))} min`;
+}
+
 export function CaoOperationsFloorProjection({
   scope,
   scheduleState,
@@ -129,6 +142,7 @@ export function CaoOperationsFloorProjection({
   const runtime = runtimeLabel(runtimeStatus);
   const snapshot = snapshotState.state === 'ready' ? snapshotState.snapshot : undefined;
   const latestCompletion = snapshot?.completions.at(-1);
+  const visibleCompletions = snapshot ? [...snapshot.completions].slice(-5).reverse() : [];
 
   return (
     <div
@@ -144,7 +158,11 @@ export function CaoOperationsFloorProjection({
           </Badge>
         </div>
         {runtime ? (
-          <span className="text-metadata text-muted-foreground" aria-live="polite">
+          <span
+            aria-label="CAO live runtime state"
+            className="text-metadata text-muted-foreground"
+            role="status"
+          >
             {runtime}
           </span>
         ) : null}
@@ -205,7 +223,11 @@ export function CaoOperationsFloorProjection({
                 {latestCompletion?.receiptId ?? 'No verified receipt yet'}
               </div>
             </div>
-            <div className="rounded-md border border-border/70 bg-panel/50 px-2.5 py-2">
+            <div
+              aria-label="CAO durable recovery state"
+              className="rounded-md border border-border/70 bg-panel/50 px-2.5 py-2"
+              role="status"
+            >
               <div className="flex items-center gap-1.5 text-muted-foreground">
                 {snapshot.pending ? (
                   <Clock3 className="h-3.5 w-3.5 text-accent-copper" aria-hidden />
@@ -219,6 +241,53 @@ export function CaoOperationsFloorProjection({
               </div>
             </div>
           </div>
+
+          {visibleCompletions.length > 0 ? (
+            <section aria-labelledby="cao-verified-history-heading">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h4
+                  className="font-display text-ui-strong text-foreground"
+                  id="cao-verified-history-heading"
+                >
+                  Verified completion history
+                </h4>
+                <span className="text-metadata text-muted-foreground">
+                  Showing {visibleCompletions.length} of {snapshot.completions.length}
+                </span>
+              </div>
+              <ol aria-label="Verified completion history" className="space-y-1.5 text-metadata">
+                {visibleCompletions.map((completion) => (
+                  <li
+                    className="rounded-md border border-border/60 bg-panel/35 px-2.5 py-2"
+                    key={completion.requestId}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                      <span className="font-medium text-foreground">
+                        {formatTrigger(completion.trigger)}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {formatDuration(completion.completedAt - completion.requestedAt)} ·{' '}
+                        <time dateTime={new Date(completion.completedAt).toISOString()}>
+                          {formatTimestamp(completion.completedAt)}
+                        </time>
+                      </span>
+                    </div>
+                    <div className="mt-1 grid min-w-0 gap-1 font-mono text-foreground sm:grid-cols-3">
+                      <span className="truncate" title={completion.receiptId ?? 'No receipt'}>
+                        Receipt: {completion.receiptId ?? 'No receipt'}
+                      </span>
+                      <span className="truncate" title={completion.passId ?? 'No pass'}>
+                        Pass: {completion.passId ?? 'No pass'}
+                      </span>
+                      <span className="truncate" title={completion.requestId}>
+                        Request: {completion.requestId}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ) : null}
         </div>
       ) : null}
     </div>

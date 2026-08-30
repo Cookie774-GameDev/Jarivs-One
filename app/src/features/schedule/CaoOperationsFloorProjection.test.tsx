@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { CaoScheduledLearningRuntimeStatus } from '@/features/jarvis-memory/caoScheduledLearningRuntime';
 import type {
@@ -175,6 +175,95 @@ describe('CaoOperationsFloorProjection', () => {
 
     expect(await screen.findByText('Recovery required')).toBeTruthy();
     expect(screen.getByText('pass-pending')).toBeTruthy();
+    expect(screen.queryByText(/%/u)).toBeNull();
+  });
+
+  it('renders only the five newest verified completions in newest-first order', async () => {
+    const completions = Array.from({ length: 7 }, (_, index) => ({
+      passId: `pass-${index + 1}`,
+      requestId: `request-${index + 1}`,
+      trigger: index === 6 ? ('manual_force' as const) : ('learning_threshold' as const),
+      fromSeqExclusive: index,
+      throughSeqInclusive: index + 1,
+      requestedAt: scope.scheduleAnchorAt + index * 10_000,
+      completedAt: scope.scheduleAnchorAt + index * 10_000 + (index === 6 ? 1_500 : 1_000),
+      receiptId: `receipt-${index + 1}`,
+    }));
+
+    render(
+      <CaoOperationsFloorProjection
+        scope={scope}
+        scheduleState="active"
+        loadSnapshot={async () =>
+          snapshot({
+            lastLearningSeqConsumed: 7,
+            completions,
+          })
+        }
+        subscribeStatus={() => vi.fn()}
+      />,
+    );
+
+    const history = await screen.findByRole('list', { name: 'Verified completion history' });
+    const rows = within(history).getAllByRole('listitem');
+
+    expect(rows).toHaveLength(5);
+    expect(rows.map((row) => row.textContent)).toEqual([
+      expect.stringContaining('receipt-7'),
+      expect.stringContaining('receipt-6'),
+      expect.stringContaining('receipt-5'),
+      expect.stringContaining('receipt-4'),
+      expect.stringContaining('receipt-3'),
+    ]);
+    expect(rows[0]?.textContent).toContain('Manual force');
+    expect(rows[0]?.textContent).toContain('1.5 s');
+    expect(rows[0]?.textContent).toContain('pass-7');
+    expect(rows[0]?.textContent).toContain('request-7');
+    expect(screen.queryByText('receipt-2')).toBeNull();
+    expect(screen.queryByText('receipt-1')).toBeNull();
+  });
+
+  it('announces matching runtime and durable recovery state without inventing progress', async () => {
+    let publish: ((status: CaoScheduledLearningRuntimeStatus) => void) | undefined;
+    render(
+      <CaoOperationsFloorProjection
+        scope={scope}
+        scheduleState="active"
+        loadSnapshot={async () =>
+          snapshot({
+            pending: {
+              passId: 'pass-recovery',
+              requestId: 'request-recovery',
+              trigger: 'manual_force',
+              fromSeqExclusive: 12,
+              throughSeqInclusive: 14,
+              requestedAt: scope.scheduleAnchorAt + 90_000,
+            },
+          })
+        }
+        subscribeStatus={(listener) => {
+          publish = listener;
+          return vi.fn();
+        }}
+      />,
+    );
+
+    expect(
+      (await screen.findByRole('status', { name: 'CAO durable recovery state' })).textContent,
+    ).toContain('Recovery required');
+
+    act(() =>
+      publish?.({
+        state: 'running',
+        trigger: 'manual_force',
+        scope,
+        updatedAt: scope.scheduleAnchorAt + 100_000,
+      }),
+    );
+
+    expect(screen.getByRole('status', { name: 'CAO live runtime state' }).textContent).toContain(
+      'Running · Manual force',
+    );
     expect(screen.queryByText(/%/u)).toBeNull();
   });
 });
