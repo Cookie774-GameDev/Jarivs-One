@@ -959,11 +959,11 @@ fn native_configure_pet_window(
     unsafe {
         native_restore_pet_window_chrome(hwnd);
         let _ = SetWindowTextW(hwnd, PCWSTR(title.as_ptr()));
-        let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), x, y, width, height, flags);
+        let positioned = SetWindowPos(hwnd, Some(HWND_TOPMOST), x, y, width, height, flags);
         if focus {
             let _ = SetForegroundWindow(hwnd);
         }
-        IsWindowVisible(hwnd).as_bool()
+        positioned.is_ok() && IsWindowVisible(hwnd).as_bool()
     }
 }
 
@@ -1184,11 +1184,11 @@ fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
     #[cfg(debug_assertions)]
     eprintln!("[pets] creating pet-overlay window");
 
-    build_pet_overlay(app, true)?;
+    build_pet_overlay(app)?;
     Ok(PetOverlayAcquire::Ready { created: true })
 }
 
-fn build_pet_overlay(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
+fn build_pet_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
     WebviewWindowBuilder::new(app, PET_OVERLAY_LABEL, pet_webview_url(app, "pet-overlay")?)
         .title("VibeSpace Pet")
         .inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
@@ -1199,7 +1199,7 @@ fn build_pet_overlay(app: &AppHandle, visible: bool) -> Result<WebviewWindow, St
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
-        .visible(visible)
+        .visible(false)
         .focused(false)
         .shadow(false)
         .background_color(tauri::window::Color(0, 0, 0, 0))
@@ -1240,6 +1240,17 @@ fn build_pet_panel(app: &AppHandle, visible: bool) -> Result<WebviewWindow, Stri
     .focused(false)
     .build()
     .map_err(|e| format!("failed to create pet-mini-panel window: {e}"))
+}
+
+fn retire_failed_pet_overlay(app: &AppHandle, created: bool) {
+    let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) else {
+        return;
+    };
+    if created {
+        let _ = win.destroy();
+    } else {
+        let _ = win.hide();
+    }
 }
 
 /// Show the pet overlay (create visibility). Single instance by label.
@@ -1305,8 +1316,13 @@ fn show_pet_overlay_blocking(app: AppHandle) -> Result<PetOverlayShowResult, Str
         }
     };
 
-    Ok(show_existing_pet_overlay(app, x, y, created)
-        .unwrap_or_else(|reason| PetOverlayShowResult::failed_after_create(created, reason)))
+    match show_existing_pet_overlay(app.clone(), x, y, created) {
+        Ok(result) => Ok(result),
+        Err(reason) => {
+            retire_failed_pet_overlay(&app, created);
+            Ok(PetOverlayShowResult::failed_after_create(created, reason))
+        }
+    }
 }
 
 fn schedule_pet_overlay_restore(app: AppHandle) {
@@ -1946,6 +1962,34 @@ mod tests {
             assert!(!builder.contains("let host = WindowBuilder::new"));
             assert!(!builder.contains("host.add_child("));
         }
+        let overlay_builder = &source[overlay_start..overlay_end];
+        assert!(overlay_builder.contains(".visible(false)"));
+        assert!(!overlay_builder.contains(".visible(true)"));
+    }
+
+    #[test]
+    fn overlay_visibility_requires_native_configuration_and_failed_creation_is_retired() {
+        let source = include_str!("pets.rs");
+        let configure_start = source
+            .find("fn native_configure_pet_window")
+            .expect("native configure helper exists");
+        let configure_end = source[configure_start..]
+            .find("#[cfg(not(target_os = \"windows\"))]")
+            .map(|offset| configure_start + offset)
+            .expect("native configure helper has a bounded source slice");
+        let configure = &source[configure_start..configure_end];
+        assert!(configure.contains("let positioned = SetWindowPos("));
+        assert!(configure.contains("positioned.is_ok() && IsWindowVisible(hwnd).as_bool()"));
+
+        let show_start = source
+            .find("fn show_pet_overlay_blocking")
+            .expect("overlay show helper exists");
+        let show_end = source[show_start..]
+            .find("fn schedule_pet_overlay_restore")
+            .map(|offset| show_start + offset)
+            .expect("overlay show helper has a bounded source slice");
+        let show = &source[show_start..show_end];
+        assert!(show.contains("retire_failed_pet_overlay(&app, created);"));
     }
 
     #[test]

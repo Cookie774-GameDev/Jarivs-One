@@ -13,8 +13,10 @@ describe('auxiliary Pet bootstrap routing', () => {
     expect(existsSync(petBootstrapPath)).toBe(true);
 
     const petBootstrapSource = readFileSync(petBootstrapPath, 'utf8');
-    expect(petBootstrapSource).toContain("from './features/pets/PetOverlayWindow'");
-    expect(petBootstrapSource).toContain("from './features/pets/PetMiniPanelWindow'");
+    expect(petBootstrapSource).toContain("import('./features/pets/PetOverlayWindow')");
+    expect(petBootstrapSource).toContain("import('./features/pets/PetMiniPanelWindow')");
+    expect(petBootstrapSource).not.toContain("from './features/pets/PetOverlayWindow'");
+    expect(petBootstrapSource).not.toContain("from './features/pets/PetMiniPanelWindow'");
     expect(petBootstrapSource).not.toContain('data-pet-bootstrap-fallback');
     expect(petBootstrapSource).not.toContain("from './App'");
     expect(petBootstrapSource).not.toContain("import('./bootstrapApp')");

@@ -1,6 +1,5 @@
 import { act, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mountPetSurface } from './bootstrapPet';
 
 vi.mock('./features/pets/PetOverlayWindow', () => ({
   PetOverlayWindow: () => <div data-testid="pet-overlay-root" data-pet-pixi-canvas="true" />,
@@ -29,8 +28,15 @@ describe('detached Pet bootstrap', () => {
     });
     observer.observe(root, { childList: true, subtree: true });
 
+    const overlayLoader = vi.fn(async () => ({
+      PetOverlayWindow: () => <div data-testid="pet-overlay-root" data-pet-pixi-canvas="true" />,
+    }));
+    const panelLoader = vi.fn(async () => ({
+      PetMiniPanelWindow: () => <div data-testid="pet-mini-panel-root" />,
+    }));
+    const { mountPetSurface } = await import('./bootstrapPet');
     await act(async () => {
-      mountPetSurface(root, 'pet-overlay');
+      await mountPetSurface(root, 'pet-overlay', { overlay: overlayLoader, panel: panelLoader });
     });
 
     await waitFor(() => {
@@ -39,5 +45,30 @@ describe('detached Pet bootstrap', () => {
     observer.disconnect();
     expect(exposedBootstrapFallback).toBe(false);
     expect(root.querySelector('img[alt="VibeSpace Pet"]')).toBeNull();
+    expect(overlayLoader).toHaveBeenCalledTimes(1);
+    expect(panelLoader).not.toHaveBeenCalled();
+  });
+
+  it('loads only the panel entry when the mini panel route starts', async () => {
+    const root = document.createElement('div');
+    root.id = 'root';
+    document.body.appendChild(root);
+
+    const overlayLoader = vi.fn(async () => ({
+      PetOverlayWindow: () => <div data-testid="pet-overlay-root" />,
+    }));
+    const panelLoader = vi.fn(async () => ({
+      PetMiniPanelWindow: () => <div data-testid="pet-mini-panel-root" />,
+    }));
+    const { mountPetSurface } = await import('./bootstrapPet');
+    await act(async () => {
+      await mountPetSurface(root, 'pet-mini-panel', { overlay: overlayLoader, panel: panelLoader });
+    });
+
+    await waitFor(() => {
+      expect(root.querySelector('[data-testid="pet-mini-panel-root"]')).not.toBeNull();
+    });
+    expect(overlayLoader).not.toHaveBeenCalled();
+    expect(panelLoader).toHaveBeenCalledTimes(1);
   });
 });
