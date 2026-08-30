@@ -607,6 +607,12 @@ export function shouldSuppressProviderPreview(userText: string): boolean {
   return Boolean(parseExplicitResponseContract(userText) || extractExplicitReadRoot(userText));
 }
 
+const bufferedCaoKernelRunKeys = new Set<string>();
+
+function bufferedCaoKernelRunKey(accountId: string, runId: string): string {
+  return `${accountId.length}:${accountId}${runId}`;
+}
+
 const EXPLICIT_ROOT_EVIDENCE_PHASE_PROMPT = [
   'Internal VibeSpace evidence phase for the pending explicit-root request.',
   'Do not draft the final answer.',
@@ -1611,7 +1617,10 @@ export async function installJarvisKernelRuntimeHost(
                   ?.content ?? '',
               );
               const explicitReadRoot = extractExplicitReadRoot(lastUserText);
-              const suppressProviderPreview = shouldSuppressProviderPreview(lastUserText);
+              const suppressProviderPreview =
+                bufferedCaoKernelRunKeys.has(
+                  bufferedCaoKernelRunKey(providerInput.accountId, providerInput.runId),
+                ) || shouldSuppressProviderPreview(lastUserText);
               const startedAt = now();
               let contextCitationSessionId: string | undefined;
               const liveToolActivityIds = new Map<string, string>();
@@ -1624,6 +1633,13 @@ export async function installJarvisKernelRuntimeHost(
                 }>,
               ): void => {
                 if (signal.aborted) return;
+                if (
+                  bufferedCaoKernelRunKeys.has(
+                    bufferedCaoKernelRunKey(providerInput.accountId, providerInput.runId),
+                  )
+                ) {
+                  return;
+                }
                 const scope = activeTurnScopes.get(providerInput.runId);
                 const callId = activity.callId?.trim();
                 const name = activity.name.trim();
@@ -5645,7 +5661,8 @@ export function startRuntimeListener(
     const bufferExactLiteralStreaming =
       (reasoningPolicy?.mode === 'token-saver' && explicitExactLiteralFromRequest(text) !== null) ||
       explicitResponseContract !== null ||
-      Boolean(explicitReadRoot);
+      Boolean(explicitReadRoot) ||
+      Boolean(detail.caoAuthority);
     if (stackStepsEarly.length === 0) {
       runnable = applyChatModelSelectionToAgent(runnable, chatModelSelection);
     }
@@ -5808,6 +5825,7 @@ export function startRuntimeListener(
       ...currentOpenCodePermissionParts(),
     ];
     const currentOpenCodeErrorParts = (suffix: string): Part[] => {
+      if (detail.caoAuthority) return [{ kind: 'text', text: suffix }];
       if (!hasNativeOpenCodeTextIdentity) {
         const sep = acc.length > 0 ? '\n\n' : '';
         return [
@@ -6225,6 +6243,8 @@ export function startRuntimeListener(
               },
             });
             activeKernelQuestionProjectionPorts.set(turn.run.id, questionProjectionPort);
+            const bufferedCaoKernelRun = bufferedCaoKernelRunKey(turn.accountId, turn.run.id);
+            if (detail.caoAuthority) bufferedCaoKernelRunKeys.add(bufferedCaoKernelRun);
             try {
               if (turn.surface === 'voice') {
                 const voiceSessionId = detail.voiceSessionId;
@@ -6277,6 +6297,7 @@ export function startRuntimeListener(
                 response = outcome.value.response;
               }
             } finally {
+              if (detail.caoAuthority) bufferedCaoKernelRunKeys.delete(bufferedCaoKernelRun);
               approvalContinuationOutcomesByRun.delete(turn.run.id);
               if (activeKernelQuestionProjectionPorts.get(turn.run.id) === questionProjectionPort) {
                 activeKernelQuestionProjectionPorts.delete(turn.run.id);
@@ -6925,6 +6946,7 @@ export function startRuntimeListener(
               liveOpenCodeChronology[indexes.result] = result;
             }
           }
+          if (detail.caoAuthority) return;
           cancelPendingFlush();
           await settleStreamingWrites();
           controller.signal.throwIfAborted();

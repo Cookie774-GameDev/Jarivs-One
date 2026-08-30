@@ -680,6 +680,12 @@ describe('startRuntimeListener agent routing', () => {
     const chatId = 'chat_cao_identity' as ChatId;
     const updateMessage = vi.fn(async () => undefined);
     mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      providerInput.onChunk?.({ delta: 'UNTRUSTED_STREAMED_CAO', done: false });
+      await providerInput.onToolActivity?.({
+        name: 'read',
+        status: 'completed',
+        callId: 'tool_untrusted_cao',
+      });
       await providerInput.onHarnessSessionBound?.({ sessionId: 'session_cao_identity' });
       await providerInput.onProviderCompletionEvidence?.({
         observedAt: 3,
@@ -739,6 +745,8 @@ describe('startRuntimeListener agent routing', () => {
       await vi.waitFor(() => expect(runStates.at(-1)?.status).toBe('error'));
       expect(runStates.some((state) => state.status === 'done')).toBe(false);
       expect(JSON.stringify(updateMessage.mock.calls)).not.toContain('Untrusted fallback output');
+      expect(JSON.stringify(updateMessage.mock.calls)).not.toContain('UNTRUSTED_STREAMED_CAO');
+      expect(JSON.stringify(updateMessage.mock.calls)).not.toContain('tool_untrusted_cao');
     } finally {
       window.removeEventListener('jarvis:run-state', onRunState);
     }
@@ -763,6 +771,14 @@ describe('startRuntimeListener agent routing', () => {
     const updateMessage = vi.fn(async () => undefined);
     mocks.runAgent.mockImplementationOnce(async (providerInput) => {
       expect(providerInput.requestId).toBe('msg_cao_exact_receipt');
+      providerInput.onChunk?.({ delta: 'Verified CAO output', done: false });
+      await providerInput.onToolActivity?.({
+        name: 'read',
+        status: 'completed',
+        callId: 'tool_verified_cao',
+      });
+      await Promise.resolve();
+      expect(updateMessage).not.toHaveBeenCalled();
       await providerInput.onHarnessSessionBound?.({ sessionId: 'session_cao_exact_receipt' });
       await providerInput.onProviderCompletionEvidence?.({
         observedAt: 3,
@@ -820,7 +836,91 @@ describe('startRuntimeListener agent routing', () => {
 
       await vi.waitFor(() => expect(runStates.at(-1)?.status).toBe('done'));
       expect(JSON.stringify(updateMessage.mock.calls)).toContain('Verified CAO output');
+      expect(
+        updateMessage.mock.calls.filter((call) =>
+          JSON.stringify(call).includes('Verified CAO output'),
+        ),
+      ).toHaveLength(1);
+      expect(JSON.stringify(updateMessage.mock.calls)).toContain('tool_verified_cao');
       expect(mocks.runAgent).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener('jarvis:run-state', onRunState);
+    }
+  });
+
+  it('publishes no streamed CAO content when terminal completion evidence is missing', async () => {
+    const selection = selectionFromOption('openai', 'gpt-5.6-terra', CODEX_CLI_CONNECTION);
+    setDiscoveredConnectionModels(CODEX_CLI_CONNECTION.id, [
+      {
+        id: 'gpt-5.6-terra',
+        label: 'GPT-5.6 Terra',
+        source: 'provider_list',
+        lastVerifiedAt: 1,
+      },
+    ]);
+    writeConnectionPickerStates({
+      'openai-codex': { available: true, auth: 'authenticated' },
+    });
+    useAuthStore.setState({ chatModelSelection: selection });
+    const jarvis = agent('agent_cao_missing_receipt', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_cao_missing_receipt' as ChatId;
+    const updateMessage = vi.fn(async () => undefined);
+    mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      providerInput.onChunk?.({ delta: 'MISSING_RECEIPT_STREAM', done: false });
+      await providerInput.onToolActivity?.({
+        name: 'read',
+        status: 'completed',
+        callId: 'tool_missing_receipt',
+      });
+      return {
+        text: 'Missing receipt final output',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'openai',
+        model: 'gpt-5.6-terra',
+      };
+    });
+    const runStates: Array<{ status?: string }> = [];
+    const onRunState = (event: Event) => {
+      runStates.push((event as CustomEvent<{ status?: string }>).detail);
+    };
+    window.addEventListener('jarvis:run-state', onRunState);
+    trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => []),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: 'msg_cao_missing_receipt' as MessageId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId,
+            text: 'Have CAO learn the renderer workflow',
+            modelSelectionOverride: selection,
+            reasoningPreference: { mode: 'normal', effortOverride: 'high' },
+            runtimeSettings: { effort: 'high', performance: 'quality' },
+            automaticModelRoutingEligible: false,
+            caoAuthority: CAO_LEARNER_IDENTITY,
+          },
+        }),
+      );
+
+      await vi.waitFor(() => expect(runStates.at(-1)?.status).toBe('error'));
+      const writes = JSON.stringify(updateMessage.mock.calls);
+      expect(writes).not.toContain('MISSING_RECEIPT_STREAM');
+      expect(writes).not.toContain('Missing receipt final output');
+      expect(writes).not.toContain('tool_missing_receipt');
+      expect(runStates.some((state) => state.status === 'done')).toBe(false);
     } finally {
       window.removeEventListener('jarvis:run-state', onRunState);
     }
@@ -3823,6 +3923,19 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     });
     const jarvis = agent('agent_jarvis', 'jarvis', 'You are Jarvis.');
     const chatId = 'chat_bound_project_fact' as ChatId;
+    const updateMessage = vi.fn(async () => undefined);
+    mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      providerInput.onChunk?.({ delta: 'DEEPSEEK_PROGRESSIVE', done: false });
+      await vi.waitFor(() =>
+        expect(JSON.stringify(updateMessage.mock.calls)).toContain('DEEPSEEK_PROGRESSIVE'),
+      );
+      return {
+        text: 'DEEPSEEK_PROGRESSIVE_COMPLETE',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'opencode',
+        model: 'opencode-go/deepseek-v4-flash-vision-exp',
+      };
+    });
     const userText =
       'In the bound Unified Chungus project, what custodian and retention period are authoritative for artifact atlas-0317?';
     const userMessage: Message = {
@@ -3855,7 +3968,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
           created_at: 2,
           updated_at: 2,
         })),
-        updateMessage: vi.fn(async () => undefined),
+        updateMessage,
       }),
     );
 
@@ -6105,6 +6218,10 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       updated_at: 1,
     });
     mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      providerInput.onChunk?.({ delta: 'BUFFERED_KERNEL_CAO', done: false });
+      expect(
+        getPreview(providerInput.accountId!, providerInput.protectedAttempt!.runId),
+      ).toBeNull();
       await providerInput.onHarnessSessionBound?.({ sessionId: 'session_kernel_cao_exact' });
       await providerInput.onProviderCompletionEvidence?.({
         observedAt: 3,
@@ -6197,6 +6314,10 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       }),
     );
     mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      providerInput.onChunk?.({ delta: 'UNTRUSTED_KERNEL_VOICE_PREVIEW', done: false });
+      expect(
+        getPreview(providerInput.accountId!, providerInput.protectedAttempt!.runId),
+      ).toBeNull();
       await providerInput.onHarnessSessionBound?.({ sessionId: 'session_kernel_cao_voice' });
       await providerInput.onProviderCompletionEvidence?.({
         observedAt: 3,
