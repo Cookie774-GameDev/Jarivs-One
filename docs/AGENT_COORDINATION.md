@@ -2440,3 +2440,13 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Responsive/accessibility: seven viewport matrix reports zero document/studio/card overflow and zero title clipping; axe-core 4.10.3 reports zero WCAG A/AA violations at desktop and mobile; reduced-motion transform/transition/glare checks pass; fresh console warnings/errors are zero.
 - Pre-deployment HTML SHA-256: `0DAC8C7C9C2583EE0D76D7D52C79030BA4A256BEA666539648FACDE9349EA52E`.
 - Next: commit/push only owned files, wait for Pages, verify exact public bytes and live interaction, then record completion and release the owned lock.
+
+### Final deployment checkpoint
+
+- Status: complete; implementation/evidence commit `3d55dd46ce5ccbdfb0c9301451cccbfbc44114ae` pushed fast-forward to `origin/main`.
+- GitHub Pages: deployment run `33335127142` completed successfully; `https://vibespaceos.com/?rev=3d55dd4#plans` returned the redesigned subscriptions section.
+- Exact-byte verification: deployed homepage and local `site/index.html` are both 632,949 bytes with SHA-256 `0DAC8C7C9C2583EE0D76D7D52C79030BA4A256BEA666539648FACDE9349EA52E`.
+- Public interaction verification: five plan cards render, Orbit pointer selection followed by ArrowRight selects Nova, exactly one card remains selected/pressed, the live rail reports `Plan 03 of 05 / Nova selected`, and diagnostics retain `checkoutOpen=false`, `appStatus=coming-soon`, and `paymentStatus=opening-later`.
+- Public quality verification: zero document overflow, zero clipped plan titles, zero fresh console warnings/errors, and zero non-static network failures. Final local axe-core 4.10.3 audits returned zero WCAG A/AA violations at 1440x900 and 390x844.
+- Rollback: exact pre-edit HTML remains at `evidence/subscriptions-editorial-rev19/recovery/VibeSpace-Final-Website-BEFORE-subscriptions-editorial-20260830-153541.html`, SHA-256 `A439F343B5A8CF718A2F1EC3B9D8D8647B658269B11F04E6CDD518A74A9A1DAA`.
+- Boundaries honored: only the official website HTML, task evidence, and coordination record changed. The VibeSpace application repository, Supabase, Stripe, billing, checkout, accounts, and DNS were not opened or mutated.
