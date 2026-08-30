@@ -304,6 +304,8 @@ pub struct PetGeometryState {
 pub struct PetWindowState {
     pub geometry: Mutex<PetGeometryState>,
     pub panel_open: Mutex<bool>,
+    pub overlay_lifecycle: Mutex<()>,
+    pub panel_lifecycle: Mutex<()>,
     pub reconstrain_generation: AtomicU64,
     pub topmost_watchdog_started: AtomicBool,
 }
@@ -1139,8 +1141,25 @@ fn log_pet_window_metrics(label: &str, win: &WebviewWindow) {
     eprintln!("[pets] {label}: title={title:?} visible={visible} pos={pos} size={size}");
 }
 
-fn should_reuse_pet_window(native_host_exists: bool) -> bool {
-    native_host_exists
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PetRegistrationAction {
+    Reuse,
+    Retire,
+    Create,
+}
+
+fn classify_pet_registration(
+    webview_registered: bool,
+    native_host_exists: bool,
+    window_registered: bool,
+) -> PetRegistrationAction {
+    if webview_registered && native_host_exists {
+        PetRegistrationAction::Reuse
+    } else if webview_registered || window_registered {
+        PetRegistrationAction::Retire
+    } else {
+        PetRegistrationAction::Create
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -1156,8 +1175,8 @@ fn native_pet_window_exists(win: &WebviewWindow) -> bool {
     win.is_visible().is_ok()
 }
 
-fn overlay_acquire_failure_reason(error: &str) -> &'static str {
-    if error == "failed to retire stale pet-overlay window" {
+fn pet_acquire_failure_reason(label: &str, error: &str) -> &'static str {
+    if error.contains(label) && error.contains("retir") {
         "stale_window_retire_failed"
     } else if error.contains("already exists") || error.contains("label") {
         "window_label_conflict"
@@ -1166,19 +1185,63 @@ fn overlay_acquire_failure_reason(error: &str) -> &'static str {
     }
 }
 
+fn overlay_acquire_failure_reason(error: &str) -> &'static str {
+    pet_acquire_failure_reason(PET_OVERLAY_LABEL, error)
+}
+
 enum PetOverlayAcquire {
     Ready { created: bool },
     StaleRetired,
 }
 
-fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
-    if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
-        if should_reuse_pet_window(native_pet_window_exists(&win)) {
-            return Ok(PetOverlayAcquire::Ready { created: false });
+fn wait_for_pet_label_release(app: &AppHandle, label: &str) -> bool {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(750);
+    loop {
+        if app.get_webview_window(label).is_none() && app.get_window(label).is_none() {
+            return true;
         }
-        win.destroy()
-            .map_err(|_| "failed to retire stale pet-overlay window".to_string())?;
-        return Ok(PetOverlayAcquire::StaleRetired);
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+fn retire_pet_registration(app: &AppHandle, label: &str) -> Result<(), String> {
+    if let Some(webview_window) = app.get_webview_window(label) {
+        webview_window
+            .destroy()
+            .map_err(|error| format!("failed to retire stale {label} window: {error}"))?;
+    } else if let Some(window) = app.get_window(label) {
+        window
+            .destroy()
+            .map_err(|error| format!("failed to retire partial {label} window: {error}"))?;
+    }
+
+    if wait_for_pet_label_release(app, label) {
+        Ok(())
+    } else {
+        Err(format!("timed out retiring stale {label} registration"))
+    }
+}
+
+fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
+    let webview_window = app.get_webview_window(PET_OVERLAY_LABEL);
+    let native_host_exists = webview_window
+        .as_ref()
+        .map(native_pet_window_exists)
+        .unwrap_or(false);
+    match classify_pet_registration(
+        webview_window.is_some(),
+        native_host_exists,
+        app.get_window(PET_OVERLAY_LABEL).is_some(),
+    ) {
+        PetRegistrationAction::Reuse => return Ok(PetOverlayAcquire::Ready { created: false }),
+        PetRegistrationAction::Retire => {
+            retire_pet_registration(app, PET_OVERLAY_LABEL)?;
+            return Ok(PetOverlayAcquire::StaleRetired);
+        }
+        PetRegistrationAction::Create => {}
     }
 
     #[cfg(debug_assertions)]
@@ -1208,12 +1271,26 @@ fn build_pet_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
 }
 
 fn get_or_create_pet_panel(app: &AppHandle) -> Result<(WebviewWindow, bool), String> {
-    if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
-        if should_reuse_pet_window(native_pet_window_exists(&win)) {
-            return Ok((win, false));
+    let webview_window = app.get_webview_window(PET_MINI_PANEL_LABEL);
+    let native_host_exists = webview_window
+        .as_ref()
+        .map(native_pet_window_exists)
+        .unwrap_or(false);
+    match classify_pet_registration(
+        webview_window.is_some(),
+        native_host_exists,
+        app.get_window(PET_MINI_PANEL_LABEL).is_some(),
+    ) {
+        PetRegistrationAction::Reuse => {
+            return Ok((
+                webview_window.expect("reusable pet panel registration exists"),
+                false,
+            ))
         }
-        win.destroy()
-            .map_err(|_| "failed to retire stale pet-mini-panel window".to_string())?;
+        PetRegistrationAction::Retire => {
+            retire_pet_registration(app, PET_MINI_PANEL_LABEL)?;
+        }
+        PetRegistrationAction::Create => {}
     }
 
     #[cfg(debug_assertions)]
@@ -1265,8 +1342,16 @@ pub async fn pet_show_overlay(app: AppHandle) -> Result<PetOverlayShowResult, St
 }
 
 fn show_pet_overlay_blocking(app: AppHandle) -> Result<PetOverlayShowResult, String> {
+    let state = app.state::<PetWindowState>();
+    let _lifecycle = match state.overlay_lifecycle.lock() {
+        Ok(lifecycle) => lifecycle,
+        Err(_) => {
+            return Ok(PetOverlayShowResult::failed(
+                "overlay_lifecycle_unavailable",
+            ))
+        }
+    };
     let (x, y) = {
-        let state = app.state::<PetWindowState>();
         let mut geo = match state.geometry.lock() {
             Ok(geo) => geo,
             Err(_) => return Ok(PetOverlayShowResult::failed("geometry_unavailable")),
@@ -1667,12 +1752,25 @@ fn open_or_focus_pet_panel_blocking(
     near_y: Option<f64>,
     panel_mode: Option<PetPanelMode>,
 ) -> Result<PetPanelOpenResult, String> {
+    let state = app.state::<PetWindowState>();
+    let _lifecycle = match state.panel_lifecycle.lock() {
+        Ok(lifecycle) => lifecycle,
+        Err(_) => {
+            return Ok(PetPanelOpenResult::failed(
+                false,
+                "panel_lifecycle_unavailable",
+            ))
+        }
+    };
     let (win, created) = match get_or_create_pet_panel(&app) {
         Ok(acquired) => acquired,
         Err(error) => {
             #[cfg(debug_assertions)]
             eprintln!("[pets] pet-mini-panel creation failed: {error}");
-            return Ok(PetPanelOpenResult::failed(false, "window_create_failed"));
+            return Ok(PetPanelOpenResult::failed(
+                false,
+                pet_acquire_failure_reason(PET_MINI_PANEL_LABEL, &error),
+            ));
         }
     };
     if created {
@@ -1683,7 +1781,6 @@ fn open_or_focus_pet_panel_blocking(
     }
     let panel_mode = panel_mode.unwrap_or_default();
 
-    let state = app.state::<PetWindowState>();
     let mut open = match state.panel_open.lock() {
         Ok(open) => open,
         Err(_) => {
@@ -1834,7 +1931,7 @@ pub async fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
         *open = false;
     }
     // Bring pet sprite back
-    let _ = show_pet_overlay_blocking(app.clone());
+    let _ = pet_show_overlay(app.clone()).await;
     Ok(())
 }
 
@@ -1847,7 +1944,7 @@ pub async fn pet_hide_panel(app: AppHandle) -> Result<(), String> {
             if let Ok(mut open) = app.state::<PetWindowState>().panel_open.lock() {
                 *open = false;
             }
-            let _ = show_pet_overlay_blocking(app.clone());
+            let _ = pet_show_overlay(app.clone()).await;
             return Ok(());
         }
     };
@@ -1867,7 +1964,7 @@ pub async fn pet_hide_panel(app: AppHandle) -> Result<(), String> {
     if let Ok(mut open) = app.state::<PetWindowState>().panel_open.lock() {
         *open = false;
     }
-    let _ = show_pet_overlay_blocking(app.clone());
+    let _ = pet_show_overlay(app.clone()).await;
     Ok(())
 }
 
@@ -2044,7 +2141,9 @@ mod tests {
             .expect("panel acquisition helper has a bounded source slice");
         let acquire = &source[acquire_start..acquire_end];
 
-        assert!(acquire.contains("return Ok((win, false));"));
+        assert!(acquire.contains("PetRegistrationAction::Reuse"));
+        assert!(acquire.contains("false,"));
+        assert!(acquire.contains("retire_pet_registration(app, PET_MINI_PANEL_LABEL)?;"));
         assert!(acquire.contains("build_pet_panel(app, false).map(|window| (window, true))"));
         assert!(source.contains("let (win, created) = match get_or_create_pet_panel(&app)"));
     }
@@ -2114,15 +2213,59 @@ mod tests {
     }
 
     #[test]
-    fn registered_pet_windows_require_a_live_native_host_before_reuse() {
-        assert!(should_reuse_pet_window(true));
-        assert!(!should_reuse_pet_window(false));
+    fn pet_registration_reuses_only_a_complete_live_surface() {
+        assert_eq!(
+            classify_pet_registration(true, true, true),
+            PetRegistrationAction::Reuse
+        );
+        assert_eq!(
+            classify_pet_registration(true, false, true),
+            PetRegistrationAction::Retire
+        );
+        assert_eq!(
+            classify_pet_registration(false, false, true),
+            PetRegistrationAction::Retire
+        );
+        assert_eq!(
+            classify_pet_registration(false, false, false),
+            PetRegistrationAction::Create
+        );
+    }
+
+    #[test]
+    fn native_pet_lifecycle_serializes_each_label_and_restores_overlay_on_a_worker() {
+        let source = include_str!("pets.rs");
+        let overlay_show = source
+            .split("fn show_pet_overlay_blocking")
+            .nth(1)
+            .and_then(|tail| tail.split("fn schedule_pet_overlay_restore").next())
+            .expect("overlay show helper has a bounded source slice");
+        assert!(overlay_show.contains("overlay_lifecycle.lock()"));
+
+        let panel_open = source
+            .split("fn open_or_focus_pet_panel_blocking")
+            .nth(1)
+            .and_then(|tail| tail.split("/// Minimize panel only").next())
+            .expect("panel open helper has a bounded source slice");
+        assert!(panel_open.contains("panel_lifecycle.lock()"));
+
+        let minimize_and_hide = source
+            .split("pub async fn pet_minimize_panel")
+            .nth(1)
+            .and_then(|tail| tail.split("pub async fn pet_is_panel_visible").next())
+            .expect("panel restore commands have a bounded source slice");
+        assert!(minimize_and_hide.contains("pet_show_overlay(app.clone()).await"));
+        assert!(!minimize_and_hide.contains("show_pet_overlay_blocking(app.clone())"));
     }
 
     #[test]
     fn overlay_acquire_failure_distinguishes_stale_retirement_from_creation() {
         assert_eq!(
             overlay_acquire_failure_reason("failed to retire stale pet-overlay window"),
+            "stale_window_retire_failed"
+        );
+        assert_eq!(
+            overlay_acquire_failure_reason("timed out retiring stale pet-overlay registration"),
             "stale_window_retire_failed"
         );
         assert_eq!(
@@ -2499,6 +2642,8 @@ pub fn init_pet_state(app: &AppHandle) -> PetWindowState {
     PetWindowState {
         geometry: Mutex::new(geo),
         panel_open: Mutex::new(false),
+        overlay_lifecycle: Mutex::new(()),
+        panel_lifecycle: Mutex::new(()),
         reconstrain_generation: AtomicU64::new(0),
         topmost_watchdog_started: AtomicBool::new(false),
     }
