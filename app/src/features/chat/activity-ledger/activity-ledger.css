@@ -147,6 +147,14 @@ button.assistant-activity-ledger__receipt:hover {
   text-underline-offset: 2px;
 }
 
+.assistant-activity-ledger__receipt-detail {
+  overflow: hidden;
+  color: var(--activity-popover-muted);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .assistant-activity-ledger__duration {
   display: inline-flex;
   align-items: center;
@@ -263,7 +271,7 @@ button.assistant-activity-ledger__receipt:hover {
 
 .assistant-activity-ledger.is-opencode-chronology .assistant-activity-ledger__receipt {
   min-height: 2rem;
-  grid-template-columns: 1rem minmax(0, 1fr);
+  grid-template-columns: 1rem minmax(7rem, auto) minmax(0, 1fr);
   gap: 0.48rem;
   border-radius: 0;
   padding: 0.3rem 0.34rem;

@@ -626,6 +626,7 @@ describe('AgenticConsole', () => {
   });
 
   it('shows canonical live work immediately after the prompt and removes it at terminal state', () => {
+    const providerSecret = ['sk', 'proj', '1234567890abcdefghijklmnop'].join('-');
     const baseActivity: ChatActivityEvent = {
       id: 'phase',
       chatId: 'chat-console',
@@ -633,6 +634,7 @@ describe('AgenticConsole', () => {
       category: 'thinking',
       status: 'pending',
       title: 'Working',
+      detail: `Inspecting package.json; token ${providerSecret}`,
       ts: 10,
     };
     const rendered = renderConsole({
@@ -680,6 +682,12 @@ describe('AgenticConsole', () => {
     );
     expect(rendered.container.querySelector('[data-live-turn-status]')?.textContent).toContain(
       'Working',
+    );
+    expect(rendered.container.querySelector('[data-live-turn-status]')?.textContent).toContain(
+      'Inspecting package.json',
+    );
+    expect(rendered.container.querySelector('[data-live-turn-status]')?.textContent).not.toContain(
+      providerSecret,
     );
     expect(
       rendered.container

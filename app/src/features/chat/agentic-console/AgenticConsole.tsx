@@ -37,6 +37,7 @@ import {
   formatUnifiedDiffLines,
   projectAgenticTranscript,
   projectAgenticTranscriptWindow,
+  sanitizeConsoleText,
   summarizeAgenticSession,
   type AgenticSessionEvidence,
   type AgenticSessionSummary,
@@ -478,6 +479,7 @@ function LiveTurnStatus({ event, compact }: { event: ChatActivityEvent; compact?
     filePath: event.filePath,
   });
   if (!motion) return null;
+  const publicDetail = event.detail ? sanitizeConsoleText(event.detail, 320).trim() : '';
 
   return (
     <div
@@ -488,7 +490,10 @@ function LiveTurnStatus({ event, compact }: { event: ChatActivityEvent; compact?
       data-live-turn-category={event.category ?? event.kind}
     >
       <PerceptibleAgentMotionIndicator motion={motion} compact={compact} />
-      <span className="agentic-live-status__text">{event.title}</span>
+      <span className="agentic-live-status__text">
+        {event.title}
+        {publicDetail ? ` · ${publicDetail}` : ''}
+      </span>
     </div>
   );
 }

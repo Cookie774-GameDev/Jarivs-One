@@ -90,6 +90,101 @@ describe('projectAssistantActivityLedger', () => {
     expect(JSON.stringify(ledger)).not.toContain('private.test');
   });
 
+  it('retains exact sanitized command and tool identity for explicit disclosure', () => {
+    const providerSecret = ['sk', 'proj', '1234567890abcdefghijklmnop'].join('-');
+    const ledger = projectAssistantActivityLedger(
+      assistant([
+        {
+          kind: 'tool_call',
+          call_id: 'command-safe',
+          tool: 'terminal.exec',
+          args: { command: 'npm test -- src/publicActivity.test.ts' },
+        },
+        { kind: 'tool_result', call_id: 'command-safe', result: { exitCode: 0 } },
+        {
+          kind: 'tool_call',
+          call_id: 'tool-safe',
+          tool: 'mcp.cloudflare.deploy_worker',
+          args: { apiKey: providerSecret },
+        },
+        { kind: 'tool_result', call_id: 'tool-safe', result: { status: 'completed' } },
+      ]),
+    );
+
+    expect(ledger.receipts).toEqual([
+      expect.objectContaining({
+        kind: 'command',
+        detail: 'npm test -- src/publicActivity.test.ts',
+      }),
+      expect.objectContaining({ kind: 'other', detail: 'mcp.cloudflare.deploy_worker' }),
+    ]);
+    expect(JSON.stringify(ledger)).not.toContain(providerSecret);
+  });
+
+  it('projects every canonical tool lifecycle with structured command/read/search/edit/check kinds', () => {
+    const ledger = projectAssistantActivityLedger(assistant([]), [
+      event({
+        id: 'command',
+        title: 'Jarvis terminal activity',
+        detail: 'npm run typecheck',
+        ts: 101,
+      }),
+      event({
+        id: 'read',
+        title: 'Jarvis tool activity',
+        subtitle: 'read',
+        detail: 'Read App.tsx',
+        ts: 102,
+      }),
+      event({
+        id: 'search',
+        title: 'Jarvis tool activity',
+        subtitle: 'grep',
+        detail: 'Search tests',
+        ts: 103,
+      }),
+      event({
+        id: 'edit',
+        title: 'Jarvis tool activity',
+        subtitle: 'apply_patch',
+        detail: 'Edit App.tsx',
+        ts: 104,
+      }),
+      event({
+        id: 'check',
+        title: 'Jarvis tool activity',
+        subtitle: 'verify.test',
+        detail: 'Run tests',
+        ts: 105,
+      }),
+      event({
+        id: 'tool',
+        title: 'Jarvis tool activity',
+        subtitle: 'custom.tool',
+        detail: 'Custom work',
+        ts: 106,
+      }),
+    ]);
+
+    expect(ledger.actionsTotal).toBe(6);
+    expect(ledger.receipts.map(({ kind }) => kind)).toEqual([
+      'command',
+      'read',
+      'search',
+      'edit',
+      'check',
+      'other',
+    ]);
+    expect(ledger.receipts.map(({ detail }) => detail)).toEqual([
+      'npm run typecheck',
+      'Read App.tsx',
+      'Search tests',
+      'Edit App.tsx',
+      'Run tests',
+      'Custom work',
+    ]);
+  });
+
   it('deduplicates replayed message tool calls by stable call id and uses the latest result status', () => {
     const ledger = projectAssistantActivityLedger(
       assistant([

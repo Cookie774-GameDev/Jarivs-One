@@ -606,6 +606,9 @@ function ReceiptRow({
       <span className="assistant-activity-ledger__receipt-label">
         {chronology ? chronologyReceiptText(receipt) : receipt.label}
       </span>
+      {receipt.detail ? (
+        <span className="assistant-activity-ledger__receipt-detail">{receipt.detail}</span>
+      ) : null}
       {!chronology && receipt.fileLabel ? (
         <span className="assistant-activity-ledger__path">{receipt.fileLabel}</span>
       ) : null}

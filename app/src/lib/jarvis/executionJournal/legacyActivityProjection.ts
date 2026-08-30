@@ -80,6 +80,22 @@ function activityTitle(type: JarvisEvent['type']): string {
   }
 }
 
+function structuredOperation(event: JarvisEvent): string | undefined {
+  if (event.type === 'terminal') return 'terminal';
+  if (event.type !== 'tool') return undefined;
+  const identity =
+    event.producerSourceEvidence?.producerIdentity ?? event.liveEvidence?.producerIdentity;
+  if (identity?.producerKind === 'mcp') return identity.toolName;
+  if (identity?.producerKind === 'action' || identity?.producerKind === 'file_action') {
+    return identity.actionId;
+  }
+  if (identity?.producerKind === 'plugin') {
+    return event.liveEvidence?.operations[0] ?? identity.pluginId;
+  }
+  if (identity?.producerKind === 'terminal') return 'terminal';
+  return event.liveEvidence?.operations[0];
+}
+
 function activityStatus(event: JarvisEvent, run: JarvisRun): ChatActivityStatus {
   if (event.type === 'error') return 'error';
   const status = event.status ?? run.status;
@@ -165,6 +181,7 @@ export function projectJarvisEventsForLegacyActivity(input: {
     .slice(-limit)
     .map((event) => {
       const semanticIntent = structuredToolIntent(event);
+      const operation = structuredOperation(event);
       return Object.freeze({
         id: internalKey(input.run, event),
         chatId,
@@ -173,6 +190,7 @@ export function projectJarvisEventsForLegacyActivity(input: {
         ...(semanticIntent ? { semanticIntent } : {}),
         status: activityStatus(event, input.run),
         title: activityTitle(event.type),
+        ...(operation?.trim() ? { subtitle: operation.trim() } : {}),
         ...(event.safeSummary?.trim() ? { detail: event.safeSummary.trim() } : {}),
         ts: event.createdAt,
         ...(event.status === 'running' ? { startedAt: event.createdAt } : {}),

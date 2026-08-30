@@ -145,6 +145,51 @@ describe('projectJarvisEventsForLegacyActivity', () => {
     ]);
   });
 
+  it('preserves structured terminal and tool operation identity without raw private evidence', () => {
+    const projected = projectJarvisEventsForLegacyActivity({
+      run: run(),
+      events: [
+        event(1, { type: 'terminal', safeSummary: 'Ran npm run typecheck.' }),
+        event(2, {
+          type: 'tool',
+          safeSummary: 'Deployed the public worker.',
+          producerSourceEvidence: {
+            schemaVersion: 1,
+            accountId: 'account-alpha',
+            runId: 'jrun_alpha',
+            requestId: 'request-tool',
+            attemptNumber: 1,
+            producerKind: 'mcp',
+            producerIdentity: {
+              producerKind: 'mcp',
+              serverId: 'cloudflare',
+              toolName: 'deploy_worker',
+              invocationId: 'invocation-tool',
+            },
+            resultRef: 'private-result-ref',
+            observedAt: NOW,
+            phase: 'result',
+            state: 'completed',
+          },
+        }),
+      ],
+    });
+
+    expect(projected).toEqual([
+      expect.objectContaining({
+        title: 'Jarvis terminal activity',
+        subtitle: 'terminal',
+        detail: 'Ran npm run typecheck.',
+      }),
+      expect.objectContaining({
+        title: 'Jarvis tool activity',
+        subtitle: 'deploy_worker',
+        detail: 'Deployed the public worker.',
+      }),
+    ]);
+    expect(JSON.stringify(projected)).not.toContain('private-result-ref');
+  });
+
   it('projects mail and launch intent only from canonical plugin or MCP producer identity', () => {
     const projected = projectJarvisEventsForLegacyActivity({
       run: run(),

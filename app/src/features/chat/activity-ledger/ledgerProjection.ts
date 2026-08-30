@@ -23,6 +23,8 @@ export type AssistantActivityReceipt = Readonly<{
   durationMs?: number;
   filePath?: string;
   fileLabel?: string;
+  /** Sanitized public operation detail. Never contains raw tool results or environment data. */
+  detail?: string;
   agentSlug?: string;
   countsAsAction: boolean;
 }>;
@@ -78,6 +80,25 @@ function correlatedToolFileLabel(
     : undefined;
 }
 
+function safeCommandDetail(args: Record<string, unknown>): string | undefined {
+  const value = args.command ?? args.cmd ?? args.script;
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  if (/\b(?:private|secret|password|passphrase|token|api[_-]?key|credential)\b/iu.test(value)) {
+    return undefined;
+  }
+  return safeText(value, 1_024) || undefined;
+}
+
+function messageReceiptDetail(
+  kind: LedgerReceiptKind,
+  tool: string,
+  args: Record<string, unknown>,
+): string | undefined {
+  if (kind === 'command') return safeCommandDetail(args);
+  if (kind === 'read' || kind === 'edit') return undefined;
+  return safeText(tool, 256) || undefined;
+}
+
 function positive(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
@@ -99,6 +120,10 @@ function activityKind(event: ChatActivityEvent): LedgerReceiptKind {
   if (event.kind === 'file') return 'read';
   if (event.kind === 'tool' && event.category === 'file') return 'read';
   if (event.kind === 'tool' && event.category === 'writing') return 'edit';
+  if (event.kind === 'tool') {
+    if (/\bterminal\b/iu.test(event.title)) return 'command';
+    if (event.subtitle?.trim()) return toolKind(event.subtitle);
+  }
   return 'other';
 }
 
@@ -189,6 +214,12 @@ function resultEvidence(result: unknown): { status: ChatActivityStatus; duration
 
 function messageReceipts(message: Message): AssistantActivityReceipt[] {
   const seenCallIds = new Set<string>();
+  const toolCallCounts = new Map<string, number>();
+  for (const part of message.parts) {
+    if (part.kind === 'tool_call') {
+      toolCallCounts.set(part.call_id, (toolCallCounts.get(part.call_id) ?? 0) + 1);
+    }
+  }
   const canonicalToolCallIds = new Set(
     message.parts.flatMap((part) => (part.kind === 'tool_call' ? [part.call_id] : [])),
   );
@@ -213,6 +244,7 @@ function messageReceipts(message: Message): AssistantActivityReceipt[] {
                 ? 'pending'
                 : 'running';
       const fileLabel = correlatedToolFileLabel(kind, part.params);
+      const detail = messageReceiptDetail(kind, part.action_id, part.params);
       return [
         {
           id: `message:${String(message.id)}:action:${part.call_id}`,
@@ -221,6 +253,7 @@ function messageReceipts(message: Message): AssistantActivityReceipt[] {
           status,
           ts: message.created_at + index / 1000,
           ...(fileLabel ? { fileLabel } : {}),
+          ...(detail ? { detail } : {}),
           countsAsAction: true,
         },
       ];
@@ -236,6 +269,10 @@ function messageReceipts(message: Message): AssistantActivityReceipt[] {
         : resultEvidence(result.result)
       : { status: 'running' as const };
     const fileLabel = correlatedToolFileLabel(kind, part.args);
+    const detail =
+      toolCallCounts.get(part.call_id) === 1
+        ? messageReceiptDetail(kind, part.tool, part.args)
+        : undefined;
     return [
       {
         id: `message:${String(message.id)}:tool:${part.call_id}`,
@@ -245,6 +282,7 @@ function messageReceipts(message: Message): AssistantActivityReceipt[] {
         ts: message.created_at + index / 1000,
         ...(evidence.durationMs === undefined ? {} : { durationMs: evidence.durationMs }),
         ...(fileLabel ? { fileLabel } : {}),
+        ...(detail ? { detail } : {}),
         countsAsAction: true,
       },
     ];
@@ -339,6 +377,7 @@ function eventReceipt(event: ChatActivityEvent): AssistantActivityReceipt {
       ? { filePath: event.filePath, fileLabel: safeFileLabel(event.filePath) }
       : {}),
     ...(event.agentSlug ? { agentSlug: safeText(event.agentSlug, 256) } : {}),
+    ...(event.detail?.trim() ? { detail: safeText(event.detail, 1_024) } : {}),
     countsAsAction: true,
   };
 }
@@ -422,7 +461,12 @@ export function projectAssistantActivityLedger(
   for (const event of eventsById.values) {
     const kind = activityKind(event);
     if (kind === 'command' && messageHasCommand) continue;
-    const actionable = kind !== 'other';
+    const actionable =
+      kind !== 'other' ||
+      (event.kind === 'tool' &&
+        (Boolean(event.subtitle) ||
+          event.title === 'Jarvis tool activity' ||
+          event.title === 'Jarvis terminal activity'));
     if (actionable) {
       eventReceiptCount += 1;
       actionsTotal += 1;

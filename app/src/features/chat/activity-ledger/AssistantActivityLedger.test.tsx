@@ -78,6 +78,48 @@ describe('AssistantActivityLedger', () => {
     expect(document.body.textContent).not.toContain('secret-command');
   });
 
+  it('reveals exact sanitized command, tool, and file details only after expansion', () => {
+    const providerSecret = ['sk', 'proj', '1234567890abcdefghijklmnop'].join('-');
+    render(
+      <AssistantActivityLedger
+        message={assistant([
+          {
+            kind: 'tool_call',
+            call_id: 'command-public',
+            tool: 'terminal.exec',
+            args: { command: 'npm run typecheck' },
+          },
+          { kind: 'tool_result', call_id: 'command-public', result: { exitCode: 0 } },
+          {
+            kind: 'tool_call',
+            call_id: 'read-public',
+            tool: 'read_file',
+            args: { path: 'C:\\private\\src\\PublicActivity.tsx' },
+          },
+          { kind: 'tool_result', call_id: 'read-public', result: { exitCode: 0 } },
+          {
+            kind: 'tool_call',
+            call_id: 'tool-public',
+            tool: 'mcp.cloudflare.deploy_worker',
+            args: { token: providerSecret },
+          },
+          { kind: 'tool_result', call_id: 'tool-public', result: { status: 'completed' } },
+        ])}
+      />,
+    );
+
+    expect(document.body.textContent).not.toContain('npm run typecheck');
+    expect(document.body.textContent).not.toContain('PublicActivity.tsx');
+    screen
+      .getAllByRole('button', { name: /show activity details/i })
+      .forEach((disclosure) => fireEvent.click(disclosure));
+    expect(screen.getByText('npm run typecheck')).toBeTruthy();
+    expect(screen.getByText('PublicActivity.tsx')).toBeTruthy();
+    expect(screen.getByText('mcp.cloudflare.deploy_worker')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('C:\\private');
+    expect(document.body.textContent).not.toContain(providerSecret);
+  });
+
   it('shows a truthful two-sentence live phase summary from the current receipt', () => {
     render(
       <AssistantActivityLedger
