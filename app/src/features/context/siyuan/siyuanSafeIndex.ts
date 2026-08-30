@@ -6,7 +6,7 @@ import {
   type FsEntry,
   type FsListResult,
 } from '@/lib/fs';
-import type { ContextMapRecord, ContextTreeNode } from '../tree';
+import type { ContextMapRecord, ContextTreeNode, ProjectContextTree } from '../tree';
 import type { SiyuanSummaryPolicy } from './siyuanMapManifest';
 import {
   canResumeSiyuanIndexJob,
@@ -40,6 +40,64 @@ export interface SiyuanSafeIndex {
   excluded: number;
   unreadable: number;
   summarized: number;
+}
+
+export function buildProjectContextTreeFromSiyuanIndex(
+  seed: ProjectContextTree,
+  entries: readonly SiyuanSafeIndexEntry[],
+): ProjectContextTree {
+  const nodesById = new Map<string, ContextTreeNode>();
+  for (const entry of entries) {
+    if (nodesById.has(entry.nodeId)) throw new Error('siyuan_index_tree_duplicate_node');
+    nodesById.set(entry.nodeId, {
+      id: entry.nodeId,
+      title: entry.title,
+      kind: entry.kind,
+      summary: entry.summary ?? '',
+      ...(entry.relativePath ? { path: entry.relativePath } : {}),
+      ...(entry.sizeBytes !== null ? { sizeBytes: entry.sizeBytes } : {}),
+      ...(entry.modifiedAt !== null ? { modifiedAt: entry.modifiedAt } : {}),
+      ...(entry.kind === 'file' ? { contentIndexEligible: true } : {}),
+    });
+  }
+
+  const roots: ContextTreeNode[] = [];
+  for (const entry of entries) {
+    const node = nodesById.get(entry.nodeId)!;
+    if (!entry.parentNodeId) {
+      roots.push(node);
+      continue;
+    }
+    const parent = nodesById.get(entry.parentNodeId);
+    if (!parent) throw new Error('siyuan_index_tree_parent_missing');
+    parent.children = [...(parent.children ?? []), node];
+  }
+
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const assertAcyclic = (node: ContextTreeNode) => {
+    if (visiting.has(node.id)) throw new Error('siyuan_index_tree_cycle');
+    if (visited.has(node.id)) return;
+    visiting.add(node.id);
+    for (const child of node.children ?? []) assertAcyclic(child);
+    visiting.delete(node.id);
+    visited.add(node.id);
+  };
+  for (const node of nodesById.values()) assertAcyclic(node);
+
+  const fileEntries = entries.filter((entry) => entry.kind === 'file');
+  const totalBytes = fileEntries.reduce(
+    (total, entry) => total + Math.max(0, entry.sizeBytes ?? 0),
+    0,
+  );
+  return {
+    ...seed,
+    model: 'siyuan-managed-v1',
+    fileCount: fileEntries.length,
+    totalBytes,
+    summary: `SiYuan indexed ${fileEntries.length.toLocaleString()} files across ${entries.length.toLocaleString()} allowed source items.`,
+    nodes: roots,
+  };
 }
 
 export type SiyuanDirectoryLister = (

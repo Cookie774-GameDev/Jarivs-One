@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ContextMapRecord } from '../tree';
 import {
+  buildProjectContextTreeFromSiyuanIndex,
   buildSiyuanSafeIndex,
   createDurableSiyuanIndexJobControl,
   createSiyuanIndexJobControl,
@@ -82,6 +83,59 @@ function map(): ContextMapRecord {
 
 describe('SiYuan safe read-only index', () => {
   beforeEach(resetDurableJobs);
+
+  it('projects the durable hierarchy and exact file count into the persisted Context tree', () => {
+    const seed = map().tree;
+    const tree = buildProjectContextTreeFromSiyuanIndex(seed, [
+      {
+        nodeId: 'area:src',
+        parentNodeId: null,
+        title: 'src',
+        kind: 'area',
+        relativePath: 'src',
+        sourcePointer: 'C:/Users/viper/src',
+        summary: null,
+        sizeBytes: null,
+        modifiedAt: 10,
+      },
+      {
+        nodeId: 'file:src/index.ts',
+        parentNodeId: 'area:src',
+        title: 'index.ts',
+        kind: 'file',
+        relativePath: 'src/index.ts',
+        sourcePointer: 'C:/Users/viper/src/index.ts',
+        summary: 'Entry point',
+        sizeBytes: 42,
+        modifiedAt: 11,
+      },
+      {
+        nodeId: 'file:README.md',
+        parentNodeId: null,
+        title: 'README.md',
+        kind: 'file',
+        relativePath: 'README.md',
+        sourcePointer: 'C:/Users/viper/README.md',
+        summary: null,
+        sizeBytes: 8,
+        modifiedAt: 12,
+      },
+    ]);
+
+    expect(tree).toMatchObject({
+      model: 'siyuan-managed-v1',
+      fileCount: 2,
+      totalBytes: 50,
+      nodes: [
+        {
+          id: 'area:src',
+          kind: 'area',
+          children: [{ id: 'file:src/index.ts', kind: 'file', summary: 'Entry point' }],
+        },
+        { id: 'file:README.md', kind: 'file' },
+      ],
+    });
+  });
 
   it('keeps source pointers inside the selected root and excludes credentials', () => {
     const index = buildSiyuanSafeIndex(map(), {

@@ -156,6 +156,7 @@ pub enum ClientError {
     InvalidLimit,
     InvalidPath,
     InvalidContent,
+    BlockNotFound,
     Conflict,
     ResponseTooLarge,
     ResponseTypeMismatch,
@@ -171,6 +172,7 @@ impl std::fmt::Display for ClientError {
             Self::InvalidLimit => "siyuan_limit_invalid",
             Self::InvalidPath => "siyuan_path_invalid",
             Self::InvalidContent => "siyuan_content_invalid",
+            Self::BlockNotFound => "siyuan_block_not_found",
             Self::Conflict => "siyuan_conflict",
             Self::ResponseTooLarge => "siyuan_response_too_large",
             Self::ResponseTypeMismatch => "siyuan_response_type_mismatch",
@@ -573,7 +575,13 @@ impl HttpSiyuanTransport {
     }
 
     fn block_info(&self, id: &str) -> Result<BlockInfoData, ClientError> {
-        let info: BlockInfoData = self.post("/api/block/getBlockInfo", json!({ "id": id }))?;
+        // SiYuan v3.8.1 returns a successful envelope with `data: null` when
+        // its database still knows an ID whose backing tree disappeared.
+        // Preserve that distinction so callers can detach a stale binding
+        // without treating an unknown response shape as safe.
+        let info: Option<BlockInfoData> =
+            self.post("/api/block/getBlockInfo", json!({ "id": id }))?;
+        let info = info.ok_or(ClientError::BlockNotFound)?;
         validate_identifier(&info.notebook_id)?;
         validate_identifier(&info.root_id)?;
         if info.path.len() > MAX_DOCUMENT_PATH_BYTES {
@@ -1984,6 +1992,33 @@ mod tests {
         assert!(second.starts_with("POST /api/block/getBlockKramdown HTTP/1.1"));
         assert!(!first.contains(token.as_str()));
         assert!(!second.contains(token.as_str()));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn native_get_block_classifies_a_missing_tree_without_requesting_kramdown() {
+        let token = "m".repeat(32);
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+        ]);
+        let client =
+            SiyuanClient::new(true, HttpSiyuanTransport::new(port, token.clone()).unwrap());
+
+        assert_eq!(
+            client.get_block("20260820-missing"),
+            Err(ClientError::BlockNotFound)
+        );
+        assert_eq!(
+            ClientError::BlockNotFound.to_string(),
+            "siyuan_block_not_found"
+        );
+
+        let login = requests.recv().unwrap();
+        let block_info = requests.recv().unwrap();
+        assert!(login.starts_with("POST /api/system/loginAuth HTTP/1.1"));
+        assert!(block_info.starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
+        assert!(!block_info.contains(token.as_str()));
         server.join().unwrap();
     }
 

@@ -130,6 +130,7 @@ import {
   type SiyuanSummaryMode,
 } from './siyuan/siyuanMapManifest';
 import {
+  buildProjectContextTreeFromSiyuanIndex,
   createSiyuanIndexJobControl,
   siyuanIndexPolicyFingerprint,
 } from './siyuan/siyuanSafeIndex';
@@ -633,6 +634,7 @@ export function ContextPage() {
   const lastAppliedFileRef = React.useRef('');
   const generationAbortRef = React.useRef<AbortController | null>(null);
   const cloudApprovalPendingRef = React.useRef(false);
+  const indexedTreeHydrationRef = React.useRef('');
   const forceScopeReconcileRef = React.useRef<{
     projectId: string;
     mapId: string;
@@ -858,6 +860,64 @@ export function ContextPage() {
       document.removeEventListener('visibilitychange', schedule);
     };
   }, [projectId, selectedMap]);
+
+  React.useEffect(() => {
+    if (
+      !projectId ||
+      !selectedMap ||
+      selectedMap.sourceType === 'github_repository' ||
+      !indexJobSnapshot ||
+      indexJobSnapshot.mapId !== selectedMap.id ||
+      !['paused', 'completed'].includes(indexJobSnapshot.status)
+    ) {
+      return;
+    }
+    const hydrationKey = `${projectId}:${selectedMap.id}:${indexJobSnapshot.status}:${indexJobSnapshot.updatedAt}`;
+    if (indexedTreeHydrationRef.current === hydrationKey) return;
+    const requiresStructuralRepair =
+      selectedMap.tree.fileCount === 0 || flattenContextNodes(selectedMap.tree.nodes).length === 0;
+    if (indexJobSnapshot.status === 'paused' && !requiresStructuralRepair) return;
+    indexedTreeHydrationRef.current = hydrationKey;
+    let active = true;
+    const controller = new AbortController();
+    void readSiyuanIndexEntries(projectId, selectedMap.id)
+      .then(async (entries) => {
+        if (!active || entries.length === 0) return;
+        const completedTree = buildProjectContextTreeFromSiyuanIndex(selectedMap.tree, entries);
+        const persisted = await savePersistedContextTree(completedTree, {
+          mapId: selectedMap.id,
+          requireExisting: true,
+          expectedUpdatedAt: selectedMap.updatedAt,
+        });
+        const completedMap = persisted.maps.find(
+          (map) => map.id === selectedMap.id && map.status === 'active',
+        );
+        if (!completedMap || completedMap.tree.fileCount !== completedTree.fileCount) {
+          throw new Error('siyuan_context_map_hydration_failed');
+        }
+        await contextSearchIndexPopulation.repairEmptyMap(
+          persisted.accountId,
+          completedMap,
+          controller.signal,
+        );
+        if (!active) return;
+        applyPersistenceState(persisted);
+        setSiyuanTree(completedTree);
+      })
+      .catch((error) => {
+        if (!active || controller.signal.aborted) return;
+        indexedTreeHydrationRef.current = '';
+        setStatus('SiYuan map data is safe, but Context Search hydration needs repair.');
+        toast.error(
+          'Context Search hydration needs repair',
+          error instanceof Error ? error.message : 'Unknown Context Search hydration error',
+        );
+      });
+    return () => {
+      active = false;
+      controller.abort('siyuan_context_map_hydration_detached');
+    };
+  }, [applyPersistenceState, indexJobSnapshot, projectId, selectedMap]);
   const tree =
     structuralPreview ?? (SIYUAN_CONTEXT_VAULT_ENABLED ? siyuanTree : (selectedMap?.tree ?? null));
   const treeCoverageBounded = tree ? isContextTreeCoverageBounded(tree) : false;
@@ -2031,6 +2091,17 @@ export function ContextPage() {
       );
       return;
     }
+    const selectedCloudSummaryRoute =
+      summaryMode !== 'none' &&
+      selectedSummaryModel?.connectionId &&
+      !isLocalProvider(selectedSummaryModel.provider)
+        ? {
+            providerId: selectedSummaryModel.provider,
+            connectionId: selectedSummaryModel.connectionId,
+            modelId: selectedSummaryModel.modelId,
+            effort: summaryModelEffort,
+          }
+        : null;
 
     generationAbortRef.current?.abort('superseded');
     const controller = new AbortController();
@@ -2075,45 +2146,80 @@ export function ContextPage() {
       if (projectId && SIYUAN_CONTEXT_VAULT_ENABLED) {
         setStatus('Adding this map to the SiYuan Context Vault...');
         setSiyuanIndexing(true);
-        const snapshot = await productionSiyuanContextMaps.sync(projectId, generatedMap, {
-          accountId,
-          workspaceId,
-          sourcePolicy: { readOnly: true, excludedPaths: customExclusions },
-          summaryPolicy: {
-            mode: summaryMode,
-            selectedExtensions: summarySelectedPaths.length
-              ? []
-              : [...DEFAULT_SIYUAN_SUMMARY_EXTENSIONS],
-            selectedPaths: summarySelectedPaths,
+        if (selectedCloudSummaryRoute && typeof window !== 'undefined') {
+          writeSiyuanSummaryRoutePreference(
+            window.localStorage,
+            accountId,
+            projectId,
+            persistedMap.id,
+            selectedCloudSummaryRoute,
+          );
+        }
+        let snapshot;
+        try {
+          snapshot = await productionSiyuanContextMaps.sync(projectId, generatedMap, {
+            accountId,
+            workspaceId,
+            sourcePolicy: { readOnly: true, excludedPaths: customExclusions },
+            summaryPolicy: {
+              mode: summaryMode,
+              selectedExtensions: summarySelectedPaths.length
+                ? []
+                : [...DEFAULT_SIYUAN_SUMMARY_EXTENSIONS],
+              selectedPaths: summarySelectedPaths,
+            },
+            approvalPreflight: Boolean(selectedCloudSummaryRoute),
+            signal: controller.signal,
+            control: indexControl,
+            onIndexProgress: ({ indexed, excluded, unreadable }) => {
+              setStatus(
+                `SiYuan indexed ${indexed.toLocaleString()} items · ${excluded.toLocaleString()} excluded · ${unreadable.toLocaleString()} unreadable`,
+              );
+            },
+          });
+        } catch (error) {
+          if (
+            !selectedCloudSummaryRoute ||
+            !(error instanceof Error) ||
+            error.message !== 'siyuan_cloud_summary_scope_ready'
+          ) {
+            throw error;
+          }
+          snapshot = await productionSiyuanContextMaps.read(projectId, generatedMap);
+          if (!snapshot) throw new Error('siyuan_cloud_summary_preflight_snapshot_missing');
+        }
+        const indexedEntries = await readSiyuanIndexEntries(projectId, persistedMap.id);
+        const completedTree = buildProjectContextTreeFromSiyuanIndex(
+          {
+            ...generated,
+            generatedAt: Date.now(),
           },
-          signal: controller.signal,
-          control: indexControl,
-          onIndexProgress: ({ indexed, excluded, unreadable }) => {
-            setStatus(
-              `SiYuan indexed ${indexed.toLocaleString()} items · ${excluded.toLocaleString()} excluded · ${unreadable.toLocaleString()} unreadable`,
-            );
-          },
-        });
-        const indexedItemCount = snapshot.manifest?.counts.indexed ?? generated.fileCount;
-        const exactFileCount = (await readSiyuanIndexEntries(projectId, persistedMap.id)).filter(
-          (entry) => entry.kind === 'file',
-        ).length;
-        indexedFileCount = exactFileCount;
-        const completedTree: ProjectContextTree = {
-          ...generated,
-          generatedAt: Date.now(),
-          model: 'siyuan-managed-v1',
-          fileCount: indexedFileCount,
-          summary: `SiYuan indexed ${exactFileCount.toLocaleString()} files across ${indexedItemCount.toLocaleString()} allowed source items.`,
-        };
+          indexedEntries,
+        );
+        indexedFileCount = completedTree.fileCount;
         completedPersistence = await savePersistedContextTree(completedTree, {
           mapId: persistedMap.id,
           requireExisting: true,
           expectedUpdatedAt: persistedMap.updatedAt,
         });
+        const completedMap = completedPersistence.maps.find(
+          (map) => map.id === persistedMap.id && map.status === 'active',
+        );
+        if (!completedMap || completedMap.tree.fileCount !== indexedFileCount) {
+          throw new Error('siyuan_context_map_file_count_persistence_failed');
+        }
+        await contextSearchIndexPopulation.populateCreatedMap(
+          completedPersistence.accountId,
+          completedMap,
+          controller.signal,
+        );
         setSiyuanTree(completedTree);
         setSiyuanIndexing(false);
-        setStatus('SiYuan Context Map ready.');
+        setStatus(
+          selectedCloudSummaryRoute
+            ? 'SiYuan structure ready. Review the exact cloud summary scope to continue.'
+            : 'SiYuan Context Map ready.',
+        );
       }
       const indexedAuth = useAuthStore.getState();
       if (
@@ -2186,6 +2292,8 @@ export function ContextPage() {
     projectId,
     workspaceId,
     rootDraft,
+    selectedSummaryModel,
+    summaryModelEffort,
     summaryMode,
     summarySelectedPaths,
   ]);

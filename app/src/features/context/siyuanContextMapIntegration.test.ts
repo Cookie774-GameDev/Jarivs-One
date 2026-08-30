@@ -1092,6 +1092,72 @@ describe('SiYuan Context Map integration', () => {
     expect(recovered.manifest?.counts.indexed).toBe(2);
   });
 
+  it('recreates a persisted binding whose native tree disappeared before approval reconciliation', async () => {
+    const record = map();
+    const nativePort = port();
+    const integration = createSiyuanContextMapIntegration(nativePort);
+    const initial = await integration.sync('project-1', record);
+    const activeRoot = {
+      ...initial.document,
+      id: '20260829185633-tr5c9hp',
+      path: '/20260823111108-g8hllha/20260829185633-tr5c9hp.sy',
+    };
+    const missingDirectoryId = '20260829185638-zb7y4ex';
+    const recreatedDirectory = {
+      id: '20260829190600-repair1',
+      notebookId: activeRoot.notebookId,
+      path: '/20260823111108-g8hllha/20260829185633-tr5c9hp/20260829190600-repair1.sy',
+      markdown: '<!-- vibespace-context-node:v1 map=map-1 node=root -->\nnew root',
+    };
+
+    vi.mocked(nativePort.readManagedDocument).mockResolvedValue(activeRoot);
+    vi.mocked(nativePort.getBlock).mockImplementation(async (_projectId, id) => {
+      if (id === activeRoot.id) return activeRoot;
+      if (id === missingDirectoryId) throw new Error('siyuan_response_type_mismatch');
+      if (id === recreatedDirectory.id) return recreatedDirectory;
+      throw new Error('siyuan_block_not_found');
+    });
+    nativePort.createManagedDocumentsUnderParents = vi.fn(async (_projectId, mapRootId, inputs) => {
+      expect(mapRootId).toBe(activeRoot.id);
+      expect(inputs).toEqual([
+        expect.objectContaining({
+          parentId: activeRoot.id,
+          marker: 'vibespace-context-node:v1 map=map-1 node=root',
+        }),
+      ]);
+      return [{ ok: true as const, document: recreatedDirectory }];
+    });
+    nativePort.appendManagedBlocks = vi.fn(async (_projectId, mapRootId, blocks) => {
+      expect(mapRootId).toBe(activeRoot.id);
+      expect(blocks).toEqual([expect.objectContaining({ parentId: recreatedDirectory.id })]);
+      return ['20260829190601-fileblk'];
+    });
+    await clearSiyuanNodeBindings('project-1', record.id);
+    await writeSiyuanNodeBindings('project-1', record.id, { root: missingDirectoryId });
+    writeSiyuanMapManifest(
+      updateSiyuanMapManifest(readSiyuanMapManifest('project-1', record.id)!, {
+        rootDocumentId: activeRoot.id,
+        status: 'error',
+        nodeBindings: {},
+      }),
+    );
+
+    const recovered = await integration.sync('project-1', record);
+
+    expect(nativePort.createManagedDocumentsUnderParents).toHaveBeenCalledTimes(1);
+    expect(nativePort.deleteManagedDocument).not.toHaveBeenCalledWith(
+      'project-1',
+      missingDirectoryId,
+      expect.anything(),
+      expect.anything(),
+    );
+    expect(await readSiyuanNodeBindings('project-1', record.id)).toEqual({
+      root: recreatedDirectory.id,
+      file: '20260829190601-fileblk',
+    });
+    expect(recovered.manifest?.counts.indexed).toBe(2);
+  });
+
   it('treats the old unversioned graph body as needing an in-place SiYuan refresh', async () => {
     const nativePort = port({ markdown: '<!-- vibespace-context-map:v1 map=map-1 -->\nold' });
     const integration = createSiyuanContextMapIntegration(nativePort);

@@ -130,6 +130,13 @@ function isInsideNativeSiyuanRoot(
   );
 }
 
+function isUnreadablePersistedSiyuanBinding(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    ['siyuan_block_not_found', 'siyuan_response_type_mismatch'].includes(error.message)
+  );
+}
+
 function marker(mapId: string): string {
   return `vibespace-context-map:v1 map=${safeText(mapId, 200)}`;
 }
@@ -501,7 +508,9 @@ async function readManagedDocumentWithDuplicateRecovery(
   if (bindingDocuments.length > 0 && bindingAuthorities.length !== 1) {
     throw new Error('siyuan_managed_document_ambiguous');
   }
-  const sorted = [...duplicateGroup].sort((left, right) => left.id.localeCompare(right.id, 'en-US'));
+  const sorted = [...duplicateGroup].sort((left, right) =>
+    left.id.localeCompare(right.id, 'en-US'),
+  );
   const canonical = bindingAuthorities[0] ?? sorted[0];
   if (!canonical) throw new Error('siyuan_managed_document_ambiguous');
   const duplicates = sorted.filter((candidate) => candidate.id !== canonical.id);
@@ -651,7 +660,12 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
             staleBindingNodeIds.push(entry.nodeId);
           }
         } catch (error) {
-          if (!(error instanceof Error) || error.message !== 'siyuan_block_not_found') throw error;
+          // The pinned native runtime historically surfaced a missing `.sy`
+          // tree as `siyuan_response_type_mismatch`. This containment sweep is
+          // the only safe recovery boundary: detach the unreadable saved
+          // binding, never delete or trust the unknown target, and recreate
+          // the exact managed node beneath the already-verified map root.
+          if (!isUnreadablePersistedSiyuanBinding(error)) throw error;
           staleBindingNodeIds.push(entry.nodeId);
         }
       }

@@ -42,6 +42,34 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(source).not.toContain('createCustomContextMap');
   });
 
+  it('binds the selected cloud summary route to the new map and pauses before any inference', () => {
+    const creationStart = source.indexOf('const makeSkillTree = React.useCallback(async () => {');
+    const creationEnd = source.indexOf('React.useEffect(() => {', creationStart);
+    const creation = source.slice(creationStart, creationEnd);
+    const persisted = creation.indexOf(
+      'const persisted = await savePersistedContextTree(generated);',
+    );
+    const preference = creation.indexOf('persistedMap.id,', persisted);
+    const sync = creation.indexOf(
+      'productionSiyuanContextMaps.sync(projectId, generatedMap, {',
+      preference,
+    );
+
+    expect(creationStart).toBeGreaterThan(-1);
+    expect(creationEnd).toBeGreaterThan(creationStart);
+    expect(creation).toContain('const selectedCloudSummaryRoute =');
+    expect(creation).toContain('selectedSummaryModel?.connectionId');
+    expect(creation).toContain('!isLocalProvider(selectedSummaryModel.provider)');
+    expect(persisted).toBeGreaterThan(-1);
+    expect(preference).toBeGreaterThan(persisted);
+    expect(sync).toBeGreaterThan(preference);
+    expect(creation).toContain('writeSiyuanSummaryRoutePreference(');
+    expect(creation).toContain('effort: summaryModelEffort');
+    expect(creation).toContain('approvalPreflight: Boolean(selectedCloudSummaryRoute)');
+    expect(creation).toContain("error.message !== 'siyuan_cloud_summary_scope_ready'");
+    expect(creation).toContain('productionSiyuanContextMaps.read(projectId, generatedMap)');
+  });
+
   it('preserves fresh local ingestion eligibility through RLM and SiYuan creation', () => {
     expect(source).toContain('populatePersistedCreatedContextMap({');
     expect(creationLifecycleSource).toContain(
@@ -50,6 +78,31 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(creationLifecycleSource).toContain(
       'input.populateCreatedMap(input.persisted.accountId, generatedMap, input.signal)',
     );
+    const creationStart = source.indexOf('const makeSkillTree = React.useCallback(async () => {');
+    const creationEnd = source.indexOf('React.useEffect(() => {', creationStart);
+    const creation = source.slice(creationStart, creationEnd);
+    const completedTree = creation.indexOf('buildProjectContextTreeFromSiyuanIndex(');
+    const completedSave = creation.indexOf(
+      'completedPersistence = await savePersistedContextTree(completedTree, {',
+      completedTree,
+    );
+    const completedPopulation = creation.indexOf(
+      'contextSearchIndexPopulation.populateCreatedMap(',
+      completedSave,
+    );
+
+    expect(completedTree).toBeGreaterThan(-1);
+    expect(completedSave).toBeGreaterThan(completedTree);
+    expect(completedPopulation).toBeGreaterThan(completedSave);
+  });
+
+  it('hydrates older paused or completed SiYuan maps into durable Context and RLM state', () => {
+    expect(source).toContain('const indexedTreeHydrationRef = React.useRef');
+    expect(source).toContain("['paused', 'completed'].includes(indexJobSnapshot.status)");
+    expect(source).toContain('buildProjectContextTreeFromSiyuanIndex(selectedMap.tree, entries)');
+    expect(source).toContain('expectedUpdatedAt: selectedMap.updatedAt');
+    expect(source).toContain('contextSearchIndexPopulation.repairEmptyMap(');
+    expect(source).toContain('applyPersistenceState(persisted)');
   });
 
   it('labels a bounded source preview honestly instead of claiming every source file was mapped', () => {
