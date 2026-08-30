@@ -1,0 +1,6 @@
+{
+  "git": {
+    "sha1": "d70b0970a87453f3476b5fd6cf9edf329be8b445"
+  },
+  "path_in_vcs": "crates/espeak-rs-sys"
+}

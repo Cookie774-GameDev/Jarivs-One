@@ -4,6 +4,16 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SCRIPT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PLAYWRIGHT_VERSION = '1.61.1';
+const ESPEAK_RS_SYS_VERSION = '0.2.0';
+const ESPEAK_RS_SYS_CHECKSUM = '2d45d148019084e930df6cc3964a58c4c211342451ec5d3c328d8a6cc6b3464d';
+const ESPEAK_RS_SYS_COMMIT = 'd70b0970a87453f3476b5fd6cf9edf329be8b445';
+const ESPEAK_NG_VERSION = '1.52.0.1';
+const ESPEAK_DISTRIBUTION_POLICY =
+  'source-and-local-qa-only; production-object-code-blocked-pending-license-owner-approval';
+const ESPEAK_BLOCKED_STATUS =
+  'Status: approved for source vendoring and local QA builds only; production\n' +
+  'binary distribution is blocked pending approval by the VibeSpace licensing\n' +
+  'owner.';
 const PLAYWRIGHT_PREREQUISITES = [
   ['production-signing-trust', 'missing'],
   ['signed-feature-pack-artifact', 'missing'],
@@ -144,6 +154,15 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
   const licensesReadme = loadText(root, 'docs/oss/licenses/README.md', errors);
   const grammarInventory = loadText(root, 'docs/oss/grammar-license-inventory.md', errors);
   const notices = loadText(root, 'docs/oss/THIRD_PARTY_NOTICES.md', errors);
+  const copiedCodeInventory = loadText(root, 'docs/oss/copied-code-inventory.md', errors);
+  const espeakVendorDecision = loadText(root, 'docs/oss/ESPEAK_RS_SYS_VENDOR_DECISION.md', errors);
+  const espeakLicense = loadText(root, 'docs/oss/licenses/GPL-3.0-or-later-espeak-ng.txt', errors);
+  const vendoredEspeakLicense = loadText(
+    root,
+    'app/src-tauri/vendor/espeak-rs-sys-0.2.0/espeak-ng/src/ucd-tools/COPYING',
+    errors,
+  );
+  const normalizedEspeakVendorDecision = espeakVendorDecision.replace(/\r\n?/gu, '\n');
 
   check(dependencyLock.schemaVersion === 1, 'dependency lock schemaVersion must be 1', errors);
   check(Array.isArray(dependencyLock.entries), 'dependency lock entries must be an array', errors);
@@ -324,6 +343,81 @@ export function verifyPr31OssBundle(root = SCRIPT_ROOT) {
       errors,
     );
   }
+
+  check(
+    cargoManifest.includes('espeak-rs-sys = { path = "vendor/espeak-rs-sys-0.2.0" }'),
+    'espeak-rs-sys Cargo patch must remain pinned to the audited vendor path',
+    errors,
+  );
+  check(
+    espeakLicense.length > 30_000 && espeakLicense === vendoredEspeakLicense,
+    'packaged eSpeak GPLv3 text must be byte-identical to the vendored source license',
+    errors,
+  );
+  for (const record of [notices, licensesReadme, copiedCodeInventory, espeakVendorDecision]) {
+    check(
+      record.includes(`espeak-rs-sys`) &&
+        record.includes(ESPEAK_RS_SYS_VERSION) &&
+        record.includes(ESPEAK_RS_SYS_CHECKSUM),
+      'espeak-rs-sys OSS record must include the exact version and crate checksum',
+      errors,
+    );
+  }
+  check(
+    [notices, copiedCodeInventory, espeakVendorDecision].every((record) =>
+      record.includes(ESPEAK_RS_SYS_COMMIT),
+    ),
+    'espeak-rs-sys OSS records must include the exact upstream commit',
+    errors,
+  );
+  check(
+    [notices, licensesReadme, copiedCodeInventory, espeakVendorDecision].every(
+      (record) => record.includes(ESPEAK_NG_VERSION) && record.includes('GPL-3.0-or-later'),
+    ),
+    'eSpeak OSS records must include the exact embedded version and GPL-3.0-or-later',
+    errors,
+  );
+  check(
+    normalizedEspeakVendorDecision.includes(ESPEAK_BLOCKED_STATUS) &&
+      normalizedEspeakVendorDecision.includes(ESPEAK_DISTRIBUTION_POLICY) &&
+      normalizedEspeakVendorDecision.includes('Corresponding Source') &&
+      normalizedEspeakVendorDecision.includes('statically linked') &&
+      !/production(?:\s+\w+){0,4}\s+(?:is\s+)?(?:no longer blocked|approved|allowed|permitted|unblocked)/iu.test(
+        normalizedEspeakVendorDecision,
+      ),
+    'eSpeak vendor decision must retain the production distribution blocker and GPL obligations',
+    errors,
+  );
+
+  const espeakWrapper = sbom.components?.find(
+    (candidate) =>
+      candidate?.name === 'espeak-rs-sys' && candidate?.version === ESPEAK_RS_SYS_VERSION,
+  );
+  check(Boolean(espeakWrapper), 'SBOM component missing: espeak-rs-sys@0.2.0', errors);
+  check(licenseId(espeakWrapper) === 'MIT', 'SBOM license mismatch: espeak-rs-sys', errors);
+  check(
+    property(espeakWrapper, 'cargo:checksum') === ESPEAK_RS_SYS_CHECKSUM &&
+      property(espeakWrapper, 'vcs:commit') === ESPEAK_RS_SYS_COMMIT &&
+      property(espeakWrapper, 'vcs:path') === 'crates/espeak-rs-sys' &&
+      property(espeakWrapper, 'vibespace:distribution') === ESPEAK_DISTRIBUTION_POLICY,
+    'SBOM provenance or distribution policy mismatch: espeak-rs-sys',
+    errors,
+  );
+
+  const espeakNg = sbom.components?.find(
+    (candidate) => candidate?.name === 'espeak-ng' && candidate?.version === ESPEAK_NG_VERSION,
+  );
+  check(Boolean(espeakNg), 'SBOM component missing: espeak-ng@1.52.0.1', errors);
+  check(licenseId(espeakNg) === 'GPL-3.0-or-later', 'SBOM license mismatch: espeak-ng', errors);
+  check(
+    property(espeakNg, 'vibespace:source-provenance')?.includes(ESPEAK_RS_SYS_CHECKSUM) &&
+      property(espeakNg, 'vibespace:submodule-commit') ===
+        'not-preserved-by-crate-archive; no commit claimed' &&
+      property(espeakNg, 'vibespace:linkage') === 'static' &&
+      property(espeakNg, 'vibespace:distribution') === ESPEAK_DISTRIBUTION_POLICY,
+    'SBOM provenance, linkage, or distribution policy mismatch: espeak-ng',
+    errors,
+  );
 
   const resources = tauri.bundle?.resources;
   check(Array.isArray(resources), 'Tauri bundle resources must be an explicit array', errors);

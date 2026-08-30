@@ -25,6 +25,18 @@ Current additions are:
 - `promptfoo` 0.121.20 (MIT), invoked only as pinned development/CI
   tooling and excluded from the desktop application dependency graph and
   installer.
+- `espeak-rs-sys` 0.2.0, vendored from crates.io checksum
+  `2d45d148019084e930df6cc3964a58c4c211342451ec5d3c328d8a6cc6b3464d`
+  and piper-rs commit `d70b0970a87453f3476b5fd6cf9edf329be8b445`.
+  Its Rust wrapper metadata declares MIT, but the crate archive contains no
+  standalone authoritative MIT notice. VibeSpace removes only the Windows
+  debug-only `msvcrtd` link block from `build.rs`.
+- The crate embeds eSpeak NG 1.52.0.1 source under
+  `app/src-tauri/vendor/espeak-rs-sys-0.2.0/espeak-ng/`. Those sources state
+  GPL-3.0-or-later and are statically linked by the native build. Source
+  vendoring and local non-distributed QA builds are approved; production
+  object-code distribution is blocked pending the licensing-owner decision
+  described in `ESPEAK_RS_SYS_VENDOR_DECISION.md`.
 
 The corresponding distributable license texts and the applicable Playwright
 NOTICE are preserved under `licenses/`; `licenses/README.md` maps every entry
@@ -40,3 +52,9 @@ directory without rewriting it. Add another entry only after:
 Selected candidates in the architecture decision that are not listed in
 `dependency-lock.json` remain evaluations and must not be represented as
 shipped dependencies.
+
+The vendored Rust/native source above is intentionally not added to
+`dependency-lock.json`, whose schema models npm package-lock integrity. Its
+provenance, modification, license status, and release blocker are recorded in
+`copied-code-inventory.md`, `sbom-pr31.cdx.json`, and
+`ESPEAK_RS_SYS_VENDOR_DECISION.md`.

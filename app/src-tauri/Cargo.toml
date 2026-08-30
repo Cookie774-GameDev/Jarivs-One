@@ -103,3 +103,6 @@ strip = "symbols"
 [features]
 default = ["jarvis-voice"]
 jarvis-voice = ["dep:piper-rs"]
+
+[patch.crates-io]
+espeak-rs-sys = { path = "vendor/espeak-rs-sys-0.2.0" }

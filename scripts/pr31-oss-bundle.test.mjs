@@ -16,6 +16,9 @@ function createFixture() {
   const fixture = mkdtempSync(resolve(tmpdir(), 'vibespace-pr31-oss-'));
   mkdirSync(resolve(fixture, 'app/src-tauri'), { recursive: true });
   mkdirSync(resolve(fixture, 'app/src-tauri/src'), { recursive: true });
+  mkdirSync(resolve(fixture, 'app/src-tauri/vendor/espeak-rs-sys-0.2.0/espeak-ng/src/ucd-tools'), {
+    recursive: true,
+  });
   mkdirSync(resolve(fixture, 'app/src/features/doctor'), { recursive: true });
   mkdirSync(resolve(fixture, 'docs'), { recursive: true });
   mkdirSync(resolve(fixture, 'scripts'), { recursive: true });
@@ -33,6 +36,10 @@ function createFixture() {
     resolve(fixture, 'app/src/features/doctor/playwrightFeaturePackBridge.ts'),
   );
   cpSync(resolve(ROOT, 'app/src-tauri/Cargo.toml'), resolve(fixture, 'app/src-tauri/Cargo.toml'));
+  cpSync(
+    resolve(ROOT, 'app/src-tauri/vendor/espeak-rs-sys-0.2.0/espeak-ng/src/ucd-tools/COPYING'),
+    resolve(fixture, 'app/src-tauri/vendor/espeak-rs-sys-0.2.0/espeak-ng/src/ucd-tools/COPYING'),
+  );
   cpSync(
     resolve(ROOT, 'app/src-tauri/src/playwright_feature_pack.rs'),
     resolve(fixture, 'app/src-tauri/src/playwright_feature_pack.rs'),
@@ -121,6 +128,64 @@ test('PR31 OSS checker rejects a package-lock integrity drift without network ac
     const result = verifyPr31OssBundle(fixture);
     assert.equal(result.ok, false);
     assert.ok(result.errors.includes('package-lock integrity mismatch: gpt-tokenizer'));
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test('PR31 OSS checker rejects eSpeak license drift', () => {
+  const fixture = createFixture();
+  try {
+    writeFileSync(
+      resolve(fixture, 'docs/oss/licenses/GPL-3.0-or-later-espeak-ng.txt'),
+      'truncated license\n',
+    );
+    const result = verifyPr31OssBundle(fixture);
+    assert.equal(result.ok, false);
+    assert.ok(
+      result.errors.includes(
+        'packaged eSpeak GPLv3 text must be byte-identical to the vendored source license',
+      ),
+    );
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test('PR31 OSS checker accepts the exact blocked decision with CRLF text', () => {
+  const fixture = createFixture();
+  try {
+    const decisionPath = resolve(fixture, 'docs/oss/ESPEAK_RS_SYS_VENDOR_DECISION.md');
+    const decision = readFileSync(decisionPath, 'utf8');
+    writeFileSync(decisionPath, decision.replace(/\r?\n/gu, '\r\n'));
+
+    assert.deepEqual(verifyPr31OssBundle(fixture), { ok: true, errors: [] });
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test('PR31 OSS checker rejects a minimally weakened eSpeak production blocker', () => {
+  const fixture = createFixture();
+  try {
+    const decisionPath = resolve(fixture, 'docs/oss/ESPEAK_RS_SYS_VENDOR_DECISION.md');
+    const decision = readFileSync(decisionPath, 'utf8');
+    const weakened = decision
+      .replace(/\r?\n/gu, '\r\n')
+      .replace(
+        'binary distribution is blocked pending approval',
+        'binary distribution is no longer blocked pending approval',
+      );
+    assert.notEqual(weakened, decision);
+    writeFileSync(decisionPath, weakened);
+
+    const result = verifyPr31OssBundle(fixture);
+    assert.equal(result.ok, false);
+    assert.ok(
+      result.errors.includes(
+        'eSpeak vendor decision must retain the production distribution blocker and GPL obligations',
+      ),
+    );
   } finally {
     rmSync(fixture, { recursive: true, force: true });
   }
