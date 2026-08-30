@@ -137,4 +137,21 @@ describe('BenchmarkIntelligencePage', () => {
       expect(cells[0]?.textContent).toContain('GPT-5.6 Sol');
     });
   });
+
+  it('contains every filter control inside its responsive grid track', async () => {
+    const { container } = render(<BenchmarkIntelligencePage />);
+    await screen.findAllByText('Claude Opus 5 (Max Effort)');
+
+    const filters = container.querySelector('[data-warm-surface="benchmarks-filters"]');
+    const grid = filters?.firstElementChild;
+    expect(grid?.classList.contains('min-w-0')).toBe(true);
+
+    for (const label of ['Provider', 'Weights', 'Reasoning effort', 'Sort']) {
+      const control = screen.getByLabelText<HTMLSelectElement>(label);
+      expect(control.parentElement?.classList.contains('min-w-0')).toBe(true);
+      expect(control.classList.contains('box-border')).toBe(true);
+      expect(control.classList.contains('!min-w-0')).toBe(true);
+      expect(control.classList.contains('max-w-full')).toBe(true);
+    }
+  });
 });

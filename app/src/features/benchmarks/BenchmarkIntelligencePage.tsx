@@ -109,10 +109,7 @@ function fullTime(value: string | undefined): string {
 
 function statusLabel(result: BenchmarkFetchResult | null): string {
   if (!result) return 'Loading';
-  if (
-    result.dataset?.completeness?.state === 'unverified' &&
-    result.freshness.state === 'fresh'
-  ) {
+  if (result.dataset?.completeness?.state === 'unverified' && result.freshness.state === 'fresh') {
     return 'Degraded';
   }
   if (result.fromCache || result.freshness.state === 'stale') return 'Stale';
@@ -266,7 +263,9 @@ export function BenchmarkIntelligencePage() {
                     {result.dataset.completeness.pagination.receivedSourceRows}
                   </span>
                 ) : (
-                  <span data-benchmark-completeness="unverified">Dataset completeness: unverified</span>
+                  <span data-benchmark-completeness="unverified">
+                    Dataset completeness: unverified
+                  </span>
                 )}
                 {result.latestRun ? (
                   <span>
@@ -372,13 +371,13 @@ export function BenchmarkIntelligencePage() {
           className="cozy-card rounded-2xl border border-border bg-paper p-5 shadow-soft"
           data-warm-surface="benchmarks-filters"
         >
-          <div className="grid gap-3 md:grid-cols-4">
-            <label className="space-y-1 text-metadata text-muted-foreground">
+          <div className="grid min-w-0 gap-3 md:grid-cols-4">
+            <label className="min-w-0 space-y-1 text-metadata text-muted-foreground">
               <span>Provider</span>
               <select
                 value={provider}
                 onChange={(event) => setProvider(event.target.value)}
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                className="box-border h-9 w-full !min-w-0 max-w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
               >
                 <option value="all">All providers</option>
                 {providers.map((value) => (
@@ -388,24 +387,24 @@ export function BenchmarkIntelligencePage() {
                 ))}
               </select>
             </label>
-            <label className="space-y-1 text-metadata text-muted-foreground">
+            <label className="min-w-0 space-y-1 text-metadata text-muted-foreground">
               <span>Weights</span>
               <select
                 value={ownership}
                 onChange={(event) => setOwnership(event.target.value as OwnershipFilter)}
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                className="box-border h-9 w-full !min-w-0 max-w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
               >
                 <option value="all">Open + proprietary</option>
                 <option value="open">Open weights</option>
                 <option value="proprietary">Proprietary</option>
               </select>
             </label>
-            <label className="space-y-1 text-metadata text-muted-foreground">
+            <label className="min-w-0 space-y-1 text-metadata text-muted-foreground">
               <span>Reasoning effort</span>
               <select
                 value={effort}
                 onChange={(event) => setEffort(event.target.value)}
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                className="box-border h-9 w-full !min-w-0 max-w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
               >
                 <option value="all">All effort variants</option>
                 {efforts.map((value) => (
@@ -415,12 +414,12 @@ export function BenchmarkIntelligencePage() {
                 ))}
               </select>
             </label>
-            <label className="space-y-1 text-metadata text-muted-foreground">
+            <label className="min-w-0 space-y-1 text-metadata text-muted-foreground">
               <span>Sort</span>
               <select
                 value={sortKey}
                 onChange={(event) => changeSort(event.target.value)}
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                className="box-border h-9 w-full !min-w-0 max-w-full rounded-md border border-border bg-background px-3 text-sm text-foreground"
               >
                 {SORT_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
