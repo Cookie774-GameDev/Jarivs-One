@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createTerminalPeerFabricCommandPort,
+  recoverTerminalPeerFabricTeam,
   TERMINAL_PEER_FABRIC_TOOL,
 } from './terminalPeerFabricTool';
 
@@ -28,22 +29,76 @@ describe('Terminal Peer Fabric preloaded tool', () => {
   it('accepts only compatible versioned native capabilities', async () => {
     const invoke = vi.fn().mockResolvedValue({
       available: true,
-      version: '1.2.0',
+      version: '2.2.0',
       operations: ['connect', 'team.status'],
     });
     const port = createTerminalPeerFabricCommandPort(invoke);
 
     await expect(port.capability()).resolves.toEqual({
       available: true,
-      version: '1.2.0',
+      version: '2.2.0',
       operations: ['connect', 'team.status'],
     });
   });
 
   it('does not advertise a versioned endpoint that cannot connect a team', async () => {
-    const invoke = vi.fn().mockResolvedValue({ available: true, version: '1.2.0' });
+    const invoke = vi.fn().mockResolvedValue({ available: true, version: '2.2.0' });
     const port = createTerminalPeerFabricCommandPort(invoke);
 
     await expect(port.capability()).resolves.toEqual({ available: false });
+  });
+
+  it('rejects legacy capabilities and preserves stored delivery truth', async () => {
+    const legacy = createTerminalPeerFabricCommandPort(
+      vi
+        .fn()
+        .mockResolvedValue({
+          available: true,
+          version: '1.9.9',
+          operations: ['connect', 'team.status'],
+        }),
+    );
+    await expect(legacy.capability()).resolves.toEqual({ available: false });
+
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce({
+        available: true,
+        version: '2.0.0',
+        operations: ['connect', 'team.status'],
+      })
+      .mockResolvedValueOnce({ correlationId: 'corr-2', status: 'stored', targetIds: ['sess-1'] });
+    const port = createTerminalPeerFabricCommandPort(invoke);
+    await expect(
+      port.command({ commandId: 'team.status', correlationId: 'corr-2', targetIds: ['sess-1'] }),
+    ).resolves.toEqual({ correlationId: 'corr-2', status: 'stored', targetIds: ['sess-1'] });
+  });
+
+  it('recovers after restart only by reconnecting verified stable peer generations', async () => {
+    const port = {
+      capability: vi
+        .fn()
+        .mockResolvedValue({
+          available: true,
+          version: '2.0.0',
+          operations: ['connect', 'team.status'],
+        }),
+      connect: vi
+        .fn()
+        .mockResolvedValue({
+          correlationId: 'recovery-1',
+          status: 'completed',
+          targetIds: ['sess-1', 'sess-2'],
+        }),
+      command: vi.fn(),
+    };
+    const peerRefs = [
+      { paneId: 'pane-1', sessionId: 'sess-1', projectId: 'proj', runtimeGeneration: 'gen-1' },
+      { paneId: 'pane-2', sessionId: 'sess-2', projectId: 'proj', runtimeGeneration: 'gen-2' },
+    ];
+    await expect(
+      recoverTerminalPeerFabricTeam('recovery-1', peerRefs, port),
+    ).resolves.toMatchObject({ status: 'completed' });
+    expect(port.connect).toHaveBeenCalledWith({ correlationId: 'recovery-1', peerRefs });
   });
 });

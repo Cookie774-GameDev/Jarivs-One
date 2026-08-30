@@ -17,6 +17,8 @@ import {
 export type FabricTerminalCandidate = Readonly<{
   sessionId: string;
   paneId: string;
+  projectId: string;
+  runtimeGeneration: string;
   label: string;
 }>;
 
@@ -32,15 +34,25 @@ function uniqueCandidates(
   candidates: readonly FabricTerminalCandidate[],
 ): FabricTerminalCandidate[] {
   const counts = new Map<string, number>();
+  const paneGenerations = new Map<string, number>();
   for (const candidate of candidates) {
-    counts.set(candidate.sessionId, (counts.get(candidate.sessionId) ?? 0) + 1);
+    const identity = `${candidate.projectId}\u0000${candidate.sessionId}`;
+    const generation = `${candidate.projectId}\u0000${candidate.paneId}\u0000${candidate.runtimeGeneration}`;
+    counts.set(identity, (counts.get(identity) ?? 0) + 1);
+    paneGenerations.set(generation, (paneGenerations.get(generation) ?? 0) + 1);
   }
-  return candidates.filter(
-    (candidate) =>
+  return candidates.filter((candidate) => {
+    const identity = `${candidate.projectId}\u0000${candidate.sessionId}`;
+    const generation = `${candidate.projectId}\u0000${candidate.paneId}\u0000${candidate.runtimeGeneration}`;
+    return (
       candidate.sessionId.length > 0 &&
       candidate.paneId.length > 0 &&
-      counts.get(candidate.sessionId) === 1,
-  );
+      candidate.projectId.length > 0 &&
+      candidate.runtimeGeneration.length > 0 &&
+      counts.get(identity) === 1 &&
+      paneGenerations.get(generation) === 1
+    );
+  });
 }
 
 export function TerminalPeerFabricSetupDialog({
@@ -73,6 +85,8 @@ export function TerminalPeerFabricSetupDialog({
           targets.map((target) => ({
             sessionId: target.sessionId,
             paneId: target.paneId,
+            projectId: target.projectId ?? '',
+            runtimeGeneration: target.processIdentity.runtimeGeneration,
             label: target.label ?? target.provider ?? `Terminal ${target.ordinal}`,
           })),
         ),
@@ -97,10 +111,15 @@ export function TerminalPeerFabricSetupDialog({
     setSubmitting(true);
     setError(null);
     try {
-      const peerIds = availableCandidates
+      const peerRefs = availableCandidates
         .filter((candidate) => selected.has(candidate.sessionId))
-        .map((candidate) => candidate.sessionId);
-      await port.connect({ correlationId: createCorrelationId(), peerIds });
+        .map(({ sessionId, paneId, projectId, runtimeGeneration }) => ({
+          sessionId,
+          paneId,
+          projectId,
+          runtimeGeneration,
+        }));
+      await port.connect({ correlationId: createCorrelationId(), peerRefs });
       onOpenChange(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Terminal Peer Fabric could not connect.');

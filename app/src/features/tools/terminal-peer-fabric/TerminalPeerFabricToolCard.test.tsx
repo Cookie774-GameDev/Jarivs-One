@@ -12,7 +12,7 @@ function port(
     capability: vi
       .fn()
       .mockResolvedValue(
-        available ? { available: true, version: '1.0.0', operations } : { available: false },
+        available ? { available: true, version: '2.0.0', operations } : { available: false },
       ),
     connect: vi.fn(),
     command: vi.fn(),

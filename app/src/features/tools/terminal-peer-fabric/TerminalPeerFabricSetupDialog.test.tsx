@@ -6,7 +6,7 @@ import type { TerminalPeerFabricCommandPort } from './terminalPeerFabricTool';
 
 function port(): TerminalPeerFabricCommandPort {
   return {
-    capability: vi.fn().mockResolvedValue({ available: true, version: '1.0.0' }),
+    capability: vi.fn().mockResolvedValue({ available: true, version: '2.0.0' }),
     connect: vi.fn().mockResolvedValue({
       correlationId: 'corr-1',
       status: 'completed',
@@ -27,9 +27,27 @@ describe('TerminalPeerFabricSetupDialog', () => {
           onOpenChange={onOpenChange}
           port={commandPort}
           candidates={[
-            { sessionId: 'tty-1', paneId: 'pane-1', label: 'Codex' },
-            { sessionId: 'tty-2', paneId: 'pane-2', label: 'OpenCode' },
-            { sessionId: 'tty-3', paneId: 'pane-3', label: 'Claude' },
+            {
+              sessionId: 'tty-1',
+              paneId: 'pane-1',
+              projectId: 'proj',
+              runtimeGeneration: 'gen-1',
+              label: 'Codex',
+            },
+            {
+              sessionId: 'tty-2',
+              paneId: 'pane-2',
+              projectId: 'proj',
+              runtimeGeneration: 'gen-2',
+              label: 'OpenCode',
+            },
+            {
+              sessionId: 'tty-3',
+              paneId: 'pane-3',
+              projectId: 'proj',
+              runtimeGeneration: 'gen-3',
+              label: 'Claude',
+            },
           ]}
           createCorrelationId={() => 'corr-1'}
         />,
@@ -47,7 +65,10 @@ describe('TerminalPeerFabricSetupDialog', () => {
     await waitFor(() =>
       expect(commandPort.connect).toHaveBeenCalledWith({
         correlationId: 'corr-1',
-        peerIds: ['tty-1', 'tty-2'],
+        peerRefs: [
+          { sessionId: 'tty-1', paneId: 'pane-1', projectId: 'proj', runtimeGeneration: 'gen-1' },
+          { sessionId: 'tty-2', paneId: 'pane-2', projectId: 'proj', runtimeGeneration: 'gen-2' },
+        ],
       }),
     );
     expect(onOpenChange).toHaveBeenCalledWith(false);

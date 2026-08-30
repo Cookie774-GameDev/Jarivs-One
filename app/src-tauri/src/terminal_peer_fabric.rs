@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 use tauri::State;
 
-const CAPABILITY_VERSION: &str = "1.0.0";
+const CAPABILITY_VERSION: &str = "2.0.0";
 const MAX_PEERS: usize = 8;
 const MAX_IDENTIFIER_BYTES: usize = 128;
 
@@ -18,7 +18,16 @@ pub struct TerminalPeerFabricState(Mutex<Option<ConnectedTeam>>);
 
 #[derive(Clone)]
 struct ConnectedTeam {
-    peer_ids: Vec<String>,
+    peer_refs: Vec<FabricPeerRef>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricPeerRef {
+    pane_id: String,
+    session_id: String,
+    project_id: String,
+    runtime_generation: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -31,7 +40,7 @@ pub enum TerminalPeerFabricRequest {
     Capability,
     Connect {
         correlation_id: String,
-        peer_ids: Vec<String>,
+        peer_refs: Vec<FabricPeerRef>,
     },
     Command {
         command_id: String,
@@ -82,26 +91,51 @@ fn validated_unique_ids(ids: Vec<String>, minimum: usize) -> Result<Vec<String>,
     Ok(ids)
 }
 
+fn validated_peer_refs(peer_refs: Vec<FabricPeerRef>) -> Result<Vec<FabricPeerRef>, String> {
+    if peer_refs.len() < 2 || peer_refs.len() > MAX_PEERS {
+        return Err("terminal_peer_fabric_invalid_membership".to_string());
+    }
+    let mut identities = HashSet::with_capacity(peer_refs.len());
+    let mut pane_generations = HashSet::with_capacity(peer_refs.len());
+    if peer_refs.iter().any(|peer| {
+        !valid_identifier(&peer.pane_id)
+            || !valid_identifier(&peer.session_id)
+            || !valid_identifier(&peer.project_id)
+            || !valid_identifier(&peer.runtime_generation)
+            || !identities.insert((peer.project_id.as_str(), peer.session_id.as_str()))
+            || !pane_generations.insert((
+                peer.project_id.as_str(),
+                peer.pane_id.as_str(),
+                peer.runtime_generation.as_str(),
+            ))
+    }) {
+        return Err("terminal_peer_fabric_invalid_membership".to_string());
+    }
+    Ok(peer_refs)
+}
+
 fn connect(
     state: &TerminalPeerFabricState,
     correlation_id: String,
-    peer_ids: Vec<String>,
+    peer_refs: Vec<FabricPeerRef>,
 ) -> Result<TerminalPeerFabricResponse, String> {
     if !valid_identifier(&correlation_id) {
         return Err("terminal_peer_fabric_invalid_correlation".to_string());
     }
-    let peer_ids = validated_unique_ids(peer_ids, 2)?;
+    let peer_refs = validated_peer_refs(peer_refs)?;
+    let target_ids = peer_refs
+        .iter()
+        .map(|peer| peer.session_id.clone())
+        .collect();
     let mut team = state
         .0
         .lock()
         .map_err(|_| "terminal_peer_fabric_state_unavailable".to_string())?;
-    *team = Some(ConnectedTeam {
-        peer_ids: peer_ids.clone(),
-    });
+    *team = Some(ConnectedTeam { peer_refs });
     Ok(TerminalPeerFabricResponse::Receipt {
         correlation_id,
         status: "completed",
-        target_ids: peer_ids,
+        target_ids,
     })
 }
 
@@ -122,10 +156,16 @@ fn status(
         .as_ref()
         .ok_or_else(|| "terminal_peer_fabric_team_unavailable".to_string())?;
     let targets = if target_ids.is_empty() {
-        team.peer_ids.clone()
+        team.peer_refs
+            .iter()
+            .map(|peer| peer.session_id.clone())
+            .collect()
     } else {
         let targets = validated_unique_ids(target_ids, 1)?;
-        if targets.iter().any(|id| !team.peer_ids.contains(id)) {
+        if targets
+            .iter()
+            .any(|id| !team.peer_refs.iter().any(|peer| &peer.session_id == id))
+        {
             return Err("terminal_peer_fabric_target_unavailable".to_string());
         }
         targets
@@ -150,8 +190,8 @@ pub fn terminal_peer_fabric(
         }),
         TerminalPeerFabricRequest::Connect {
             correlation_id,
-            peer_ids,
-        } => connect(&state, correlation_id, peer_ids),
+            peer_refs,
+        } => connect(&state, correlation_id, peer_refs),
         TerminalPeerFabricRequest::Command {
             command_id,
             correlation_id,
@@ -180,7 +220,7 @@ mod tests {
             serde_json::to_value(response).unwrap(),
             serde_json::json!({
                 "available": true,
-                "version": "1.0.0",
+                "version": "2.0.0",
                 "operations": ["connect", "team.status"],
             })
         );
@@ -189,12 +229,11 @@ mod tests {
     #[test]
     fn connect_is_atomic_and_status_rejects_foreign_or_unsupported_targets() {
         let state = TerminalPeerFabricState::default();
-        let connected = connect(
-            &state,
-            "corr-1".to_string(),
-            vec!["tty-1".to_string(), "tty-2".to_string()],
-        )
-        .unwrap();
+        let peers = vec![
+            peer_ref("pane-1", "tty-1", "gen-1"),
+            peer_ref("pane-2", "tty-2", "gen-2"),
+        ];
+        let connected = connect(&state, "corr-1".to_string(), peers).unwrap();
         assert!(matches!(
             connected,
             TerminalPeerFabricResponse::Receipt {
@@ -217,10 +256,46 @@ mod tests {
             connect(
                 &state,
                 "corr-3".to_string(),
-                vec!["tty-1".to_string(), "tty-1".to_string()],
+                vec![
+                    peer_ref("pane-1", "tty-1", "gen-1"),
+                    peer_ref("pane-2", "tty-1", "gen-2"),
+                ],
             )
             .unwrap_err(),
             "terminal_peer_fabric_invalid_membership"
         );
+    }
+
+    fn peer_ref(pane_id: &str, session_id: &str, generation: &str) -> FabricPeerRef {
+        FabricPeerRef {
+            pane_id: pane_id.to_string(),
+            session_id: session_id.to_string(),
+            project_id: "project-1".to_string(),
+            runtime_generation: generation.to_string(),
+        }
+    }
+
+    #[test]
+    fn restart_recovery_requires_an_explicit_reconnect_with_stable_generations() {
+        let restarted = TerminalPeerFabricState::default();
+        assert_eq!(
+            status(&restarted, "corr-status".to_string(), vec![], None).unwrap_err(),
+            "terminal_peer_fabric_team_unavailable"
+        );
+
+        let peers = vec![
+            peer_ref("pane-1", "tty-1", "gen-1"),
+            peer_ref("pane-2", "tty-2", "gen-2"),
+        ];
+        connect(&restarted, "corr-recover".to_string(), peers).unwrap();
+        let recovered = status(&restarted, "corr-status-2".to_string(), vec![], None).unwrap();
+        assert!(matches!(
+            recovered,
+            TerminalPeerFabricResponse::Receipt {
+                status: "completed",
+                target_ids,
+                ..
+            } if target_ids == vec!["tty-1", "tty-2"]
+        ));
     }
 }
