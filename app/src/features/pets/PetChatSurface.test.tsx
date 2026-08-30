@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PetChatSurface } from './PetChatSurface';
 import { usePetPresentationStore } from './petPresentationStore';
+import { createJarvisChatIntentStore } from '@/features/chat/jarvisChatIntent';
 
 const updateChat = vi.fn(async (_id: unknown, _patch: unknown) => undefined);
 const createChat = vi.fn(async (_input: unknown) => ({ id: 'chat-new', title: 'New chat' }));
@@ -19,8 +20,8 @@ const authState = vi.hoisted(() => ({
 
 vi.mock('dexie-react-hooks', () => ({
   useLiveQuery: () => [
-    { id: 'chat-1', title: 'First thread' },
-    { id: 'chat-2', title: 'Second thread' },
+    { id: 'chat-1', title: 'First thread', workspace_id: 'workspace-1', project_id: 'project-a' },
+    { id: 'chat-2', title: 'Second thread', workspace_id: 'workspace-1', project_id: 'project-b' },
   ],
 }));
 
@@ -49,9 +50,15 @@ vi.mock('@/features/chat/token-boss/TokenBossCinematic', () => ({
 vi.mock('@/lib/db', () => ({
   chatRepo: {
     list: vi.fn(),
+    getById: vi.fn(async (id: string) => ({
+      id,
+      workspace_id: 'workspace-1',
+      project_id: id === 'chat-1' ? 'project-a' : 'project-b',
+    })),
     update: (id: unknown, patch: unknown) => updateChat(id, patch),
     create: (input: unknown) => createChat(input),
     delete: (id: unknown) => deleteChat(id),
+    deleteAuthorized: (id: unknown) => deleteChat(id),
   },
 }));
 
@@ -101,6 +108,7 @@ vi.mock('@/components/ui/toast', () => ({
 
 describe('PetChatSurface independent panel selection', () => {
   beforeEach(() => {
+    window.localStorage.clear();
     updateChat.mockClear();
     createChat.mockClear();
     deleteChat.mockClear();
@@ -181,6 +189,23 @@ describe('PetChatSurface independent panel selection', () => {
     await waitFor(() => expect(deleteChat).toHaveBeenCalledWith('chat-2'));
     expect(usePetPresentationStore.getState().panelActiveChatId).toBe('chat-1');
     expect(setActiveChat).toHaveBeenCalledWith('chat-1');
+  });
+
+  it('reconciles deletion in the target chat project rather than the active project', async () => {
+    const store = createJarvisChatIntentStore(window.localStorage);
+    store.write(
+      { accountId: 'account-a', workspaceId: 'workspace-1', projectId: 'project-b' },
+      { intent: { kind: 'specific-chat', chatId: 'chat-2' }, primaryChatId: 'chat-2' },
+    );
+    render(<PetChatSurface />);
+
+    fireEvent.click(screen.getByTestId('pet-chat-delete-chat-2'));
+    fireEvent.click(screen.getByTestId('pet-chat-delete-confirm-btn'));
+
+    await waitFor(() => expect(deleteChat).toHaveBeenCalledWith('chat-2'));
+    expect(
+      store.read({ accountId: 'account-a', workspaceId: 'workspace-1', projectId: 'project-b' }),
+    ).toEqual({ version: 1, intent: { kind: 'reuse-primary' } });
   });
 
   it('rejects a confirmed delete after the live project scope changes', async () => {

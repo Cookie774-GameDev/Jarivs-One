@@ -113,10 +113,47 @@ export async function createChatInScope(options: CreateChatInScopeOptions): Prom
   return chat.id;
 }
 
-let ensureInflight: Promise<ChatId | null> | null = null;
+const ensureInflight = new Map<string, Promise<ChatId | null>>();
+
+function chatMatchesScope(
+  chat: { workspace_id: WorkspaceId; project_id?: ProjectId | null },
+  workspaceId: WorkspaceId,
+  projectId: ProjectId | null,
+): boolean {
+  return (
+    String(chat.workspace_id) === String(workspaceId) &&
+    String(chat.project_id ?? '') === String(projectId ?? '')
+  );
+}
+
+function ensureScopeKey(options: EnsureActiveChatOptions): string {
+  const auth = useAuthStore.getState();
+  const identity = resolveAccountIdentity(auth);
+  const scope =
+    identity && auth.workspaceId
+      ? {
+          accountId: identity.accountId,
+          workspaceId: String(auth.workspaceId),
+          projectId: auth.projectId ? String(auth.projectId) : null,
+        }
+      : null;
+  const intent = scope
+    ? createJarvisChatIntentStore(window.localStorage).read(scope)
+    : { version: 1 as const, intent: { kind: 'reuse-primary' as const } };
+  return JSON.stringify([
+    scope?.accountId ?? null,
+    scope?.workspaceId ?? null,
+    scope?.projectId ?? null,
+    intent,
+    options.title ?? null,
+    options.titleHint ?? null,
+    options.navigateToChat !== false,
+  ]);
+}
 
 async function ensureActiveChatInternal(
   options: EnsureActiveChatOptions = {},
+  expectedScopeKey?: string,
 ): Promise<ChatId | null> {
   return runLocalChatStorageOperation(async () => {
     const ui = useUIStore.getState();
@@ -135,20 +172,45 @@ async function ensureActiveChatInternal(
     const intentState = intentScope
       ? intentStore.read(intentScope)
       : ({ version: 1, intent: { kind: 'reuse-primary' } } as const);
+    if (expectedScopeKey && ensureScopeKey(options) !== expectedScopeKey) return null;
+    const scopeIsCurrent = () => {
+      const live = useAuthStore.getState();
+      const liveIdentity = resolveAccountIdentity(live);
+      return Boolean(
+        identity &&
+        liveIdentity?.accountId === identity.accountId &&
+        String(live.workspaceId ?? '') === String(auth.workspaceId ?? '') &&
+        String(live.projectId ?? '') === String(auth.projectId ?? ''),
+      );
+    };
+    const operationIsCurrent = () =>
+      scopeIsCurrent() && (!expectedScopeKey || ensureScopeKey(options) === expectedScopeKey);
 
     const activeMatchesIntent =
+      intentState.intent.kind !== 'invalid' &&
       intentState.intent.kind !== 'explicit-new' &&
       (intentState.intent.kind !== 'specific-chat' ||
-        intentState.intent.chatId === String(ui.activeChatId));
+        intentState.intent.chatId === String(ui.activeChatId)) &&
+      (intentState.intent.kind !== 'reuse-primary' ||
+        !intentState.primaryChatId ||
+        intentState.primaryChatId === String(ui.activeChatId));
     if (ui.activeChatId && !options.forceNew && activeMatchesIntent) {
       const existing = await chatRepo.getById(ui.activeChatId as ChatId);
-      if (existing) return ui.activeChatId as ChatId;
+      if (
+        existing &&
+        auth.workspaceId &&
+        chatMatchesScope(existing, auth.workspaceId, auth.projectId) &&
+        operationIsCurrent()
+      ) {
+        return ui.activeChatId as ChatId;
+      }
     }
 
     if (!auth.workspaceId) return null;
 
     const projectId = auth.projectId;
     const rows = await db.chats.where('workspace_id').equals(auth.workspaceId).toArray();
+    if (!operationIsCurrent()) return null;
     const scoped = projectId
       ? rows.filter((c) => c.project_id === projectId)
       : rows.filter((c) => !c.project_id);
@@ -158,12 +220,14 @@ async function ensureActiveChatInternal(
         intentState,
         scoped.map((chat) => ({ id: String(chat.id), updatedAt: chat.updated_at })),
       );
-      if (selection.kind === 'unavailable-specific-chat') return null;
+      if (selection.kind === 'unavailable-specific-chat' || selection.kind === 'unavailable-intent')
+        return null;
       if (selection.kind === 'create-chat') {
         // Continue to the shared creation path below.
       } else {
         const selected = scoped.find((chat) => String(chat.id) === selection.chatId);
         if (!selected) return null;
+        if (!operationIsCurrent()) return null;
         ui.setActiveChat(selected.id);
         if (navigate) {
           ui.setRoute('chat');
@@ -176,6 +240,7 @@ async function ensureActiveChatInternal(
     const hintedTitle = options.titleHint ? deriveChatTitle(options.titleHint) : '';
     const title = options.title?.trim() || hintedTitle || `New chat ${scoped.length + 1}`;
 
+    if (!operationIsCurrent()) return null;
     const chat = await chatRepo.create({
       workspace_id: auth.workspaceId,
       project_id: projectId ?? undefined,
@@ -184,6 +249,7 @@ async function ensureActiveChatInternal(
       active_agent_ids: [],
     });
 
+    if (!operationIsCurrent()) return null;
     if (intentScope) intentStore.recordCreatedPrimary(intentScope, String(chat.id));
 
     ui.setActiveChat(chat.id);
@@ -200,12 +266,14 @@ export function ensureActiveChat(options: EnsureActiveChatOptions = {}): Promise
   if (options.forceNew) {
     return ensureActiveChatInternal(options);
   }
-  if (!ensureInflight) {
-    ensureInflight = ensureActiveChatInternal(options).finally(() => {
-      ensureInflight = null;
-    });
-  }
-  return ensureInflight;
+  const key = ensureScopeKey(options);
+  const active = ensureInflight.get(key);
+  if (active) return active;
+  const pending = ensureActiveChatInternal(options, key).finally(() => {
+    if (ensureInflight.get(key) === pending) ensureInflight.delete(key);
+  });
+  ensureInflight.set(key, pending);
+  return pending;
 }
 
 /** Title for a chat forked from an existing thread. */

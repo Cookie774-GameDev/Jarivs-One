@@ -25,6 +25,7 @@ import { useUIStore } from '@/stores/ui';
 import { createJarvisChatIntentStore } from './jarvisChatIntent';
 
 beforeEach(() => {
+  window.localStorage.clear();
   requireHealthyLocalChatStorage.mockReset();
   requireHealthyLocalChatStorage.mockResolvedValue(undefined);
   runLocalChatStorageOperation.mockReset();
@@ -50,6 +51,154 @@ describe('chat storage gate', () => {
 });
 
 describe('Jarvis chat intent routing', () => {
+  it('rejects an active chat outside the exact workspace/project scope', async () => {
+    const previousAuth = useAuthStore.getState();
+    const previousActiveChatId = useUIStore.getState().activeChatId;
+    useAuthStore.setState({
+      cloudSession: null,
+      localUserId: 'account-intent',
+      workspaceId: 'workspace-intent' as never,
+      projectId: 'project-b' as never,
+    });
+    useUIStore.getState().setActiveChat('chat-project-a' as never);
+    createJarvisChatIntentStore(window.localStorage).write(
+      {
+        accountId: 'account-intent',
+        workspaceId: 'workspace-intent',
+        projectId: 'project-b',
+      },
+      { intent: { kind: 'reuse-primary' }, primaryChatId: 'chat-project-b' },
+    );
+    vi.spyOn(chatRepo, 'getById').mockResolvedValue({
+      id: 'chat-project-a',
+      workspace_id: 'workspace-intent',
+      project_id: 'project-a',
+    } as never);
+    vi.spyOn(db.chats, 'where').mockReturnValue({
+      equals: () => ({
+        toArray: async () => [
+          {
+            id: 'chat-project-b',
+            workspace_id: 'workspace-intent',
+            project_id: 'project-b',
+            updated_at: 20,
+          },
+        ],
+      }),
+    } as never);
+
+    try {
+      await expect(ensureActiveChat()).resolves.toBe('chat-project-b');
+    } finally {
+      useAuthStore.setState(previousAuth);
+      useUIStore.getState().setActiveChat(previousActiveChatId);
+    }
+  });
+
+  it('does not share an in-flight ensure across an account/workspace/project switch', async () => {
+    const previousAuth = useAuthStore.getState();
+    const previousActiveChatId = useUIStore.getState().activeChatId;
+    let releaseWorkspaceA!: () => void;
+    const workspaceAReady = new Promise<void>((resolve) => {
+      releaseWorkspaceA = resolve;
+    });
+    vi.spyOn(db.chats, 'where').mockReturnValue({
+      equals: (workspaceId: string) => ({
+        toArray: async () => {
+          if (workspaceId === 'workspace-a') await workspaceAReady;
+          return [
+            {
+              id: workspaceId === 'workspace-a' ? 'chat-a' : 'chat-b',
+              workspace_id: workspaceId,
+              project_id: workspaceId === 'workspace-a' ? 'project-a' : 'project-b',
+              updated_at: 20,
+            },
+          ];
+        },
+      }),
+    } as never);
+    useUIStore.getState().setActiveChat(null);
+    useAuthStore.setState({
+      cloudSession: null,
+      localUserId: 'account-a',
+      workspaceId: 'workspace-a' as never,
+      projectId: 'project-a' as never,
+    });
+
+    try {
+      const first = ensureActiveChat();
+      useAuthStore.setState({
+        cloudSession: null,
+        localUserId: 'account-b',
+        workspaceId: 'workspace-b' as never,
+        projectId: 'project-b' as never,
+      });
+      const second = ensureActiveChat();
+      releaseWorkspaceA();
+      await expect(second).resolves.toBe('chat-b');
+      await expect(first).resolves.toBeNull();
+    } finally {
+      releaseWorkspaceA();
+      useAuthStore.setState(previousAuth);
+      useUIStore.getState().setActiveChat(previousActiveChatId);
+    }
+  });
+
+  it('does not share an in-flight ensure after durable intent changes in the same scope', async () => {
+    const previousAuth = useAuthStore.getState();
+    const previousActiveChatId = useUIStore.getState().activeChatId;
+    let releaseFirstRead!: () => void;
+    const firstRead = new Promise<void>((resolve) => {
+      releaseFirstRead = resolve;
+    });
+    let reads = 0;
+    vi.spyOn(db.chats, 'where').mockReturnValue({
+      equals: () => ({
+        toArray: async () => {
+          reads += 1;
+          if (reads === 1) await firstRead;
+          return [
+            {
+              id: 'chat-existing',
+              workspace_id: 'workspace-intent',
+              project_id: 'project-intent',
+              updated_at: 20,
+            },
+          ];
+        },
+      }),
+    } as never);
+    const create = vi.spyOn(chatRepo, 'create').mockResolvedValue({ id: 'chat-new' } as never);
+    useAuthStore.setState({
+      cloudSession: null,
+      localUserId: 'account-intent',
+      workspaceId: 'workspace-intent' as never,
+      projectId: 'project-intent' as never,
+    });
+    useUIStore.getState().setActiveChat(null);
+    const scope = {
+      accountId: 'account-intent',
+      workspaceId: 'workspace-intent',
+      projectId: 'project-intent',
+    };
+
+    try {
+      const first = ensureActiveChat();
+      createJarvisChatIntentStore(window.localStorage).write(scope, {
+        intent: { kind: 'explicit-new' },
+      });
+      const second = ensureActiveChat();
+      await expect(second).resolves.toBe('chat-new');
+      releaseFirstRead();
+      await expect(first).resolves.toBeNull();
+      expect(create).toHaveBeenCalledTimes(1);
+    } finally {
+      releaseFirstRead();
+      useAuthStore.setState(previousAuth);
+      useUIStore.getState().setActiveChat(previousActiveChatId);
+    }
+  });
+
   it('does not recreate when an exact specific-chat intent is unavailable in an empty scope', async () => {
     const previousAuth = useAuthStore.getState();
     const previousActiveChatId = useUIStore.getState().activeChatId;

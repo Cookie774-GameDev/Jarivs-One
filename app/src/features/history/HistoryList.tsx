@@ -26,6 +26,7 @@ import { browserChatProvider } from '@/features/browser-chat/providerRegistry';
 import { createChatGptSnapshotRepository } from '@/features/browser-chat/chatGptExport';
 import {
   createPermanentDeleteAuthority,
+  type PermanentDeleteAuthority,
   type PermanentDeleteReceipt,
   type PermanentDeleteRequest,
 } from '@/features/chat/permanentDeleteAuthority';
@@ -49,8 +50,12 @@ interface PendingHistoryDeletion {
   expectedAccountId: string;
   expectedWorkspaceId: string;
   expectedProjectId: string | null;
-  authorityRequest: PermanentDeleteRequest;
-  receipt: PermanentDeleteReceipt;
+  authorities: readonly Readonly<{
+    authority: PermanentDeleteAuthority;
+    request: PermanentDeleteRequest;
+    receipt: PermanentDeleteReceipt;
+    projectId: string | null;
+  }>[];
   title: string;
   description: string;
   confirmLabel: string;
@@ -88,21 +93,10 @@ export function HistoryList({
   const [deleting, setDeleting] = React.useState(false);
   const [pendingDeletion, setPendingDeletion] = React.useState<PendingHistoryDeletion | null>(null);
   const deletionSessionId = React.useId();
-  const deleteAuthority = React.useMemo(
-    () =>
-      createPermanentDeleteAuthority({
-        scope: {
-          accountId: accountId ?? '',
-          workspaceId: String(workspaceId ?? ''),
-          projectId: activeProjectId ? String(activeProjectId) : null,
-          sessionId: deletionSessionId,
-        },
-      }),
-    [accountId, activeProjectId, deletionSessionId, workspaceId],
-  );
   const cancelDeletionRef = React.useRef<HTMLButtonElement>(null);
   const selectedChatIdRef = React.useRef(selectedChatId);
   const selectedSnapshotIdRef = React.useRef(selectedSnapshotId);
+  const chatsRef = React.useRef<readonly Chat[]>([]);
 
   React.useLayoutEffect(() => {
     selectedChatIdRef.current = selectedChatId;
@@ -118,40 +112,64 @@ export function HistoryList({
         pendingDeletion.expectedWorkspaceId !== String(workspaceId ?? '') ||
         pendingDeletion.expectedProjectId !== (activeProjectId ? String(activeProjectId) : null))
     ) {
+      for (const authorization of pendingDeletion.authorities) authorization.authority.revoke();
       setPendingDeletion(null);
     }
   }, [accountId, activeProjectId, pendingDeletion, workspaceId]);
-
-  React.useEffect(() => () => deleteAuthority.revoke(), [deleteAuthority]);
 
   const queueDeletion = React.useCallback(
     (
       request: Omit<
         PendingHistoryDeletion,
-        | 'expectedAccountId'
-        | 'expectedWorkspaceId'
-        | 'expectedProjectId'
-        | 'authorityRequest'
-        | 'receipt'
+        'expectedAccountId' | 'expectedWorkspaceId' | 'expectedProjectId' | 'authorities'
       >,
     ) => {
       if (!accountId || !workspaceId) return;
-      const authorityRequest: PermanentDeleteRequest = request.snapshotId
-        ? { operation: 'delete-snapshot', resourceIds: [request.snapshotId] }
-        : {
-            operation: (request.chatIds?.length ?? 0) > 1 ? 'delete-chat-batch' : 'delete-chat',
-            resourceIds: (request.chatIds ?? []).map(String),
-          };
+      const groups = new Map<string | null, string[]>();
+      if (request.snapshotId) {
+        groups.set(null, [request.snapshotId]);
+      } else {
+        for (const chatId of request.chatIds ?? []) {
+          const target = chatsRef.current.find((chat) => String(chat.id) === String(chatId));
+          if (!target) return;
+          const targetProjectId = target.project_id ? String(target.project_id) : null;
+          groups.set(targetProjectId, [...(groups.get(targetProjectId) ?? []), String(chatId)]);
+        }
+      }
+      const authorities = [...groups].map(([targetProjectId, resourceIds]) => {
+        const authority = createPermanentDeleteAuthority({
+          scope: {
+            accountId,
+            workspaceId: String(workspaceId),
+            projectId: targetProjectId,
+            sessionId: deletionSessionId,
+          },
+        });
+        const authorityRequest: PermanentDeleteRequest = {
+          operation: request.snapshotId
+            ? 'delete-snapshot'
+            : resourceIds.length > 1
+              ? 'delete-chat-batch'
+              : 'delete-chat',
+          resourceIds,
+        };
+        return {
+          authority,
+          request: authorityRequest,
+          receipt: authority.issue(authorityRequest),
+          projectId: targetProjectId,
+        };
+      });
+      if (authorities.length === 0) return;
       setPendingDeletion({
         ...request,
         expectedAccountId: accountId,
         expectedWorkspaceId: String(workspaceId),
         expectedProjectId: activeProjectId ? String(activeProjectId) : null,
-        authorityRequest,
-        receipt: deleteAuthority.issue(authorityRequest),
+        authorities,
       });
     },
-    [accountId, activeProjectId, deleteAuthority, workspaceId],
+    [accountId, activeProjectId, deletionSessionId, workspaceId],
   );
 
   // Live chat list, scoped to workspace, sorted newest-first, capped.
@@ -165,6 +183,7 @@ export function HistoryList({
     [workspaceId],
     [] as Chat[],
   );
+  chatsRef.current = chats ?? [];
 
   // Project lookup, used to render the project chip on each row.
   const projects = useLiveQuery(
@@ -282,17 +301,46 @@ export function HistoryList({
     setDeleting(true);
     try {
       const liveAuth = useAuthStore.getState();
-      const authorized = deleteAuthority.consume(
-        request.receipt,
-        {
-          accountId: resolveAccountIdentity(liveAuth)?.accountId ?? '',
-          workspaceId: String(liveAuth.workspaceId ?? ''),
-          projectId: liveAuth.projectId ? String(liveAuth.projectId) : null,
-          sessionId: deletionSessionId,
-        },
-        request.authorityRequest,
+      const liveAccountId = resolveAccountIdentity(liveAuth)?.accountId ?? '';
+      const liveWorkspaceId = String(liveAuth.workspaceId ?? '');
+      if (
+        liveAccountId !== request.expectedAccountId ||
+        liveWorkspaceId !== request.expectedWorkspaceId ||
+        (liveAuth.projectId ? String(liveAuth.projectId) : null) !== request.expectedProjectId
+      ) {
+        throw new Error('history_scope_changed');
+      }
+      const targetRows = await Promise.all(chatIds.map((chatId) => chatRepo.getById(chatId)));
+      if (
+        targetRows.some((row) => !row || String(row.workspace_id) !== request.expectedWorkspaceId)
+      ) {
+        throw new Error('history_delete_target_scope_changed');
+      }
+      const targetProjectById = new Map(
+        targetRows.map((row) => [
+          String(row!.id),
+          row!.project_id ? String(row!.project_id) : null,
+        ]),
       );
-      if (!authorized) throw new Error('history_delete_authority_rejected');
+      for (const authorization of request.authorities) {
+        if (
+          authorization.request.resourceIds.some(
+            (chatId) => targetProjectById.get(chatId) !== authorization.projectId,
+          ) ||
+          !authorization.authority.consume(
+            authorization.receipt,
+            {
+              accountId: liveAccountId,
+              workspaceId: liveWorkspaceId,
+              projectId: authorization.projectId,
+              sessionId: deletionSessionId,
+            },
+            authorization.request,
+          )
+        ) {
+          throw new Error('history_delete_authority_rejected');
+        }
+      }
       const requireExpectedProject = () => {
         const liveProjectId = useAuthStore.getState().projectId;
         if ((liveProjectId ? String(liveProjectId) : null) !== request.expectedProjectId) {
@@ -332,14 +380,21 @@ export function HistoryList({
       );
       if (feedback.clearSelection) onSelectChat(null);
       if (result.deletedIds.length > 0) {
-        createJarvisChatIntentStore(window.localStorage).reconcileDeleted(
-          {
-            accountId: request.expectedAccountId,
-            workspaceId: request.expectedWorkspaceId,
-            projectId: request.expectedProjectId,
-          },
-          result.deletedIds,
-        );
+        const deleted = new Set(result.deletedIds);
+        for (const authorization of request.authorities) {
+          const deletedInProject = authorization.request.resourceIds.filter((id) =>
+            deleted.has(id),
+          );
+          if (deletedInProject.length === 0) continue;
+          createJarvisChatIntentStore(window.localStorage).reconcileDeleted(
+            {
+              accountId: request.expectedAccountId,
+              workspaceId: request.expectedWorkspaceId,
+              projectId: authorization.projectId,
+            },
+            deletedInProject,
+          );
+        }
       }
       toast[feedback.tone](feedback.title, feedback.message);
       if (feedback.tone === 'success') {
@@ -362,20 +417,23 @@ export function HistoryList({
     setDeleting(true);
     try {
       const liveAuth = useAuthStore.getState();
-      const authorized = deleteAuthority.consume(
-        request.receipt,
+      const authorization = request.authorities[0];
+      const authorized = authorization?.authority.consume(
+        authorization.receipt,
         {
           accountId: resolveAccountIdentity(liveAuth)?.accountId ?? '',
           workspaceId: String(liveAuth.workspaceId ?? ''),
-          projectId: liveAuth.projectId ? String(liveAuth.projectId) : null,
+          projectId: authorization.projectId,
           sessionId: deletionSessionId,
         },
-        request.authorityRequest,
+        authorization.request,
       );
       if (!authorized) throw new Error('history_delete_authority_rejected');
       if (
         resolveAccountIdentity(useAuthStore.getState())?.accountId !== request.expectedAccountId ||
-        String(useAuthStore.getState().workspaceId ?? '') !== request.expectedWorkspaceId
+        String(useAuthStore.getState().workspaceId ?? '') !== request.expectedWorkspaceId ||
+        (useAuthStore.getState().projectId ? String(useAuthStore.getState().projectId) : null) !==
+          request.expectedProjectId
       ) {
         throw new Error('history_scope_changed');
       }
@@ -621,7 +679,12 @@ export function HistoryList({
       <Dialog
         open={pendingDeletion !== null}
         onOpenChange={(open) => {
-          if (!open) setPendingDeletion(null);
+          if (!open) {
+            for (const authorization of pendingDeletion?.authorities ?? []) {
+              authorization.authority.revoke();
+            }
+            setPendingDeletion(null);
+          }
         }}
       >
         <DialogContent

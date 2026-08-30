@@ -25,6 +25,7 @@ import type { ChatId, ProjectId, WorkspaceId } from '@/types/common';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import {
   createPermanentDeleteAuthority,
+  type PermanentDeleteAuthority,
   type PermanentDeleteReceipt,
   type PermanentDeleteRequest,
 } from '@/features/chat/permanentDeleteAuthority';
@@ -36,6 +37,8 @@ type PendingDelete = Readonly<{
   expectedAccountId: string;
   expectedWorkspaceId: string;
   expectedProjectId: string | null;
+  targetProjectId: string | null;
+  authority: PermanentDeleteAuthority;
   request: PermanentDeleteRequest;
   receipt: PermanentDeleteReceipt;
 }>;
@@ -52,21 +55,6 @@ export function PetChatSurface({ className }: { className?: string }) {
   const [pendingDelete, setPendingDelete] = React.useState<PendingDelete | null>(null);
   const [deleting, setDeleting] = React.useState(false);
   const deletionSessionId = React.useId();
-  const deleteAuthority = React.useMemo(
-    () =>
-      createPermanentDeleteAuthority({
-        scope: {
-          accountId: accountId ?? '',
-          workspaceId: String(workspaceId ?? ''),
-          projectId: projectId ? String(projectId) : null,
-          sessionId: deletionSessionId,
-        },
-      }),
-    [accountId, deletionSessionId, projectId, workspaceId],
-  );
-
-  React.useEffect(() => () => deleteAuthority.revoke(), [deleteAuthority]);
-
   const allChats = useLiveQuery(
     async () => {
       if (!workspaceId) return [];
@@ -122,15 +110,28 @@ export function PetChatSurface({ className }: { className?: string }) {
 
   const requestDelete = (id: string, title: string) => {
     if (!accountId || !workspaceId) return;
+    const target = workspaceChats.find((chat) => String(chat.id) === id);
+    if (!target || String(target.workspace_id) !== String(workspaceId)) return;
+    const targetProjectId = target.project_id ? String(target.project_id) : null;
     const request = { operation: 'delete-chat' as const, resourceIds: [id] };
+    const authority = createPermanentDeleteAuthority({
+      scope: {
+        accountId,
+        workspaceId: String(workspaceId),
+        projectId: targetProjectId,
+        sessionId: deletionSessionId,
+      },
+    });
     setPendingDelete({
       id,
       title,
       expectedAccountId: accountId,
       expectedWorkspaceId: String(workspaceId),
       expectedProjectId: projectId ? String(projectId) : null,
+      targetProjectId,
+      authority,
       request,
-      receipt: deleteAuthority.issue(request),
+      receipt: authority.issue(request),
     });
   };
 
@@ -140,23 +141,50 @@ export function PetChatSurface({ className }: { className?: string }) {
     setDeleting(true);
     try {
       const liveAuth = useAuthStore.getState();
-      const authorized = deleteAuthority.consume(
+      const liveAccountId = resolveAccountIdentity(liveAuth)?.accountId ?? '';
+      const liveWorkspaceId = String(liveAuth.workspaceId ?? '');
+      if (
+        liveAccountId !== pendingDelete.expectedAccountId ||
+        liveWorkspaceId !== pendingDelete.expectedWorkspaceId ||
+        (liveAuth.projectId ? String(liveAuth.projectId) : null) !== pendingDelete.expectedProjectId
+      ) {
+        throw new Error('pet_chat_delete_scope_changed');
+      }
+      const target = await chatRepo.getById(id as ChatId);
+      const targetProjectId = target?.project_id ? String(target.project_id) : null;
+      if (
+        !target ||
+        String(target.workspace_id) !== pendingDelete.expectedWorkspaceId ||
+        targetProjectId !== pendingDelete.targetProjectId
+      ) {
+        throw new Error('pet_chat_delete_target_scope_changed');
+      }
+      const authorized = pendingDelete.authority.consume(
         pendingDelete.receipt,
         {
-          accountId: resolveAccountIdentity(liveAuth)?.accountId ?? '',
-          workspaceId: String(liveAuth.workspaceId ?? ''),
-          projectId: liveAuth.projectId ? String(liveAuth.projectId) : null,
+          accountId: liveAccountId,
+          workspaceId: liveWorkspaceId,
+          projectId: targetProjectId,
           sessionId: deletionSessionId,
         },
         pendingDelete.request,
       );
       if (!authorized) throw new Error('pet_chat_delete_authority_rejected');
-      await chatRepo.delete(id as ChatId);
+      await chatRepo.deleteAuthorized(id as ChatId, {
+        expectedAccountId: pendingDelete.expectedAccountId,
+        expectedWorkspaceId: pendingDelete.expectedWorkspaceId,
+        getActiveAccountId: () =>
+          resolveAccountIdentity(useAuthStore.getState())?.accountId ?? null,
+        getActiveWorkspaceId: () => {
+          const active = useAuthStore.getState().workspaceId;
+          return active ? String(active) : null;
+        },
+      });
       createJarvisChatIntentStore(window.localStorage).reconcileDeleted(
         {
           accountId: pendingDelete.expectedAccountId,
           workspaceId: pendingDelete.expectedWorkspaceId,
-          projectId: pendingDelete.expectedProjectId,
+          projectId: pendingDelete.targetProjectId,
         },
         [id],
       );
@@ -318,7 +346,10 @@ export function PetChatSurface({ className }: { className?: string }) {
                 variant="ghost"
                 className="h-7 px-2 text-[11px]"
                 disabled={deleting}
-                onClick={() => setPendingDelete(null)}
+                onClick={() => {
+                  pendingDelete.authority.revoke();
+                  setPendingDelete(null);
+                }}
                 data-testid="pet-chat-delete-cancel"
               >
                 Cancel

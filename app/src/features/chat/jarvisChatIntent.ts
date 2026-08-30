@@ -7,7 +7,8 @@ export type JarvisChatScope = Readonly<{
 export type JarvisChatIntent =
   | Readonly<{ kind: 'reuse-primary' }>
   | Readonly<{ kind: 'explicit-new' }>
-  | Readonly<{ kind: 'specific-chat'; chatId: string }>;
+  | Readonly<{ kind: 'specific-chat'; chatId: string }>
+  | Readonly<{ kind: 'invalid' }>;
 
 export type JarvisChatIntentState = Readonly<{
   version: 1;
@@ -18,13 +19,18 @@ export type JarvisChatIntentState = Readonly<{
 export type JarvisChatSelection =
   | Readonly<{ kind: 'use-chat'; chatId: string }>
   | Readonly<{ kind: 'create-chat' }>
-  | Readonly<{ kind: 'unavailable-specific-chat'; chatId: string }>;
+  | Readonly<{ kind: 'unavailable-specific-chat'; chatId: string }>
+  | Readonly<{ kind: 'unavailable-intent' }>;
 
 type IntentStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 const DEFAULT_STATE: JarvisChatIntentState = Object.freeze({
   version: 1,
   intent: Object.freeze({ kind: 'reuse-primary' }),
+});
+const INVALID_STATE: JarvisChatIntentState = Object.freeze({
+  version: 1,
+  intent: Object.freeze({ kind: 'invalid' }),
 });
 
 function scopeKey(scope: JarvisChatScope): string {
@@ -40,12 +46,18 @@ function parseState(value: string | null): JarvisChatIntentState {
     const intent = candidate.intent as Record<string, unknown> | undefined;
     const primaryChatId = candidate.primaryChatId;
     if (
+      !candidate ||
+      typeof candidate !== 'object' ||
+      Array.isArray(candidate) ||
+      Object.keys(candidate).some((key) => !['version', 'intent', 'primaryChatId'].includes(key)) ||
       candidate.version !== 1 ||
       !intent ||
+      typeof intent !== 'object' ||
+      Array.isArray(intent) ||
       (primaryChatId !== undefined &&
         (typeof primaryChatId !== 'string' || primaryChatId.trim().length === 0))
     ) {
-      return DEFAULT_STATE;
+      return INVALID_STATE;
     }
     if (
       intent.kind !== 'reuse-primary' &&
@@ -56,8 +68,10 @@ function parseState(value: string | null): JarvisChatIntentState {
         intent.chatId.trim().length > 0
       )
     ) {
-      return DEFAULT_STATE;
+      return INVALID_STATE;
     }
+    const expectedIntentKeys = intent.kind === 'specific-chat' ? ['kind', 'chatId'] : ['kind'];
+    if (Object.keys(intent).some((key) => !expectedIntentKeys.includes(key))) return INVALID_STATE;
     return {
       version: 1,
       intent:
@@ -67,7 +81,7 @@ function parseState(value: string | null): JarvisChatIntentState {
       ...(typeof primaryChatId === 'string' ? { primaryChatId } : {}),
     };
   } catch {
-    return DEFAULT_STATE;
+    return INVALID_STATE;
   }
 }
 
@@ -82,7 +96,9 @@ export function createJarvisChatIntentStore(storage: IntentStorage) {
     },
     write(
       scope: JarvisChatScope,
-      state: Omit<JarvisChatIntentState, 'version'>,
+      state: Omit<JarvisChatIntentState, 'version'> & {
+        intent: Exclude<JarvisChatIntent, Readonly<{ kind: 'invalid' }>>;
+      },
     ): JarvisChatIntentState {
       return persist(scope, { version: 1, ...state });
     },
@@ -117,6 +133,7 @@ export function selectJarvisChatForIntent(
   state: JarvisChatIntentState,
   chats: readonly Readonly<{ id: string; updatedAt: number }>[],
 ): JarvisChatSelection {
+  if (state.intent.kind === 'invalid') return { kind: 'unavailable-intent' };
   if (state.intent.kind === 'explicit-new') return { kind: 'create-chat' };
   if (state.intent.kind === 'specific-chat') {
     const chatId = state.intent.chatId;

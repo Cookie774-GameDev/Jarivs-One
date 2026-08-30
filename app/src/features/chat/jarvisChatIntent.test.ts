@@ -67,7 +67,7 @@ describe('Jarvis chat intent persistence', () => {
     );
     expect(createJarvisChatIntentStore(storage).read(scope)).toEqual({
       version: 1,
-      intent: { kind: 'reuse-primary' },
+      intent: { kind: 'invalid' },
     });
   });
 
@@ -119,5 +119,8 @@ describe('selectJarvisChatForIntent', () => {
         chats,
       ),
     ).toEqual({ kind: 'unavailable-specific-chat', chatId: 'chat-missing' });
+    expect(selectJarvisChatForIntent({ version: 1, intent: { kind: 'invalid' } }, chats)).toEqual({
+      kind: 'unavailable-intent',
+    });
   });
 });

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Chat } from '@/types';
+import { createJarvisChatIntentStore } from '@/features/chat/jarvisChatIntent';
 import { HistoryList } from './HistoryList';
 
 const mocks = vi.hoisted(() => ({
@@ -92,12 +93,12 @@ vi.mock('@/lib/sfx', () => ({
   playUiSound: mocks.playUiSound,
 }));
 
-function chat(id: string, title: string): Chat {
+function chat(id: string, title: string, projectId: string | null = null): Chat {
   return {
     id,
     title,
     workspace_id: 'workspace-a',
-    project_id: null,
+    project_id: projectId,
     active_agent_ids: [],
     created_at: 1,
     updated_at: 1,
@@ -122,6 +123,7 @@ function deferredVoid() {
 }
 
 beforeEach(() => {
+  window.localStorage.clear();
   mocks.activeAccountId = 'account-a';
   mocks.activeWorkspaceId = 'workspace-a';
   mocks.activeProjectId = null;
@@ -130,10 +132,9 @@ beforeEach(() => {
   mocks.bindings = [];
   mocks.snapshots = [];
   mocks.getById.mockReset();
-  mocks.getById.mockImplementation(async (id: string) => ({
-    id,
-    workspace_id: 'workspace-a',
-  }));
+  mocks.getById.mockImplementation(async (id: string) =>
+    mocks.chats.find((candidate) => String(candidate.id) === id),
+  );
   mocks.remove.mockReset();
   mocks.remove.mockResolvedValue(undefined);
   mocks.removeSnapshot.mockReset();
@@ -283,6 +284,35 @@ describe('HistoryList destructive confirmation', () => {
 
     await waitFor(() => expect(mocks.remove).toHaveBeenCalledTimes(2));
     expect(mocks.remove.mock.calls).toEqual([['chat-a'], ['chat-b']]);
+  });
+
+  it('reconciles a mixed-project batch through each target chat project', async () => {
+    mocks.chats = [
+      chat('chat-a', 'Alpha chat', 'project-a'),
+      chat('chat-b', 'Beta chat', 'project-b'),
+    ];
+    const store = createJarvisChatIntentStore(window.localStorage);
+    for (const [projectId, chatId] of [
+      ['project-a', 'chat-a'],
+      ['project-b', 'chat-b'],
+    ] as const) {
+      store.write(
+        { accountId: 'account-a', workspaceId: 'workspace-a', projectId },
+        { intent: { kind: 'specific-chat', chatId }, primaryChatId: chatId },
+      );
+    }
+    renderHistory();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear visible' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete 2 chats' }));
+
+    await waitFor(() => expect(mocks.remove).toHaveBeenCalledTimes(2));
+    expect(
+      store.read({ accountId: 'account-a', workspaceId: 'workspace-a', projectId: 'project-a' }),
+    ).toEqual({ version: 1, intent: { kind: 'reuse-primary' } });
+    expect(
+      store.read({ accountId: 'account-a', workspaceId: 'workspace-a', projectId: 'project-b' }),
+    ).toEqual({ version: 1, intent: { kind: 'reuse-primary' } });
   });
 
   it('fails closed if the active workspace changes before explicit confirmation', async () => {
