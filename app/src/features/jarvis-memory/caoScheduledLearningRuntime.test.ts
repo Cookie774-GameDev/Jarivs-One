@@ -190,4 +190,51 @@ describe('CAO scheduled learning production runtime', () => {
     });
     expect(runtime.getStatus()).toMatchObject({ state: 'cancelled', trigger: 'manual_force' });
   });
+
+  it('cancels the executing pass and drops older queued same-scope work without completion', async () => {
+    const persistence = memoryPersistence();
+    let started!: () => void;
+    const executing = new Promise<void>((resolve) => (started = resolve));
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const execute = vi.fn(async (_input, signal: AbortSignal) => {
+      started();
+      await gate;
+      return signal.aborted
+        ? ({ status: 'cancelled' } as const)
+        : ({ status: 'completed', receiptId: 'must-not-complete' } as const);
+    });
+    const runtime = createCaoScheduledLearningRuntime({
+      persistence,
+      journalHighWater: async () => 9,
+      execute,
+      now: () => 2_000,
+      newPassId: () => 'pass-active',
+      newRequestId: () => 'unused',
+    });
+
+    const active = runtime.run({
+      scope: SCOPE,
+      trigger: 'scheduled',
+      requestId: 'request-active',
+      scheduledDueAt: 1_500,
+    });
+    await executing;
+    const queued = runtime.run({
+      scope: SCOPE,
+      trigger: 'manual_force',
+      requestId: 'request-queued',
+    });
+    runtime.cancel(SCOPE);
+    release();
+
+    await expect(active).resolves.toMatchObject({ status: 'cancelled' });
+    await expect(queued).resolves.toMatchObject({ status: 'cancelled', passId: null });
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(await persistence.load(SCOPE)).toMatchObject({
+      lastLearningSeqConsumed: 0,
+      scheduledOccurrenceCount: 0,
+      completions: [],
+    });
+  });
 });

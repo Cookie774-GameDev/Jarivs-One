@@ -7,6 +7,7 @@ import type { EventRow } from '@/types/event';
 import { parseJarvisScheduleMetadata } from '@/features/schedule/jarvisSchedules';
 import {
   createCaoScheduledLearningController,
+  parseCaoScheduledLearningSnapshot,
   type CaoLearningExecutionInput,
   type CaoLearningExecutionResult,
   type CaoLearningTrigger,
@@ -65,6 +66,9 @@ export function createCaoScheduledLearningRuntime(deps: CaoScheduledLearningRunt
   const controllers = new Map<string, ReturnType<typeof createCaoScheduledLearningController>>();
   const aborters = new Map<string, AbortController>();
   const inFlight = new Map<string, Promise<CaoScheduledLearningRunResult>>();
+  const scopeQueues = new Map<string, Promise<void>>();
+  const cancellationGenerations = new Map<string, number>();
+  const operationGenerations = new Map<string, number>();
   const listeners = new Set<(status: CaoScheduledLearningRuntimeStatus) => void>();
   let status: CaoScheduledLearningRuntimeStatus = { state: 'idle' };
 
@@ -82,7 +86,10 @@ export function createCaoScheduledLearningRuntime(deps: CaoScheduledLearningRunt
       now,
       newPassId: deps.newPassId,
       execute: async (input) => {
-        const aborter = aborters.get(key) ?? new AbortController();
+        if (operationGenerations.get(key) !== (cancellationGenerations.get(key) ?? 0)) {
+          return { status: 'cancelled' };
+        }
+        const aborter = new AbortController();
         aborters.set(key, aborter);
         try {
           return await deps.execute(input, aborter.signal);
@@ -103,36 +110,95 @@ export function createCaoScheduledLearningRuntime(deps: CaoScheduledLearningRunt
     return result;
   };
 
+  const cancelledWithoutExecution = async (
+    scope: CaoScheduledLearningScope,
+  ): Promise<CaoScheduledLearningRunResult> => {
+    let cursor = 0;
+    let scheduledOccurrenceCount = 0;
+    try {
+      const snapshot = parseCaoScheduledLearningSnapshot(await deps.persistence.load(scope));
+      if (
+        snapshot &&
+        snapshot.accountId === scope.accountId &&
+        snapshot.workspaceId === scope.workspaceId &&
+        snapshot.projectId === scope.projectId &&
+        snapshot.scheduleId === scope.scheduleId &&
+        snapshot.targetId === scope.targetId &&
+        snapshot.scheduleAnchorAt === scope.scheduleAnchorAt
+      ) {
+        cursor = snapshot.lastLearningSeqConsumed;
+        scheduledOccurrenceCount = snapshot.scheduledOccurrenceCount;
+      }
+    } catch {
+      // Cancellation remains truthful even if its read-only status snapshot is unavailable.
+    }
+    return {
+      status: 'cancelled',
+      passId: null,
+      consumed: { fromSeqExclusive: cursor, throughSeqInclusive: cursor },
+      scheduledOccurrenceCount,
+      deduplicated: false,
+    };
+  };
+
+  const enqueue = <T>(
+    scope: CaoScheduledLearningScope,
+    generation: number,
+    operation: () => Promise<T>,
+    onCancelled: () => Promise<T>,
+  ): Promise<T> => {
+    const key = scopeKey(scope);
+    const previous = scopeQueues.get(key) ?? Promise.resolve();
+    const start = async () => {
+      if (generation !== (cancellationGenerations.get(key) ?? 0)) return onCancelled();
+      operationGenerations.set(key, generation);
+      try {
+        return await operation();
+      } finally {
+        if (operationGenerations.get(key) === generation) operationGenerations.delete(key);
+      }
+    };
+    const pending = previous.then(start, start);
+    const tail = pending.then(
+      () => undefined,
+      () => undefined,
+    );
+    scopeQueues.set(key, tail);
+    void tail.finally(() => {
+      if (scopeQueues.get(key) === tail) scopeQueues.delete(key);
+    });
+    return pending;
+  };
+
   const run = (input: CaoScheduledLearningRuntimeInput) => {
     const requestId = input.requestId ?? deps.newRequestId?.();
     if (!requestId) return Promise.reject(new Error('cao_learning_request_id_unavailable'));
     const key = requestKey(input, requestId);
     const active = inFlight.get(key);
     if (active) return active;
-    const activeAborter = new AbortController();
-    aborters.set(scopeKey(input.scope), activeAborter);
+    const generation = cancellationGenerations.get(scopeKey(input.scope)) ?? 0;
     publish({ state: 'running', trigger: input.trigger, scope: input.scope, updatedAt: now() });
-    const pending = Promise.resolve(deps.journalHighWater(input.scope))
-      .then((journalHighWaterSeq) =>
-        controllerFor(input.scope).run({
+    const pending = enqueue(
+      input.scope,
+      generation,
+      async () => {
+        const journalHighWaterSeq = await deps.journalHighWater(input.scope);
+        return controllerFor(input.scope).run({
           ...input.scope,
           trigger: input.trigger,
           requestId,
           journalHighWaterSeq,
           ...(input.trigger === 'scheduled' ? { scheduledDueAt: input.scheduledDueAt } : {}),
-        }),
-      )
+        });
+      },
+      () => cancelledWithoutExecution(input.scope),
+    )
       .then((result) => settleStatus(result, input))
       .catch((error) => {
         publish({ state: 'failed', trigger: input.trigger, scope: input.scope, updatedAt: now() });
         throw error;
       })
-      .finally(() => {
-        inFlight.delete(key);
-        if (aborters.get(scopeKey(input.scope)) === activeAborter) {
-          aborters.delete(scopeKey(input.scope));
-        }
-      });
+      .finally(() => inFlight.delete(key));
     inFlight.set(key, pending);
     return pending;
   };
@@ -140,7 +206,13 @@ export function createCaoScheduledLearningRuntime(deps: CaoScheduledLearningRunt
   const recover = async (scope: CaoScheduledLearningScope) => {
     publish({ state: 'running', scope, updatedAt: now() });
     try {
-      const result = await controllerFor(scope).recover(scope);
+      const generation = cancellationGenerations.get(scopeKey(scope)) ?? 0;
+      const result = await enqueue(
+        scope,
+        generation,
+        () => controllerFor(scope).recover(scope),
+        () => cancelledWithoutExecution(scope),
+      );
       if (!result) {
         publish({ state: 'idle', scope, updatedAt: now() });
         return null;
@@ -156,8 +228,15 @@ export function createCaoScheduledLearningRuntime(deps: CaoScheduledLearningRunt
     run,
     recover,
     cancel(scope?: CaoScheduledLearningScope) {
-      if (scope) aborters.get(scopeKey(scope))?.abort();
-      else for (const aborter of aborters.values()) aborter.abort();
+      const cancelKey = (key: string) => {
+        cancellationGenerations.set(key, (cancellationGenerations.get(key) ?? 0) + 1);
+        aborters.get(key)?.abort();
+      };
+      if (scope) cancelKey(scopeKey(scope));
+      else {
+        const keys = new Set([...controllers.keys(), ...scopeQueues.keys(), ...aborters.keys()]);
+        for (const key of keys) cancelKey(key);
+      }
     },
     getStatus: () => status,
     subscribe(listener: (next: CaoScheduledLearningRuntimeStatus) => void) {
