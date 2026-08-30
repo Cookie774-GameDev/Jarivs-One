@@ -30,13 +30,25 @@ export function VoiceModelSelector({
       )?.id ?? ''
     );
   }, [currentSelection, flatOptions]);
+  const currentGroupLabel = React.useMemo(
+    () =>
+      groups.find((group) =>
+        group.options.some((option) =>
+          (option.alternativeRoutes ?? [option]).some((route) => route.id === currentOptionId),
+        ),
+      )?.label,
+    [currentOptionId, groups],
+  );
 
   return (
     <label
       className="jarvis-voice-model-selector"
       onPointerDown={(event) => event.stopPropagation()}
     >
-      <span className="sr-only">Jarvis voice model</span>
+      <span className="jarvis-model-label">Model</span>
+      <span className="jarvis-model-provider" aria-hidden="true">
+        {currentGroupLabel ?? 'Choose provider'}
+      </span>
       <select
         aria-label="Jarvis voice model"
         value={currentOptionId}

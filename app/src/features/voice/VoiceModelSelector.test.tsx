@@ -91,6 +91,9 @@ describe('VoiceModelSelector', () => {
   it('shows connected models, disables unavailable routes, and persists selection', () => {
     render(<VoiceModelSelector />);
 
+    expect(screen.getByText('Model')).toBeTruthy();
+    expect(screen.getByText('OpenAI API')).toBeTruthy();
+
     const selector = screen.getByRole('combobox', {
       name: 'Jarvis voice model',
     }) as HTMLSelectElement;

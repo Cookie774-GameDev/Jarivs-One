@@ -33,6 +33,8 @@ describe('JarvisVoiceTranscript accessibility', () => {
 
     const transcript = screen.getByRole('log', { name: 'Voice session transcript' });
     expect(transcript.getAttribute('aria-live')).toBe('off');
+    expect(transcript.getAttribute('tabindex')).toBe('0');
+    expect(transcript.classList.contains('jarvis-voice-transcript')).toBe(true);
     expect(screen.getByText('Stable committed reply')).toBeTruthy();
     const interim = screen.getByText('rapidly changing interim words');
     expect(interim).toBeTruthy();
@@ -43,13 +45,13 @@ describe('JarvisVoiceTranscript accessibility', () => {
       screen.getAllByText('You').every((label) => label.classList.contains('text-foreground')),
     ).toBe(true);
     expect(
-      screen.getByText('Stable committed reply').closest('.grid')?.classList.contains('text-xs'),
-    ).toBe(true);
-    expect(
       screen
         .getByText('Stable committed reply')
-        .closest('.grid')
-        ?.classList.contains('grid-cols-[1.5rem_2.75rem_minmax(0,1fr)_auto]'),
+        .closest('article')
+        ?.classList.contains('jarvis-transcript-card'),
+    ).toBe(true);
+    expect(
+      screen.getByText('Stable committed reply').classList.contains('jarvis-transcript-copy'),
     ).toBe(true);
     expect(
       screen.getByRole('button', { name: 'Show more' }).classList.contains('text-foreground'),

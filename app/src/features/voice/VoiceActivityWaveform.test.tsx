@@ -9,6 +9,51 @@ afterEach(() => {
 });
 
 describe('VoiceActivityWaveform', () => {
+  it('uses the theme-provided honey and copper signal colors', () => {
+    const gradient = { addColorStop: vi.fn() };
+    const context = {
+      beginPath: vi.fn(),
+      clearRect: vi.fn(),
+      createLinearGradient: vi.fn(() => gradient),
+      fill: vi.fn(),
+      fillStyle: '',
+      roundRect: vi.fn(),
+    } as unknown as CanvasRenderingContext2D;
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(((contextId: string) =>
+      contextId === '2d' ? context : null) as HTMLCanvasElement['getContext']);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      bottom: 32,
+      height: 32,
+      left: 0,
+      right: 360,
+      top: 0,
+      width: 360,
+      x: 0,
+      y: 0,
+      toJSON: () => undefined,
+    });
+    vi.spyOn(window, 'getComputedStyle').mockReturnValue({
+      getPropertyValue: (property: string) =>
+        ({
+          '--jarvis-waveform-high': '#ffe3a3',
+          '--jarvis-waveform-mid': '#d98a4e',
+          '--jarvis-waveform-low': '#8f5338',
+        })[property] ?? '',
+    } as CSSStyleDeclaration);
+    let scheduledFrame: FrameRequestCallback | undefined;
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      scheduledFrame = callback;
+      return 1;
+    });
+
+    render(<VoiceActivityWaveform levelRef={{ current: 0.7 }} active />);
+    act(() => scheduledFrame?.(48));
+
+    expect(gradient.addColorStop).toHaveBeenNthCalledWith(1, 0, '#ffe3a3');
+    expect(gradient.addColorStop).toHaveBeenNthCalledWith(2, 0.5, '#d98a4e');
+    expect(gradient.addColorStop).toHaveBeenNthCalledWith(3, 1, '#8f5338');
+  });
+
   it('reads ref-local audio samples on animation frames without rerendering its owner', () => {
     let scheduledFrame: FrameRequestCallback | undefined;
     const roundRect = vi.fn();

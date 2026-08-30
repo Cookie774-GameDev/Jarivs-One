@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { JarvisVoiceHeader } from './JarvisVoiceHeader';
 
@@ -11,6 +11,32 @@ vi.mock('./VoiceActivityWaveform', () => ({
 }));
 
 describe('JarvisVoiceHeader accessibility', () => {
+  it('exposes one unambiguous primary talk control with pressed state', () => {
+    const onToggleListening = vi.fn();
+    render(
+      <JarvisVoiceHeader
+        state="listening"
+        personaName="Jarvis"
+        listeningHint="Listening"
+        voiceAutoListenOnOpen
+        voiceCommitPhrase="send it"
+        levelRef={{ current: 0.2 }}
+        onClose={vi.fn()}
+        onToggleListening={onToggleListening}
+        onPointerDown={vi.fn()}
+        onPointerMove={vi.fn()}
+        onPointerUp={vi.fn()}
+        onPointerCancel={vi.fn()}
+      />,
+    );
+
+    const talkControl = screen.getByRole('button', { name: 'Stop listening' });
+    expect(talkControl.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByRole('button', { name: 'Toggle microphone' })).toBeNull();
+    fireEvent.click(talkControl);
+    expect(onToggleListening).toHaveBeenCalledOnce();
+  });
+
   it('announces the textual voice state through one restrained atomic status', () => {
     render(
       <JarvisVoiceHeader

@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Orb } from './Orb';
 
 function setReducedMotion(matches: boolean) {
@@ -20,6 +20,23 @@ function setReducedMotion(matches: boolean) {
 
 describe('Orb motion policy', () => {
   beforeEach(() => setReducedMotion(false));
+  afterEach(() => vi.restoreAllMocks());
+
+  it('does not schedule presentation frames unless Jarvis is speaking', () => {
+    const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
+    const view = render(
+      <Orb state="idle" presentation="signal-globe" levelRef={{ current: 0.5 }} />,
+    );
+    expect(requestFrame).not.toHaveBeenCalled();
+
+    view.rerender(
+      <Orb state="listening" presentation="signal-globe" levelRef={{ current: 0.7 }} />,
+    );
+    expect(requestFrame).not.toHaveBeenCalled();
+
+    view.rerender(<Orb state="speaking" presentation="signal-globe" levelRef={{ current: 0.8 }} />);
+    expect(requestFrame).toHaveBeenCalledOnce();
+  });
 
   it('keeps the signal globe still while listening and only speaks from output energy', () => {
     const view = render(<Orb state="listening" presentation="signal-globe" />);
@@ -29,11 +46,14 @@ describe('Orb motion policy', () => {
     expect(screen.getByRole('img').getAttribute('data-speaking')).toBe('true');
   });
 
-  it('keeps idle presentation still and reserves continuous expression for active voice', () => {
+  it('preserves listening and thinking motion for shared non-signal presentations', () => {
     const view = render(<Orb state="idle" />);
     expect(screen.getByRole('img').getAttribute('data-orb-motion')).toBe('idle');
 
-    view.rerender(<Orb state="speaking" />);
+    view.rerender(<Orb state="listening" />);
+    expect(screen.getByRole('img').getAttribute('data-orb-motion')).toBe('active');
+
+    view.rerender(<Orb state="thinking" presentation="monochrome-flat" />);
     expect(screen.getByRole('img').getAttribute('data-orb-motion')).toBe('active');
   });
 

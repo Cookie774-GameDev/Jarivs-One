@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import type { VoiceState } from './store';
 import { useThemeMotionTransition } from '@/features/appearance/themeMotion';
+import { useAppForeground } from './useAppForeground';
 
 /**
  * Pure-CSS ambient orb. ~200px (configurable). Layered gradient stack that
@@ -145,19 +146,6 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-function tickMarks(count: number, inner: number, outer: number): string {
-  const marks: string[] = [];
-  for (let index = 0; index < count; index += 1) {
-    const angle = (index / count) * Math.PI * 2 - Math.PI / 2;
-    const x1 = 50 + Math.cos(angle) * inner;
-    const y1 = 50 + Math.sin(angle) * inner;
-    const x2 = 50 + Math.cos(angle) * outer;
-    const y2 = 50 + Math.sin(angle) * outer;
-    marks.push(`M${x1.toFixed(2)} ${y1.toFixed(2)}L${x2.toFixed(2)} ${y2.toFixed(2)}`);
-  }
-  return marks.join('');
-}
-
 function JarvisHudOrb({
   state,
   className,
@@ -170,25 +158,23 @@ function JarvisHudOrb({
   levelRef?: React.RefObject<number>;
 }) {
   const reducedMotion = usePrefersReducedMotion();
+  const appForeground = useAppForeground();
   const glowId = `${React.useId().replace(/:/g, '')}-glow`;
+  const coreId = `${React.useId().replace(/:/g, '')}-core`;
   const speaking = state === 'speaking';
   const listening = state === 'listening';
   const hudRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
-    if (!levelRef) return;
+    const staticEnergy = speaking ? 0.32 : listening ? 0.18 : 0.08;
+    hudRef.current?.style.setProperty('--jarvis-signal-energy', staticEnergy.toFixed(3));
+    if (!levelRef || !speaking || reducedMotion || !appForeground) return;
     let frame = 0;
     let disposed = false;
     const updateEnergy = () => {
       if (disposed) return;
       const raw = Math.min(1, Math.max(0, levelRef.current ?? 0));
-      const energy = speaking
-        ? reducedMotion
-          ? Math.max(0.2, raw * 0.5)
-          : Math.max(0.32, raw)
-        : listening
-          ? 0.18
-          : 0.08;
+      const energy = Math.max(0.32, raw);
       hudRef.current?.style.setProperty('--jarvis-signal-energy', energy.toFixed(3));
       frame = window.requestAnimationFrame(updateEnergy);
     };
@@ -197,54 +183,37 @@ function JarvisHudOrb({
       disposed = true;
       window.cancelAnimationFrame(frame);
     };
-  }, [levelRef, listening, reducedMotion, speaking]);
+  }, [appForeground, levelRef, listening, reducedMotion, speaking]);
 
   return (
     <div
       ref={hudRef}
       role="img"
       aria-label={ariaLabel ?? `Voice orb (${state})`}
-      data-orb-motion={reducedMotion ? 'reduced' : speaking ? 'active' : 'idle'}
+      data-orb-motion={reducedMotion ? 'reduced' : speaking && appForeground ? 'active' : 'idle'}
       data-speaking={speaking ? 'true' : 'false'}
       data-orb-presentation="signal-globe"
-      data-hud-motion={reducedMotion ? 'off' : 'on'}
+      data-hud-motion={!reducedMotion && speaking && appForeground ? 'on' : 'off'}
       className={cn('jarvis-hud-orb relative shrink-0 select-none pointer-events-none', className)}
     >
       <svg viewBox="0 0 100 100" className="jarvis-hud-svg h-full w-full" aria-hidden="true">
         <defs>
           <radialGradient id={glowId} cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#7ef6ff" stopOpacity="0.55" />
-            <stop offset="42%" stopColor="#12d4ea" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="#03141c" stopOpacity="0" />
+            <stop offset="0%" className="jarvis-lantern-glow-high" />
+            <stop offset="58%" className="jarvis-lantern-glow-mid" />
+            <stop offset="100%" className="jarvis-lantern-glow-low" />
+          </radialGradient>
+          <radialGradient id={coreId} cx="34%" cy="28%" r="72%">
+            <stop offset="0%" className="jarvis-lantern-core-high" />
+            <stop offset="38%" className="jarvis-lantern-core-mid" />
+            <stop offset="100%" className="jarvis-lantern-core-low" />
           </radialGradient>
         </defs>
-        <circle cx="50" cy="50" r="48" fill={`url(#${glowId})`} className="jarvis-hud-bloom" />
-        <g className="jarvis-hud-spin-slow">
-          <circle cx="50" cy="50" r="46" className="jarvis-hud-ring jarvis-hud-ring-outer" />
-          <path
-            d="M8 50a42 42 0 0 1 18-34"
-            className="jarvis-hud-arc jarvis-hud-arc-bright"
-          />
-          <path
-            d="M86 72a42 42 0 0 1-28 22"
-            className="jarvis-hud-arc jarvis-hud-arc-bright"
-          />
-        </g>
-        <g className="jarvis-hud-spin-rev">
-          <circle cx="50" cy="50" r="38" className="jarvis-hud-ring" />
-          <path d="M18 38a34 34 0 0 1 28-20" className="jarvis-hud-arc" />
-          <path d="M78 70a34 34 0 0 1-22 16" className="jarvis-hud-arc" />
-          <circle cx="50" cy="50" r="34" className="jarvis-hud-dots" />
-        </g>
-        <g className="jarvis-hud-spin-mid">
-          <path d={tickMarks(28, 27.2, 30.6)} className="jarvis-hud-ticks" />
-          <path d={tickMarks(12, 24.4, 26.8)} className="jarvis-hud-ticks jarvis-hud-ticks-long" />
-        </g>
-        <circle cx="50" cy="50" r="20.5" className="jarvis-hud-core-ring" />
-        <circle cx="50" cy="50" r="17.8" className="jarvis-hud-core-fill" />
-        <text x="50" y="52.2" textAnchor="middle" className="jarvis-hud-wordmark">
-          J.A.R.V.I.S
-        </text>
+        <circle cx="50" cy="50" r="46" fill={`url(#${glowId})`} className="jarvis-lantern-halo" />
+        <circle cx="50" cy="50" r="31" className="jarvis-lantern-frame" />
+        <circle cx="50" cy="50" r="25" fill={`url(#${coreId})`} className="jarvis-lantern-core" />
+        <ellipse cx="42" cy="39" rx="8" ry="5" className="jarvis-lantern-highlight" />
+        <circle cx="50" cy="50" r="27.5" className="jarvis-lantern-energy" />
       </svg>
     </div>
   );
@@ -268,12 +237,7 @@ export function Orb({
 
   if (signalGlobe) {
     return (
-      <JarvisHudOrb
-        state={state}
-        className={className}
-        ariaLabel={ariaLabel}
-        levelRef={levelRef}
-      />
+      <JarvisHudOrb state={state} className={className} ariaLabel={ariaLabel} levelRef={levelRef} />
     );
   }
 

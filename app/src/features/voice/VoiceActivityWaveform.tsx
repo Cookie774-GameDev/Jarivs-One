@@ -9,6 +9,15 @@ interface VoiceActivityWaveformProps {
 
 const BAR_COUNT = 18;
 const ACTIVE_FRAME_MS = 48;
+const DEFAULT_WAVEFORM_COLORS = {
+  high: 'rgba(255, 227, 163, 0.92)',
+  mid: 'rgba(217, 138, 78, 1)',
+  low: 'rgba(143, 83, 56, 0.86)',
+} as const;
+
+function waveformColor(canvas: HTMLCanvasElement, property: string, fallback: string): string {
+  return window.getComputedStyle(canvas).getPropertyValue(property).trim() || fallback;
+}
 
 function drawStaticWaveform(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement): void {
   const rect = canvas.getBoundingClientRect();
@@ -24,7 +33,7 @@ function drawStaticWaveform(context: CanvasRenderingContext2D, canvas: HTMLCanva
   const gap = 1.15 * scale;
   const barWidth = Math.max(1 * scale, (width - gap * (BAR_COUNT - 1)) / BAR_COUNT);
   const centerY = height / 2;
-  context.fillStyle = 'rgba(92, 233, 255, 0.92)';
+  context.fillStyle = waveformColor(canvas, '--jarvis-waveform-mid', DEFAULT_WAVEFORM_COLORS.mid);
 
   for (let index = 0; index < BAR_COUNT; index += 1) {
     const envelope = waveformBarWeight(index, BAR_COUNT);
@@ -65,7 +74,12 @@ export const VoiceActivityWaveform = React.memo(function VoiceActivityWaveform({
 
     if (!active || !appForeground || reducedMotion) {
       drawStaticWaveform(context, canvas);
-      return;
+      const observer =
+        typeof ResizeObserver === 'function'
+          ? new ResizeObserver(() => drawStaticWaveform(context, canvas))
+          : null;
+      observer?.observe(canvas);
+      return () => observer?.disconnect();
     }
 
     let frame = 0;
@@ -107,9 +121,18 @@ export const VoiceActivityWaveform = React.memo(function VoiceActivityWaveform({
 
       if (!gradient || gradientHeight !== height) {
         gradient = context.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, 'rgba(158, 248, 255, 0.78)');
-        gradient.addColorStop(0.5, 'rgba(60, 231, 245, 1)');
-        gradient.addColorStop(1, 'rgba(18, 120, 140, 0.78)');
+        gradient.addColorStop(
+          0,
+          waveformColor(canvas, '--jarvis-waveform-high', DEFAULT_WAVEFORM_COLORS.high),
+        );
+        gradient.addColorStop(
+          0.5,
+          waveformColor(canvas, '--jarvis-waveform-mid', DEFAULT_WAVEFORM_COLORS.mid),
+        );
+        gradient.addColorStop(
+          1,
+          waveformColor(canvas, '--jarvis-waveform-low', DEFAULT_WAVEFORM_COLORS.low),
+        );
         gradientHeight = height;
       }
       context.fillStyle = gradient;
@@ -141,5 +164,12 @@ export const VoiceActivityWaveform = React.memo(function VoiceActivityWaveform({
     };
   }, [active, appForeground, levelRef, reducedMotion]);
 
-  return <canvas ref={canvasRef} className="h-8 w-full" aria-hidden="true" />;
+  return (
+    <canvas
+      ref={canvasRef}
+      className="jarvis-voice-waveform h-8 w-full"
+      data-waveform-active={active ? 'true' : 'false'}
+      aria-hidden="true"
+    />
+  );
 });

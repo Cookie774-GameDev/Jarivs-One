@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Mic, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { VoiceState } from './store';
 import { Orb } from './Orb';
@@ -82,6 +82,7 @@ export function JarvisVoiceHeader({
             state === 'listening' && 'is-listening',
           )}
           aria-label={controlLabel}
+          aria-pressed={state === 'listening'}
           data-sik-evidence={voiceControlEvidence}
           title={controlTitle}
         >
@@ -103,16 +104,15 @@ export function JarvisVoiceHeader({
             aria-atomic="true"
             title={listeningHint}
             className={cn(
-              'jarvis-voice-status flex items-center gap-1.5 leading-none',
-              state === 'error' ? 'text-foreground' : 'text-[#5cefff]',
+              'jarvis-voice-status flex items-center gap-1.5 leading-none text-foreground',
+              state === 'error' && 'is-error',
             )}
+            data-voice-status={state}
           >
             <span
               className={cn(
                 'h-1 w-1 rounded-full',
-                state === 'error'
-                  ? 'bg-destructive'
-                  : 'bg-[#5cefff] shadow-[0_0_6px_#5cefff]',
+                state === 'error' ? 'bg-destructive' : 'jarvis-voice-status-dot',
               )}
               aria-hidden="true"
             />
@@ -126,17 +126,6 @@ export function JarvisVoiceHeader({
           />
         </div>
         <div className="jarvis-voice-actions flex shrink-0 items-center">
-          <button
-            type="button"
-            className="jarvis-voice-mic flex shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-copper/80"
-            onClick={onToggleListening}
-            aria-label="Toggle microphone"
-            aria-pressed={state === 'listening'}
-            title={controlTitle}
-          >
-            <Mic className="h-2.5 w-2.5" strokeWidth={2} aria-hidden="true" />
-          </button>
-          <span className="jarvis-voice-action-divider" aria-hidden="true" />
           <button
             type="button"
             onClick={onClose}
