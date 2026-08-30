@@ -915,7 +915,10 @@ export function ContextPage() {
       });
     return () => {
       active = false;
-      controller.abort('siyuan_context_map_hydration_detached');
+      // Saving the repaired tree publishes a Context persistence event and can
+      // rerender this same map before its confirmed-empty physical RLM repair
+      // finishes. Keep that exact-map repair alive; `active` and
+      // `applyPersistenceState` still prevent stale UI projection.
     };
   }, [applyPersistenceState, indexJobSnapshot, projectId, selectedMap]);
   const tree =

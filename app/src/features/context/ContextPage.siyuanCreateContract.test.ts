@@ -103,6 +103,7 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(source).toContain('expectedUpdatedAt: selectedMap.updatedAt');
     expect(source).toContain('contextSearchIndexPopulation.repairEmptyMap(');
     expect(source).toContain('applyPersistenceState(persisted)');
+    expect(source).not.toContain("controller.abort('siyuan_context_map_hydration_detached')");
   });
 
   it('labels a bounded source preview honestly instead of claiming every source file was mapped', () => {
