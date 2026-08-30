@@ -2410,3 +2410,14 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Evidence: `evidence/app-replica-rev18/`; pre-deployment HTML SHA-256 `A439F343B5A8CF718A2F1EC3B9D8D8647B658269B11F04E6CDD518A74A9A1DAA`.
 - Boundary confirmation: the real VibeSpace application was not opened, run, or edited. No app repository, backend, billing, Supabase, Stripe, account, DNS, or unrelated site section was mutated.
 - Next: commit and push the verified artifact, wait for Pages, repeat exact-byte public and interaction checks, then release only this task's lock.
+
+### Final deployment checkpoint
+
+- Status: complete; implementation and evidence commits `261f450` and `eb3f1d0` pushed fast-forward to `origin/main`.
+- GitHub Pages: deployment run `33330425486` completed successfully; `https://vibespaceos.com/?rev=eb3f1d0#vibespaceAppDemo` returned HTTP 200.
+- Exact-byte verification: local `site/index.html` and the deployed homepage both SHA-256 `A439F343B5A8CF718A2F1EC3B9D8D8647B658269B11F04E6CDD518A74A9A1DAA` (627,502 bytes).
+- Live interaction verification: all three chats render; Terminal swarm completed its five-step route; a visitor message produced the truthful `Download VibeSpace` response linking to `#plans`; diagnostics settled with `running=false`, `timerCount=0`, `externalEffects=0`, and seven transcript messages.
+- Live quality verification: zero horizontal overflow, zero fresh console warnings/errors, no retired Liquid canvas, and no non-static network failures. Local final matrix covered 1920×1080, 1440×900, 1024×768, 900×900, 768×1024, 390×844, and 320×568; axe-core 4.10.3 returned zero WCAG A/AA violations at desktop and mobile.
+- Repository CI at deployment checkpoint: Rust `cargo check`, frontend typecheck, and Vite build passed; the broader pre-existing Vitest job remained in progress and did not gate the already-successful Pages deployment.
+- Rollback: base commit `2558aca56a9176fc418f6d0dc2be939c295fc121`; audit evidence is preserved under `evidence/app-replica-rev18/`.
+- Boundary confirmation: only the official website HTML, task evidence, and coordination record changed. The VibeSpace application repository was not opened, run, or edited.
