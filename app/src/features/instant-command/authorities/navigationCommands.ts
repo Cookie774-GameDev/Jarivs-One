@@ -102,6 +102,10 @@ export async function executeNavigationCommand(
     port.openSettings(section);
     return success(`Opened Settings → ${section}.`);
   }
+  if (request.id === 'connections.open') {
+    port.openSettings('providers');
+    return success('Opened provider connections.');
+  }
   if (request.id === 'palette.open') {
     port.openPalette();
     return success('Opened command palette.');

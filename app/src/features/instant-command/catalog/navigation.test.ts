@@ -34,10 +34,25 @@ describe('navigation command catalog', () => {
       'palette.open',
       'launcher.open',
       'fullscreen.set',
+      'connections.open',
     ]);
     expect(NAVIGATION_COMMAND_INPUTS.every((command) => command.availability === 'available')).toBe(
       true,
     );
+  });
+
+  it('exposes /connect only as a route to the existing secure Providers surface', () => {
+    const connect = NAVIGATION_COMMAND_INPUTS.find((command) => command.id === 'connections.open');
+    expect(connect).toMatchObject({
+      aliases: ['/connect', 'connect provider'],
+      authority: 'ui.route',
+      safety: 'read',
+      availability: 'available',
+    });
+    expect(connect?.parseSlots?.(undefined as never, '/connect')).toEqual({
+      status: 'parsed',
+      slots: { section: 'providers' },
+    });
   });
 
   it('exposes only typed settings sections and parses fullscreen state locally', () => {

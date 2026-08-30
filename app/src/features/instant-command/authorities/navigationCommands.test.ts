@@ -63,4 +63,12 @@ describe('executeNavigationCommand', () => {
       message: 'Fullscreen remained off.',
     });
   });
+
+  it('routes /connect to the existing Providers UI without accepting credential text', async () => {
+    const port = authority();
+    await expect(
+      executeNavigationCommand({ id: 'connections.open', slots: { section: 'providers' } }, port),
+    ).resolves.toEqual({ ok: true, code: 'opened', message: 'Opened provider connections.' });
+    expect(port.openSettings).toHaveBeenCalledWith('providers');
+  });
 });

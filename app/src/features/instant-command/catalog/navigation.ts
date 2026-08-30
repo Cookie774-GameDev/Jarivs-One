@@ -112,6 +112,7 @@ const NAVIGATION_ORDER = [
   'palette.open',
   'launcher.open',
   'fullscreen.set',
+  'connections.open',
 ] as const;
 
 const navigationOrder = new Map(NAVIGATION_ORDER.map((id, index) => [id, index]));
@@ -159,6 +160,19 @@ export const NAVIGATION_COMMAND_INPUTS: readonly NavigationCommandInput[] = Obje
           ? Object.freeze({ status: 'rejected' as const, reason: 'Say fullscreen on or off.' })
           : Object.freeze({ status: 'parsed' as const, slots: Object.freeze({ enabled }) });
       },
+    }),
+    Object.freeze({
+      id: 'connections.open',
+      aliases: Object.freeze(['/connect', 'connect provider']),
+      authority: 'ui.route',
+      safety: 'read',
+      availability: 'available',
+      slotGrammar: 'none',
+      parseSlots: () =>
+        Object.freeze({
+          status: 'parsed' as const,
+          slots: Object.freeze({ section: 'providers' }),
+        }),
     }),
     ...(
       [
