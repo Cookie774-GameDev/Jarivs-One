@@ -62,9 +62,12 @@ export function OpenCodeMcpConnections({
     () => (connection ? clientFactory(connection) : undefined),
     [clientFactory, connection],
   );
+  const authorityKey =
+    client && connection ? `${connection.generation}\u0000${directory ?? ''}` : undefined;
   const [servers, setServers] = React.useState<Readonly<Record<string, OpenCodeMcpStatus>>>({});
   const [error, setError] = React.useState<string>();
   const [busy, setBusy] = React.useState<string>();
+  const [projectionAuthority, setProjectionAuthority] = React.useState<string>();
   const [kind, setKind] = React.useState<ServerKind>('remote');
   const [name, setName] = React.useState('');
   const [remoteUrl, setRemoteUrl] = React.useState('');
@@ -72,8 +75,9 @@ export function OpenCodeMcpConnections({
   const generation = React.useRef(0);
 
   const loadStatus = React.useCallback(async () => {
-    if (!client) return;
+    if (!client || !authorityKey) return;
     const current = ++generation.current;
+    setProjectionAuthority(authorityKey);
     setBusy('refresh');
     setError(undefined);
     try {
@@ -84,9 +88,14 @@ export function OpenCodeMcpConnections({
     } finally {
       if (current === generation.current) setBusy(undefined);
     }
-  }, [client, directory]);
+  }, [authorityKey, client, directory]);
 
   React.useEffect(() => {
+    generation.current += 1;
+    setProjectionAuthority(authorityKey);
+    setServers({});
+    setError(undefined);
+    setBusy(undefined);
     if (client) {
       void loadStatus();
       return () => {
@@ -95,11 +104,12 @@ export function OpenCodeMcpConnections({
     }
     if (runtimeState.kind === 'checking') void runtime.refresh();
     return undefined;
-  }, [client, loadStatus, runtime, runtimeState.kind]);
+  }, [authorityKey, client, loadStatus, runtime, runtimeState.kind]);
 
   async function updateServer(nameToUpdate: string, action: 'connect' | 'disconnect') {
-    if (!client) return;
+    if (!client || !authorityKey) return;
     const current = ++generation.current;
+    setProjectionAuthority(authorityKey);
     setBusy(`${action}:${nameToUpdate}`);
     setError(undefined);
     try {
@@ -116,7 +126,7 @@ export function OpenCodeMcpConnections({
 
   async function addServer(event: React.FormEvent) {
     event.preventDefault();
-    if (!client) return;
+    if (!client || !authorityKey) return;
     const normalizedName = name.trim();
     const config: OpenCodeMcpConfig =
       kind === 'remote'
@@ -130,6 +140,7 @@ export function OpenCodeMcpConnections({
             enabled: true,
           };
     const current = ++generation.current;
+    setProjectionAuthority(authorityKey);
     setBusy('add');
     setError(undefined);
     try {
@@ -146,7 +157,10 @@ export function OpenCodeMcpConnections({
     }
   }
 
-  const entries = Object.entries(servers).sort(([left], [right]) =>
+  const projectionCurrent = authorityKey !== undefined && projectionAuthority === authorityKey;
+  const visibleBusy = projectionCurrent ? busy : client ? 'authority-change' : undefined;
+  const visibleError = projectionCurrent ? error : undefined;
+  const entries = Object.entries(projectionCurrent ? servers : {}).sort(([left], [right]) =>
     left.localeCompare(right, 'en'),
   );
   const ready = Boolean(client);
@@ -171,10 +185,10 @@ export function OpenCodeMcpConnections({
           size="icon-sm"
           variant="outline"
           aria-label="Refresh OpenCode MCP status"
-          disabled={!ready || Boolean(busy)}
+          disabled={!ready || Boolean(visibleBusy)}
           onClick={() => void loadStatus()}
         >
-          {busy === 'refresh' ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+          {visibleBusy === 'refresh' ? <Loader2 className="animate-spin" /> : <RefreshCw />}
         </Button>
       </div>
 
@@ -188,13 +202,13 @@ export function OpenCodeMcpConnections({
         </p>
       ) : null}
 
-      {error ? (
+      {visibleError ? (
         <p role="alert" className="text-secondary text-destructive">
-          {error}
+          {visibleError}
         </p>
       ) : null}
 
-      {ready && !busy && entries.length === 0 && !error ? (
+      {ready && !visibleBusy && entries.length === 0 && !visibleError ? (
         <p className="rounded-md border border-dashed border-border p-3 text-secondary text-muted-foreground">
           No OpenCode MCP servers are configured for this project.
         </p>
@@ -226,10 +240,12 @@ export function OpenCodeMcpConnections({
                 size="sm"
                 variant="outline"
                 aria-label={`${connected ? 'Disconnect' : 'Connect'} ${serverName}`}
-                disabled={Boolean(busy)}
+                disabled={Boolean(visibleBusy)}
                 onClick={() => void updateServer(serverName, action)}
               >
-                {busy === `${action}:${serverName}` ? <Loader2 className="animate-spin" /> : null}
+                {visibleBusy === `${action}:${serverName}` ? (
+                  <Loader2 className="animate-spin" />
+                ) : null}
                 {connected ? 'Disconnect' : 'Connect'}
               </Button>
             </article>
@@ -301,8 +317,8 @@ export function OpenCodeMcpConnections({
               </p>
             </div>
           )}
-          <Button type="submit" size="sm" disabled={Boolean(busy)}>
-            {busy === 'add' ? <Loader2 className="animate-spin" /> : <Plus />}
+          <Button type="submit" size="sm" disabled={Boolean(visibleBusy)}>
+            {visibleBusy === 'add' ? <Loader2 className="animate-spin" /> : <Plus />}
             Add OpenCode MCP server
           </Button>
         </form>
