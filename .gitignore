@@ -132,3 +132,14 @@ docs/SESSION_WORKLOG.md
 
 # Pet video pipeline temporary frame cache (never commit)
 tools/pets/tmp_video_cache/
+
+# Generated local agent/runtime state (never commit)
+/.vibespace/
+/context_map.json
+
+# Native QA build and browser-profile outputs (multi-GB, reproducible, may contain machine-local state)
+.codex-evidence/pet-overlay-target/
+.codex-evidence/pet-webview2-proof/
+.codex-evidence/pr31-siyuan-creation-rollback-20260829/cargo-target/
+.codex-evidence/pr31-siyuan-creation-rollback-20260829/webview-profile/
+.codex-evidence/PR31-CHAT-NATIVE-PART-BOUNDARIES/isolated-worktree/
