@@ -668,6 +668,43 @@ test('stable page selection ignores non-official pages and requires repeated rea
   assert.equal(selected.proof.reason, 'official_ready');
 });
 
+test('stable page selection accepts the production Tauri custom-protocol host', async () => {
+  const time = fakeClock();
+  const official = new FakePage({ url: 'http://tauri.localhost/' });
+  const selected = await selectStableOfficialPage([official], {
+    timeoutMs: 20,
+    intervalMs: 10,
+    stableObservations: 2,
+    ...time,
+  });
+  assert.equal(selected.page, official);
+  assert.equal(selected.stableObservations, 2);
+  assert.equal(selected.proof.url, 'http://tauri.localhost/');
+  assert.equal(selected.proof.reason, 'official_ready');
+});
+
+for (const url of [
+  'http://tauri.localhost.evil/',
+  'http://evil-tauri.localhost/',
+  'http://tauri.localhost./',
+  'ftp://tauri.localhost/',
+  'http://tauri.localhost:8080/',
+  'http://user:pass@tauri.localhost/',
+]) {
+  test(`stable page selection rejects non-production Tauri origin ${url}`, async () => {
+    const time = fakeClock();
+    await assert.rejects(
+      selectStableOfficialPage([new FakePage({ url })], {
+        timeoutMs: 20,
+        intervalMs: 10,
+        stableObservations: 2,
+        ...time,
+      }),
+      /semantic_wait_timeout/u,
+    );
+  });
+}
+
 test('stable page selection fails closed when two official pages are ready', async () => {
   const time = fakeClock();
   await assert.rejects(

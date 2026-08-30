@@ -1099,8 +1099,14 @@ export async function probeOfficialPage(page) {
   } catch {
     return { ready: false, reason: 'invalid_url', url: String(url) };
   }
+  const productionTauriOrigin =
+    parsed.hostname === 'tauri.localhost' &&
+    parsed.protocol === 'http:' &&
+    parsed.port === '' &&
+    parsed.username === '' &&
+    parsed.password === '';
   const ready =
-    LOOPBACK_HOSTS.has(parsed.hostname) &&
+    (LOOPBACK_HOSTS.has(parsed.hostname) || productionTauriOrigin) &&
     title === OFFICIAL_WINDOW_TITLE &&
     documentProof.readyState === 'complete' &&
     documentProof.hasRoot &&
