@@ -20,8 +20,20 @@ const authState = vi.hoisted(() => ({
 
 vi.mock('dexie-react-hooks', () => ({
   useLiveQuery: () => [
-    { id: 'chat-1', title: 'First thread', workspace_id: 'workspace-1', project_id: 'project-a' },
-    { id: 'chat-2', title: 'Second thread', workspace_id: 'workspace-1', project_id: 'project-b' },
+    {
+      id: 'chat-1',
+      title: 'First thread',
+      workspace_id: 'workspace-1',
+      project_id: 'project-a',
+      updated_at: 1,
+    },
+    {
+      id: 'chat-2',
+      title: 'Second thread',
+      workspace_id: 'workspace-1',
+      project_id: 'project-b',
+      updated_at: 1,
+    },
   ],
 }));
 
@@ -54,11 +66,21 @@ vi.mock('@/lib/db', () => ({
       id,
       workspace_id: 'workspace-1',
       project_id: id === 'chat-1' ? 'project-a' : 'project-b',
+      updated_at: 1,
     })),
     update: (id: unknown, patch: unknown) => updateChat(id, patch),
     create: (input: unknown) => createChat(input),
     delete: (id: unknown) => deleteChat(id),
-    deleteAuthorized: (id: unknown) => deleteChat(id),
+    deleteAuthorized: async (id: unknown) => {
+      await deleteChat(id);
+      return {
+        localDeleted: true,
+        syncQueued: true,
+        deletedChatId: id,
+        deletedMessageIds: [],
+        deletedProjectId: id === 'chat-1' ? 'project-a' : 'project-b',
+      };
+    },
   },
 }));
 

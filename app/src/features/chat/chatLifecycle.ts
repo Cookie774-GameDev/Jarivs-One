@@ -7,7 +7,7 @@ import type { Message } from '@/types';
 import { newMessageId } from '@/lib/ids';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
-import type { SyncQueueOwnerSnapshot } from '@/lib/cloudSyncQueueOwner';
+import { captureSyncQueueOwner, type SyncQueueOwnerSnapshot } from '@/lib/cloudSyncQueueOwner';
 import type { AccountIdentity } from '@/lib/accountIdentity';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { createJarvisChatIntentStore, selectJarvisChatForIntent } from './jarvisChatIntent';
@@ -185,25 +185,28 @@ async function ensureActiveChatInternal(
     };
     const operationIsCurrent = () =>
       scopeIsCurrent() && (!expectedScopeKey || ensureScopeKey(options) === expectedScopeKey);
+    const activeChatId = ui.activeChatId;
 
     const activeMatchesIntent =
       intentState.intent.kind !== 'invalid' &&
       intentState.intent.kind !== 'explicit-new' &&
       (intentState.intent.kind !== 'specific-chat' ||
-        intentState.intent.chatId === String(ui.activeChatId)) &&
+        intentState.intent.chatId === String(activeChatId)) &&
       (intentState.intent.kind !== 'reuse-primary' ||
         !intentState.primaryChatId ||
-        intentState.primaryChatId === String(ui.activeChatId));
-    if (ui.activeChatId && !options.forceNew && activeMatchesIntent) {
-      const existing = await chatRepo.getById(ui.activeChatId as ChatId);
+        intentState.primaryChatId === String(activeChatId));
+    if (activeChatId && !options.forceNew && activeMatchesIntent) {
+      const existing = await chatRepo.getById(activeChatId as ChatId);
       if (
         existing &&
         auth.workspaceId &&
         chatMatchesScope(existing, auth.workspaceId, auth.projectId) &&
-        operationIsCurrent()
+        operationIsCurrent() &&
+        useUIStore.getState().activeChatId === activeChatId
       ) {
-        return ui.activeChatId as ChatId;
+        return activeChatId as ChatId;
       }
+      if (useUIStore.getState().activeChatId !== activeChatId) return null;
     }
 
     if (!auth.workspaceId) return null;
@@ -241,15 +244,25 @@ async function ensureActiveChatInternal(
     const title = options.title?.trim() || hintedTitle || `New chat ${scoped.length + 1}`;
 
     if (!operationIsCurrent()) return null;
-    const chat = await chatRepo.create({
-      workspace_id: auth.workspaceId,
-      project_id: projectId ?? undefined,
-      title,
-      mode: 'chat',
-      active_agent_ids: [],
-    });
+    const syncOwner = captureSyncQueueOwner();
+    const ownerMatchesAccount =
+      identity?.source === 'supabase'
+        ? syncOwner.state === 'cloud' && syncOwner.userId === identity.accountId
+        : syncOwner.state === 'unbound';
+    const creationIsCurrent = () => ownerMatchesAccount && operationIsCurrent();
+    const chat = await chatRepo.createAuthorized(
+      {
+        workspace_id: auth.workspaceId,
+        project_id: projectId ?? undefined,
+        title,
+        mode: 'chat',
+        active_agent_ids: [],
+      },
+      syncOwner,
+      creationIsCurrent,
+    );
 
-    if (!operationIsCurrent()) return null;
+    if (!chat || !creationIsCurrent()) return null;
     if (intentScope) intentStore.recordCreatedPrimary(intentScope, String(chat.id));
 
     ui.setActiveChat(chat.id);
@@ -264,7 +277,7 @@ async function ensureActiveChatInternal(
 /** Ensure the workspace has an active chat (reuse recent or create). */
 export function ensureActiveChat(options: EnsureActiveChatOptions = {}): Promise<ChatId | null> {
   if (options.forceNew) {
-    return ensureActiveChatInternal(options);
+    return ensureActiveChatInternal(options, ensureScopeKey(options));
   }
   const key = ensureScopeKey(options);
   const active = ensureInflight.get(key);

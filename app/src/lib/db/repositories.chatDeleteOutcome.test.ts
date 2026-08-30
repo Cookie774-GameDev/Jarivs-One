@@ -3,7 +3,7 @@ import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ChatId, MessageId, WorkspaceId } from '@/types';
+import type { ChatId, MessageId, ProjectId, WorkspaceId } from '@/types';
 import { db } from './index';
 import { chatRepo } from './repositories';
 
@@ -107,6 +107,8 @@ describe('chatRepo.delete outcome', () => {
       chatRepo.deleteAuthorized(chatId, {
         expectedAccountId: 'account-a',
         expectedWorkspaceId: 'workspace-a',
+        expectedProjectId: null,
+        expectedUpdatedAt: 1,
         getActiveAccountId: () => 'account-a',
         getActiveWorkspaceId: () => activeWorkspaceId,
       }),
@@ -120,6 +122,68 @@ describe('chatRepo.delete outcome', () => {
     expect(await db.messages.get(messageId)).toBeDefined();
     expect(await db.sync_queue.count()).toBe(0);
     expect(await db.settings.count()).toBe(0);
+  });
+
+  it('rejects a project move committed before authorized deletion acquires the row', async () => {
+    const chatId = 'chat-project-move' as ChatId;
+    const messageId = 'message-project-move' as MessageId;
+    await db.chats.add({
+      id: chatId,
+      workspace_id: 'workspace-a' as WorkspaceId,
+      project_id: 'project-a' as ProjectId,
+      title: 'Project move',
+      mode: 'chat',
+      active_agent_ids: [],
+      created_at: 1,
+      updated_at: 1,
+    });
+    await db.messages.add({
+      id: messageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'Keep after move' }],
+      created_at: 1,
+      updated_at: 1,
+    });
+
+    let releaseMove!: () => void;
+    let markMoveStarted!: () => void;
+    const moveGate = new Promise<void>((resolve) => {
+      releaseMove = resolve;
+    });
+    const moveStarted = new Promise<void>((resolve) => {
+      markMoveStarted = resolve;
+    });
+    const move = db.transaction('rw', db.chats, async () => {
+      await db.chats.count();
+      markMoveStarted();
+      await moveGate;
+      await db.chats.update(chatId, {
+        project_id: 'project-b' as ProjectId,
+        updated_at: 2,
+      });
+    });
+    const moveSettled = move.catch(() => undefined);
+    await moveStarted;
+    const pending = Dexie.ignoreTransaction(() =>
+      chatRepo.deleteAuthorized(chatId, {
+        expectedAccountId: 'account-a',
+        expectedWorkspaceId: 'workspace-a',
+        expectedProjectId: 'project-a',
+        expectedUpdatedAt: 1,
+        getActiveAccountId: () => 'account-a',
+        getActiveWorkspaceId: () => 'workspace-a',
+      }),
+    );
+    releaseMove();
+    await moveSettled;
+
+    await expect(pending).rejects.toThrow(/project|changed/i);
+    await expect(db.chats.get(chatId)).resolves.toMatchObject({
+      project_id: 'project-b',
+      updated_at: 2,
+    });
+    expect(await db.messages.get(messageId)).toBeDefined();
   });
 
   it('captures a message committed before transaction acquisition and enqueues every exact tombstone', async () => {
@@ -172,6 +236,8 @@ describe('chatRepo.delete outcome', () => {
       chatRepo.deleteAuthorized(chatId, {
         expectedAccountId: 'account-a',
         expectedWorkspaceId: 'workspace-a',
+        expectedProjectId: null,
+        expectedUpdatedAt: 1,
         getActiveAccountId: () => 'account-a',
         getActiveWorkspaceId: () => 'workspace-a',
       }),
@@ -184,6 +250,7 @@ describe('chatRepo.delete outcome', () => {
       syncQueued: true,
       deletedChatId: chatId,
       deletedMessageIds: [firstMessageId, concurrentMessageId],
+      deletedProjectId: null,
     });
     expect(await db.chats.get(chatId)).toBeUndefined();
     expect(await db.messages.where('chat_id').equals(chatId).count()).toBe(0);

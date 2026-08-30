@@ -517,11 +517,14 @@ export interface ChatDeleteOutcome {
 export interface AuthorizedChatDeleteOutcome extends ChatDeleteOutcome {
   deletedChatId: ChatId;
   deletedMessageIds: MessageId[];
+  deletedProjectId: string | null;
 }
 
 export interface ChatDeleteAuthority {
   expectedAccountId: string;
   expectedWorkspaceId: string;
+  expectedProjectId: string | null;
+  expectedUpdatedAt: number;
   getActiveAccountId(): string | null;
   getActiveWorkspaceId(): string | null;
 }
@@ -546,13 +549,21 @@ function assertChatDeleteAuthority(authority: ChatDeleteAuthority): void {
 async function deleteChatLocally(
   id: ChatId,
   authority?: ChatDeleteAuthority,
-): Promise<MessageId[]> {
+): Promise<{ messageIds: MessageId[]; deletedProjectId: string | null }> {
   return db.transaction('rw', [db.chats, db.messages], async () => {
+    let deletedProjectId: string | null = null;
     if (authority) {
       const chat = await db.chats.get(id);
       if (!chat) throw new Error('The chat no longer exists.');
       if (String(chat.workspace_id) !== authority.expectedWorkspaceId) {
         throw new Error('The chat does not belong to the reviewed workspace.');
+      }
+      deletedProjectId = chat.project_id ? String(chat.project_id) : null;
+      if (deletedProjectId !== authority.expectedProjectId) {
+        throw new Error('The chat project changed; it was not deleted.');
+      }
+      if (chat.updated_at !== authority.expectedUpdatedAt) {
+        throw new Error('The chat changed after confirmation; it was not deleted.');
       }
     }
     const messageIds = (await db.messages.where('chat_id').equals(id).primaryKeys())
@@ -561,7 +572,7 @@ async function deleteChatLocally(
     if (authority) assertChatDeleteAuthority(authority);
     await db.messages.bulkDelete(messageIds);
     await db.chats.delete(id);
-    return messageIds;
+    return { messageIds, deletedProjectId };
   });
 }
 
@@ -687,7 +698,7 @@ export const chatRepo = {
   },
   async delete(id: ChatId): Promise<ChatDeleteOutcome> {
     const syncOwner = captureSyncQueueOwner();
-    const messageIds = await deleteChatLocally(id);
+    const { messageIds } = await deleteChatLocally(id);
     return {
       localDeleted: true,
       syncQueued: await enqueueChatDeleteTombstones(id, messageIds, syncOwner),
@@ -699,12 +710,13 @@ export const chatRepo = {
   ): Promise<AuthorizedChatDeleteOutcome> {
     assertChatDeleteAuthority(authority);
     const syncOwner = captureSyncQueueOwner();
-    const messageIds = await deleteChatLocally(id, authority);
+    const { messageIds, deletedProjectId } = await deleteChatLocally(id, authority);
     return {
       localDeleted: true,
       syncQueued: await enqueueChatDeleteTombstones(id, messageIds, syncOwner),
       deletedChatId: id,
       deletedMessageIds: messageIds,
+      deletedProjectId,
     };
   },
 };

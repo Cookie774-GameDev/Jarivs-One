@@ -43,7 +43,17 @@ vi.mock('dexie-react-hooks', () => ({
 vi.mock('@/lib/db', () => ({
   chatRepo: {
     getById: mocks.getById,
-    deleteAuthorized: (chatId: string) => mocks.remove(chatId),
+    deleteAuthorized: async (chatId: string) => {
+      await mocks.remove(chatId);
+      const row = mocks.chats.find((candidate) => String(candidate.id) === chatId);
+      return {
+        localDeleted: true,
+        syncQueued: true,
+        deletedChatId: chatId,
+        deletedMessageIds: [],
+        deletedProjectId: row?.project_id ? String(row.project_id) : null,
+      };
+    },
   },
   db: {
     chats: {},

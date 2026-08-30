@@ -55,6 +55,7 @@ interface PendingHistoryDeletion {
     request: PermanentDeleteRequest;
     receipt: PermanentDeleteReceipt;
     projectId: string | null;
+    expectedUpdatedAtById: ReadonlyMap<string, number>;
   }>[];
   title: string;
   description: string;
@@ -125,18 +126,22 @@ export function HistoryList({
       >,
     ) => {
       if (!accountId || !workspaceId) return;
-      const groups = new Map<string | null, string[]>();
+      const groups = new Map<string | null, Array<Readonly<{ id: string; updatedAt?: number }>>>();
       if (request.snapshotId) {
-        groups.set(null, [request.snapshotId]);
+        groups.set(null, [{ id: request.snapshotId }]);
       } else {
         for (const chatId of request.chatIds ?? []) {
           const target = chatsRef.current.find((chat) => String(chat.id) === String(chatId));
           if (!target) return;
           const targetProjectId = target.project_id ? String(target.project_id) : null;
-          groups.set(targetProjectId, [...(groups.get(targetProjectId) ?? []), String(chatId)]);
+          groups.set(targetProjectId, [
+            ...(groups.get(targetProjectId) ?? []),
+            { id: String(chatId), updatedAt: target.updated_at },
+          ]);
         }
       }
-      const authorities = [...groups].map(([targetProjectId, resourceIds]) => {
+      const authorities = [...groups].map(([targetProjectId, targets]) => {
+        const resourceIds = targets.map((target) => target.id);
         const authority = createPermanentDeleteAuthority({
           scope: {
             accountId,
@@ -158,6 +163,11 @@ export function HistoryList({
           request: authorityRequest,
           receipt: authority.issue(authorityRequest),
           projectId: targetProjectId,
+          expectedUpdatedAtById: new Map(
+            targets.flatMap((target) =>
+              target.updatedAt === undefined ? [] : [[target.id, target.updatedAt] as const],
+            ),
+          ),
         };
       });
       if (authorities.length === 0) return;
@@ -316,16 +326,21 @@ export function HistoryList({
       ) {
         throw new Error('history_delete_target_scope_changed');
       }
-      const targetProjectById = new Map(
+      const targetById = new Map(
         targetRows.map((row) => [
           String(row!.id),
-          row!.project_id ? String(row!.project_id) : null,
+          {
+            projectId: row!.project_id ? String(row!.project_id) : null,
+            updatedAt: row!.updated_at,
+          },
         ]),
       );
       for (const authorization of request.authorities) {
         if (
           authorization.request.resourceIds.some(
-            (chatId) => targetProjectById.get(chatId) !== authorization.projectId,
+            (chatId) =>
+              targetById.get(chatId)?.projectId !== authorization.projectId ||
+              targetById.get(chatId)?.updatedAt !== authorization.expectedUpdatedAtById.get(chatId),
           ) ||
           !authorization.authority.consume(
             authorization.receipt,
@@ -347,6 +362,12 @@ export function HistoryList({
           throw new Error('history_project_scope_changed');
         }
       };
+      const authorizationByChatId = new Map(
+        request.authorities.flatMap((authorization) =>
+          authorization.request.resourceIds.map((chatId) => [chatId, authorization] as const),
+        ),
+      );
+      const deletedProjectById = new Map<string, string | null>();
       const result = await deleteHistoryChats(chatIds.map(String), {
         expectedAccountId: request.expectedAccountId,
         expectedWorkspaceId: request.expectedWorkspaceId,
@@ -360,11 +381,18 @@ export function HistoryList({
           requireExpectedProject();
           return chatRepo.getById(chatId as ChatId);
         },
-        remove: (chatId) => {
+        remove: async (chatId) => {
           requireExpectedProject();
-          return chatRepo.deleteAuthorized(chatId as ChatId, {
+          const authorization = authorizationByChatId.get(chatId);
+          const expectedUpdatedAt = authorization?.expectedUpdatedAtById.get(chatId);
+          if (!authorization || expectedUpdatedAt === undefined) {
+            throw new Error('history_delete_authority_rejected');
+          }
+          const outcome = await chatRepo.deleteAuthorized(chatId as ChatId, {
             expectedAccountId: request.expectedAccountId,
             expectedWorkspaceId: request.expectedWorkspaceId,
+            expectedProjectId: authorization.projectId,
+            expectedUpdatedAt,
             getActiveAccountId: () =>
               resolveAccountIdentity(useAuthStore.getState())?.accountId ?? null,
             getActiveWorkspaceId: () => {
@@ -372,6 +400,8 @@ export function HistoryList({
               return active ? String(active) : null;
             },
           });
+          deletedProjectById.set(chatId, outcome.deletedProjectId);
+          return outcome;
         },
       });
       const feedback = historyDeletionFeedback(
@@ -381,16 +411,17 @@ export function HistoryList({
       if (feedback.clearSelection) onSelectChat(null);
       if (result.deletedIds.length > 0) {
         const deleted = new Set(result.deletedIds);
-        for (const authorization of request.authorities) {
-          const deletedInProject = authorization.request.resourceIds.filter((id) =>
-            deleted.has(id),
-          );
-          if (deletedInProject.length === 0) continue;
+        const deletedByProject = new Map<string | null, string[]>();
+        for (const id of deleted) {
+          const projectId = deletedProjectById.get(id) ?? targetById.get(id)?.projectId ?? null;
+          deletedByProject.set(projectId, [...(deletedByProject.get(projectId) ?? []), id]);
+        }
+        for (const [projectId, deletedInProject] of deletedByProject) {
           createJarvisChatIntentStore(window.localStorage).reconcileDeleted(
             {
               accountId: request.expectedAccountId,
               workspaceId: request.expectedWorkspaceId,
-              projectId: authorization.projectId,
+              projectId,
             },
             deletedInProject,
           );

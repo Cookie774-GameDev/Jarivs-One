@@ -10,6 +10,7 @@ import type { Agent, Chat } from '@/types';
 import { chatRepo, db } from '@/lib/db';
 import { useAgentStore } from '@/stores/agents';
 import { useAuthStore } from '@/stores/auth';
+import { createJarvisChatIntentStore } from '@/features/chat/jarvisChatIntent';
 
 const jarvisAgent = {
   id: 'agent-jarvis',
@@ -41,6 +42,75 @@ afterEach(() => {
 });
 
 describe('voiceChatRouting detection', () => {
+  it('stops an old intent flight when a new keyed flight starts in the same scope', async () => {
+    const previousAuth = useAuthStore.getState();
+    const previousAgents = useAgentStore.getState().agents;
+    let releaseOldRead!: () => void;
+    let markOldReadStarted!: () => void;
+    const oldReadGate = new Promise<void>((resolve) => {
+      releaseOldRead = resolve;
+    });
+    const oldReadStarted = new Promise<void>((resolve) => {
+      markOldReadStarted = resolve;
+    });
+    let reads = 0;
+    vi.spyOn(db.chats, 'where').mockReturnValue({
+      equals: () => ({
+        toArray: async () => {
+          reads += 1;
+          if (reads === 2) {
+            markOldReadStarted();
+            await oldReadGate;
+          }
+          return [];
+        },
+      }),
+    } as never);
+    const persisted: string[] = [];
+    const insert = async (input: Record<string, unknown>, authorize?: () => boolean) => {
+      if (authorize && !authorize()) return null;
+      const id = `chat-voice-${persisted.length + 1}`;
+      persisted.push(id);
+      return { ...input, id } as never;
+    };
+    vi.spyOn(chatRepo, 'create').mockImplementation(
+      async (input) => (await insert(input as never)) as never,
+    );
+    vi.spyOn(chatRepo, 'createAuthorized').mockImplementation(
+      async (input, _owner, authorize) => (await insert(input as never, authorize)) as never,
+    );
+    useAuthStore.setState({
+      cloudSession: null,
+      localUserId: 'account-voice-intent',
+      workspaceId: 'workspace-voice-intent' as never,
+      projectId: 'project-voice-intent' as never,
+    });
+    useAgentStore.setState({ agents: { [jarvisAgent.id]: jarvisAgent } });
+    const scope = {
+      accountId: 'account-voice-intent',
+      workspaceId: 'workspace-voice-intent',
+      projectId: 'project-voice-intent',
+    };
+
+    try {
+      const oldFlight = ensureJarvisChatForVoice('old intent');
+      await oldReadStarted;
+      createJarvisChatIntentStore(window.localStorage).write(scope, {
+        intent: { kind: 'explicit-new' },
+      });
+      const newFlight = ensureJarvisChatForVoice('new intent');
+      await expect(newFlight).resolves.toBe('chat-voice-1');
+      releaseOldRead();
+
+      await expect(oldFlight).resolves.toBeNull();
+      expect(persisted).toEqual(['chat-voice-1']);
+    } finally {
+      releaseOldRead();
+      useAuthStore.setState(previousAuth);
+      useAgentStore.setState({ agents: previousAgents });
+    }
+  });
+
   it('single-flights concurrent Jarvis voice creation in one exact scope', async () => {
     const previousAuth = useAuthStore.getState();
     const previousAgents = useAgentStore.getState().agents;
@@ -54,12 +124,19 @@ describe('voiceChatRouting detection', () => {
     vi.spyOn(db.chats, 'where').mockReturnValue({
       equals: () => ({ toArray: async () => [] }),
     } as never);
-    const create = vi.spyOn(chatRepo, 'create').mockResolvedValue({
-      id: 'chat-voice',
-      workspace_id: 'workspace-voice',
-      project_id: 'project-voice',
-      active_agent_ids: [jarvisAgent.id],
-    } as never);
+    const create = vi
+      .spyOn(chatRepo, 'createAuthorized')
+      .mockImplementation(async (input, _owner, authorize) =>
+        authorize()
+          ? ({
+              ...input,
+              id: 'chat-voice',
+              workspace_id: 'workspace-voice',
+              project_id: 'project-voice',
+              active_agent_ids: [jarvisAgent.id],
+            } as never)
+          : null,
+      );
 
     try {
       await expect(

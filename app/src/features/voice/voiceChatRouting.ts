@@ -10,6 +10,7 @@ import { useUIStore } from '@/stores/ui';
 import type { Agent, AgentId, Chat, ChatId, ProjectId, WorkspaceId } from '@/types';
 import { findProtectedJarvisAgent, isProtectedJarvisAgent } from '@/lib/jarvis/identity';
 import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import { captureSyncQueueOwner } from '@/lib/cloudSyncQueueOwner';
 import {
   createJarvisChatIntentStore,
   selectJarvisChatForIntent,
@@ -135,6 +136,15 @@ function voiceScopeIsCurrent(input: {
   );
 }
 
+function syncOwnerMatchesAccount(
+  identity: NonNullable<ReturnType<typeof resolveAccountIdentity>>,
+  owner: ReturnType<typeof captureSyncQueueOwner>,
+): boolean {
+  return identity.source === 'supabase'
+    ? owner.state === 'cloud' && owner.userId === identity.accountId
+    : owner.state === 'unbound';
+}
+
 /** Most recent Jarvis chat in the active project, or create one. */
 export async function ensureJarvisChatForVoice(titleHint?: string): Promise<ChatId | null> {
   const auth = useAuthStore.getState();
@@ -149,6 +159,7 @@ export async function ensureJarvisChatForVoice(titleHint?: string): Promise<Chat
   };
   const intentStore = createJarvisChatIntentStore(window.localStorage);
   const initialIntent = intentStore.read(intentScope);
+  const initialIntentKey = JSON.stringify(initialIntent);
   const captured = {
     accountId: identity.accountId,
     workspaceId: auth.workspaceId as WorkspaceId,
@@ -158,10 +169,17 @@ export async function ensureJarvisChatForVoice(titleHint?: string): Promise<Chat
   return runVoiceChatSingleFlight(key, async () => {
     const agents = useAgentStore.getState().agents;
     const protectedJarvis = findProtectedJarvisAgent(Object.values(agents));
-    if (!protectedJarvis || !voiceScopeIsCurrent(captured)) return null;
+    const syncOwner = captureSyncQueueOwner();
+    const targetIsCurrent = () =>
+      voiceScopeIsCurrent(captured) &&
+      syncOwnerMatchesAccount(identity, syncOwner) &&
+      JSON.stringify(intentStore.read(intentScope)) === initialIntentKey &&
+      findProtectedJarvisAgent(Object.values(useAgentStore.getState().agents))?.id ===
+        protectedJarvis?.id;
+    if (!protectedJarvis || !targetIsCurrent()) return null;
     const select = async () => {
       const scoped = await listScopedChats(captured.workspaceId, captured.projectId);
-      if (!voiceScopeIsCurrent(captured)) return { scoped, selection: null };
+      if (!targetIsCurrent()) return { scoped, selection: null };
       const jarvisChats = scoped.filter((chat) => isJarvisChat(chat, agents));
       return {
         scoped,
@@ -180,15 +198,19 @@ export async function ensureJarvisChatForVoice(titleHint?: string): Promise<Chat
     resolved = await select();
     if (!resolved.selection) return null;
     if (resolved.selection.kind === 'use-chat') return resolved.selection.chatId as ChatId;
-    if (resolved.selection.kind !== 'create-chat' || !voiceScopeIsCurrent(captured)) return null;
-    const chat = await chatRepo.create({
-      workspace_id: captured.workspaceId,
-      project_id: captured.projectId ?? undefined,
-      title: titleHint?.trim() ? `New chat` : `New chat ${resolved.scoped.length + 1}`,
-      mode: 'chat',
-      active_agent_ids: [protectedJarvis.id],
-    });
-    if (!voiceScopeIsCurrent(captured)) return null;
+    if (resolved.selection.kind !== 'create-chat' || !targetIsCurrent()) return null;
+    const chat = await chatRepo.createAuthorized(
+      {
+        workspace_id: captured.workspaceId,
+        project_id: captured.projectId ?? undefined,
+        title: titleHint?.trim() ? `New chat` : `New chat ${resolved.scoped.length + 1}`,
+        mode: 'chat',
+        active_agent_ids: [protectedJarvis.id],
+      },
+      syncOwner,
+      targetIsCurrent,
+    );
+    if (!chat || !targetIsCurrent()) return null;
     intentStore.recordCreatedPrimary(intentScope, String(chat.id));
     return chat.id;
   });
@@ -207,6 +229,11 @@ async function findOrCreateAgentChat(agent: Agent, titleHint?: string): Promise<
   };
   const key = JSON.stringify([captured, 'agent', String(agent.id)]);
   return runVoiceChatSingleFlight(key, async () => {
+    const syncOwner = captureSyncQueueOwner();
+    const targetIsCurrent = () =>
+      voiceScopeIsCurrent(captured) &&
+      syncOwnerMatchesAccount(identity, syncOwner) &&
+      useAgentStore.getState().agents[agent.id]?.slug === agent.slug;
     const find = async () => {
       const scoped = await listScopedChats(captured.workspaceId, captured.projectId);
       const existing = scoped
@@ -215,20 +242,24 @@ async function findOrCreateAgentChat(agent: Agent, titleHint?: string): Promise<
       return { scoped, existing };
     };
     let resolved = await find();
-    if (!voiceScopeIsCurrent(captured)) return null;
+    if (!targetIsCurrent()) return null;
     if (resolved.existing) return resolved.existing.id;
     resolved = await find();
-    if (!voiceScopeIsCurrent(captured)) return null;
+    if (!targetIsCurrent()) return null;
     if (resolved.existing) return resolved.existing.id;
-    const chat = await chatRepo.create({
-      workspace_id: captured.workspaceId,
-      project_id: captured.projectId ?? undefined,
-      title: `Chat with ${agent.name}`,
-      mode: 'chat',
-      active_agent_ids: [agent.id],
-    });
+    const chat = await chatRepo.createAuthorized(
+      {
+        workspace_id: captured.workspaceId,
+        project_id: captured.projectId ?? undefined,
+        title: `Chat with ${agent.name}`,
+        mode: 'chat',
+        active_agent_ids: [agent.id],
+      },
+      syncOwner,
+      targetIsCurrent,
+    );
     void titleHint;
-    return voiceScopeIsCurrent(captured) ? chat.id : null;
+    return chat && targetIsCurrent() ? chat.id : null;
   });
 }
 

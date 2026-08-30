@@ -71,6 +71,23 @@ describe('Jarvis chat intent persistence', () => {
     });
   });
 
+  it('treats only null storage as absent and rejects empty persisted authority', () => {
+    const storage = memoryStorage();
+    const key = 'vibespace.jarvis-chat-intent.v1:value-account-a:value-workspace-a:value-project-a';
+
+    expect(createJarvisChatIntentStore(storage).read(scope)).toEqual({
+      version: 1,
+      intent: { kind: 'reuse-primary' },
+    });
+    for (const malformed of ['', '   ']) {
+      storage.setItem(key, malformed);
+      expect(createJarvisChatIntentStore(storage).read(scope)).toEqual({
+        version: 1,
+        intent: { kind: 'invalid' },
+      });
+    }
+  });
+
   it('keeps null scope distinct from a project id that resembles its storage sentinel', () => {
     const storage = memoryStorage();
     const store = createJarvisChatIntentStore(storage);

@@ -38,6 +38,7 @@ type PendingDelete = Readonly<{
   expectedWorkspaceId: string;
   expectedProjectId: string | null;
   targetProjectId: string | null;
+  targetUpdatedAt: number;
   authority: PermanentDeleteAuthority;
   request: PermanentDeleteRequest;
   receipt: PermanentDeleteReceipt;
@@ -129,6 +130,7 @@ export function PetChatSurface({ className }: { className?: string }) {
       expectedWorkspaceId: String(workspaceId),
       expectedProjectId: projectId ? String(projectId) : null,
       targetProjectId,
+      targetUpdatedAt: target.updated_at,
       authority,
       request,
       receipt: authority.issue(request),
@@ -155,7 +157,8 @@ export function PetChatSurface({ className }: { className?: string }) {
       if (
         !target ||
         String(target.workspace_id) !== pendingDelete.expectedWorkspaceId ||
-        targetProjectId !== pendingDelete.targetProjectId
+        targetProjectId !== pendingDelete.targetProjectId ||
+        target.updated_at !== pendingDelete.targetUpdatedAt
       ) {
         throw new Error('pet_chat_delete_target_scope_changed');
       }
@@ -170,9 +173,11 @@ export function PetChatSurface({ className }: { className?: string }) {
         pendingDelete.request,
       );
       if (!authorized) throw new Error('pet_chat_delete_authority_rejected');
-      await chatRepo.deleteAuthorized(id as ChatId, {
+      const outcome = await chatRepo.deleteAuthorized(id as ChatId, {
         expectedAccountId: pendingDelete.expectedAccountId,
         expectedWorkspaceId: pendingDelete.expectedWorkspaceId,
+        expectedProjectId: pendingDelete.targetProjectId,
+        expectedUpdatedAt: pendingDelete.targetUpdatedAt,
         getActiveAccountId: () =>
           resolveAccountIdentity(useAuthStore.getState())?.accountId ?? null,
         getActiveWorkspaceId: () => {
@@ -184,7 +189,7 @@ export function PetChatSurface({ className }: { className?: string }) {
         {
           accountId: pendingDelete.expectedAccountId,
           workspaceId: pendingDelete.expectedWorkspaceId,
-          projectId: pendingDelete.targetProjectId,
+          projectId: outcome.deletedProjectId,
         },
         [id],
       );

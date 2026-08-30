@@ -51,6 +51,107 @@ describe('chat storage gate', () => {
 });
 
 describe('Jarvis chat intent routing', () => {
+  it('does not return a different active chat than the exact row it validated', async () => {
+    const previousAuth = useAuthStore.getState();
+    const previousActiveChatId = useUIStore.getState().activeChatId;
+    let releaseRead!: () => void;
+    let markReadStarted!: () => void;
+    const readGate = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    const readStarted = new Promise<void>((resolve) => {
+      markReadStarted = resolve;
+    });
+    useAuthStore.setState({
+      cloudSession: null,
+      localUserId: 'account-active-race',
+      workspaceId: 'workspace-active-race' as never,
+      projectId: 'project-a' as never,
+    });
+    useUIStore.getState().setActiveChat('chat-a' as never);
+    vi.spyOn(chatRepo, 'getById').mockImplementation(async () => {
+      markReadStarted();
+      await readGate;
+      return {
+        id: 'chat-a',
+        workspace_id: 'workspace-active-race',
+        project_id: 'project-a',
+      } as never;
+    });
+
+    try {
+      const pending = ensureActiveChat();
+      await readStarted;
+      useUIStore.getState().setActiveChat('chat-b' as never);
+      releaseRead();
+
+      await expect(pending).resolves.toBeNull();
+    } finally {
+      releaseRead();
+      useAuthStore.setState(previousAuth);
+      useUIStore.getState().setActiveChat(previousActiveChatId);
+    }
+  });
+
+  it('rolls back creation when durable intent drifts during the insert', async () => {
+    const previousAuth = useAuthStore.getState();
+    const previousActiveChatId = useUIStore.getState().activeChatId;
+    let releaseInsert!: () => void;
+    let markInsertStarted!: () => void;
+    const insertGate = new Promise<void>((resolve) => {
+      releaseInsert = resolve;
+    });
+    const insertStarted = new Promise<void>((resolve) => {
+      markInsertStarted = resolve;
+    });
+    const persisted: string[] = [];
+    const insert = async (input: Record<string, unknown>, authorize?: () => boolean) => {
+      markInsertStarted();
+      await insertGate;
+      if (authorize && !authorize()) return null;
+      persisted.push('chat-stale');
+      return { ...input, id: 'chat-stale' } as never;
+    };
+    vi.spyOn(db.chats, 'where').mockReturnValue({
+      equals: () => ({ toArray: async () => [] }),
+    } as never);
+    const create = vi
+      .spyOn(chatRepo, 'create')
+      .mockImplementation(async (input) => (await insert(input as never)) as never);
+    vi.spyOn(chatRepo, 'createAuthorized').mockImplementation(
+      async (input, _owner, authorize) => (await insert(input as never, authorize)) as never,
+    );
+    useAuthStore.setState({
+      cloudSession: null,
+      localUserId: 'account-insert-race',
+      workspaceId: 'workspace-insert-race' as never,
+      projectId: 'project-insert-race' as never,
+    });
+    useUIStore.getState().setActiveChat(null);
+    const scope = {
+      accountId: 'account-insert-race',
+      workspaceId: 'workspace-insert-race',
+      projectId: 'project-insert-race',
+    };
+
+    try {
+      const pending = ensureActiveChat();
+      await insertStarted;
+      createJarvisChatIntentStore(window.localStorage).write(scope, {
+        intent: { kind: 'explicit-new' },
+      });
+      releaseInsert();
+
+      await expect(pending).resolves.toBeNull();
+      expect(persisted).toEqual([]);
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      releaseInsert();
+      useAuthStore.setState(previousAuth);
+      useUIStore.getState().setActiveChat(previousActiveChatId);
+    }
+  });
+
   it('rejects an active chat outside the exact workspace/project scope', async () => {
     const previousAuth = useAuthStore.getState();
     const previousActiveChatId = useUIStore.getState().activeChatId;
@@ -168,7 +269,11 @@ describe('Jarvis chat intent routing', () => {
         },
       }),
     } as never);
-    const create = vi.spyOn(chatRepo, 'create').mockResolvedValue({ id: 'chat-new' } as never);
+    const create = vi
+      .spyOn(chatRepo, 'createAuthorized')
+      .mockImplementation(async (input, _owner, authorize) =>
+        authorize() ? ({ ...input, id: 'chat-new' } as never) : null,
+      );
     useAuthStore.setState({
       cloudSession: null,
       localUserId: 'account-intent',

@@ -40,7 +40,7 @@ function scopeKey(scope: JarvisChatScope): string {
 }
 
 function parseState(value: string | null): JarvisChatIntentState {
-  if (!value) return DEFAULT_STATE;
+  if (value === null) return DEFAULT_STATE;
   try {
     const candidate = JSON.parse(value) as Record<string, unknown>;
     const intent = candidate.intent as Record<string, unknown> | undefined;
