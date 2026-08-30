@@ -3,13 +3,7 @@ import type { ChatActivityEvent } from './types';
 import './chat-list-activity.css';
 
 export type ChatListActivityVisualState =
-  | 'idle'
-  | 'queued'
-  | 'thinking'
-  | 'streaming'
-  | 'tool'
-  | 'complete'
-  | 'error';
+  'idle' | 'queued' | 'thinking' | 'streaming' | 'tool' | 'complete' | 'error';
 
 export interface ChatListRunSignal {
   chatId?: string;
@@ -25,7 +19,8 @@ export interface ChatListActivityResolution {
   expiresAt?: number;
 }
 
-const SETTLE_MS = 3_200;
+const ERROR_SETTLE_MS = 3_200;
+const COMPLETION_SETTLE_MS = 12_000;
 const CADENCE_WINDOW_MS = 4_000;
 const ACTIVE_TOOL_KINDS = new Set<ChatActivityEvent['kind']>(['tool', 'file', 'diff', 'url']);
 const QUEUED_STATUSES = new Set([
@@ -102,16 +97,16 @@ export function resolveChatListActivity({
 
   if (ERROR_STATUSES.has(status)) {
     const changedAt = timestamp(latestRun?.updatedAt);
-    if (changedAt > 0 && nowMs - changedAt <= SETTLE_MS) {
-      return resolution('error', 460, 1, changedAt + SETTLE_MS);
+    if (changedAt > 0 && nowMs - changedAt <= ERROR_SETTLE_MS) {
+      return resolution('error', 460, 1, changedAt + ERROR_SETTLE_MS);
     }
     return resolution('idle', 0, 0);
   }
 
   if (COMPLETE_STATUSES.has(status)) {
     const changedAt = timestamp(latestRun?.updatedAt);
-    if (changedAt > 0 && nowMs - changedAt <= SETTLE_MS) {
-      return resolution('complete', 620, 0.72, changedAt + SETTLE_MS);
+    if (changedAt > 0 && nowMs - changedAt <= COMPLETION_SETTLE_MS) {
+      return resolution('complete', 3_600, 0.72, changedAt + COMPLETION_SETTLE_MS);
     }
     return resolution('idle', 0, 0);
   }
@@ -136,11 +131,11 @@ export function resolveChatListActivity({
   if (THINKING_STATUSES.has(status)) return resolution('thinking', 1_100, 0.45);
   if (QUEUED_STATUSES.has(status)) return resolution('queued', 1_600, 0.28);
 
-  if (latestEvent?.status === 'error' && nowMs - latestEvent.ts <= SETTLE_MS) {
-    return resolution('error', 460, 1, latestEvent.ts + SETTLE_MS);
+  if (latestEvent?.status === 'error' && nowMs - latestEvent.ts <= ERROR_SETTLE_MS) {
+    return resolution('error', 460, 1, latestEvent.ts + ERROR_SETTLE_MS);
   }
-  if (latestEvent?.status === 'done' && nowMs - latestEvent.ts <= SETTLE_MS) {
-    return resolution('complete', 620, 0.72, latestEvent.ts + SETTLE_MS);
+  if (latestEvent?.status === 'done' && nowMs - latestEvent.ts <= COMPLETION_SETTLE_MS) {
+    return resolution('complete', 3_600, 0.72, latestEvent.ts + COMPLETION_SETTLE_MS);
   }
   return resolution('idle', 0, 0);
 }

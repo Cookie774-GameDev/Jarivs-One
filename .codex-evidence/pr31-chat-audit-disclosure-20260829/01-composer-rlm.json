@@ -1,0 +1,41 @@
+{
+  "capturedAt": "2026-08-30T02:22:54.246Z",
+  "url": "http://localhost:5173/?route=chat",
+  "skillEvidence": {
+    "text": "/skills: ◆ Build",
+    "title": "Attached skill: /skills: ◆ Build",
+    "kind": "skill",
+    "hasOkBadge": false,
+    "borderRadius": "12px",
+    "backgroundColor": "rgba(241, 228, 213, 0.45)",
+    "rect": {
+      "width": 108.1561508178711,
+      "height": 18.874317169189453
+    },
+    "composerRect": {
+      "width": 1382.4000244140625,
+      "height": 99.20000457763672
+    }
+  },
+  "rlmEvidence": {
+    "storage": {
+      "version": 1,
+      "userDefault": true,
+      "chats": {
+        "cht_ZE-j4WfwdIXybMdx": {
+          "enabled": true,
+          "updatedAt": 1788056571763
+        }
+      },
+      "workspaces": {},
+      "lastRefreshAt": null,
+      "lastRoute": null,
+      "lastRunStatus": null
+    },
+    "statusVisible": true,
+    "statusExcerpt": "RLM ON (chat default). Scope: prj_leBT3oqNPBtoSMmf. Route: Direct (lazy until a broad lookup). Index freshness: never. Last run: idle. ON means eligible: short chat stays Direct; broad questions may retrieve or investigate.\nWorked for 2m 8s · 10 actions\nRan 6 commands\nEdited 1 file\nopencode · opencode-go/deepseek-v4-flash-vision-exp\nAgent Mode\nCtrl Enter to send",
+    "composerValue": "",
+    "remainingSkillTokens": 0
+  },
+  "errors": []
+}

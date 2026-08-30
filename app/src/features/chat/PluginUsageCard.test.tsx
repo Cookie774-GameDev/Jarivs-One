@@ -24,9 +24,15 @@ describe('PluginUsageCard', () => {
     const repository = action('github.repository.read');
 
     expect(resolvePluginActionEvidence(identity, [identity, repository])).toMatchObject({
+      primary: false,
+    });
+    expect(resolvePluginActionEvidence(repository, [identity, repository])).toMatchObject({
       plugin: { id: 'github', name: 'GitHub' },
-      toolName: 'identity',
       invocationCount: 2,
+      tools: [
+        { name: 'identity', status: 'success' },
+        { name: 'repository_context', status: 'success' },
+      ],
     });
     expect(resolvePluginActionEvidence(action('nav.goto'), [identity])).toBeUndefined();
   });
@@ -34,7 +40,7 @@ describe('PluginUsageCard', () => {
   it('renders a compact truthful connected card without exposing action parameters', () => {
     const identity = action('github.identity');
     const repository = action('github.repository.read');
-    render(<PluginUsageCard part={identity} allParts={[identity, repository]} />);
+    render(<PluginUsageCard part={repository} allParts={[identity, repository]} />);
 
     expect(screen.getByText('Plugin')).toBeTruthy();
     expect(screen.getByText('GitHub')).toBeTruthy();
@@ -43,7 +49,10 @@ describe('PluginUsageCard', () => {
     expect(document.body.textContent).not.toContain('must-not-render');
 
     fireEvent.click(screen.getByRole('button', { name: 'Expand GitHub plugin activity' }));
-    expect(screen.getByText('Used Identity · Connected')).toBeTruthy();
+    expect(screen.getByText('Identity')).toBeTruthy();
+    expect(screen.getByText('Repository Context')).toBeTruthy();
+    expect(screen.getAllByText('Connected')).toHaveLength(3);
+    expect(document.body.textContent).not.toContain('must-not-render');
     fireEvent.click(screen.getByRole('button', { name: 'Hide GitHub plugin activity' }));
     expect(screen.getByRole('button', { name: 'Show GitHub plugin activity' })).toBeTruthy();
   });

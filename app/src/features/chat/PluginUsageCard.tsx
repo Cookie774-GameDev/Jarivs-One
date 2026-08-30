@@ -11,8 +11,12 @@ type ActionPart = Extract<Part, { kind: 'action_proposal' }>;
 
 export type PluginActionEvidence = Readonly<{
   plugin: NonNullable<ReturnType<typeof getPluginManifest>>;
-  toolName: string;
   invocationCount: number;
+  primary: boolean;
+  tools: readonly Readonly<{
+    name: string;
+    status: ActionPart['status'];
+  }>[];
 }>;
 
 function registrationFor(actionId: string) {
@@ -31,15 +35,23 @@ export function resolvePluginActionEvidence(
   const plugin = getPluginManifest(executor.pluginId);
   if (!plugin) return undefined;
 
-  const invocationCount = allParts.reduce((count, candidate) => {
-    if (candidate.kind !== 'action_proposal') return count;
-    return registrationFor(candidate.action_id)?.pluginId === plugin.id ? count + 1 : count;
-  }, 0);
+  const pluginActions = allParts.flatMap((candidate) => {
+    if (candidate.kind !== 'action_proposal') return [];
+    const candidateExecutor = registrationFor(candidate.action_id);
+    if (candidateExecutor?.pluginId !== plugin.id) return [];
+    return [{ part: candidate, executor: candidateExecutor }];
+  });
+  const finalAction = pluginActions.at(-1)?.part;
 
   return Object.freeze({
     plugin,
-    toolName: executor.toolName,
-    invocationCount: Math.max(1, invocationCount),
+    invocationCount: Math.max(1, pluginActions.length),
+    primary: finalAction?.call_id === part.call_id,
+    tools: Object.freeze(
+      pluginActions.map(({ part: candidate, executor: candidateExecutor }) =>
+        Object.freeze({ name: candidateExecutor.toolName, status: candidate.status }),
+      ),
+    ),
   });
 }
 
@@ -61,13 +73,28 @@ function statusPresentation(status: ActionPart['status']) {
   return { label: 'Approval needed', className: 'is-pending' } as const;
 }
 
-export function PluginUsageCard({ part, allParts }: { part: ActionPart; allParts: readonly Part[] }) {
+export function PluginUsageCard({
+  part,
+  allParts,
+}: {
+  part: ActionPart;
+  allParts: readonly Part[];
+}) {
   const evidence = resolvePluginActionEvidence(part, allParts);
   const [expanded, setExpanded] = React.useState(false);
   const [hidden, setHidden] = React.useState(false);
-  if (!evidence) return null;
+  if (!evidence || !evidence.primary) return null;
 
-  const status = statusPresentation(part.status);
+  const aggregateStatus = evidence.tools.some((tool) => tool.status === 'error')
+    ? 'error'
+    : evidence.tools.some((tool) => tool.status === 'running' || tool.status === 'queued')
+      ? 'running'
+      : evidence.tools.some((tool) => tool.status === 'pending')
+        ? 'pending'
+        : evidence.tools.some((tool) => tool.status === 'cancelled')
+          ? 'cancelled'
+          : 'success';
+  const status = statusPresentation(aggregateStatus);
   const capabilities = evidence.plugin.supportedFeatures.slice(0, 3).map(titleCase);
 
   if (hidden) {
@@ -97,7 +124,7 @@ export function PluginUsageCard({ part, allParts }: { part: ActionPart; allParts
           </div>
           <div className="truncate text-xs font-semibold">{evidence.plugin.name}</div>
           <div className="truncate text-[10px] text-muted-foreground">
-            {capabilities.join(' · ') || titleCase(evidence.toolName)}
+            {capabilities.join(' · ') || titleCase(evidence.tools[0]?.name ?? 'Plugin tool')}
           </div>
         </div>
         <span
@@ -109,7 +136,8 @@ export function PluginUsageCard({ part, allParts }: { part: ActionPart; allParts
               'border-accent-copper/30 bg-accent-copper/10 text-accent-copper',
             status.className === 'is-error' &&
               'border-destructive/30 bg-destructive/8 text-destructive',
-            status.className === 'is-cancelled' && 'border-border bg-muted/60 text-muted-foreground',
+            status.className === 'is-cancelled' &&
+              'border-border bg-muted/60 text-muted-foreground',
           )}
         >
           <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
@@ -144,11 +172,24 @@ export function PluginUsageCard({ part, allParts }: { part: ActionPart; allParts
         </button>
       </div>
       {expanded ? (
-        <div className="border-t border-border/60 px-3 py-2 text-[10px] text-muted-foreground">
-          Used {titleCase(evidence.toolName)} · {status.label}
+        <div
+          className="grid gap-1 border-t border-border/60 px-3 py-2 text-[10px] text-muted-foreground"
+          aria-label={`${evidence.plugin.name} plugin invocation details`}
+        >
+          {evidence.tools.map((tool, index) => {
+            const toolStatus = statusPresentation(tool.status);
+            return (
+              <div
+                key={`${tool.name}:${index}`}
+                className="flex min-w-0 items-center justify-between gap-3"
+              >
+                <span className="truncate text-foreground/80">{titleCase(tool.name)}</span>
+                <span className="shrink-0">{toolStatus.label}</span>
+              </div>
+            );
+          })}
         </div>
       ) : null}
     </section>
   );
 }
-

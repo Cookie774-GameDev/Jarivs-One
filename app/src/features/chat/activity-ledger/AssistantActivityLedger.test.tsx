@@ -202,6 +202,70 @@ describe('AssistantActivityLedger', () => {
     ).toBeTruthy();
   });
 
+  it('renders one warm OpenCode chronology disclosure with left-only natural receipt rows', () => {
+    const rendered = render(
+      <AssistantActivityLedger
+        presentation="opencode-chronology"
+        message={assistant([
+          {
+            kind: 'tool_call',
+            call_id: 'read-chronology',
+            tool: 'read_file',
+            args: { path: 'C:\\private\\game.js' },
+          },
+          { kind: 'tool_result', call_id: 'read-chronology', result: { status: 'completed' } },
+          {
+            kind: 'tool_call',
+            call_id: 'edit-chronology',
+            tool: 'apply_patch',
+            args: { path: 'C:\\private\\player.js' },
+          },
+          { kind: 'tool_result', call_id: 'edit-chronology', result: { status: 'completed' } },
+          { kind: 'tool_call', call_id: 'check-chronology', tool: 'verify.test', args: {} },
+          { kind: 'tool_result', call_id: 'check-chronology', result: { status: 'completed' } },
+        ])}
+      />,
+    );
+
+    expect(screen.getAllByRole('button', { name: /show activity details/i })).toHaveLength(1);
+    expect(screen.getByText('3 actions')).toBeTruthy();
+    expect(
+      rendered.container.querySelector('.assistant-activity-ledger__phase-summary'),
+    ).toBeNull();
+    expect(rendered.container.querySelector('.assistant-activity-ledger__metrics')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /show activity details/i }));
+    expect(screen.getByText('Read game.js')).toBeTruthy();
+    expect(screen.getByText('Edited player.js')).toBeTruthy();
+    expect(screen.getByText('Verified check')).toBeTruthy();
+    expect(rendered.container.querySelector('.assistant-activity-ledger__duration')).toBeNull();
+    expect(rendered.container.querySelector('.assistant-activity-ledger__status')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/Read file|C:\\private/iu);
+  });
+
+  it('keeps OpenCode chronology failures truthful without success language', () => {
+    render(
+      <AssistantActivityLedger
+        presentation="opencode-chronology"
+        message={assistant([
+          {
+            kind: 'tool_call',
+            call_id: 'check-failed',
+            tool: 'verify.test',
+            args: {},
+          },
+          { kind: 'tool_result', call_id: 'check-failed', error: 'private failure' },
+        ])}
+      />,
+    );
+
+    expect(screen.getByText('1 action · failed')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /show activity details/i }));
+    expect(screen.getByText('Failed: verifying check')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('Verified');
+    expect(document.body.textContent).not.toContain('private failure');
+  });
+
   it('does not fabricate an action ledger from a generic persisted lifecycle event', () => {
     const rendered = render(
       <AssistantActivityLedger

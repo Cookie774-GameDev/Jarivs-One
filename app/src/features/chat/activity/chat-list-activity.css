@@ -3,6 +3,7 @@
   --chat-activity-secondary: hsl(var(--accent-cyan));
   --chat-activity-glow: color-mix(in srgb, var(--chat-activity-primary) 42%, transparent);
   --chat-activity-error: hsl(var(--destructive));
+  --chat-activity-complete: #79b7f6;
   width: 18px;
   height: 16px;
   flex: 0 0 18px;
@@ -46,7 +47,7 @@
 }
 
 .chat-activity-indicator[data-state='complete'] {
-  color: hsl(var(--success));
+  color: var(--chat-activity-complete);
 }
 
 .chat-activity-indicator[data-state='complete'] {
@@ -59,7 +60,11 @@
   border-radius: 999px;
   background: currentColor;
   box-shadow: 0 0 0 0 var(--chat-activity-glow);
-  animation: chat-activity-completion-dot 2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  animation: chat-activity-completion-dot 3.6s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+[aria-current='page'] .chat-activity-indicator[data-state='complete'] {
+  display: none;
 }
 
 .chat-activity-indicator[data-state='error'] {

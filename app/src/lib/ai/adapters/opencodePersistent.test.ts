@@ -2071,7 +2071,7 @@ describe('persistent OpenCode live authority', () => {
     await expect(cache.get('catalog', async () => 'unexpected')).resolves.toBe('fresh');
   });
 
-  it('uses only the native managed runtime descriptor', async () => {
+  it('reuses an already-validated native managed runtime without another refresh', async () => {
     const refresh = vi.fn(async () => undefined);
     const runtime = {
       refresh,
@@ -2087,7 +2087,7 @@ describe('persistent OpenCode live authority', () => {
       workingDirectory: 'C:\\workspace',
     });
 
-    expect(refresh).toHaveBeenCalledOnce();
+    expect(refresh).not.toHaveBeenCalled();
     expect(handle).toMatchObject({
       generation: 'opencode-server-test',
       version: '1.18.18',
@@ -2097,6 +2097,31 @@ describe('persistent OpenCode live authority', () => {
       },
     });
     expect(JSON.stringify(handle)).not.toMatch(/baseUrl|username|password|authorization|basic/i);
+    await handle.dispose();
+  });
+
+  it('refreshes only when no validated managed runtime is available yet', async () => {
+    const connection = {
+      version: '1.18.18',
+      source: 'system' as const,
+      generation: 'opencode-server-after-refresh',
+    };
+    let current: typeof connection | undefined;
+    const refresh = vi.fn(async () => {
+      current = connection;
+    });
+    const runtime = {
+      refresh,
+      getConnection: () => current,
+    } as unknown as HarnessRuntimeManager;
+
+    const handle = await createPersistentOpenCodeRuntimeSupervisor(runtime).start({
+      accountId: 'local-desktop-account',
+      workingDirectory: 'C:\\workspace',
+    });
+
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(handle.generation).toBe('opencode-server-after-refresh');
     await handle.dispose();
   });
 

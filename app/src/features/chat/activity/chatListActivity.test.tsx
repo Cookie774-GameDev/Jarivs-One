@@ -1,4 +1,6 @@
 import * as React from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { ChatActivityEvent } from './types';
@@ -91,7 +93,14 @@ describe('resolveChatListActivity', () => {
     ).toBe('error');
     expect(
       resolveChatListActivity({
-        runs: [run('completed', NOW - 6_000)],
+        runs: [run('completed', NOW - 10_000)],
+        events: [],
+        nowMs: NOW,
+      }).state,
+    ).toBe('complete');
+    expect(
+      resolveChatListActivity({
+        runs: [run('completed', NOW - 13_000)],
         events: [],
         nowMs: NOW,
       }).state,
@@ -100,6 +109,24 @@ describe('resolveChatListActivity', () => {
 });
 
 describe('ChatListActivityIndicator', () => {
+  it('uses a slow soft-blue completion signal and hides it for the open chat row', () => {
+    const stylesheet = readFileSync(
+      resolve(process.cwd(), 'src/features/chat/activity/chat-list-activity.css'),
+      'utf8',
+    );
+
+    expect(stylesheet).toMatch(/--chat-activity-complete:\s*#[0-9a-f]{6}/i);
+    expect(stylesheet).toMatch(
+      /\.chat-activity-indicator\[data-state='complete'\]\s*\{[^}]*color:\s*var\(--chat-activity-complete\)/s,
+    );
+    expect(stylesheet).toMatch(
+      /\.chat-activity-completion-dot\s*\{[^}]*animation:\s*chat-activity-completion-dot\s+3\.6s/s,
+    );
+    expect(stylesheet).toMatch(
+      /\[aria-current='page'\][\s\S]*\.chat-activity-indicator\[data-state='complete'\][^}]*display:\s*none/s,
+    );
+  });
+
   it('reserves a stable non-interactive slot and mounts motion only for real work', () => {
     const idle = render(<ChatListActivityIndicator runs={[]} events={[]} now={() => NOW} />);
     const slot = idle.getByTestId('chat-activity-slot');

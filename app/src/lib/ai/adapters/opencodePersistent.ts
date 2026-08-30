@@ -473,8 +473,11 @@ export function createPersistentOpenCodeRuntimeSupervisor(
   return {
     currentGeneration: () => runtime.getConnection()?.generation,
     async start(scope: HarnessScope): Promise<OpenCodeRuntimeHandle> {
-      await runtime.refresh();
-      const connection = runtime.getConnection();
+      let connection = runtime.getConnection();
+      if (!connection) {
+        await runtime.refresh();
+        connection = runtime.getConnection();
+      }
       if (!connection) {
         throw new Error(
           'The managed OpenCode runtime did not provide a private server connection.',
@@ -1664,10 +1667,22 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
   try {
     const session = await sessions.sessionForChat(scope, chatId);
     const client = session.client as PersistentOpenCodeClient;
-    const baselineMessages = await client.http.messages(session.sessionId);
+    const [baselineResult, catalogResult] = await Promise.allSettled([
+      client.http.messages(session.sessionId),
+      liveModels(scope),
+    ]);
+    if (baselineResult.status === 'rejected') {
+      failureStage = 'session_binding';
+      throw baselineResult.reason;
+    }
+    if (catalogResult.status === 'rejected') {
+      failureStage = 'live_model_authority';
+      throw catalogResult.reason;
+    }
+    const baselineMessages = baselineResult.value;
     const baselineMessageIds = captureOpenCodeMessageBaseline(baselineMessages);
     failureStage = 'live_model_authority';
-    const authoritativeCatalog = await liveModels(scope);
+    const authoritativeCatalog = catalogResult.value;
     const liveModel = requireAuthoritativeOpenCodeModel(authoritativeCatalog, modelId);
     const catalogRevision = gatewayAuthority
       ? await openCodeCatalogRevision(authoritativeCatalog)

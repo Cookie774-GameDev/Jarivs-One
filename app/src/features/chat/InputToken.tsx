@@ -60,6 +60,7 @@ export const InputToken = forwardRef<HTMLDivElement, InputTokenProps>(function I
 ) {
   const Icon = TOKEN_ICONS[type];
   const isCommand = type === 'command';
+  const isSkill = isCommand && /^\/skills(?::|\b)/iu.test(label.trim());
   const tokenTransition = useThemeMotionTransition(TOKEN_TRANSITION);
   const filterTransition =
     'duration' in tokenTransition && tokenTransition.duration === 0
@@ -74,14 +75,17 @@ export const InputToken = forwardRef<HTMLDivElement, InputTokenProps>(function I
       exit={{ opacity: 0, scale: 0.85, y: -6, filter: 'blur(1px)' }}
       transition={{ ...tokenTransition, filter: filterTransition }}
       data-composer-token-theme="native"
+      data-composer-token-kind={isSkill ? 'skill' : type}
       className={cn(
         'relative inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md border border-border/80 bg-muted/65 px-2 py-0.5',
         'text-[11px] font-medium leading-4 text-foreground/90',
-        isCommand && 'border-accent-copper/35 bg-accent-copper/10',
+        isCommand && !isSkill && 'border-accent-copper/35 bg-accent-copper/10',
+        isSkill &&
+          'gap-1 border-border/55 bg-muted/45 px-1.5 text-foreground/82 hover:border-border/80 hover:bg-muted/60',
         'transition-colors duration-150 hover:border-foreground/20 hover:bg-muted/85',
         className,
       )}
-      title={isCommand ? `Confirmed: ${label}` : label}
+      title={isSkill ? `Attached skill: ${label}` : isCommand ? `Confirmed: ${label}` : label}
     >
       {onActivate ? (
         <button
@@ -94,7 +98,7 @@ export const InputToken = forwardRef<HTMLDivElement, InputTokenProps>(function I
             <Icon
               className={cn(
                 'relative h-3 w-3 shrink-0',
-                isCommand ? 'text-accent-copper' : 'text-muted-foreground',
+                isCommand && !isSkill ? 'text-accent-copper' : 'text-muted-foreground',
               )}
             />
           )}
@@ -111,7 +115,7 @@ export const InputToken = forwardRef<HTMLDivElement, InputTokenProps>(function I
             <Icon
               className={cn(
                 'relative h-3 w-3 shrink-0',
-                isCommand ? 'text-accent-copper' : 'text-muted-foreground',
+                isCommand && !isSkill ? 'text-accent-copper' : 'text-muted-foreground',
               )}
             />
           )}
@@ -123,7 +127,7 @@ export const InputToken = forwardRef<HTMLDivElement, InputTokenProps>(function I
           ) : null}
         </>
       )}
-      {isCommand ? (
+      {isCommand && !isSkill ? (
         <span className="relative rounded-sm bg-accent-copper/12 px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-accent-copper">
           ok
         </span>

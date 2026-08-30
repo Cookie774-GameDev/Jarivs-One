@@ -1,0 +1,283 @@
+{
+  "capturedAt": "2026-08-30T03:54:56.429Z",
+  "cdp": "http://127.0.0.1:9223",
+  "jarvisPid": "33976",
+  "snapshot": {
+    "title": "VibeSpace",
+    "url": "http://localhost:5173/?route=chat",
+    "bodyText": "Workspace\n/\nProject\nV\nWORKSPACE\nChat\nWorkbench\nCanvas\nTerminals\nKanban\nSchedule\nBenchmarks\nHistory\nChatGPT ADE\nAgents\nSkills\nTools\nFiles\nPINNED\n\nPin chats to keep them close.\n\nPROJECTS\n\nNo projects yet. Hit + to create one.\n\nCHATS\nNew chat 3\nRead C:\\Users\\viper\\VibeSpace-UnifiedChungus-Fi…\nRLM is enabled\nAGENTS\nContext\nMake Context map\nBuild up to 5 active project maps for AI prompts.\nFILES\nLocal · uC_B\nNew chat 3\nRead C:\\Users\\viper\\VibeSpace-UnifiedChungus-Fi…\nRLM is enabled\nStart a conversation\n\nAsk anything, explore ideas, or delegate to an agent.\n\nAsk Jarvis anything\nGeneral knowledge, help, ideas\nPlan a project\nBreak tasks into steps\nReview my code\nFind issues and improve\nResearch a topic\nDeep dive and summarize\nopencode · opencode-go/deepseek-v4-flash-vision-exp\nAgent Mode\nCtrl Enter to send",
+    "visibleButtons": [
+      {
+        "label": "Toggle navigation",
+        "expanded": null
+      },
+      {
+        "label": "Open Jarvis voice panel",
+        "expanded": null
+      },
+      {
+        "label": "Chat modes · VibeSpace Chat",
+        "expanded": "false"
+      },
+      {
+        "label": "Open quick launcher",
+        "expanded": null
+      },
+      {
+        "label": "Open Build Your Own AI",
+        "expanded": null
+      },
+      {
+        "label": "Open schedule",
+        "expanded": null
+      },
+      {
+        "label": "Enter Focus Mode",
+        "expanded": null
+      },
+      {
+        "label": "Open command palette",
+        "expanded": null
+      },
+      {
+        "label": "Start dictation",
+        "expanded": null
+      },
+      {
+        "label": "Call Jarvis",
+        "expanded": null
+      },
+      {
+        "label": "Open AI news",
+        "expanded": null
+      },
+      {
+        "label": "What's new in v1.5.0",
+        "expanded": null
+      },
+      {
+        "label": "Toggle inspector",
+        "expanded": null
+      },
+      {
+        "label": "Settings",
+        "expanded": null
+      },
+      {
+        "label": "Open account for vipersel2",
+        "expanded": null
+      },
+      {
+        "label": "Collapse Workspace",
+        "expanded": "true"
+      },
+      {
+        "label": "Chat",
+        "expanded": null
+      },
+      {
+        "label": "Workbench",
+        "expanded": null
+      },
+      {
+        "label": "Canvas",
+        "expanded": null
+      },
+      {
+        "label": "Terminals",
+        "expanded": null
+      },
+      {
+        "label": "Kanban",
+        "expanded": null
+      },
+      {
+        "label": "Schedule",
+        "expanded": null
+      },
+      {
+        "label": "Benchmarks",
+        "expanded": null
+      },
+      {
+        "label": "History",
+        "expanded": null
+      },
+      {
+        "label": "ChatGPT ADE",
+        "expanded": null
+      },
+      {
+        "label": "Agents",
+        "expanded": null
+      },
+      {
+        "label": "Skills",
+        "expanded": null
+      },
+      {
+        "label": "Tools",
+        "expanded": null
+      },
+      {
+        "label": "Files",
+        "expanded": null
+      },
+      {
+        "label": "Collapse Pinned",
+        "expanded": "true"
+      },
+      {
+        "label": "Collapse Projects",
+        "expanded": "true"
+      },
+      {
+        "label": "Create project",
+        "expanded": null
+      },
+      {
+        "label": "Collapse Chats",
+        "expanded": "true"
+      },
+      {
+        "label": "Create chat",
+        "expanded": null
+      },
+      {
+        "label": "New chat 3",
+        "expanded": null
+      },
+      {
+        "label": "Pin New chat 3",
+        "expanded": null
+      },
+      {
+        "label": "Read C:\\Users\\viper\\VibeSpace-UnifiedChungus-Fi…",
+        "expanded": null
+      },
+      {
+        "label": "Pin Read C:\\Users\\viper\\VibeSpace-UnifiedChungus-Fi…",
+        "expanded": null
+      },
+      {
+        "label": "RLM is enabled",
+        "expanded": null
+      },
+      {
+        "label": "Pin RLM is enabled",
+        "expanded": null
+      },
+      {
+        "label": "Expand Agents",
+        "expanded": "false"
+      },
+      {
+        "label": "Create agent",
+        "expanded": null
+      },
+      {
+        "label": "Collapse Context",
+        "expanded": "true"
+      },
+      {
+        "label": "Context",
+        "expanded": null
+      },
+      {
+        "label": "Make Context map\nBuild up to 5 active project maps for AI prompts.",
+        "expanded": null
+      },
+      {
+        "label": "Expand Files",
+        "expanded": "false"
+      },
+      {
+        "label": "New chat 3",
+        "expanded": null
+      },
+      {
+        "label": "Close New chat 3",
+        "expanded": null
+      },
+      {
+        "label": "Read C:\\Users\\viper\\VibeSpace-UnifiedChungus-Fi…",
+        "expanded": null
+      },
+      {
+        "label": "Close Read C:\\Users\\viper\\VibeSpace-UnifiedChungus-Fi…",
+        "expanded": null
+      },
+      {
+        "label": "RLM is enabled",
+        "expanded": null
+      },
+      {
+        "label": "Close RLM is enabled",
+        "expanded": null
+      },
+      {
+        "label": "New chat",
+        "expanded": null
+      },
+      {
+        "label": "Ask Jarvis anything\nGeneral knowledge, help, ideas",
+        "expanded": null
+      },
+      {
+        "label": "Plan a project\nBreak tasks into steps",
+        "expanded": null
+      },
+      {
+        "label": "Review my code\nFind issues and improve",
+        "expanded": null
+      },
+      {
+        "label": "Research a topic\nDeep dive and summarize",
+        "expanded": null
+      },
+      {
+        "label": "Choose model",
+        "expanded": "false"
+      },
+      {
+        "label": "Connection details for Opencode Go",
+        "expanded": "false"
+      },
+      {
+        "label": "Agent Mode. Open permissions panel.",
+        "expanded": "false"
+      },
+      {
+        "label": "Upgrade prompt with Prompt Forge",
+        "expanded": null
+      },
+      {
+        "label": "Configure Prompt Forge",
+        "expanded": "false"
+      },
+      {
+        "label": "Start dictation",
+        "expanded": null
+      },
+      {
+        "label": "Send message",
+        "expanded": null
+      }
+    ],
+    "auditCount": 0,
+    "ledgers": 0,
+    "nativeCheckpoints": 0,
+    "finalAnswers": 0,
+    "pluginCards": 0,
+    "skillTokens": 0,
+    "hasFourStateStrip": false
+  },
+  "interaction": {
+    "expanded": null,
+    "collapsed": null,
+    "reloaded": null
+  },
+  "errors": [],
+  "failedResponses": [],
+  "screenshotPath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-chat-audit-disclosure-20260829\\00-chat-current.png"
+}

@@ -19,6 +19,8 @@ import './activity-ledger.css';
 
 export const DETAIL_PAGE_SIZE = 40;
 
+export type AssistantActivityLedgerPresentation = 'default' | 'opencode-chronology';
+
 function formatCount(value: number): string {
   return value.toLocaleString();
 }
@@ -269,6 +271,49 @@ function receiptIcon(kind: LedgerReceiptKind) {
   return <Wrench aria-hidden="true" />;
 }
 
+function chronologyTitle(ledger: AssistantActivityLedgerProjection, active: boolean): string {
+  if (ledger.status === 'error') return `${actionLabel(ledger.actionsTotal)} · failed`;
+  if (ledger.status === 'cancelled') return `${actionLabel(ledger.actionsTotal)} · cancelled`;
+  if (active) return `Working · ${actionLabel(ledger.actionsTotal)}`;
+  const kinds = new Set(ledger.receipts.map((receipt) => receipt.kind));
+  if (kinds.size !== 1) return actionLabel(ledger.actionsTotal);
+  const kind = [...kinds][0];
+  if (kind === 'read') {
+    const count = ledger.receipts.length;
+    return `Read ${formatCount(count)} ${count === 1 ? 'file' : 'files'}`;
+  }
+  if (kind === 'edit') {
+    const count = ledger.editedFilesTotal || ledger.receipts.length;
+    return `Edited ${formatCount(count)} ${count === 1 ? 'file' : 'files'}`;
+  }
+  if (kind === 'command') return commandMetric(ledger.commandsTotal || ledger.receipts.length);
+  if (kind === 'check') {
+    const count = ledger.verifiedChecksTotal || ledger.receipts.length;
+    return `Verified ${formatCount(count)} ${count === 1 ? 'check' : 'checks'}`;
+  }
+  return actionLabel(ledger.actionsTotal);
+}
+
+function chronologyReceiptText(receipt: AssistantActivityReceipt): string {
+  const target = receipt.fileLabel ? ` ${receipt.fileLabel}` : '';
+  const verbs: Record<LedgerReceiptKind, Readonly<[string, string]>> = {
+    read: ['Read', 'Reading'],
+    search: ['Searched', 'Searching'],
+    command: ['Ran command', 'Running command'],
+    edit: ['Edited', 'Editing'],
+    check: ['Verified check', 'Verifying check'],
+    subagent: ['Coordinated subagent', 'Coordinating subagent'],
+    other: ['Used tool', 'Using tool'],
+  };
+  const [settled, running] = verbs[receipt.kind];
+  if (receipt.status === 'error') return `Failed: ${running.toLocaleLowerCase('en-US')}${target}`;
+  if (receipt.status === 'cancelled') {
+    return `Cancelled: ${running.toLocaleLowerCase('en-US')}${target}`;
+  }
+  if (receipt.status === 'running' || receipt.status === 'pending') return `${running}${target}`;
+  return `${settled}${target}`;
+}
+
 export function AssistantActivityLedger({
   message,
   correlatedEvents = [],
@@ -276,6 +321,7 @@ export function AssistantActivityLedger({
   compact = false,
   active = false,
   authoritativeDurationMs,
+  presentation = 'default',
 }: {
   message: Message;
   correlatedEvents?: readonly ChatActivityEvent[];
@@ -285,12 +331,16 @@ export function AssistantActivityLedger({
   active?: boolean;
   /** Stable duration supplied by the owning canonical run/session projection. */
   authoritativeDurationMs?: number;
+  presentation?: AssistantActivityLedgerPresentation;
 }) {
   const ledger = React.useMemo(
     () => projectAssistantActivityLedger(message, correlatedEvents),
     [message, correlatedEvents],
   );
-  const phases = React.useMemo(() => partitionActivityPhases(ledger.receipts), [ledger.receipts]);
+  const phases = React.useMemo(
+    () => (presentation === 'opencode-chronology' ? [] : partitionActivityPhases(ledger.receipts)),
+    [ledger.receipts, presentation],
+  );
   const hasUsage = ledger.usage.input.value !== null || ledger.usage.output.value !== null;
   if (ledger.actionsTotal === 0 && !hasUsage) return null;
 
@@ -332,6 +382,7 @@ export function AssistantActivityLedger({
       compact={compact}
       active={active}
       authoritativeDurationMs={authoritativeDurationMs}
+      presentation={presentation}
     />
   );
 }
@@ -345,6 +396,7 @@ function AssistantActivityLedgerBlock({
   compact = false,
   active = false,
   authoritativeDurationMs,
+  presentation = 'default',
 }: {
   ledger: AssistantActivityLedgerProjection;
   summary: string;
@@ -354,6 +406,7 @@ function AssistantActivityLedgerBlock({
   compact?: boolean;
   active?: boolean;
   authoritativeDurationMs?: number;
+  presentation?: AssistantActivityLedgerPresentation;
 }) {
   const [expanded, setExpanded] = React.useState(false);
   const [visibleCount, setVisibleCount] = React.useState(DETAIL_PAGE_SIZE);
@@ -381,12 +434,14 @@ function AssistantActivityLedgerBlock({
         ? authoritativeDurationMs
         : ledger.durationMs;
   const continuousResponseTitle =
-    title ??
-    (live
-      ? `${ledger.currentOperation ?? 'Working'} · ${actionLabel(ledger.actionsTotal)}`
-      : durationMs !== undefined
-        ? `Worked for ${formatDuration(durationMs)} · ${actionLabel(ledger.actionsTotal)}`
-        : `Activity · ${actionLabel(ledger.actionsTotal)}`);
+    presentation === 'opencode-chronology'
+      ? chronologyTitle(ledger, active)
+      : (title ??
+        (live
+          ? `${ledger.currentOperation ?? 'Working'} · ${actionLabel(ledger.actionsTotal)}`
+          : durationMs !== undefined
+            ? `Worked for ${formatDuration(durationMs)} · ${actionLabel(ledger.actionsTotal)}`
+            : `Activity · ${actionLabel(ledger.actionsTotal)}`));
   const motion = resolveAgentMotion(
     runningEvent
       ? {
@@ -410,19 +465,29 @@ function AssistantActivityLedgerBlock({
   );
   return (
     <section
-      className={cn('assistant-activity-ledger', compact && 'is-compact')}
+      className={cn(
+        'assistant-activity-ledger',
+        compact && 'is-compact',
+        presentation === 'opencode-chronology' && 'is-opencode-chronology',
+      )}
       data-assistant-activity-ledger="true"
       data-ledger-active={active ? 'true' : 'false'}
+      data-ledger-presentation={presentation}
     >
-      <p className="assistant-activity-ledger__phase-summary" aria-live={active ? 'polite' : 'off'}>
-        {summary}
-      </p>
+      {presentation === 'default' ? (
+        <p
+          className="assistant-activity-ledger__phase-summary"
+          aria-live={active ? 'polite' : 'off'}
+        >
+          {summary}
+        </p>
+      ) : null}
       <button
         type="button"
         className="assistant-activity-ledger__disclosure"
         aria-expanded={expanded}
         aria-labelledby={`${controlLabelId} ${titleId}`}
-        aria-describedby={metricsId}
+        aria-describedby={presentation === 'default' ? metricsId : undefined}
         onClick={() => setExpanded((value) => !value)}
       >
         <span id={controlLabelId} className="sr-only">
@@ -432,36 +497,40 @@ function AssistantActivityLedgerBlock({
           className={cn('assistant-activity-ledger__chevron', expanded && 'is-open')}
           aria-hidden="true"
         />
-        <PerceptibleAgentMotionIndicator motion={motion} compact />
+        {presentation === 'default' ? (
+          <PerceptibleAgentMotionIndicator motion={motion} compact />
+        ) : null}
         <span id={titleId} className="assistant-activity-ledger__title">
           {continuousResponseTitle}
         </span>
-        <span id={metricsId} className="assistant-activity-ledger__metrics">
-          {ledger.readsTotal > 0 ? <span>{metric('Read', ledger.readsTotal)}</span> : null}
-          {ledger.searchesTotal > 0 ? (
-            <span>{metric('Searched', ledger.searchesTotal)}</span>
-          ) : null}
-          {ledger.commandsTotal > 0 ? <span>{commandMetric(ledger.commandsTotal)}</span> : null}
-          {ledger.editedFilesTotal > 0 ? (
-            <span>{metric('Edited', ledger.editedFilesTotal)}</span>
-          ) : null}
-          {ledger.verifiedChecksTotal > 0 ? (
-            <span>{metric('Verified', ledger.verifiedChecksTotal)}</span>
-          ) : null}
-          {ledger.subagentsTotal > 0 ? (
-            <span>{metric('Subagents', ledger.subagentsTotal)}</span>
-          ) : null}
-          {ledger.usage.input.value !== null ? (
-            <span title={usageTitle(ledger.usage.input)}>
-              {usageText('In', ledger.usage.input)}
-            </span>
-          ) : null}
-          {ledger.usage.output.value !== null ? (
-            <span title={usageTitle(ledger.usage.output)}>
-              {usageText('Out', ledger.usage.output)}
-            </span>
-          ) : null}
-        </span>
+        {presentation === 'default' ? (
+          <span id={metricsId} className="assistant-activity-ledger__metrics">
+            {ledger.readsTotal > 0 ? <span>{metric('Read', ledger.readsTotal)}</span> : null}
+            {ledger.searchesTotal > 0 ? (
+              <span>{metric('Searched', ledger.searchesTotal)}</span>
+            ) : null}
+            {ledger.commandsTotal > 0 ? <span>{commandMetric(ledger.commandsTotal)}</span> : null}
+            {ledger.editedFilesTotal > 0 ? (
+              <span>{metric('Edited', ledger.editedFilesTotal)}</span>
+            ) : null}
+            {ledger.verifiedChecksTotal > 0 ? (
+              <span>{metric('Verified', ledger.verifiedChecksTotal)}</span>
+            ) : null}
+            {ledger.subagentsTotal > 0 ? (
+              <span>{metric('Subagents', ledger.subagentsTotal)}</span>
+            ) : null}
+            {ledger.usage.input.value !== null ? (
+              <span title={usageTitle(ledger.usage.input)}>
+                {usageText('In', ledger.usage.input)}
+              </span>
+            ) : null}
+            {ledger.usage.output.value !== null ? (
+              <span title={usageTitle(ledger.usage.output)}>
+                {usageText('Out', ledger.usage.output)}
+              </span>
+            ) : null}
+          </span>
+        ) : null}
       </button>
 
       {expanded ? (
@@ -486,6 +555,7 @@ function AssistantActivityLedgerBlock({
                 receipt={receipt}
                 canPreview={Boolean(projectRoot && receipt.filePath)}
                 onPreview={() => receipt.filePath && setPreviewPath(receipt.filePath)}
+                presentation={presentation}
               />
             ))}
           </div>
@@ -499,7 +569,7 @@ function AssistantActivityLedgerBlock({
               Show {Math.min(DETAIL_PAGE_SIZE, remaining)} more
             </button>
           ) : null}
-          {hasUsage ? (
+          {hasUsage && presentation === 'default' ? (
             <div className="assistant-activity-ledger__usage" aria-label="Usage">
               <UsageLine label="Input" usage={ledger.usage.input} />
               <UsageLine label="Output" usage={ledger.usage.output} />
@@ -522,33 +592,43 @@ function ReceiptRow({
   receipt,
   canPreview,
   onPreview,
+  presentation,
 }: {
   receipt: AssistantActivityReceipt;
   canPreview: boolean;
   onPreview: () => void;
+  presentation: AssistantActivityLedgerPresentation;
 }) {
+  const chronology = presentation === 'opencode-chronology';
   const content = (
     <>
       <span className="assistant-activity-ledger__receipt-icon">{receiptIcon(receipt.kind)}</span>
-      <span className="assistant-activity-ledger__receipt-label">{receipt.label}</span>
-      {receipt.fileLabel ? (
+      <span className="assistant-activity-ledger__receipt-label">
+        {chronology ? chronologyReceiptText(receipt) : receipt.label}
+      </span>
+      {!chronology && receipt.fileLabel ? (
         <span className="assistant-activity-ledger__path">{receipt.fileLabel}</span>
       ) : null}
-      {receipt.durationMs !== undefined ? (
+      {!chronology && receipt.durationMs !== undefined ? (
         <span className="assistant-activity-ledger__duration">
           <Clock3 aria-hidden="true" />
           {receipt.durationMs}ms
         </span>
       ) : null}
-      {receipt.status === 'done' ? null : (
+      {!chronology && receipt.status !== 'done' ? (
         <span className={cn('assistant-activity-ledger__status', `is-${receipt.status}`)}>
           {receipt.status}
         </span>
-      )}
+      ) : null}
     </>
   );
   return (
-    <div role="listitem" data-testid="activity-ledger-receipt">
+    <div
+      role="listitem"
+      data-testid="activity-ledger-receipt"
+      data-receipt-status={receipt.status}
+      aria-label={chronology ? chronologyReceiptText(receipt) : undefined}
+    >
       {canPreview ? (
         <button type="button" className="assistant-activity-ledger__receipt" onClick={onPreview}>
           {content}

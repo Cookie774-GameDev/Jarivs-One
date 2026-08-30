@@ -26,6 +26,10 @@ import type { JarvisCreatorKind } from '@/features/jarvis-creator/contracts';
 import { MessageBubble } from '../MessageBubble';
 import { MessagePart } from '../MessagePart';
 import { AssistantActivityLedger } from '../activity-ledger/AssistantActivityLedger';
+import {
+  projectAssistantActivityLedger,
+  type AssistantActivityLedgerProjection,
+} from '../activity-ledger/ledgerProjection';
 import type { ChatActivityEvent, ChatActivityStatus } from '../activity/types';
 import {
   MAX_MOUNTED_BLOCKS,
@@ -463,6 +467,32 @@ function PromptBand({ block }: { block: Extract<TranscriptBlock, { kind: 'prompt
   );
 }
 
+function LiveTurnStatus({ event, compact }: { event: ChatActivityEvent; compact?: boolean }) {
+  const motion = resolveAgentMotion({
+    status: event.status,
+    activityCategory: event.category,
+    activityKind: event.kind,
+    semanticIntent: event.semanticIntent,
+    title: event.title,
+    detail: event.detail,
+    filePath: event.filePath,
+  });
+  if (!motion) return null;
+
+  return (
+    <div
+      className="agentic-live-status"
+      role="status"
+      aria-live="polite"
+      data-live-turn-status
+      data-live-turn-category={event.category ?? event.kind}
+    >
+      <PerceptibleAgentMotionIndicator motion={motion} compact={compact} />
+      <span className="agentic-live-status__text">{event.title}</span>
+    </div>
+  );
+}
+
 function copyText(text: string) {
   void navigator.clipboard
     ?.writeText(text)
@@ -531,14 +561,33 @@ function BlockView({
   finalAnswerId,
   compact,
   creatorDraftKind,
+  nativeCheckpoint = false,
+  hideNativeCheckpoint = false,
 }: {
   block: TranscriptBlock;
   finalAnswerId?: string;
   compact?: boolean;
   creatorDraftKind?: JarvisCreatorKind;
+  nativeCheckpoint?: boolean;
+  hideNativeCheckpoint?: boolean;
 }) {
   if (block.kind === 'prompt') return <PromptBand block={block} />;
   if (block.kind === 'answer') {
+    if (nativeCheckpoint) {
+      if (hideNativeCheckpoint) return null;
+      const final = block.id === finalAnswerId;
+      return (
+        <div
+          className={cn('agentic-native-checkpoint', final && 'is-final')}
+          data-native-assistant-checkpoint={final ? 'final' : 'true'}
+          data-native-final-answer={final ? 'true' : undefined}
+          data-message-id={block.message.id}
+        >
+          <span className="agentic-native-checkpoint__dot" aria-hidden="true" />
+          <div className="agentic-native-checkpoint__text">{block.text}</div>
+        </div>
+      );
+    }
     return (
       <article
         className={cn('agentic-answer', block.id === finalAnswerId && 'is-final')}
@@ -554,6 +603,7 @@ function BlockView({
     );
   }
   if (block.kind === 'reasoning') {
+    if (nativeCheckpoint) return null;
     return (
       <details className="agentic-reasoning">
         <summary>
@@ -611,87 +661,96 @@ function isInlineLedgerLegacyBlock(block: TranscriptBlock, latestUserTurnStarted
   return hasProse && hasContextReferences && canSplitWithoutChangingInteractiveContent;
 }
 
-function SessionCompletionInspector({ summary }: { summary: AgenticSessionSummary }) {
-  const terminal = new Set<AgenticSessionSummary['status']>([
-    'done',
-    'blocked',
-    'partial',
-    'error',
-    'cancelled',
-  ]).has(summary.status);
-  if (!terminal) return null;
+function terminalStatus(status: AgenticSessionSummary['status']): boolean {
+  return (
+    status === 'done' ||
+    status === 'blocked' ||
+    status === 'partial' ||
+    status === 'error' ||
+    status === 'cancelled'
+  );
+}
 
-  const outcome =
-    summary.status === 'done'
-      ? {
-          done: 'Response complete',
-          next: 'Awaiting your next request',
-          blockers: 'None',
-          className: 'is-done',
-        }
-      : summary.status === 'blocked'
-        ? {
-            done: 'Run stopped',
-            next: 'Blocker resolution required',
-            blockers: 'Blocked state recorded',
-            className: 'is-blocked',
-          }
-        : summary.status === 'error'
-          ? {
-              done: 'Run ended',
-              next: 'Review before retrying',
-              blockers: 'Run error recorded',
-              className: 'is-blocked',
-            }
-          : summary.status === 'cancelled'
-            ? {
-                done: 'Run cancelled',
-                next: 'Awaiting your next request',
-                blockers: 'Not reported',
-                className: 'is-blocked',
-              }
-            : {
-                done: 'Partial completion recorded',
-                next: 'Continuation available',
-                blockers: 'Not reported',
-                className: 'is-blocked',
-              };
+function formatAuditCount(value: number): string {
+  return value.toLocaleString();
+}
 
-  const items = [
-    { label: 'Done', text: outcome.done, icon: Check, className: outcome.className },
-    { label: 'Doing now', text: 'No active work', icon: Clock3, className: undefined },
-    { label: 'Next', text: outcome.next, icon: ChevronRight, className: undefined },
-    {
-      label: 'Blockers',
-      text: outcome.blockers,
-      icon: AlertCircle,
-      className: outcome.blockers === 'None' ? undefined : 'is-blocked',
-    },
-  ] as const;
+function formatAuditDuration(durationMs: number): string {
+  if (durationMs > 0 && durationMs < 1_000) return '<1s';
+  const seconds = Math.max(0, Math.round(durationMs / 1_000));
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return remainingSeconds === 0 ? `${minutes}m` : `${minutes}m ${remainingSeconds}s`;
+}
+
+function SessionCompletionAudit({
+  ledger,
+  durationMs,
+  expanded,
+  onExpandedChange,
+  status,
+}: {
+  ledger: AssistantActivityLedgerProjection;
+  durationMs?: number;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+  status: AgenticSessionSummary['status'];
+}) {
+  const elapsed = durationMs ?? ledger.durationMs ?? 0;
+  const actionText = `${formatAuditCount(ledger.actionsTotal)} ${ledger.actionsTotal === 1 ? 'action' : 'actions'}`;
+  const statusLabel =
+    status === 'error'
+      ? 'Failed'
+      : status === 'cancelled'
+        ? 'Cancelled'
+        : status === 'blocked'
+          ? 'Blocked'
+          : status === 'partial'
+            ? 'Partial'
+            : undefined;
+  const metrics = [
+    ledger.readsTotal > 0 ? `Read ${formatAuditCount(ledger.readsTotal)}` : '',
+    ledger.searchesTotal > 0 ? `Searched ${formatAuditCount(ledger.searchesTotal)}` : '',
+    ledger.commandsTotal > 0
+      ? `Ran ${formatAuditCount(ledger.commandsTotal)} ${ledger.commandsTotal === 1 ? 'command' : 'commands'}`
+      : '',
+    ledger.editedFilesTotal > 0
+      ? `Edited ${formatAuditCount(ledger.editedFilesTotal)} ${ledger.editedFilesTotal === 1 ? 'file' : 'files'}`
+      : '',
+    ledger.verifiedChecksTotal > 0
+      ? `Verified ${formatAuditCount(ledger.verifiedChecksTotal)} ${ledger.verifiedChecksTotal === 1 ? 'check' : 'checks'}`
+      : '',
+  ].filter(Boolean);
 
   return (
     <section
-      className="agentic-completion-inspector"
-      role="status"
-      aria-label="Session completion status"
-      aria-live="polite"
-      data-terminal-status={summary.status}
+      className="agentic-turn-audit"
+      aria-label="Completed work audit"
+      data-terminal-status={status}
+      data-work-details-expanded={expanded ? 'true' : 'false'}
     >
-      {items.map((item) => {
-        const Icon = item.icon;
-        return (
-          <div
-            key={item.label}
-            className={cn('agentic-completion-inspector__item', item.className)}
-          >
-            <strong>
-              <Icon aria-hidden="true" />
-              {item.label}
-            </strong>
-            <span>{item.text}</span>
-          </div>
-        );
-      })}
+      <button
+        type="button"
+        className="agentic-turn-audit__disclosure"
+        aria-label={`${expanded ? 'Collapse' : 'Expand'} completed work details`}
+        aria-expanded={expanded}
+        onClick={() => onExpandedChange(!expanded)}
+      >
+        <ChevronDown
+          className={cn('agentic-turn-audit__chevron', expanded && 'is-expanded')}
+          aria-hidden="true"
+        />
+        <strong>
+          Worked for {formatAuditDuration(elapsed)} · {actionText}
+        </strong>
+        {statusLabel ? <span className="agentic-turn-audit__status">{statusLabel}</span> : null}
+        <span className="agentic-turn-audit__metrics" aria-label="Recorded work totals">
+          {metrics.map((metric) => (
+            <span key={metric}>{metric}</span>
+          ))}
+        </span>
+      </button>
     </section>
   );
 }
@@ -736,6 +795,7 @@ export function selectAssistantLedgerOwnerIds(messages: readonly Message[]): Rea
 type NativeCheckpointLedgerPlacement = Readonly<{
   sourceId: string;
   message: Message;
+  needsNeutralCheckpoint?: boolean;
 }>;
 
 function nativeCheckpointLedgerPlacements(
@@ -743,13 +803,20 @@ function nativeCheckpointLedgerPlacements(
   messagesBySource: ReadonlyMap<string, Message>,
 ): ReadonlyMap<string, NativeCheckpointLedgerPlacement> {
   const placements = new Map<string, NativeCheckpointLedgerPlacement>();
+  const blocksBySource = new Map<string, TranscriptBlock[]>();
+  for (const block of blocks) {
+    const sourceBlocks = blocksBySource.get(block.sourceId);
+    if (sourceBlocks) sourceBlocks.push(block);
+    else blocksBySource.set(block.sourceId, [block]);
+  }
   for (const [sourceId, message] of messagesBySource) {
-    if (message.role !== 'assistant') continue;
-    const sourceBlocks = blocks.filter((block) => block.sourceId === sourceId);
-    if (sourceBlocks.filter((block) => block.kind === 'answer').length < 2) continue;
+    if (!ownsNativeOpenCodeChronology(message)) continue;
+    const sourceBlocks = blocksBySource.get(sourceId) ?? [];
 
     let callIds = new Set<string>();
     let lastToolBlockId: string | undefined;
+    let hasAssistantCheckpoint = false;
+    const hasAnyAssistantCheckpoint = sourceBlocks.some((block) => block.kind === 'answer');
     let phaseIndex = 0;
     const sourcePlacementIds: string[] = [];
     const flush = () => {
@@ -761,6 +828,9 @@ function nativeCheckpointLedgerPlacements(
       if (scopedParts.length > 0) {
         placements.set(lastToolBlockId, {
           sourceId,
+          ...(!hasAssistantCheckpoint && !hasAnyAssistantCheckpoint
+            ? { needsNeutralCheckpoint: true }
+            : {}),
           message: {
             ...message,
             id: `${String(message.id)}:checkpoint:${phaseIndex}` as Message['id'],
@@ -778,6 +848,7 @@ function nativeCheckpointLedgerPlacements(
     for (const block of sourceBlocks) {
       if (block.kind === 'answer') {
         flush();
+        hasAssistantCheckpoint = true;
       } else if (block.kind === 'command' || block.kind === 'tool') {
         callIds.add(block.callId);
         lastToolBlockId = block.id;
@@ -796,6 +867,59 @@ function nativeCheckpointLedgerPlacements(
   return placements;
 }
 
+function ownsNativeOpenCodeChronology(message: Message, modelHint?: string): boolean {
+  if (message.role !== 'assistant') return false;
+  const hasTools = message.parts.some(
+    (part) => part.kind === 'tool_call' || part.kind === 'tool_result',
+  );
+  if (!hasTools) return false;
+  const publicTextParts = message.parts.filter(
+    (part) => part.kind === 'text' && part.text.trim().length > 0,
+  ).length;
+  const model = (message.usage?.model ?? modelHint ?? '').toLocaleLowerCase('en-US');
+  return publicTextParts > 1 || model.includes('opencode');
+}
+
+function nativeTranscriptMessage(message: Message, modelHint?: string): Message {
+  if (!ownsNativeOpenCodeChronology(message, modelHint)) return message;
+  const projectedModel = message.usage?.model ?? modelHint;
+  return {
+    ...message,
+    ...(projectedModel ? { usage: { ...(message.usage ?? {}), model: projectedModel } } : {}),
+    parts: message.parts.filter(
+      (part) => part.kind !== 'reasoning' && part.kind !== 'jarvis_source_ref',
+    ),
+  };
+}
+
+function latestTurnAuditMessage(
+  messages: readonly Message[],
+  latestUserTurnStartedAt: number,
+): Message | undefined {
+  const assistants = messages.filter(
+    (message) =>
+      message.role === 'assistant' &&
+      message.created_at >= latestUserTurnStartedAt &&
+      message.parts.some((part) => part.kind === 'tool_call' || part.kind === 'tool_result'),
+  );
+  const finalAssistant = assistants.at(-1);
+  if (!finalAssistant) return undefined;
+
+  return {
+    ...finalAssistant,
+    id: `${String(finalAssistant.id)}:turn-audit` as Message['id'],
+    parts: assistants.flatMap((message) => message.parts),
+    created_at: assistants.reduce(
+      (earliest, message) => Math.min(earliest, message.created_at),
+      finalAssistant.created_at,
+    ),
+    updated_at: assistants.reduce(
+      (latest, message) => Math.max(latest, message.updated_at),
+      finalAssistant.updated_at,
+    ),
+  };
+}
+
 export function AgenticConsole({
   chatId,
   messages,
@@ -808,19 +932,24 @@ export function AgenticConsole({
 }: AgenticConsoleProps) {
   const [preferences, updatePreferences] = useConsolePreferences();
   const [mountedCount, setMountedCount] = React.useState(MAX_MOUNTED_BLOCKS);
+  const [latestTurnDetailsExpanded, setLatestTurnDetailsExpanded] = React.useState(true);
   const rootRef = React.useRef<HTMLElement>(null);
-  const transcriptWindow = React.useMemo(
-    () =>
-      projectAgenticTranscriptWindow(messages, activity, mountedCount, {
-        preserveAssistantMessages: creatorDraftKind != null,
-      }),
-    [messages, activity, mountedCount, creatorDraftKind],
-  );
-  const blocks = transcriptWindow.visible;
   const summary = React.useMemo(
     () => summarizeAgenticSession(messages, activity, sessionEvidence),
     [messages, activity, sessionEvidence],
   );
+  const transcriptMessages = React.useMemo(
+    () => messages.map((message) => nativeTranscriptMessage(message, summary.model)),
+    [messages, summary.model],
+  );
+  const transcriptWindow = React.useMemo(
+    () =>
+      projectAgenticTranscriptWindow(transcriptMessages, activity, mountedCount, {
+        preserveAssistantMessages: creatorDraftKind != null,
+      }),
+    [transcriptMessages, activity, mountedCount, creatorDraftKind],
+  );
+  const blocks = transcriptWindow.visible;
   const finalAnswerId = [...blocks].reverse().find((block) => block.kind === 'answer')?.id;
   const latestUserTurnStartedAt = React.useMemo(
     () =>
@@ -857,6 +986,32 @@ export function AgenticConsole({
     summary.status === 'planning' ||
     summary.status === 'running' ||
     summary.status === 'recovering';
+  const liveTurnActivity = React.useMemo(
+    () =>
+      [...turnActivity]
+        .reverse()
+        .find((event) => event.status === 'pending' || event.status === 'running'),
+    [turnActivity],
+  );
+  const turnAuditMessage = React.useMemo(
+    () => latestTurnAuditMessage(messages, latestUserTurnStartedAt),
+    [latestUserTurnStartedAt, messages],
+  );
+  const turnAuditLedger = React.useMemo(
+    () => (turnAuditMessage ? projectAssistantActivityLedger(turnAuditMessage) : undefined),
+    [turnAuditMessage],
+  );
+  const showTurnCompletionAudit = Boolean(
+    terminalStatus(summary.status) &&
+    !sessionIsActive &&
+    turnAuditLedger &&
+    turnAuditLedger.actionsTotal > 0,
+  );
+  const latestTurnActivityCollapsed = showTurnCompletionAudit && !latestTurnDetailsExpanded;
+
+  React.useEffect(() => {
+    setLatestTurnDetailsExpanded(true);
+  }, [latestUserTurnStartedAt]);
   const latestActiveEvidenceAt = React.useMemo(
     () =>
       turnActivity.reduce(
@@ -917,9 +1072,9 @@ export function AgenticConsole({
   const messagesBySource = React.useMemo(
     () =>
       new Map<string, Message>(
-        messages.map((message) => [`message:${String(message.id)}`, message] as const),
+        transcriptMessages.map((message) => [`message:${String(message.id)}`, message] as const),
       ),
-    [messages],
+    [transcriptMessages],
   );
   const assistantLedgerOwnerIds = React.useMemo(
     () => selectAssistantLedgerOwnerIds(messages),
@@ -938,6 +1093,16 @@ export function AgenticConsole({
     blocks.forEach((block, index) => indexes.set(block.sourceId, index));
     return indexes;
   }, [blocks]);
+  const latestPromptBlockId = React.useMemo(
+    () =>
+      [...blocks]
+        .reverse()
+        .find(
+          (block) =>
+            block.kind === 'prompt' && block.message.created_at === latestUserTurnStartedAt,
+        )?.id,
+    [blocks, latestUserTurnStartedAt],
+  );
 
   React.useEffect(() => {
     document.documentElement.dataset.agenticConsoleCaret =
@@ -1034,6 +1199,23 @@ export function AgenticConsole({
     transcriptWindow.total > 0;
   if (!hasTranscriptWork) return null;
 
+  const turnTopMatter = (
+    <>
+      {latestPromptBlockId && sessionIsActive && liveTurnActivity ? (
+        <LiveTurnStatus event={liveTurnActivity} compact={compact} />
+      ) : null}
+      {showTurnCompletionAudit && turnAuditLedger ? (
+        <SessionCompletionAudit
+          ledger={turnAuditLedger}
+          durationMs={turnAuthoritativeDurationMs}
+          expanded={latestTurnDetailsExpanded}
+          onExpandedChange={setLatestTurnDetailsExpanded}
+          status={summary.status}
+        />
+      ) : null}
+    </>
+  );
+
   return (
     <section
       ref={rootRef}
@@ -1071,8 +1253,13 @@ export function AgenticConsole({
               Load {loadCount} older events
             </button>
           ) : null}
+          {!latestPromptBlockId ? turnTopMatter : null}
           {blocks.map((block, index) => {
             const sourceMessage = messagesBySource.get(block.sourceId);
+            const sourceIsLatestAssistantTurn = Boolean(
+              sourceMessage?.role === 'assistant' &&
+              sourceMessage.created_at >= latestUserTurnStartedAt,
+            );
             const nativeCheckpointLedger = nativeCheckpointLedgers.get(block.id);
             const inlineLegacyMessage =
               block.id === inlineLedgerLegacyId && block.kind === 'legacy'
@@ -1086,6 +1273,7 @@ export function AgenticConsole({
               lastVisibleIndexBySource.get(block.sourceId) === index &&
               assistantLedgerOwnerIds.has(String(sourceMessage.id)) &&
               !nativeCheckpointSourceIds.has(block.sourceId) &&
+              !(latestTurnActivityCollapsed && sourceIsLatestAssistantTurn) &&
               !(turnActivityMessage && sourceMessage.created_at >= latestUserTurnStartedAt);
             return (
               <React.Fragment key={block.id}>
@@ -1107,14 +1295,34 @@ export function AgenticConsole({
                     finalAnswerId={finalAnswerId}
                     compact={compact}
                     creatorDraftKind={creatorDraftKind}
+                    nativeCheckpoint={nativeCheckpointSourceIds.has(block.sourceId)}
+                    hideNativeCheckpoint={
+                      latestTurnActivityCollapsed &&
+                      sourceIsLatestAssistantTurn &&
+                      block.id !== finalAnswerId
+                    }
                   />
                 )}
-                {nativeCheckpointLedger ? (
-                  <AssistantActivityLedger
-                    message={nativeCheckpointLedger.message}
-                    compact={compact}
-                    active={sessionIsActive && sourceMessage?.id === latestAssistantMessageId}
-                  />
+                {block.id === latestPromptBlockId ? turnTopMatter : null}
+                {nativeCheckpointLedger &&
+                !(latestTurnActivityCollapsed && sourceIsLatestAssistantTurn) ? (
+                  <>
+                    {nativeCheckpointLedger.needsNeutralCheckpoint && sessionIsActive ? (
+                      <div
+                        className="agentic-native-checkpoint is-neutral-fallback"
+                        data-native-assistant-checkpoint="fallback"
+                      >
+                        <span className="agentic-native-checkpoint__dot" aria-hidden="true" />
+                        <div className="agentic-native-checkpoint__text">Working…</div>
+                      </div>
+                    ) : null}
+                    <AssistantActivityLedger
+                      message={nativeCheckpointLedger.message}
+                      compact={compact}
+                      active={sessionIsActive && sourceMessage?.id === latestAssistantMessageId}
+                      presentation="opencode-chronology"
+                    />
+                  </>
                 ) : null}
                 {showLedger ? (
                   <AssistantActivityLedger
@@ -1164,7 +1372,6 @@ export function AgenticConsole({
           ) : null}
         </div>
       ) : null}
-      <SessionCompletionInspector summary={summary} />
     </section>
   );
 }

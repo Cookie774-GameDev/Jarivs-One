@@ -45,6 +45,13 @@ describe('AgenticConsole', () => {
     expect(stylesheet).toMatch(/\.agentic-prompt-band\s*\{[^}]*background:\s*linear-gradient\(/s);
     expect(stylesheet).toMatch(/\.agentic-answer\s*\{[^}]*border:\s*0;/s);
     expect(stylesheet).toMatch(/\.agentic-answer\.is-final\s*\{[^}]*background:\s*transparent;/s);
+    expect(stylesheet).toMatch(
+      /\.agentic-live-status__text\s*\{[^}]*background:\s*linear-gradient\(/s,
+    );
+    expect(stylesheet).toMatch(/@keyframes\s+agentic-live-status-shimmer/);
+    expect(stylesheet).toMatch(
+      /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*\.agentic-live-status__text/s,
+    );
   });
 
   afterEach(() => {
@@ -117,67 +124,78 @@ describe('AgenticConsole', () => {
     expect(screen.queryByRole('article', { name: 'Diff AgenticConsole.tsx' })).toBeNull();
   });
 
-  it('renders the four-cell completed inspector from recorded terminal state', () => {
+  it('renders completed OpenCode work expanded by default and collapses only its public chronology', () => {
     renderConsole({
       chatId: 'chat-console',
       messages: [
-        message('user', 'user', 10, [{ kind: 'text', text: 'Verify the change.' }]),
-        message('assistant', 'assistant', 30, [{ kind: 'text', text: 'The change is verified.' }]),
-      ],
-      activity: [
+        message('user', 'user', 1_000, [{ kind: 'text', text: 'Build the game.' }]),
         {
-          id: 'completed-check',
-          chatId: 'chat-console',
-          kind: 'tool',
-          category: 'learning',
-          status: 'done',
-          title: 'Verified focused check',
-          ts: 20,
-          endedAt: 25,
+          ...message(
+            'assistant',
+            'assistant',
+            2_000,
+            [
+              { kind: 'text', text: 'I’m inspecting the existing game files.' },
+              {
+                kind: 'tool_call',
+                call_id: 'read-game',
+                tool: 'read',
+                args: { path: 'C:\\private\\game.js' },
+              },
+              { kind: 'tool_result', call_id: 'read-game', result: { status: 'completed' } },
+              { kind: 'text', text: 'The complete game is ready.' },
+            ],
+            { model: 'opencode-go/deepseek-v4-flash-vision-exp' },
+          ),
+          updated_at: 7_000,
         },
       ],
-      sessionEvidence: { status: 'completed', currentOperation: 'Complete' },
-    });
-
-    const inspector = screen.getByRole('status', { name: 'Session completion status' });
-    expect(inspector.getAttribute('data-terminal-status')).toBe('done');
-    expect(inspector.textContent).toBe(
-      'DoneResponse completeDoing nowNo active workNextAwaiting your next requestBlockersNone',
-    );
-    expect(inspector.textContent).not.toContain('event recorded');
-    expect(screen.getAllByRole('status', { name: 'Session completion status' })).toHaveLength(1);
-  });
-
-  it.each([
-    [
-      'blocked',
-      'DoneRun stoppedDoing nowNo active workNextBlocker resolution requiredBlockersBlocked state recorded',
-    ],
-    [
-      'error',
-      'DoneRun endedDoing nowNo active workNextReview before retryingBlockersRun error recorded',
-    ],
-    [
-      'cancelled',
-      'DoneRun cancelledDoing nowNo active workNextAwaiting your next requestBlockersNot reported',
-    ],
-    [
-      'partial',
-      'DonePartial completion recordedDoing nowNo active workNextContinuation availableBlockersNot reported',
-    ],
-  ])('renders canonical %s terminal truth without stale operation prose', (status, expected) => {
-    renderConsole({
-      chatId: 'chat-console',
-      messages: [message('user', 'user', 10, [{ kind: 'text', text: 'Continue safely.' }])],
       activity: [],
-      sessionEvidence: { status, currentOperation: 'Untrusted stale operation text' },
+      sessionEvidence: { status: 'completed', startedAt: 2_000, endedAt: 7_000 },
     });
 
-    const inspector = screen.getByRole('status', { name: 'Session completion status' });
-    expect(inspector.getAttribute('data-terminal-status')).toBe(status);
-    expect(inspector.textContent).toBe(expected);
-    expect(inspector.textContent).not.toContain('Untrusted stale operation text');
+    const audit = screen.getByRole('button', { name: 'Collapse completed work details' });
+    const prompt = screen.getByText('Build the game.').closest('.agentic-prompt-band');
+    const firstCheckpoint = screen
+      .getByText('I’m inspecting the existing game files.')
+      .closest('[data-native-assistant-checkpoint]');
+    expect(audit.getAttribute('aria-expanded')).toBe('true');
+    expect(audit.textContent).toContain('Worked for 5s · 1 action');
+    expect(audit.textContent).toContain('Read 1');
+    expect(
+      Boolean(prompt && prompt.compareDocumentPosition(audit) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+    expect(
+      audit.compareDocumentPosition(firstCheckpoint!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByText('I’m inspecting the existing game files.')).toBeTruthy();
+    expect(screen.getByText('The complete game is ready.')).toBeTruthy();
+
+    fireEvent.click(audit);
+
+    expect(screen.queryByText('I’m inspecting the existing game files.')).toBeNull();
+    expect(screen.getByText('The complete game is ready.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /show activity details/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Expand completed work details' })).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(
+      /Doing now|Awaiting your next request|Blockers/iu,
+    );
   });
+
+  it.each(['blocked', 'error', 'cancelled', 'partial'])(
+    'does not invent a four-state inspector for a terminal %s response without tool evidence',
+    (status) => {
+      renderConsole({
+        chatId: 'chat-console',
+        messages: [message('user', 'user', 10, [{ kind: 'text', text: 'Continue safely.' }])],
+        activity: [],
+        sessionEvidence: { status, currentOperation: 'Untrusted stale operation text' },
+      });
+
+      expect(screen.queryByRole('status', { name: 'Session completion status' })).toBeNull();
+      expect(screen.queryByRole('button', { name: /completed work details/i })).toBeNull();
+    },
+  );
 
   it('does not present a terminal inspector while the session is still running', () => {
     renderConsole({
@@ -198,6 +216,7 @@ describe('AgenticConsole', () => {
     });
 
     expect(screen.queryByRole('status', { name: 'Session completion status' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /completed work details/i })).toBeNull();
   });
 
   it('projects 250,000 latest-turn events without spreading timestamp arrays', () => {
@@ -368,7 +387,7 @@ describe('AgenticConsole', () => {
     expect(screen.queryByText('The protected provider request is running.')).toBeNull();
   });
 
-  it('anchors the single turn ledger beneath assistant prose and preserves safe command receipts', () => {
+  it('anchors the completed audit above assistant prose while preserving safe command receipts', () => {
     const rendered = renderConsole({
       chatId: 'chat-console',
       messages: [
@@ -395,17 +414,19 @@ describe('AgenticConsole', () => {
     });
 
     const answer = screen.getByText('The focused checks are complete.');
+    const prompt = screen.getByText('Run the checks.').closest('.agentic-prompt-band');
     const ledger = rendered.container.querySelector('[data-assistant-activity-ledger="true"]');
-    const inspector = screen.getByRole('status', { name: 'Session completion status' });
+    const audit = screen.getByRole('button', { name: 'Collapse completed work details' });
     expect(ledger).toBeTruthy();
     expect(ledger?.getAttribute('data-ledger-active')).toBe('false');
     expect(
-      Boolean(answer.compareDocumentPosition(ledger as Node) & Node.DOCUMENT_POSITION_FOLLOWING),
+      Boolean((prompt as Node).compareDocumentPosition(audit) & Node.DOCUMENT_POSITION_FOLLOWING),
     ).toBe(true);
+    expect(Boolean(audit.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(
+      true,
+    );
     expect(
-      Boolean(
-        (ledger as Node).compareDocumentPosition(inspector) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ),
+      Boolean(answer.compareDocumentPosition(ledger as Node) & Node.DOCUMENT_POSITION_FOLLOWING),
     ).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: /show activity details/i }));
     expect(screen.getByText('Ran command')).toBeTruthy();
@@ -604,7 +625,7 @@ describe('AgenticConsole', () => {
     expect(screen.queryByRole('button', { name: /show activity details/i })).toBeNull();
   });
 
-  it('does not fabricate an activity animation from receipt-free lifecycle transitions', () => {
+  it('shows canonical live work immediately after the prompt and removes it at terminal state', () => {
     const baseActivity: ChatActivityEvent = {
       id: 'phase',
       chatId: 'chat-console',
@@ -616,19 +637,34 @@ describe('AgenticConsole', () => {
     };
     const rendered = renderConsole({
       chatId: 'chat-console',
-      messages: [],
+      messages: [message('user-live', 'user', 5, [{ kind: 'text', text: 'Read the project.' }])],
       activity: [baseActivity],
       compact: true,
       sessionEvidence: { status: 'running', currentOperation: 'Working' },
     });
 
-    expect(rendered.container.querySelector('[data-agent-motion]')).toBeNull();
+    const prompt = screen.getByText('Read the project.').closest('.agentic-prompt-band');
+    const liveStatus = rendered.container.querySelector('[data-live-turn-status]');
+    expect(liveStatus?.textContent).toContain('Working');
+    expect(
+      liveStatus?.querySelector('[data-agent-motion]')?.getAttribute('data-agent-motion'),
+    ).toBe('cursor-forge');
+    expect(
+      Boolean(
+        prompt &&
+        liveStatus &&
+        prompt.compareDocumentPosition(liveStatus) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
+    expect(document.body.textContent).not.toContain('Reasoning');
 
     rendered.rerender(
       <TooltipProvider>
         <AgenticConsole
           chatId="chat-console"
-          messages={[]}
+          messages={[
+            message('user-live', 'user', 5, [{ kind: 'text', text: 'Read the project.' }]),
+          ]}
           activity={[
             {
               ...baseActivity,
@@ -642,13 +678,22 @@ describe('AgenticConsole', () => {
         />
       </TooltipProvider>,
     );
-    expect(rendered.container.querySelector('[data-agent-motion]')).toBeNull();
+    expect(rendered.container.querySelector('[data-live-turn-status]')?.textContent).toContain(
+      'Working',
+    );
+    expect(
+      rendered.container
+        .querySelector('[data-live-turn-status] [data-agent-motion]')
+        ?.getAttribute('data-agent-motion'),
+    ).toBe('glyph-current');
 
     rendered.rerender(
       <TooltipProvider>
         <AgenticConsole
           chatId="chat-console"
-          messages={[]}
+          messages={[
+            message('user-live', 'user', 5, [{ kind: 'text', text: 'Read the project.' }]),
+          ]}
           activity={[
             {
               ...baseActivity,
@@ -663,6 +708,7 @@ describe('AgenticConsole', () => {
         />
       </TooltipProvider>,
     );
+    expect(rendered.container.querySelector('[data-live-turn-status]')).toBeNull();
     expect(rendered.container.querySelector('[data-agent-motion]')).toBeNull();
   });
 
@@ -1060,7 +1106,176 @@ describe('AgenticConsole', () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(ledger.textContent).toContain('Edited 1');
+    expect(rendered.container.querySelectorAll('[data-native-assistant-checkpoint]')).toHaveLength(
+      2,
+    );
+    expect(rendered.container.textContent).not.toContain('Final response');
+    expect(rendered.container.textContent).not.toContain('Assistant');
     expect(rendered.container.textContent).not.toContain('C:\\');
+  });
+
+  it('keeps tool-first work visible without inventing a factual checkpoint', () => {
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('user-tool-first', 'user', 1, [{ kind: 'text', text: 'Build the game.' }]),
+        message(
+          'assistant-tool-first',
+          'assistant',
+          2,
+          [
+            {
+              kind: 'tool_call',
+              call_id: 'write-game',
+              tool: 'files.write',
+              args: { path: 'index.html' },
+            },
+            { kind: 'tool_result', call_id: 'write-game', result: { status: 'completed' } },
+            { kind: 'text', text: 'The complete HTML game is ready.' },
+          ],
+          { model: 'opencode-go/deepseek-v4-flash-vision-exp' },
+        ),
+      ],
+      activity: [],
+      sessionEvidence: { status: 'completed' },
+    });
+
+    const ledger = rendered.container.querySelector('[data-assistant-activity-ledger]');
+    const finalAnswer = screen.getByText('The complete HTML game is ready.');
+    expect(ledger).toBeTruthy();
+    expect(
+      ledger!.compareDocumentPosition(finalAnswer) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(rendered.container.textContent).not.toContain('I’m updating');
+    expect(rendered.container.textContent).not.toContain('I’m testing');
+    expect(rendered.container.textContent).not.toContain('C:\\');
+  });
+
+  it('uses the live OpenCode session model to show a neutral tool-first checkpoint', () => {
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('user-live-tool-first', 'user', 1, [{ kind: 'text', text: 'Build the game.' }]),
+        message('assistant-live-tool-first', 'assistant', 2, [
+          {
+            kind: 'tool_call',
+            call_id: 'opencode-tool-1',
+            tool: 'read',
+            args: { path: 'game.js' },
+          },
+        ]),
+      ],
+      activity: [],
+      sessionEvidence: {
+        status: 'running',
+        model: 'opencode-go/deepseek-v4-flash-vision-exp',
+      },
+    });
+
+    expect(rendered.container.querySelectorAll('[data-native-assistant-checkpoint]')).toHaveLength(
+      1,
+    );
+    expect(screen.getByText('Working…')).toBeTruthy();
+    expect(rendered.container.querySelectorAll('[data-assistant-activity-ledger]')).toHaveLength(1);
+    expect(rendered.container.textContent).not.toMatch(/updated|tested|verified/iu);
+  });
+
+  it('does not claim native OpenCode chronology for an unrelated DeepSeek tool message', () => {
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('user-unrelated-deepseek', 'user', 1, [{ kind: 'text', text: 'Inspect it.' }]),
+        message(
+          'assistant-unrelated-deepseek',
+          'assistant',
+          2,
+          [
+            { kind: 'text', text: 'Inspection complete.' },
+            { kind: 'tool_call', call_id: 'other-tool', tool: 'read', args: {} },
+            { kind: 'tool_result', call_id: 'other-tool', result: { status: 'completed' } },
+          ],
+          { model: 'deepseek-v4' },
+        ),
+      ],
+      activity: [],
+      sessionEvidence: { status: 'completed' },
+    });
+
+    expect(rendered.container.querySelector('[data-native-assistant-checkpoint]')).toBeNull();
+    expect(screen.getByText('Inspection complete.')).toBeTruthy();
+  });
+
+  it('renders five native public checkpoints and four scoped disclosures without private reasoning', () => {
+    const rendered = renderConsole({
+      chatId: 'chat-console',
+      messages: [
+        message('user-five-checkpoints', 'user', 1, [
+          { kind: 'text', text: 'Build the full game.' },
+        ]),
+        message(
+          'assistant-five-checkpoints',
+          'assistant',
+          2,
+          [
+            { kind: 'text', text: 'I’m inspecting the current project.' },
+            { kind: 'reasoning', text: 'PRIVATE internal narration must never render.' },
+            {
+              kind: 'jarvis_source_ref',
+              source: {
+                id: 'private-source',
+                kind: 'context_node',
+                label: 'PRIVATE project source',
+                trust: 'app_verified',
+                sensitivity: 'private',
+              },
+            },
+            {
+              kind: 'tool_call',
+              call_id: 'read-game',
+              tool: 'read',
+              args: { path: 'C:\\private\\game.js' },
+            },
+            { kind: 'tool_result', call_id: 'read-game', result: { status: 'completed' } },
+            { kind: 'text', text: 'I found the existing game loop.' },
+            {
+              kind: 'tool_call',
+              call_id: 'edit-player',
+              tool: 'edit',
+              args: { path: 'C:\\private\\player.js' },
+            },
+            { kind: 'tool_result', call_id: 'edit-player', result: { status: 'completed' } },
+            { kind: 'text', text: 'I’ve implemented the player systems.' },
+            {
+              kind: 'tool_call',
+              call_id: 'run-test',
+              tool: 'bash',
+              args: { command: 'private command' },
+            },
+            { kind: 'tool_result', call_id: 'run-test', result: { status: 'completed' } },
+            { kind: 'text', text: 'I’m checking the finished game.' },
+            { kind: 'tool_call', call_id: 'verify-game', tool: 'verify.test', args: {} },
+            { kind: 'tool_result', call_id: 'verify-game', result: { status: 'completed' } },
+            { kind: 'text', text: 'The full game is ready.' },
+          ],
+          { model: 'opencode-go/deepseek-v4-flash-vision-exp' },
+        ),
+      ],
+      activity: [],
+      sessionEvidence: { status: 'completed' },
+    });
+
+    expect(rendered.container.querySelectorAll('[data-native-assistant-checkpoint]')).toHaveLength(
+      5,
+    );
+    expect(rendered.container.querySelectorAll('[data-assistant-activity-ledger]')).toHaveLength(4);
+    expect(screen.getAllByRole('button', { name: /show activity details/i })).toHaveLength(4);
+    expect(rendered.container.textContent).not.toMatch(
+      /PRIVATE internal|PRIVATE project|Final response|Assistant|C:\\private|private command/iu,
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: /show activity details/i })[0]!);
+    expect(screen.getByText('Read game.js')).toBeTruthy();
+    expect(rendered.container.querySelector('.assistant-activity-ledger__metrics')).toBeNull();
   });
 
   it('pages older history without mounting the entire canonical transcript', () => {

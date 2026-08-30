@@ -17,6 +17,18 @@ describe('InputToken visual variants', () => {
     expect(screen.getByText('ok')).toBeTruthy();
   });
 
+  it('renders attached skills as a quieter compact token without the command confirmation badge', () => {
+    render(<InputToken type="command" label="/skills: ◆ Build" onRemove={() => undefined} />);
+
+    const token = screen.getByText('/skills: ◆ Build').closest('div');
+    expect(token?.getAttribute('data-composer-token-kind')).toBe('skill');
+    expect(token?.className).toContain('bg-muted/45');
+    expect(token?.className).toContain('gap-1');
+    expect(token?.className).not.toContain('bg-accent-copper/10');
+    expect(screen.queryByText('ok')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Remove /skills: ◆ Build' })).toBeTruthy();
+  });
+
   it('renders selected agent mentions on the same bounded composer surface', () => {
     render(<InputToken type="agent" label="@builder" />);
 
