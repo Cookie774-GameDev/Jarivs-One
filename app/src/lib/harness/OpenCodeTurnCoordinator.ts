@@ -14,6 +14,7 @@ import {
   type AccessLevel,
   type EffectivePermissionProfile,
   type InteractionMode,
+  type OpenCodeExecutionAgentId,
 } from '../permissions/OpenCodePermissionProfile';
 import {
   buildOpenCodeRequestControls,
@@ -38,16 +39,15 @@ export interface PersistentOpenCodeTurnClient extends OpenCodeSessionClient {
     controls: OpenCodeRequestControls;
     text: string;
     system?: string;
-    agent?: string;
+    agent: OpenCodeExecutionAgentId;
     tools?: Readonly<Record<string, boolean>>;
-    permissions?: EffectivePermissionProfile['openCode'];
   }): Promise<void>;
   sendCommandAsync?(input: {
     sessionId: string;
     controls: OpenCodeRequestControls;
     command: string;
     arguments: string;
-    permissions?: EffectivePermissionProfile['openCode'];
+    agent: OpenCodeExecutionAgentId;
   }): Promise<void>;
 }
 
@@ -212,7 +212,7 @@ export class OpenCodeTurnCoordinator {
         sessionId: session.sessionId,
         controls,
         ...officialCommand,
-        permissions: permissions.openCode,
+        agent: permissions.openCodeAgent,
       });
     } else {
       await session.client.sendAsync({
@@ -220,9 +220,8 @@ export class OpenCodeTurnCoordinator {
         controls,
         text,
         ...(input.system?.trim() ? { system: input.system } : {}),
-        ...(input.agent?.trim() ? { agent: input.agent } : {}),
+        agent: permissions.openCodeAgent,
         ...(input.tools ? { tools: input.tools } : {}),
-        permissions: permissions.openCode,
       });
     }
 

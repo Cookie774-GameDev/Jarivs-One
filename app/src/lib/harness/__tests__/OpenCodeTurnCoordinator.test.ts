@@ -80,11 +80,7 @@ describe('OpenCodeTurnCoordinator', () => {
         sessionId: 'session',
         text: 'Reply with READY.',
         controls: expect.objectContaining({ modelId: 'gpt-5.6-sol', variant: 'high-fast' }),
-        permissions: expect.objectContaining({
-          edit: expect.objectContaining({ 'C:/project/**': 'allow' }),
-          bash: 'allow',
-          external_directory: 'deny',
-        }),
+        agent: 'vibespace-full-auto',
       }),
     );
   });
@@ -121,6 +117,7 @@ describe('OpenCodeTurnCoordinator', () => {
         command: 'goal',
         arguments: 'Finish all focused tests with fresh proof',
         controls: expect.objectContaining({ modelId: 'gpt-5.6-sol', variant: 'high-fast' }),
+        agent: 'vibespace-full',
       }),
     );
     expect(sendAsync).not.toHaveBeenCalled();
@@ -186,6 +183,9 @@ describe('OpenCodeTurnCoordinator', () => {
     expect(result.kind).toBe('dispatched');
     expect(sessions.sessionForChat).toHaveBeenCalledOnce();
     expect(sendAsync).toHaveBeenCalledOnce();
+    expect(sendAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: 'vibespace-readonly' }),
+    );
   });
 
   it('rejects a changed protected session before sending the follow-up prompt', async () => {

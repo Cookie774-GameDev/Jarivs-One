@@ -1,5 +1,5 @@
 import type { OpenCodeRequestControls } from './OpenCodeRequestControls';
-import type { EffectivePermissionProfile } from '../permissions/OpenCodePermissionProfile';
+import type { OpenCodeExecutionAgentId } from '../permissions/OpenCodePermissionProfile';
 import {
   extractOpenCodeTextPartUpdate,
   OpenCodeTextAccumulator,
@@ -25,10 +25,6 @@ export interface OpenCodeSdkClientLike {
   session: {
     create(input: { body: { title?: string } }): Promise<unknown>;
     get?: (input: { path: { id: string } }) => Promise<unknown>;
-    update?: (input: {
-      path: { id: string };
-      body: { permission: readonly OpenCodePermissionRule[] };
-    }) => Promise<unknown>;
     abort(input: { path: { id: string } }): Promise<unknown>;
     promptAsync?: (input: {
       path: { id: string };
@@ -41,40 +37,13 @@ export interface OpenCodeSdkClientLike {
         arguments: string;
         model?: string;
         variant?: string;
+        agent: OpenCodeExecutionAgentId;
       };
     }) => Promise<unknown>;
   };
   event: {
     subscribe(): Promise<{ stream: AsyncIterable<OpenCodeRawEvent> }>;
   };
-}
-
-export interface OpenCodePermissionRule {
-  permission: string;
-  pattern: string;
-  action: 'allow' | 'ask' | 'deny';
-}
-
-export function toOpenCodePermissionRules(
-  profile: EffectivePermissionProfile['openCode'],
-): readonly OpenCodePermissionRule[] {
-  const rules: OpenCodePermissionRule[] = [];
-  for (const [permission, decision] of Object.entries(profile)) {
-    if (typeof decision === 'string') {
-      rules.push({
-        permission,
-        pattern: '*',
-        action: decision as OpenCodePermissionRule['action'],
-      });
-      continue;
-    }
-    for (const [pattern, action] of Object.entries(
-      decision as Readonly<Record<string, OpenCodePermissionRule['action']>>,
-    )) {
-      rules.push({ permission, pattern, action });
-    }
-  }
-  return Object.freeze(rules.map((rule) => Object.freeze(rule)));
 }
 
 export interface ModelControlPromptAdapter {
@@ -246,9 +215,8 @@ export class OpenCodeSdkSessionClient implements OpenCodeSessionClient {
     controls: OpenCodeRequestControls;
     text: string;
     system?: string;
-    agent?: string;
+    agent: OpenCodeExecutionAgentId;
     tools?: Readonly<Record<string, boolean>>;
-    permissions?: EffectivePermissionProfile['openCode'];
   }): Promise<void> {
     if (!this.client.session.promptAsync) {
       throw new Error(
@@ -257,21 +225,11 @@ export class OpenCodeSdkSessionClient implements OpenCodeSessionClient {
     }
     const sessionId = input.sessionId.trim();
     const text = input.text.trim();
-    if (!sessionId || !text)
-      throw new Error('A session id and non-empty prompt text are required.');
+    const agent = input.agent;
+    if (!sessionId || !text || !agent?.trim())
+      throw new Error('A session id, execution agent, and non-empty prompt text are required.');
 
     const controlFields = this.modelControls.toPromptFields(input.controls);
-    if (input.permissions) {
-      if (!this.client.session.update) {
-        throw new Error(
-          'HARNESS_INCOMPATIBLE: installed OpenCode SDK/server lacks request-scoped session permissions.',
-        );
-      }
-      await this.client.session.update({
-        path: { id: sessionId },
-        body: { permission: toOpenCodePermissionRules(input.permissions) },
-      });
-    }
     await this.client.session.promptAsync({
       path: { id: sessionId },
       body: {
@@ -280,7 +238,7 @@ export class OpenCodeSdkSessionClient implements OpenCodeSessionClient {
           modelID: input.controls.modelId,
         },
         ...controlFields,
-        ...(input.agent?.trim() ? { agent: input.agent.trim() } : {}),
+        agent,
         ...(input.system?.trim() ? { system: input.system } : {}),
         ...(input.tools ? { tools: toProviderSafeOpenCodeTools(input.tools) } : {}),
         parts: [{ type: 'text', text }],
@@ -293,7 +251,7 @@ export class OpenCodeSdkSessionClient implements OpenCodeSessionClient {
     controls: OpenCodeRequestControls;
     command: string;
     arguments: string;
-    permissions?: EffectivePermissionProfile['openCode'];
+    agent: OpenCodeExecutionAgentId;
   }): Promise<void> {
     if (!this.client.session.command) {
       throw new Error('HARNESS_INCOMPATIBLE: installed OpenCode SDK/server lacks session.command.');
@@ -301,8 +259,11 @@ export class OpenCodeSdkSessionClient implements OpenCodeSessionClient {
     const sessionId = input.sessionId.trim();
     const command = input.command.trim().toLowerCase();
     const args = input.arguments.trim();
-    if (!sessionId || !command || !args) {
-      throw new Error('A session id, registered command, and non-empty arguments are required.');
+    const agent = input.agent;
+    if (!sessionId || !command || !args || !agent?.trim()) {
+      throw new Error(
+        'A session id, execution agent, registered command, and non-empty arguments are required.',
+      );
     }
     const listed = unwrapData<unknown>(await this.client.command.list());
     const commands = Array.isArray(listed) ? listed : [];
@@ -317,22 +278,12 @@ export class OpenCodeSdkSessionClient implements OpenCodeSessionClient {
     }
     const controlFields = this.modelControls.toPromptFields(input.controls);
     const variant = typeof controlFields.variant === 'string' ? controlFields.variant : undefined;
-    if (input.permissions) {
-      if (!this.client.session.update) {
-        throw new Error(
-          'HARNESS_INCOMPATIBLE: installed OpenCode SDK/server lacks request-scoped session permissions.',
-        );
-      }
-      await this.client.session.update({
-        path: { id: sessionId },
-        body: { permission: toOpenCodePermissionRules(input.permissions) },
-      });
-    }
     await this.client.session.command({
       path: { id: sessionId },
       body: {
         command,
         arguments: args,
+        agent,
         model: `${input.controls.providerId}/${input.controls.modelId}`,
         ...(variant ? { variant } : {}),
       },

@@ -593,26 +593,123 @@ fn scoped_provider_config(
             "app_navigate": "ask"
         }),
     );
+    let execution_agent = |description: &str,
+                           edit: &str,
+                           bash: &str,
+                           task: &str,
+                           mutation: &str| {
+        let mut permission = Map::new();
+        permission.insert("*".to_string(), json!("deny"));
+        permission.insert(
+            "read".to_string(),
+            json!({
+                "*": "allow",
+                "**/.env": "deny",
+                "**/.env.*": "deny",
+                "**/*.pem": "deny",
+                "**/*.key": "deny",
+                "**/id_rsa*": "deny",
+                "**/id_ed25519*": "deny",
+                "**/.ssh/**": "deny",
+                "**/.git-credentials": "deny",
+                "**/.netrc": "deny",
+                "**/cookies.sqlite": "deny",
+                "**/Login Data": "deny",
+                "**/Local State": "deny",
+                "**/credentials.json": "deny",
+                "**/service-account*.json": "deny"
+            }),
+        );
+        for name in [
+            "glob",
+            "grep",
+            "list",
+            "lsp",
+            "question",
+            "todo",
+            "todoread",
+            "todowrite",
+            "skill",
+            "webfetch",
+            "websearch",
+            "terminal_list",
+            "terminal_read",
+            "command_list",
+            "profile_allAboutMe_read",
+            "memory_learning_read",
+            "context_list",
+            "context_read",
+            "vibespace_context",
+            "skills_list",
+            "plugins_list",
+            "mcp_list",
+            "app_getState",
+        ] {
+            permission.insert(name.to_string(), json!("allow"));
+        }
+        for (name, action) in [("edit", edit), ("bash", bash), ("task", task)] {
+            permission.insert(name.to_string(), json!(action));
+        }
+        for name in ["external_directory", "doom_loop"] {
+            permission.insert(name.to_string(), json!("deny"));
+        }
+        for name in [
+            "terminal_open",
+            "terminal_focus",
+            "terminal_spawn",
+            "terminal_write",
+            "terminal_schedule",
+            "command_run",
+            "profile_allAboutMe_update",
+            "memory_learning_update",
+            "context_attach",
+            "skills_load",
+            "plugins_run",
+            "mcp_run",
+            "tasks_create",
+            "tasks_update",
+            "schedule_create",
+            "app_navigate",
+        ] {
+            permission.insert(name.to_string(), json!(mutation));
+        }
+        json!({
+            "description": description,
+            "mode": "primary",
+            "prompt": "Follow the supplied protected system contract and current user request. Use enabled tools directly. Never describe disabled tools. A question answer is clarification only and never grants tool permission.",
+            "steps": 12,
+            "permission": Value::Object(permission)
+        })
+    };
+    let readonly_agent = execution_agent(
+        "Read-only VibeSpace Ask/Plan execution shell.",
+        "deny",
+        "deny",
+        "deny",
+        "deny",
+    );
     root.insert(
         "agent".to_string(),
         json!({
-            "title": {
-                "disable": true
-            },
-            "vibespace": {
-                "description": "Minimal provider shell for VibeSpace protected prompts.",
-                "mode": "primary",
-                "prompt": "Follow the supplied protected system contract and current user request. Use enabled tools directly. Never describe disabled tools.",
-                "steps": 12,
-                "permission": {
-                    "*": "deny",
-                    "vibespace_context": "allow",
-                    "plugins_list": "allow",
-                    "plugins_run": "ask",
-                    "mcp_list": "allow",
-                    "mcp_run": "ask"
-                }
-            }
+            "title": { "disable": true },
+            "vibespace": readonly_agent.clone(),
+            "vibespace-readonly": readonly_agent,
+            "vibespace-write": execution_agent(
+                "VibeSpace Agent shell with approved project file writes and no terminal authority.",
+                "ask", "deny", "deny", "ask"
+            ),
+            "vibespace-write-auto": execution_agent(
+                "One-run VibeSpace Agent shell with project file write authority and no terminal authority.",
+                "allow", "deny", "deny", "allow"
+            ),
+            "vibespace-full": execution_agent(
+                "VibeSpace Agent shell with explicit approval for project mutations.",
+                "ask", "ask", "ask", "ask"
+            ),
+            "vibespace-full-auto": execution_agent(
+                "One-run VibeSpace Agent shell with eligible project mutation authority.",
+                "allow", "allow", "allow", "allow"
+            )
         }),
     );
     if !providers.is_empty() {
@@ -1300,9 +1397,6 @@ enum OpenCodeTransportRoute {
     SessionGet {
         session_id: String,
     },
-    SessionUpdate {
-        session_id: String,
-    },
     SessionDelete {
         session_id: String,
     },
@@ -1317,6 +1411,9 @@ enum OpenCodeTransportRoute {
         session_id: String,
     },
     SessionPromptAsync {
+        session_id: String,
+    },
+    SessionCommand {
         session_id: String,
     },
     SessionAbort {
@@ -1447,10 +1544,6 @@ fn transport_route_parts(
             reqwest::Method::GET,
             format!("/session/{}", encoded_route_identifier(session_id)?),
         ),
-        OpenCodeTransportRoute::SessionUpdate { session_id } => (
-            reqwest::Method::PATCH,
-            format!("/session/{}", encoded_route_identifier(session_id)?),
-        ),
         OpenCodeTransportRoute::SessionDelete { session_id } => (
             reqwest::Method::DELETE,
             format!("/session/{}", encoded_route_identifier(session_id)?),
@@ -1479,6 +1572,10 @@ fn transport_route_parts(
                 "/session/{}/prompt_async",
                 encoded_route_identifier(session_id)?
             ),
+        ),
+        OpenCodeTransportRoute::SessionCommand { session_id } => (
+            reqwest::Method::POST,
+            format!("/session/{}/command", encoded_route_identifier(session_id)?),
         ),
         OpenCodeTransportRoute::SessionAbort { session_id } => (
             reqwest::Method::POST,
@@ -1712,52 +1809,50 @@ fn validate_transport_body(
                 && bounded_string("title", false)
                 && bounded_string("parentID", false)
         }
-        OpenCodeTransportRoute::SessionUpdate { .. } => {
-            only_keys(&["permission"])
-                && object.len() == 1
-                && object.get("permission").is_some_and(|permissions| {
-                    permissions.as_array().is_some_and(|rules| {
-                        !rules.is_empty()
-                            && rules.len() <= 64
-                            && rules.iter().all(|rule| {
-                                let Some(rule) = rule.as_object() else {
-                                    return false;
-                                };
-                                rule.len() == 3
-                                    && rule.keys().all(|key| {
-                                        matches!(key.as_str(), "permission" | "pattern" | "action")
-                                    })
-                                    && rule.get("permission").and_then(Value::as_str).is_some_and(
-                                        |permission| {
-                                            matches!(
-                                                permission,
-                                                "read"
-                                                    | "edit"
-                                                    | "bash"
-                                                    | "task"
-                                                    | "skill"
-                                                    | "webfetch"
-                                                    | "websearch"
-                                                    | "external_directory"
-                                                    | "doom_loop"
-                                            )
-                                        },
-                                    )
-                                    && rule.get("pattern").and_then(Value::as_str).is_some_and(
-                                        |pattern| {
-                                            !pattern.is_empty()
-                                                && pattern.len() <= 4_096
-                                                && !pattern.chars().any(char::is_control)
-                                        },
-                                    )
-                                    && rule.get("action").and_then(Value::as_str).is_some_and(
-                                        |action| matches!(action, "allow" | "ask" | "deny"),
-                                    )
-                            })
+        OpenCodeTransportRoute::SessionPromptAsync { .. } => {
+            !object.is_empty()
+                && object
+                    .get("agent")
+                    .and_then(Value::as_str)
+                    .is_some_and(|agent| {
+                        matches!(
+                            agent,
+                            "vibespace-readonly"
+                                | "vibespace-write"
+                                | "vibespace-write-auto"
+                                | "vibespace-full"
+                                | "vibespace-full-auto"
+                        )
                     })
-                })
         }
-        OpenCodeTransportRoute::SessionPromptAsync { .. } => !object.is_empty(),
+        OpenCodeTransportRoute::SessionCommand { .. } => {
+            only_keys(&[
+                "messageID",
+                "agent",
+                "model",
+                "variant",
+                "command",
+                "arguments",
+            ]) && bounded_string("agent", true)
+                && object
+                    .get("agent")
+                    .and_then(Value::as_str)
+                    .is_some_and(|agent| {
+                        matches!(
+                            agent,
+                            "vibespace-readonly"
+                                | "vibespace-write"
+                                | "vibespace-write-auto"
+                                | "vibespace-full"
+                                | "vibespace-full-auto"
+                        )
+                    })
+                && bounded_string("model", true)
+                && bounded_string("variant", false)
+                && bounded_string("command", true)
+                && bounded_string("arguments", true)
+                && bounded_string("messageID", false)
+        }
         OpenCodeTransportRoute::SessionAbort { .. } => object.is_empty(),
         OpenCodeTransportRoute::SessionPermission { .. } => {
             only_keys(&["response"])
@@ -2689,13 +2784,52 @@ mod tests {
         );
         assert_eq!(
             config["agent"]["vibespace"]["permission"]["plugins_run"],
-            "ask"
+            "deny"
         );
         assert_eq!(
             config["agent"]["vibespace"]["permission"]["mcp_list"],
             "allow"
         );
-        assert_eq!(config["agent"]["vibespace"]["permission"]["mcp_run"], "ask");
+        assert_eq!(
+            config["agent"]["vibespace"]["permission"]["mcp_run"],
+            "deny"
+        );
+        assert_eq!(
+            config["agent"]["vibespace-readonly"]["permission"]["edit"],
+            "deny"
+        );
+        assert_eq!(
+            config["agent"]["vibespace-readonly"]["permission"]["question"],
+            "allow"
+        );
+        assert_eq!(
+            config["agent"]["vibespace-readonly"]["permission"]["read"]["**/.env"],
+            "deny"
+        );
+        assert_eq!(
+            config["agent"]["vibespace-write"]["permission"]["edit"],
+            "ask"
+        );
+        assert_eq!(
+            config["agent"]["vibespace-write"]["permission"]["bash"],
+            "deny"
+        );
+        assert_eq!(
+            config["agent"]["vibespace-full"]["permission"]["edit"],
+            "ask"
+        );
+        assert_eq!(
+            config["agent"]["vibespace-full"]["permission"]["bash"],
+            "ask"
+        );
+        assert_eq!(
+            config["agent"]["vibespace-full-auto"]["permission"]["edit"],
+            "allow"
+        );
+        assert_eq!(
+            config["agent"]["vibespace-full-auto"]["permission"]["plugins_run"],
+            "allow"
+        );
 
         let plugin = fs::read_to_string(
             spec.config_dir
@@ -3165,9 +3299,6 @@ mod tests {
             OpenCodeTransportRoute::SessionGet {
                 session_id: "session/one".into(),
             },
-            OpenCodeTransportRoute::SessionUpdate {
-                session_id: "session-1".into(),
-            },
             OpenCodeTransportRoute::SessionMessages {
                 session_id: "session-1".into(),
                 limit: Some(100),
@@ -3177,6 +3308,9 @@ mod tests {
                 session_id: "session-1".into(),
             },
             OpenCodeTransportRoute::SessionPromptAsync {
+                session_id: "session-1".into(),
+            },
+            OpenCodeTransportRoute::SessionCommand {
                 session_id: "session-1".into(),
             },
             OpenCodeTransportRoute::SessionPermission {
@@ -3262,19 +3396,32 @@ mod tests {
         )
         .is_ok());
 
-        let update = OpenCodeTransportRoute::SessionUpdate {
+        let command = OpenCodeTransportRoute::SessionCommand {
             session_id: "session-1".into(),
         };
-        let valid_permissions = r#"{"permission":[{"permission":"read","pattern":"*","action":"deny"},{"permission":"read","pattern":"C:/project/**","action":"allow"},{"permission":"edit","pattern":"C:/project/**","action":"ask"},{"permission":"external_directory","pattern":"*","action":"deny"}]}"#;
-        assert!(validate_transport_body(&update, Some(valid_permissions)).is_ok());
+        let valid_command = r#"{"agent":"vibespace-full","model":"opencode-go/deepseek-v4-flash-vision-exp","command":"goal","arguments":"Finish the workflow"}"#;
+        assert!(validate_transport_body(&command, Some(valid_command)).is_ok());
         for invalid in [
-            r#"{"permission":[]}"#,
-            r#"{"permission":[{"permission":"root","pattern":"*","action":"allow"}]}"#,
-            r#"{"permission":[{"permission":"edit","pattern":"*","action":"always"}]}"#,
-            r#"{"permission":[{"permission":"edit","pattern":"*","action":"allow","extra":true}]}"#,
+            r#"{"agent":"build","model":"opencode-go/model","command":"goal","arguments":"work"}"#,
+            r#"{"agent":"vibespace-full","model":"opencode-go/model","command":"goal","arguments":""}"#,
+            r#"{"agent":"vibespace-full","model":"opencode-go/model","command":"goal","arguments":"work","permission":[]}"#,
         ] {
-            assert!(validate_transport_body(&update, Some(invalid)).is_err());
+            assert!(validate_transport_body(&command, Some(invalid)).is_err());
         }
+
+        let prompt = OpenCodeTransportRoute::SessionPromptAsync {
+            session_id: "session-1".into(),
+        };
+        assert!(validate_transport_body(
+            &prompt,
+            Some(r#"{"agent":"vibespace-readonly","parts":[{"type":"text","text":"hi"}]}"#)
+        )
+        .is_ok());
+        assert!(validate_transport_body(
+            &prompt,
+            Some(r#"{"agent":"build","parts":[{"type":"text","text":"hi"}]}"#)
+        )
+        .is_err());
 
         let valid_config = serde_json::json!({
             "provider": { "qwen": { "options": {

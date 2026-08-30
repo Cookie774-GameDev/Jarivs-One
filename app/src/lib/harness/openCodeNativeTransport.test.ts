@@ -40,15 +40,18 @@ describe('native OpenCode transport', () => {
     expect(await response.text()).toBe('');
   });
 
-  it('maps only an exact session update to the native permission route', async () => {
+  it('maps the supported session command route with its exact execution agent', async () => {
     const invoke = vi.fn(async () => ({ status: 200, statusText: 'OK', body: 'true' }));
     await nativeOpenCodeRequest(
       'opencode-server-generation',
-      '/session/session-1',
+      '/session/session-1/command',
       {
-        method: 'PATCH',
+        method: 'POST',
         body: JSON.stringify({
-          permission: [{ permission: 'edit', pattern: 'C:/project/**', action: 'allow' }],
+          command: 'goal',
+          arguments: 'Finish the verified workflow',
+          model: 'opencode-go/deepseek-v4-flash-vision-exp',
+          agent: 'vibespace-full',
         }),
       },
       5_000,
@@ -57,9 +60,23 @@ describe('native OpenCode transport', () => {
 
     expect(invoke).toHaveBeenCalledWith('opencode_server_request', {
       request: expect.objectContaining({
-        route: { kind: 'session_update', sessionId: 'session-1' },
+        route: { kind: 'session_command', sessionId: 'session-1' },
       }),
     });
+  });
+
+  it('rejects unsupported session permission mutation instead of pretending PATCH applies it', async () => {
+    const invoke = vi.fn();
+    await expect(
+      nativeOpenCodeRequest(
+        'opencode-server-generation',
+        '/session/session-1',
+        { method: 'PATCH', body: '{"permission":[]}' },
+        5_000,
+        async () => ({ invoke, channel: vi.fn() as never }),
+      ),
+    ).rejects.toThrow(/route is invalid/u);
+    expect(invoke).not.toHaveBeenCalled();
   });
 
   it.each([

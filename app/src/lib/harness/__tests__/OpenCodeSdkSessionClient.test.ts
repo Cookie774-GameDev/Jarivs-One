@@ -3,7 +3,6 @@ import {
   CatalogVariantPromptAdapter,
   OpenCodeSdkSessionClient,
   StrictModelControlPromptAdapter,
-  toOpenCodePermissionRules,
   toProviderSafeOpenCodeTools,
   type ModelControlPromptAdapter,
   type OpenCodeRawEvent,
@@ -37,20 +36,9 @@ function fakeClient(events: readonly OpenCodeRawEvent[] = []) {
 }
 
 describe('OpenCodeSdkSessionClient', () => {
-  it('applies the exact request-scoped permission profile before prompting', async () => {
+  it('binds the predeclared execution agent in the prompt without unsupported session mutation', async () => {
     const client = fakeClient();
     const sdk = new OpenCodeSdkSessionClient(client);
-    const permissions = {
-      read: { '*': 'deny', 'C:/project/**': 'allow', '**/.env': 'deny' },
-      edit: { '*': 'deny', 'C:/project/**': 'allow' },
-      bash: 'allow',
-      task: 'allow',
-      skill: 'allow',
-      webfetch: 'allow',
-      websearch: 'allow',
-      external_directory: 'deny',
-      doom_loop: 'deny',
-    } as const;
 
     await sdk.sendAsync({
       sessionId: 'session-1',
@@ -62,40 +50,24 @@ describe('OpenCodeSdkSessionClient', () => {
         rlmEnabled: true,
       },
       text: 'build the fixture',
-      permissions,
+      agent: 'vibespace-full',
     });
 
-    expect(client.session.update).toHaveBeenCalledWith({
+    expect(client.session.update).not.toHaveBeenCalled();
+    expect(client.session.promptAsync).toHaveBeenCalledWith({
       path: { id: 'session-1' },
-      body: { permission: toOpenCodePermissionRules(permissions) },
+      body: expect.objectContaining({ agent: 'vibespace-full' }),
     });
-    expect(client.session.update.mock.invocationCallOrder[0]).toBeLessThan(
-      client.session.promptAsync.mock.invocationCallOrder[0]!,
-    );
-    expect(toOpenCodePermissionRules(permissions)).toEqual([
-      { permission: 'read', pattern: '*', action: 'deny' },
-      { permission: 'read', pattern: 'C:/project/**', action: 'allow' },
-      { permission: 'read', pattern: '**/.env', action: 'deny' },
-      { permission: 'edit', pattern: '*', action: 'deny' },
-      { permission: 'edit', pattern: 'C:/project/**', action: 'allow' },
-      { permission: 'bash', pattern: '*', action: 'allow' },
-      { permission: 'task', pattern: '*', action: 'allow' },
-      { permission: 'skill', pattern: '*', action: 'allow' },
-      { permission: 'webfetch', pattern: '*', action: 'allow' },
-      { permission: 'websearch', pattern: '*', action: 'allow' },
-      { permission: 'external_directory', pattern: '*', action: 'deny' },
-      { permission: 'doom_loop', pattern: '*', action: 'deny' },
-    ]);
   });
 
-  it('fails closed before prompt when request-scoped permissions cannot be applied', async () => {
+  it('fails closed before prompt when no execution agent is bound', async () => {
     const client = fakeClient();
-    client.session.update.mockRejectedValueOnce(new Error('permission update rejected'));
     const sdk = new OpenCodeSdkSessionClient(client);
 
     await expect(
       sdk.sendAsync({
         sessionId: 'session-1',
+        agent: undefined as never,
         controls: {
           connectionId: 'opencode-cli',
           providerId: 'openai',
@@ -104,19 +76,8 @@ describe('OpenCodeSdkSessionClient', () => {
           rlmEnabled: true,
         },
         text: 'build the fixture',
-        permissions: {
-          read: { '*': 'deny', 'C:/project/**': 'allow' },
-          edit: { '*': 'deny', 'C:/project/**': 'ask' },
-          bash: 'ask',
-          task: 'ask',
-          skill: 'allow',
-          webfetch: 'allow',
-          websearch: 'allow',
-          external_directory: 'deny',
-          doom_loop: 'deny',
-        },
       }),
-    ).rejects.toThrow('permission update rejected');
+    ).rejects.toThrow('execution agent');
     expect(client.session.promptAsync).not.toHaveBeenCalled();
   });
 
@@ -133,6 +94,7 @@ describe('OpenCodeSdkSessionClient', () => {
     const sdk = new OpenCodeSdkSessionClient(client);
     await sdk.sendAsync({
       sessionId: 'session-1',
+      agent: 'vibespace-full',
       controls: {
         connectionId: 'opencode-cli',
         providerId: 'opencode-go',
@@ -160,6 +122,7 @@ describe('OpenCodeSdkSessionClient', () => {
     const sdk = new OpenCodeSdkSessionClient(client, adapter);
     await sdk.sendAsync({
       sessionId: 'session-1',
+      agent: 'vibespace-full',
       controls: {
         connectionId: 'openai-chatgpt-pro',
         providerId: 'openai',
@@ -175,6 +138,7 @@ describe('OpenCodeSdkSessionClient', () => {
       body: {
         model: { providerID: 'openai', modelID: 'gpt-5.6-sol' },
         variant: 'max-fast',
+        agent: 'vibespace-full',
         parts: [{ type: 'text', text: 'hello' }],
       },
     });
@@ -188,6 +152,7 @@ describe('OpenCodeSdkSessionClient', () => {
     const sdk = new OpenCodeSdkSessionClient(client, adapter);
     await sdk.sendCommandAsync({
       sessionId: 'session-1',
+      agent: 'vibespace-full',
       controls: {
         connectionId: 'openai-chatgpt-pro',
         providerId: 'openai',
@@ -206,6 +171,7 @@ describe('OpenCodeSdkSessionClient', () => {
       body: {
         command: 'goal',
         arguments: 'Finish the focused native verification',
+        agent: 'vibespace-full',
         model: 'openai/gpt-5.6-sol',
         variant: 'max-fast',
       },
@@ -220,6 +186,7 @@ describe('OpenCodeSdkSessionClient', () => {
     await expect(
       sdk.sendCommandAsync({
         sessionId: 'session-1',
+        agent: 'vibespace-full',
         controls: {
           connectionId: 'opencode-cli',
           providerId: 'openai',
@@ -246,6 +213,7 @@ describe('OpenCodeSdkSessionClient', () => {
     );
     await sdk.sendAsync({
       sessionId: 'session-1',
+      agent: 'vibespace-full-auto',
       controls: {
         connectionId: 'openai-chatgpt-pro',
         providerId: 'openai',
@@ -322,6 +290,7 @@ describe('OpenCodeSdkSessionClient', () => {
     await expect(
       sdk.sendAsync({
         sessionId: 's',
+        agent: 'vibespace-readonly',
         controls: {
           connectionId: 'c',
           providerId: 'openai',
@@ -339,6 +308,7 @@ describe('OpenCodeSdkSessionClient', () => {
     await expect(
       sdk.sendAsync({
         sessionId: 's',
+        agent: 'vibespace-readonly',
         controls: {
           connectionId: 'c',
           providerId: 'openai',

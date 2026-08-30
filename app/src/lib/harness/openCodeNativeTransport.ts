@@ -23,12 +23,12 @@ type NativeTransportRoute =
   | { kind: 'question_reject'; requestId: string }
   | { kind: 'session_create' }
   | { kind: 'session_get'; sessionId: string }
-  | { kind: 'session_update'; sessionId: string }
   | { kind: 'session_delete'; sessionId: string }
   | { kind: 'session_children'; sessionId: string }
   | { kind: 'session_messages'; sessionId: string; limit?: number }
   | { kind: 'session_diff'; sessionId: string }
   | { kind: 'session_prompt_async'; sessionId: string }
+  | { kind: 'session_command'; sessionId: string }
   | { kind: 'session_abort'; sessionId: string }
   | { kind: 'session_permission'; sessionId: string; permissionId: string }
   | { kind: 'session_status' }
@@ -141,8 +141,6 @@ function nativeRoute(
   else if (segments[0] === 'session' && segments.length >= 2) {
     const sessionId = decodedIdentifier(segments[1]);
     if (segments.length === 2 && method === 'GET') route = { kind: 'session_get', sessionId };
-    else if (segments.length === 2 && method === 'PATCH')
-      route = { kind: 'session_update', sessionId };
     else if (segments.length === 2 && method === 'DELETE')
       route = { kind: 'session_delete', sessionId };
     else if (segments.length === 3 && segments[2] === 'children' && method === 'GET')
@@ -158,6 +156,8 @@ function nativeRoute(
       route = { kind: 'session_diff', sessionId };
     else if (segments.length === 3 && segments[2] === 'prompt_async' && method === 'POST')
       route = { kind: 'session_prompt_async', sessionId };
+    else if (segments.length === 3 && segments[2] === 'command' && method === 'POST')
+      route = { kind: 'session_command', sessionId };
     else if (segments.length === 3 && segments[2] === 'abort' && method === 'POST')
       route = { kind: 'session_abort', sessionId };
     else if (segments.length === 4 && segments[2] === 'permissions' && method === 'POST')

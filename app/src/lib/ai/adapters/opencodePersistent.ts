@@ -300,19 +300,6 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
         {},
         30_000,
       ),
-    update: async (input: {
-      path: { id: string };
-      body: {
-        permission: readonly import('@/lib/harness/OpenCodeSdkSessionClient').OpenCodePermissionRule[];
-      };
-    }): Promise<unknown> =>
-      requestJson(
-        this.handle.generation,
-        this.handle.scope,
-        `/session/${encodeURIComponent(input.path.id)}`,
-        { method: 'PATCH', body: JSON.stringify(input.body) },
-        30_000,
-      ),
     abort: async (input: { path: { id: string } }): Promise<unknown> =>
       requestJson(
         this.handle.generation,
@@ -339,6 +326,7 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
         arguments: string;
         model?: string;
         variant?: string;
+        agent: import('@/lib/permissions/OpenCodePermissionProfile').OpenCodeExecutionAgentId;
       };
     }): Promise<unknown> =>
       requestJson(
@@ -1714,8 +1702,9 @@ export function toolsForPolicy(input: {
     }
     return Object.freeze(tools);
   }
-  const canWrite = !input.explicitReadRoot && input.access !== 'read-only';
-  const canTerminal = !input.explicitReadRoot && input.access === 'full';
+  const canWrite =
+    !input.explicitReadRoot && input.mode === 'agent' && input.access !== 'read-only';
+  const canTerminal = !input.explicitReadRoot && input.mode === 'agent' && input.access === 'full';
   const canSubagents = !input.explicitReadRoot && input.mode === 'agent';
   const baseline: Record<string, boolean> = {
     read: true,

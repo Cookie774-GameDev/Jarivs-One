@@ -1,18 +1,16 @@
 export type InteractionMode = 'ask' | 'plan' | 'agent';
 export type AccessLevel = 'read-only' | 'write' | 'full';
 export type PermissionDecision = 'allow' | 'ask' | 'deny';
+export type OpenCodeExecutionAgentId =
+  | 'vibespace-readonly'
+  | 'vibespace-write'
+  | 'vibespace-write-auto'
+  | 'vibespace-full'
+  | 'vibespace-full-auto';
 
-export type MutationAuthority =
-  | 'none'
-  | 'exact-request'
-  | 'plan-artifacts'
-  | 'autonomous';
+export type MutationAuthority = 'none' | 'exact-request' | 'plan-artifacts' | 'autonomous';
 
-export type TerminalAuthority =
-  | 'none'
-  | 'exact-request'
-  | 'inspection-only'
-  | 'autonomous';
+export type TerminalAuthority = 'none' | 'exact-request' | 'inspection-only' | 'autonomous';
 
 export interface PermissionProfileInput {
   mode: InteractionMode;
@@ -63,6 +61,7 @@ export interface VibeSpaceGatewayPolicy {
 
 export interface EffectivePermissionProfile {
   openCode: OpenCodePermissionProfile;
+  openCodeAgent: OpenCodeExecutionAgentId;
   gateway: VibeSpaceGatewayPolicy;
 }
 
@@ -86,10 +85,10 @@ const SENSITIVE_READ_DENIES = Object.freeze([
 function normalizeProjectRoot(projectRoot: string): string {
   const normalized = projectRoot.trim().replace(/\\/gu, '/').replace(/\/+$/u, '');
   if (
-    !normalized
-    || normalized.length > 4_096
-    || normalized.includes('\0')
-    || /[\r\n]/u.test(normalized)
+    !normalized ||
+    normalized.length > 4_096 ||
+    normalized.includes('\0') ||
+    /[\r\n]/u.test(normalized)
   ) {
     throw new Error('A valid non-empty project root is required.');
   }
@@ -100,24 +99,24 @@ function agentDecision(approveAllForRun: boolean): PermissionDecision {
   return approveAllForRun ? 'allow' : 'ask';
 }
 
-function mutationAuthorityFor(
-  mode: InteractionMode,
-  access: AccessLevel,
-): MutationAuthority {
-  if (access === 'read-only') return 'none';
-  if (mode === 'ask') return 'exact-request';
-  if (mode === 'plan') return 'plan-artifacts';
-  return 'autonomous';
+function mutationAuthorityFor(mode: InteractionMode, access: AccessLevel): MutationAuthority {
+  return mode === 'agent' && access !== 'read-only' ? 'autonomous' : 'none';
 }
 
-function terminalAuthorityFor(
+function terminalAuthorityFor(mode: InteractionMode, access: AccessLevel): TerminalAuthority {
+  return mode === 'agent' && access === 'full' ? 'autonomous' : 'none';
+}
+
+function openCodeExecutionAgentFor(
   mode: InteractionMode,
   access: AccessLevel,
-): TerminalAuthority {
-  if (access !== 'full') return 'none';
-  if (mode === 'ask') return 'exact-request';
-  if (mode === 'plan') return 'inspection-only';
-  return 'autonomous';
+  approveAllForRun: boolean,
+): OpenCodeExecutionAgentId {
+  if (mode !== 'agent' || access === 'read-only') return 'vibespace-readonly';
+  if (access === 'write') {
+    return approveAllForRun ? 'vibespace-write-auto' : 'vibespace-write';
+  }
+  return approveAllForRun ? 'vibespace-full-auto' : 'vibespace-full';
 }
 
 function editDecisionFor(
@@ -175,6 +174,7 @@ export function buildEffectivePermissionProfile(
   ]);
 
   return {
+    openCodeAgent: openCodeExecutionAgentFor(input.mode, input.access, input.approveAllForRun),
     openCode: {
       read: Object.freeze(readRules),
       edit: Object.freeze({
@@ -201,15 +201,14 @@ export function buildEffectivePermissionProfile(
       allowRead: true,
       allowWrite: canWrite,
       allowTerminal: canUseTerminal,
-      allowGitWrite: input.access === 'full' && (input.mode === 'ask' || autonomousFull),
-      allowBrowserMutation: input.access === 'full' && (input.mode === 'ask' || autonomousFull),
+      allowGitWrite: input.access === 'full' && autonomousFull,
+      allowBrowserMutation: input.access === 'full' && autonomousFull,
       allowDelete: autonomousFull,
       allowSubagents: agent,
       approveAllForRun: input.approveAllForRun,
       autoApproveExactRequestedActions:
         input.approveAllForRun && mutationAuthority === 'exact-request',
-      autoApproveAutonomousActions:
-        input.approveAllForRun && autonomous,
+      autoApproveAutonomousActions: input.approveAllForRun && autonomous,
       planArtifactGlobs,
       hardDenySecrets: true,
       hardDenyExternalDirectory: true,
