@@ -125,6 +125,34 @@ describe('Markdown Library authority', () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
+  it('rejects an active document below its highest retained revision', async () => {
+    const authority = createMarkdownLibraryAuthority({ filePort, repository, now: () => 500 });
+    const path = 'C:\\repo\\docs\\generated\\goal-release.md';
+    await authority.reindex(scope);
+    files.set(path, '# Release goal\nSecond');
+    await authority.reindex(scope);
+    const active = snapshot.documents.find(({ path: candidate }) => candidate === path)!;
+    const stale = snapshot.revisions.find(
+      ({ documentId, revision }) => documentId === active.documentId && revision === 1,
+    )!;
+    snapshot = {
+      ...snapshot,
+      documents: snapshot.documents.map((document) =>
+        document.documentId === active.documentId
+          ? {
+              ...document,
+              contentSha256: stale.contentSha256,
+              sizeBytes: stale.sizeBytes,
+              revision: stale.revision,
+              indexedAt: stale.createdAt,
+            }
+          : document,
+      ),
+    };
+
+    await expect(authority.list(scope)).rejects.toThrow('markdown_library_index_invalid');
+  });
+
   it('lists and filters only bounded account/project metadata without revision content', async () => {
     const authority = createMarkdownLibraryAuthority({ filePort, repository, now: () => 500 });
     await authority.reindex(scope);
@@ -293,6 +321,58 @@ describe('Markdown Library authority', () => {
 
     expect(files.get(path)).toBe('# Release goal\nSecond');
     expect(snapshot.pendingRollback).toBeNull();
+  });
+
+  it('serializes exact-scope reads and reindex behind a live prepared rollback', async () => {
+    const authority = createMarkdownLibraryAuthority({ filePort, repository, now: () => 700 });
+    const path = 'C:\\repo\\docs\\generated\\goal-release.md';
+    await authority.reindex(scope);
+    files.set(path, '# Release goal\nSecond');
+    await authority.reindex(scope);
+    const document = snapshot.documents.find(({ path: candidate }) => candidate === path)!;
+    let releaseWrite!: () => void;
+    const writeReleased = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    let writeEntered!: () => void;
+    const writeStarted = new Promise<void>((resolve) => {
+      writeEntered = resolve;
+    });
+    compareAndWrite.mockImplementationOnce(async ({ path: candidate, expectedSha256, content }) => {
+      writeEntered();
+      await writeReleased;
+      const current = files.get(candidate);
+      if (current === undefined || (await sha256Text(current)) !== expectedSha256) return false;
+      files.set(candidate, content);
+      return true;
+    });
+
+    const rollback = authority.rollback(scope, document.documentId, 1);
+    await writeStarted;
+    expect(snapshot.pendingRollback).not.toBeNull();
+    const reloaded = createMarkdownLibraryAuthority({ filePort, repository, now: () => 800 });
+    let settled = 0;
+    const queued = [
+      authority.list(scope),
+      authority.history(scope, document.documentId),
+      authority.reindex(scope),
+      reloaded.list(scope),
+    ].map((operation) => operation.then((value) => ((settled += 1), value)));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(settled).toBe(0);
+    expect(snapshot.pendingRollback).not.toBeNull();
+    expect(scan).toHaveBeenCalledTimes(2);
+
+    releaseWrite();
+    await expect(rollback).resolves.toMatchObject({ revision: 3 });
+    await Promise.all(queued);
+    expect(files.get(path)).toBe('# Release goal\nFirst');
+    expect(snapshot.pendingRollback).toBeNull();
+    expect(
+      snapshot.documents.find(({ documentId }) => documentId === document.documentId),
+    ).toMatchObject({ revision: 3 });
   });
 
   it('rejects stale files and compensates a physical rollback when index CAS loses', async () => {

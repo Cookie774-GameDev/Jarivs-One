@@ -155,15 +155,21 @@ async function validSnapshot(
     paths.add(key);
   }
   const revisionKeys = new Set<string>();
+  const highestRevisionByDocument = new Map<string, number>();
   for (const revision of safeRevisions) {
     const key = `${revision.documentId}:${revision.revision}`;
     if (revisionKeys.has(key) || (await sha256Text(revision.content)) !== revision.contentSha256) {
       throw new Error('markdown_library_index_invalid');
     }
     revisionKeys.add(key);
+    highestRevisionByDocument.set(
+      revision.documentId,
+      Math.max(highestRevisionByDocument.get(revision.documentId) ?? 0, revision.revision),
+    );
   }
   for (const document of safeDocuments) {
     if (
+      highestRevisionByDocument.get(document.documentId) !== document.revision ||
       !safeRevisions.some(
         (revision) =>
           revision.documentId === document.documentId &&
@@ -207,6 +213,33 @@ function publicHistory(revision: MarkdownRevisionV1): MarkdownHistoryProjection 
     sizeBytes: revision.sizeBytes,
     createdAt: revision.createdAt,
   });
+}
+
+const liveScopeOperations = new Map<string, Promise<void>>();
+
+function scopeOperationKey(scope: MarkdownLibraryScope): string {
+  return JSON.stringify([scope.accountId, scope.projectId, scope.root]);
+}
+
+async function serializeScopeOperation<T>(
+  scope: MarkdownLibraryScope,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const key = scopeOperationKey(scope);
+  const prior = liveScopeOperations.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const ownership = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const tail = prior.catch(() => undefined).then(() => ownership);
+  liveScopeOperations.set(key, tail);
+  await prior.catch(() => undefined);
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (liveScopeOperations.get(key) === tail) liveScopeOperations.delete(key);
+  }
 }
 
 export function createMarkdownLibraryAuthority(input: {
@@ -333,7 +366,7 @@ export function createMarkdownLibraryAuthority(input: {
     return { scope, snapshot };
   }
 
-  return Object.freeze({
+  const authority = Object.freeze({
     async reindex(
       scopeInput: MarkdownLibraryScope,
     ): Promise<readonly MarkdownDocumentMetadataV1[]> {
@@ -634,6 +667,36 @@ export function createMarkdownLibraryAuthority(input: {
         throw new Error('markdown_library_index_conflict');
       }
       throw new Error('markdown_library_rollback_recovery_failed');
+    },
+  });
+
+  return Object.freeze({
+    reindex(scopeInput: MarkdownLibraryScope) {
+      const scope = normalizeScope(scopeInput);
+      return serializeScopeOperation(scope, () => authority.reindex(scope));
+    },
+    list(
+      scopeInput: MarkdownLibraryScope,
+      filter: Readonly<{
+        query?: string;
+        kind?: MarkdownLibraryDocumentKind;
+        limit?: number;
+      }> = {},
+    ) {
+      const scope = normalizeScope(scopeInput);
+      return serializeScopeOperation(scope, () => authority.list(scope, filter));
+    },
+    history(
+      scopeInput: MarkdownLibraryScope,
+      id: string,
+      options: Readonly<{ limit?: number; cursor?: MarkdownHistoryCursorV1 }> = {},
+    ) {
+      const scope = normalizeScope(scopeInput);
+      return serializeScopeOperation(scope, () => authority.history(scope, id, options));
+    },
+    rollback(scopeInput: MarkdownLibraryScope, id: string, targetRevision: number) {
+      const scope = normalizeScope(scopeInput);
+      return serializeScopeOperation(scope, () => authority.rollback(scope, id, targetRevision));
     },
   });
 }
