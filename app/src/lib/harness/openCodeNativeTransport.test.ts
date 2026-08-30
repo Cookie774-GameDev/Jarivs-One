@@ -102,6 +102,51 @@ describe('native OpenCode transport', () => {
     });
   });
 
+  it.each([
+    ['GET', '/question?directory=C%3A%5Cworkspace', undefined, { kind: 'question_list' }],
+    [
+      'POST',
+      '/question/que_exact/reply?directory=C%3A%5Cworkspace',
+      JSON.stringify({ answers: [['Snake'], ['Current project folder']] }),
+      { kind: 'question_reply', requestId: 'que_exact' },
+    ],
+    [
+      'POST',
+      '/question/que_exact/reject?directory=C%3A%5Cworkspace',
+      undefined,
+      { kind: 'question_reject', requestId: 'que_exact' },
+    ],
+  ] as const)('maps the exact OpenCode question route %s %s', async (method, path, body, route) => {
+    const invoke = vi.fn(async () => ({ status: 200, statusText: 'OK', body: 'true' }));
+    await nativeOpenCodeRequest(
+      'opencode-server-generation',
+      path,
+      { method, ...(body === undefined ? {} : { body }) },
+      5_000,
+      async () => ({ invoke, channel: vi.fn() as never }),
+    );
+    expect(invoke).toHaveBeenCalledWith('opencode_server_request', {
+      request: expect.objectContaining({ route, directory: 'C:\\workspace', body }),
+    });
+  });
+
+  it.each([
+    ['GET', '/question/que_exact/reply'],
+    ['DELETE', '/question/que_exact/reject'],
+    ['POST', '/question/que_exact/unknown'],
+    ['POST', '/question/que_exact/reply?unexpected=true'],
+  ])('rejects a non-canonical OpenCode question route %s %s', async (method, path) => {
+    const invoke = vi.fn();
+
+    await expect(
+      nativeOpenCodeRequest('opencode-server-generation', path, { method }, 5_000, async () => ({
+        invoke,
+        channel: vi.fn() as never,
+      })),
+    ).rejects.toThrow(/OpenCode native transport (route|query) is invalid\./u);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it('delivers native channel events and cancels the exact generation stream', async () => {
     let onmessage: ((message: unknown) => void) | undefined;
     const invoke = vi.fn(async (command: string, _args: Record<string, unknown>) => {
@@ -147,6 +192,48 @@ describe('native OpenCode transport', () => {
       generation: 'opencode-server-generation',
       streamId: expect.stringMatching(/^opencode-stream-[a-f0-9]+$/u),
     });
+  });
+
+  it.each([
+    ['event count', Array.from({ length: 257 }, () => JSON.stringify({ type: 'ping' }))],
+    [
+      'queued bytes',
+      Array.from({ length: 9 }, () =>
+        JSON.stringify({ type: 'ping', properties: { payload: 'x'.repeat(1_048_576) } }),
+      ),
+    ],
+  ])('fails closed when native events overflow the renderer queue by %s', async (_kind, data) => {
+    let onmessage: ((message: unknown) => void) | undefined;
+    const invoke = vi.fn(async (command: string) => {
+      if (command === 'opencode_server_event_stream') {
+        for (const item of data) onmessage?.({ kind: 'event', data: item });
+      }
+      return command === 'opencode_server_event_cancel' ? true : undefined;
+    });
+    const bridge = async () => ({
+      invoke,
+      channel: (handler: (message: unknown) => void) => {
+        onmessage = handler;
+        return { onmessage: handler };
+      },
+    });
+
+    const consume = async () => {
+      for await (const _event of nativeOpenCodeEvents(
+        'opencode-server-generation',
+        '/event',
+        undefined,
+        bridge,
+      )) {
+        // The producer fills the queue synchronously before the first event can be consumed.
+      }
+    };
+
+    await expect(consume()).rejects.toThrow('OpenCode native event queue exceeded safe limits.');
+    expect(invoke).toHaveBeenCalledWith(
+      'opencode_server_event_cancel',
+      expect.objectContaining({ generation: 'opencode-server-generation' }),
+    );
   });
 
   it('cancels without yielding when the caller aborts', async () => {

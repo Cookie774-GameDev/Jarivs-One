@@ -18,6 +18,9 @@ type NativeTransportRoute =
   | { kind: 'mcp_add' }
   | { kind: 'mcp_connect'; name: string }
   | { kind: 'mcp_disconnect'; name: string }
+  | { kind: 'question_list' }
+  | { kind: 'question_reply'; requestId: string }
+  | { kind: 'question_reject'; requestId: string }
   | { kind: 'session_create' }
   | { kind: 'session_get'; sessionId: string }
   | { kind: 'session_update'; sessionId: string }
@@ -32,9 +35,17 @@ type NativeTransportRoute =
   | { kind: 'instance_dispose' };
 
 type NativeStreamMessage =
-  | { kind: 'event'; data: string }
-  | { kind: 'done' }
-  | { kind: 'error'; message: string };
+  { kind: 'event'; data: string } | { kind: 'done' } | { kind: 'error'; message: string };
+
+const MAX_QUEUED_NATIVE_EVENTS = 256;
+const MAX_QUEUED_NATIVE_BYTES = 8 * 1024 * 1024;
+const nativeStreamTextEncoder = new TextEncoder();
+
+function nativeStreamMessageBytes(message: NativeStreamMessage): number {
+  if (message.kind === 'event') return nativeStreamTextEncoder.encode(message.data).byteLength;
+  if (message.kind === 'error') return nativeStreamTextEncoder.encode(message.message).byteLength;
+  return 0;
+}
 
 interface NativeChannel {
   onmessage: (message: unknown) => void;
@@ -112,7 +123,13 @@ function nativeRoute(
     else if (segments[3] === 'callback') route = { kind: 'provider_callback', providerId };
     else throw new Error('OpenCode native transport route is invalid.');
   } else if (key === 'POST /session') route = { kind: 'session_create' };
-  else if (key === 'GET /mcp') route = { kind: 'mcp_status' };
+  else if (key === 'GET /question') route = { kind: 'question_list' };
+  else if (segments[0] === 'question' && segments.length === 3 && method === 'POST') {
+    const requestId = decodedIdentifier(segments[1]);
+    if (segments[2] === 'reply') route = { kind: 'question_reply', requestId };
+    else if (segments[2] === 'reject') route = { kind: 'question_reject', requestId };
+    else throw new Error('OpenCode native transport route is invalid.');
+  } else if (key === 'GET /mcp') route = { kind: 'mcp_status' };
   else if (key === 'POST /mcp') route = { kind: 'mcp_add' };
   else if (segments[0] === 'mcp' && segments.length === 3 && method === 'POST') {
     const name = decodedIdentifier(segments[1]);
@@ -224,12 +241,34 @@ export async function* nativeOpenCodeEvents(
   }
   const bridge = await bridgeFactory();
   const id = streamId();
-  const queued: NativeStreamMessage[] = [];
+  const queued: Array<{ message: NativeStreamMessage; bytes: number }> = [];
+  let queuedBytes = 0;
   let wake: (() => void) | undefined;
   let terminal = false;
+  let overflowed = false;
   const push = (message: NativeStreamMessage) => {
-    if (terminal) return;
-    queued.push(message);
+    if (terminal || overflowed) return;
+    const bytes = nativeStreamMessageBytes(message);
+    if (
+      queued.length >= MAX_QUEUED_NATIVE_EVENTS ||
+      queuedBytes + bytes > MAX_QUEUED_NATIVE_BYTES
+    ) {
+      overflowed = true;
+      queued.length = 0;
+      queuedBytes = 0;
+      const error: NativeStreamMessage = {
+        kind: 'error',
+        message: 'OpenCode native event queue exceeded safe limits.',
+      };
+      const errorBytes = nativeStreamMessageBytes(error);
+      queued.push({ message: error, bytes: errorBytes });
+      queuedBytes = errorBytes;
+      wake?.();
+      wake = undefined;
+      return;
+    }
+    queued.push({ message, bytes });
+    queuedBytes += bytes;
     wake?.();
     wake = undefined;
   };
@@ -261,8 +300,10 @@ export async function* nativeOpenCodeEvents(
           wake = resolve;
         });
       }
-      const message = queued.shift();
-      if (!message) continue;
+      const item = queued.shift();
+      if (!item) continue;
+      queuedBytes -= item.bytes;
+      const { message } = item;
       if (message.kind === 'done') return;
       if (message.kind === 'error') throw new Error(message.message);
       const event = parsedEvent(message.data);

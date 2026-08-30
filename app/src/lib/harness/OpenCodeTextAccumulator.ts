@@ -5,17 +5,20 @@ export interface OpenCodeTextPartUpdate {
   sessionId?: string;
   messageId?: string;
   partId?: string;
-  channel: OpenCodeTextChannel;
+  /** Known only after a full part snapshot establishes the native part type. */
+  channel?: OpenCodeTextChannel;
   /** Incremental text when the installed OpenCode version emits it. */
   delta?: string;
   /** Full current part snapshot; some OpenCode versions emit this without delta. */
   text?: string;
+  /** Persisted session history is authoritative over a duplicated live reconstruction. */
+  authoritativeSnapshot?: boolean;
 }
 
 export type OpenCodeTextEmission =
   | {
       kind: 'noop';
-      channel: OpenCodeTextChannel;
+      channel?: OpenCodeTextChannel;
       partKey: string;
       fullText: string;
     }
@@ -53,7 +56,6 @@ function partKey(update: Readonly<OpenCodeTextPartUpdate>): string {
     cleanIdentity(update.sessionId),
     cleanIdentity(update.messageId),
     cleanIdentity(update.partId) || 'default',
-    update.channel,
   ]);
 }
 
@@ -75,10 +77,33 @@ function recordOf(value: unknown): Record<string, unknown> | undefined {
 export function extractOpenCodeTextPartUpdate(
   event: Readonly<OpenCodeRawTextEvent>,
 ): OpenCodeTextPartUpdate | null {
-  if (event.type !== 'message.part.updated') return null;
+  if (event.type !== 'message.part.updated' && event.type !== 'message.part.delta') return null;
   const properties = recordOf(event.properties);
+  if (!properties) return null;
+
+  if (event.type === 'message.part.delta') {
+    const rawField = textOrUndefined(properties.field)?.toLocaleLowerCase('en-US');
+    const channel: OpenCodeTextChannel | undefined =
+      rawField === 'reasoning' ? 'reasoning' : undefined;
+    const eventId = textOrUndefined(properties.eventID ?? properties.eventId);
+    const sessionId = textOrUndefined(properties.sessionID ?? properties.sessionId);
+    const messageId = textOrUndefined(properties.messageID ?? properties.messageId);
+    const partId = textOrUndefined(properties.partID ?? properties.partId);
+    const delta = textOrUndefined(properties.delta);
+    if (
+      (rawField !== 'text' && rawField !== 'reasoning') ||
+      !sessionId?.trim() ||
+      !messageId?.trim() ||
+      !partId?.trim() ||
+      delta === undefined
+    ) {
+      return null;
+    }
+    return { eventId, sessionId, messageId, partId, ...(channel ? { channel } : {}), delta };
+  }
+
   const part = recordOf(properties?.part);
-  if (!properties || !part) return null;
+  if (!part) return null;
 
   const rawType = typeof part.type === 'string' ? part.type.toLocaleLowerCase('en-US') : '';
   const channel: OpenCodeTextChannel | null =
@@ -113,15 +138,20 @@ export function extractOpenCodeTextPartUpdate(
  */
 export class OpenCodeTextAccumulator {
   readonly #parts = new Map<string, { channel: OpenCodeTextChannel; text: string }>();
+  readonly #knownChannels = new Map<string, OpenCodeTextChannel>();
+  readonly #pending = new Map<string, string>();
   readonly #seenEventIds = new Set<string>();
   readonly #eventOrder: string[] = [];
   #totalChars = 0;
+  #pendingChars = 0;
 
   constructor(
     private readonly limits: {
       maxParts?: number;
       maxTotalChars?: number;
       maxRememberedEventIds?: number;
+      maxPendingParts?: number;
+      maxPendingChars?: number;
     } = {},
   ) {}
 
@@ -154,32 +184,89 @@ export class OpenCodeTextAccumulator {
   ingest(update: Readonly<OpenCodeTextPartUpdate>): OpenCodeTextEmission {
     const key = partKey(update);
     const current = this.#parts.get(key)?.text ?? '';
+    const channel = update.channel ?? this.#knownChannels.get(key);
     if (!this.rememberEvent(update.eventId)) {
-      return { kind: 'noop', channel: update.channel, partKey: key, fullText: current };
+      return { kind: 'noop', ...(channel ? { channel } : {}), partKey: key, fullText: current };
     }
+
+    if (!channel) {
+      if (!update.delta) return { kind: 'noop', partKey: key, fullText: current };
+      if (
+        !this.#pending.has(key) &&
+        this.#pending.size >= Math.max(1, this.limits.maxPendingParts ?? 256)
+      ) {
+        throw new Error('HARNESS_PENDING_PART_LIMIT_EXCEEDED');
+      }
+      const nextPending = `${this.#pending.get(key) ?? ''}${update.delta}`;
+      const nextPendingChars =
+        this.#pendingChars - (this.#pending.get(key)?.length ?? 0) + nextPending.length;
+      if (nextPendingChars > Math.max(1, this.limits.maxPendingChars ?? 262_144)) {
+        throw new Error('HARNESS_PENDING_TEXT_LIMIT_EXCEEDED');
+      }
+      this.#pending.set(key, nextPending);
+      this.#pendingChars = nextPendingChars;
+      return { kind: 'noop', partKey: key, fullText: current };
+    }
+
+    this.#knownChannels.set(key, channel);
 
     const snapshot = update.text;
     const delta = update.delta;
 
+    const pending = this.#pending.get(key);
+    if (pending !== undefined) {
+      this.#pending.delete(key);
+      this.#pendingChars -= pending.length;
+      const authoritative =
+        update.authoritativeSnapshot && snapshot !== undefined
+          ? snapshot
+          : snapshot !== undefined && snapshot.length > 0
+            ? snapshot
+            : pending;
+      if (authoritative === current) {
+        return { kind: 'noop', channel, partKey: key, fullText: current };
+      }
+      this.setPart(key, channel, authoritative);
+      return current && !authoritative.startsWith(current)
+        ? { kind: 'replace', channel, partKey: key, text: authoritative, fullText: authoritative }
+        : {
+            kind: 'delta',
+            channel,
+            partKey: key,
+            text: authoritative.slice(current.length),
+            fullText: authoritative,
+          };
+    }
+
     if (snapshot !== undefined) {
+      if (update.authoritativeSnapshot && snapshot !== current) {
+        this.setPart(key, channel, snapshot);
+        return {
+          kind: current ? 'replace' : 'delta',
+          channel,
+          partKey: key,
+          text: snapshot,
+          fullText: snapshot,
+        };
+      }
       if (snapshot === current || current.startsWith(snapshot)) {
         // Duplicate or delayed stale snapshot. Never regress already-rendered text.
-        return { kind: 'noop', channel: update.channel, partKey: key, fullText: current };
+        return { kind: 'noop', channel, partKey: key, fullText: current };
       }
       if (snapshot.startsWith(current)) {
         const suffix = snapshot.slice(current.length);
-        this.setPart(key, update.channel, snapshot);
+        this.setPart(key, channel, snapshot);
         return suffix
-          ? { kind: 'delta', channel: update.channel, partKey: key, text: suffix, fullText: snapshot }
-          : { kind: 'noop', channel: update.channel, partKey: key, fullText: snapshot };
+          ? { kind: 'delta', channel, partKey: key, text: suffix, fullText: snapshot }
+          : { kind: 'noop', channel, partKey: key, fullText: snapshot };
       }
 
       // A non-prefix snapshot represents an upstream correction/rewrite. Expose
       // an explicit replacement rather than appending corrupt duplicate text.
-      this.setPart(key, update.channel, snapshot);
+      this.setPart(key, channel, snapshot);
       return {
         kind: 'replace',
-        channel: update.channel,
+        channel,
         partKey: key,
         text: snapshot,
         fullText: snapshot,
@@ -187,14 +274,16 @@ export class OpenCodeTextAccumulator {
     }
 
     if (!delta) {
-      return { kind: 'noop', channel: update.channel, partKey: key, fullText: current };
+      return { kind: 'noop', channel, partKey: key, fullText: current };
     }
     const next = current + delta;
-    this.setPart(key, update.channel, next);
-    return { kind: 'delta', channel: update.channel, partKey: key, text: delta, fullText: next };
+    this.setPart(key, channel, next);
+    return { kind: 'delta', channel, partKey: key, text: delta, fullText: next };
   }
 
-  partText(update: Pick<OpenCodeTextPartUpdate, 'sessionId' | 'messageId' | 'partId' | 'channel'>): string {
+  partText(
+    update: Pick<OpenCodeTextPartUpdate, 'sessionId' | 'messageId' | 'partId' | 'channel'>,
+  ): string {
     return this.#parts.get(partKey(update))?.text ?? '';
   }
 
@@ -207,8 +296,11 @@ export class OpenCodeTextAccumulator {
 
   reset(): void {
     this.#parts.clear();
+    this.#knownChannels.clear();
+    this.#pending.clear();
     this.#seenEventIds.clear();
     this.#eventOrder.length = 0;
     this.#totalChars = 0;
+    this.#pendingChars = 0;
   }
 }

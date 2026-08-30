@@ -29,8 +29,9 @@ const CRASH_WINDOW: Duration = Duration::from_secs(5 * 60);
 const WATCH_INTERVAL: Duration = Duration::from_millis(500);
 const TRANSPORT_MAX_BODY_BYTES: usize = 2 * 1_048_576;
 const TRANSPORT_MAX_RESPONSE_BYTES: usize = 32 * 1_048_576;
-const TRANSPORT_MAX_SSE_BUFFER_BYTES: usize = 2 * 1_048_576;
+const TRANSPORT_MAX_SSE_BUFFER_BYTES: usize = 16 * 1_048_576;
 const TRANSPORT_MAX_SSE_EVENT_BYTES: usize = 1_048_576;
+const TRANSPORT_MAX_RAW_SSE_EVENT_BYTES: usize = 16 * 1_048_576;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ServerFailure {
@@ -1277,6 +1278,13 @@ enum OpenCodeTransportRoute {
     McpDisconnect {
         name: String,
     },
+    QuestionList,
+    QuestionReply {
+        request_id: String,
+    },
+    QuestionReject {
+        request_id: String,
+    },
     SessionCreate,
     SessionGet {
         session_id: String,
@@ -1414,6 +1422,15 @@ fn transport_route_parts(
             reqwest::Method::POST,
             format!("/mcp/{}/disconnect", encoded_route_identifier(name)?),
         ),
+        OpenCodeTransportRoute::QuestionList => (reqwest::Method::GET, "/question".to_string()),
+        OpenCodeTransportRoute::QuestionReply { request_id } => (
+            reqwest::Method::POST,
+            format!("/question/{}/reply", encoded_route_identifier(request_id)?),
+        ),
+        OpenCodeTransportRoute::QuestionReject { request_id } => (
+            reqwest::Method::POST,
+            format!("/question/{}/reject", encoded_route_identifier(request_id)?),
+        ),
         OpenCodeTransportRoute::SessionCreate => (reqwest::Method::POST, "/session".to_string()),
         OpenCodeTransportRoute::SessionGet { session_id } => (
             reqwest::Method::GET,
@@ -1490,6 +1507,8 @@ fn validate_transport_body(
             | OpenCodeTransportRoute::McpStatus
             | OpenCodeTransportRoute::McpConnect { .. }
             | OpenCodeTransportRoute::McpDisconnect { .. }
+            | OpenCodeTransportRoute::QuestionList
+            | OpenCodeTransportRoute::QuestionReject { .. }
             | OpenCodeTransportRoute::SessionGet { .. }
             | OpenCodeTransportRoute::SessionDelete { .. }
             | OpenCodeTransportRoute::SessionChildren { .. }
@@ -1652,6 +1671,29 @@ fn validate_transport_body(
                         }
                         _ => false,
                     }
+                })
+        }
+        OpenCodeTransportRoute::QuestionReply { .. } => {
+            only_keys(&["answers"])
+                && object.len() == 1
+                && object.get("answers").is_some_and(|answers| {
+                    answers.as_array().is_some_and(|answers| {
+                        !answers.is_empty()
+                            && answers.len() <= 8
+                            && answers.iter().all(|answer| {
+                                answer.as_array().is_some_and(|entries| {
+                                    !entries.is_empty()
+                                        && entries.len() <= 9
+                                        && entries.iter().all(|entry| {
+                                            entry.as_str().is_some_and(|text| {
+                                                !text.trim().is_empty()
+                                                    && text.len() <= 2_048
+                                                    && !text.chars().any(char::is_control)
+                                            })
+                                        })
+                                })
+                            })
+                    })
                 })
         }
         OpenCodeTransportRoute::SessionCreate => {
@@ -1862,8 +1904,85 @@ fn sse_frame_boundary(buffer: &[u8]) -> Option<(usize, usize)> {
         })
 }
 
+fn scrub_oversized_tool_state(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            let keys = object.keys().cloned().collect::<Vec<_>>();
+            for key in keys {
+                let normalized = key.to_ascii_lowercase();
+                if matches!(
+                    normalized.as_str(),
+                    "content"
+                        | "output"
+                        | "patch"
+                        | "diff"
+                        | "diffs"
+                        | "stdout"
+                        | "stderr"
+                        | "command"
+                ) {
+                    object.remove(&key);
+                } else if let Some(child) = object.get_mut(&key) {
+                    scrub_oversized_tool_state(child);
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                scrub_oversized_tool_state(item);
+            }
+        }
+        Value::String(text) if text.len() > TRANSPORT_MAX_SSE_EVENT_BYTES / 2 => {
+            *text = "[omitted oversized provider field]".to_string();
+        }
+        _ => {}
+    }
+}
+
+fn project_opencode_event_data(data: String) -> Result<String, String> {
+    if data.len() <= TRANSPORT_MAX_SSE_EVENT_BYTES {
+        return Ok(data);
+    }
+    let mut value: Value = serde_json::from_str(&data)
+        .map_err(|_| "OpenCode event was not valid JSON.".to_string())?;
+    let event = value.as_object_mut().and_then(|root| {
+        if root.contains_key("type") {
+            None
+        } else {
+            root.get_mut("data").and_then(Value::as_object_mut)
+        }
+    });
+    let event = match event {
+        Some(event) => event,
+        None => value
+            .as_object_mut()
+            .ok_or_else(|| "OpenCode oversized event could not be projected safely.".to_string())?,
+    };
+    if event.get("type").and_then(Value::as_str) != Some("message.part.updated") {
+        return Err("OpenCode oversized non-tool event exceeded its safe bound.".to_string());
+    }
+    let part = event
+        .get_mut("properties")
+        .and_then(Value::as_object_mut)
+        .and_then(|properties| properties.get_mut("part"))
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| "OpenCode oversized tool event was malformed.".to_string())?;
+    if part.get("type").and_then(Value::as_str) != Some("tool") {
+        return Err("OpenCode oversized non-tool event exceeded its safe bound.".to_string());
+    }
+    if let Some(state) = part.get_mut("state") {
+        scrub_oversized_tool_state(state);
+    }
+    let projected = serde_json::to_string(&value)
+        .map_err(|_| "OpenCode event could not be projected safely.".to_string())?;
+    if projected.len() > TRANSPORT_MAX_SSE_EVENT_BYTES {
+        return Err("OpenCode projected event exceeded its safe bound.".to_string());
+    }
+    Ok(projected)
+}
+
 fn event_data(frame: &[u8]) -> Result<Option<String>, String> {
-    if frame.len() > TRANSPORT_MAX_SSE_EVENT_BYTES {
+    if frame.len() > TRANSPORT_MAX_RAW_SSE_EVENT_BYTES {
         return Err("OpenCode event exceeded its safe bound.".to_string());
     }
     let text = std::str::from_utf8(frame)
@@ -1874,7 +1993,10 @@ fn event_data(frame: &[u8]) -> Result<Option<String>, String> {
         .map(str::trim_start)
         .collect::<Vec<_>>()
         .join("\n");
-    Ok((!data.is_empty() && data != "[DONE]").then_some(data))
+    if data.is_empty() || data == "[DONE]" {
+        return Ok(None);
+    }
+    project_opencode_event_data(data).map(Some)
 }
 
 async fn run_event_stream(
@@ -2992,6 +3114,13 @@ mod tests {
             OpenCodeTransportRoute::McpDisconnect {
                 name: "github:copilot".into(),
             },
+            OpenCodeTransportRoute::QuestionList,
+            OpenCodeTransportRoute::QuestionReply {
+                request_id: "que_exact".into(),
+            },
+            OpenCodeTransportRoute::QuestionReject {
+                request_id: "que_exact".into(),
+            },
             OpenCodeTransportRoute::SessionStatus,
             OpenCodeTransportRoute::SessionGet {
                 session_id: "session/one".into(),
@@ -3041,6 +3170,12 @@ mod tests {
         })
         .unwrap();
         assert_eq!(mcp_path, "/mcp/github%3Acopilot/connect");
+        let (_, question_reply_path) =
+            transport_route_parts(&OpenCodeTransportRoute::QuestionReply {
+                request_id: "que/exact".into(),
+            })
+            .unwrap();
+        assert_eq!(question_reply_path, "/question/que%2Fexact/reply");
     }
 
     #[test]
@@ -3062,6 +3197,30 @@ mod tests {
             OpenCodeTransportRoute::SessionPermission { .. }
         ));
         assert!(validate_transport_body(&request.route, request.body.as_deref()).is_ok());
+
+        let question_reply = OpenCodeTransportRoute::QuestionReply {
+            request_id: "que_exact".into(),
+        };
+        assert!(validate_transport_body(
+            &question_reply,
+            Some(r#"{"answers":[["Snake"],["Current project folder"]]}"#)
+        )
+        .is_ok());
+        for invalid in [
+            r#"{"answers":[]}"#,
+            r#"{"answers":[[]]}"#,
+            r#"{"answers":[["Snake"],[]]}"#,
+            r#"{"answers":[["Snake"]],"extra":true}"#,
+        ] {
+            assert!(validate_transport_body(&question_reply, Some(invalid)).is_err());
+        }
+        assert!(validate_transport_body(
+            &OpenCodeTransportRoute::QuestionReject {
+                request_id: "que_exact".into(),
+            },
+            None
+        )
+        .is_ok());
 
         let update = OpenCodeTransportRoute::SessionUpdate {
             session_id: "session-1".into(),
@@ -3119,8 +3278,80 @@ mod tests {
             Some("{\"type\":\"one\"}\ntail".to_string())
         );
         assert_eq!(event_data(b"data: [DONE]").unwrap(), None);
-        assert!(event_data(&vec![b'x'; super::TRANSPORT_MAX_SSE_EVENT_BYTES + 1]).is_err());
+        assert!(event_data(&vec![b'x'; super::TRANSPORT_MAX_RAW_SSE_EVENT_BYTES + 1]).is_err());
         assert!(event_data(&[0xff, 0xfe]).is_err());
+    }
+
+    #[test]
+    fn managed_transport_projects_oversized_tool_payloads_before_the_webview_channel() {
+        let secret_content = "provider-secret-content".repeat(70_000);
+        let event = serde_json::json!({
+            "data": {
+                "type": "message.part.updated",
+                "properties": {
+                    "part": {
+                        "id": "part-write",
+                        "sessionID": "session-write",
+                        "messageID": "message-write",
+                        "type": "tool",
+                        "tool": "write",
+                        "callID": "call-write",
+                        "state": {
+                            "status": "completed",
+                            "input": {
+                                "filePath": "C:\\private\\index.html",
+                                "content": secret_content
+                            },
+                            "output": "provider-secret-output"
+                        }
+                    }
+                }
+            }
+        });
+        let frame = format!("data: {}", event);
+        assert!(frame.len() > super::TRANSPORT_MAX_SSE_EVENT_BYTES);
+
+        let projected = event_data(frame.as_bytes()).unwrap().unwrap();
+        assert!(projected.len() < super::TRANSPORT_MAX_SSE_EVENT_BYTES);
+        assert!(projected.contains("call-write"));
+        assert!(projected.contains("completed"));
+        assert!(projected.contains("index.html"));
+        assert!(!projected.contains("provider-secret-content"));
+        assert!(!projected.contains("provider-secret-output"));
+    }
+
+    #[test]
+    fn managed_transport_preserves_bounded_events_without_semantic_scrubbing() {
+        let event = serde_json::json!({
+            "data": {
+                "type": "session.error",
+                "properties": {
+                    "content": "legitimate-content",
+                    "nested": { "output": "legitimate-output" }
+                }
+            }
+        });
+        let encoded = event.to_string();
+        let projected = super::project_opencode_event_data(encoded.clone()).unwrap();
+        assert_eq!(projected, encoded);
+        assert!(projected.contains("legitimate-content"));
+        assert!(projected.contains("legitimate-output"));
+    }
+
+    #[test]
+    fn managed_transport_fails_closed_for_oversized_non_tool_and_invalid_json_events() {
+        let oversized_non_tool = serde_json::json!({
+            "data": {
+                "type": "session.error",
+                "properties": { "content": "x".repeat(super::TRANSPORT_MAX_SSE_EVENT_BYTES + 1) }
+            }
+        })
+        .to_string();
+        assert!(super::project_opencode_event_data(oversized_non_tool).is_err());
+        assert!(super::project_opencode_event_data(
+            "{".repeat(super::TRANSPORT_MAX_SSE_EVENT_BYTES + 1)
+        )
+        .is_err());
     }
 
     #[test]
