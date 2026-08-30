@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const playerState = vi.hoisted(() => ({
   failLoads: 0,
+  deferInit: false,
+  releaseInit: undefined as (() => void) | undefined,
   instances: [] as Array<{
     disposed: boolean;
     initialized: boolean;
@@ -44,6 +46,11 @@ vi.mock('./pixiAtlasPlayer', () => {
     }
 
     async init(host: HTMLElement) {
+      if (playerState.deferInit) {
+        await new Promise<void>((resolve) => {
+          playerState.releaseInit = resolve;
+        });
+      }
       await Promise.resolve();
       if (!this.disposed) {
         this.initialized = true;
@@ -145,6 +152,8 @@ describe('PetOverlay StrictMode player lifecycle', () => {
   afterEach(() => {
     playerState.instances.length = 0;
     playerState.failLoads = 0;
+    playerState.deferInit = false;
+    playerState.releaseInit = undefined;
     vi.mocked(setPetOverlayPosition).mockClear();
     vi.mocked(snapPetOverlayToEdge).mockClear();
     resetPetRuntimeEventDedupeForTests();
@@ -166,6 +175,27 @@ describe('PetOverlay StrictMode player lifecycle', () => {
     });
     expect(playerState.instances.every((player) => player.setAnimationCalls === 0)).toBe(true);
 
+    view.unmount();
+  });
+
+  it('keeps AXO visible while the animated renderer is still starting', async () => {
+    playerState.deferInit = true;
+    const view = render(<PetOverlay tauriWindowMode />);
+    const overlay = view.container.querySelector('[data-pet-overlay="true"]') as HTMLElement;
+
+    const staticFrame = view.container.querySelector(
+      '[data-pet-static-frame="true"]',
+    ) as HTMLImageElement | null;
+    expect(staticFrame).toBeTruthy();
+    fireEvent.load(staticFrame as HTMLImageElement);
+    expect(overlay.getAttribute('data-pet-render-ready')).toBe('false');
+    expect(view.container.querySelector('[data-pet-static-frame="true"]')).toBeTruthy();
+
+    playerState.releaseInit?.();
+    await waitFor(() => {
+      expect(overlay.getAttribute('data-pet-render-ready')).toBe('true');
+    });
+    expect(view.container.querySelector('[data-pet-static-frame="true"]')).toBeNull();
     view.unmount();
   });
 

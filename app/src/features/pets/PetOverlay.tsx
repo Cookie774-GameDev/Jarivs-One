@@ -193,7 +193,10 @@ export function PetOverlay({
   );
   const reducedMotion = motionPolicy.reducedMotion;
   const staticPreview = PET_CHARACTERS[resolvePetCharacterId(characterId)].preview;
-  const usingStaticFallback = !motionPolicy.animationsEnabled || pixiFallback;
+  // Keep the bundled character visible until Pixi has produced its first
+  // frame. A detached WebView can defer GPU startup while Windows changes
+  // occlusion/topmost state; an empty canvas must never make the Pet vanish.
+  const usingStaticFallback = !motionPolicy.animationsEnabled || pixiFallback || !renderReady;
   const showDiagnostics = usePetSettingsStore((s) => s.showDiagnostics);
   const setCharacterId = usePetSettingsStore((s) => s.setCharacterId);
   const debugMode =
@@ -982,7 +985,6 @@ export function PetOverlay({
         aria-label={`VibeSpace Pet — ${animLabel}. Drag to move, click to open panel, right-click to close.`}
       >
         <div
-          ref={hostRef}
           className="pet-canvas-container relative block w-full h-full"
           style={{
             width: DISPLAY,
@@ -994,6 +996,11 @@ export function PetOverlay({
             boxShadow: 'none',
           }}
         >
+          <div
+            ref={hostRef}
+            data-pet-pixi-mount="true"
+            className="absolute inset-0 block h-full w-full"
+          />
           {usingStaticFallback ? (
             <img
               src={staticPreview}
@@ -1002,7 +1009,11 @@ export function PetOverlay({
               data-pet-static-frame="true"
               className="absolute inset-0 block h-full w-full object-contain"
               style={{ imageRendering: 'pixelated' }}
-              onLoad={() => setRenderReady(true)}
+              onLoad={() => {
+                if (!motionPolicy.animationsEnabled || pixiFallback) {
+                  setRenderReady(true);
+                }
+              }}
               onError={() => setRenderReady(false)}
             />
           ) : null}
