@@ -7,6 +7,8 @@ import { afterEach, test } from 'node:test';
 
 import {
   NativeAcceptanceHarnessError,
+  PHASE0_SCENARIO_IDS,
+  assemblePhase0AcceptanceProof,
   assertSemanticAttribute,
   assertSemanticText,
   assertZeroOllama,
@@ -19,6 +21,7 @@ import {
   discoverCanonicalApprovalTarget,
   finalizeEvidencePacket,
   parseArgs,
+  prefixedSha256,
   readWindowsNativeState,
   recordAssertion,
   recordFirstFailure,
@@ -30,6 +33,7 @@ import {
   waitForSemantic,
   waitForSemanticLocator,
   writeEvidencePacket,
+  writePhase0AcceptanceProof,
 } from './pr31-native-acceptance-harness.mjs';
 
 const LOCAL_APP_DATA = 'C:\\Users\\tester\\AppData\\Local';
@@ -81,6 +85,311 @@ function officialState({ jarvisPid = 100, webViewPid = 110, cdpPort = 9223 } = {
     listeners: [{ LocalAddress: '127.0.0.1', LocalPort: cdpPort, OwningProcess: webViewPid }],
   };
 }
+
+function phase0Identity(modelId, upstreamProviderId, authBillingRoute) {
+  return {
+    providerId: 'opencode',
+    connectionId: 'opencode-cli',
+    providerQualifiedModelId: modelId,
+    upstreamProviderId,
+    upstreamModelId: modelId.split('/').at(-1),
+    variant: 'high',
+    effort: 'high',
+    performance: 'quality',
+    fastMode: 'off',
+    cwd: 'C:\\repo',
+    authBillingRoute,
+    catalogRevision: `sha256:${'a'.repeat(64)}`,
+    sessionIdentityHash: `sha256:${'b'.repeat(64)}`,
+    identityPathId: 'opencode-live-catalog-to-native-receipt-v1',
+  };
+}
+
+function completePhase0ProofInput() {
+  const nativeRunId = 'native-run-1';
+  const primary = phase0Identity(
+    'opencode-go/deepseek-v4-flash-vision-exp',
+    'opencode-go',
+    'opencode-provider-session',
+  );
+  const secondary = phase0Identity('openai/gpt-5.4', 'openai', 'managed-runtime');
+  const routes = [
+    ['deepseek_v4_flash_vision_exp', primary],
+    ['secondary_authenticated', secondary],
+  ].map(([fixture, identity]) => ({
+    fixture,
+    evidenceId: `route:${fixture}`,
+    nativeRunId,
+    requested: identity,
+    observed: identity,
+    liveCatalogAuthenticated: true,
+    completedThroughOpenCode: true,
+    contextReceiptVerified: true,
+    silentFallbackUsed: false,
+  }));
+  const scenarios = PHASE0_SCENARIO_IDS.map((scenarioId) => ({
+    scenarioId,
+    evidenceId: `scenario:${scenarioId}`,
+    nativeRunId,
+    activation:
+      scenarioId === 'automatic_rlm'
+        ? 'automatic'
+        : scenarioId === 'explicit_rlm_on'
+          ? 'explicit_rlm_on'
+          : 'fixture',
+    routeFixture: 'deepseek_v4_flash_vision_exp',
+    requestFixtureHash: `sha256:${'7'.repeat(64)}`,
+    requestedIdentity: primary,
+    observedIdentity: primary,
+    gateway: {
+      operation: 'investigate',
+      invocationCount: 1,
+      initialMatchCount: scenarioId === 'empty_first_continuation' ? 0 : 1,
+      continuationCount: scenarioId === 'empty_first_continuation' ? 1 : 0,
+      receiptUri: `vibespace:context/receipt/${scenarioId}`,
+      sourceUris: [`vibespace:context/source/${scenarioId}`],
+      evidenceUris: [`vibespace:context/evidence/${scenarioId}`],
+    },
+    outcome: {
+      terminalStatus:
+        scenarioId === 'cancellation'
+          ? 'cancelled'
+          : scenarioId === 'denied_external_directory'
+            ? 'denied'
+            : 'done',
+      groundedFinalAnswer:
+        scenarioId !== 'cancellation' && scenarioId !== 'denied_external_directory',
+      duplicateDispatchCount: 0,
+      duplicateToolEffectCount: 0,
+      localFallbackUsed: false,
+    },
+    ...(scenarioId === 'permitted_exact_file'
+      ? {
+          exactFile: {
+            permitted: true,
+            resultCode: 'ok',
+            sourceIdentityVerified: true,
+            requestedPathHash: `sha256:${'3'.repeat(64)}`,
+            observedPathHash: `sha256:${'3'.repeat(64)}`,
+            policyRootHash: `sha256:${'4'.repeat(64)}`,
+            policyBoundary: 'within_project',
+          },
+        }
+      : {}),
+    ...(scenarioId === 'denied_external_directory'
+      ? {
+          exactFile: {
+            permitted: false,
+            resultCode: 'external_directory',
+            sourceIdentityVerified: true,
+            requestedPathHash: `sha256:${'5'.repeat(64)}`,
+            observedPathHash: `sha256:${'5'.repeat(64)}`,
+            policyRootHash: `sha256:${'4'.repeat(64)}`,
+            policyBoundary: 'external_directory',
+          },
+        }
+      : {}),
+    ...(scenarioId === 'binary_metadata'
+      ? {
+          binary: {
+            graphMetadataPresent: true,
+            physicalTextExcluded: true,
+            remainingCorpusCompleted: true,
+          },
+        }
+      : {}),
+    ...(['cancellation', 'retry', 'reconnect', 'reload'].includes(scenarioId)
+      ? {
+          lifecycle: {
+            attempted: true,
+            recovered: scenarioId !== 'cancellation',
+            routeIdentityStable: true,
+            sessionIdentityStable: true,
+            noLateEvents: true,
+            attemptIds: scenarioId === 'retry' ? ['attempt-1', 'attempt-2'] : ['attempt-1'],
+            logicalDispatchCount: 1,
+            terminalAttemptId: scenarioId === 'retry' ? 'attempt-2' : 'attempt-1',
+            toolEffectCount: scenarioId === 'cancellation' ? 0 : 1,
+            lateEventCount: 0,
+          },
+          ...(scenarioId === 'reload' ? { reloadAfterPriorTerminal: true } : {}),
+        }
+      : {}),
+    ...(scenarioId === 'project_isolation'
+      ? {
+          isolation: {
+            sourceProjectHash: `sha256:${'8'.repeat(64)}`,
+            otherProjectHash: `sha256:${'9'.repeat(64)}`,
+            crossProjectReadBlocked: true,
+            crossProjectEvidenceReuseBlocked: true,
+          },
+        }
+      : {}),
+  }));
+  const canonical = scenarios.find((row) => row.scenarioId === 'canonical_link_resolution');
+  return {
+    evidenceId: 'phase0-proof-1',
+    nativeRunId,
+    recordedAt: '2026-08-30T08:00:00.000Z',
+    commitSha: '0123456789abcdef0123456789abcdef01234567',
+    runtimeGeneration: 'generation-42',
+    executableSha256: `sha256:${'d'.repeat(64)}`,
+    officialDesktop: true,
+    hmrEventsDuringTurns: 0,
+    unexpectedReloadEventsDuringTurns: 0,
+    inFlightReloadCount: 0,
+    routes,
+    scenarios,
+    artifact: {
+      evidenceId: 'artifact-proof-1',
+      nativeRunId,
+      requiredRoot: 'D:\\VibeSpace-RLM-UAT\\opencode-live-latency-20260829',
+      observedRoot: 'D:\\VibeSpace-RLM-UAT\\opencode-live-latency-20260829',
+      exists: true,
+      readbackVerified: true,
+      manifest: [
+        { relativePath: 'phase0-proof.json', byteCount: 128, sha256: `sha256:${'e'.repeat(64)}` },
+      ],
+    },
+    citations: [
+      ['receipt', canonical.gateway.receiptUri],
+      ['source', canonical.gateway.sourceUris[0]],
+      ['evidence', canonical.gateway.evidenceUris[0]],
+    ].map(([kind, uri]) => ({
+      uri,
+      kind,
+      nativeRunId,
+      targetHash: `sha256:${'f'.repeat(64)}`,
+      renderedPublicly: true,
+      resolverInvoked: true,
+      resolved: true,
+      projectScopeMatches: true,
+      sessionScopeMatches: true,
+    })),
+    safety: ['before', ...PHASE0_SCENARIO_IDS.map((id) => `during:${id}`), 'after'].map(
+      (label) => ({
+        label,
+        nativeRunId,
+        capturedAt: '2026-08-30T08:00:00.000Z',
+        ollamaProcessCount: 0,
+        listener11434Count: 0,
+      }),
+    ),
+  };
+}
+
+test('assembles and immutably writes one complete metadata-only Phase 0 proof', async () => {
+  const input = completePhase0ProofInput();
+  const proof = assemblePhase0AcceptanceProof(input);
+  assert.deepEqual(proof, input);
+  assert.equal(Object.isFrozen(proof), true);
+  assert.equal(prefixedSha256('fixture'), `sha256:${sha256('fixture')}`);
+
+  const directory = await tempDirectory();
+  const receipt = await writePhase0AcceptanceProof({ evidenceDirectory: directory, proof });
+  assert.equal(receipt.name, 'phase0-acceptance-proof.json');
+  assert.match(receipt.sha256, /^sha256:[0-9a-f]{64}$/u);
+  const stored = JSON.parse(
+    await readFile(path.join(directory, 'phase0-acceptance-proof.json'), 'utf8'),
+  );
+  assert.deepEqual(stored, { phase0Proof: input });
+  await assert.rejects(
+    writePhase0AcceptanceProof({ evidenceDirectory: directory, proof }),
+    (error) => error.code === 'EEXIST',
+  );
+});
+
+test('Phase 0 assembler rejects incomplete, mixed-run, unsafe, and wrong-root evidence', () => {
+  const missingScenario = completePhase0ProofInput();
+  missingScenario.scenarios.pop();
+  assert.throws(
+    () => assemblePhase0AcceptanceProof(missingScenario),
+    /phase0_scenario_set_incomplete/u,
+  );
+
+  const mixedRun = completePhase0ProofInput();
+  mixedRun.routes[0].nativeRunId = 'other-run';
+  assert.throws(() => assemblePhase0AcceptanceProof(mixedRun), /phase0_run_binding_mismatch/u);
+
+  const routeDrift = completePhase0ProofInput();
+  routeDrift.routes[0].observed = routeDrift.routes[1].observed;
+  assert.throws(() => assemblePhase0AcceptanceProof(routeDrift), /phase0_semantic_proof_failed/u);
+
+  const unsafe = completePhase0ProofInput();
+  unsafe.scenarios[0].prompt = 'PRIVATE PROMPT';
+  assert.throws(() => assemblePhase0AcceptanceProof(unsafe), /phase0_unsafe_metadata/u);
+
+  const wrongRoot = completePhase0ProofInput();
+  wrongRoot.artifact.observedRoot = 'D:\\other';
+  assert.throws(() => assemblePhase0AcceptanceProof(wrongRoot), /phase0_artifact_root_mismatch/u);
+
+  const missingSafety = completePhase0ProofInput();
+  missingSafety.safety.pop();
+  assert.throws(
+    () => assemblePhase0AcceptanceProof(missingSafety),
+    /phase0_safety_set_incomplete/u,
+  );
+
+  const malformedUri = completePhase0ProofInput();
+  malformedUri.scenarios[0].gateway.receiptUri = 'vibespace:context/receipt/../';
+  assert.throws(() => assemblePhase0AcceptanceProof(malformedUri), /phase0_gateway_invalid/u);
+
+  const emptyFirstWithoutReceipt = completePhase0ProofInput();
+  emptyFirstWithoutReceipt.scenarios.find(
+    (row) => row.scenarioId === 'empty_first_continuation',
+  ).gateway.receiptUri = null;
+  assert.throws(
+    () => assemblePhase0AcceptanceProof(emptyFirstWithoutReceipt),
+    /phase0_semantic_proof_failed/u,
+  );
+
+  const malformedTimestamp = completePhase0ProofInput();
+  malformedTimestamp.recordedAt = 'yesterday';
+  assert.throws(() => assemblePhase0AcceptanceProof(malformedTimestamp), /phase0_proof_invalid/u);
+
+  const duplicateEvidence = completePhase0ProofInput();
+  duplicateEvidence.routes[0].evidenceId = duplicateEvidence.evidenceId;
+  assert.throws(
+    () => assemblePhase0AcceptanceProof(duplicateEvidence),
+    /phase0_duplicate_evidence/u,
+  );
+
+  const duplicateAttempts = completePhase0ProofInput();
+  duplicateAttempts.scenarios.find((row) => row.scenarioId === 'retry').lifecycle.attemptIds = [
+    'attempt-1',
+    'attempt-1',
+  ];
+  assert.throws(
+    () => assemblePhase0AcceptanceProof(duplicateAttempts),
+    /phase0_semantic_proof_failed/u,
+  );
+
+  const unresolvedCitation = completePhase0ProofInput();
+  unresolvedCitation.citations[0].resolved = false;
+  assert.throws(
+    () => assemblePhase0AcceptanceProof(unresolvedCitation),
+    /phase0_semantic_proof_failed/u,
+  );
+
+  const oversizedManifest = completePhase0ProofInput();
+  oversizedManifest.artifact.manifest = Array.from({ length: 257 }, (_, index) => ({
+    relativePath: `artifact-${index}.json`,
+    byteCount: 1,
+    sha256: `sha256:${'e'.repeat(64)}`,
+  }));
+  assert.throws(
+    () => assemblePhase0AcceptanceProof(oversizedManifest),
+    /phase0_artifact_manifest_incomplete/u,
+  );
+
+  const secretValue = completePhase0ProofInput();
+  secretValue.evidenceId = 'sk-proj-abcdefghijklmnopqrstuvwx';
+  assert.throws(() => assemblePhase0AcceptanceProof(secretValue), /phase0_unsafe_metadata/u);
+
+  const ollama = completePhase0ProofInput();
+  ollama.safety[3].listener11434Count = 1;
+  assert.throws(() => assemblePhase0AcceptanceProof(ollama), /phase0_forbidden_ollama/u);
+});
 
 class FakePage extends EventEmitter {
   constructor(options = {}) {

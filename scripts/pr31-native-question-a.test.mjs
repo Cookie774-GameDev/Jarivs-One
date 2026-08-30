@@ -11,7 +11,9 @@ import {
   assertLiveEffortAuthority,
   assertPersistedRouteSelection,
   classifyConsoleError,
+  createPhase0QuestionAContribution,
   parseArgs,
+  requestFixtureSha256,
   resolveOfficialNativeTarget,
   safeDispatchReceipt,
 } from './pr31-native-question-a.mjs';
@@ -289,6 +291,250 @@ test('rejects secret-bearing or malformed dispatch identity instead of recording
     approveAllForRun: false,
   });
   assert.doesNotMatch(JSON.stringify(receipt), /PRIVATE|sk-secret/u);
+});
+
+test('adapts exact dispatch plus observed Gateway authority into a metadata-only Phase 0 contribution', () => {
+  const dispatch = safeDispatchReceipt({
+    chatId: 'chat-1',
+    text: 'PRIVATE PROMPT',
+    modelSelectionOverride: {
+      mode: 'single',
+      providerId: 'opencode',
+      connectionId: 'opencode-cli',
+      modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+    },
+    reasoningPreference: { effortOverride: 'high' },
+    runtimeSettings: {
+      effort: 'high',
+      performance: 'quality',
+      fastMode: 'off',
+      rlmEnabled: true,
+    },
+  });
+  const executionIdentity = {
+    transportConnectionId: 'opencode-cli',
+    transportAdapterId: 'opencode',
+    upstreamProviderId: 'opencode-go',
+    upstreamModelId: 'deepseek-v4-flash-vision-exp',
+    providerQualifiedModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+    authBillingRoute: 'opencode-provider-session',
+    effort: 'high',
+    fastVariant: 'standard',
+    catalogRevision: `sha256:${'a'.repeat(64)}`,
+    observedProviderIdentity: 'opencode-go/deepseek-v4-flash-vision-exp',
+  };
+  const requestFixtureHash = requestFixtureSha256('PRIVATE PROMPT');
+  const contribution = createPhase0QuestionAContribution({
+    nativeRunId: 'native-run-1',
+    evidenceId: 'question-a-1',
+    fixture: 'deepseek_v4_flash_vision_exp',
+    scenarioId: 'explicit_rlm_on',
+    activation: 'explicit_rlm_on',
+    requestFixtureHash,
+    dispatch,
+    requestedExecutionIdentity: executionIdentity,
+    observedAuthority: {
+      executionIdentity,
+      performance: 'quality',
+      scopeRevision: 'chat-1:7',
+    },
+    routeObservation: {
+      liveCatalogAuthenticated: true,
+      completedThroughOpenCode: true,
+      contextReceiptVerified: true,
+      silentFallbackUsed: false,
+    },
+    actualTerminalStatus: 'done',
+    cwd: 'C:\\repo',
+    gateway: {
+      operation: 'investigate',
+      invocationCount: 1,
+      initialMatchCount: 1,
+      continuationCount: 0,
+      receiptUri: 'vibespace:context/receipt/explicit-rlm',
+      sourceUris: ['vibespace:context/source/explicit-rlm'],
+      evidenceUris: ['vibespace:context/evidence/explicit-rlm'],
+    },
+    outcome: {
+      terminalStatus: 'done',
+      groundedFinalAnswer: true,
+      duplicateDispatchCount: 0,
+      duplicateToolEffectCount: 0,
+      localFallbackUsed: false,
+    },
+  });
+
+  assert.equal(contribution.route.observed.upstreamProviderId, 'opencode-go');
+  assert.equal(contribution.route.observed.fastMode, 'off');
+  assert.equal(
+    contribution.route.observed.sessionIdentityHash,
+    contribution.route.requested.sessionIdentityHash,
+  );
+  assert.equal(contribution.scenario.requestFixtureHash, requestFixtureHash);
+  assert.equal(contribution.scenario.gateway.operation, 'investigate');
+  assert.doesNotMatch(JSON.stringify(contribution), /PRIVATE PROMPT/u);
+
+  const drifted = structuredClone(executionIdentity);
+  drifted.upstreamModelId = 'substituted';
+  drifted.providerQualifiedModelId = 'opencode-go/substituted';
+  drifted.observedProviderIdentity = 'opencode-go/substituted';
+  assert.throws(
+    () =>
+      createPhase0QuestionAContribution({
+        nativeRunId: 'native-run-1',
+        evidenceId: 'question-a-1',
+        fixture: 'deepseek_v4_flash_vision_exp',
+        scenarioId: 'explicit_rlm_on',
+        activation: 'explicit_rlm_on',
+        requestFixtureHash,
+        dispatch,
+        requestedExecutionIdentity: executionIdentity,
+        observedAuthority: {
+          executionIdentity: drifted,
+          performance: 'quality',
+          scopeRevision: 'chat-1:7',
+        },
+        routeObservation: {
+          liveCatalogAuthenticated: true,
+          completedThroughOpenCode: true,
+          contextReceiptVerified: true,
+          silentFallbackUsed: false,
+        },
+        actualTerminalStatus: 'done',
+        cwd: 'C:\\repo',
+        gateway: contribution.scenario.gateway,
+        outcome: contribution.scenario.outcome,
+      }),
+    /phase0_observed_route_mismatch/u,
+  );
+  assert.throws(() => createPhase0QuestionAContribution({}), /phase0_observed_authority_required/u);
+
+  const missingProviderReceipt = structuredClone(executionIdentity);
+  delete missingProviderReceipt.observedProviderIdentity;
+  assert.throws(
+    () =>
+      createPhase0QuestionAContribution({
+        nativeRunId: 'native-run-1',
+        evidenceId: 'question-a-1',
+        fixture: 'deepseek_v4_flash_vision_exp',
+        scenarioId: 'explicit_rlm_on',
+        activation: 'explicit_rlm_on',
+        requestFixtureHash,
+        dispatch,
+        requestedExecutionIdentity: executionIdentity,
+        observedAuthority: {
+          executionIdentity: missingProviderReceipt,
+          performance: 'quality',
+          scopeRevision: 'chat-1:7',
+        },
+        routeObservation: {
+          liveCatalogAuthenticated: true,
+          completedThroughOpenCode: true,
+          contextReceiptVerified: true,
+          silentFallbackUsed: false,
+        },
+        actualTerminalStatus: 'done',
+        cwd: 'C:\\repo',
+        gateway: contribution.scenario.gateway,
+        outcome: contribution.scenario.outcome,
+      }),
+    /phase0_observed_route_invalid/u,
+  );
+
+  assert.throws(
+    () =>
+      createPhase0QuestionAContribution({
+        nativeRunId: 'native-run-1',
+        evidenceId: 'question-a-1',
+        fixture: 'deepseek_v4_flash_vision_exp',
+        scenarioId: 'explicit_rlm_on',
+        activation: 'explicit_rlm_on',
+        requestFixtureHash,
+        dispatch,
+        requestedExecutionIdentity: executionIdentity,
+        observedAuthority: {
+          executionIdentity,
+          performance: 'quality',
+          scopeRevision: 'chat-1:7',
+        },
+        routeObservation: {
+          liveCatalogAuthenticated: true,
+          completedThroughOpenCode: true,
+          contextReceiptVerified: false,
+          silentFallbackUsed: false,
+        },
+        actualTerminalStatus: 'error',
+        cwd: 'C:\\repo',
+        gateway: contribution.scenario.gateway,
+        outcome: contribution.scenario.outcome,
+      }),
+    /phase0_route_observation_failed/u,
+  );
+
+  assert.throws(
+    () =>
+      createPhase0QuestionAContribution({
+        nativeRunId: 'native-run-1',
+        evidenceId: 'question-a-1',
+        fixture: 'deepseek_v4_flash_vision_exp',
+        scenarioId: 'explicit_rlm_on',
+        activation: 'explicit_rlm_on',
+        requestFixtureHash,
+        dispatch,
+        requestedExecutionIdentity: executionIdentity,
+        observedAuthority: {
+          executionIdentity,
+          performance: 'quality',
+          scopeRevision: 'chat-1:7',
+        },
+        routeObservation: {
+          liveCatalogAuthenticated: true,
+          completedThroughOpenCode: true,
+          contextReceiptVerified: true,
+          silentFallbackUsed: false,
+        },
+        actualTerminalStatus: 'error',
+        cwd: 'C:\\repo',
+        gateway: contribution.scenario.gateway,
+        outcome: contribution.scenario.outcome,
+      }),
+    /phase0_terminal_status_mismatch/u,
+  );
+
+  for (const receiptUri of [
+    'vibespace:context/receipt/../',
+    'vibespace:context/receipt/sk-proj-abcdefghijklmnopqrstuvwx',
+  ]) {
+    assert.throws(
+      () =>
+        createPhase0QuestionAContribution({
+          nativeRunId: 'native-run-1',
+          evidenceId: 'question-a-1',
+          fixture: 'deepseek_v4_flash_vision_exp',
+          scenarioId: 'explicit_rlm_on',
+          activation: 'explicit_rlm_on',
+          requestFixtureHash,
+          dispatch,
+          requestedExecutionIdentity: executionIdentity,
+          observedAuthority: {
+            executionIdentity,
+            performance: 'quality',
+            scopeRevision: 'chat-1:7',
+          },
+          routeObservation: {
+            liveCatalogAuthenticated: true,
+            completedThroughOpenCode: true,
+            contextReceiptVerified: true,
+            silentFallbackUsed: false,
+          },
+          actualTerminalStatus: 'done',
+          cwd: 'C:\\repo',
+          gateway: { ...contribution.scenario.gateway, receiptUri },
+          outcome: contribution.scenario.outcome,
+        }),
+      /phase0_gateway_observation_invalid|phase0_unsafe_observation/u,
+    );
+  }
 });
 
 test('requires the exact effort to exist on the registered live model', () => {

@@ -13,6 +13,22 @@ export const DEFAULT_CDP_PORT = 9223;
 export const DEFAULT_CDP_ENDPOINT = `http://127.0.0.1:${DEFAULT_CDP_PORT}`;
 export const OFFICIAL_WINDOW_TITLE = 'VibeSpace';
 export const OFFICIAL_PROFILE_PARTS = Object.freeze(['ai.jarvis.desktop', 'EBWebView']);
+export const PHASE0_SCENARIO_IDS = Object.freeze([
+  'automatic_rlm',
+  'explicit_rlm_on',
+  'empty_first_continuation',
+  'permitted_exact_file',
+  'denied_external_directory',
+  'binary_metadata',
+  'cancellation',
+  'retry',
+  'reconnect',
+  'reload',
+  'project_isolation',
+  'exact_artifact_output',
+  'canonical_link_resolution',
+]);
+export const PHASE0_ARTIFACT_ROOT = 'D:\\VibeSpace-RLM-UAT\\opencode-live-latency-20260829';
 
 const SAFE_CODE = /^[a-z][a-z0-9_.:-]{1,127}$/u;
 const SAFE_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\.(?:json|png)$/u;
@@ -27,6 +43,12 @@ const SENSITIVE_VALUE_PATTERNS = Object.freeze([
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/u,
 ]);
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost']);
+const PHASE0_ROUTE_FIXTURES = Object.freeze([
+  'deepseek_v4_flash_vision_exp',
+  'secondary_authenticated',
+]);
+const FORBIDDEN_PHASE0_METADATA_KEY =
+  /^(?:prompt|output|content|text|response|raw|hiddenReasoning|reasoning|credential|credentials|token|secret|password|authorization|apiKey|cancellationKey)$/iu;
 
 export class NativeAcceptanceHarnessError extends Error {
   constructor(code, stage = 'harness', details = undefined) {
@@ -44,6 +66,731 @@ function fail(code, stage, details) {
 
 export function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
+}
+
+export function prefixedSha256(value) {
+  return `sha256:${sha256(value)}`;
+}
+
+function assertPhase0SafeMetadata(value, key = '', depth = 0) {
+  if (depth > 12 || FORBIDDEN_PHASE0_METADATA_KEY.test(key) || SENSITIVE_KEY.test(key)) {
+    fail('phase0_unsafe_metadata', 'phase0_assembly');
+  }
+  if (typeof value === 'string') {
+    if (isSecretBearingValue(value)) fail('phase0_unsafe_metadata', 'phase0_assembly');
+    return;
+  }
+  if (value === null || ['number', 'boolean'].includes(typeof value)) return;
+  if (Array.isArray(value)) {
+    if (value.length > 1_000) fail('phase0_unsafe_metadata', 'phase0_assembly');
+    for (const item of value) assertPhase0SafeMetadata(item, key, depth + 1);
+    return;
+  }
+  if (typeof value !== 'object') fail('phase0_unsafe_metadata', 'phase0_assembly');
+  const entries = Object.entries(value);
+  if (entries.length > 200) fail('phase0_unsafe_metadata', 'phase0_assembly');
+  for (const [childKey, childValue] of entries) {
+    assertPhase0SafeMetadata(childValue, childKey, depth + 1);
+  }
+}
+
+function exactUniqueSet(rows, key, expected, code) {
+  if (!Array.isArray(rows) || rows.length !== expected.length) fail(code, 'phase0_assembly');
+  const values = rows.map((row) => String(row?.[key] ?? ''));
+  if (new Set(values).size !== values.length || expected.some((value) => !values.includes(value))) {
+    fail(code, 'phase0_assembly');
+  }
+}
+
+function assertPhase0RunBinding(rows, nativeRunId) {
+  if (rows.some((row) => row?.nativeRunId !== nativeRunId)) {
+    fail('phase0_run_binding_mismatch', 'phase0_assembly');
+  }
+}
+
+function immutableClone(value) {
+  const clone = structuredClone(value);
+  const freeze = (entry) => {
+    if (!entry || typeof entry !== 'object' || Object.isFrozen(entry)) return entry;
+    for (const child of Object.values(entry)) freeze(child);
+    return Object.freeze(entry);
+  };
+  return freeze(clone);
+}
+
+function phase0Record(value, code) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) fail(code, 'phase0_assembly');
+  return value;
+}
+
+function phase0ExactKeys(value, required, optional, code) {
+  const row = phase0Record(value, code);
+  const allowed = new Set([...required, ...optional]);
+  const keys = Object.keys(row);
+  if (keys.some((key) => !allowed.has(key)) || required.some((key) => !Object.hasOwn(row, key))) {
+    fail(code, 'phase0_assembly');
+  }
+  return row;
+}
+
+function phase0String(value, code, maxLength = 4_096) {
+  if (
+    typeof value !== 'string' ||
+    !value ||
+    value.length > maxLength ||
+    /[\u0000-\u001f\u007f-\u009f]/u.test(value) ||
+    isSecretBearingValue(value)
+  ) {
+    fail(code, 'phase0_assembly');
+  }
+  return value;
+}
+
+function phase0CanonicalIso(value, code) {
+  phase0String(value, code, 64);
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString() !== value) {
+    fail(code, 'phase0_assembly');
+  }
+}
+
+function phase0ContextUri(value, kind, code) {
+  phase0String(value, code, 1_024);
+  const prefix = `vibespace:context/${kind}/`;
+  const suffix = value.startsWith(prefix) ? value.slice(prefix.length) : '';
+  const segments = suffix.split('/');
+  if (
+    !suffix ||
+    segments.some(
+      (segment) =>
+        !segment || segment === '.' || segment === '..' || !/^[A-Za-z0-9._~:@+-]+$/u.test(segment),
+    )
+  ) {
+    fail(code, 'phase0_assembly');
+  }
+}
+
+function phase0Boolean(value, code) {
+  if (typeof value !== 'boolean') fail(code, 'phase0_assembly');
+}
+
+function phase0Count(value, code) {
+  if (!Number.isSafeInteger(value) || value < 0) fail(code, 'phase0_assembly');
+}
+
+function phase0Sha(value, code) {
+  if (!/^sha256:[0-9a-f]{64}$/iu.test(String(value ?? ''))) fail(code, 'phase0_assembly');
+}
+
+function validatePhase0Identity(value) {
+  const fields = [
+    'providerId',
+    'connectionId',
+    'providerQualifiedModelId',
+    'upstreamProviderId',
+    'upstreamModelId',
+    'variant',
+    'effort',
+    'performance',
+    'fastMode',
+    'cwd',
+    'authBillingRoute',
+    'catalogRevision',
+    'sessionIdentityHash',
+    'identityPathId',
+  ];
+  const identity = phase0ExactKeys(value, fields, [], 'phase0_identity_invalid');
+  for (const field of fields) phase0String(identity[field], 'phase0_identity_invalid', 512);
+  phase0Sha(identity.catalogRevision, 'phase0_identity_invalid');
+  phase0Sha(identity.sessionIdentityHash, 'phase0_identity_invalid');
+}
+
+function validatePhase0Scenario(row) {
+  const scenario = phase0ExactKeys(
+    row,
+    [
+      'scenarioId',
+      'evidenceId',
+      'nativeRunId',
+      'activation',
+      'routeFixture',
+      'requestFixtureHash',
+      'requestedIdentity',
+      'observedIdentity',
+      'gateway',
+      'outcome',
+    ],
+    ['exactFile', 'binary', 'lifecycle', 'isolation', 'reloadAfterPriorTerminal'],
+    'phase0_scenario_invalid',
+  );
+  for (const field of ['scenarioId', 'evidenceId', 'nativeRunId', 'activation', 'routeFixture']) {
+    phase0String(scenario[field], 'phase0_scenario_invalid', 256);
+  }
+  if (!['automatic', 'explicit_rlm_on', 'fixture'].includes(scenario.activation)) {
+    fail('phase0_scenario_invalid', 'phase0_assembly');
+  }
+  phase0Sha(scenario.requestFixtureHash, 'phase0_scenario_invalid');
+  validatePhase0Identity(scenario.requestedIdentity);
+  validatePhase0Identity(scenario.observedIdentity);
+  const gateway = phase0ExactKeys(
+    scenario.gateway,
+    [
+      'operation',
+      'invocationCount',
+      'initialMatchCount',
+      'continuationCount',
+      'receiptUri',
+      'sourceUris',
+      'evidenceUris',
+    ],
+    [],
+    'phase0_gateway_invalid',
+  );
+  if (gateway.operation !== 'investigate') fail('phase0_gateway_invalid', 'phase0_assembly');
+  phase0Count(gateway.invocationCount, 'phase0_gateway_invalid');
+  if (gateway.initialMatchCount !== null) {
+    phase0Count(gateway.initialMatchCount, 'phase0_gateway_invalid');
+  }
+  phase0Count(gateway.continuationCount, 'phase0_gateway_invalid');
+  if (gateway.receiptUri !== null) {
+    phase0ContextUri(gateway.receiptUri, 'receipt', 'phase0_gateway_invalid');
+  }
+  for (const [kind, values] of [
+    ['source', gateway.sourceUris],
+    ['evidence', gateway.evidenceUris],
+  ]) {
+    if (!Array.isArray(values) || values.length > 16)
+      fail('phase0_gateway_invalid', 'phase0_assembly');
+    for (const value of values) phase0ContextUri(value, kind, 'phase0_gateway_invalid');
+  }
+  const outcome = phase0ExactKeys(
+    scenario.outcome,
+    [
+      'terminalStatus',
+      'groundedFinalAnswer',
+      'duplicateDispatchCount',
+      'duplicateToolEffectCount',
+      'localFallbackUsed',
+    ],
+    [],
+    'phase0_outcome_invalid',
+  );
+  phase0String(outcome.terminalStatus, 'phase0_outcome_invalid', 128);
+  if (!['done', 'cancelled', 'denied', 'failed'].includes(outcome.terminalStatus)) {
+    fail('phase0_outcome_invalid', 'phase0_assembly');
+  }
+  phase0Boolean(outcome.groundedFinalAnswer, 'phase0_outcome_invalid');
+  phase0Count(outcome.duplicateDispatchCount, 'phase0_outcome_invalid');
+  phase0Count(outcome.duplicateToolEffectCount, 'phase0_outcome_invalid');
+  phase0Boolean(outcome.localFallbackUsed, 'phase0_outcome_invalid');
+
+  if (scenario.exactFile !== undefined) {
+    const exactFile = phase0ExactKeys(
+      scenario.exactFile,
+      [
+        'permitted',
+        'resultCode',
+        'sourceIdentityVerified',
+        'requestedPathHash',
+        'observedPathHash',
+        'policyRootHash',
+        'policyBoundary',
+      ],
+      [],
+      'phase0_exact_file_invalid',
+    );
+    phase0Boolean(exactFile.permitted, 'phase0_exact_file_invalid');
+    phase0Boolean(exactFile.sourceIdentityVerified, 'phase0_exact_file_invalid');
+    phase0String(exactFile.resultCode, 'phase0_exact_file_invalid', 128);
+    phase0String(exactFile.policyBoundary, 'phase0_exact_file_invalid', 128);
+    if (
+      !['ok', 'external_directory'].includes(exactFile.resultCode) ||
+      !['within_project', 'external_directory'].includes(exactFile.policyBoundary)
+    ) {
+      fail('phase0_exact_file_invalid', 'phase0_assembly');
+    }
+    for (const field of ['requestedPathHash', 'observedPathHash', 'policyRootHash']) {
+      phase0Sha(exactFile[field], 'phase0_exact_file_invalid');
+    }
+  }
+  if (scenario.binary !== undefined) {
+    const binary = phase0ExactKeys(
+      scenario.binary,
+      ['graphMetadataPresent', 'physicalTextExcluded', 'remainingCorpusCompleted'],
+      [],
+      'phase0_binary_invalid',
+    );
+    for (const field of Object.keys(binary)) phase0Boolean(binary[field], 'phase0_binary_invalid');
+  }
+  if (scenario.lifecycle !== undefined) {
+    const lifecycle = phase0ExactKeys(
+      scenario.lifecycle,
+      [
+        'attempted',
+        'recovered',
+        'routeIdentityStable',
+        'sessionIdentityStable',
+        'noLateEvents',
+        'attemptIds',
+        'logicalDispatchCount',
+        'terminalAttemptId',
+        'toolEffectCount',
+        'lateEventCount',
+      ],
+      [],
+      'phase0_lifecycle_invalid',
+    );
+    for (const field of [
+      'attempted',
+      'recovered',
+      'routeIdentityStable',
+      'sessionIdentityStable',
+      'noLateEvents',
+    ]) {
+      phase0Boolean(lifecycle[field], 'phase0_lifecycle_invalid');
+    }
+    if (!Array.isArray(lifecycle.attemptIds) || lifecycle.attemptIds.length > 16) {
+      fail('phase0_lifecycle_invalid', 'phase0_assembly');
+    }
+    for (const attemptId of lifecycle.attemptIds) {
+      phase0String(attemptId, 'phase0_lifecycle_invalid', 256);
+    }
+    if (new Set(lifecycle.attemptIds).size !== lifecycle.attemptIds.length) {
+      fail('phase0_semantic_proof_failed', 'phase0_assembly');
+    }
+    phase0String(lifecycle.terminalAttemptId, 'phase0_lifecycle_invalid', 256);
+    for (const field of ['logicalDispatchCount', 'toolEffectCount', 'lateEventCount']) {
+      phase0Count(lifecycle[field], 'phase0_lifecycle_invalid');
+    }
+  }
+  if (scenario.isolation !== undefined) {
+    const isolation = phase0ExactKeys(
+      scenario.isolation,
+      [
+        'sourceProjectHash',
+        'otherProjectHash',
+        'crossProjectReadBlocked',
+        'crossProjectEvidenceReuseBlocked',
+      ],
+      [],
+      'phase0_isolation_invalid',
+    );
+    phase0Sha(isolation.sourceProjectHash, 'phase0_isolation_invalid');
+    phase0Sha(isolation.otherProjectHash, 'phase0_isolation_invalid');
+    phase0Boolean(isolation.crossProjectReadBlocked, 'phase0_isolation_invalid');
+    phase0Boolean(isolation.crossProjectEvidenceReuseBlocked, 'phase0_isolation_invalid');
+  }
+  if (scenario.reloadAfterPriorTerminal !== undefined) {
+    phase0Boolean(scenario.reloadAfterPriorTerminal, 'phase0_reload_invalid');
+  }
+}
+
+function validatePhase0Shape(input) {
+  const proof = phase0ExactKeys(
+    input,
+    [
+      'evidenceId',
+      'nativeRunId',
+      'recordedAt',
+      'commitSha',
+      'runtimeGeneration',
+      'executableSha256',
+      'officialDesktop',
+      'hmrEventsDuringTurns',
+      'unexpectedReloadEventsDuringTurns',
+      'inFlightReloadCount',
+      'routes',
+      'scenarios',
+      'artifact',
+      'citations',
+      'safety',
+    ],
+    [],
+    'phase0_proof_invalid',
+  );
+  for (const field of [
+    'evidenceId',
+    'nativeRunId',
+    'recordedAt',
+    'commitSha',
+    'runtimeGeneration',
+  ]) {
+    phase0String(proof[field], 'phase0_proof_invalid', 256);
+  }
+  phase0CanonicalIso(proof.recordedAt, 'phase0_proof_invalid');
+  for (const routeValue of proof.routes ?? []) {
+    const route = phase0ExactKeys(
+      routeValue,
+      [
+        'fixture',
+        'evidenceId',
+        'nativeRunId',
+        'requested',
+        'observed',
+        'liveCatalogAuthenticated',
+        'completedThroughOpenCode',
+        'contextReceiptVerified',
+        'silentFallbackUsed',
+      ],
+      [],
+      'phase0_route_invalid',
+    );
+    for (const field of ['fixture', 'evidenceId', 'nativeRunId']) {
+      phase0String(route[field], 'phase0_route_invalid', 256);
+    }
+    validatePhase0Identity(route.requested);
+    validatePhase0Identity(route.observed);
+    for (const field of [
+      'liveCatalogAuthenticated',
+      'completedThroughOpenCode',
+      'contextReceiptVerified',
+      'silentFallbackUsed',
+    ]) {
+      phase0Boolean(route[field], 'phase0_route_invalid');
+    }
+  }
+  for (const scenario of proof.scenarios ?? []) validatePhase0Scenario(scenario);
+}
+
+function phase0SameIdentity(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function assertPhase0Semantics(input) {
+  const routes = new Map(input.routes.map((route) => [route.fixture, route]));
+  const primary = routes.get('deepseek_v4_flash_vision_exp');
+  const secondary = routes.get('secondary_authenticated');
+  const routeOk = input.routes.every(
+    (route) =>
+      phase0SameIdentity(route.requested, route.observed) &&
+      route.liveCatalogAuthenticated === true &&
+      route.completedThroughOpenCode === true &&
+      route.contextReceiptVerified === true &&
+      route.silentFallbackUsed === false,
+  );
+  if (
+    !routeOk ||
+    primary.requested.providerId !== 'opencode' ||
+    primary.requested.connectionId !== 'opencode-cli' ||
+    primary.requested.providerQualifiedModelId !== 'opencode-go/deepseek-v4-flash-vision-exp' ||
+    primary.requested.upstreamProviderId !== 'opencode-go' ||
+    primary.requested.upstreamModelId !== 'deepseek-v4-flash-vision-exp' ||
+    primary.requested.providerQualifiedModelId === secondary.requested.providerQualifiedModelId ||
+    primary.requested.upstreamProviderId === secondary.requested.upstreamProviderId ||
+    primary.requested.authBillingRoute === secondary.requested.authBillingRoute ||
+    primary.requested.identityPathId !== secondary.requested.identityPathId
+  ) {
+    fail('phase0_semantic_proof_failed', 'phase0_assembly');
+  }
+
+  const scenarios = new Map(input.scenarios.map((scenario) => [scenario.scenarioId, scenario]));
+  for (const scenario of input.scenarios) {
+    const route = routes.get(scenario.routeFixture);
+    const expectedTerminal =
+      scenario.scenarioId === 'cancellation'
+        ? 'cancelled'
+        : scenario.scenarioId === 'denied_external_directory'
+          ? 'denied'
+          : 'done';
+    const expectedGrounding =
+      scenario.scenarioId !== 'cancellation' && scenario.scenarioId !== 'denied_external_directory';
+    if (
+      !route ||
+      !phase0SameIdentity(scenario.requestedIdentity, route.requested) ||
+      !phase0SameIdentity(scenario.observedIdentity, route.observed) ||
+      scenario.gateway.operation !== 'investigate' ||
+      scenario.gateway.invocationCount !== 1 ||
+      scenario.outcome.terminalStatus !== expectedTerminal ||
+      scenario.outcome.groundedFinalAnswer !== expectedGrounding ||
+      scenario.outcome.duplicateDispatchCount !== 0 ||
+      scenario.outcome.duplicateToolEffectCount !== 0 ||
+      scenario.outcome.localFallbackUsed !== false
+    ) {
+      fail('phase0_semantic_proof_failed', 'phase0_assembly');
+    }
+  }
+
+  const automatic = scenarios.get('automatic_rlm');
+  const explicit = scenarios.get('explicit_rlm_on');
+  if (
+    automatic.activation !== 'automatic' ||
+    explicit.activation !== 'explicit_rlm_on' ||
+    automatic.routeFixture !== explicit.routeFixture ||
+    automatic.requestFixtureHash !== explicit.requestFixtureHash ||
+    automatic.gateway.receiptUri === explicit.gateway.receiptUri
+  ) {
+    fail('phase0_semantic_proof_failed', 'phase0_assembly');
+  }
+  const emptyFirst = scenarios.get('empty_first_continuation');
+  if (
+    emptyFirst.gateway.initialMatchCount !== 0 ||
+    emptyFirst.gateway.continuationCount < 1 ||
+    typeof emptyFirst.gateway.receiptUri !== 'string'
+  ) {
+    fail('phase0_semantic_proof_failed', 'phase0_assembly');
+  }
+
+  const permitted = scenarios.get('permitted_exact_file').exactFile;
+  const denied = scenarios.get('denied_external_directory').exactFile;
+  if (
+    !permitted ||
+    !denied ||
+    permitted.permitted !== true ||
+    permitted.resultCode !== 'ok' ||
+    permitted.sourceIdentityVerified !== true ||
+    permitted.requestedPathHash !== permitted.observedPathHash ||
+    permitted.policyBoundary !== 'within_project' ||
+    denied.permitted !== false ||
+    denied.resultCode !== 'external_directory' ||
+    denied.sourceIdentityVerified !== true ||
+    denied.requestedPathHash !== denied.observedPathHash ||
+    denied.policyBoundary !== 'external_directory' ||
+    permitted.policyRootHash !== denied.policyRootHash ||
+    permitted.requestedPathHash === denied.requestedPathHash
+  ) {
+    fail('phase0_semantic_proof_failed', 'phase0_assembly');
+  }
+  const binary = scenarios.get('binary_metadata').binary;
+  if (
+    !binary?.graphMetadataPresent ||
+    !binary.physicalTextExcluded ||
+    !binary.remainingCorpusCompleted
+  ) {
+    fail('phase0_semantic_proof_failed', 'phase0_assembly');
+  }
+  for (const scenarioId of ['cancellation', 'retry', 'reconnect', 'reload']) {
+    const scenario = scenarios.get(scenarioId);
+    const lifecycle = scenario.lifecycle;
+    const expectedToolEffects = scenarioId === 'cancellation' ? 0 : 1;
+    if (
+      !lifecycle?.attempted ||
+      (scenarioId !== 'cancellation' && !lifecycle.recovered) ||
+      !lifecycle.routeIdentityStable ||
+      !lifecycle.sessionIdentityStable ||
+      !lifecycle.noLateEvents ||
+      lifecycle.logicalDispatchCount !== 1 ||
+      lifecycle.toolEffectCount !== expectedToolEffects ||
+      lifecycle.lateEventCount !== 0 ||
+      !lifecycle.attemptIds.includes(lifecycle.terminalAttemptId) ||
+      (scenarioId === 'retry' && lifecycle.attemptIds.length < 2)
+    ) {
+      fail('phase0_semantic_proof_failed', 'phase0_assembly');
+    }
+  }
+  if (scenarios.get('reload').reloadAfterPriorTerminal !== true) {
+    fail('phase0_semantic_proof_failed', 'phase0_assembly');
+  }
+  const isolation = scenarios.get('project_isolation').isolation;
+  if (
+    !isolation ||
+    isolation.sourceProjectHash === isolation.otherProjectHash ||
+    !isolation.crossProjectReadBlocked ||
+    !isolation.crossProjectEvidenceReuseBlocked
+  ) {
+    fail('phase0_semantic_proof_failed', 'phase0_assembly');
+  }
+}
+
+export function assemblePhase0AcceptanceProof(input) {
+  assertPhase0SafeMetadata(input);
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    fail('phase0_proof_required', 'phase0_assembly');
+  }
+  validatePhase0Shape(input);
+  const nativeRunId = String(input.nativeRunId ?? '');
+  if (!nativeRunId || nativeRunId.length > 256)
+    fail('phase0_native_run_invalid', 'phase0_assembly');
+  if (!/^[0-9a-f]{40}$/iu.test(String(input.commitSha ?? ''))) {
+    fail('phase0_commit_invalid', 'phase0_assembly');
+  }
+  if (!/^sha256:[0-9a-f]{64}$/iu.test(String(input.executableSha256 ?? ''))) {
+    fail('phase0_executable_hash_invalid', 'phase0_assembly');
+  }
+  if (
+    input.officialDesktop !== true ||
+    input.hmrEventsDuringTurns !== 0 ||
+    input.unexpectedReloadEventsDuringTurns !== 0 ||
+    input.inFlightReloadCount !== 0
+  ) {
+    fail('phase0_immutable_native_run_required', 'phase0_assembly');
+  }
+
+  exactUniqueSet(input.routes, 'fixture', PHASE0_ROUTE_FIXTURES, 'phase0_route_set_incomplete');
+  exactUniqueSet(
+    input.scenarios,
+    'scenarioId',
+    PHASE0_SCENARIO_IDS,
+    'phase0_scenario_set_incomplete',
+  );
+  assertPhase0RunBinding(input.routes, nativeRunId);
+  assertPhase0RunBinding(input.scenarios, nativeRunId);
+  const evidenceIds = [
+    input.evidenceId,
+    ...input.routes.map((route) => route.evidenceId),
+    ...input.scenarios.map((scenario) => scenario.evidenceId),
+    input.artifact.evidenceId,
+  ];
+  if (new Set(evidenceIds).size !== evidenceIds.length) {
+    fail('phase0_duplicate_evidence', 'phase0_assembly');
+  }
+  assertPhase0Semantics(input);
+
+  const artifact = input.artifact;
+  phase0ExactKeys(
+    artifact,
+    [
+      'evidenceId',
+      'nativeRunId',
+      'requiredRoot',
+      'observedRoot',
+      'exists',
+      'readbackVerified',
+      'manifest',
+    ],
+    [],
+    'phase0_artifact_required',
+  );
+  phase0String(artifact.evidenceId, 'phase0_artifact_required', 256);
+  phase0String(artifact.nativeRunId, 'phase0_artifact_required', 256);
+  phase0String(artifact.requiredRoot, 'phase0_artifact_required', 512);
+  phase0String(artifact.observedRoot, 'phase0_artifact_required', 512);
+  phase0Boolean(artifact.exists, 'phase0_artifact_required');
+  phase0Boolean(artifact.readbackVerified, 'phase0_artifact_required');
+  assertPhase0RunBinding([artifact], nativeRunId);
+  if (
+    normalizeWindowsPath(artifact.requiredRoot) !== normalizeWindowsPath(PHASE0_ARTIFACT_ROOT) ||
+    normalizeWindowsPath(artifact.observedRoot) !== normalizeWindowsPath(PHASE0_ARTIFACT_ROOT)
+  ) {
+    fail('phase0_artifact_root_mismatch', 'phase0_assembly');
+  }
+  if (
+    !Array.isArray(artifact.manifest) ||
+    artifact.manifest.length < 1 ||
+    artifact.manifest.length > 256
+  ) {
+    fail('phase0_artifact_manifest_incomplete', 'phase0_assembly');
+  }
+  if (artifact.exists !== true || artifact.readbackVerified !== true) {
+    fail('phase0_semantic_proof_failed', 'phase0_assembly');
+  }
+  const artifactPaths = new Set();
+  for (const entry of artifact.manifest) {
+    phase0ExactKeys(
+      entry,
+      ['relativePath', 'byteCount', 'sha256'],
+      [],
+      'phase0_artifact_manifest_incomplete',
+    );
+    phase0String(entry.relativePath, 'phase0_artifact_manifest_incomplete', 512);
+    phase0Count(entry.byteCount, 'phase0_artifact_manifest_incomplete');
+    phase0Sha(entry.sha256, 'phase0_artifact_manifest_incomplete');
+    const relativePath = entry.relativePath.replace(/\\/gu, '/').toLowerCase();
+    if (
+      artifactPaths.has(relativePath) ||
+      /(^[a-z]:|^[/\\]|(^|[/\\])\.\.([/\\]|$))/iu.test(entry.relativePath)
+    ) {
+      fail('phase0_artifact_manifest_incomplete', 'phase0_assembly');
+    }
+    artifactPaths.add(relativePath);
+  }
+
+  exactUniqueSet(
+    input.citations,
+    'kind',
+    ['receipt', 'source', 'evidence'],
+    'phase0_citation_set_incomplete',
+  );
+  for (const citation of input.citations) {
+    phase0ExactKeys(
+      citation,
+      [
+        'uri',
+        'kind',
+        'nativeRunId',
+        'targetHash',
+        'renderedPublicly',
+        'resolverInvoked',
+        'resolved',
+        'projectScopeMatches',
+        'sessionScopeMatches',
+      ],
+      [],
+      'phase0_citation_invalid',
+    );
+    for (const field of ['uri', 'kind', 'nativeRunId']) {
+      phase0String(citation[field], 'phase0_citation_invalid', field === 'uri' ? 1_024 : 256);
+    }
+    phase0ContextUri(citation.uri, citation.kind, 'phase0_citation_invalid');
+    phase0Sha(citation.targetHash, 'phase0_citation_invalid');
+    for (const field of [
+      'renderedPublicly',
+      'resolverInvoked',
+      'resolved',
+      'projectScopeMatches',
+      'sessionScopeMatches',
+    ]) {
+      phase0Boolean(citation[field], 'phase0_citation_invalid');
+    }
+  }
+  assertPhase0RunBinding(input.citations, nativeRunId);
+  if (
+    input.citations.some(
+      (citation) =>
+        !citation.renderedPublicly ||
+        !citation.resolverInvoked ||
+        !citation.resolved ||
+        !citation.projectScopeMatches ||
+        !citation.sessionScopeMatches,
+    )
+  ) {
+    fail('phase0_semantic_proof_failed', 'phase0_assembly');
+  }
+  const canonical = input.scenarios.find(
+    (scenario) => scenario.scenarioId === 'canonical_link_resolution',
+  );
+  const expectedCitationUris = new Set([
+    canonical.gateway.receiptUri,
+    ...canonical.gateway.sourceUris,
+    ...canonical.gateway.evidenceUris,
+  ]);
+  const observedCitationUris = new Set(input.citations.map((citation) => citation.uri));
+  if (
+    expectedCitationUris.has(null) ||
+    expectedCitationUris.size !== observedCitationUris.size ||
+    [...expectedCitationUris].some((uri) => !observedCitationUris.has(uri))
+  ) {
+    fail('phase0_semantic_proof_failed', 'phase0_assembly');
+  }
+
+  const safetyLabels = [
+    'before',
+    ...PHASE0_SCENARIO_IDS.map((scenarioId) => `during:${scenarioId}`),
+    'after',
+  ];
+  exactUniqueSet(input.safety, 'label', safetyLabels, 'phase0_safety_set_incomplete');
+  for (const snapshot of input.safety) {
+    phase0ExactKeys(
+      snapshot,
+      ['label', 'nativeRunId', 'capturedAt', 'ollamaProcessCount', 'listener11434Count'],
+      [],
+      'phase0_safety_invalid',
+    );
+    phase0String(snapshot.label, 'phase0_safety_invalid', 256);
+    phase0String(snapshot.nativeRunId, 'phase0_safety_invalid', 256);
+    phase0CanonicalIso(snapshot.capturedAt, 'phase0_safety_invalid');
+    phase0Count(snapshot.ollamaProcessCount, 'phase0_safety_invalid');
+    phase0Count(snapshot.listener11434Count, 'phase0_safety_invalid');
+  }
+  assertPhase0RunBinding(input.safety, nativeRunId);
+  if (
+    input.safety.some(
+      (snapshot) => snapshot.ollamaProcessCount !== 0 || snapshot.listener11434Count !== 0,
+    )
+  ) {
+    fail('phase0_forbidden_ollama', 'phase0_assembly');
+  }
+
+  return immutableClone(input);
 }
 
 function isSecretBearingValue(value) {
@@ -822,6 +1569,23 @@ export async function writeEvidencePacket(options) {
   const body = `${JSON.stringify(sanitizeEvidence(options.packet), null, 2)}\n`;
   await writeFile(outputPath, body, { encoding: 'utf8', flag: options.overwrite ? 'w' : 'wx' });
   return Object.freeze({ name, byteCount: Buffer.byteLength(body), sha256: sha256(body) });
+}
+
+export async function writePhase0AcceptanceProof(options) {
+  const evidenceDirectory = await ensureEvidenceDirectory(options.evidenceDirectory);
+  const name = String(options.name ?? 'phase0-acceptance-proof.json');
+  if (!SAFE_FILE_NAME.test(name) || !name.endsWith('.json')) {
+    fail('unsafe_phase0_evidence_name', 'phase0_evidence');
+  }
+  const proof = assemblePhase0AcceptanceProof(options.proof);
+  const outputPath = path.join(evidenceDirectory, name);
+  const body = `${JSON.stringify({ phase0Proof: proof }, null, 2)}\n`;
+  await writeFile(outputPath, body, { encoding: 'utf8', flag: 'wx' });
+  return Object.freeze({
+    name,
+    byteCount: Buffer.byteLength(body),
+    sha256: prefixedSha256(body),
+  });
 }
 
 export function parseArgs(argv) {

@@ -6,6 +6,8 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
+import { prefixedSha256, sanitizeEvidence } from './pr31-native-acceptance-harness.mjs';
+
 const execFile = promisify(execFileCallback);
 const AUTH_KEY = 'jarvis-auth';
 const UI_KEY = 'jarvis-ui';
@@ -274,6 +276,288 @@ export function safeDispatchReceipt(detail) {
   });
 }
 
+export function requestFixtureSha256(value) {
+  return prefixedSha256(value);
+}
+
+const PHASE0_EXECUTION_IDENTITY_FIELDS = Object.freeze([
+  'transportConnectionId',
+  'transportAdapterId',
+  'upstreamProviderId',
+  'upstreamModelId',
+  'providerQualifiedModelId',
+  'authBillingRoute',
+  'effort',
+  'fastVariant',
+  'catalogRevision',
+]);
+const PHASE0_GATEWAY_FIELDS = Object.freeze([
+  'operation',
+  'invocationCount',
+  'initialMatchCount',
+  'continuationCount',
+  'receiptUri',
+  'sourceUris',
+  'evidenceUris',
+]);
+const PHASE0_OUTCOME_FIELDS = Object.freeze([
+  'terminalStatus',
+  'groundedFinalAnswer',
+  'duplicateDispatchCount',
+  'duplicateToolEffectCount',
+  'localFallbackUsed',
+]);
+const PHASE0_ROUTE_OBSERVATION_FIELDS = Object.freeze([
+  'liveCatalogAuthenticated',
+  'completedThroughOpenCode',
+  'contextReceiptVerified',
+  'silentFallbackUsed',
+]);
+const PHASE0_DISPATCH_FIELDS = Object.freeze([
+  'chatId',
+  'providerId',
+  'connectionId',
+  'modelId',
+  'effort',
+  'runtimeEffort',
+  'performance',
+  'fastMode',
+  'rlmEnabled',
+  'approveAllForRun',
+]);
+
+function exactObjectKeys(value, fields, code, optional = []) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) fail(code);
+  const keys = Object.keys(value);
+  const allowed = new Set([...fields, ...optional]);
+  if (fields.some((key) => !Object.hasOwn(value, key)) || keys.some((key) => !allowed.has(key))) {
+    fail(code);
+  }
+}
+
+function assertSafePhase0Observation(value) {
+  if (JSON.stringify(sanitizeEvidence(value)) !== JSON.stringify(value)) {
+    fail('phase0_unsafe_observation');
+  }
+}
+
+function exactPhase0ContextUri(value, kind) {
+  if (typeof value !== 'string' || value.length > 1_024) {
+    fail('phase0_gateway_observation_invalid');
+  }
+  const prefix = `vibespace:context/${kind}/`;
+  const suffix = value.startsWith(prefix) ? value.slice(prefix.length) : '';
+  const segments = suffix.split('/');
+  if (
+    !suffix ||
+    segments.some(
+      (segment) =>
+        !segment || segment === '.' || segment === '..' || !/^[A-Za-z0-9._~:@+-]+$/u.test(segment),
+    )
+  ) {
+    fail('phase0_gateway_observation_invalid');
+  }
+}
+
+function exactExecutionIdentity(value, code, requireObservedProviderIdentity = false) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) fail(code);
+  exactObjectKeys(value, PHASE0_EXECUTION_IDENTITY_FIELDS, code, ['observedProviderIdentity']);
+  for (const field of PHASE0_EXECUTION_IDENTITY_FIELDS) {
+    if (typeof value[field] !== 'string' || !value[field]) fail(code);
+  }
+  if (!/^sha256:[0-9a-f]{64}$/iu.test(value.catalogRevision)) fail(code);
+  if (
+    value.providerQualifiedModelId !== `${value.upstreamProviderId}/${value.upstreamModelId}` ||
+    (requireObservedProviderIdentity && typeof value.observedProviderIdentity !== 'string') ||
+    (value.observedProviderIdentity !== undefined &&
+      value.observedProviderIdentity !== value.providerQualifiedModelId)
+  ) {
+    fail(code);
+  }
+  return value;
+}
+
+function phase0ExecutionIdentityEqual(left, right) {
+  return PHASE0_EXECUTION_IDENTITY_FIELDS.every((field) => left[field] === right[field]);
+}
+
+function phase0IdentityFromExecution({
+  dispatch,
+  executionIdentity,
+  performance,
+  cwd,
+  scopeRevision,
+}) {
+  return Object.freeze({
+    providerId: dispatch.providerId,
+    connectionId: dispatch.connectionId,
+    providerQualifiedModelId: executionIdentity.providerQualifiedModelId,
+    upstreamProviderId: executionIdentity.upstreamProviderId,
+    upstreamModelId: executionIdentity.upstreamModelId,
+    variant: executionIdentity.effort,
+    effort: executionIdentity.effort,
+    performance,
+    fastMode: dispatch.fastMode,
+    cwd,
+    authBillingRoute: executionIdentity.authBillingRoute,
+    catalogRevision: executionIdentity.catalogRevision,
+    sessionIdentityHash: prefixedSha256(`${dispatch.chatId}:${scopeRevision}`),
+    identityPathId: 'opencode-live-catalog-to-native-receipt-v1',
+  });
+}
+
+export function createPhase0QuestionAContribution(options) {
+  const observedAuthority = options?.observedAuthority;
+  if (
+    !observedAuthority?.executionIdentity ||
+    typeof observedAuthority.scopeRevision !== 'string'
+  ) {
+    fail('phase0_observed_authority_required');
+  }
+  const requestedExecution = exactExecutionIdentity(
+    options.requestedExecutionIdentity,
+    'phase0_requested_route_invalid',
+  );
+  const observedExecution = exactExecutionIdentity(
+    observedAuthority.executionIdentity,
+    'phase0_observed_route_invalid',
+    true,
+  );
+  if (!phase0ExecutionIdentityEqual(requestedExecution, observedExecution)) {
+    fail('phase0_observed_route_mismatch');
+  }
+  const dispatch = options.dispatch;
+  exactObjectKeys(dispatch, PHASE0_DISPATCH_FIELDS, 'phase0_dispatch_route_mismatch');
+  if (
+    !dispatch ||
+    dispatch.providerId !== 'opencode' ||
+    dispatch.connectionId !== requestedExecution.transportConnectionId ||
+    dispatch.modelId !== requestedExecution.providerQualifiedModelId ||
+    dispatch.effort !== requestedExecution.effort ||
+    dispatch.runtimeEffort !== requestedExecution.effort ||
+    dispatch.performance !== observedAuthority.performance ||
+    dispatch.rlmEnabled !== true ||
+    (dispatch.fastMode === 'off' && observedExecution.fastVariant !== 'standard') ||
+    (dispatch.fastMode === 'on' && observedExecution.fastVariant === 'standard') ||
+    !observedAuthority.scopeRevision.startsWith(`${dispatch.chatId}:`)
+  ) {
+    fail('phase0_dispatch_route_mismatch');
+  }
+  if (
+    !['deepseek_v4_flash_vision_exp', 'secondary_authenticated'].includes(options.fixture) ||
+    !['automatic_rlm', 'explicit_rlm_on'].includes(options.scenarioId) ||
+    !['automatic', 'explicit_rlm_on'].includes(options.activation) ||
+    (options.scenarioId === 'automatic_rlm' && options.activation !== 'automatic') ||
+    (options.scenarioId === 'explicit_rlm_on' && options.activation !== 'explicit_rlm_on')
+  ) {
+    fail('phase0_question_a_scenario_invalid');
+  }
+  if (
+    typeof options.nativeRunId !== 'string' ||
+    !options.nativeRunId ||
+    typeof options.evidenceId !== 'string' ||
+    !options.evidenceId ||
+    typeof options.cwd !== 'string' ||
+    !options.cwd ||
+    !/^sha256:[0-9a-f]{64}$/iu.test(String(options.requestFixtureHash ?? ''))
+  ) {
+    fail('phase0_question_a_metadata_invalid');
+  }
+  assertSafePhase0Observation({
+    nativeRunId: options.nativeRunId,
+    evidenceId: options.evidenceId,
+    dispatch,
+    requestedExecutionIdentity: requestedExecution,
+    observedAuthority,
+    routeObservation: options.routeObservation,
+    cwd: options.cwd,
+    gateway: options.gateway,
+    outcome: options.outcome,
+  });
+  exactObjectKeys(options.gateway, PHASE0_GATEWAY_FIELDS, 'phase0_gateway_observation_invalid');
+  exactObjectKeys(options.outcome, PHASE0_OUTCOME_FIELDS, 'phase0_outcome_observation_invalid');
+  exactObjectKeys(
+    options.routeObservation,
+    PHASE0_ROUTE_OBSERVATION_FIELDS,
+    'phase0_route_observation_invalid',
+  );
+  exactPhase0ContextUri(options.gateway.receiptUri, 'receipt');
+  for (const [kind, uris] of [
+    ['source', options.gateway.sourceUris],
+    ['evidence', options.gateway.evidenceUris],
+  ]) {
+    if (!Array.isArray(uris) || uris.length > 16) {
+      fail('phase0_gateway_observation_invalid');
+    }
+    for (const uri of uris) exactPhase0ContextUri(uri, kind);
+  }
+  if (
+    options.routeObservation.liveCatalogAuthenticated !== true ||
+    options.routeObservation.completedThroughOpenCode !== true ||
+    options.routeObservation.contextReceiptVerified !== true ||
+    options.routeObservation.silentFallbackUsed !== false
+  ) {
+    fail('phase0_route_observation_failed');
+  }
+  if (options.actualTerminalStatus !== options.outcome.terminalStatus) {
+    fail('phase0_terminal_status_mismatch');
+  }
+  if (
+    options.gateway.operation !== 'investigate' ||
+    options.gateway.invocationCount !== 1 ||
+    typeof options.gateway.receiptUri !== 'string' ||
+    !Array.isArray(options.gateway.sourceUris) ||
+    !Array.isArray(options.gateway.evidenceUris) ||
+    options.outcome.terminalStatus !== 'done' ||
+    options.outcome.groundedFinalAnswer !== true ||
+    options.outcome.duplicateDispatchCount !== 0 ||
+    options.outcome.duplicateToolEffectCount !== 0 ||
+    options.outcome.localFallbackUsed !== false
+  ) {
+    fail('phase0_question_a_observation_failed');
+  }
+
+  const requested = phase0IdentityFromExecution({
+    dispatch,
+    executionIdentity: requestedExecution,
+    performance: observedAuthority.performance,
+    cwd: options.cwd,
+    scopeRevision: observedAuthority.scopeRevision,
+  });
+  const observed = phase0IdentityFromExecution({
+    dispatch,
+    executionIdentity: observedExecution,
+    performance: observedAuthority.performance,
+    cwd: options.cwd,
+    scopeRevision: observedAuthority.scopeRevision,
+  });
+  return Object.freeze({
+    route: Object.freeze({
+      fixture: options.fixture,
+      evidenceId: `${options.evidenceId}:route`,
+      nativeRunId: options.nativeRunId,
+      requested,
+      observed,
+      liveCatalogAuthenticated: options.routeObservation.liveCatalogAuthenticated,
+      completedThroughOpenCode: options.routeObservation.completedThroughOpenCode,
+      contextReceiptVerified: options.routeObservation.contextReceiptVerified,
+      silentFallbackUsed: options.routeObservation.silentFallbackUsed,
+    }),
+    scenario: Object.freeze({
+      scenarioId: options.scenarioId,
+      evidenceId: `${options.evidenceId}:scenario`,
+      nativeRunId: options.nativeRunId,
+      activation: options.activation,
+      routeFixture: options.fixture,
+      requestFixtureHash: options.requestFixtureHash,
+      requestedIdentity: requested,
+      observedIdentity: observed,
+      gateway: Object.freeze(structuredClone(options.gateway)),
+      outcome: Object.freeze(structuredClone(options.outcome)),
+    }),
+  });
+}
+
 function safeValue(value, pattern) {
   const text = String(value ?? '');
   return pattern.test(text) ? text : '';
@@ -490,6 +774,18 @@ async function inspectLiveOpenCodeAuthority(page, expected) {
     },
     { modelId: expected.expectedModel },
   );
+}
+
+async function inspectObservedGatewayAuthority(page, chatId) {
+  return page.evaluate(async (sessionId) => {
+    try {
+      const module = await import('/src/lib/harness/toolGatewayAuthority.ts');
+      const authority = module.readToolGatewayObservedExecutionAuthority(sessionId);
+      return authority ? structuredClone(authority) : null;
+    } catch {
+      return null;
+    }
+  }, chatId);
 }
 
 async function installProbe(page) {
@@ -1005,6 +1301,20 @@ export async function runDriver(options, dependencies = {}) {
       assertLiveEffortAuthority(liveAuthority, options.expectedEffort);
     stage = 'read_prompt';
     const prompt = await readPrompt(options.promptFile);
+    const phase0Config = options.phase0;
+    const observePhase0Run = dependencies.observePhase0Run;
+    const readObservedAuthority =
+      dependencies.readObservedAuthority ?? inspectObservedGatewayAuthority;
+    if (
+      phase0Config &&
+      (options.runs !== 1 ||
+        typeof observePhase0Run !== 'function' ||
+        typeof phase0Config.evidenceIdPrefix !== 'string' ||
+        !phase0Config.evidenceIdPrefix)
+    ) {
+      fail('phase0_observer_required');
+    }
+    const requestFixtureHash = phase0Config ? requestFixtureSha256(prompt) : null;
     for (let index = 0; index < options.runs; index += 1) {
       stage = `run_${index + 1}_create_chat`;
       const chatId = options.reuseActiveChat ? await activeChatId(page) : await createChat(page);
@@ -1146,6 +1456,29 @@ export async function runDriver(options, dependencies = {}) {
         run.visibleControlAfter.providerMatches &&
         run.visibleControlAfter.modelMatches &&
         run.visibleControlAfter.effortMatches;
+      if (phase0Config) {
+        stage = `run_${run.index}_phase0_observation`;
+        const [observedAuthority, observation] = await Promise.all([
+          readObservedAuthority(page, run.chatId),
+          observePhase0Run({
+            page,
+            chatId: run.chatId,
+            dispatch: run.dispatch,
+            terminalStatus: run.terminalStatus,
+          }),
+        ]);
+        run.phase0Contribution = createPhase0QuestionAContribution({
+          ...phase0Config,
+          evidenceId: `${phase0Config.evidenceIdPrefix}:${run.index}`,
+          requestFixtureHash,
+          dispatch: run.dispatch,
+          observedAuthority,
+          routeObservation: observation?.routeObservation,
+          actualTerminalStatus: run.terminalStatus,
+          gateway: observation?.gateway,
+          outcome: observation?.outcome,
+        });
+      }
     }
     const evidence = {
       schemaVersion: 1,
