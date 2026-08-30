@@ -629,19 +629,30 @@ const text = (max = 4096) => tool.schema.string().min(1).max(max)
 const id = () => tool.schema.string().min(1).max(200).regex(/^[A-Za-z0-9][A-Za-z0-9._:/@-]*$/)
 const integer = (max = 1000) => tool.schema.number().int().min(0).max(max)
 const terminal = () => tool.schema.union([id(), integer(1000000)])
-const contextPointer = () => tool.schema.object({
-  id: text(512),
-  recordId: text(512),
-  lineStart: integer(Number.MAX_SAFE_INTEGER).optional(),
-  lineEnd: integer(Number.MAX_SAFE_INTEGER).optional(),
-  byteStart: integer(Number.MAX_SAFE_INTEGER).optional(),
-  byteEnd: integer(Number.MAX_SAFE_INTEGER).optional(),
-  messageId: text(512).optional(),
-  eventId: text(512).optional(),
-  toolCallId: text(512).optional(),
-  sourceVersion: text(512),
-  contentHash: tool.schema.string().regex(/^[a-f0-9]{64}$/),
-})
+const contextPointer = () => tool.schema.union([
+  tool.schema.object({
+    id: text(512),
+    recordId: text(512),
+    byteStart: integer(Number.MAX_SAFE_INTEGER),
+    byteEnd: integer(Number.MAX_SAFE_INTEGER),
+    messageId: text(512).optional(),
+    eventId: text(512).optional(),
+    toolCallId: text(512).optional(),
+    sourceVersion: text(512),
+    contentHash: tool.schema.string().regex(/^[a-f0-9]{64}$/),
+  }).strict(),
+  tool.schema.object({
+    id: text(512),
+    recordId: text(512),
+    lineStart: integer(Number.MAX_SAFE_INTEGER),
+    lineEnd: integer(Number.MAX_SAFE_INTEGER),
+    messageId: text(512).optional(),
+    eventId: text(512).optional(),
+    toolCallId: text(512).optional(),
+    sourceVersion: text(512),
+    contentHash: tool.schema.string().regex(/^[a-f0-9]{64}$/),
+  }).strict(),
+])
 
 async function call(name, args, context) {
   const endpoint = process.env.VIBESPACE_TOOL_GATEWAY_URL
@@ -2723,6 +2734,35 @@ mod tests {
         assert!(!plugin.contains("nativeCommand"));
         assert!(!plugin.contains("\"context.update\""));
         assert!(plugin.contains("Bounded lossless VibeSpace context"));
+        let expected_context_pointer = r#"const contextPointer = () => tool.schema.union([
+  tool.schema.object({
+    id: text(512),
+    recordId: text(512),
+    byteStart: integer(Number.MAX_SAFE_INTEGER),
+    byteEnd: integer(Number.MAX_SAFE_INTEGER),
+    messageId: text(512).optional(),
+    eventId: text(512).optional(),
+    toolCallId: text(512).optional(),
+    sourceVersion: text(512),
+    contentHash: tool.schema.string().regex(/^[a-f0-9]{64}$/),
+  }).strict(),
+  tool.schema.object({
+    id: text(512),
+    recordId: text(512),
+    lineStart: integer(Number.MAX_SAFE_INTEGER),
+    lineEnd: integer(Number.MAX_SAFE_INTEGER),
+    messageId: text(512).optional(),
+    eventId: text(512).optional(),
+    toolCallId: text(512).optional(),
+    sourceVersion: text(512),
+    contentHash: tool.schema.string().regex(/^[a-f0-9]{64}$/),
+  }).strict(),
+])"#;
+        assert!(plugin.contains(expected_context_pointer));
+        assert!(!plugin.contains("byteStart: integer(Number.MAX_SAFE_INTEGER).optional()"));
+        assert!(!plugin.contains("byteEnd: integer(Number.MAX_SAFE_INTEGER).optional()"));
+        assert!(!plugin.contains("lineStart: integer(Number.MAX_SAFE_INTEGER).optional()"));
+        assert!(!plugin.contains("lineEnd: integer(Number.MAX_SAFE_INTEGER).optional()"));
         assert!(plugin.contains("\"investigate\""));
         assert!(plugin.contains("Call this before plugins_run"));
         assert!(plugin.contains("Call this before mcp_run"));
