@@ -58,6 +58,7 @@ import type {
   LiveModelVariant,
 } from '@/features/chat/runtime/runtimeModelControls';
 import { resolveRuntimeModelControls } from '@/features/chat/runtime/runtimeModelControls';
+import { variantReasoningEffort } from '@/lib/ai/catalog/modelVariants';
 import type { AccessLevel, InteractionMode } from '@/lib/permissions/OpenCodePermissionProfile';
 import { applySecretPolicy } from '@/lib/security/secretDetector';
 import { decideContextRoute } from '@/features/context/rlm/routeDecision';
@@ -1141,6 +1142,22 @@ export function assertAuthoritativeOpenCodeIdentity(input: {
 
 const CATALOG_REVISION = /^sha256:[a-f0-9]{64}$/u;
 
+function observedOpenCodeEffort(
+  input: Readonly<{
+    model: Readonly<OpenCodeLiveModel>;
+    observed: Readonly<OpenCodeObservedIdentity>;
+    controls: Readonly<OpenCodeRequestControls>;
+  }>,
+): NonNullable<OpenCodeRequestControls['effort']> | 'provider-default' {
+  if (input.controls.effort) return input.controls.effort;
+  const observedVariant = input.observed.variant?.trim().toLocaleLowerCase('en-US');
+  if (!observedVariant) return 'provider-default';
+  const variant = input.model.variants.find(
+    (candidate) => candidate.id.trim().toLocaleLowerCase('en-US') === observedVariant,
+  );
+  return (variant && variantReasoningEffort(variant)) || 'provider-default';
+}
+
 export function buildObservedOpenCodeGatewayAuthority(
   input: Readonly<{
     connection: ProviderRequest['connection'];
@@ -1185,7 +1202,7 @@ export function buildObservedOpenCodeGatewayAuthority(
       upstreamModelId: input.model.upstreamModelId,
       providerQualifiedModelId: observedModelId,
       authBillingRoute: input.connection.authSource,
-      effort: input.controls.effort ?? 'provider-default',
+      effort: observedOpenCodeEffort(input),
       fastVariant,
       catalogRevision: input.catalogRevision,
       observedProviderIdentity: observedModelId,

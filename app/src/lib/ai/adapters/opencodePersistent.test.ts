@@ -712,7 +712,7 @@ describe('persistent OpenCode live authority', () => {
     expect(changed).not.toBe(first);
   });
 
-  it('builds Gateway authority only from a matching observed OpenCode identity', () => {
+  it('preserves variant-backed effort in Gateway authority after matching observed identity', () => {
     const model = requireAuthoritativeOpenCodeModel(liveModels, 'openai/gpt-5.6-sol');
     expect(
       buildObservedOpenCodeGatewayAuthority({
@@ -727,7 +727,6 @@ describe('persistent OpenCode live authority', () => {
           connectionId: 'opencode-cli',
           providerId: 'openai',
           modelId: 'gpt-5.6-sol',
-          effort: 'max',
           variant: 'max',
           performance: 'quality',
           rlmEnabled: true,
@@ -766,6 +765,66 @@ describe('persistent OpenCode live authority', () => {
         catalogRevision: `sha256:${'a'.repeat(64)}`,
       }),
     ).toThrow(/MODEL_IDENTITY_MISMATCH/);
+  });
+
+  it('preserves explicit independent effort without inventing a provider variant', () => {
+    const model = requireAuthoritativeOpenCodeModel(liveModels, 'openai/gpt-5.6-sol');
+    const authority = buildObservedOpenCodeGatewayAuthority({
+      connection: questionProviderRequest('gateway-independent-effort').connection,
+      model,
+      observed: { providerId: 'openai', modelId: 'gpt-5.6-sol' },
+      controls: {
+        connectionId: 'opencode-cli',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        effort: 'high',
+        performance: 'quality',
+        rlmEnabled: true,
+      },
+      catalogRevision: `sha256:${'b'.repeat(64)}`,
+    });
+
+    expect(authority.executionIdentity.effort).toBe('high');
+  });
+
+  it('does not derive effort from an observed variant absent from the selected live catalog', () => {
+    const model = requireAuthoritativeOpenCodeModel(liveModels, 'openai/gpt-5.6-sol');
+    const authority = buildObservedOpenCodeGatewayAuthority({
+      connection: questionProviderRequest('gateway-uncataloged-effort-variant').connection,
+      model,
+      observed: { providerId: 'openai', modelId: 'gpt-5.6-sol', variant: 'high' },
+      controls: {
+        connectionId: 'opencode-cli',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        variant: 'high',
+        performance: 'quality',
+        rlmEnabled: true,
+      },
+      catalogRevision: `sha256:${'c'.repeat(64)}`,
+    });
+
+    expect(authority.executionIdentity.effort).toBe('provider-default');
+  });
+
+  it('does not derive effort from a catalog variant without reasoning semantics', () => {
+    const model = requireAuthoritativeOpenCodeModel(liveModels, 'openai/gpt-5.6-sol');
+    const authority = buildObservedOpenCodeGatewayAuthority({
+      connection: questionProviderRequest('gateway-nonreasoning-variant').connection,
+      model: { ...model, variants: [...model.variants, { id: 'creative', kind: 'other' }] },
+      observed: { providerId: 'openai', modelId: 'gpt-5.6-sol', variant: 'creative' },
+      controls: {
+        connectionId: 'opencode-cli',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        variant: 'creative',
+        performance: 'quality',
+        rlmEnabled: true,
+      },
+      catalogRevision: `sha256:${'d'.repeat(64)}`,
+    });
+
+    expect(authority.executionIdentity.effort).toBe('provider-default');
   });
 
   it('maps the native question request as a bounded dedicated provider event', () => {
