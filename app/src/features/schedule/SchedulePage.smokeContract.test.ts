@@ -24,7 +24,7 @@ describe('native-bound schedule smoke controls', () => {
     expect(scheduleSource).toContain('runDueJarvisSchedules');
     expect(scheduleSource).toContain('runCaoScheduledLearning');
     expect(scheduleSource).toContain("event.status !== 'scheduled'");
-    expect(scheduleSource).toContain('scheduleAnchorAt: event.start_at');
+    expect(scheduleSource).toContain('scheduleAnchorAt: claimed.start_at');
     expect(scheduleSource).toContain("trigger: 'manual_force'");
     expect(scheduleSource).toContain('CAO supervision');
     expect(scheduleSource).toContain('const protectedJarvisAgent = useAgentStore(');

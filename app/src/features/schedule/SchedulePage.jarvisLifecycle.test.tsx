@@ -185,7 +185,15 @@ describe('SchedulePage Jarvis lifecycle', () => {
     getEventById.mockReset();
     runCaoScheduledLearning.mockReset().mockResolvedValue({ status: 'completed' });
     runWorkspaceCaoLearningChecks.mockReset().mockResolvedValue({ status: 'completed' });
-    updateEventIfUpdatedAt.mockReset();
+    updateEventIfUpdatedAt
+      .mockReset()
+      .mockImplementation(async (id, expectedUpdatedAt, buildPatch) => {
+        const current = jarvisEventsState.rows.find((row) => String(row.id) === String(id));
+        if (!current || current.updated_at !== expectedUpdatedAt) return undefined;
+        const patch = buildPatch(current);
+        if (!patch) return undefined;
+        return { ...current, ...patch, updated_at: current.updated_at + 1 };
+      });
 
     const route = {
       id: `${OPENCODE_CLI_CONNECTION.id}:openai/gpt-5.6-sol-fast`,
@@ -453,6 +461,76 @@ describe('SchedulePage Jarvis lifecycle', () => {
     );
     expect(runWorkspaceCaoLearningChecks).not.toHaveBeenCalled();
   });
+
+  it.each(['paused', 'deleted', 'retargeted', 'metadata-changed'] as const)(
+    'fails closed when the clicked CAO row is %s after render',
+    async (change) => {
+      const rendered = buildCaoEvent();
+      let persisted: EventRow | undefined = rendered;
+      jarvisEventsState.rows = [rendered];
+      upcomingEventsState.rows = [];
+      updateEventIfUpdatedAt.mockImplementation(async (id, expectedUpdatedAt, buildPatch) => {
+        if (
+          !persisted ||
+          String(persisted.id) !== String(id) ||
+          persisted.updated_at !== expectedUpdatedAt
+        ) {
+          return undefined;
+        }
+        const patch = buildPatch(persisted);
+        if (!patch) return undefined;
+        persisted = { ...persisted, ...patch, updated_at: persisted.updated_at + 1 };
+        return persisted;
+      });
+      render(<SchedulePage />);
+
+      fireEvent.click(screen.getByRole('button', { name: /Jarvis Actions1/i }));
+      fireEvent.click(screen.getByText('CAO learning review').closest('button')!);
+      if (change === 'deleted') {
+        persisted = undefined;
+      } else if (change === 'paused') {
+        persisted = { ...rendered, status: 'cancelled', updated_at: rendered.updated_at + 1 };
+      } else if (change === 'retargeted') {
+        const metadata = parseJarvisScheduleMetadata(rendered)!;
+        persisted = {
+          ...rendered,
+          updated_at: rendered.updated_at + 1,
+          source_ref: {
+            context: {
+              ...rendered.source_ref!.context!,
+              id: serializeJarvisScheduleMetadata({
+                ...metadata,
+                caoSupervision: {
+                  ...metadata.caoSupervision!,
+                  projectId: 'project-retargeted',
+                  targetId: 'learning-retargeted',
+                },
+              }),
+            },
+          },
+        } as EventRow;
+      } else {
+        const metadata = parseJarvisScheduleMetadata(rendered)!;
+        persisted = {
+          ...rendered,
+          source_ref: {
+            context: {
+              ...rendered.source_ref!.context!,
+              id: serializeJarvisScheduleMetadata({
+                ...metadata,
+                prompt: 'A changed instruction must require a fresh click.',
+              }),
+            },
+          },
+        } as EventRow;
+      }
+      fireEvent.click(screen.getByRole('button', { name: 'Run check now' }));
+
+      await waitFor(() => expect(screen.getByText('Check failed')).toBeTruthy());
+      expect(runCaoScheduledLearning).not.toHaveBeenCalled();
+      expect(runWorkspaceCaoLearningChecks).not.toHaveBeenCalled();
+    },
+  );
 
   it('does not run a paused CAO row', async () => {
     const paused = buildCaoEvent('cancelled');

@@ -1662,6 +1662,25 @@ export type EventRevisionPatchBuilder = (current: EventRow) => Partial<EventRow>
 
 export function createEventRevisionRepository(database?: JarvisDexie) {
   return {
+    async update(id: EventId, patch: Partial<EventRow>): Promise<EventRow> {
+      const activeDatabase = database ?? db;
+      const syncOwner = activeDatabase === db ? captureSyncQueueOwner() : null;
+      const updated = await activeDatabase.transaction('rw', activeDatabase.events, async () => {
+        const current = await activeDatabase.events.get(id);
+        if (!current) throw new Error(`event ${String(id)} not found`);
+        const next: EventRow = {
+          ...current,
+          ...sanitizeUpdate(patch),
+          id: current.id,
+          created_at: current.created_at,
+          updated_at: Math.max(now(), current.updated_at + 1),
+        };
+        await activeDatabase.events.put(next);
+        return next;
+      });
+      if (syncOwner) await syncUpdate('events', updated, syncOwner);
+      return updated;
+    },
     async updateIfUpdatedAt(
       id: EventId,
       expectedUpdatedAt: number,
@@ -1793,11 +1812,7 @@ export const eventRepo = {
     return row;
   },
   async update(id: EventId, patch: Partial<EventRow>): Promise<EventRow> {
-    const syncOwner = captureSyncQueueOwner();
-    await db.events.update(id, { ...sanitizeUpdate(patch), updated_at: now() });
-    const row = await requireRow(() => db.events.get(id), 'event', id);
-    await syncUpdate('events', row, syncOwner);
-    return row;
+    return eventRevisionRepo.update(id, patch);
   },
   updateIfUpdatedAt: eventRevisionRepo.updateIfUpdatedAt,
   async delete(id: EventId): Promise<void> {

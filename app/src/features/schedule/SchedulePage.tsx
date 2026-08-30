@@ -1214,29 +1214,62 @@ export function SchedulePage() {
 
   const handleRunCaoCheck = async (event: EventRow) => {
     const key = String(event.id);
-    const account = getActiveAccountIdentity();
-    const activeWorkspaceId = useAuthStore.getState().workspaceId;
-    const cao = parseJarvisScheduleMetadata(event)?.caoSupervision;
+    const accountAtClick = getActiveAccountIdentity();
+    const workspaceAtClick = useAuthStore.getState().workspaceId;
+    const renderedMetadataRef = event.source_ref?.context?.id;
+    const renderedCao = parseJarvisScheduleMetadata(event)?.caoSupervision;
     if (
-      !account ||
-      !activeWorkspaceId ||
+      !accountAtClick ||
+      !workspaceAtClick ||
       event.status !== 'scheduled' ||
-      String(event.workspace_id) !== String(activeWorkspaceId) ||
-      !cao
+      String(event.workspace_id) !== String(workspaceAtClick) ||
+      !renderedMetadataRef ||
+      !renderedCao
     ) {
       setCaoRunStates((current) => ({ ...current, [key]: 'failed' }));
       return;
     }
     setCaoRunStates((current) => ({ ...current, [key]: 'running' }));
     try {
+      const claimed = await eventRepo.updateIfUpdatedAt(event.id, event.updated_at, (current) => {
+        const currentCao = parseJarvisScheduleMetadata(current)?.caoSupervision;
+        if (
+          current.status !== 'scheduled' ||
+          current.source !== 'ai' ||
+          String(current.workspace_id) !== String(workspaceAtClick) ||
+          current.start_at !== event.start_at ||
+          current.source_ref?.context?.id !== renderedMetadataRef ||
+          !currentCao ||
+          currentCao.scheduleId !== renderedCao.scheduleId ||
+          currentCao.projectId !== renderedCao.projectId ||
+          currentCao.targetId !== renderedCao.targetId
+        ) {
+          return undefined;
+        }
+        return {};
+      });
+      const activeAccount = getActiveAccountIdentity();
+      const activeWorkspaceId = useAuthStore.getState().workspaceId;
+      const claimedCao = claimed ? parseJarvisScheduleMetadata(claimed)?.caoSupervision : undefined;
+      if (
+        !claimed ||
+        !claimedCao ||
+        !activeAccount ||
+        activeAccount.accountId !== accountAtClick.accountId ||
+        !activeWorkspaceId ||
+        String(activeWorkspaceId) !== String(workspaceAtClick) ||
+        String(claimed.workspace_id) !== String(activeWorkspaceId)
+      ) {
+        throw new Error('cao_manual_claim_stale');
+      }
       const result = await runCaoScheduledLearning({
         scope: {
-          accountId: account.accountId,
-          workspaceId: String(event.workspace_id),
-          projectId: cao.projectId,
-          scheduleId: cao.scheduleId,
-          targetId: cao.targetId,
-          scheduleAnchorAt: event.start_at,
+          accountId: activeAccount.accountId,
+          workspaceId: String(claimed.workspace_id),
+          projectId: claimedCao.projectId,
+          scheduleId: claimedCao.scheduleId,
+          targetId: claimedCao.targetId,
+          scheduleAnchorAt: claimed.start_at,
         },
         trigger: 'manual_force',
       });

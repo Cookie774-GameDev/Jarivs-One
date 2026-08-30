@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
 import type { WorkspaceId } from '@/types/common';
@@ -28,6 +28,7 @@ function eventRow(): EventRow {
 }
 
 type EventRevisionRepository = {
+  update(id: EventRow['id'], patch: Partial<EventRow>): Promise<EventRow>;
   updateIfUpdatedAt(
     id: EventRow['id'],
     expectedUpdatedAt: number,
@@ -76,5 +77,27 @@ describe('event repository revision CAS', () => {
       updated_at: REVISION + 1,
     });
     expect(persisted?.description).toBeUndefined();
+  });
+
+  it('advances the revision for a same-millisecond mutation and rejects the stale editor token', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(REVISION);
+    const repositories = (await import('./repositories')) as unknown as {
+      createEventRevisionRepository?: (database: JarvisDexie) => EventRevisionRepository;
+    };
+    expect(repositories.createEventRevisionRepository).toBeTypeOf('function');
+    if (!repositories.createEventRevisionRepository) return;
+    const repository = repositories.createEventRevisionRepository(firstDb);
+
+    const updated = await repository.update(EVENT_ID, { title: 'Same-time title' });
+    const stale = await repository.updateIfUpdatedAt(EVENT_ID, REVISION, () => ({
+      description: 'Stale editor write',
+    }));
+
+    expect(updated.updated_at).toBe(REVISION + 1);
+    expect(stale).toBeUndefined();
+    await expect(firstDb.events.get(EVENT_ID)).resolves.toMatchObject({
+      title: 'Same-time title',
+      updated_at: REVISION + 1,
+    });
   });
 });
