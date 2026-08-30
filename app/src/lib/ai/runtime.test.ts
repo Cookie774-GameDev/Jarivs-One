@@ -93,7 +93,8 @@ const mocks = vi.hoisted(() => ({
   buildRoutedMcpTaskContext: vi.fn(),
   bindPersistentOpenCodeQuestionRoute: vi.fn(),
   kernelRuntimeInterceptor: null as
-    ((composition: JarvisKernelRuntimeComposition) => JarvisKernelRuntimeComposition) | null,
+    | ((composition: JarvisKernelRuntimeComposition) => JarvisKernelRuntimeComposition)
+    | null,
 }));
 
 vi.mock('@/lib/nativeFetch', () => ({ nativeFetch: mocks.nativeFetch }));
@@ -6799,9 +6800,9 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       expect(
         useChatActivityStore
           .getState()
-          .eventsByChat[harness.chatId]?.some(
-            (event) => event.kind === 'tool' && event.status === 'running',
-          ),
+          .eventsByChat[
+            harness.chatId
+          ]?.some((event) => event.kind === 'tool' && event.status === 'running'),
       ).toBe(true);
       await providerInput.onPublicTimelineSnapshot?.({
         finalText: 'The installed kernel host returned a partial response, Sir.',

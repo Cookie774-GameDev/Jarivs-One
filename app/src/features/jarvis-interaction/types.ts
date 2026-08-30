@@ -69,7 +69,12 @@ export interface JarvisPlanReview {
 }
 
 export type JarvisPermissionStatus =
-  'pending' | 'approved' | 'approved_plan' | 'denied' | 'edited' | 'cancelled';
+  | 'pending'
+  | 'approved'
+  | 'approved_plan'
+  | 'denied'
+  | 'edited'
+  | 'cancelled';
 
 export interface OpenCodeApprovalHarnessRoute {
   protocol: 'opencode-approval-v1';
