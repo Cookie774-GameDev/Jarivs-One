@@ -1,6 +1,8 @@
 const EXPLICIT_CONTEXT_TOOL = /\b(?:vibespace_context|context map)\b/i;
 const MUTATING_REQUEST =
   /\b(?:write|create|save|delete|remove|rename|move|edit|modify|change|run|execute|launch|start|command|terminal)\b/i;
+const NEGATED_MUTATING_SEGMENT =
+  /\b(?:do\s+not|don't|never|avoid|without)\b(?:(?![.;\r\n]|\b(?:but|however|instead|then)\b).){0,512}/giu;
 const READ_OR_EVIDENCE_REQUEST =
   /\b(?:read|search|find|look\s+up|answer|quote|cite|citation|source|where\s+(?:you|u)\s+found)\b/i;
 const FILE_LIKE_SOURCE = /\b(?:files?|documents?|corpus|records?|sources?|literature)\b/i;
@@ -478,7 +480,8 @@ function exactBulletAddressTuples(userText: string): readonly DirectAddressTuple
  */
 export function requestsReadOnlyContextTool(userText: string): boolean {
   if (EXPLICIT_CONTEXT_TOOL.test(userText)) return true;
-  if (MUTATING_REQUEST.test(userText)) return false;
+  const affirmativeText = userText.replace(NEGATED_MUTATING_SEGMENT, ' ');
+  if (MUTATING_REQUEST.test(affirmativeText)) return false;
   // Registered disk reads must stay on files.read, not Context-map search.
   if (/\bfiles\.read\b/i.test(userText) && /[A-Za-z]:[\\/]/.test(userText)) return false;
   if (/\bcurrent working directory\b/i.test(userText) && READ_OR_EVIDENCE_REQUEST.test(userText)) {

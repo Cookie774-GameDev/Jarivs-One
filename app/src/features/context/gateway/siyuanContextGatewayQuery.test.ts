@@ -18,7 +18,8 @@ function queryInput(
     workspaceId: 'workspace-1',
     projectId: 'project-1',
     worktreeId: 'worktree-1',
-    question: 'What decision did the project make about frozen corpus hydration?',
+    question:
+      'What decision did the project make about frozen corpus hydration in `frozen-corpus.md`?',
     settings: { ...DEFAULT_CHAT_RUNTIME_SETTINGS, rlmEnabled: true },
     requestedRoute: route,
     signal,
@@ -105,6 +106,18 @@ function openResult(index = 1, text = `Frozen corpus decision ${index}: retain e
   };
 }
 
+function expandResult(index = 1) {
+  const text = `${`Expanded neighboring source evidence ${index}. `.repeat(4)}Retain exact citations.`;
+  const result = openResult(index, text);
+  return {
+    ...result,
+    pointer: createContextPointer({
+      ...result.pointer,
+      id: `${siyuanPointer(index).id}:expand:6144:6144`,
+    }),
+  };
+}
+
 describe('SiYuan Context Gateway query', () => {
   it('hydrates a frozen-corpus SiYuan hit with an exact citation and deterministic timings', async () => {
     let clock = 0;
@@ -187,10 +200,10 @@ describe('SiYuan Context Gateway query', () => {
         activeSearches -= 1;
         return searchResult(index);
       }
-      if (args.operation === 'open') {
+      if (args.operation === 'expand') {
         const pointer = args.pointer as { recordId: string };
         const index = Number(pointer.recordId.slice(-1));
-        return openResult(index);
+        return expandResult(index);
       }
       throw new Error('unexpected operation');
     });
@@ -204,6 +217,22 @@ describe('SiYuan Context Gateway query', () => {
 
     const operations = execute.mock.calls.map(([args]) => args.operation);
     expect(operations.filter((operation) => operation === 'search')).toHaveLength(3);
+    expect(operations.filter((operation) => operation === 'expand')).toHaveLength(3);
+    expect(operations).not.toContain('open');
+    for (const args of execute.mock.calls.map(([value]) => value)) {
+      if (args.operation !== 'expand') continue;
+      expect(args).toMatchObject({ beforeBytes: 6_144, afterBytes: 6_144 });
+    }
+    expect(
+      execute.mock.calls
+        .map(([args]) => args)
+        .filter(({ operation }) => operation === 'search')
+        .map(({ query }) => query),
+    ).toEqual([
+      'What decision did the project make about frozen corpus hydration in `frozen-corpus.md`?',
+      'frozen-corpus.md\nExact source names and paths; application process, exact worktree binary, executable path, descendant ownership, msedgewebview2.exe, user-data profile, WebView, CDP, renderer, ports, addresses, and stable identifiers.',
+      'frozen-corpus.md\nInvariants, revisions, canaries, acceptance criteria, safety constraints, Ollama, listeners, and conflicting or superseded evidence.',
+    ]);
     expect(operations).not.toContain('query');
     expect(operations).not.toContain('investigate');
     expect(maximumActiveSearches).toBe(2);
@@ -215,9 +244,43 @@ describe('SiYuan Context Gateway query', () => {
       maxDepth: 1,
     });
     expect(result.evidence.map(({ handle }) => handle)).toEqual([
-      'ptr:siyuan:scope:block-1:0:64',
-      'ptr:siyuan:scope:block-2:0:64',
-      'ptr:siyuan:scope:block-3:0:64',
+      'ptr:siyuan:scope:block-1:0:64:expand:6144:6144',
+      'ptr:siyuan:scope:block-2:0:64:expand:6144:6144',
+      'ptr:siyuan:scope:block-3:0:64:expand:6144:6144',
+    ]);
+  });
+
+  it('bounds source-less deep facet anchors to the request topic instead of repeating instructions', async () => {
+    const execute = vi.fn(async (args: Record<string, unknown>) => {
+      if (args.operation === 'describe') return describeResult();
+      if (args.operation === 'search') {
+        return { items: [], truncated: false, indexAvailable: true, stale: false };
+      }
+      throw new Error('unexpected operation');
+    });
+    const query = createSiyuanContextGatewayQuery({
+      tool: { execute },
+      now: () => 100,
+      createLeaseId: () => 'gateway-lease-source-less',
+    });
+    const topic =
+      'What exact native process, WebView profile, CDP port, and zero-Ollama safety conditions are required?';
+    const instructions =
+      'Return citations. Do not write, edit, delete, run, start, or attach files.';
+
+    await expect(
+      query({ ...queryInput('deep'), question: `${topic}\n\n${instructions}` }),
+    ).rejects.toThrow('CONTEXT_GATEWAY_SIYUAN_EMPTY_RESULT');
+
+    expect(
+      execute.mock.calls
+        .map(([args]) => args)
+        .filter(({ operation }) => operation === 'search')
+        .map(({ query: searchQuery }) => searchQuery),
+    ).toEqual([
+      `${topic}\n\n${instructions}`,
+      `${topic}\nExact source names and paths; application process, exact worktree binary, executable path, descendant ownership, msedgewebview2.exe, user-data profile, WebView, CDP, renderer, ports, addresses, and stable identifiers.`,
+      `${topic}\nInvariants, revisions, canaries, acceptance criteria, safety constraints, Ollama, listeners, and conflicting or superseded evidence.`,
     ]);
   });
 

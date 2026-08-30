@@ -564,6 +564,25 @@ describe('requestsReadOnlyContextTool', () => {
     ).toBe(false);
   });
 
+  it('keeps negated mutation safety language on the read-only Context path', () => {
+    expect(
+      requestsReadOnlyContextTool(
+        [
+          'Use the VibeSpace Context Gateway/RLM path and its SiYuan-backed retrieval evidence.',
+          'Retrieve grounded project evidence from the indexed source files and cite the receipt.',
+          'Do not write, edit, delete, run, start, or attach files.',
+        ].join('\n'),
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    'Read the indexed source files, then edit the project record with the answer.',
+    'Read the indexed source files. Do not write a new file, but edit the existing record.',
+  ])('still rejects an affirmative mutation mixed with a Context read: %s', (prompt) => {
+    expect(requestsReadOnlyContextTool(prompt)).toBe(false);
+  });
+
   it('does not rewrite an explicit files.read of absolute disk paths into Context search', () => {
     expect(
       requestsReadOnlyContextTool(

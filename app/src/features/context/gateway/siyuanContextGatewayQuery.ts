@@ -18,6 +18,7 @@ const MAX_SEARCH_RESULTS = 5;
 const MAX_EVIDENCE_ITEMS = 5;
 const MAX_OPEN_BYTES = 12 * 1_024;
 const MAX_TOTAL_EVIDENCE_BYTES = 48 * 1_024;
+const DEEP_EXPAND_BYTES = 6 * 1_024;
 const MAX_CONCURRENT_CALLS = 2;
 const LEASE_DURATION_MS = 2 * 60 * 1_000;
 const SUPPORTED_ROUTES = Object.freeze(['direct', 'exact', 'focused', 'deep'] as const);
@@ -313,7 +314,11 @@ function sameRecord(left: Readonly<ContextRecord>, right: Readonly<ContextRecord
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function parseOpen(value: unknown, candidate: Readonly<SearchCandidate>): HydratedEvidence {
+function parseHydrated(
+  value: unknown,
+  candidate: Readonly<SearchCandidate>,
+  operation: 'open' | 'expand',
+): HydratedEvidence {
   const raw = objectWithKeys(
     value,
     [
@@ -336,6 +341,10 @@ function parseOpen(value: unknown, candidate: Readonly<SearchCandidate>): Hydrat
   const lineStart = positiveSafeInteger(raw.lineStart);
   const lineEnd = positiveSafeInteger(raw.lineEnd);
   const text = boundedText(raw.text, MAX_OPEN_BYTES + 3);
+  const expectedPointerId =
+    operation === 'expand'
+      ? `${candidate.pointer.id}:expand:${DEEP_EXPAND_BYTES}:${DEEP_EXPAND_BYTES}`
+      : candidate.pointer.id;
   if (
     raw.status !== 'current' ||
     typeof raw.truncated !== 'boolean' ||
@@ -344,11 +353,14 @@ function parseOpen(value: unknown, candidate: Readonly<SearchCandidate>): Hydrat
     pointer.byteStart !== byteStart ||
     pointer.byteEnd !== byteEnd ||
     !sameRecord(record, candidate.record) ||
-    pointer.id !== candidate.pointer.id ||
+    pointer.id !== expectedPointerId ||
     pointer.recordId !== candidate.pointer.recordId ||
     pointer.sourceVersion !== candidate.pointer.sourceVersion ||
     pointer.contentHash !== candidate.pointer.contentHash ||
-    record.contentHash !== pointer.contentHash
+    record.contentHash !== pointer.contentHash ||
+    (operation === 'expand' &&
+      ((candidate.pointer.byteStart !== undefined && byteStart > candidate.pointer.byteStart) ||
+        (candidate.pointer.byteEnd !== undefined && byteEnd < candidate.pointer.byteEnd)))
   ) {
     fail('source_stale');
   }
@@ -386,10 +398,21 @@ function question(input: Readonly<ProductionRlmContextInput>): string {
 }
 
 function deepQueries(value: string): readonly string[] {
+  const sourceHint = [
+    ...new Set(value.match(/\b[A-Za-z0-9][A-Za-z0-9._-]{0,199}\.[A-Za-z0-9]{1,16}\b/gu) ?? []),
+  ]
+    .slice(0, 3)
+    .join(' ');
+  const topicHint = value
+    .split(/\r?\n/u)
+    .find((line) => line.trim().length > 0)!
+    .trim()
+    .slice(0, 512);
+  const facetAnchor = sourceHint || topicHint;
   return Object.freeze([
     value,
-    `${value}\nFocus on current implementation and exact source evidence.`,
-    `${value}\nCheck for conflicting, stale, or superseded project evidence.`,
+    `${facetAnchor}\nExact source names and paths; application process, exact worktree binary, executable path, descendant ownership, msedgewebview2.exe, user-data profile, WebView, CDP, renderer, ports, addresses, and stable identifiers.`,
+    `${facetAnchor}\nInvariants, revisions, canaries, acceptance criteria, safety constraints, Ollama, listeners, and conflicting or superseded evidence.`,
   ]);
 }
 
@@ -525,15 +548,27 @@ export function createSiyuanContextGatewayQuery(
     const candidates = mergeCandidates(pages);
     if (candidates.length === 0) fail('empty_result');
 
-    const selected = candidates.slice(0, MAX_EVIDENCE_ITEMS);
+    const hydrationCandidates =
+      route === 'deep'
+        ? [...new Map(candidates.map((candidate) => [candidate.record.id, candidate])).values()]
+        : candidates;
+    const selected = hydrationCandidates.slice(0, MAX_EVIDENCE_ITEMS);
+    const hydrationOperation = route === 'deep' ? 'expand' : 'open';
     const hydrationStartedAt = safeClock(dependencies);
     const rawEvidence = await concurrentMap(selected, input.signal, (candidate) =>
       dependencies.tool.execute(
-        {
-          operation: 'open',
-          pointer: candidate.pointer,
-          maxBytes: MAX_OPEN_BYTES,
-        },
+        hydrationOperation === 'expand'
+          ? {
+              operation: 'expand',
+              pointer: candidate.pointer,
+              beforeBytes: DEEP_EXPAND_BYTES,
+              afterBytes: DEEP_EXPAND_BYTES,
+            }
+          : {
+              operation: 'open',
+              pointer: candidate.pointer,
+              maxBytes: MAX_OPEN_BYTES,
+            },
         lease,
         input.signal,
       ),
@@ -546,7 +581,7 @@ export function createSiyuanContextGatewayQuery(
     let discardedForBudget = false;
     let openTruncated = false;
     for (let index = 0; index < rawEvidence.length; index += 1) {
-      const hydrated = parseOpen(rawEvidence[index], selected[index]!);
+      const hydrated = parseHydrated(rawEvidence[index], selected[index]!, hydrationOperation);
       const bytes = new TextEncoder().encode(hydrated.evidence.text).byteLength;
       openTruncated ||= hydrated.truncated;
       if (evidenceBytes + bytes > MAX_TOTAL_EVIDENCE_BYTES) {

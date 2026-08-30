@@ -485,7 +485,7 @@ fn mcp_error(id: Option<&Value>, code: i64, message: &str) -> Vec<u8> {
 fn context_tool_descriptor() -> Value {
     serde_json::json!({
         "name": "vibespace_context",
-        "description": "Search, open, boundedly expand, or resolve an exact logical token address from the current VibeSpace Context Map.",
+        "description": "Ask the shared Gateway/RLM a grounded question, search, open, boundedly expand, or resolve an exact logical token address from the current VibeSpace Context Map. Prefer query for ordinary questions because it returns a grounded prompt block and receipt.",
         "annotations": {
             "readOnlyHint": true,
             "destructiveHint": false,
@@ -497,7 +497,7 @@ fn context_tool_descriptor() -> Value {
             "additionalProperties": false,
             "required": ["operation"],
             "properties": {
-                "operation": { "type": "string", "enum": ["search", "open", "expand", "address"] },
+                "operation": { "type": "string", "enum": ["query", "search", "open", "expand", "address"] },
                 "query": { "type": "string", "maxLength": 32768 },
                 "corpusId": {
                     "type": "string",
@@ -579,6 +579,10 @@ fn context_tool_descriptor() -> Value {
                 }
             },
             "allOf": [
+                {
+                    "if": { "properties": { "operation": { "const": "query" } } },
+                    "then": { "required": ["query"] }
+                },
                 {
                     "if": { "properties": { "operation": { "const": "search" } } },
                     "then": { "required": ["query"] }
@@ -1400,7 +1404,7 @@ mod tests {
         assert_eq!(descriptor["inputSchema"]["additionalProperties"], false);
         assert_eq!(
             descriptor["inputSchema"]["properties"]["operation"]["enum"],
-            json!(["search", "open", "expand", "address"])
+            json!(["query", "search", "open", "expand", "address"])
         );
         assert_eq!(
             descriptor["inputSchema"]["properties"]["position"]["type"],
@@ -1436,6 +1440,10 @@ mod tests {
             descriptor["inputSchema"]["allOf"],
             json!([
                 {
+                    "if": { "properties": { "operation": { "const": "query" } } },
+                    "then": { "required": ["query"] }
+                },
+                {
                     "if": { "properties": { "operation": { "const": "search" } } },
                     "then": { "required": ["query"] }
                 },
@@ -1463,7 +1471,7 @@ mod tests {
             ])
         );
         assert_eq!(
-            descriptor["inputSchema"]["allOf"][2]["then"]["properties"]["pointer"]["type"],
+            descriptor["inputSchema"]["allOf"][3]["then"]["properties"]["pointer"]["type"],
             "object"
         );
         assert!(descriptor["inputSchema"]["properties"]

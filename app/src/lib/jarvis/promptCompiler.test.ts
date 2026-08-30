@@ -485,6 +485,12 @@ describe('compileJarvisPrompt', () => {
 
     expect(capabilityLayer).toContain('vibespace_context');
     expect(capabilityLayer).toContain('only provider tool enabled for this turn');
+    expect(capabilityLayer).toContain('this explicit low-level request');
+    expect(capabilityLayer).toContain('with `operation="search"`');
+    expect(capabilityLayer).toContain('Do not substitute `query`');
+    expect(capabilityLayer).not.toContain(
+      'with `operation="investigate"` and the complete user question',
+    );
     expect(capabilityLayer).not.toContain('"id":"terminal.run"');
     expect(contextLayer).not.toContain('irrelevant attached context');
     expect(compiled.diagnostics.omittedSourceRefs).toContainEqual(
@@ -537,26 +543,16 @@ describe('compileJarvisPrompt', () => {
     expect(capabilityLayer).toContain('only provider tool enabled for this turn');
     expect(capabilityLayer).toContain('The function name is always `vibespace_context`');
     expect(capabilityLayer).toContain('Never print or narrate a tool call as JSON');
-    expect(capabilityLayer).toContain('with `operation=\"search\"`');
-    expect(capabilityLayer).toContain('`limit=5`');
-    expect(capabilityLayer).toContain(
+    expect(capabilityLayer).toContain('with `operation="investigate"`');
+    expect(capabilityLayer).toContain('complete user question');
+    expect(capabilityLayer).toContain('Gateway/RLM receipt');
+    expect(capabilityLayer).toContain('canonical `vibespace:context/...` provenance URI');
+    expect(capabilityLayer).not.toContain(
+      'For a single-question file research turn, first call `vibespace_context` with `operation="search"`',
+    );
+    expect(capabilityLayer).not.toContain(
       'For a numbered multi-question request, call `operation="search"` exactly once per numbered question',
     );
-    expect(capabilityLayer).toContain('with `limit=3`');
-    expect(capabilityLayer).toContain('Do not make an additional whole-request search');
-    expect(capabilityLayer).toContain('finish every search before answering');
-    expect(capabilityLayer).toContain(
-      'at most six additional evidence calls total across `operation="open"` and `operation="expand"`',
-    );
-    expect(capabilityLayer).toContain('no more than two for any one question');
-    expect(capabilityLayer).toContain(
-      "only with exact pointers returned by that question's search",
-    );
-    expect(capabilityLayer).toContain('no more than one evidence retrieval for each cited source');
-    expect(capabilityLayer).toContain('at least one of `beforeBytes` or `afterBytes`');
-    expect(capabilityLayer).toContain('each supplied direction must be at most 2048');
-    expect(capabilityLayer).toContain('`expand` replaces `open` for that source');
-    expect(capabilityLayer).toContain('Never infer a revision');
     expect(capabilityLayer).not.toContain(
       'For file research, first call `vibespace_context` with `operation="search"`, the complete user question',
     );
@@ -571,6 +567,24 @@ describe('compileJarvisPrompt', () => {
     );
     expect(compiled.diagnostics.warnings).toContain('context_deferred_to_live_tool');
     expect(compiled.systemText.length).toBeLessThan(16_000);
+  });
+
+  it('keeps an explicitly numbered multi-question request on bounded per-question search', async () => {
+    const compiled = compileJarvisPrompt(
+      await envelope({
+        userText:
+          'Use the Context Map to answer these questions:\n1. What is the native process?\n2. Which ports are required?',
+      }),
+    );
+    const capabilityLayer = compiled.layers[2]?.content ?? '';
+
+    expect(capabilityLayer).toContain(
+      'For a numbered multi-question request, call `operation="search"` exactly once per numbered question',
+    );
+    expect(capabilityLayer).toContain('with `limit=3`');
+    expect(capabilityLayer).not.toContain(
+      'with `operation="investigate"` and the complete user question',
+    );
   });
 
   it('protects a mandatory prior-pointer expansion from search substitution and zero directions', async () => {

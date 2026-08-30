@@ -264,8 +264,10 @@ import type { JarvisDexie } from '@/lib/db';
 import type {
   JarvisExecutionJournal,
   JarvisHiveStackPlanV1,
+  JarvisContextItem,
   JarvisLiveEvidencePrimaryHostAccountSession,
   JarvisModelSnapshot,
+  JarvisRequestEnvelope,
   JarvisResponseEnvelope,
   JarvisSourceRef,
 } from '@/lib/jarvis/contracts';
@@ -287,6 +289,7 @@ import {
   TOOL_GATEWAY_CATALOG,
 } from '@/lib/harness/toolGatewayProtocol';
 import { readOpenCodeApprovalStatus } from '@/lib/harness/openCodeApprovalState';
+import { consumeToolGatewayContextCitationItems } from '@/lib/harness/toolGatewayProduction';
 import {
   optimizeChatMessages,
   optimizationModePolicy,
@@ -1267,6 +1270,10 @@ export async function installJarvisKernelRuntimeHost(
     Readonly<RawProviderResponse>,
     readonly import('./openCodePublicTimeline').OpenCodePublicTimelinePart[]
   >();
+  const providerContextCitationItems = new WeakMap<
+    Readonly<RawProviderResponse>,
+    readonly Readonly<JarvisContextItem>[]
+  >();
   const providerControlEvidence = new WeakMap<
     Readonly<RawProviderResponse>,
     Readonly<{
@@ -1518,6 +1525,7 @@ export async function installJarvisKernelRuntimeHost(
               const explicitReadRoot = extractExplicitReadRoot(lastUserText);
               const suppressProviderPreview = shouldSuppressProviderPreview(lastUserText);
               const startedAt = now();
+              let contextCitationSessionId: string | undefined;
               const modelSnapshotRef = `jmodel_${providerInput.model.providerId}_${providerInput.model.modelId}_${providerInput.model.capturedAt}`;
               const response = runExplicitRootEvidenceSynthesis(
                 {
@@ -1552,6 +1560,15 @@ export async function installJarvisKernelRuntimeHost(
                     attemptNumber: providerInput.attemptNumber,
                   },
                   signal,
+                  onHarnessSessionBound: (binding) => {
+                    if (
+                      contextCitationSessionId &&
+                      contextCitationSessionId !== binding.sessionId
+                    ) {
+                      throw new Error('kernel_provider_context_session_changed');
+                    }
+                    contextCitationSessionId = binding.sessionId;
+                  },
                   onChunk: (chunk) => {
                     if (!chunk.delta) return;
                     const decision = pushStreamingPreviewChunk(previewState, chunk.delta);
@@ -1602,6 +1619,12 @@ export async function installJarvisKernelRuntimeHost(
                   completedAt,
                 });
                 providerArtifactDrafts.set(raw, Object.freeze([]));
+                providerContextCitationItems.set(
+                  raw,
+                  contextCitationSessionId
+                    ? consumeToolGatewayContextCitationItems(contextCitationSessionId)
+                    : Object.freeze([]),
+                );
                 providerPublicTimeline.set(raw, Object.freeze([...(result.public_timeline ?? [])]));
                 providerChecklistEvidence.set(
                   raw,
@@ -1662,7 +1685,10 @@ export async function installJarvisKernelRuntimeHost(
       });
     },
     async processResponse(raw, request) {
-      const processedEnvelope = await responseModule.processJarvisResponse(raw, request, {
+      const contextCitations = providerContextCitationItems.get(raw) ?? [];
+      providerContextCitationItems.delete(raw);
+      const responseRequest = appendToolGatewayContextCitations(request, contextCitations);
+      const processedEnvelope = await responseModule.processJarvisResponse(raw, responseRequest, {
         async repair() {
           throw new Error('kernel_response_repair_provider_unavailable');
         },
@@ -2745,12 +2771,10 @@ export function prepareOpenCodeMessagesForInteractionMode(
       : researchQueries.length === 1
         ? [
             'Call the real `vibespace_context` function now with exactly these two arguments:',
-            `{"operation":"search","query":${JSON.stringify(userText)},"limit":5}`,
-            'Do not include `pointer`, `recordId`, byte ranges, continuation, or any other optional argument in this first call.',
-            'Do not print, narrate, or wrap the call as JSON text. Wait for the real search result.',
-            'If a search item preview contains the complete answer, answer immediately and cite that item record title/path. Only call `operation="open"` when the preview is insufficient, using one exact pointer returned by search.',
-            'The final answer MUST include the exact matching record title (including its `.txt` filename) from the search result together with the requested facts.',
-            'Do not cite unrelated context-pack sources or replace the matching search-result title with another filename.',
+            `{"operation":"investigate","query":${JSON.stringify(userText)}}`,
+            'Do not include `pointer`, `recordId`, byte ranges, continuation, `limit`, or any other optional argument. Do not call `search`, `open`, or `expand` for this ordinary research turn.',
+            'Do not print, narrate, or wrap the call as JSON text. Wait for the real shared Gateway/RLM investigation result.',
+            'Answer only from its grounded prompt block. Include every returned canonical `vibespace:context/...` provenance URI—the Gateway/RLM receipt, source, and evidence URI—exactly as plain code; never invent a Markdown link or reconstruct a low-level pointer.',
             'This is a direct user chat, not a subagent assignment, delegated worker task, or dispatch. No bootstrap receipt or mandatory coordination-file read applies. Do not answer with a bootstrap receipt or bootstrap error.',
           ].join('\n')
         : [
@@ -2774,6 +2798,34 @@ export function prepareOpenCodeMessagesForInteractionMode(
   const prepared = [...messages];
   prepared[latestUserIndex] = { ...latest, content };
   return prepared;
+}
+
+export function appendToolGatewayContextCitations(
+  request: Readonly<JarvisRequestEnvelope>,
+  citations: readonly Readonly<JarvisContextItem>[],
+): Readonly<JarvisRequestEnvelope> {
+  if (citations.length === 0) return request;
+  const existing = new Set(
+    request.context.items.map((item) => `${item.source.id}\u0000${item.source.uri ?? ''}`),
+  );
+  const additions = citations.filter(
+    (item) => !existing.has(`${item.source.id}\u0000${item.source.uri ?? ''}`),
+  );
+  if (additions.length === 0) return request;
+  const usedChars =
+    request.context.budget.usedChars +
+    additions.reduce((total, item) => total + item.excerpt.length, 0);
+  return Object.freeze({
+    ...request,
+    context: Object.freeze({
+      ...request.context,
+      items: Object.freeze([...request.context.items, ...additions]),
+      budget: Object.freeze({
+        maxChars: Math.max(request.context.budget.maxChars, usedChars),
+        usedChars,
+      }),
+    }),
+  });
 }
 
 function openCodePermissionRequest(approval: VibeSpaceApproval): JarvisPermissionRequest {

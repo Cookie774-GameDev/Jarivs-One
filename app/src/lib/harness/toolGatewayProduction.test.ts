@@ -7,6 +7,7 @@ import * as mcpGatewayModule from '@/lib/mcp/vibeSpaceGateway';
 import type { ProjectId, WorkspaceId } from '@/types/common';
 import {
   clearToolGatewayMutationGrants,
+  consumeToolGatewayContextCitationItems,
   createProductionToolGatewayDependencies,
   grantNextToolGatewayMutation,
   grantToolGatewayMutation,
@@ -515,7 +516,7 @@ describe('production tool gateway dependencies', () => {
     dispose();
   });
 
-  it('binds low-level recursive investigate to the same observed session identity', async () => {
+  it('routes the generated-schema investigate alias through the shared Gateway', async () => {
     const authority = captureToolGatewayAuthorityClaim()!;
     expect(
       bindToolGatewayObservedExecutionAuthority('session-1', authority, {
@@ -525,25 +526,85 @@ describe('production tool gateway dependencies', () => {
     ).toBe(true);
     const execute = vi.fn(async () => ({ mode: 'rlm', bounded: true }));
     const dispose = installToolGatewayRlmContextPort({ execute });
+    const gatewayResult = Object.freeze({
+      promptBlock: '<vibespace_context>grounded alias</vibespace_context>',
+      receipt: Object.freeze({
+        receiptId: 'context-receipt-investigate',
+        scopeRevision: Object.freeze({
+          accountId: 'account-a',
+          workspaceId: 'workspace-a',
+          projectId: 'project-a',
+          worktreeId: 'C:\\work\\project\\.worktrees\\feature',
+          revision: 'session-1:0',
+        }),
+        sourceRevisions: Object.freeze([
+          Object.freeze({ sourceId: 'rlm-source:source-1', revision: `sha256:${'a'.repeat(64)}` }),
+        ]),
+        evidenceHandles: Object.freeze(['ptr:rlm:record-1:0:512:expand:6144:6144']),
+        safeFailure: null,
+      }),
+    });
+    const ask = vi.spyOn(productionContextGateway, 'ask').mockResolvedValue(gatewayResult as never);
+    const receiptUri = `vibespace:context/receipt/${[
+      ...new TextEncoder().encode('context-receipt-investigate'),
+    ]
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('')}`;
 
-    await expect(
-      Promise.resolve(
-        createProductionToolGatewayDependencies().context.rlm(
-          { operation: 'investigate', query: 'Trace the cross-source decision.' },
-          {
-            requestId: 'request-investigate',
-            sessionId: 'session-1',
-            messageId: 'message-1',
-            worktree: 'C:\\work\\project\\.worktrees\\feature',
-            mutationApproved: false,
-          },
-        ),
+    const result = await Promise.resolve(
+      createProductionToolGatewayDependencies().context.rlm(
+        { operation: 'investigate', query: 'Trace the cross-source decision.' },
+        {
+          requestId: 'request-investigate',
+          sessionId: 'session-1',
+          messageId: 'message-1',
+          worktree: 'C:\\work\\project\\.worktrees\\feature',
+          mutationApproved: false,
+        },
       ),
-    ).resolves.toEqual({ mode: 'rlm', bounded: true });
-    expect(execute).toHaveBeenCalledWith(
-      { operation: 'investigate', query: 'Trace the cross-source decision.' },
-      expect.objectContaining({ executionIdentity: observedIdentity }),
     );
+    expect(result).toMatchObject({ receipt: gatewayResult.receipt });
+    expect((result as { promptBlock: string }).promptBlock).toContain(receiptUri);
+    expect((result as { promptBlock: string }).promptBlock).toContain(
+      'vibespace:context/source/rlm-source%3Asource-1',
+    );
+    expect((result as { promptBlock: string }).promptBlock).toContain(
+      'vibespace:context/evidence/ptr%3Arlm%3Arecord-1%3A0%3A512%3Aexpand%3A6144%3A6144',
+    );
+    expect(consumeToolGatewayContextCitationItems('session-1')).toEqual([
+      expect.objectContaining({
+        purpose: 'citation',
+        source: expect.objectContaining({
+          id: 'context-receipt-investigate',
+          uri: receiptUri,
+          trust: 'app_verified',
+        }),
+      }),
+      expect.objectContaining({
+        source: expect.objectContaining({
+          id: 'rlm-source:source-1',
+          uri: 'vibespace:context/source/rlm-source%3Asource-1',
+        }),
+      }),
+      expect.objectContaining({
+        source: expect.objectContaining({
+          id: 'ptr:rlm:record-1:0:512:expand:6144:6144',
+          uri: 'vibespace:context/evidence/ptr%3Arlm%3Arecord-1%3A0%3A512%3Aexpand%3A6144%3A6144',
+        }),
+      }),
+    ]);
+    expect(consumeToolGatewayContextCitationItems('session-1')).toEqual([]);
+    expect(ask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: 'request-investigate',
+        question: 'Trace the cross-source decision.',
+        executionIdentity: observedIdentity,
+        performance: 'quality',
+        userIntent: { context: true, deep: true },
+      }),
+    );
+    expect(execute).not.toHaveBeenCalled();
+    ask.mockRestore();
     dispose();
   });
 

@@ -86,6 +86,15 @@ describe('tool gateway protocol', () => {
       parseToolGatewayRequest(
         request({
           tool: 'vibespace_context',
+          args: { operation: 'query', query: 'What does the indexed acceptance file prove?' },
+        }),
+      ).args,
+    ).toEqual({ operation: 'query', query: 'What does the indexed acceptance file prove?' });
+
+    expect(
+      parseToolGatewayRequest(
+        request({
+          tool: 'vibespace_context',
           args: {
             operation: 'open',
             pointer: {
@@ -303,6 +312,25 @@ describe('tool gateway protocol', () => {
         ),
       ).toThrow();
     }
+  });
+
+  it('rejects an incomplete search pointer instead of weakening bounded evidence', () => {
+    expect(() =>
+      parseToolGatewayRequest(
+        request({
+          tool: 'vibespace_context',
+          args: {
+            operation: 'open',
+            pointer: {
+              id: 'pointer-1',
+              recordId: 'record-1',
+              sourceVersion: `sha256:${'a'.repeat(64)}`,
+              contentHash: 'a'.repeat(64),
+            },
+          },
+        }),
+      ),
+    ).toThrow();
   });
 
   it('accepts Tauri-emitted null optional directory and worktree as omitted', () => {

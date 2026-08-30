@@ -27,6 +27,7 @@ import type {
   JarvisApprovalV1,
   JarvisCapabilitySnapshot,
   JarvisContextItem,
+  JarvisRequestEnvelope,
   JarvisResponseEnvelope,
   JarvisRun,
 } from '@/lib/jarvis/contracts';
@@ -218,6 +219,7 @@ import {
   liveVariantLookupForChatSelection,
   mayAutoApproveOpenCodeRequest,
   openCodeToolsForInteractionMode,
+  appendToolGatewayContextCitations,
   prepareOpenCodeMessagesForInteractionMode,
   prependOpenCodePublicTimeline,
   reconcileApprovalContinuationResponse,
@@ -247,6 +249,44 @@ function startRuntimeListener(
   const [bindings, options] = args;
   return startKernelAwareRuntimeListener(bindings, options ?? { jarvisKernelMode: 'legacy' });
 }
+
+describe('tool Gateway response citations', () => {
+  it('adds consumed app-verified citation items to the response context budget', () => {
+    const request = {
+      requestId: 'request-citations',
+      context: {
+        items: [],
+        budget: { maxChars: 100, usedChars: 0 },
+        exclusions: [],
+      },
+    } as unknown as JarvisRequestEnvelope;
+    const citation = {
+      source: {
+        id: 'context-receipt-1',
+        kind: 'tool_result',
+        label: 'Context Gateway receipt',
+        uri: 'vibespace:context/receipt/context-receipt-1',
+        accountId: 'account-1',
+        projectId: 'project-1',
+        trust: 'app_verified',
+        origin: 'app_observed',
+        sensitivity: 'private',
+        observedAt: 10,
+      },
+      purpose: 'citation',
+      excerpt: 'Context Gateway receipt verified by the VibeSpace Context Gateway.',
+      freshness: 'current',
+      truncated: false,
+    } as const satisfies JarvisContextItem;
+
+    const result = appendToolGatewayContextCitations(request, [citation]);
+
+    expect(result).not.toBe(request);
+    expect(result.context.items).toEqual([citation]);
+    expect(result.context.budget).toEqual({ maxChars: 100, usedChars: citation.excerpt.length });
+    expect(appendToolGatewayContextCitations(result, [citation])).toBe(result);
+  });
+});
 
 describe('canonical OpenCode public chronology', () => {
   it('prepends the authoritative display timeline even when Jarvis policy edits the final text', () => {
@@ -1536,7 +1576,7 @@ describe('startRuntimeListener agent routing', () => {
     expect(tools['terminal.write']).toBe(true);
   });
 
-  it('adds a bounded exact search directive to the natural read-and-cite provider turn', () => {
+  it('adds one receipt-bearing Gateway/RLM investigation to a natural research turn', () => {
     const content =
       'Please read the files and answer with the exact source filename: what belongs to Observatory Lumen?';
     const messages = prepareOpenCodeMessagesForInteractionMode([{ role: 'user', content }]);
@@ -1546,16 +1586,13 @@ describe('startRuntimeListener agent routing', () => {
     expect(messages[0]?.content).toContain(
       'Call the real `vibespace_context` function now with exactly these two arguments',
     );
-    expect(messages[0]?.content).toContain('"operation":"search"');
-    expect(messages[0]?.content).toContain('"limit":5');
+    expect(messages[0]?.content).toContain('"operation":"investigate"');
     expect(messages[0]?.content).toContain(JSON.stringify(content));
-    expect(messages[0]?.content).toContain('Do not include `pointer`');
-    expect(messages[0]?.content).toContain('If a search item preview contains the complete answer');
-    expect(messages[0]?.content).toContain(
-      'The final answer MUST include the exact matching record title',
-    );
-    expect(messages[0]?.content).toContain('Do not cite unrelated context-pack sources');
-    expect(messages[0]?.content).toContain('Only call `operation="open"`');
+    expect(messages[0]?.content).not.toContain('"operation":"search"');
+    expect(messages[0]?.content).not.toContain('"limit":5');
+    expect(messages[0]?.content).toContain('Do not call `search`, `open`, or `expand`');
+    expect(messages[0]?.content).toContain('Gateway/RLM receipt');
+    expect(messages[0]?.content).toContain('canonical `vibespace:context/...` provenance URI');
     expect(messages[0]?.content).toContain('This is a direct user chat, not a subagent assignment');
     expect(messages[0]?.content).toContain('Do not answer with a bootstrap receipt');
   });
@@ -1767,7 +1804,8 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     );
 
     expect(prepared).not.toBe(content);
-    expect(prepared).toContain('"operation":"search"');
+    expect(prepared).toContain('"operation":"investigate"');
+    expect(prepared).not.toContain('"operation":"expand"');
   });
 
   it('preserves one bounded old-pointer open continuation without inventing a search', () => {
