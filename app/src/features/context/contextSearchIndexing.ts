@@ -185,6 +185,13 @@ function rawHash(stat: FsPathStatResult): string | undefined {
     : undefined;
 }
 
+function unsafePhysicalText(content: string): boolean {
+  return (
+    content.includes('\uFFFD') ||
+    /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u2028\u2029]/u.test(content)
+  );
+}
+
 async function documentFor(
   map: ContextSearchIndexMap,
   candidate: Candidate,
@@ -208,10 +215,9 @@ async function documentFor(
   const read = await dependencies.read(candidate.absolutePath, MAX_FILE_BYTES + 1, access);
   abortIfNeeded(signal);
   if (!read.ok) return failSource(candidate, read.error.code);
-  // Binary/media files still belong in the recursive Context graph, but a
-  // replacement character proves their decoded bytes are not safe full text.
-  // Keep the structural node and omit only its physical RLM document.
-  if (read.content.includes('\uFFFD')) return null;
+  // Binary/media files still belong in the recursive Context graph. Keep the
+  // structural node, but omit decoded bodies that are unsafe as physical text.
+  if (unsafePhysicalText(read.content)) return null;
   const bytes = new TextEncoder().encode(read.content).byteLength;
   if (bytes > MAX_FILE_BYTES || bytes !== before.size) return fail('source_changed');
   const decision = classifyJarvisSource({

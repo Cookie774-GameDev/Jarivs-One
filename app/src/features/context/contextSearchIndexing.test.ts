@@ -227,6 +227,42 @@ describe('bounded Context search index population', () => {
     ]);
   });
 
+  it.each(['\u0000', '\u0001', '\u000b', '\u001f', '\u007f', '\u2028', '\u2029'])(
+    'keeps valid UTF-8 containing unsafe control %j as graph metadata only',
+    async (unsafeControl) => {
+      const safeText = '你好\tline one\nline two\r\n';
+      const deps = dependencies({
+        'C:\\repo\\a.txt': safeText,
+        'C:\\repo\\binary.dat': `valid UTF-8${unsafeControl}binary`,
+      });
+
+      const receipt = await createContextSearchIndexPopulationPort(deps).populateCreatedMap(
+        'account-1',
+        map([
+          { id: 'node-a', kind: 'file', title: 'a.txt', path: 'a.txt', modifiedAt: 10 },
+          {
+            id: 'node-binary',
+            kind: 'file',
+            title: 'binary.dat',
+            path: 'binary.dat',
+            modifiedAt: 20,
+          },
+        ]),
+      );
+
+      expect(receipt).toEqual({
+        mapId: 'map-1',
+        documentCount: 1,
+        bodyBytes: new TextEncoder().encode(safeText).byteLength,
+        status: 'ready',
+      });
+      expect(vi.mocked(deps.port.replaceDocuments).mock.calls[0]?.[2]).toEqual([
+        expect.objectContaining({ documentId: 'node-a', path: 'a.txt', body: safeText }),
+      ]);
+      expect(deps.hash).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it.each([
     ['traversal', '../escape.txt'],
     ['ADS', 'safe.txt:secret'],
