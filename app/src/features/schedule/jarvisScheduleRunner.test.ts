@@ -131,6 +131,8 @@ function buildDeps(
       dispatches.push(input);
       return outcomes[Math.min(outcomeIndex++, outcomes.length - 1)]!;
     },
+    recoverCaoScheduledLearning: vi.fn(async () => null),
+    runCaoScheduledLearning: vi.fn(async () => ({ status: 'completed' as const })),
     now: () => BASE_NOW,
   };
   return { deps, updates, chats, dispatches };
@@ -207,7 +209,13 @@ describe('runDueJarvisSchedules', () => {
 
   it('does not expose mutable UI message or event authorities in runner dependencies', () => {
     expectTypeOf<keyof JarvisScheduleRunnerDeps>().toEqualTypeOf<
-      'listEvents' | 'updateEvent' | 'createChat' | 'dispatchScheduledOccurrence' | 'now'
+      | 'listEvents'
+      | 'updateEvent'
+      | 'createChat'
+      | 'dispatchScheduledOccurrence'
+      | 'recoverCaoScheduledLearning'
+      | 'runCaoScheduledLearning'
+      | 'now'
     >();
     expectTypeOf<JarvisScheduleRunnerDeps['dispatchScheduledOccurrence']>()
       .parameter(0)
@@ -216,6 +224,91 @@ describe('runDueJarvisSchedules', () => {
         eventId: string;
         dueAt: number;
       }>();
+  });
+
+  it('runs and recovers learning only for an explicit dedicated CAO supervision schedule', async () => {
+    const ordinary = buildEvent({ startAt: BASE_NOW - 60_000 });
+    const cao = buildEvent({
+      startAt: BASE_NOW - 30_000,
+      metadataPatch: {
+        caoSupervision: {
+          schemaVersion: 1,
+          mode: 'cao_supervision',
+          scheduleId: 'cao-schedule-1',
+          policyId: 'quarter-hour-v1',
+          targetId: 'learning-md',
+          projectId: 'project-a',
+        },
+      },
+    });
+    const { deps } = buildDeps([ordinary, cao]);
+
+    await runDueJarvisSchedules(ACCOUNT, WORKSPACE, deps);
+
+    expect(deps.recoverCaoScheduledLearning).toHaveBeenCalledTimes(1);
+    expect(deps.runCaoScheduledLearning).toHaveBeenCalledTimes(1);
+    expect(deps.runCaoScheduledLearning).toHaveBeenCalledWith({
+      scope: {
+        accountId: ACCOUNT,
+        workspaceId: WORKSPACE,
+        projectId: 'project-a',
+        scheduleId: 'cao-schedule-1',
+        targetId: 'learning-md',
+        scheduleAnchorAt: cao.start_at,
+      },
+      trigger: 'scheduled',
+      requestId: expect.stringContaining(String(cao.start_at)),
+      scheduledDueAt: cao.start_at,
+    });
+  });
+
+  it('persists a truthful CAO failure without changing ordinary schedule behavior', async () => {
+    const cao = buildEvent({
+      startAt: BASE_NOW - 30_000,
+      metadataPatch: {
+        caoSupervision: {
+          schemaVersion: 1,
+          mode: 'cao_supervision',
+          scheduleId: 'cao-schedule-fail',
+          policyId: 'quarter-hour-v1',
+          targetId: 'learning-md',
+          projectId: 'project-a',
+        },
+      },
+    });
+    const { deps } = buildDeps([cao]);
+    deps.runCaoScheduledLearning = vi.fn(async () => ({ status: 'failed' as const }));
+
+    await runDueJarvisSchedules(ACCOUNT, WORKSPACE, deps);
+
+    expect(parseJarvisScheduleMetadata(cao)?.errorHistory.at(-1)?.error).toBe(
+      'CAO scheduled learning failed.',
+    );
+  });
+
+  it('durably records restart-recovery failure even when the next occurrence is not due', async () => {
+    const cao = buildEvent({
+      startAt: BASE_NOW + 60_000,
+      metadataPatch: {
+        caoSupervision: {
+          schemaVersion: 1,
+          mode: 'cao_supervision',
+          scheduleId: 'cao-schedule-recovery',
+          policyId: 'quarter-hour-v1',
+          targetId: 'learning-md',
+          projectId: 'project-a',
+        },
+      },
+    });
+    const { deps, dispatches } = buildDeps([cao]);
+    deps.recoverCaoScheduledLearning = vi.fn(async () => ({ status: 'failed' as const }));
+
+    await runDueJarvisSchedules(ACCOUNT, WORKSPACE, deps);
+
+    expect(dispatches).toHaveLength(0);
+    expect(parseJarvisScheduleMetadata(cao)?.errorHistory.at(-1)?.error).toBe(
+      'CAO scheduled learning failed.',
+    );
   });
 
   it.each<

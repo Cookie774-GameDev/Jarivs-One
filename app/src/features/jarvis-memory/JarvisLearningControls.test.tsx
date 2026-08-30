@@ -25,7 +25,9 @@ describe('JarvisLearningControls', () => {
     const input = screen.getByLabelText('Memory value');
     fireEvent.change(input, { target: { value: 'Use very concise answers.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save memory' }));
-    expect(useJarvisLearningStore.getState().currentProfile().items[0]?.value).toBe('Use very concise answers.');
+    expect(useJarvisLearningStore.getState().currentProfile().items[0]?.value).toBe(
+      'Use very concise answers.',
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Export learning.md' }));
     expect(onExport).toHaveBeenCalledWith(expect.stringContaining('Use very concise answers.'));
@@ -41,5 +43,24 @@ describe('JarvisLearningControls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Clear all learning' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirm clear learning' }));
     expect(useJarvisLearningStore.getState().currentProfile().items).toEqual([]);
+  });
+
+  it('runs one manual CAO check, exposes truthful status, and cancels an in-flight check', async () => {
+    let release!: () => void;
+    const pending = new Promise<{ status: 'cancelled' }>((resolve) => {
+      release = () => resolve({ status: 'cancelled' });
+    });
+    const onRunCheckNow = vi.fn(() => pending);
+    const onCancelCheck = vi.fn(() => release());
+
+    render(<JarvisLearningControls onRunCheckNow={onRunCheckNow} onCancelCheck={onCancelCheck} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Run learning check now' }));
+    expect(onRunCheckNow).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('status').textContent).toContain('Learning check running');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel learning check' }));
+    expect(onCancelCheck).toHaveBeenCalledTimes(1);
+    await act(async () => pending);
+    expect(screen.getByRole('status').textContent).toContain('Learning check cancelled');
   });
 });

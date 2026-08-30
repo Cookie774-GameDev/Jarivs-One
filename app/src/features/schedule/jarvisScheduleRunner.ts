@@ -22,6 +22,11 @@ import {
   type JarvisScheduleRunHistoryStatus,
 } from './jarvisSchedules';
 import { formatUserDateTime } from '@/lib/timeFormat';
+import type { CaoScheduledLearningScope } from '@/features/jarvis-memory/caoScheduledLearning';
+import {
+  recoverCaoScheduledLearning,
+  runCaoScheduledLearning,
+} from '@/features/jarvis-memory/caoScheduledLearningRuntime';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -47,6 +52,15 @@ export interface JarvisScheduleRunnerDeps {
     eventId: string;
     dueAt: number;
   }) => Promise<ScheduledJarvisAttemptResult>;
+  recoverCaoScheduledLearning?: (
+    scope: CaoScheduledLearningScope,
+  ) => Promise<{ status: 'completed' | 'failed' | 'cancelled' } | null>;
+  runCaoScheduledLearning?: (input: {
+    scope: CaoScheduledLearningScope;
+    trigger: 'scheduled';
+    requestId: string;
+    scheduledDueAt: number;
+  }) => Promise<{ status: 'completed' | 'failed' | 'cancelled' }>;
   now: () => number;
 }
 
@@ -56,7 +70,26 @@ function defaultDeps(): JarvisScheduleRunnerDeps {
     updateEvent: (id, patch) => realEventRepo.update(id, patch),
     createChat: (input) => realChatRepo.create(input),
     dispatchScheduledOccurrence: dispatchScheduledJarvisOccurrenceWithKernel,
+    recoverCaoScheduledLearning,
+    runCaoScheduledLearning,
     now: () => Date.now(),
+  };
+}
+
+function caoScope(
+  accountId: string,
+  event: EventRow,
+  metadata: JarvisScheduleMetadata,
+): CaoScheduledLearningScope | null {
+  const cao = metadata.caoSupervision;
+  if (!cao) return null;
+  return {
+    accountId,
+    workspaceId: String(event.workspace_id),
+    projectId: cao.projectId,
+    scheduleId: cao.scheduleId,
+    targetId: cao.targetId,
+    scheduleAnchorAt: event.start_at,
   };
 }
 
@@ -97,12 +130,7 @@ export interface JarvisScheduleRunResult {
 }
 
 export type JarvisScheduleRunnerStage =
-  | 'claimed'
-  | 'output_chat'
-  | 'kernel_dispatch'
-  | 'settling'
-  | 'completed'
-  | 'failed';
+  'claimed' | 'output_chat' | 'kernel_dispatch' | 'settling' | 'completed' | 'failed';
 
 export interface JarvisScheduleRunnerOptions {
   onStage?: (stage: JarvisScheduleRunnerStage) => void;
@@ -307,8 +335,38 @@ export async function runDueJarvisSchedules(
     if (!parsedMetadata?.prompt.trim()) continue;
     result.checked += 1;
 
+    const learningScope = caoScope(accountId, event, parsedMetadata);
+    let recoveryChanged = false;
+    if (learningScope) {
+      try {
+        const recovery = await deps.recoverCaoScheduledLearning?.(learningScope);
+        if (recovery && recovery.status !== 'completed') {
+          parsedMetadata.errorHistory = [
+            ...parsedMetadata.errorHistory,
+            { at: now, error: `CAO scheduled learning ${recovery.status}.` },
+          ];
+          recoveryChanged = true;
+        }
+      } catch {
+        parsedMetadata.errorHistory = [
+          ...parsedMetadata.errorHistory,
+          { at: now, error: 'CAO scheduled learning recovery failed.' },
+        ];
+        recoveryChanged = true;
+      }
+    }
+
     const dueAt = parsedMetadata.nextRunAt ?? event.start_at;
-    if (dueAt > now) continue;
+    if (dueAt > now) {
+      if (recoveryChanged) {
+        try {
+          await deps.updateEvent(event.id, withJarvisScheduleMetadata(event, parsedMetadata));
+        } catch {
+          // The runtime status remains truthful even when event persistence is unavailable.
+        }
+      }
+      continue;
+    }
     const claimKey = `${accountId}:${event.id}:${dueAt}`;
     if (!claimRun(claimKey)) continue;
     options.onStage?.('claimed');
@@ -362,12 +420,33 @@ export async function runDueJarvisSchedules(
       }
 
       const runHistoryEntry = historyEntryForOutcome(outcome, now);
+      let learningError: string | undefined;
+      if (learningScope) {
+        try {
+          if (!deps.runCaoScheduledLearning) throw new Error('cao_learning_runtime_unavailable');
+          const learning = await deps.runCaoScheduledLearning({
+            scope: learningScope,
+            trigger: 'scheduled',
+            requestId: `cao_${dueAt}`,
+            scheduledDueAt: dueAt,
+          });
+          if (learning.status !== 'completed') {
+            learningError = `CAO scheduled learning ${learning.status}.`;
+          }
+        } catch {
+          learningError = 'CAO scheduled learning failed.';
+        }
+      }
       options.onStage?.('settling');
       const ranMetadata: JarvisScheduleMetadata = {
         ...dispatchMetadata,
         lastRunAt: now,
         nextRunAt: nextRunAt ?? undefined,
         runHistory: [...dispatchMetadata.runHistory, runHistoryEntry],
+        errorHistory: [
+          ...dispatchMetadata.errorHistory,
+          ...(learningError ? [{ at: now, error: learningError }] : []),
+        ],
       };
       // The dispatcher has now claimed the exact dueAt, so this occurrence can
       // advance. Retryable transport failures require the explicit retry port;

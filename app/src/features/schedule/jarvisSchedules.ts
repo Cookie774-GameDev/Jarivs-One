@@ -4,21 +4,10 @@ import type { EventRow } from '@/types/event';
 import type { AgentId, WorkspaceId } from '@/types/common';
 
 export type JarvisScheduleRecurrence =
-  | 'once'
-  | 'daily'
-  | 'weekly'
-  | 'monthly'
-  | 'weekdays'
-  | 'custom_interval'
-  | 'custom_days';
+  'once' | 'daily' | 'weekly' | 'monthly' | 'weekdays' | 'custom_interval' | 'custom_days';
 
 export type JarvisScheduleRunHistoryStatus =
-  | 'dispatched'
-  | 'completed'
-  | 'partial'
-  | 'failed'
-  | 'cancelled'
-  | 'timed_out';
+  'dispatched' | 'completed' | 'partial' | 'failed' | 'cancelled' | 'timed_out';
 
 export interface JarvisScheduleRunHistoryEntryV1 {
   schemaVersion: 1;
@@ -37,8 +26,16 @@ export interface JarvisScheduleLegacyRunHistoryEntry {
 }
 
 export type JarvisScheduleRunHistoryEntry =
-  | JarvisScheduleRunHistoryEntryV1
-  | JarvisScheduleLegacyRunHistoryEntry;
+  JarvisScheduleRunHistoryEntryV1 | JarvisScheduleLegacyRunHistoryEntry;
+
+export interface CaoSupervisionScheduleMetadataV1 {
+  schemaVersion: 1;
+  mode: 'cao_supervision';
+  scheduleId: string;
+  policyId: string;
+  targetId: string;
+  projectId: string;
+}
 
 export interface JarvisScheduleMetadata {
   kind: 'jarvis_schedule';
@@ -58,6 +55,41 @@ export interface JarvisScheduleMetadata {
   outputChatId?: string;
   runHistory: JarvisScheduleRunHistoryEntry[];
   errorHistory: Array<{ at: number; error: string }>;
+  caoSupervision?: CaoSupervisionScheduleMetadataV1;
+}
+
+const CAO_METADATA_KEYS = new Set([
+  'schemaVersion',
+  'mode',
+  'scheduleId',
+  'policyId',
+  'targetId',
+  'projectId',
+]);
+const CAO_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+function parseCaoSupervisionMetadata(value: unknown): CaoSupervisionScheduleMetadataV1 | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    Object.keys(record).some((key) => !CAO_METADATA_KEYS.has(key)) ||
+    record.schemaVersion !== 1 ||
+    record.mode !== 'cao_supervision' ||
+    !CAO_ID.test(String(record.scheduleId ?? '')) ||
+    !CAO_ID.test(String(record.policyId ?? '')) ||
+    !CAO_ID.test(String(record.targetId ?? '')) ||
+    !CAO_ID.test(String(record.projectId ?? ''))
+  ) {
+    return null;
+  }
+  return {
+    schemaVersion: 1,
+    mode: 'cao_supervision',
+    scheduleId: record.scheduleId as string,
+    policyId: record.policyId as string,
+    targetId: record.targetId as string,
+    projectId: record.projectId as string,
+  };
 }
 
 /** Minimum custom interval (5 minutes) so rapid loops cannot thrash the runner. */
@@ -182,6 +214,11 @@ export function parseJarvisScheduleMetadata(event: EventRow): JarvisScheduleMeta
   try {
     const parsed = JSON.parse(raw.slice('jarvis_schedule:'.length)) as JarvisScheduleMetadata;
     if (parsed?.kind !== 'jarvis_schedule') return null;
+    const caoSupervision =
+      parsed.caoSupervision === undefined
+        ? undefined
+        : parseCaoSupervisionMetadata(parsed.caoSupervision);
+    if (parsed.caoSupervision !== undefined && !caoSupervision) return null;
     const intervalMs = normalizeJarvisIntervalMs(parsed.intervalMs);
     return {
       ...parsed,
@@ -190,6 +227,7 @@ export function parseJarvisScheduleMetadata(event: EventRow): JarvisScheduleMeta
       errorHistory: Array.isArray(parsed.errorHistory)
         ? parsed.errorHistory.slice(-JARVIS_SCHEDULE_HISTORY_CAP)
         : [],
+      ...(caoSupervision ? { caoSupervision } : {}),
     };
   } catch {
     return null;
@@ -225,6 +263,7 @@ export function buildJarvisScheduleEventInput(input: {
   modelSelection: ChatModelSelection;
   agentId: AgentId | string;
   projectId?: string;
+  caoSupervision?: CaoSupervisionScheduleMetadataV1;
 }): EventCreateInput {
   const cleanTitle = input.title.trim() || 'Jarvis task';
   const intervalMs =
@@ -243,6 +282,7 @@ export function buildJarvisScheduleEventInput(input: {
     nextRunAt: input.startAt,
     runHistory: [],
     errorHistory: [],
+    ...(input.caoSupervision ? { caoSupervision: input.caoSupervision } : {}),
   };
   return {
     workspace_id: input.workspaceId,

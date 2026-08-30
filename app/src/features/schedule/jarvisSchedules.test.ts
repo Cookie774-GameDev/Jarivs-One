@@ -36,6 +36,84 @@ describe('Jarvis schedules', () => {
     expect(input.reminders).toEqual([]);
   });
 
+  it('round-trips only a complete versioned CAO supervision discriminator', () => {
+    const input = buildJarvisScheduleEventInput({
+      workspaceId: 'workspace_1' as WorkspaceId,
+      projectId: 'project_1',
+      createdBy: 'agent_jarvis',
+      title: 'CAO supervision',
+      prompt: 'Review the bounded learning journal.',
+      startAt: 1_000,
+      recurrence: 'custom_interval',
+      intervalMs: 15 * 60 * 1000,
+      timezone: 'UTC',
+      modelSelection: { mode: 'single', providerId: 'openai', modelId: 'gpt-test' },
+      agentId: 'agent_jarvis',
+      caoSupervision: {
+        schemaVersion: 1,
+        mode: 'cao_supervision',
+        scheduleId: 'cao-schedule-1',
+        policyId: 'quarter-hour-v1',
+        targetId: 'learning-md',
+        projectId: 'project_1',
+      },
+    });
+    const parsed = parseJarvisScheduleMetadata({ source_ref: input.source_ref } as EventRow);
+    expect(parsed?.caoSupervision).toEqual({
+      schemaVersion: 1,
+      mode: 'cao_supervision',
+      scheduleId: 'cao-schedule-1',
+      policyId: 'quarter-hour-v1',
+      targetId: 'learning-md',
+      projectId: 'project_1',
+    });
+  });
+
+  it.each([
+    { mode: 'cao_supervision' },
+    {
+      schemaVersion: 2,
+      mode: 'cao_supervision',
+      scheduleId: 's',
+      policyId: 'p',
+      targetId: 't',
+      projectId: 'j',
+    },
+    {
+      schemaVersion: 1,
+      mode: 'ordinary',
+      scheduleId: 's',
+      policyId: 'p',
+      targetId: 't',
+      projectId: 'j',
+    },
+    {
+      schemaVersion: 1,
+      mode: 'cao_supervision',
+      scheduleId: 's',
+      policyId: 'p',
+      targetId: 't',
+      projectId: 'j',
+      extra: true,
+    },
+  ])('fails closed for malformed or partial CAO metadata %#', (caoSupervision) => {
+    const metadata: JarvisScheduleMetadata = {
+      kind: 'jarvis_schedule',
+      prompt: 'unsafe partial extension',
+      recurrence: 'once',
+      modelSelection: { mode: 'single', providerId: 'openai', modelId: 'gpt-test' },
+      agentId: 'agent_jarvis',
+      createdBy: 'jarvis',
+      runHistory: [],
+      errorHistory: [],
+      caoSupervision: caoSupervision as never,
+    };
+    const event = {
+      source_ref: { context: { id: `jarvis_schedule:${JSON.stringify(metadata)}` } },
+    } as EventRow;
+    expect(parseJarvisScheduleMetadata(event)).toBeNull();
+  });
+
   it('projects an edit without losing the exact route or accumulated run state', () => {
     const originalMetadata: JarvisScheduleMetadata = {
       kind: 'jarvis_schedule',

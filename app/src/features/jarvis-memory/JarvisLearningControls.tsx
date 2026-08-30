@@ -5,9 +5,15 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 
 import { useJarvisLearningStore } from './learningStore';
+import {
+  cancelCaoScheduledLearning,
+  runManualCaoLearningChecks,
+} from './caoScheduledLearningRuntime';
 
 export interface JarvisLearningControlsProps {
   onExport?: (markdown: string) => void;
+  onRunCheckNow?: () => Promise<{ status: 'completed' | 'failed' | 'cancelled' }>;
+  onCancelCheck?: () => void;
 }
 
 function downloadMarkdown(markdown: string): void {
@@ -19,7 +25,11 @@ function downloadMarkdown(markdown: string): void {
   URL.revokeObjectURL(url);
 }
 
-export function JarvisLearningControls({ onExport = downloadMarkdown }: JarvisLearningControlsProps) {
+export function JarvisLearningControls({
+  onExport = downloadMarkdown,
+  onRunCheckNow = runManualCaoLearningChecks,
+  onCancelCheck = () => cancelCaoScheduledLearning(),
+}: JarvisLearningControlsProps) {
   const activeAccountId = useJarvisLearningStore((state) => state.activeAccountId);
   const profile = useJarvisLearningStore((state) => state.profiles[activeAccountId]);
   const setEnabled = useJarvisLearningStore((state) => state.setEnabled);
@@ -28,10 +38,15 @@ export function JarvisLearningControls({ onExport = downloadMarkdown }: JarvisLe
   const clear = useJarvisLearningStore((state) => state.clear);
   const undo = useJarvisLearningStore((state) => state.undo);
   const exportMarkdown = useJarvisLearningStore((state) => state.exportMarkdown);
-  const historyCount = useJarvisLearningStore((state) => state.history[activeAccountId]?.length ?? 0);
+  const historyCount = useJarvisLearningStore(
+    (state) => state.history[activeAccountId]?.length ?? 0,
+  );
   const [editingId, setEditingId] = React.useState<string>();
   const [draft, setDraft] = React.useState('');
   const [clearArmed, setClearArmed] = React.useState(false);
+  const [checkStatus, setCheckStatus] = React.useState<
+    'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
+  >('idle');
 
   if (!profile) return null;
   const recent = [...profile.items].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12);
@@ -45,14 +60,27 @@ export function JarvisLearningControls({ onExport = downloadMarkdown }: JarvisLe
     setEditingId(undefined);
     setDraft('');
   };
+  const runCheckNow = () => {
+    if (checkStatus === 'running') return;
+    setCheckStatus('running');
+    void onRunCheckNow()
+      .then((result) => setCheckStatus(result.status))
+      .catch(() => setCheckStatus('failed'));
+  };
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-panel" aria-labelledby="jarvis-learning-title">
+    <section
+      className="overflow-hidden rounded-lg border border-border bg-panel"
+      aria-labelledby="jarvis-learning-title"
+    >
       <header className="flex items-start justify-between gap-4 border-b border-border/70 p-4">
         <div>
-          <h3 id="jarvis-learning-title" className="text-ui-strong text-foreground">Jarvis learning.md</h3>
+          <h3 id="jarvis-learning-title" className="text-ui-strong text-foreground">
+            Jarvis learning.md
+          </h3>
           <p className="mt-1 max-w-2xl text-metadata text-muted-foreground">
-            Account-scoped preferences kept separately from AllAboutMe.md. Credentials and raw chat are never stored.
+            Account-scoped preferences kept separately from AllAboutMe.md. Credentials and raw chat
+            are never stored.
           </p>
         </div>
         <Switch
@@ -64,14 +92,53 @@ export function JarvisLearningControls({ onExport = downloadMarkdown }: JarvisLe
 
       <div className="space-y-3 p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="default" onClick={() => onExport(exportMarkdown())} aria-label="Export learning.md">
+          {checkStatus === 'running' ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onCancelCheck}
+              aria-label="Cancel learning check"
+            >
+              Cancel check
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={runCheckNow}
+              aria-label="Run learning check now"
+            >
+              Run check now
+            </Button>
+          )}
+          <span role="status" className="text-metadata text-muted-foreground">
+            {checkStatus === 'idle' ? 'Learning check idle' : `Learning check ${checkStatus}`}
+          </span>
+          <Button
+            size="sm"
+            variant="default"
+            onClick={() => onExport(exportMarkdown())}
+            aria-label="Export learning.md"
+          >
             <Download className="h-3.5 w-3.5" /> Export
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => undo()} disabled={historyCount === 0} aria-label="Undo memory change">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => undo()}
+            disabled={historyCount === 0}
+            aria-label="Undo memory change"
+          >
             <History className="h-3.5 w-3.5" /> Undo
           </Button>
           {!clearArmed ? (
-            <Button size="sm" variant="ghost" onClick={() => setClearArmed(true)} disabled={!recent.length} aria-label="Clear all learning">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setClearArmed(true)}
+              disabled={!recent.length}
+              aria-label="Clear all learning"
+            >
               <Trash2 className="h-3.5 w-3.5" /> Clear all
             </Button>
           ) : (
@@ -80,12 +147,21 @@ export function JarvisLearningControls({ onExport = downloadMarkdown }: JarvisLe
                 size="sm"
                 variant="ghost"
                 className="text-destructive"
-                onClick={() => { clear(); setClearArmed(false); }}
+                onClick={() => {
+                  clear();
+                  setClearArmed(false);
+                }}
                 aria-label="Confirm clear learning"
               >
                 Confirm clear
               </Button>
-              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setClearArmed(false)} aria-label="Cancel clear learning">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={() => setClearArmed(false)}
+                aria-label="Cancel clear learning"
+              >
                 <X className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -111,7 +187,13 @@ export function JarvisLearningControls({ onExport = downloadMarkdown }: JarvisLe
                         onChange={(event) => setDraft(event.target.value)}
                         className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-secondary text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       />
-                      <Button size="icon" variant="default" className="h-8 w-8" onClick={saveEdit} aria-label="Save memory">
+                      <Button
+                        size="icon"
+                        variant="default"
+                        className="h-8 w-8"
+                        onClick={saveEdit}
+                        aria-label="Save memory"
+                      >
                         <Save className="h-3.5 w-3.5" />
                       </Button>
                     </div>
@@ -126,10 +208,22 @@ export function JarvisLearningControls({ onExport = downloadMarkdown }: JarvisLe
                 </div>
                 {editingId !== item.id && (
                   <div className="flex shrink-0 items-center gap-1">
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => beginEdit(item.id, item.value)} aria-label={`Edit memory ${item.id}`}>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      onClick={() => beginEdit(item.id, item.value)}
+                      aria-label={`Edit memory ${item.id}`}
+                    >
                       <Edit3 className="h-3.5 w-3.5" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => remove(item.id)} aria-label={`Remove memory ${item.id}`}>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      onClick={() => remove(item.id)}
+                      aria-label={`Remove memory ${item.id}`}
+                    >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
