@@ -84,16 +84,17 @@ function renderHost(hostRuntime: AccessAppRuntime, overrides: Partial<AccessAppH
 }
 
 describe('isAccessGateEnabled', () => {
-  it('fails closed for production builds even without explicit enablement', () => {
-    expect(isAccessGateEnabled({ PROD: true })).toBe(true);
-    expect(isAccessGateEnabled({ PROD: false, MODE: 'production' })).toBe(true);
-    expect(isAccessGateEnabled({ PROD: true, VITE_ACCESS_GATE_ENABLED: 'false' })).toBe(true);
+  it('keeps billing from blocking app access unless the gate is explicitly enabled', () => {
+    expect(isAccessGateEnabled({ PROD: true })).toBe(false);
+    expect(isAccessGateEnabled({ PROD: false, MODE: 'production' })).toBe(false);
+    expect(isAccessGateEnabled({ PROD: true, VITE_ACCESS_GATE_ENABLED: 'false' })).toBe(false);
   });
 
-  it('keeps development disabled by default and honors explicit opt-in', () => {
+  it('honors a reversible explicit opt-in in development and production', () => {
     expect(isAccessGateEnabled({ PROD: false })).toBe(false);
     expect(isAccessGateEnabled({ PROD: false, VITE_ACCESS_GATE_ENABLED: 'false' })).toBe(false);
     expect(isAccessGateEnabled({ PROD: false, VITE_ACCESS_GATE_ENABLED: ' true ' })).toBe(true);
+    expect(isAccessGateEnabled({ PROD: true, VITE_ACCESS_GATE_ENABLED: 'TRUE' })).toBe(true);
   });
 });
 

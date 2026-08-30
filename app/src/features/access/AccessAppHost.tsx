@@ -490,7 +490,6 @@ interface AccessBuildEnvironment {
 }
 
 export function isAccessGateEnabled(environment: AccessBuildEnvironment): boolean {
-  if (environment.PROD === true || environment.MODE === 'production') return true;
   const configured = environment.VITE_ACCESS_GATE_ENABLED;
   return typeof configured === 'string' && configured.trim().toLowerCase() === 'true';
 }
