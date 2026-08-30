@@ -37,6 +37,23 @@ function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+class ExplicitlyNonPublicGitHubRepositoryError extends Error {
+  constructor() {
+    super('GitHub repository must be explicitly public.');
+  }
+}
+
+function requireExplicitlyPublicGitHubRepository(source: Record<string, unknown>): void {
+  if (source.private === false && source.visibility === 'public') return;
+  if (
+    source.private === true &&
+    (source.visibility === 'private' || source.visibility === 'internal')
+  ) {
+    throw new ExplicitlyNonPublicGitHubRepositoryError();
+  }
+  throw new Error('GitHub repository must be explicitly public.');
+}
+
 function finiteCount(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
     throw new Error('GitHub repository metadata was malformed.');
@@ -66,6 +83,7 @@ export function parseGitHubRepository(
   if (!url || url.replace(/\/$/u, '') !== expectedUrl) {
     throw new Error('GitHub repository identity URL did not match the approved source.');
   }
+  requireExplicitlyPublicGitHubRepository(source);
   const stars = finiteCount(source.stargazers_count);
   const description =
     typeof source.description === 'string' && source.description.trim()
@@ -157,7 +175,16 @@ export async function refreshRepositoryTrends(
           )
           .run();
         return true;
-      } catch {
+      } catch (error) {
+        if (error instanceof ExplicitlyNonPublicGitHubRepositoryError) {
+          try {
+            await env.DB.prepare('DELETE FROM intelligence_repository_trends WHERE id = ?')
+              .bind(approved.id)
+              .run();
+          } catch {
+            // A failed purge is still a failed refresh and must not fall through to an upsert.
+          }
+        }
         return false;
       }
     }),
