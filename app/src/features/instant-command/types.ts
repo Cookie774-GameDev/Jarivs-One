@@ -1,5 +1,6 @@
 import type { AssistantIntent } from '@/features/assistant/intents';
 import type { ExpectedTerminalProcessBinding } from '@/features/terminals/terminalRefs';
+import type { CommandFamily, CommandSafety } from './catalogTypes';
 
 export type TerminalSelector = Readonly<{
   ordinal?: number;
@@ -17,7 +18,15 @@ export type InstantCommand =
   | { kind: 'open-model-picker' }
   | { kind: 'terminal-message'; target: TerminalSelector; payload: string }
   | { kind: 'agent-message'; target: TerminalSelector; payload: string }
-  | { kind: 'terminal-broadcast'; target: TerminalSelector; payload: string };
+  | { kind: 'terminal-broadcast'; target: TerminalSelector; payload: string }
+  | {
+      kind: 'catalog';
+      id: string;
+      family: CommandFamily;
+      authority: string;
+      safety: CommandSafety;
+      slots: Readonly<Record<string, unknown>>;
+    };
 
 export type InstantInputClassification =
   | { status: 'matched'; command: InstantCommand }

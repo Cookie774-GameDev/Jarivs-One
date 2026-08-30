@@ -12,6 +12,10 @@ import { resolveTerminalTarget } from './terminalTargetResolver';
 import { InstantCommandLedger, type InstantCommandBinding } from './commandLedger';
 import { runWithInstantCommandDeadline } from './deadline';
 import { createInstantCommandReceipt, type InstantCommandReceipt } from './receipt';
+import {
+  executeNavigationCommand,
+  type NavigationCommandRequest,
+} from './authorities/navigationCommands';
 import type {
   InstantCommand,
   InstantCommandExecutionContext,
@@ -27,6 +31,10 @@ export type InstantCommandDependencies = Readonly<{
   routeToTerminal: () => void;
   openModelPicker: () => void;
   readTargets: () => Promise<LiveTerminalTarget[]>;
+  executeNavigation: (
+    request: NavigationCommandRequest,
+    signal?: AbortSignal,
+  ) => Promise<InstantResult>;
 }>;
 
 const defaultDependencies: InstantCommandDependencies = {
@@ -42,6 +50,7 @@ const defaultDependencies: InstantCommandDependencies = {
     }, 0);
   },
   readTargets: readLiveTargetSnapshot,
+  executeNavigation: (request, signal) => executeNavigationCommand(request, undefined, signal),
 };
 
 function targetRef(target: LiveTerminalTarget): TerminalRef {
@@ -67,6 +76,16 @@ export async function executeInstantCommand(
   if (command.kind === 'legacy') {
     const result = await dependencies.executeLegacy(command.intent);
     return { ok: result.ok, code: result.ok ? 'legacy' : 'legacy_failed', message: result.message };
+  }
+  if (command.kind === 'catalog') {
+    if (command.family !== 'navigation') {
+      return {
+        ok: false,
+        code: 'queue_failed',
+        message: 'That Instant Command is not available yet.',
+      };
+    }
+    return dependencies.executeNavigation({ id: command.id, slots: command.slots }, signal);
   }
   if (command.kind === 'open-model-picker') {
     if (signal?.aborted) {
@@ -144,6 +163,7 @@ export async function executeInstantCommand(
 const sharedLedger = new InstantCommandLedger();
 
 function commandId(command: InstantCommand): string {
+  if (command.kind === 'catalog') return command.id;
   if (command.kind === 'legacy') return `legacy.${command.intent.kind}`;
   if (command.kind === 'open-agent-cli') return 'terminal.open';
   if (command.kind === 'open-model-picker') return 'model.picker.open';
@@ -163,6 +183,10 @@ function digestCommand(command: InstantCommand): string {
 }
 
 function targetIds(command: InstantCommand): readonly string[] {
+  if (command.kind === 'catalog') {
+    const target = command.slots.route ?? command.slots.section;
+    return typeof target === 'string' ? Object.freeze([target]) : Object.freeze([]);
+  }
   if (command.kind === 'open-agent-cli') return Object.freeze([command.provider]);
   if (
     command.kind === 'agent-message' ||

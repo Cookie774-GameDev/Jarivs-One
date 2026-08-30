@@ -29,14 +29,28 @@ function dependencies(targets: LiveTerminalTarget[] = [codex]) {
   const routeToTerminal = vi.fn();
   const openModelPicker = vi.fn();
   const readTargets = vi.fn(async () => targets);
+  const executeNavigation = vi.fn(async () => ({
+    ok: true as const,
+    code: 'opened' as const,
+    message: 'Opened terminal.',
+  }));
   const deps: InstantCommandDependencies = {
     executeLegacy,
     enqueueBatch,
     routeToTerminal,
     openModelPicker,
     readTargets,
+    executeNavigation,
   };
-  return { deps, executeLegacy, enqueueBatch, routeToTerminal, openModelPicker, readTargets };
+  return {
+    deps,
+    executeLegacy,
+    enqueueBatch,
+    routeToTerminal,
+    openModelPicker,
+    readTargets,
+    executeNavigation,
+  };
 }
 
 describe('executeInstantCommand', () => {
@@ -81,6 +95,28 @@ describe('executeInstantCommand', () => {
     ).resolves.toMatchObject({ ok: true, code: 'opened' });
     expect(h.openModelPicker).toHaveBeenCalledOnce();
     expect(h.enqueueBatch).not.toHaveBeenCalled();
+  });
+
+  it('dispatches catalog navigation through its canonical authority adapter', async () => {
+    const h = dependencies();
+    const command: InstantCommand = {
+      kind: 'catalog',
+      id: 'page.open',
+      family: 'navigation',
+      authority: 'ui.route',
+      safety: 'read',
+      slots: { route: 'terminal' },
+    };
+    await expect(executeInstantCommand(command, h.deps)).resolves.toEqual({
+      ok: true,
+      code: 'opened',
+      message: 'Opened terminal.',
+    });
+    expect(h.executeNavigation).toHaveBeenCalledWith(
+      { id: 'page.open', slots: { route: 'terminal' } },
+      undefined,
+    );
+    expect(h.executeLegacy).not.toHaveBeenCalled();
   });
 
   it('queues exact pane/session refs and reports queued rather than delivered', async () => {

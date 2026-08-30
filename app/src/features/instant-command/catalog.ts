@@ -1,7 +1,8 @@
-import { APP_ROUTES, type Route } from '@/features/navigation/routeSchema';
+import { NAVIGATION_COMMAND_INPUTS } from './catalog/navigation';
 import { buildCatalogIndex } from './catalogIndex';
 import type {
   CatalogMatch,
+  CatalogParseResult,
   CommandAvailability,
   CommandDefinition,
   CommandFamily,
@@ -19,6 +20,7 @@ type DefinitionInput = Readonly<{
   target?: string;
   example?: string;
   slotGrammar?: CommandSlotGrammar;
+  parseSlots?: (match: CatalogMatch, source: string) => CatalogParseResult;
 }>;
 
 function command(input: DefinitionInput): CommandDefinition {
@@ -30,7 +32,7 @@ function command(input: DefinitionInput): CommandDefinition {
     aliases: Object.freeze([...input.aliases]),
     authority: input.authority,
     safety: input.safety ?? 'reversible',
-    availability: input.availability ?? 'available',
+    availability: input.availability ?? 'blocked',
     examples: Object.freeze([example]),
     fixtures: Object.freeze({
       negative: Object.freeze([`tell me about ${example}`]),
@@ -39,51 +41,22 @@ function command(input: DefinitionInput): CommandDefinition {
       latencyBudgetMs: 500,
     }),
     slotGrammar,
-    parseSlots: Object.freeze((match: CatalogMatch) =>
-      slotGrammar === 'none'
-        ? Object.freeze({ status: 'parsed' as const, slots: Object.freeze({}) })
-        : Object.freeze({
-            status: 'parsed' as const,
-            slots: Object.freeze({ remainder: match.remainder }),
-          }),
+    parseSlots: Object.freeze(
+      input.parseSlots ??
+        ((match: CatalogMatch) =>
+          slotGrammar === 'none'
+            ? Object.freeze({ status: 'parsed' as const, slots: Object.freeze({}) })
+            : Object.freeze({
+                status: 'parsed' as const,
+                slots: Object.freeze({ remainder: match.remainder }),
+              })),
     ),
     ...(input.target ? { target: input.target } : {}),
   });
 }
 
-const ROUTE_ALIASES: Readonly<Record<Route, readonly string[]>> = {
-  chat: ['open chat', 'go to chat', 'go home'],
-  canvas: ['open canvas', 'open whiteboard'],
-  workbench: ['open workbench'],
-  preview: ['open preview'],
-  browser: ['open browser'],
-  terminal: ['open terminal page', 'open terminals'],
-  kanban: ['open kanban', 'open tasks board'],
-  schedule: ['open schedule', 'open calendar'],
-  ade: ['open agent development environment', 'open ade'],
-  agents: ['open agents'],
-  'model-foundry': ['open model foundry'],
-  'agent-detail': ['open selected agent'],
-  'project-detail': ['open selected project'],
-  context: ['open context', 'open context gateway'],
-  skills: ['open skills'],
-  benchmarks: ['open benchmarks'],
-  history: ['open history'],
-  tools: ['open tools'],
-  files: ['open files'],
-  account: ['open Jarvis settings', 'open settings', 'open account'],
-};
-
-const navigationCommands = APP_ROUTES.map((route) =>
-  command({
-    id: `navigation.${route}.open`,
-    family: 'navigation',
-    aliases: ROUTE_ALIASES[route],
-    authority: 'ui.route',
-    safety: 'read',
-    slotGrammar: 'none',
-    target: route,
-  }),
+const navigationCommands = NAVIGATION_COMMAND_INPUTS.map((input) =>
+  command({ ...input, family: 'navigation' }),
 );
 
 const FAMILY_COMMANDS: readonly DefinitionInput[] = [

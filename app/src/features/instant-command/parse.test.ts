@@ -122,4 +122,31 @@ describe('parseInstantCommand', () => {
       command: { kind: 'agent-message' },
     });
   });
+
+  it.each([
+    ['open terminal page', 'page.open', { route: 'terminal' }],
+    ['open voice settings', 'settings.section.open', { section: 'voice' }],
+    ['go back', 'page.back', {}],
+    ['open command palette', 'palette.open', {}],
+    ['enter fullscreen', 'fullscreen.set', { enabled: true }],
+  ])('classifies catalog navigation locally: %s', (input, commandId, slots) => {
+    expect(classifyInstantCommandInput(input)).toEqual({
+      status: 'matched',
+      command: {
+        kind: 'catalog',
+        id: commandId,
+        family: 'navigation',
+        authority: commandId === 'fullscreen.set' ? 'settings.allowlist' : 'ui.route',
+        safety: commandId === 'fullscreen.set' ? 'reversible' : 'read',
+        slots,
+      },
+    });
+  });
+
+  it('rejects a matched catalog command whose canonical authority is not implemented yet', () => {
+    expect(classifyInstantCommandInput('rename terminal two to reviewer')).toEqual({
+      status: 'rejected',
+      reason: 'That Instant Command is not available yet.',
+    });
+  });
 });

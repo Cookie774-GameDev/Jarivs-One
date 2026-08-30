@@ -1,4 +1,5 @@
 import { parseAssistantInput } from '@/features/assistant/parse';
+import { INSTANT_COMMAND_INDEX } from './catalog';
 import type { InstantCommand, InstantInputClassification } from './types';
 
 const MAX_PAYLOAD_LENGTH = 32_768;
@@ -91,6 +92,13 @@ function providerFromRouteToken(raw: string | undefined): string | null {
 function parseCount(raw: string | undefined): number {
   if (!raw) return 1;
   return NUMBER_WORDS[raw.toLowerCase()] ?? Number(raw);
+}
+
+function mostSpecificCatalogMatches(source: string) {
+  const matches = INSTANT_COMMAND_INDEX.matchWithOffsets(source);
+  if (matches.length < 2) return matches;
+  const longest = Math.max(...matches.map((match) => match.sourceEnd));
+  return matches.filter((match) => match.sourceEnd === longest);
 }
 
 function parseInstantCommandInternal(input: string): InstantCommand | null {
@@ -188,6 +196,25 @@ function parseInstantCommandInternal(input: string): InstantCommand | null {
   if (/^(?:message|tell)\s+(?:him|her|them|it|this|that)\b/i.test(original)) return null;
   if (/^schedule\s+algorithms?\s+explained[.!?]*$/i.test(original)) return null;
 
+  const catalogMatches = mostSpecificCatalogMatches(original);
+  if (catalogMatches.length === 1) {
+    const match = catalogMatches[0]!;
+    if (match.definition.availability === 'available') {
+      const parsed = match.definition.parseSlots(match, original);
+      if (parsed.status === 'parsed') {
+        return {
+          kind: 'catalog',
+          id: match.definition.id,
+          family: match.definition.family,
+          authority: match.definition.authority,
+          safety: match.definition.safety,
+          slots: parsed.slots,
+        };
+      }
+      return null;
+    }
+  }
+
   const scheduleAlias = /^create\s+schedule\s+(.+)$/i.exec(original);
   const intent = parseAssistantInput(scheduleAlias ? `schedule ${scheduleAlias[1]}` : original);
   return intent.kind === 'unknown' ? null : { kind: 'legacy', intent };
@@ -199,6 +226,21 @@ const INSTANT_COMMAND_SHAPE =
 export function classifyInstantCommandInput(input: string): InstantInputClassification {
   const command = parseInstantCommandInternal(input);
   if (command) return { status: 'matched', command };
+  if (typeof input === 'string') {
+    const source = stripFiller(input);
+    const matches = mostSpecificCatalogMatches(source);
+    if (matches.length > 1) {
+      return { status: 'rejected', reason: 'That Instant Command is ambiguous.' };
+    }
+    if (matches.length === 1) {
+      const match = matches[0]!;
+      if (match.definition.availability !== 'available') {
+        return { status: 'rejected', reason: 'That Instant Command is not available yet.' };
+      }
+      const parsed = match.definition.parseSlots(match, source);
+      if (parsed.status === 'rejected') return { status: 'rejected', reason: parsed.reason };
+    }
+  }
   if (typeof input === 'string' && INSTANT_COMMAND_SHAPE.test(stripFiller(input))) {
     return { status: 'rejected', reason: 'That Instant Command is incomplete or invalid.' };
   }

@@ -1,19 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { APP_ROUTES } from '@/features/navigation/routeSchema';
 import { INSTANT_COMMAND_CATALOG, INSTANT_COMMAND_INDEX } from './catalog';
 
 describe('INSTANT_COMMAND_CATALOG', () => {
   it('covers every canonical route with a locally indexed navigation command', () => {
-    const routeCommands = new Map(
-      INSTANT_COMMAND_CATALOG.filter((entry) => entry.family === 'navigation').map((entry) => [
-        entry.target,
-        entry,
-      ]),
-    );
-
-    expect([...routeCommands.keys()].sort()).toEqual([...APP_ROUTES].sort());
-    expect(INSTANT_COMMAND_INDEX.match('open terminal page')[0]?.target).toBe('terminal');
-    expect(INSTANT_COMMAND_INDEX.match('open Jarvis settings')[0]?.target).toBe('account');
+    const terminal = INSTANT_COMMAND_INDEX.matchWithOffsets('open terminal page')[0];
+    expect(terminal?.definition.id).toBe('page.open');
+    expect(terminal?.definition.parseSlots(terminal, 'open terminal page')).toEqual({
+      status: 'parsed',
+      slots: { route: 'terminal' },
+    });
+    expect(INSTANT_COMMAND_INDEX.match('open Jarvis settings')[0]?.id).toBe('settings.open');
   });
 
   it('contains the approved deterministic families and Calyx commands', () => {

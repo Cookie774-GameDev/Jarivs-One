@@ -1,0 +1,188 @@
+import { APP_ROUTES, type Route } from '@/features/navigation/routeSchema';
+import type { SettingsTab } from '@/features/settings/settingsPrefetch';
+import type {
+  CatalogMatch,
+  CatalogParseResult,
+  CommandAvailability,
+  CommandSafety,
+} from '../catalogTypes';
+
+export type NavigationCommandInput = Readonly<{
+  id: string;
+  aliases: readonly string[];
+  authority: string;
+  safety: CommandSafety;
+  availability: CommandAvailability;
+  slotGrammar?: 'none' | 'remainder';
+  parseSlots?: (match: CatalogMatch, source: string) => CatalogParseResult;
+}>;
+
+const ROUTE_ALIASES = {
+  chat: ['open chat', 'open chat page', 'go to chat'],
+  canvas: ['open canvas', 'open canvas page', 'open whiteboard'],
+  workbench: ['open workbench', 'open workbench page'],
+  preview: ['open preview', 'open preview page'],
+  browser: ['open browser', 'open browser page'],
+  terminal: ['open terminal page', 'open terminals'],
+  kanban: ['open kanban', 'open kanban page', 'open tasks board'],
+  schedule: ['open schedule', 'open schedule page', 'open calendar'],
+  ade: ['open ADE', 'open ADE page', 'open agent development environment'],
+  agents: ['open agents', 'open agents page'],
+  'model-foundry': ['open model foundry', 'open model foundry page'],
+  'agent-detail': ['open selected agent', 'open agent detail page'],
+  'project-detail': ['open selected project', 'open project detail page'],
+  context: ['open context', 'open context page', 'open context gateway'],
+  skills: ['open skills', 'open skills page'],
+  benchmarks: ['open benchmarks', 'open benchmarks page'],
+  history: ['open history', 'open history page'],
+  tools: ['open tools', 'open tools page'],
+  files: ['open files', 'open files page'],
+  account: ['open account', 'open account page'],
+} as const satisfies Readonly<Record<Route, readonly string[]>>;
+
+export const PAGE_TARGET_ALIASES: Readonly<Record<Route, readonly string[]>> = Object.freeze(
+  Object.fromEntries(
+    APP_ROUTES.map((route) => [route, Object.freeze([...ROUTE_ALIASES[route]])]),
+  ) as Record<Route, readonly string[]>,
+);
+
+const SECTION_LABELS = {
+  general: ['general'],
+  plans: ['plans'],
+  providers: ['provider', 'providers'],
+  connections: ['connections'],
+  allaboutme: ['all about me'],
+  plugins: ['plugin', 'plugins'],
+  localmodels: ['local model', 'local models'],
+  browseragent: ['browser agent'],
+  appearance: ['appearance', 'theme'],
+  voice: ['voice'],
+  composerstt: ['composer speech to text', 'composer STT'],
+  phone: ['phone', 'phone and voice'],
+  ambient: ['ambient'],
+  notifications: ['notification', 'notifications'],
+  telemetry: ['telemetry'],
+  accessibility: ['accessibility'],
+  hotkeys: ['hotkey', 'hotkeys'],
+  jarvisactions: ['Jarvis actions'],
+  about: ['about'],
+} as const satisfies Partial<Readonly<Record<SettingsTab, readonly string[]>>>;
+
+export const SETTINGS_SECTION_ALIASES: Readonly<Partial<Record<SettingsTab, readonly string[]>>> =
+  Object.freeze(
+    Object.fromEntries(
+      Object.entries(SECTION_LABELS).map(([section, labels]) => [
+        section,
+        Object.freeze(
+          labels.flatMap((label) => [`open ${label} settings`, `open settings ${label}`]),
+        ),
+      ]),
+    ),
+  );
+
+const routeByAlias = new Map(
+  Object.entries(PAGE_TARGET_ALIASES).flatMap(([route, aliases]) =>
+    aliases.map((alias) => [alias.toLocaleLowerCase(), route] as const),
+  ),
+);
+
+const sectionByAlias = new Map(
+  Object.entries(SETTINGS_SECTION_ALIASES).flatMap(([section, aliases]) =>
+    (aliases ?? []).map((alias) => [alias.toLocaleLowerCase(), section] as const),
+  ),
+);
+
+const fullscreenByAlias = new Map<string, boolean>([
+  ['enter fullscreen', true],
+  ['turn fullscreen on', true],
+  ['enable fullscreen', true],
+  ['exit fullscreen', false],
+  ['turn fullscreen off', false],
+  ['disable fullscreen', false],
+]);
+
+const NAVIGATION_ORDER = [
+  'page.open',
+  'page.back',
+  'page.forward',
+  'page.home',
+  'settings.open',
+  'settings.close',
+  'settings.section.open',
+  'palette.open',
+  'launcher.open',
+  'fullscreen.set',
+] as const;
+
+const navigationOrder = new Map(NAVIGATION_ORDER.map((id, index) => [id, index]));
+
+export const NAVIGATION_COMMAND_INPUTS: readonly NavigationCommandInput[] = Object.freeze(
+  [
+    Object.freeze({
+      id: 'page.open',
+      aliases: Object.freeze(Object.values(PAGE_TARGET_ALIASES).flat()),
+      authority: 'ui.route',
+      safety: 'read',
+      availability: 'available',
+      slotGrammar: 'none',
+      parseSlots: (match: CatalogMatch) => {
+        const route = routeByAlias.get(match.alias);
+        return route
+          ? Object.freeze({ status: 'parsed' as const, slots: Object.freeze({ route }) })
+          : Object.freeze({ status: 'rejected' as const, reason: 'Unknown page target.' });
+      },
+    }),
+    Object.freeze({
+      id: 'settings.section.open',
+      aliases: Object.freeze([...sectionByAlias.keys()]),
+      authority: 'ui.route',
+      safety: 'read',
+      availability: 'available',
+      slotGrammar: 'none',
+      parseSlots: (match: CatalogMatch) => {
+        const section = sectionByAlias.get(match.alias);
+        return section
+          ? Object.freeze({ status: 'parsed' as const, slots: Object.freeze({ section }) })
+          : Object.freeze({ status: 'rejected' as const, reason: 'Unknown Settings section.' });
+      },
+    }),
+    Object.freeze({
+      id: 'fullscreen.set',
+      aliases: Object.freeze([...fullscreenByAlias.keys()]),
+      authority: 'settings.allowlist',
+      safety: 'reversible',
+      availability: 'available',
+      slotGrammar: 'none',
+      parseSlots: (match: CatalogMatch) => {
+        const enabled = fullscreenByAlias.get(match.alias);
+        return enabled === undefined
+          ? Object.freeze({ status: 'rejected' as const, reason: 'Say fullscreen on or off.' })
+          : Object.freeze({ status: 'parsed' as const, slots: Object.freeze({ enabled }) });
+      },
+    }),
+    ...(
+      [
+        ['page.back', ['go back', 'go back a page'], 'ui.route', 'read'],
+        ['page.forward', ['go forward', 'go forward a page'], 'ui.route', 'read'],
+        ['page.home', ['go home', 'go to home page'], 'ui.route', 'read'],
+        ['settings.open', ['open Jarvis settings', 'open settings'], 'ui.route', 'read'],
+        ['settings.close', ['close settings'], 'ui.route', 'read'],
+        ['palette.open', ['open command palette'], 'ui.route', 'read'],
+        ['launcher.open', ['open quick launcher', 'open launcher'], 'ui.route', 'read'],
+      ] as const
+    ).map(([id, aliases, authority, safety]) =>
+      Object.freeze({
+        id,
+        aliases: Object.freeze([...aliases]),
+        authority,
+        safety,
+        availability: 'available' as const,
+        slotGrammar: 'none' as const,
+      }),
+    ),
+  ].sort(
+    (left, right) =>
+      (navigationOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+      (navigationOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+  ),
+);

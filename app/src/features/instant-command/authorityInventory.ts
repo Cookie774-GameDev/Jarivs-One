@@ -71,24 +71,70 @@ function requiredContext(authorityId: string): readonly string[] {
   return Object.freeze(['account session', 'workspace/project scope', 'authority capability']);
 }
 
+const plannedButUncataloged = Object.freeze([
+  ['page.open', 'ui.route', 'read'],
+  ['page.back', 'ui.route', 'read'],
+  ['page.forward', 'ui.route', 'read'],
+  ['page.home', 'ui.route', 'read'],
+  ['settings.open', 'ui.route', 'read'],
+  ['settings.close', 'ui.route', 'read'],
+  ['settings.section.open', 'ui.route', 'read'],
+  ['palette.open', 'ui.route', 'read'],
+  ['launcher.open', 'ui.route', 'read'],
+  ['fullscreen.set', 'settings.allowlist', 'reversible'],
+  ['terminal.move_project', 'terminal.project-move', 'confirm'],
+  ['terminal.run_saved_command', 'terminal.queue', 'approval'],
+  ['agent.message', 'terminal.prompt-delivery', 'approval'],
+  ['agent.broadcast', 'terminal.prompt-delivery', 'approval'],
+  ['agent.continue', 'terminal.prompt-delivery', 'approval'],
+  ['agent.assign_role', 'agent.registry', 'reversible'],
+  ['agent.give_context', 'context.gateway', 'approval'],
+  ['project.rename', 'project.registry', 'reversible'],
+  ['project.list', 'project.registry', 'read'],
+  ['chat.create', 'chat.lifecycle', 'reversible'],
+] satisfies readonly (readonly [string, string, CommandSafety])[]);
+
+function blockedPlannedEntry(
+  commandId: string,
+  authorityId: string,
+  safety: CommandSafety,
+): CommandAuthorityInventoryEntry {
+  const authority = authorityById.get(authorityId);
+  if (!authority) throw new Error(`Missing authority inventory for ${commandId}`);
+  return Object.freeze({
+    commandId,
+    authorityId,
+    canonicalSeam: authority.canonicalSeam,
+    safety,
+    requiredContext: requiredContext(authorityId),
+    testSeam: `instant-command catalog and ${authorityId} authority tests`,
+    currentState: 'blocked',
+  });
+}
+
 export const COMMAND_AUTHORITY_INVENTORY: readonly CommandAuthorityInventoryEntry[] = Object.freeze(
-  INSTANT_COMMAND_CATALOG.map((command) => {
-    const authority = authorityById.get(command.authority);
-    if (!authority) throw new Error(`Missing authority inventory for ${command.id}`);
-    return Object.freeze({
-      commandId: command.id,
-      authorityId: authority.id,
-      canonicalSeam: authority.canonicalSeam,
-      safety: command.safety,
-      requiredContext: requiredContext(authority.id),
-      testSeam: `instant-command catalog and ${authority.id} authority tests`,
-      currentState:
-        command.availability === 'blocked'
-          ? 'blocked'
-          : authority.currentState === 'capability-gated' ||
-              command.availability === 'capability-gated'
-            ? 'capability-gated'
-            : 'ready',
-    });
-  }),
+  [
+    ...INSTANT_COMMAND_CATALOG.map((command) => {
+      const authority = authorityById.get(command.authority);
+      if (!authority) throw new Error(`Missing authority inventory for ${command.id}`);
+      return Object.freeze({
+        commandId: command.id,
+        authorityId: authority.id,
+        canonicalSeam: authority.canonicalSeam,
+        safety: command.safety,
+        requiredContext: requiredContext(authority.id),
+        testSeam: `instant-command catalog and ${authority.id} authority tests`,
+        currentState:
+          command.availability === 'blocked'
+            ? ('blocked' as const)
+            : authority.currentState === 'capability-gated' ||
+                command.availability === 'capability-gated'
+              ? ('capability-gated' as const)
+              : ('ready' as const),
+      });
+    }),
+    ...plannedButUncataloged.map(([id, authorityId, safety]) =>
+      blockedPlannedEntry(id, authorityId, safety),
+    ),
+  ],
 );

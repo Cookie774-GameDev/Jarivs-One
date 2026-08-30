@@ -27,6 +27,11 @@ describe('instant command local latency', () => {
       routeToTerminal: vi.fn(),
       openModelPicker: vi.fn(),
       readTargets: vi.fn(async () => [target]),
+      executeNavigation: vi.fn(async () => ({
+        ok: true as const,
+        code: 'opened' as const,
+        message: 'opened',
+      })),
     };
     const samples: number[] = [];
 
