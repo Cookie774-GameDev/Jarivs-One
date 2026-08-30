@@ -16,6 +16,7 @@
     "eval:ai": "npx --yes promptfoo@0.121.20 eval --config promptfooconfig.yaml --no-cache",
     "tauri": "tauri",
     "tauri:dev": "node ../scripts/prepare-siyuan-runtime.mjs --if-windows && tauri dev --features jarvis-voice",
+    "tauri:dev:cdp": "node ../scripts/prepare-siyuan-runtime.mjs --if-windows && tauri dev --config src-tauri/tauri.cdp.conf.json --features jarvis-voice",
     "tauri:build": "node ../scripts/prepare-siyuan-runtime.mjs --if-windows && tauri build --features jarvis-voice",
     "icons:generate": "python scripts/crop-app-icon.py && tauri icon ./src-tauri/icons/app-icon-square.png && node scripts/sync-public-icons.mjs"
   },

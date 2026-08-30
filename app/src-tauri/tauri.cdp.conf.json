@@ -1,0 +1,49 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "VibeSpace",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 800,
+        "minHeight": 600,
+        "decorations": true,
+        "resizable": true,
+        "transparent": false,
+        "additionalBrowserArgs": "--js-flags=--max-old-space-size=1536 --remote-debugging-address=127.0.0.1 --remote-debugging-port=9223"
+      },
+      {
+        "label": "cold-start-intro",
+        "title": "VibeSpace",
+        "url": "cold-start-intro.html",
+        "width": 1280,
+        "height": 720,
+        "resizable": false,
+        "decorations": false,
+        "transparent": false,
+        "fullscreen": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "center": true,
+        "focus": true,
+        "additionalBrowserArgs": "--autoplay-policy=no-user-gesture-required"
+      },
+      {
+        "label": "dictation",
+        "title": "VibeSpace Dictation",
+        "url": "index.html?view=dictation",
+        "width": 220,
+        "height": 120,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "center": true
+      }
+    ]
+  }
+}
