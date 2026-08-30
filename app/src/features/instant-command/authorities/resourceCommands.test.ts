@@ -32,7 +32,13 @@ describe('resource command authority', () => {
   it('validates exact tool input schema before approval-gated execution', async () => {
     const authority = port();
     await executeResourceCommand(
-      { id: 'tool.run', family: 'tool', selector: 'tool_3', args: { target: 'src' } },
+      {
+        id: 'tool.run',
+        family: 'tool',
+        selector: 'tool_3',
+        args: { target: 'src' },
+        approval: { commandId: 'tool.run', targetId: 'tool_3' },
+      },
       authority,
     );
     expect(authority.validate).toHaveBeenCalledWith('tool_3', { target: 'src' });
@@ -54,6 +60,54 @@ describe('resource command authority', () => {
     ).resolves.toMatchObject({ ok: false, code: 'queue_failed' });
     await expect(
       executeResourceCommand({ id: 'file.delete', family: 'file', selector: 'tool_3' }, authority),
+    ).resolves.toMatchObject({ ok: false, code: 'queue_failed' });
+    expect(authority.execute).not.toHaveBeenCalled();
+  });
+
+  it('requires exact confirmation and approval bindings for guarded families', async () => {
+    const authority = port();
+    await expect(
+      executeResourceCommand(
+        { id: 'project.archive', family: 'project', selector: 'tool_3' },
+        authority,
+      ),
+    ).resolves.toMatchObject({ ok: false, code: 'confirmation_required' });
+    await expect(
+      executeResourceCommand(
+        { id: 'plugin.connect', family: 'plugin', selector: 'tool_3' },
+        authority,
+      ),
+    ).resolves.toMatchObject({ ok: false, code: 'confirmation_required' });
+    expect(authority.execute).not.toHaveBeenCalled();
+  });
+
+  it('dispatches targetless create/list commands without inventing an entity', async () => {
+    const authority = port();
+    await expect(
+      executeResourceCommand({ id: 'chat.create', family: 'chat' }, authority),
+    ).resolves.toMatchObject({ ok: true, code: 'queued' });
+    expect(authority.list).not.toHaveBeenCalled();
+    expect(authority.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'chat.create', family: 'chat' }),
+    );
+  });
+
+  it('rejects unknown family commands and raw transcript context', async () => {
+    const authority = port();
+    await expect(
+      executeResourceCommand({ id: 'chat.destroy_everything', family: 'chat' }, authority),
+    ).resolves.toMatchObject({ ok: false, code: 'queue_failed' });
+    await expect(
+      executeResourceCommand(
+        {
+          id: 'context.give_terminals',
+          family: 'context',
+          selector: 'tool_3',
+          args: { transcript: 'raw conversation' },
+          approval: { commandId: 'context.give_terminals', targetId: 'tool_3' },
+        },
+        authority,
+      ),
     ).resolves.toMatchObject({ ok: false, code: 'queue_failed' });
     expect(authority.execute).not.toHaveBeenCalled();
   });
