@@ -157,6 +157,39 @@ describe('openOrFocusPetMiniPanel / openPetPanelSafely', () => {
     expect(localStorage.getItem('vibespace-pet-panel-open')).toBeNull();
   });
 
+  it('reports the native creation failure when neither detached surface can be recovered', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'pet_open_or_focus_panel') {
+        return nativePanelOpenResult({
+          visible: false,
+          focused: false,
+          topmostApplied: false,
+          reason: 'window_create_failed',
+        });
+      }
+      if (cmd === 'pet_show_overlay') {
+        return nativeOverlayShowResult({
+          visible: false,
+          topmostApplied: false,
+          reason: 'window_create_failed',
+        });
+      }
+      return null;
+    });
+
+    const { openOrFocusPetMiniPanel } = await import('./petTauriBridge');
+    await expect(openOrFocusPetMiniPanel()).resolves.toEqual({
+      panelVisible: false,
+      useInlineFallback: false,
+      overlayVisible: false,
+      reason: 'window_create_failed',
+      coalesced: false,
+    });
+    expect(invokeCount('pet_open_or_focus_panel')).toBe(1);
+    expect(invokeCount('pet_show_overlay')).toBe(1);
+    expect(invoked('pet_hide_overlay')).toBe(false);
+  });
+
   it('single-flight: concurrent opens share one open request', async () => {
     let openCalls = 0;
     invokeMock.mockImplementation(async (cmd: string) => {

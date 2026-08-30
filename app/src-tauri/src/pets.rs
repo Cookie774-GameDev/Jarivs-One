@@ -1166,6 +1166,39 @@ fn overlay_acquire_failure_reason(error: &str) -> &'static str {
     }
 }
 
+type NativeWindowCreateTask = Box<dyn FnOnce() + Send + 'static>;
+
+fn run_scheduled_native_window_creation<T, D, C>(dispatch: D, create: C) -> Result<T, String>
+where
+    T: Send + 'static,
+    D: FnOnce(NativeWindowCreateTask) -> Result<(), String>,
+    C: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    let (result_tx, result_rx) = std::sync::mpsc::sync_channel(1);
+    dispatch(Box::new(move || {
+        let _ = result_tx.send(create());
+    }))?;
+    result_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .map_err(|_| "native window creation callback failed".to_string())?
+}
+
+fn run_pet_window_creation_on_main_thread<T, C>(app: &AppHandle, create: C) -> Result<T, String>
+where
+    T: Send + 'static,
+    C: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    let dispatch_app = app.clone();
+    run_scheduled_native_window_creation(
+        move |task| {
+            dispatch_app
+                .run_on_main_thread(task)
+                .map_err(|error| format!("failed to dispatch native window creation: {error}"))
+        },
+        create,
+    )
+}
+
 enum PetOverlayAcquire {
     Ready { created: bool },
     StaleRetired,
@@ -1186,6 +1219,11 @@ fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
 
     build_pet_overlay(app)?;
     Ok(PetOverlayAcquire::Ready { created: true })
+}
+
+fn acquire_pet_overlay_on_main_thread(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
+    let create_app = app.clone();
+    run_pet_window_creation_on_main_thread(app, move || acquire_pet_overlay(&create_app))
 }
 
 fn build_pet_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
@@ -1220,6 +1258,13 @@ fn get_or_create_pet_panel(app: &AppHandle) -> Result<(WebviewWindow, bool), Str
     eprintln!("[pets] creating pet-mini-panel window");
 
     build_pet_panel(app, false).map(|window| (window, true))
+}
+
+fn get_or_create_pet_panel_on_main_thread(
+    app: &AppHandle,
+) -> Result<(WebviewWindow, bool), String> {
+    let create_app = app.clone();
+    run_pet_window_creation_on_main_thread(app, move || get_or_create_pet_panel(&create_app))
 }
 
 fn build_pet_panel(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
@@ -1291,28 +1336,32 @@ fn show_pet_overlay_blocking(app: AppHandle) -> Result<PetOverlayShowResult, Str
         (x, y)
     };
 
-    let created = match acquire_pet_overlay(&app) {
+    let created = match acquire_pet_overlay_on_main_thread(&app) {
         Ok(PetOverlayAcquire::Ready { created }) => created,
         Ok(PetOverlayAcquire::StaleRetired) => {
             // `destroy` removes the stale registration synchronously on the
             // command/main thread. Reacquire once; the renderer already owns
             // bounded retries if Windows has not released the label yet.
-            match acquire_pet_overlay(&app) {
+            match acquire_pet_overlay_on_main_thread(&app) {
                 Ok(PetOverlayAcquire::Ready { created }) => created,
                 Ok(PetOverlayAcquire::StaleRetired) => {
                     return Ok(PetOverlayShowResult::failed("window_label_conflict"))
                 }
                 Err(error) => {
+                    #[cfg(debug_assertions)]
+                    eprintln!("[pets] pet-overlay creation retry failed: {error}");
                     return Ok(PetOverlayShowResult::failed(
                         overlay_acquire_failure_reason(&error),
-                    ))
+                    ));
                 }
             }
         }
         Err(error) => {
+            #[cfg(debug_assertions)]
+            eprintln!("[pets] pet-overlay creation failed: {error}");
             return Ok(PetOverlayShowResult::failed(
                 overlay_acquire_failure_reason(&error),
-            ))
+            ));
         }
     };
 
@@ -1663,9 +1712,13 @@ fn open_or_focus_pet_panel_blocking(
     near_y: Option<f64>,
     panel_mode: Option<PetPanelMode>,
 ) -> Result<PetPanelOpenResult, String> {
-    let (win, created) = match get_or_create_pet_panel(&app) {
+    let (win, created) = match get_or_create_pet_panel_on_main_thread(&app) {
         Ok(acquired) => acquired,
-        Err(_) => return Ok(PetPanelOpenResult::failed(false, "window_create_failed")),
+        Err(error) => {
+            #[cfg(debug_assertions)]
+            eprintln!("[pets] pet-mini-panel creation failed: {error}");
+            return Ok(PetPanelOpenResult::failed(false, "window_create_failed"));
+        }
     };
     if created {
         // A newly created WebView2 host is registered before all native window
@@ -1965,6 +2018,53 @@ mod tests {
         let overlay_builder = &source[overlay_start..overlay_end];
         assert!(overlay_builder.contains(".visible(false)"));
         assert!(!overlay_builder.contains(".visible(true)"));
+    }
+
+    #[test]
+    fn native_window_creation_runs_inside_the_dispatched_task() {
+        let sequence = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let dispatch_sequence = sequence.clone();
+        let create_sequence = sequence.clone();
+        let result = run_scheduled_native_window_creation(
+            move |task| {
+                dispatch_sequence.lock().unwrap().push("dispatch");
+                task();
+                Ok(())
+            },
+            move || {
+                create_sequence.lock().unwrap().push("create");
+                Ok(42_u8)
+            },
+        );
+
+        assert_eq!(result.unwrap(), 42);
+        assert_eq!(*sequence.lock().unwrap(), vec!["dispatch", "create"]);
+    }
+
+    #[test]
+    fn overlay_and_panel_route_combined_webview_creation_through_main_thread_dispatch() {
+        let source = include_str!("pets.rs");
+        let overlay_start = source
+            .find("fn show_pet_overlay_blocking")
+            .expect("overlay show helper exists");
+        let overlay_end = source[overlay_start..]
+            .find("fn schedule_pet_overlay_restore")
+            .map(|offset| overlay_start + offset)
+            .expect("overlay show helper has a bounded source slice");
+        assert!(
+            source[overlay_start..overlay_end].contains("acquire_pet_overlay_on_main_thread(&app)")
+        );
+
+        let panel_start = source
+            .find("fn open_or_focus_pet_panel_blocking")
+            .expect("panel open helper exists");
+        let panel_end = source[panel_start..]
+            .find("/// Minimize panel only")
+            .map(|offset| panel_start + offset)
+            .expect("panel open helper has a bounded source slice");
+        assert!(
+            source[panel_start..panel_end].contains("get_or_create_pet_panel_on_main_thread(&app)")
+        );
     }
 
     #[test]
