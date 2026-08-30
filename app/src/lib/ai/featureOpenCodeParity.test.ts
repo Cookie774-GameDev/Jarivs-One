@@ -16,7 +16,9 @@ describe('PR31 OpenCode feature parity', () => {
 
     const preparation = runtime.slice(0, contextStart);
     for (const expected of [
-      'getPluginContextBlock(projectId, detail.pluginIds)',
+      "const pluginAccountId = resolveAccountIdentity(authState)?.accountId ?? '';",
+      'getPluginContextBlock(pluginAccountId, projectId, detail.pluginIds)',
+      'getPluginStatusContextBlock(pluginAccountId, projectId, text)',
       'getSelectedSkillsBlock(detail.skillIds)',
       'buildAllAboutMeContextBlock(useAllAboutMeStore.getState().markdown)',
       'formatResolvedJarvisContext(resolvedRequestContext)',
@@ -25,6 +27,8 @@ describe('PR31 OpenCode feature parity', () => {
     ]) {
       expect(preparation).toContain(expected);
     }
+    expect(preparation).not.toContain('getPluginContextBlock(projectId, detail.pluginIds)');
+    expect(preparation).not.toContain('getPluginStatusContextBlock(projectId, text)');
 
     const compiledTurn = runtime.slice(contextStart, dispatchStart);
     for (const contextKey of [

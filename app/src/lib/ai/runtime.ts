@@ -4674,6 +4674,7 @@ export function startRuntimeListener(
     const stackTaskType = stackSlash.taskType ?? classifyStackTask(stackText);
 
     const projectId = chatRecord?.project_id ?? authState.projectId;
+    const pluginAccountId = resolveAccountIdentity(authState)?.accountId ?? '';
     const tokenOptimizationMode = detail.tokenOptimizationMode ?? 'off';
     const activity = useChatActivityStore.getState();
     const agentActivityId = createChatActivityId('agent');
@@ -5212,7 +5213,7 @@ export function startRuntimeListener(
     }
     userIdentityContext = buildUserIdentityContextBlock(authState.displayName);
     try {
-      pluginContext = getPluginContextBlock(projectId, detail.pluginIds);
+      pluginContext = getPluginContextBlock(pluginAccountId, projectId, detail.pluginIds);
     } catch (err) {
       devConsole.log({
         channel: 'ai',
@@ -5222,7 +5223,7 @@ export function startRuntimeListener(
       });
     }
     try {
-      pluginStatusContext = getPluginStatusContextBlock(projectId, text);
+      pluginStatusContext = getPluginStatusContextBlock(pluginAccountId, projectId, text);
     } catch (err) {
       devConsole.log({
         channel: 'ai',
