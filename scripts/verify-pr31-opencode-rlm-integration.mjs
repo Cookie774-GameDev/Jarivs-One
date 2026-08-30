@@ -83,7 +83,10 @@ assert.match(
 );
 assert.doesNotMatch(persistent, /vibespace_context\.query/);
 assert.match(legacy, /diagnostics-only|diagnostic/i);
-assert.match(composer, /runtimeSettings: runtimePolicy\.settings/);
+assert.match(
+  composer,
+  /runtimeSettings:\s*caoBootstrap\s*\?\s*\{\s*\.\.\.runtimePolicy\.settings,\s*effort:\s*CAO_LEARNER_IDENTITY\.reasoningEffort\s*\}\s*:\s*runtimePolicy\.settings/s,
+);
 assert.match(composer, /accessLevel: runtimePolicy\.access/);
 assert.match(composer, /approveAllForRun: runtimePolicy\.approveAllForRun/);
 for (const command of ['fast', 'performance', 'rlm', 'access', 'approveall']) {
