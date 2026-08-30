@@ -67,3 +67,20 @@ export interface ThirdPartyCallJob {
   pendingActionDecision?: 'approved' | 'declined' | null;
   createdAt?: string;
 }
+
+export type ScheduledThirdPartyCallStatus =
+  'scheduled' | 'dispatching' | 'queued' | 'cancelled' | 'failed';
+
+export interface ScheduledThirdPartyCall {
+  id: string;
+  jobId: string;
+  status: ScheduledThirdPartyCallStatus;
+  scheduledFor: string;
+  revision: number;
+  destinationDisplayName: string;
+  destinationMasked: string;
+  purpose: string;
+  failureReason?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}

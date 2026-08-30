@@ -154,6 +154,7 @@ import { revokeTerminalExecutionsForAccount } from '@/features/terminals/termina
 import { TerminalCliRuntimeHost } from '@/features/terminals';
 import { ToolGatewayHost } from '@/lib/harness/ToolGatewayHost';
 import { startJarvisScheduleRunner } from '@/features/schedule/jarvisScheduleRunner';
+import { startScheduledCallRunner } from '@/features/call/thirdParty/scheduledCallRunner';
 import { UpdateWarningHost } from '@/features/updates/UpdateWarningHost';
 import { BenchmarkRefreshHost } from '@/features/benchmarks/BenchmarkRefreshHost';
 import {
@@ -742,6 +743,7 @@ function useBoot() {
     let stopNotifications: (() => void) | undefined;
     let stopTerminalScheduler: (() => void) | undefined;
     let stopJarvisScheduleRunner: (() => void) | undefined;
+    let stopScheduledCallRunner: (() => void) | undefined;
     let stopClockEngine: (() => void) | undefined;
     type CloudSyncAuthorityLifecycle = {
       userId: string;
@@ -1457,6 +1459,11 @@ function useBoot() {
           console.error('Failed to start Jarvis schedule runner:', err);
         }
         try {
+          stopScheduledCallRunner = startScheduledCallRunner();
+        } catch (err) {
+          console.error('Failed to start scheduled call runner:', err);
+        }
+        try {
           stopClockEngine = startClockEngine();
         } catch (err) {
           console.error('Failed to start clock engine:', err);
@@ -1500,6 +1507,7 @@ function useBoot() {
       stopNotifications?.();
       stopTerminalScheduler?.();
       stopJarvisScheduleRunner?.();
+      stopScheduledCallRunner?.();
       stopClockEngine?.();
       void stopActiveCloudSyncLoop();
       stopCloudAuth?.();

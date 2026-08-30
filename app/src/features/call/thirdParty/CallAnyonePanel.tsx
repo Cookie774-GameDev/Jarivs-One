@@ -16,13 +16,21 @@ import {
 import type {
   CallDestinationType,
   JarvisContact,
+  ScheduledThirdPartyCall,
   ThirdPartyCallDraft,
   ThirdPartyCallJob,
 } from './types';
 
 type CallClient = ReturnType<typeof createThirdPartyCallClient>;
-type SuppliedCallClient = Omit<CallClient, 'listContacts' | 'listHistory'> &
-  Partial<Pick<CallClient, 'listContacts' | 'listHistory'>>;
+type OptionalCallClientMethods =
+  | 'listContacts'
+  | 'listHistory'
+  | 'schedule'
+  | 'listScheduled'
+  | 'dispatchScheduled'
+  | 'cancelScheduled';
+type SuppliedCallClient = Omit<CallClient, OptionalCallClientMethods> &
+  Partial<Pick<CallClient, OptionalCallClientMethods>>;
 
 const OPENING_DISCLOSURE = 'Hello, I am the VibeSpace AI assistant calling on behalf of my user.';
 
@@ -50,6 +58,10 @@ function friendlyError(error: unknown, job?: ThirdPartyCallJob | null): string {
     calling_unconfigured: 'Calling is not configured by the VibeSpace operator yet.',
     budget_exceeded: 'There are not enough credits available for this call.',
     approval_required: 'The call changed after review. Please review it again.',
+    invalid_schedule_time: 'Choose a call time at least 30 seconds in the future.',
+    schedule_revision_conflict: 'This scheduled call changed. Refresh before trying again.',
+    schedule_not_cancellable:
+      'This call has already started dispatching and cannot be cancelled here.',
     invalid_destination: 'Enter a valid non-emergency phone number including country code.',
     unauthorized: 'Sign in to VibeSpace Cloud before preparing a call.',
     provider_unavailable:
@@ -82,6 +94,7 @@ export function CallAnyonePanel({
   const [purpose, setPurpose] = useState('');
   const [instructions, setInstructions] = useState('');
   const [maximumMinutes, setMaximumMinutes] = useState(5);
+  const [callTime, setCallTime] = useState('');
   const [setupStep, setSetupStep] = useState<1 | 2>(1);
   const [job, setJob] = useState<ThirdPartyCallJob | null>(null);
   const [busy, setBusy] = useState(false);
@@ -89,6 +102,7 @@ export function CallAnyonePanel({
   const [contacts, setContacts] = useState<JarvisContact[]>([]);
   const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [history, setHistory] = useState<ThirdPartyCallJob[]>([]);
+  const [scheduledCalls, setScheduledCalls] = useState<ScheduledThirdPartyCall[]>([]);
   const [directoryStatus, setDirectoryStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>(
     'idle',
   );
@@ -97,12 +111,14 @@ export function CallAnyonePanel({
     if (!availability.ready || !client?.listContacts || !client.listHistory) return;
     setDirectoryStatus('loading');
     try {
-      const [nextContacts, nextHistory] = await Promise.all([
+      const [nextContacts, nextHistory, nextSchedules] = await Promise.all([
         client.listContacts(),
         client.listHistory(),
+        client.listScheduled ? client.listScheduled() : Promise.resolve([]),
       ]);
       setContacts(nextContacts);
       setHistory(nextHistory);
+      setScheduledCalls(nextSchedules);
       setDirectoryStatus('ready');
     } catch {
       setDirectoryStatus('error');
@@ -140,8 +156,14 @@ export function CallAnyonePanel({
     setError(null);
     const recipientError = validateCallRecipient(name, phone);
     const briefError = validateCallBrief(purpose, maximumMinutes);
-    if (recipientError || briefError) {
-      setError(recipientError ?? briefError);
+    const requestedTime = callTime ? new Date(callTime) : null;
+    const timeError =
+      requestedTime &&
+      (!Number.isFinite(requestedTime.getTime()) || requestedTime.getTime() <= Date.now() + 30_000)
+        ? 'Choose a call time at least 30 seconds in the future.'
+        : null;
+    if (recipientError || briefError || timeError) {
+      setError(recipientError ?? briefError ?? timeError);
       return;
     }
     setBusy(true);
@@ -203,6 +225,41 @@ export function CallAnyonePanel({
       void refreshDirectory();
     } catch (cause) {
       setError(friendlyError(cause, job));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approveAndSchedule() {
+    if (!client || !client.schedule || !job || !callTime) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const approved = await client.approve(job.id);
+      setJob(approved);
+      await client.schedule(job.id, new Date(callTime).toISOString());
+      setJob(null);
+      setCallTime('');
+      await refreshDirectory();
+    } catch (cause) {
+      setError(friendlyError(cause, job));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelScheduledCall(schedule: ScheduledThirdPartyCall) {
+    if (!client?.cancelScheduled) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const cancelled = await client.cancelScheduled(schedule.id, schedule.revision);
+      setScheduledCalls((current) =>
+        current.map((entry) => (entry.id === cancelled.id ? cancelled : entry)),
+      );
+    } catch (cause) {
+      setError(friendlyError(cause));
+      await refreshDirectory();
     } finally {
       setBusy(false);
     }
@@ -478,6 +535,19 @@ export function CallAnyonePanel({
                   onChange={(event) => setMaximumMinutes(Number(event.target.value))}
                 />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="call-anyone-time">Call time</Label>
+                <Input
+                  id="call-anyone-time"
+                  type="datetime-local"
+                  value={callTime}
+                  onChange={(event) => setCallTime(event.target.value)}
+                  aria-describedby="call-anyone-time-help"
+                />
+                <p id="call-anyone-time-help" className="text-xs text-muted-foreground">
+                  Leave blank to call after approval, or choose a future local time.
+                </p>
+              </div>
               <div className="flex items-end justify-end gap-2">
                 <Button variant="ghost" onClick={() => setSetupStep(1)}>
                   <ChevronLeft className="size-4" aria-hidden />
@@ -607,8 +677,17 @@ export function CallAnyonePanel({
                 </div>
               </dl>
               <div className="flex flex-wrap gap-2">
-                <Button disabled={busy} onClick={() => void approveAndCall()}>
-                  {busy ? 'Starting…' : 'Approve and call'}
+                <Button
+                  disabled={busy || (Boolean(callTime) && !client?.schedule)}
+                  onClick={() => void (callTime ? approveAndSchedule() : approveAndCall())}
+                >
+                  {busy
+                    ? callTime
+                      ? 'Scheduling…'
+                      : 'Starting…'
+                    : callTime
+                      ? 'Approve and schedule'
+                      : 'Approve and call'}
                 </Button>
                 <Button variant="outline" disabled={busy} onClick={() => setJob(null)}>
                   Edit
@@ -628,6 +707,60 @@ export function CallAnyonePanel({
           {error}
         </p>
       ) : null}
+      <div className="rounded-xl border border-border bg-card/30 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-semibold text-foreground">Scheduled calls</h3>
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={!client?.listScheduled || directoryStatus === 'loading'}
+            onClick={() => void refreshDirectory()}
+          >
+            Refresh
+          </Button>
+        </div>
+        {scheduledCalls.length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">No scheduled calls for this account.</p>
+        ) : (
+          <ul className="mt-2 grid gap-2">
+            {scheduledCalls.map((schedule) => (
+              <li key={schedule.id} className="rounded-lg border border-border bg-muted/20 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-foreground">
+                      {schedule.destinationDisplayName} · {schedule.destinationMasked}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">{schedule.purpose}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {new Date(schedule.scheduledFor).toLocaleString()} · revision{' '}
+                      {schedule.revision}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="capitalize text-sm text-muted-foreground">
+                      {schedule.status === 'scheduled' ? 'Scheduled' : schedule.status}
+                    </span>
+                    {schedule.status === 'scheduled' ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={busy || !client?.cancelScheduled}
+                        aria-label={`Cancel scheduled call to ${schedule.destinationDisplayName}`}
+                        onClick={() => void cancelScheduledCall(schedule)}
+                      >
+                        Cancel
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+                {schedule.failureReason ? (
+                  <p className="mt-2 text-sm text-destructive">{schedule.failureReason}</p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
       <div className="rounded-xl border border-border bg-card/30 p-4">
         <div className="flex items-center justify-between gap-3">
           <h3 className="font-semibold text-foreground">Call history & diagnostics</h3>

@@ -71,6 +71,214 @@ function request(action: string, body: unknown, headers: Record<string, string> 
 }
 
 describe('third-party call orchestration', () => {
+  it('persists and lists only account-owned scheduled call projections', async () => {
+    const fingerprint = await (
+      await import('../_shared/callAnyone.ts')
+    ).approvalFingerprint({
+      destinationPhoneE164: job.destination_phone_e164,
+      purpose: job.purpose,
+      approvedScript: job.approved_script,
+      openingDisclosure: job.opening_disclosure,
+      maximumDurationSeconds: job.maximum_duration_seconds,
+      maximumCreditReservation: job.maximum_credit_reservation,
+      allowedActions: job.allowed_actions,
+    });
+    const schedule = {
+      id: '44444444-4444-4444-8444-444444444444',
+      call_job_id: job.id,
+      user_id: user.id,
+      status: 'scheduled',
+      scheduled_for: '2026-09-01T15:00:00.000Z',
+      revision: 1,
+      destination_display_name: 'Clinic',
+      destination_phone_e164: '+13125550110',
+      purpose: 'Ask about office hours.',
+    };
+    const deps = makeDeps({
+      getJob: async () => ({ ...job, status: 'approved', approval_fingerprint: fingerprint }),
+      listScheduled: async (userId: string) => {
+        assert.equal(userId, user.id);
+        return [schedule];
+      },
+      rpc: async (name: string, args: Record<string, unknown>) => {
+        assert.equal(name, 'schedule_outbound_call');
+        assert.equal(args.p_user_id, user.id);
+        return schedule;
+      },
+    });
+
+    const created = await handleThirdPartyCall(
+      request('schedule', { jobId: job.id, scheduledFor: schedule.scheduled_for }),
+      deps,
+    );
+    const listed = await handleThirdPartyCall(request('list-scheduled', {}), deps);
+    assert.equal((await created.json()).schedule.destinationMasked, '+* (***) ***-0110');
+    assert.doesNotMatch(JSON.stringify(await listed.json()), /\+13125550110/);
+  });
+
+  it('claims one exact due revision and revalidates job approval before one provider dispatch', async () => {
+    const scheduleId = '44444444-4444-4444-8444-444444444444';
+    const fingerprint = await (
+      await import('../_shared/callAnyone.ts')
+    ).approvalFingerprint({
+      destinationPhoneE164: job.destination_phone_e164,
+      purpose: job.purpose,
+      approvedScript: job.approved_script,
+      openingDisclosure: job.opening_disclosure,
+      maximumDurationSeconds: job.maximum_duration_seconds,
+      maximumCreditReservation: job.maximum_credit_reservation,
+      allowedActions: job.allowed_actions,
+    });
+    const deps = makeDeps({
+      getJob: async () => ({ ...job, status: 'approved', approval_fingerprint: fingerprint }),
+      rpc: async (name: string, args: Record<string, unknown>) => {
+        deps.calls.push({ name, args });
+        if (name === 'claim_scheduled_outbound_call') {
+          return {
+            ok: true,
+            job_id: job.id,
+            dispatch_token: '55555555-5555-4555-8555-555555555555',
+            revision: 8,
+            approval_fingerprint: fingerprint,
+          };
+        }
+        if (name === 'reserve_outbound_call_job') {
+          return { ok: true, reserved_credits: 480, remaining_credits: 5_020 };
+        }
+        if (name === 'finish_scheduled_outbound_call_claim') {
+          return {
+            id: scheduleId,
+            call_job_id: job.id,
+            status: 'queued',
+            revision: 9,
+          };
+        }
+        throw new Error(`unexpected rpc ${name}`);
+      },
+    });
+
+    const response = await handleThirdPartyCall(
+      request('dispatch-scheduled', { scheduleId, expectedRevision: 7 }),
+      deps,
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(
+      deps.calls.map((call) => call.name),
+      [
+        'claim_scheduled_outbound_call',
+        'reserve_outbound_call_job',
+        'telnyx',
+        'queued',
+        'finish_scheduled_outbound_call_claim',
+      ],
+    );
+  });
+
+  it('fails closed on a stale schedule revision without dialing', async () => {
+    const deps = makeDeps({
+      rpc: async (name: string) => {
+        assert.equal(name, 'claim_scheduled_outbound_call');
+        return { ok: false, reason: 'schedule_revision_conflict' };
+      },
+    });
+    const response = await handleThirdPartyCall(
+      request('dispatch-scheduled', {
+        scheduleId: '44444444-4444-4444-8444-444444444444',
+        expectedRevision: 4,
+      }),
+      deps,
+    );
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).error, 'schedule_revision_conflict');
+    assert.equal(
+      deps.calls.some((call) => call.name === 'telnyx'),
+      false,
+    );
+  });
+
+  it('does not consume a due claim when the real provider is unavailable', async () => {
+    const deps = makeDeps({
+      config: {
+        telnyxApiKey: '',
+        telnyxConnectionId: '',
+        telnyxFromNumber: '',
+        telnyxWebhookUrl: '',
+        telnyxStreamUrl: '',
+        maximumCreditsPerMinute: 96,
+      },
+    });
+    const response = await handleThirdPartyCall(
+      request('dispatch-scheduled', {
+        scheduleId: '44444444-4444-4444-8444-444444444444',
+        expectedRevision: 4,
+      }),
+      deps,
+    );
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).error, 'calling_unconfigured');
+    assert.equal(deps.calls.length, 0);
+  });
+
+  it('fails the claimed schedule when live job approval drifts before reservation', async () => {
+    const scheduleId = '44444444-4444-4444-8444-444444444444';
+    const deps = makeDeps({
+      getJob: async () => ({ ...job, status: 'cancelled', approval_fingerprint: 'a'.repeat(64) }),
+      rpc: async (name: string, args: Record<string, unknown>) => {
+        deps.calls.push({ name, args });
+        if (name === 'claim_scheduled_outbound_call') {
+          return {
+            ok: true,
+            job_id: job.id,
+            dispatch_token: '55555555-5555-4555-8555-555555555555',
+            revision: 8,
+            approval_fingerprint: 'a'.repeat(64),
+          };
+        }
+        if (name === 'finish_scheduled_outbound_call_claim') {
+          assert.equal(args.p_status, 'failed');
+          assert.equal(args.p_reason, 'approval_drift');
+          return { id: scheduleId, call_job_id: job.id, status: 'failed', revision: 9 };
+        }
+        throw new Error(`unexpected rpc ${name}`);
+      },
+    });
+    const response = await handleThirdPartyCall(
+      request('dispatch-scheduled', { scheduleId, expectedRevision: 7 }),
+      deps,
+    );
+    assert.equal(response.status, 409);
+    assert.equal(
+      deps.calls.some((call) => call.name === 'telnyx'),
+      false,
+    );
+    assert.deepEqual(
+      deps.calls.map((call) => call.name),
+      ['claim_scheduled_outbound_call', 'finish_scheduled_outbound_call_claim'],
+    );
+  });
+
+  it('cancels one exact scheduled row transactionally without a provider call', async () => {
+    const scheduleId = '44444444-4444-4444-8444-444444444444';
+    const deps = makeDeps({
+      rpc: async (name: string, args: Record<string, unknown>) => {
+        assert.equal(name, 'cancel_scheduled_outbound_call');
+        assert.equal(args.p_schedule_id, scheduleId);
+        assert.equal(args.p_expected_revision, 6);
+        return { id: scheduleId, call_job_id: job.id, status: 'cancelled', revision: 7 };
+      },
+    });
+    const response = await handleThirdPartyCall(
+      request('cancel-scheduled', { scheduleId, expectedRevision: 6 }),
+      deps,
+    );
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).schedule.status, 'cancelled');
+    assert.equal(
+      deps.calls.some((call) => call.name === 'telnyx'),
+      false,
+    );
+  });
   it('rejects non-HTTPS contact images before the account RPC', async () => {
     let rpcCalled = false;
     const deps = makeDeps({

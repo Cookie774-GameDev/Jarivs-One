@@ -108,6 +108,111 @@ describe('Call Anyone approval flow', () => {
     expect(screen.getByText('Call queued')).not.toBeNull();
   });
 
+  it('approves a future call without dialing and restores exact schedule truth after reload', async () => {
+    const scheduledFor = '2026-09-01T15:00:00.000Z';
+    const schedule = {
+      id: 'schedule-1',
+      jobId: 'job-1',
+      status: 'scheduled',
+      scheduledFor,
+      revision: 1,
+      destinationDisplayName: 'Clinic',
+      destinationMasked: '+* (***) ***-0110',
+      purpose: 'Ask about office hours.',
+    };
+    const prepared = {
+      id: 'job-1',
+      status: 'awaiting_user_approval',
+      destinationDisplayName: 'Clinic',
+      destinationMasked: '+* (***) ***-0110',
+      purpose: schedule.purpose,
+      openingDisclosure: 'Hello, I am the VibeSpace AI assistant.',
+      approvedScript: schedule.purpose,
+      allowedActions: ['ask_questions'],
+      maximumDurationSeconds: 300,
+      maximumCreditReservation: 480,
+    };
+    const client = {
+      prepare: vi.fn().mockResolvedValue(prepared),
+      approve: vi.fn().mockResolvedValue({ ...prepared, status: 'approved' }),
+      start: vi.fn(),
+      get: vi.fn(),
+      cancel: vi.fn(),
+      approveLive: vi.fn(),
+      declineLive: vi.fn(),
+      saveContact: vi.fn().mockResolvedValue({ id: 'contact-1' }),
+      listContacts: vi.fn().mockResolvedValue([]),
+      listHistory: vi.fn().mockResolvedValue([]),
+      schedule: vi.fn().mockResolvedValue(schedule),
+      listScheduled: vi.fn().mockResolvedValue([schedule]),
+      dispatchScheduled: vi.fn(),
+      cancelScheduled: vi.fn().mockResolvedValue({
+        ...schedule,
+        status: 'cancelled',
+        revision: 2,
+      }),
+    };
+
+    const first = render(<CallAnyonePanel client={client} />);
+    expect(await screen.findByText(/Clinic ·/)).not.toBeNull();
+    expect(screen.getByText('Ask about office hours.')).not.toBeNull();
+    expect(screen.getByText('Scheduled')).not.toBeNull();
+    first.unmount();
+
+    render(<CallAnyonePanel client={client} />);
+    await screen.findByText('Scheduled');
+    completeRecipientStep('+13125550110');
+    fireEvent.change(screen.getByLabelText('Purpose'), {
+      target: { value: schedule.purpose },
+    });
+    fireEvent.change(screen.getByLabelText('Call time'), {
+      target: { value: '2026-09-01T10:00' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Review call' }));
+    await screen.findByText(/Up to 480 shared credits/);
+    fireEvent.click(screen.getByRole('button', { name: 'Approve and schedule' }));
+
+    await waitFor(() => expect(client.schedule).toHaveBeenCalledWith('job-1', scheduledFor));
+    expect(client.approve).toHaveBeenCalledWith('job-1');
+    expect(client.start).not.toHaveBeenCalled();
+  });
+
+  it('cancels only the exact rendered schedule revision', async () => {
+    const schedule = {
+      id: 'schedule-1',
+      jobId: 'job-1',
+      status: 'scheduled',
+      scheduledFor: '2026-09-01T15:00:00.000Z',
+      revision: 7,
+      destinationDisplayName: 'Clinic',
+      destinationMasked: '+* (***) ***-0110',
+      purpose: 'Ask about office hours.',
+    };
+    const client = {
+      prepare: vi.fn(),
+      approve: vi.fn(),
+      start: vi.fn(),
+      get: vi.fn(),
+      cancel: vi.fn(),
+      approveLive: vi.fn(),
+      declineLive: vi.fn(),
+      saveContact: vi.fn(),
+      listContacts: vi.fn().mockResolvedValue([]),
+      listHistory: vi.fn().mockResolvedValue([]),
+      schedule: vi.fn(),
+      listScheduled: vi.fn().mockResolvedValue([schedule]),
+      dispatchScheduled: vi.fn(),
+      cancelScheduled: vi.fn().mockResolvedValue({ ...schedule, status: 'cancelled', revision: 8 }),
+    };
+    render(<CallAnyonePanel client={client} />);
+
+    await screen.findByText('Ask about office hours.');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel scheduled call to Clinic' }));
+
+    await waitFor(() => expect(client.cancelScheduled).toHaveBeenCalledWith('schedule-1', 7));
+    expect(client.cancel).not.toHaveBeenCalled();
+  });
+
   it('blocks invalid numbers before any server or contact request', async () => {
     const client = {
       prepare: vi.fn(),

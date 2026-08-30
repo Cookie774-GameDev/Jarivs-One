@@ -49,6 +49,85 @@ describe('third-party call client', () => {
     expect(invoke.mock.calls.map((call) => call[1].body.action)).toEqual(['approve', 'start']);
   });
 
+  it('creates, reloads, claims, and cancels exact scheduled calls through bounded actions', async () => {
+    const scheduled = {
+      id: 'schedule-1',
+      jobId: 'job-1',
+      status: 'scheduled',
+      scheduledFor: '2026-09-01T15:00:00.000Z',
+      revision: 3,
+      destinationDisplayName: 'Clinic',
+      destinationMasked: '+* (***) ***-0110',
+      purpose: 'Ask about office hours.',
+    };
+    const invoke = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { schedule: scheduled }, error: null })
+      .mockResolvedValueOnce({ data: { schedules: [scheduled] }, error: null })
+      .mockResolvedValueOnce({
+        data: { schedule: { ...scheduled, status: 'queued', revision: 4 } },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { schedule: { ...scheduled, status: 'cancelled', revision: 4 } },
+        error: null,
+      });
+    const client = createThirdPartyCallClient({ functions: { invoke } } as never);
+
+    await expect(client.schedule('job-1', scheduled.scheduledFor)).resolves.toMatchObject({
+      id: 'schedule-1',
+      revision: 3,
+    });
+    await expect(client.listScheduled()).resolves.toEqual([scheduled]);
+    await client.dispatchScheduled('schedule-1', 3);
+    await client.cancelScheduled('schedule-1', 3);
+
+    expect(invoke.mock.calls.map((call) => call[1].body)).toEqual([
+      { action: 'schedule', jobId: 'job-1', scheduledFor: scheduled.scheduledFor },
+      { action: 'list-scheduled' },
+      { action: 'dispatch-scheduled', scheduleId: 'schedule-1', expectedRevision: 3 },
+      { action: 'cancel-scheduled', scheduleId: 'schedule-1', expectedRevision: 3 },
+    ]);
+    expect(invoke.mock.calls[0][1].headers).toEqual(
+      expect.objectContaining({ 'Idempotency-Key': expect.stringMatching(/^call-/) }),
+    );
+  });
+
+  it('drops malformed scheduled-call projections instead of exposing executable authority', async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      data: {
+        schedules: [
+          {
+            id: 'schedule-1',
+            jobId: 'job-1',
+            status: 'scheduled',
+            scheduledFor: 'not-a-date',
+            revision: 1,
+            destinationDisplayName: 'Clinic',
+            destinationMasked: '+13125550110',
+            purpose: 'Ask about office hours.',
+          },
+          {
+            id: 'schedule-2',
+            jobId: 'job-2',
+            status: 'scheduled',
+            scheduledFor: '2026-09-01T15:00:00.000Z',
+            revision: 2,
+            destinationDisplayName: 'Dentist',
+            destinationMasked: '+* (***) ***-0192',
+            purpose: 'Confirm appointment time.',
+          },
+        ],
+      },
+      error: null,
+    });
+    const client = createThirdPartyCallClient({ functions: { invoke } } as never);
+
+    await expect(client.listScheduled()).resolves.toEqual([
+      expect.objectContaining({ id: 'schedule-2', revision: 2 }),
+    ]);
+  });
+
   it('sends protected-action decisions as separate bounded actions', async () => {
     const invoke = vi.fn().mockResolvedValue({
       data: { job: { id: 'job-1', status: 'in_progress' } },

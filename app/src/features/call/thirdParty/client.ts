@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   JarvisContact,
   JarvisContactDraft,
+  ScheduledThirdPartyCall,
   ThirdPartyCallDraft,
   ThirdPartyCallJob,
 } from './types';
@@ -41,6 +42,31 @@ function safeError(data: unknown, fallback?: string): ThirdPartyCallError {
   return new ThirdPartyCallError(code ?? fallback ?? 'call_request_failed', availableCredits);
 }
 
+const SCHEDULE_STATUSES = new Set(['scheduled', 'dispatching', 'queued', 'cancelled', 'failed']);
+
+function isScheduledThirdPartyCall(value: unknown): value is ScheduledThirdPartyCall {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as Record<string, unknown>;
+  return (
+    typeof row.id === 'string' &&
+    row.id.length > 0 &&
+    typeof row.jobId === 'string' &&
+    row.jobId.length > 0 &&
+    typeof row.status === 'string' &&
+    SCHEDULE_STATUSES.has(row.status) &&
+    typeof row.scheduledFor === 'string' &&
+    Number.isFinite(new Date(row.scheduledFor).getTime()) &&
+    Number.isSafeInteger(row.revision) &&
+    Number(row.revision) > 0 &&
+    typeof row.destinationDisplayName === 'string' &&
+    row.destinationDisplayName.trim().length > 0 &&
+    typeof row.destinationMasked === 'string' &&
+    row.destinationMasked.startsWith('+*') &&
+    typeof row.purpose === 'string' &&
+    row.purpose.trim().length > 0
+  );
+}
+
 export function createThirdPartyCallClient(client: InvokeClient) {
   async function invoke(
     action: string,
@@ -60,6 +86,26 @@ export function createThirdPartyCallClient(client: InvokeClient) {
     return job;
   }
 
+  async function invokeSchedule(
+    action: string,
+    body: Record<string, unknown>,
+    headers?: Record<string, string>,
+  ): Promise<ScheduledThirdPartyCall> {
+    const { data, error } = await client.functions.invoke('third-party-call', {
+      body: { action, ...body },
+      headers,
+    });
+    if (error) throw safeError(data, error.message);
+    const schedule =
+      data && typeof data === 'object' && 'schedule' in data
+        ? (data.schedule as ScheduledThirdPartyCall | null)
+        : null;
+    if (!isScheduledThirdPartyCall(schedule)) {
+      throw safeError(data, 'invalid_schedule_response');
+    }
+    return schedule;
+  }
+
   return {
     prepare: (draft: ThirdPartyCallDraft) =>
       invoke('prepare', draft as unknown as Record<string, unknown>, {
@@ -71,6 +117,24 @@ export function createThirdPartyCallClient(client: InvokeClient) {
     cancel: (jobId: string) => invoke('cancel', { jobId }),
     approveLive: (jobId: string) => invoke('approve-live', { jobId }),
     declineLive: (jobId: string) => invoke('decline-live', { jobId }),
+    schedule: (jobId: string, scheduledFor: string) =>
+      invokeSchedule('schedule', { jobId, scheduledFor }, { 'Idempotency-Key': idempotencyKey() }),
+    dispatchScheduled: (scheduleId: string, expectedRevision: number) =>
+      invokeSchedule('dispatch-scheduled', { scheduleId, expectedRevision }),
+    cancelScheduled: (scheduleId: string, expectedRevision: number) =>
+      invokeSchedule('cancel-scheduled', { scheduleId, expectedRevision }),
+    listScheduled: async (): Promise<ScheduledThirdPartyCall[]> => {
+      const { data, error } = await client.functions.invoke('third-party-call', {
+        body: { action: 'list-scheduled' },
+      });
+      if (error) throw safeError(data, error.message);
+      return data &&
+        typeof data === 'object' &&
+        'schedules' in data &&
+        Array.isArray(data.schedules)
+        ? data.schedules.filter(isScheduledThirdPartyCall).slice(0, 20)
+        : [];
+    },
     listContacts: async (): Promise<JarvisContact[]> => {
       const { data, error } = await client.functions.invoke('third-party-call', {
         body: { action: 'list-contacts' },

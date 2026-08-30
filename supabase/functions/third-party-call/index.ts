@@ -75,6 +75,35 @@ function publicContact(contact: any): Record<string, unknown> {
   };
 }
 
+function publicSchedule(schedule: any): Record<string, unknown> {
+  return {
+    id: schedule.id,
+    jobId: schedule.call_job_id ?? schedule.jobId,
+    status: schedule.status,
+    scheduledFor: schedule.scheduled_for ?? schedule.scheduledFor,
+    revision: schedule.revision,
+    destinationDisplayName:
+      schedule.destination_display_name ?? schedule.destinationDisplayName ?? '',
+    destinationMasked: maskPhone(
+      schedule.destination_phone_e164 ?? schedule.destinationPhoneE164 ?? '+00000000',
+    ),
+    purpose: schedule.purpose ?? '',
+    failureReason: schedule.failure_reason ?? null,
+    createdAt: schedule.created_at ?? null,
+    updatedAt: schedule.updated_at ?? null,
+  };
+}
+
+function providerConfigured(deps: any): boolean {
+  return Boolean(
+    deps.config?.telnyxApiKey &&
+    deps.config?.telnyxConnectionId &&
+    normalizeE164(deps.config.telnyxFromNumber) &&
+    /^https:\/\//.test(deps.config.telnyxWebhookUrl ?? '') &&
+    /^wss:\/\//.test(deps.config.telnyxStreamUrl ?? ''),
+  );
+}
+
 function fingerprintMaterial(job: any): Record<string, unknown> {
   return {
     destinationPhoneE164: job.destination_phone_e164,
@@ -233,6 +262,133 @@ export async function handleThirdPartyCall(req: Request, deps: any): Promise<Res
     return json({ history: rows.slice(0, 20).map(publicJob) });
   }
 
+  if (action === 'list-scheduled') {
+    const rows = await deps.listScheduled(user.id);
+    return json({ schedules: rows.slice(0, 20).map(publicSchedule) });
+  }
+
+  if (action === 'schedule') {
+    const jobId = typeof body.jobId === 'string' && UUID_RE.test(body.jobId) ? body.jobId : null;
+    const scheduledFor = typeof body.scheduledFor === 'string' ? new Date(body.scheduledFor) : null;
+    if (
+      !jobId ||
+      !scheduledFor ||
+      !Number.isFinite(scheduledFor.getTime()) ||
+      scheduledFor.getTime() <= Date.now() + 30_000 ||
+      scheduledFor.getTime() > Date.now() + 366 * 24 * 60 * 60 * 1_000
+    ) {
+      return json({ error: 'invalid_schedule_time' }, 400);
+    }
+    const job = await deps.getJob(user.id, jobId);
+    if (!job) return json({ error: 'call_job_not_found' }, 404);
+    const fingerprint = await approvalFingerprint(fingerprintMaterial(job));
+    if (job.status !== 'approved' || job.approval_fingerprint !== fingerprint) {
+      return json({ error: 'approval_required' }, 409);
+    }
+    const key = req.headers.get('idempotency-key');
+    if (!key || !IDEMPOTENCY_RE.test(key)) {
+      return json({ error: 'invalid_idempotency_key' }, 400);
+    }
+    const row = await deps.rpc('schedule_outbound_call', {
+      p_user_id: user.id,
+      p_job_id: jobId,
+      p_scheduled_for: scheduledFor.toISOString(),
+      p_fingerprint: fingerprint,
+      p_idempotency_key: key,
+    });
+    return json({ schedule: publicSchedule(row) });
+  }
+
+  if (action === 'cancel-scheduled') {
+    const scheduleId =
+      typeof body.scheduleId === 'string' && UUID_RE.test(body.scheduleId) ? body.scheduleId : null;
+    const expectedRevision = Number(body.expectedRevision);
+    if (!scheduleId || !Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+      return json({ error: 'invalid_schedule_claim' }, 400);
+    }
+    const row = await deps.rpc('cancel_scheduled_outbound_call', {
+      p_user_id: user.id,
+      p_schedule_id: scheduleId,
+      p_expected_revision: expectedRevision,
+    });
+    return json({ schedule: publicSchedule(row) });
+  }
+
+  if (action === 'dispatch-scheduled') {
+    const scheduleId =
+      typeof body.scheduleId === 'string' && UUID_RE.test(body.scheduleId) ? body.scheduleId : null;
+    const expectedRevision = Number(body.expectedRevision);
+    if (!scheduleId || !Number.isSafeInteger(expectedRevision) || expectedRevision < 1) {
+      return json({ error: 'invalid_schedule_claim' }, 400);
+    }
+    if (!providerConfigured(deps)) return json({ error: 'calling_unconfigured' }, 503);
+    const claim = await deps.rpc('claim_scheduled_outbound_call', {
+      p_user_id: user.id,
+      p_schedule_id: scheduleId,
+      p_expected_revision: expectedRevision,
+    });
+    if (!claim?.ok) return json({ error: claim?.reason ?? 'schedule_claim_failed' }, 409);
+    const finish = (status: 'queued' | 'failed', reason: string | null) =>
+      deps.rpc('finish_scheduled_outbound_call_claim', {
+        p_user_id: user.id,
+        p_schedule_id: scheduleId,
+        p_dispatch_token: claim.dispatch_token,
+        p_status: status,
+        p_reason: reason,
+      });
+    const job = await deps.getJob(user.id, claim.job_id);
+    const fingerprint = job ? await approvalFingerprint(fingerprintMaterial(job)) : null;
+    if (
+      !job ||
+      !['approved', 'credits_reserved'].includes(job.status) ||
+      fingerprint !== claim.approval_fingerprint ||
+      job.approval_fingerprint !== fingerprint
+    ) {
+      await finish('failed', 'approval_drift');
+      return json({ error: 'approval_required' }, 409);
+    }
+    const reservation = await deps.rpc('reserve_outbound_call_job', {
+      p_user_id: user.id,
+      p_job_id: job.id,
+      p_fingerprint: fingerprint,
+    });
+    if (!reservation?.ok) {
+      await finish('failed', reservation?.reason ?? 'reservation_failed');
+      return json({ error: reservation?.reason ?? 'reservation_failed' }, 409);
+    }
+    try {
+      const provider = await deps.createTelnyxCall(
+        {
+          connection_id: deps.config.telnyxConnectionId,
+          to: job.destination_phone_e164,
+          from: deps.config.telnyxFromNumber,
+          webhook_url: deps.config.telnyxWebhookUrl,
+          webhook_url_method: 'POST',
+          stream_url: deps.config.telnyxStreamUrl,
+          stream_track: 'both_tracks',
+          client_state: btoa(JSON.stringify({ job_id: job.id, schedule_id: scheduleId })),
+          timeout_secs: Math.min(60, Math.max(10, job.maximum_duration_seconds)),
+        },
+        `vibespace-scheduled-call:${scheduleId}`,
+      );
+      const providerCallId = provider?.data?.call_control_id;
+      if (typeof providerCallId !== 'string' || providerCallId.length > 160) {
+        throw new Error('invalid_provider_response');
+      }
+      await deps.markProviderQueued(job.id, providerCallId);
+      const row = await finish('queued', null);
+      return json({ schedule: publicSchedule(row) });
+    } catch {
+      await deps.rpc('cancel_outbound_call_job', {
+        p_user_id: user.id,
+        p_job_id: job.id,
+        p_reason: 'provider_start_failed',
+      });
+      await finish('failed', 'provider_start_failed');
+      return json({ error: 'provider_unavailable' }, 502);
+    }
+  }
+
   const jobId = typeof body.jobId === 'string' && UUID_RE.test(body.jobId) ? body.jobId : null;
   if (!jobId) return json({ error: 'invalid_call_job' }, 400);
   const job = await deps.getJob(user.id, jobId);
@@ -282,13 +438,7 @@ export async function handleThirdPartyCall(req: Request, deps: any): Promise<Res
   }
 
   if (action === 'start') {
-    if (
-      !deps.config?.telnyxApiKey ||
-      !deps.config?.telnyxConnectionId ||
-      !normalizeE164(deps.config.telnyxFromNumber) ||
-      !/^https:\/\//.test(deps.config.telnyxWebhookUrl ?? '') ||
-      !/^wss:\/\//.test(deps.config.telnyxStreamUrl ?? '')
-    ) {
+    if (!providerConfigured(deps)) {
       return json({ error: 'calling_unconfigured' }, 503);
     }
     const fingerprint = await approvalFingerprint(fingerprintMaterial(job));
@@ -433,6 +583,16 @@ if (import.meta.main) {
         )
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return data ?? [];
+    },
+    listScheduled: async (userId: string) => {
+      const { data, error } = await admin
+        .from('scheduled_outbound_calls')
+        .select('*')
+        .eq('user_id', userId)
+        .order('scheduled_for', { ascending: true })
         .limit(20);
       if (error) throw error;
       return data ?? [];
