@@ -26,6 +26,8 @@ const PANEL_MIN_H: f64 = 360.0;
 const MAIN_NAV_EXCLUSION_LOGICAL_W: f64 = 240.0;
 const PET_AUTOSTART_VALUE_NAME: &str = "VibeSpace";
 const TOPMOST_WATCHDOG_INTERVAL_MS: u64 = 1000;
+const PET_CREATED_SURFACE_READY_ATTEMPTS: usize = 50;
+const PET_CREATED_SURFACE_READY_POLL_MS: u64 = 20;
 const PET_NATIVE_FRAME_STYLE_BITS: isize = 0x00CF_0000;
 const PET_NATIVE_FRAME_EX_STYLE_BITS: isize = 0x0002_0301;
 
@@ -934,6 +936,27 @@ fn native_show_pet_window(win: &WebviewWindow, title: &str, focus: bool) -> bool
     }
 }
 
+fn configure_pet_surface_until_ready<F>(
+    created: bool,
+    retry_attempts: usize,
+    retry_delay: std::time::Duration,
+    mut configure: F,
+) -> bool
+where
+    F: FnMut() -> bool,
+{
+    let attempts = if created { retry_attempts.max(1) } else { 1 };
+    for attempt in 0..attempts {
+        if configure() {
+            return true;
+        }
+        if attempt + 1 < attempts && !retry_delay.is_zero() {
+            std::thread::sleep(retry_delay);
+        }
+    }
+    false
+}
+
 #[cfg(target_os = "windows")]
 fn native_configure_pet_window(
     win: &WebviewWindow,
@@ -1431,14 +1454,21 @@ fn show_existing_pet_overlay(
         .ok_or("window_missing")?;
     #[cfg(target_os = "windows")]
     {
-        if !native_configure_pet_window(
-            &win,
-            "VibeSpace Pet",
-            x as i32,
-            y as i32,
-            OVERLAY_SIZE as i32,
-            OVERLAY_SIZE as i32,
-            false,
+        if !configure_pet_surface_until_ready(
+            created,
+            PET_CREATED_SURFACE_READY_ATTEMPTS,
+            std::time::Duration::from_millis(PET_CREATED_SURFACE_READY_POLL_MS),
+            || {
+                native_configure_pet_window(
+                    &win,
+                    "VibeSpace Pet",
+                    x as i32,
+                    y as i32,
+                    OVERLAY_SIZE as i32,
+                    OVERLAY_SIZE as i32,
+                    false,
+                )
+            },
         ) {
             return Err("not_visible");
         }
@@ -1839,14 +1869,21 @@ fn open_or_focus_pet_panel_blocking(
 
     #[cfg(target_os = "windows")]
     {
-        if !native_configure_pet_window(
-            &win,
-            "VibeSpace Pet Panel",
-            x as i32,
-            y as i32,
-            w as i32,
-            h as i32,
-            true,
+        if !configure_pet_surface_until_ready(
+            created,
+            PET_CREATED_SURFACE_READY_ATTEMPTS,
+            std::time::Duration::from_millis(PET_CREATED_SURFACE_READY_POLL_MS),
+            || {
+                native_configure_pet_window(
+                    &win,
+                    "VibeSpace Pet Panel",
+                    x as i32,
+                    y as i32,
+                    w as i32,
+                    h as i32,
+                    true,
+                )
+            },
         ) {
             return Ok(PetPanelOpenResult::failed(created, "not_visible"));
         }
@@ -2230,6 +2267,30 @@ mod tests {
             classify_pet_registration(false, false, false),
             PetRegistrationAction::Create
         );
+    }
+
+    #[test]
+    fn newly_created_pet_surface_waits_for_native_host_readiness() {
+        let mut attempts = 0;
+        let ready = configure_pet_surface_until_ready(true, 3, std::time::Duration::ZERO, || {
+            attempts += 1;
+            attempts == 3
+        });
+
+        assert!(ready);
+        assert_eq!(attempts, 3);
+    }
+
+    #[test]
+    fn reused_pet_surface_keeps_single_checked_visibility_attempt() {
+        let mut attempts = 0;
+        let ready = configure_pet_surface_until_ready(false, 3, std::time::Duration::ZERO, || {
+            attempts += 1;
+            false
+        });
+
+        assert!(!ready);
+        assert_eq!(attempts, 1);
     }
 
     #[test]
