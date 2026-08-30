@@ -33,6 +33,7 @@ describe('DevicePreviewPanel logical viewport', () => {
     expect(iframe.style.width).toBe('390px');
     expect(iframe.style.height).toBe('844px');
     expect(iframe.style.transform).toBe('scale(0.35)');
+    expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
 
     const scaleBox = container.querySelector<HTMLElement>('.workbench-device-preview-scale-box');
     expect(scaleBox?.style.width).toBe('136.5px');
@@ -77,5 +78,33 @@ describe('DevicePreviewPanel logical viewport', () => {
     expect(iframe.style.width).toBe('412px');
     expect(iframe.style.height).toBe('924px');
     expect(iframe.style.transform).toBe('scale(0.5)');
+  });
+
+  it('unmounts scriptable preview content while minimized and recreates it on restore', () => {
+    const panel: WorkbenchPanel = {
+      id: 'preview-lifecycle',
+      kind: 'device-preview',
+      title: 'Preview',
+      x: 0,
+      y: 0,
+      width: 800,
+      height: 600,
+      z: 1,
+      minimized: false,
+      status: 'ready',
+      settings: {
+        previewDeviceId: 'iphone-13',
+        previewDocument: '<script>window.previewExecuted = true</script>',
+      },
+    };
+
+    const view = render(<DevicePreviewPanel panel={panel} onUpdate={vi.fn()} />);
+    expect(screen.getByTitle('iPhone 13 / 13 Pro preview')).toBeTruthy();
+
+    view.rerender(<DevicePreviewPanel panel={{ ...panel, minimized: true }} onUpdate={vi.fn()} />);
+    expect(screen.queryByTitle('iPhone 13 / 13 Pro preview')).toBeNull();
+
+    view.rerender(<DevicePreviewPanel panel={panel} onUpdate={vi.fn()} />);
+    expect(screen.getByTitle('iPhone 13 / 13 Pro preview')).toBeTruthy();
   });
 });

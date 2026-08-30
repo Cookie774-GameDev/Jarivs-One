@@ -168,19 +168,21 @@ export function DevicePreviewPanel({ panel, onUpdate }: DevicePreviewPanelProps)
             className="workbench-device-preview-scale-box"
             style={{ width: scaledW, height: scaledH }}
           >
-            <iframe
-              title={`${preset.name} preview`}
-              className="workbench-device-preview-iframe"
-              sandbox="allow-scripts allow-same-origin"
-              referrerPolicy="no-referrer"
-              srcDoc={doc}
-              style={{
-                width: logical.width,
-                height: logical.height,
-                transform: `scale(${zoom})`,
-                transformOrigin: 'top left',
-              }}
-            />
+            {!panel.minimized ? (
+              <iframe
+                title={`${preset.name} preview`}
+                className="workbench-device-preview-iframe"
+                sandbox="allow-scripts"
+                referrerPolicy="no-referrer"
+                srcDoc={doc}
+                style={{
+                  width: logical.width,
+                  height: logical.height,
+                  transform: `scale(${zoom})`,
+                  transformOrigin: 'top left',
+                }}
+              />
+            ) : null}
           </div>
         </div>
         <p className="workbench-device-preview-hint">
