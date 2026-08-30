@@ -11,6 +11,11 @@ const uiState = vi.hoisted(() => ({
   theme: 'warm' as string,
   activeChatId: 'chat-2' as string | null,
 }));
+const authState = vi.hoisted(() => ({
+  accountId: 'account-a',
+  workspaceId: 'workspace-1',
+  projectId: null as string | null,
+}));
 
 vi.mock('dexie-react-hooks', () => ({
   useLiveQuery: () => [
@@ -51,9 +56,20 @@ vi.mock('@/lib/db', () => ({
 }));
 
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: (selector: (state: { workspaceId: string; projectId: string | null }) => unknown) =>
-    selector({ workspaceId: 'workspace-1', projectId: null }),
+  useAuthStore: Object.assign(
+    (selector: (state: ReturnType<typeof getAuthState>) => unknown) => selector(getAuthState()),
+    { getState: () => getAuthState() },
+  ),
 }));
+
+function getAuthState() {
+  return {
+    cloudSession: { user_id: authState.accountId },
+    localUserId: null,
+    workspaceId: authState.workspaceId,
+    projectId: authState.projectId,
+  };
+}
 
 vi.mock('@/stores/ui', () => ({
   useUIStore: Object.assign(
@@ -91,6 +107,9 @@ describe('PetChatSurface independent panel selection', () => {
     setActiveChat.mockClear();
     uiState.theme = 'warm';
     uiState.activeChatId = 'chat-2';
+    authState.accountId = 'account-a';
+    authState.workspaceId = 'workspace-1';
+    authState.projectId = null;
     usePetPresentationStore.setState({
       chats: {},
       panelActiveChatId: null,
@@ -162,6 +181,17 @@ describe('PetChatSurface independent panel selection', () => {
     await waitFor(() => expect(deleteChat).toHaveBeenCalledWith('chat-2'));
     expect(usePetPresentationStore.getState().panelActiveChatId).toBe('chat-1');
     expect(setActiveChat).toHaveBeenCalledWith('chat-1');
+  });
+
+  it('rejects a confirmed delete after the live project scope changes', async () => {
+    render(<PetChatSurface />);
+
+    fireEvent.click(screen.getByTestId('pet-chat-delete-chat-2'));
+    authState.projectId = 'project-b';
+    fireEvent.click(screen.getByTestId('pet-chat-delete-confirm-btn'));
+
+    await waitFor(() => expect(deleteChat).not.toHaveBeenCalled());
+    expect(screen.getByTestId('pet-chat-delete-confirm')).toBeTruthy();
   });
 
   it('renames a chat inline on double-click and keeps it selected', async () => {

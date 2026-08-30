@@ -8,6 +8,7 @@ import { HistoryList } from './HistoryList';
 const mocks = vi.hoisted(() => ({
   activeAccountId: 'account-a',
   activeWorkspaceId: 'workspace-a',
+  activeProjectId: null as string | null,
   liveQueryCall: 0,
   chats: [] as Chat[],
   bindings: [] as Array<{ chatId: string; provider: string; localTitle: string }>,
@@ -65,7 +66,7 @@ vi.mock('@/stores/auth', () => {
     cloudSession: { user_id: mocks.activeAccountId },
     localUserId: null,
     workspaceId: mocks.activeWorkspaceId,
-    projectId: null,
+    projectId: mocks.activeProjectId,
   });
   return {
     useAuthStore: Object.assign(
@@ -123,6 +124,7 @@ function deferredVoid() {
 beforeEach(() => {
   mocks.activeAccountId = 'account-a';
   mocks.activeWorkspaceId = 'workspace-a';
+  mocks.activeProjectId = null;
   mocks.liveQueryCall = 0;
   mocks.chats = [chat('chat-a', 'Alpha chat'), chat('chat-b', 'Beta chat')];
   mocks.bindings = [];
@@ -288,6 +290,17 @@ describe('HistoryList destructive confirmation', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete Alpha chat' }));
     mocks.activeWorkspaceId = 'workspace-b';
+    fireEvent.click(screen.getByRole('button', { name: 'Delete chat' }));
+
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalled());
+    expect(mocks.remove).not.toHaveBeenCalled();
+  });
+
+  it('fails closed if the active project changes before explicit confirmation', async () => {
+    renderHistory();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Alpha chat' }));
+    mocks.activeProjectId = 'project-b';
     fireEvent.click(screen.getByRole('button', { name: 'Delete chat' }));
 
     await waitFor(() => expect(mocks.toastError).toHaveBeenCalled());

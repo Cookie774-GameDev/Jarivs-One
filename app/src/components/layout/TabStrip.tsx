@@ -27,7 +27,8 @@
  *   `lib/ai/runtime.ts`); manual edits take precedence.
  *
  * Hotkeys.
- *   Cmd+T new tab, Cmd+W close active tab, Cmd+1..9 switch by index.
+ *   Cmd+T new tab, Cmd+W hides the active tab without deleting its chat,
+ *   Cmd+1..9 switch by index.
  *   Reorder is gone for now — order is "newest updated first" in the
  *   query, which is what the user is asking for in practice. We can
  *   surface a dedicated `position` column later if explicit reorder
@@ -59,17 +60,29 @@ import { useThemeMotionLayout, useThemeMotionTransition } from '@/features/appea
 import { ThoughtBloomTitle } from '@/features/rename-motion/ThoughtBloomTitle';
 import { basename } from '@/features/files/projectFiles';
 import { useFileWorkspace } from '@/features/files/fileWorkspaceStore';
-import { closeExclusiveBrowserChatSurface } from '@/features/browser-chat/closeExclusiveBrowserChat';
 
 const KERNEL_SMOKE_ENABLED = isKernelSmokeEnabled({
   devBuild: import.meta.env.DEV,
   explicitFlag: import.meta.env.VITE_SIK_SMOKE,
 });
 
-interface TabModel {
+export interface TabModel {
   id: ChatId;
   title: string;
   pinned?: boolean;
+}
+
+export function closeTabProjection(
+  tabs: readonly TabModel[],
+  closingId: ChatId,
+  activeChatId: ChatId | null,
+): { closedChatId: ChatId; nextActiveChatId: ChatId | null } {
+  const index = tabs.findIndex((tab) => tab.id === closingId);
+  const fallback = tabs[index + 1]?.id ?? tabs[index - 1]?.id ?? null;
+  return {
+    closedChatId: closingId,
+    nextActiveChatId: closingId === activeChatId ? fallback : activeChatId,
+  };
 }
 
 const ROOT_PROJECT_KEY = '__root__';
@@ -95,6 +108,7 @@ export function TabStrip() {
   const projectId = useAuthStore((s) => s.projectId) as ProjectId | null;
   const setProjectId = useAuthStore((s) => s.setProjectId);
   const fileWorkspace = useFileWorkspace(projectId);
+  const [closedChatIds, setClosedChatIds] = React.useState<ReadonlySet<ChatId>>(() => new Set());
 
   // Live projection — same shape the nav sidebar uses, just trimmed
   // for the tab strip's narrow bar.
@@ -113,13 +127,24 @@ export function TabStrip() {
 
   const tabs: TabModel[] = React.useMemo(
     () =>
-      (chats ?? []).map((c) => ({
-        id: c.id,
-        title: (c.title ?? '').trim() || 'Untitled chat',
-        pinned: Boolean(c.pinned),
-      })),
-    [chats],
+      (chats ?? [])
+        .filter((chat) => !closedChatIds.has(chat.id))
+        .map((c) => ({
+          id: c.id,
+          title: (c.title ?? '').trim() || 'Untitled chat',
+          pinned: Boolean(c.pinned),
+        })),
+    [chats, closedChatIds],
   );
+
+  React.useEffect(() => {
+    if (!activeChatId || !closedChatIds.has(activeChatId as ChatId)) return;
+    setClosedChatIds((current) => {
+      const next = new Set(current);
+      next.delete(activeChatId as ChatId);
+      return next;
+    });
+  }, [activeChatId, closedChatIds]);
 
   const previousProjectRef = React.useRef<ProjectId | null>(projectId);
 
@@ -140,9 +165,9 @@ export function TabStrip() {
   }, [projectId, activeChatId, setActiveChat]);
 
   React.useEffect(() => {
-    if (!workspaceId || activeChatId || tabs.length > 0) return;
+    if (!workspaceId || activeChatId || (chats ?? []).length > 0) return;
     void ensureActiveChat({ navigateToChat: false });
-  }, [workspaceId, activeChatId, tabs.length]);
+  }, [workspaceId, activeChatId, chats]);
 
   // Reconcile the active chat against the current project's tab list.
   //
@@ -244,23 +269,11 @@ export function TabStrip() {
   }, [workspaceId, projectId, chats, setActiveChat, setChatMode, setRoute]);
 
   const handleClose = React.useCallback(
-    async (id: ChatId) => {
-      // Determine the next active id BEFORE we mutate, so closing the
-      // current tab feels responsive (no transient empty state).
-      const idx = tabs.findIndex((t) => t.id === id);
-      const fallback = tabs[idx + 1]?.id ?? tabs[idx - 1]?.id ?? null;
-      const browserClose = await closeExclusiveBrowserChatSurface({ chatId: id });
-      if (browserClose === 'cancelled') return;
-      try {
-        await chatRepo.delete(id);
-        const { playUiSound } = await import('@/lib/sfx');
-        playUiSound('trash_delete');
-      } catch (err) {
-        toast.error('Could not close tab', err instanceof Error ? err.message : 'Try again.');
-        return;
-      }
-      if (id === activeChatId) {
-        setActiveChat(fallback);
+    (id: ChatId) => {
+      const result = closeTabProjection(tabs, id, activeChatId as ChatId | null);
+      setClosedChatIds((current) => new Set(current).add(result.closedChatId));
+      if (result.nextActiveChatId !== activeChatId) {
+        setActiveChat(result.nextActiveChatId);
       }
     },
     [tabs, activeChatId, setActiveChat],

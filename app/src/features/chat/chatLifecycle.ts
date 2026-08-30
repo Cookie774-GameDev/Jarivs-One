@@ -9,6 +9,8 @@ import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import type { SyncQueueOwnerSnapshot } from '@/lib/cloudSyncQueueOwner';
 import type { AccountIdentity } from '@/lib/accountIdentity';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import { createJarvisChatIntentStore, selectJarvisChatForIntent } from './jarvisChatIntent';
 import {
   requireHealthyLocalChatStorage,
   runLocalChatStorageOperation,
@@ -94,6 +96,14 @@ export async function createChatInScope(options: CreateChatInScopeOptions): Prom
   );
 
   if (!chat || !options.beforeActivate(String(chat.id))) return null;
+  createJarvisChatIntentStore(window.localStorage).recordCreatedPrimary(
+    {
+      accountId: options.accountId,
+      workspaceId: options.workspaceId,
+      projectId: options.projectId,
+    },
+    String(chat.id),
+  );
   const ui = useUIStore.getState();
   ui.setActiveChat(chat.id);
   if (options.navigateToChat !== false) {
@@ -112,8 +122,25 @@ async function ensureActiveChatInternal(
     const ui = useUIStore.getState();
     const auth = useAuthStore.getState();
     const navigate = options.navigateToChat !== false;
+    const identity = resolveAccountIdentity(auth);
+    const intentScope =
+      identity && auth.workspaceId
+        ? {
+            accountId: identity.accountId,
+            workspaceId: String(auth.workspaceId),
+            projectId: auth.projectId ? String(auth.projectId) : null,
+          }
+        : null;
+    const intentStore = createJarvisChatIntentStore(window.localStorage);
+    const intentState = intentScope
+      ? intentStore.read(intentScope)
+      : ({ version: 1, intent: { kind: 'reuse-primary' } } as const);
 
-    if (ui.activeChatId && !options.forceNew) {
+    const activeMatchesIntent =
+      intentState.intent.kind !== 'explicit-new' &&
+      (intentState.intent.kind !== 'specific-chat' ||
+        intentState.intent.chatId === String(ui.activeChatId));
+    if (ui.activeChatId && !options.forceNew && activeMatchesIntent) {
       const existing = await chatRepo.getById(ui.activeChatId as ChatId);
       if (existing) return ui.activeChatId as ChatId;
     }
@@ -126,14 +153,24 @@ async function ensureActiveChatInternal(
       ? rows.filter((c) => c.project_id === projectId)
       : rows.filter((c) => !c.project_id);
 
-    if (!options.forceNew && scoped.length > 0) {
-      const recent = scoped.sort((a, b) => b.updated_at - a.updated_at)[0]!;
-      ui.setActiveChat(recent.id);
-      if (navigate) {
-        ui.setRoute('chat');
-        ui.setChatMode('chat');
+    if (!options.forceNew) {
+      const selection = selectJarvisChatForIntent(
+        intentState,
+        scoped.map((chat) => ({ id: String(chat.id), updatedAt: chat.updated_at })),
+      );
+      if (selection.kind === 'unavailable-specific-chat') return null;
+      if (selection.kind === 'create-chat') {
+        // Continue to the shared creation path below.
+      } else {
+        const selected = scoped.find((chat) => String(chat.id) === selection.chatId);
+        if (!selected) return null;
+        ui.setActiveChat(selected.id);
+        if (navigate) {
+          ui.setRoute('chat');
+          ui.setChatMode('chat');
+        }
+        return selected.id;
       }
-      return recent.id;
     }
 
     const hintedTitle = options.titleHint ? deriveChatTitle(options.titleHint) : '';
@@ -146,6 +183,8 @@ async function ensureActiveChatInternal(
       mode: 'chat',
       active_agent_ids: [],
     });
+
+    if (intentScope) intentStore.recordCreatedPrimary(intentScope, String(chat.id));
 
     ui.setActiveChat(chat.id);
     if (navigate) {

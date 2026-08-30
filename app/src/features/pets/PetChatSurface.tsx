@@ -22,12 +22,28 @@ import { toast } from '@/components/ui/toast';
 import { usePetPresentationStore } from './petPresentationStore';
 import { cn } from '@/lib/utils';
 import type { ChatId, ProjectId, WorkspaceId } from '@/types/common';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import {
+  createPermanentDeleteAuthority,
+  type PermanentDeleteReceipt,
+  type PermanentDeleteRequest,
+} from '@/features/chat/permanentDeleteAuthority';
+import { createJarvisChatIntentStore } from '@/features/chat/jarvisChatIntent';
 
-type PendingDelete = Readonly<{ id: string; title: string }>;
+type PendingDelete = Readonly<{
+  id: string;
+  title: string;
+  expectedAccountId: string;
+  expectedWorkspaceId: string;
+  expectedProjectId: string | null;
+  request: PermanentDeleteRequest;
+  receipt: PermanentDeleteReceipt;
+}>;
 
 export function PetChatSurface({ className }: { className?: string }) {
   const workspaceId = useAuthStore((s) => s.workspaceId);
   const projectId = useAuthStore((s) => s.projectId);
+  const accountId = useAuthStore((s) => resolveAccountIdentity(s)?.accountId ?? null);
   const panelActiveChatId = usePetPresentationStore((s) => s.panelActiveChatId);
   const setPanelActiveChatId = usePetPresentationStore((s) => s.setPanelActiveChatId);
   const registerChat = usePetPresentationStore((s) => s.registerChat);
@@ -35,6 +51,21 @@ export function PetChatSurface({ className }: { className?: string }) {
   const [renameValue, setRenameValue] = React.useState('');
   const [pendingDelete, setPendingDelete] = React.useState<PendingDelete | null>(null);
   const [deleting, setDeleting] = React.useState(false);
+  const deletionSessionId = React.useId();
+  const deleteAuthority = React.useMemo(
+    () =>
+      createPermanentDeleteAuthority({
+        scope: {
+          accountId: accountId ?? '',
+          workspaceId: String(workspaceId ?? ''),
+          projectId: projectId ? String(projectId) : null,
+          sessionId: deletionSessionId,
+        },
+      }),
+    [accountId, deletionSessionId, projectId, workspaceId],
+  );
+
+  React.useEffect(() => () => deleteAuthority.revoke(), [deleteAuthority]);
 
   const allChats = useLiveQuery(
     async () => {
@@ -90,7 +121,17 @@ export function PetChatSurface({ className }: { className?: string }) {
   };
 
   const requestDelete = (id: string, title: string) => {
-    setPendingDelete({ id, title });
+    if (!accountId || !workspaceId) return;
+    const request = { operation: 'delete-chat' as const, resourceIds: [id] };
+    setPendingDelete({
+      id,
+      title,
+      expectedAccountId: accountId,
+      expectedWorkspaceId: String(workspaceId),
+      expectedProjectId: projectId ? String(projectId) : null,
+      request,
+      receipt: deleteAuthority.issue(request),
+    });
   };
 
   const confirmDelete = async () => {
@@ -98,7 +139,27 @@ export function PetChatSurface({ className }: { className?: string }) {
     const { id } = pendingDelete;
     setDeleting(true);
     try {
+      const liveAuth = useAuthStore.getState();
+      const authorized = deleteAuthority.consume(
+        pendingDelete.receipt,
+        {
+          accountId: resolveAccountIdentity(liveAuth)?.accountId ?? '',
+          workspaceId: String(liveAuth.workspaceId ?? ''),
+          projectId: liveAuth.projectId ? String(liveAuth.projectId) : null,
+          sessionId: deletionSessionId,
+        },
+        pendingDelete.request,
+      );
+      if (!authorized) throw new Error('pet_chat_delete_authority_rejected');
       await chatRepo.delete(id as ChatId);
+      createJarvisChatIntentStore(window.localStorage).reconcileDeleted(
+        {
+          accountId: pendingDelete.expectedAccountId,
+          workspaceId: pendingDelete.expectedWorkspaceId,
+          projectId: pendingDelete.expectedProjectId,
+        },
+        [id],
+      );
       const remaining = workspaceChatIds.filter((chatId) => chatId !== id);
       const nextPanel = panelActiveChatId === id ? (remaining[0] ?? null) : panelActiveChatId;
       setPanelActiveChatId(nextPanel);

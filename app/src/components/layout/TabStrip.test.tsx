@@ -3,7 +3,22 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChatId } from '@/types';
-import { FilesRouteTab, TabItem } from './TabStrip';
+import { closeTabProjection, FilesRouteTab, TabItem } from './TabStrip';
+
+describe('closeTabProjection', () => {
+  it('hides only the reviewed tab and selects a neighbor without removing the chat record', () => {
+    const tabs = [
+      { id: 'chat-1' as ChatId, title: 'First' },
+      { id: 'chat-2' as ChatId, title: 'Second' },
+    ];
+
+    expect(closeTabProjection(tabs, 'chat-1' as ChatId, 'chat-1' as ChatId)).toEqual({
+      closedChatId: 'chat-1',
+      nextActiveChatId: 'chat-2',
+    });
+    expect(tabs).toHaveLength(2);
+  });
+});
 
 describe('TabItem accessibility', () => {
   afterEach(cleanup);

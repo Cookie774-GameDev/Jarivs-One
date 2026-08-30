@@ -18,7 +18,11 @@ import {
   messagesThroughBranchPoint,
 } from './chatLifecycle';
 import { chatRepo } from '@/lib/db';
+import { db } from '@/lib/db';
 import type { Message, MessageId } from '@/types';
+import { useAuthStore } from '@/stores/auth';
+import { useUIStore } from '@/stores/ui';
+import { createJarvisChatIntentStore } from './jarvisChatIntent';
 
 beforeEach(() => {
   requireHealthyLocalChatStorage.mockReset();
@@ -42,6 +46,41 @@ describe('chat storage gate', () => {
     await expect(ensureActiveChat({ forceNew: true })).rejects.toThrow(
       'Local chat storage needs repair',
     );
+  });
+});
+
+describe('Jarvis chat intent routing', () => {
+  it('does not recreate when an exact specific-chat intent is unavailable in an empty scope', async () => {
+    const previousAuth = useAuthStore.getState();
+    const previousActiveChatId = useUIStore.getState().activeChatId;
+    useAuthStore.setState({
+      cloudSession: null,
+      localUserId: 'account-intent',
+      workspaceId: 'workspace-intent' as never,
+      projectId: 'project-intent' as never,
+    });
+    useUIStore.getState().setActiveChat(null);
+    createJarvisChatIntentStore(window.localStorage).write(
+      {
+        accountId: 'account-intent',
+        workspaceId: 'workspace-intent',
+        projectId: 'project-intent',
+      },
+      { intent: { kind: 'specific-chat', chatId: 'chat-missing' } },
+    );
+    vi.spyOn(db.chats, 'where').mockReturnValue({
+      equals: () => ({ toArray: async () => [] }),
+    } as never);
+    const create = vi.spyOn(chatRepo, 'create').mockResolvedValue({ id: 'chat-new' } as never);
+
+    try {
+      await expect(ensureActiveChat()).resolves.toBeNull();
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      useAuthStore.setState(previousAuth);
+      useUIStore.getState().setActiveChat(previousActiveChatId);
+      window.localStorage.clear();
+    }
   });
 });
 

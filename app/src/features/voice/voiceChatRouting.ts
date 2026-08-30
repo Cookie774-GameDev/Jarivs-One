@@ -9,6 +9,12 @@ import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import type { Agent, AgentId, Chat, ChatId, ProjectId, WorkspaceId } from '@/types';
 import { findProtectedJarvisAgent, isProtectedJarvisAgent } from '@/lib/jarvis/identity';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
+import {
+  createJarvisChatIntentStore,
+  selectJarvisChatForIntent,
+  type JarvisChatScope,
+} from '@/features/chat/jarvisChatIntent';
 
 export interface VoiceChatTarget {
   chatId: ChatId;
@@ -107,18 +113,27 @@ async function listScopedChats(): Promise<Chat[]> {
 export async function ensureJarvisChatForVoice(titleHint?: string): Promise<ChatId | null> {
   const auth = useAuthStore.getState();
   if (!auth.workspaceId) return null;
+  const identity = resolveAccountIdentity(auth);
+  if (!identity) return null;
+
+  const intentScope: JarvisChatScope = {
+    accountId: identity.accountId,
+    workspaceId: String(auth.workspaceId),
+    projectId: auth.projectId ? String(auth.projectId) : null,
+  };
+  const intentStore = createJarvisChatIntentStore(window.localStorage);
 
   const agents = useAgentStore.getState().agents;
   const protectedJarvis = findProtectedJarvisAgent(Object.values(agents));
   if (!protectedJarvis) return null;
   const scoped = await listScopedChats();
-  const jarvisChats = scoped
-    .filter((chat) => isJarvisChat(chat, agents))
-    .sort((a, b) => b.updated_at - a.updated_at);
-
-  if (jarvisChats.length > 0) {
-    return jarvisChats[0]!.id;
-  }
+  const jarvisChats = scoped.filter((chat) => isJarvisChat(chat, agents));
+  const selection = selectJarvisChatForIntent(
+    intentStore.read(intentScope),
+    jarvisChats.map((chat) => ({ id: String(chat.id), updatedAt: chat.updated_at })),
+  );
+  if (selection.kind === 'use-chat') return selection.chatId as ChatId;
+  if (selection.kind === 'unavailable-specific-chat') return null;
 
   const chat = await chatRepo.create({
     workspace_id: auth.workspaceId as WorkspaceId,
@@ -127,6 +142,7 @@ export async function ensureJarvisChatForVoice(titleHint?: string): Promise<Chat
     mode: 'chat',
     active_agent_ids: [protectedJarvis.id],
   });
+  intentStore.recordCreatedPrimary(intentScope, String(chat.id));
   return chat.id;
 }
 
