@@ -1,0 +1,75 @@
+import { describe, expect, it } from 'vitest';
+import { APP_ROUTES } from '@/features/navigation/routeSchema';
+import { INSTANT_COMMAND_CATALOG, INSTANT_COMMAND_INDEX } from './catalog';
+
+describe('INSTANT_COMMAND_CATALOG', () => {
+  it('covers every canonical route with a locally indexed navigation command', () => {
+    const routeCommands = new Map(
+      INSTANT_COMMAND_CATALOG.filter((entry) => entry.family === 'navigation').map((entry) => [
+        entry.target,
+        entry,
+      ]),
+    );
+
+    expect([...routeCommands.keys()].sort()).toEqual([...APP_ROUTES].sort());
+    expect(INSTANT_COMMAND_INDEX.match('open terminal page')[0]?.target).toBe('terminal');
+    expect(INSTANT_COMMAND_INDEX.match('open Jarvis settings')[0]?.target).toBe('account');
+  });
+
+  it('contains the approved deterministic families and Calyx commands', () => {
+    const families = new Set(INSTANT_COMMAND_CATALOG.map((entry) => entry.family));
+    expect(families).toEqual(
+      new Set([
+        'navigation',
+        'terminal',
+        'agent',
+        'project',
+        'chat',
+        'schedule',
+        'settings',
+        'media',
+        'tools',
+        'files',
+        'tasks',
+        'workbench',
+        'team',
+      ]),
+    );
+
+    const teamIds = INSTANT_COMMAND_CATALOG.filter((entry) => entry.family === 'team').map(
+      (entry) => entry.id,
+    );
+    expect(teamIds).toEqual([
+      'team.connect',
+      'team.disconnect',
+      'team.list',
+      'team.open',
+      'team.message',
+      'team.broadcast',
+      'team.role.assign',
+      'team.task.assign',
+      'team.handoff',
+      'team.pause',
+      'team.resume',
+      'team.status',
+    ]);
+    expect(INSTANT_COMMAND_INDEX.match('connect terminals one and two as a team')[0]?.id).toBe(
+      'team.connect',
+    );
+    expect(INSTANT_COMMAND_INDEX.match('tell team alpha to run the release audit')[0]?.id).toBe(
+      'team.message',
+    );
+  });
+
+  it('marks unproven or destructive commands unavailable or confirmation-gated', () => {
+    const byId = new Map(INSTANT_COMMAND_CATALOG.map((entry) => [entry.id, entry]));
+    expect(byId.get('team.connect')).toMatchObject({
+      availability: 'capability-gated',
+      authority: 'terminal-peer-fabric',
+    });
+    expect(byId.get('schedule.delete')?.safety).toBe('confirm');
+    expect(byId.get('chat.delete')?.safety).toBe('confirm');
+    expect(byId.get('tool.run')?.safety).toBe('approval');
+    expect(byId.get('file.delete')).toBeUndefined();
+  });
+});

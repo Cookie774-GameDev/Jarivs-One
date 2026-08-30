@@ -56,6 +56,8 @@ import { OpenInTerminalDialog } from './open-in-terminal/OpenInTerminalDialog';
 import { CommandCenterToolCard } from './command-center/CommandCenterToolCard';
 import { EmpireFreezerToolCard } from '@/features/wellness';
 import { FasterAgentsToolCard } from './faster-agents/FasterAgentsToolCard';
+import { TerminalPeerFabricToolCard } from './terminal-peer-fabric/TerminalPeerFabricToolCard';
+import { TerminalPeerFabricSetupDialog } from './terminal-peer-fabric/TerminalPeerFabricSetupDialog';
 
 /* --------------------------------------------------------------------------
  * Quick-start templates
@@ -596,6 +598,7 @@ export function ToolsPage() {
 
   const [editorOpen, setEditorOpen] = React.useState(false);
   const [openInTerminalOpen, setOpenInTerminalOpen] = React.useState(false);
+  const [terminalPeerFabricOpen, setTerminalPeerFabricOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<CustomTool | null>(null);
   const [templateSeed, setTemplateSeed] = React.useState<QuickTemplate | null>(null);
 
@@ -759,6 +762,7 @@ export function ToolsPage() {
             <CommandCenterToolCard />
             <EmpireFreezerToolCard />
             <FasterAgentsToolCard />
+            <TerminalPeerFabricToolCard onOpen={() => setTerminalPeerFabricOpen(true)} />
           </div>
         </section>
 
@@ -838,6 +842,10 @@ export function ToolsPage() {
         templateSeed={templateSeed}
       />
       <OpenInTerminalDialog open={openInTerminalOpen} onOpenChange={setOpenInTerminalOpen} />
+      <TerminalPeerFabricSetupDialog
+        open={terminalPeerFabricOpen}
+        onOpenChange={setTerminalPeerFabricOpen}
+      />
     </div>
   );
 }
