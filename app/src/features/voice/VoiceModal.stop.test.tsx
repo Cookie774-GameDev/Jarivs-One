@@ -98,6 +98,7 @@ import { GROQ_DEFAULT_MODEL } from '@/lib/ai/providers/groq';
 import { DEFAULT_CUSTOM_STEPS } from '@/lib/ai/stacks/presets';
 import { createVoiceSessionBinding } from './voiceSessionBinding';
 import type { ChatId } from '@/types/common';
+import { messageRepo } from '@/lib/db';
 
 function emitVoice(event: string, payload?: unknown) {
   voiceMockState.handlers.get(event)?.forEach((fn) => fn(payload));
@@ -216,6 +217,47 @@ describe('VoiceModal stop control and mic recovery', () => {
     expect(useVoiceStore.getState().state).toBe('paused');
     expect(screen.getByText(/Paused — click the orb to resume/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /Resume listening/i })).toBeTruthy();
+  });
+
+  it('lets the user mute hands-free listening and rejects late transcript or restart events', () => {
+    vi.useFakeTimers();
+    setupAuth(true);
+    useAuthStore.setState({ voiceEndTrigger: 'silence' });
+    render(<VoiceModal />);
+    expect(VoiceService.startListening).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      emitVoice('voice:partial', { text: 'queued private transcript' });
+      emitVoice('voice:final', { text: 'do not send this' });
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Stop listening/i }));
+
+    expect(VoiceService.stopListening).toHaveBeenCalledTimes(1);
+    expect(useUIStore.getState().voiceListening).toBe(false);
+    expect(useVoiceStore.getState().state).toBe('paused');
+    expect(screen.getByRole('button', { name: /Resume listening/i })).toBeTruthy();
+
+    act(() => {
+      emitVoice('voice:start');
+      emitVoice('voice:partial', { text: 'late private transcript' });
+      emitVoice('voice:final', { text: 'late private transcript' });
+      emitVoice('voice:error', { kind: 'aborted', message: 'late abort' });
+      window.dispatchEvent(new CustomEvent(SPEECH_SYNTHESIS_END_EVENT));
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(useVoiceStore.getState().partialTranscript).toBe('');
+    expect(useVoiceStore.getState().finalTranscript.map(({ text }) => text)).toEqual([
+      'do not send this',
+    ]);
+    expect(useVoiceStore.getState().state).toBe('paused');
+    expect(VoiceService.startListening).toHaveBeenCalledTimes(1);
+    expect(messageRepo.create).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Resume listening/i }));
+    expect(VoiceService.startListening).toHaveBeenCalledTimes(2);
+    expect(useVoiceStore.getState().state).toBe('listening');
   });
 
   it('clicking the paused orb resumes listening', async () => {

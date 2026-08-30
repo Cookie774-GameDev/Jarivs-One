@@ -240,6 +240,8 @@ function VoiceModalPanel() {
   const utteranceTimerRef = React.useRef<number | null>(null);
   const restartTimerRef = React.useRef<number | null>(null);
   const cooldownTimerRef = React.useRef<number | null>(null);
+  const partialTimerRef = React.useRef<number | null>(null);
+  const pendingPartialRef = React.useRef('');
   const speakingRef = React.useRef(false);
   const streamingReplyRef = React.useRef(false);
   const manuallyStoppedReplyRef = React.useRef(false);
@@ -458,6 +460,17 @@ function VoiceModalPanel() {
 
   const stopListening = React.useCallback((nextState: VoiceState = 'idle') => {
     listeningArmedRef.current = false;
+    if (utteranceTimerRef.current !== null) window.clearTimeout(utteranceTimerRef.current);
+    utteranceTimerRef.current = null;
+    if (restartTimerRef.current !== null) window.clearTimeout(restartTimerRef.current);
+    restartTimerRef.current = null;
+    if (cooldownTimerRef.current !== null) window.clearTimeout(cooldownTimerRef.current);
+    cooldownTimerRef.current = null;
+    if (partialTimerRef.current !== null) window.clearTimeout(partialTimerRef.current);
+    partialTimerRef.current = null;
+    pendingPartialRef.current = '';
+    pendingUtteranceRef.current = '';
+    resumeListeningAfterSpeechRef.current = false;
     VoiceService.stopListening();
     useUIStore.getState().setVoiceListening(false);
     useVoiceStore.getState().setPartialTranscript('');
@@ -526,8 +539,7 @@ function VoiceModalPanel() {
       return;
     }
     if (state === 'listening' || useUIStore.getState().voiceListening) {
-      if (voiceAutoListenOnOpen) return;
-      stopListening('idle');
+      stopListening(voiceAutoListenOnOpen ? 'paused' : 'idle');
       return;
     }
     if (!voiceAutoListenOnOpen) {
@@ -649,6 +661,7 @@ function VoiceModalPanel() {
       cooldownTimerRef.current = window.setTimeout(() => {
         cooldownTimerRef.current = null;
         turnBusyRef.current = false;
+        if (!listeningArmedRef.current && useVoiceStore.getState().state === 'paused') return;
         if (handsFree()) {
           listeningArmedRef.current = true;
           pendingUtteranceRef.current = '';
@@ -758,27 +771,31 @@ function VoiceModalPanel() {
     };
     flushUtteranceRef.current = (text: string) => flushUtterance(text);
 
-    let partialTimer: number | null = null;
-    let pendingPartial = '';
-
     const schedulePartial = (text: string) => {
-      pendingPartial = text;
-      if (partialTimer !== null) return;
-      partialTimer = window.setTimeout(() => {
-        partialTimer = null;
-        useVoiceStore.getState().setPartialTranscript(pendingPartial);
+      pendingPartialRef.current = text;
+      if (partialTimerRef.current !== null) return;
+      partialTimerRef.current = window.setTimeout(() => {
+        partialTimerRef.current = null;
+        if (!listeningArmedRef.current) return;
+        useVoiceStore.getState().setPartialTranscript(pendingPartialRef.current);
       }, 100);
     };
 
     const offs = [
       VoiceService.on('voice:start', () => {
+        if (!listeningArmedRef.current) {
+          VoiceService.stopListening();
+          return;
+        }
         useUIStore.getState().setVoiceListening(true);
         useVoiceStore.getState().setState('listening');
       }),
       VoiceService.on('voice:partial', ({ text }) => {
+        if (!listeningArmedRef.current) return;
         schedulePartial(text);
       }),
       VoiceService.on('voice:final', ({ text }) => {
+        if (!listeningArmedRef.current) return;
         if (turnBusyRef.current) return;
 
         useVoiceStore.getState().pushFinalTranscript(text);
@@ -824,6 +841,7 @@ function VoiceModalPanel() {
         );
       }),
       VoiceService.on('voice:error', ({ kind, message }) => {
+        if (!listeningArmedRef.current && useVoiceStore.getState().state === 'paused') return;
         if (kind === 'no_speech' || kind === 'aborted') {
           restartListening();
           return;
@@ -898,7 +916,9 @@ function VoiceModalPanel() {
 
     return () => {
       offs.forEach((off) => off());
-      if (partialTimer !== null) window.clearTimeout(partialTimer);
+      if (partialTimerRef.current !== null) window.clearTimeout(partialTimerRef.current);
+      partialTimerRef.current = null;
+      pendingPartialRef.current = '';
       if (restartTimerRef.current !== null) window.clearTimeout(restartTimerRef.current);
       restartTimerRef.current = null;
       if (cooldownTimerRef.current !== null) window.clearTimeout(cooldownTimerRef.current);
