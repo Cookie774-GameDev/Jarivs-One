@@ -258,9 +258,18 @@ function convertTextParts(
   });
 }
 
+const PLAN_REVIEW_INTENT_RE =
+  /\b(?:approved?\s+to\s+proceed|shall\s+i\s+(?:proceed|implement|build)|would\s+you\s+like\s+me\s+to\s+(?:proceed|implement|build)|ready\s+to\s+(?:proceed|implement|build))\s*\??\s*$/iu;
+
+function hasPlanReviewIntent(text: string): boolean {
+  return PLAN_REVIEW_INTENT_RE.test(text.trim());
+}
+
 function validatedParts(
   displayText: string,
-  request: Readonly<Pick<JarvisRequestEnvelope, 'requestId' | 'userText' | 'outputContract'>>,
+  request: Readonly<
+    Pick<JarvisRequestEnvelope, 'requestId' | 'userText' | 'interactionMode' | 'outputContract'>
+  >,
 ): Part[] {
   let parts = textParts(displayText);
   let actionIndex = 0;
@@ -297,11 +306,13 @@ function validatedParts(
   }
   if (request.outputContract.allowPlanBlocks) {
     parts = convertTextParts(parts, (text) => {
-      const parsed = parseJarvisPlanBlocks(text);
+      const parsed = parseJarvisPlanBlocks(text, {
+        force: request.interactionMode === 'plan' && hasPlanReviewIntent(text),
+      });
       const normalized = parsed.parts.map((part): Part => {
         if (part.kind !== 'plan_review') return part;
         const index = planIndex++;
-        const id = /^plan_\d+_\d+$/.test(part.plan.id)
+        const id = /^plan_\d+(?:_\d+)?$/.test(part.plan.id)
           ? `jarvis_plan_${request.requestId}_${index}`
           : part.plan.id;
         return { ...part, plan: { ...part.plan, id } };
@@ -346,7 +357,10 @@ function validatedParts(
     });
     const fallbackProposals = inferFallbackActionProposals(request.userText, displayText);
     const parsedActionIds = parts
-      .filter((part): part is Extract<Part, { kind: 'action_proposal' }> => part.kind === 'action_proposal')
+      .filter(
+        (part): part is Extract<Part, { kind: 'action_proposal' }> =>
+          part.kind === 'action_proposal',
+      )
       .map((part) => part.action_id);
     const exactFileCreateFallback =
       fallbackProposals.length >= 2 &&
@@ -358,12 +372,14 @@ function validatedParts(
       fallbackProposals.length <= 10 &&
       fallbackProposals.every((proposal) => proposal.action_id === 'files.read') &&
       shouldReplaceModelActionsWithFileReadFallback(parsedActionIds, fallbackProposals);
-    if (exactFileCreateFallback || exactFileReadFallback || (
-      fallbackProposals.length >= 2 &&
-      fallbackProposals.length <= 10 &&
-      fallbackProposals.every((proposal) => proposal.action_id === 'files.create') &&
-      parsedActionIds.length === 0
-    )) {
+    if (
+      exactFileCreateFallback ||
+      exactFileReadFallback ||
+      (fallbackProposals.length >= 2 &&
+        fallbackProposals.length <= 10 &&
+        fallbackProposals.every((proposal) => proposal.action_id === 'files.create') &&
+        parsedActionIds.length === 0)
+    ) {
       const actionLabel = fallbackProposals
         .map(({ action_id, rationale }) => rationale?.trim() || action_id)
         .join(' ');
@@ -406,10 +422,10 @@ function validatedParts(
     if (parts.every((part) => part.kind === 'text')) {
       // The kernel accepts a single approval-bound action per response. Apply
       // that invariant to inferred actions as well as parsed action blocks.
-      const fallbackProposals = inferFallbackActionProposals(
-        request.userText,
-        displayText,
-      ).slice(0, 1);
+      const fallbackProposals = inferFallbackActionProposals(request.userText, displayText).slice(
+        0,
+        1,
+      );
       if (fallbackProposals.length > 0) {
         const actionLabel = fallbackProposals
           .map(({ action_id, rationale }) => rationale?.trim() || action_id)
@@ -456,6 +472,7 @@ export async function processJarvisResponse(
       requestId: request.requestId,
       runId: request.runId,
       userText: request.userText,
+      interactionMode: request.interactionMode,
       responseModeHint: request.responseModeHint,
       outputContract: request.outputContract,
       sourceRefs: request.context.items.map((item) => item.source),

@@ -141,9 +141,7 @@ describe('processJarvisResponse', () => {
     );
 
     expect(repair.repair).toHaveBeenCalledOnce();
-    expect(repair.repair).toHaveBeenCalledWith(
-      expect.objectContaining({ prose: oversized }),
-    );
+    expect(repair.repair).toHaveBeenCalledWith(expect.objectContaining({ prose: oversized }));
     expect(result.provider).toEqual(provider);
     expect(result.displayText).toBe(
       'I could not produce a clean, verified response within the requested format. Please retry.',
@@ -703,16 +701,46 @@ describe('processJarvisResponse', () => {
     const root = 'C:\\Users\\viper\\Downloads';
     const base = `${root}\\VibeSpace-Test03-Ten-Files-20260814-Grok2`;
     const files = [
-      ['01_readme.txt', 'Title: Northstar Ledger\nVerification: cobalt-wren-731\nSummary: A brass compass points north at dawn.\n'],
-      ['02_checklist.txt', 'Title: Riverstone Note\nVerification: amber-fox-462\nSummary: Smooth river stones mark the shallow crossing.\n'],
-      ['03_summary.txt', 'Title: Skyline Memo\nVerification: violet-crane-583\nSummary: Three rooftops silhouette the evening sky.\n'],
-      ['04_plan.md', '# Orchard Brief\n\nVerification: maple-otter-284\n\n- Apples are counted at sunrise.\n- Pears are checked before noon.\n'],
-      ['05_notes.md', '# Workshop Checklist\n\nVerification: copper-finch-619\n\n- Calibrate the small brass gauge.\n- Store the wrench in drawer two.\n'],
-      ['06_results.md', '# Tidepool Log\n\nVerification: silver-seal-347\n\n- Observe the anemone at low tide.\n- Count three shells near the ledge.\n'],
-      ['07_index.html', '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>Beacon Page</title></head><body><h1>Beacon Page</h1><p data-verification="solar-lynx-905">A harbor beacon flashes twice at dusk.</p></body></html>\n'],
-      ['08_report.html', '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>Library Page</title></head><body><h1>Library Page</h1><p data-verification="indigo-moth-826">A quiet librarian shelves the final atlas.</p></body></html>\n'],
-      ['09_cards.html', '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>Garden Page</title></head><body><h1>Garden Page</h1><p data-verification="crimson-hare-154">A cedar gate opens toward the herb garden.</p></body></html>\n'],
-      ['10_status.html', '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>Observatory Page</title></head><body><h1>Observatory Page</h1><p data-verification="golden-ibis-792">The dome tracks one bright winter star.</p></body></html>\n'],
+      [
+        '01_readme.txt',
+        'Title: Northstar Ledger\nVerification: cobalt-wren-731\nSummary: A brass compass points north at dawn.\n',
+      ],
+      [
+        '02_checklist.txt',
+        'Title: Riverstone Note\nVerification: amber-fox-462\nSummary: Smooth river stones mark the shallow crossing.\n',
+      ],
+      [
+        '03_summary.txt',
+        'Title: Skyline Memo\nVerification: violet-crane-583\nSummary: Three rooftops silhouette the evening sky.\n',
+      ],
+      [
+        '04_plan.md',
+        '# Orchard Brief\n\nVerification: maple-otter-284\n\n- Apples are counted at sunrise.\n- Pears are checked before noon.\n',
+      ],
+      [
+        '05_notes.md',
+        '# Workshop Checklist\n\nVerification: copper-finch-619\n\n- Calibrate the small brass gauge.\n- Store the wrench in drawer two.\n',
+      ],
+      [
+        '06_results.md',
+        '# Tidepool Log\n\nVerification: silver-seal-347\n\n- Observe the anemone at low tide.\n- Count three shells near the ledge.\n',
+      ],
+      [
+        '07_index.html',
+        '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>Beacon Page</title></head><body><h1>Beacon Page</h1><p data-verification="solar-lynx-905">A harbor beacon flashes twice at dusk.</p></body></html>\n',
+      ],
+      [
+        '08_report.html',
+        '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>Library Page</title></head><body><h1>Library Page</h1><p data-verification="indigo-moth-826">A quiet librarian shelves the final atlas.</p></body></html>\n',
+      ],
+      [
+        '09_cards.html',
+        '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>Garden Page</title></head><body><h1>Garden Page</h1><p data-verification="crimson-hare-154">A cedar gate opens toward the herb garden.</p></body></html>\n',
+      ],
+      [
+        '10_status.html',
+        '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><title>Observatory Page</title></head><body><h1>Observatory Page</h1><p data-verification="golden-ibis-792">The dome tracks one bright winter star.</p></body></html>\n',
+      ],
     ] as const;
     const userText = `Create exactly ten new files in \`${base}\` using only ten registered \`files.create\` actions. For every action use root \`${root}\`, the exact absolute path, and the exact UTF-8 content below, including the final newline. Emit all ten action blocks in one response so I can use Approve all. Do not use a terminal, shell, script, patch, helper file, or \`files.edit\`. Do not claim creation until every approved action succeeds. If any target exists or any action fails, stop and report failure; do not rename, overwrite, or substitute.
 
@@ -740,9 +768,7 @@ ${files.map(([name, content]) => `${name}\n${content}`).join('\n')}`;
     );
     expect(
       actions.map((part) => (part as unknown as { params: { path: string } }).params.path),
-    ).toEqual(
-      files.map(([name]) => `${base}\\${name}`),
-    );
+    ).toEqual(files.map(([name]) => `${base}\\${name}`));
     __setCachedDefaultWriteDirForTests(null);
   });
 
@@ -760,8 +786,7 @@ ${files.map(([name, content]) => `${name}\n${content}`).join('\n')}`;
         ].join('\n'),
       ),
       request({
-        userText:
-          'Create C:\\Users\\viper\\Downloads\\proof.txt containing proof, then verify it.',
+        userText: 'Create C:\\Users\\viper\\Downloads\\proof.txt containing proof, then verify it.',
       }),
       { repair: vi.fn(async (input) => input.prose) },
     );
@@ -802,9 +827,7 @@ ${files.map(([name, content]) => `${name}\n${content}`).join('\n')}`;
     );
     expect(
       actions.map((part) => (part as unknown as { params: { path: string } }).params.path),
-    ).toEqual(
-      names.map((name) => `${base}\\${name}`),
-    );
+    ).toEqual(names.map((name) => `${base}\\${name}`));
   });
 
   it('infers only a read action when the requested filename contains write', async () => {
@@ -902,11 +925,9 @@ ${files.map(([name, content]) => `${name}\n${content}`).join('\n')}`;
   });
 
   it('never commits an empty provider reply as a completed blank response', async () => {
-    const result = await processJarvisResponse(
-      raw('   \n'),
-      request(),
-      { repair: vi.fn(async (input) => input.prose) },
-    );
+    const result = await processJarvisResponse(raw('   \n'), request(), {
+      repair: vi.fn(async (input) => input.prose),
+    });
 
     expect(result.displayText).toMatch(/empty model reply|retry/i);
     expect(result.parts).toEqual([
@@ -1023,6 +1044,69 @@ ${files.map(([name, content]) => `${name}\n${content}`).join('\n')}`;
     const result = await processJarvisResponse(raw(text), request(), { repair: vi.fn() });
     expect(result.parts.every((part) => part.kind !== kind)).toBe(true);
     expect(result.displayText).toContain('Structured output could not be validated');
+  });
+
+  it('projects Plan approval-intent prose into review actions without changing Ask or Agent boundaries', async () => {
+    const userText = 'Plan how to create mode-plan-0d10c62b.md without writing it yet.';
+    const providerText = [
+      'Plan:',
+      '1. Inspect the active project root.',
+      '2. Create the Markdown file with the requested content.',
+      '3. Read it back to verify the exact bytes.',
+      '',
+      'Approved to proceed?',
+    ].join('\n');
+
+    const plan = await processJarvisResponse(
+      raw(providerText),
+      request({ interactionMode: 'plan', userText }),
+      { repair: vi.fn() },
+    );
+    const ask = await processJarvisResponse(
+      raw(providerText),
+      request({ interactionMode: 'ask', userText }),
+      { repair: vi.fn() },
+    );
+    const agent = await processJarvisResponse(
+      raw(
+        [
+          'Prepared for authorization.',
+          '```action',
+          '{"id":"files.create","params":{"path":"mode-plan-0d10c62b.md","content":"verified\\n"}}',
+          '```',
+        ].join('\n'),
+      ),
+      request({ interactionMode: 'agent', userText }),
+      { repair: vi.fn() },
+    );
+
+    expect(plan.parts).toEqual([
+      expect.objectContaining({
+        kind: 'plan_review',
+        plan: expect.objectContaining({
+          id: 'jarvis_plan_jreq_response_1_0',
+          summary: expect.stringContaining('Approved to proceed?'),
+          status: 'pending',
+        }),
+      }),
+    ]);
+    expect(ask.parts).toEqual([
+      expect.objectContaining({
+        kind: 'text',
+        text: expect.stringContaining('Approved to proceed?'),
+      }),
+    ]);
+    expect(ask.parts.every((part) => part.kind === 'text')).toBe(true);
+    expect(agent.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'action_proposal',
+          action_id: 'files.create',
+          status: 'pending',
+        }),
+      ]),
+    );
+    expect(agent.parts.every((part) => part.kind !== 'plan_review')).toBe(true);
   });
 
   it('uses one deterministic fallback when repair rejects and never retries', async () => {
