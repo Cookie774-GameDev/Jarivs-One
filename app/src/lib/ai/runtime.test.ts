@@ -2254,6 +2254,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       (connection) => connection.id === 'opencode-cli',
     )!;
     useAuthStore.setState({
+      workspaceId: 'workspace-opencode-approval' as never,
       chatModelSelection: selectionFromOption(
         openCodeConnection.providerId as ProviderId,
         'opencode-go/deepseek-v4-flash-vision-exp',
@@ -2322,6 +2323,10 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
             (part) =>
               part.kind === 'permission_request' &&
               part.request.harness?.approvalId === 'approval-1' &&
+              part.request.harness.protocol === 'opencode-approval-v1' &&
+              part.request.harness.chatId === chatId &&
+              Boolean(part.request.harness.accountId) &&
+              Boolean(part.request.harness.workspaceId) &&
               part.request.status === 'approved',
           ),
         ),

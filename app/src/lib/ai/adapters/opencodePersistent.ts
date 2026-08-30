@@ -53,6 +53,7 @@ import {
   TOOL_GATEWAY_CATALOG,
 } from '@/lib/harness/toolGatewayProtocol';
 import type { ChatRuntimeSettings } from '@/features/chat/runtime/chatRuntimeCommandController';
+import type { OpenCodeApprovalHarnessRoute } from '@/features/jarvis-interaction/types';
 import type {
   LiveModelRuntimeMetadata,
   LiveModelVariant,
@@ -409,6 +410,15 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
       : [];
   }
 
+  async pendingPermissions(): Promise<readonly Record<string, unknown>[]> {
+    const value = unwrapData(
+      await requestJson(this.handle.generation, this.handle.scope, '/permission', {}, 30_000),
+    );
+    return Array.isArray(value)
+      ? value.map((entry) => recordOf(entry)).filter((entry) => entry !== undefined)
+      : [];
+  }
+
   async providerState(): Promise<unknown> {
     return requestJson(this.handle.generation, this.handle.scope, '/provider', {}, 15_000);
   }
@@ -510,10 +520,11 @@ const clientFactory: OpenCodeClientFactory = {
   },
 };
 
+const sessionRegistry = new LocalStorageSessionRegistry();
 const sessions = new OpenCodeSessionPool(
   createPersistentOpenCodeRuntimeSupervisor(),
   clientFactory,
-  { maxWarmScopes: 2, registry: new LocalStorageSessionRegistry() },
+  { maxWarmScopes: 2, registry: sessionRegistry },
 );
 const coordinator = new OpenCodeTurnCoordinator(sessions);
 const turnGate = new OpenCodeTurnGate();
@@ -521,7 +532,7 @@ const activeRequests = new Map<string, { scope: HarnessScope; chatId: string }>(
 type ActivePersistentApprovalSession = {
   readonly requestId: string;
   readonly http: OpenCodeHttpSdk;
-  readonly approvalIds: Set<string>;
+  readonly approvals: Map<string, Readonly<VibeSpaceApproval>>;
   readonly gatewayAuthority?: ToolGatewayAuthorityClaim;
 };
 const activeApprovalSessions = new Map<string, ActivePersistentApprovalSession>();
@@ -558,26 +569,128 @@ const OPENCODE_BUILTIN_TOOL_NAMES = Object.freeze([
   'write',
 ]);
 
-export async function respondToPersistentOpenCodeApproval(
-  input: Readonly<HarnessApprovalResponse>,
+const approvalResponseFlights = new Map<
+  string,
+  Readonly<{ response: HarnessApprovalResponse['response']; promise: Promise<void> }>
+>();
+const settledApprovalResponses = new Set<string>();
+
+function approvalScope(route: Readonly<OpenCodeApprovalHarnessRoute>): HarnessScope {
+  const accountId = cleanIdentifier(route.accountId, 512);
+  const workspaceId = cleanIdentifier(route.workspaceId, 512);
+  if (route.protocol !== 'opencode-approval-v1' || !accountId || !workspaceId) {
+    throw new Error('OpenCode approval route is invalid.');
+  }
+  return {
+    accountId,
+    workspaceId,
+    ...(cleanIdentifier(route.projectId, 512) ? { projectId: route.projectId!.trim() } : {}),
+    ...(cleanIdentifier(route.worktreeId, 512) ? { worktreeId: route.worktreeId!.trim() } : {}),
+    ...(route.workingDirectory?.trim() ? { workingDirectory: route.workingDirectory.trim() } : {}),
+  };
+}
+
+async function executePersistentOpenCodeApproval(
+  input: Readonly<HarnessApprovalResponse & { route?: OpenCodeApprovalHarnessRoute }>,
+  sessionId: string,
+  approvalId: string,
 ): Promise<void> {
-  const sessionId = cleanIdentifier(input.sessionId, 512);
-  const approvalId = cleanIdentifier(input.approvalId, 512);
-  if (!sessionId || !approvalId) {
-    throw new Error('OpenCode approval binding is invalid.');
-  }
   const active = activeApprovalSessions.get(sessionId);
-  if (!active || !active.approvalIds.has(approvalId)) {
-    throw new Error('OpenCode approval session is no longer active.');
+  let http: OpenCodeHttpSdk;
+  if (active) {
+    const approval = active.approvals.get(approvalId);
+    if (!approval) {
+      throw new Error('OpenCode approval is no longer pending.');
+    }
+    if (
+      input.route &&
+      (input.route.sessionId !== sessionId ||
+        input.route.approvalId !== approvalId ||
+        input.route.capability !== approval.capability)
+    ) {
+      throw new Error('OpenCode approval route does not match the pending request.');
+    }
+    http = active.http;
+  } else {
+    const route = input.route;
+    if (
+      !route ||
+      route.sessionId !== sessionId ||
+      route.approvalId !== approvalId ||
+      !cleanIdentifier(route.capability, 256) ||
+      !cleanIdentifier(route.chatId, 512)
+    ) {
+      throw new Error('OpenCode approval session is no longer active.');
+    }
+    const scope = approvalScope(route);
+    const mapping = await sessionRegistry.load(openCodeScopeKey(scope), route.chatId);
+    if (!mapping || mapping.sessionId !== sessionId) {
+      throw new Error('OpenCode approval route is no longer current.');
+    }
+    const entry = await sessions.clientForScope(scope);
+    if (entry.runtimeGeneration !== mapping.runtimeGeneration) {
+      throw new Error('OpenCode approval runtime changed.');
+    }
+    const client = entry.client as PersistentOpenCodeClient;
+    const session = await client.getSession?.(sessionId).catch(() => null);
+    if (session?.id !== sessionId) {
+      throw new Error('OpenCode approval session is no longer available.');
+    }
+    const pending = (await client.http.pendingPermissions())
+      .flatMap((properties) =>
+        normalizeOpenCodeEvent({ type: 'permission.asked', properties }, sessionId),
+      )
+      .find(
+        (event) =>
+          event.type === 'approval.requested' &&
+          event.approval.id === approvalId &&
+          event.approval.sessionId === sessionId &&
+          event.approval.capability === route.capability,
+      );
+    if (!pending) throw new Error('OpenCode approval is no longer pending.');
+    http = client.http;
   }
-  const result = await active.http.session.replyPermission({
+  const result = await http.session.replyPermission({
     path: { id: sessionId, permissionId: approvalId },
     body: { response: input.response },
   });
   if (unwrapData(result) === false) {
     throw new Error('OpenCode rejected the approval response.');
   }
-  active.approvalIds.delete(approvalId);
+  active?.approvals.delete(approvalId);
+}
+
+export async function respondToPersistentOpenCodeApproval(
+  input: Readonly<HarnessApprovalResponse & { route?: OpenCodeApprovalHarnessRoute }>,
+): Promise<void> {
+  const sessionId = cleanIdentifier(input.sessionId, 512);
+  const approvalId = cleanIdentifier(input.approvalId, 512);
+  if (!sessionId || !approvalId) {
+    throw new Error('OpenCode approval binding is invalid.');
+  }
+  const key = `${sessionId}\u0000${approvalId}`;
+  if (settledApprovalResponses.has(key)) {
+    throw new Error('OpenCode approval is no longer pending.');
+  }
+  const existing = approvalResponseFlights.get(key);
+  if (existing) {
+    if (existing.response !== input.response) {
+      throw new Error('OpenCode approval already has a different pending decision.');
+    }
+    return existing.promise;
+  }
+  const promise = executePersistentOpenCodeApproval(input, sessionId, approvalId)
+    .then(() => {
+      if (settledApprovalResponses.size >= 4_096) settledApprovalResponses.clear();
+      settledApprovalResponses.add(key);
+    })
+    .finally(() => {
+      if (approvalResponseFlights.get(key)?.promise === promise) {
+        approvalResponseFlights.delete(key);
+      }
+    });
+  approvalResponseFlights.set(key, { response: input.response, promise });
+  return promise;
 }
 
 function sameQuestionTool(
@@ -1829,7 +1942,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     activeApprovalSessions.set(dispatch.sessionId, {
       requestId: request.requestId,
       http: client.http,
-      approvalIds: new Set<string>(),
+      approvals: new Map(),
       ...(gatewayAuthority ? { gatewayAuthority } : {}),
     });
     activeQuestionSessions.set(dispatch.sessionId, {
@@ -1943,6 +2056,48 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       active.pending.set(question.request.id, question.request);
       return true;
     };
+    const registerApproval = async (approval: Readonly<VibeSpaceApproval>): Promise<boolean> => {
+      const active = activeApprovalSessions.get(dispatch.sessionId);
+      if (!active || active.requestId !== request.requestId) {
+        await client.abort(dispatch.sessionId).catch(() => undefined);
+        throw new Error('OpenCode approval arrived outside the active request binding.');
+      }
+      const existing = active.approvals.get(approval.id);
+      if (existing) {
+        if (
+          existing.sessionId !== approval.sessionId ||
+          existing.capability !== approval.capability ||
+          existing.title !== approval.title ||
+          JSON.stringify(existing.pattern) !== JSON.stringify(approval.pattern)
+        ) {
+          await client.abort(dispatch.sessionId).catch(() => undefined);
+          throw new Error('OpenCode approval authority changed while waiting.');
+        }
+        return false;
+      }
+      active.approvals.set(approval.id, Object.freeze({ ...approval }));
+      if (!request.onApprovalRequested) {
+        await respondToPersistentOpenCodeApproval({
+          sessionId: dispatch.sessionId,
+          approvalId: approval.id,
+          response: 'reject',
+        }).catch(() => undefined);
+        throw new Error('OpenCode requested approval without an active approval handler.');
+      }
+      await request.onApprovalRequested(approval);
+      return true;
+    };
+    const recoverPendingApprovals = async (): Promise<void> => {
+      const propertiesList = await client.http.pendingPermissions().catch(() => []);
+      for (const properties of propertiesList) {
+        for (const event of normalizeOpenCodeEvent(
+          { type: 'permission.asked', properties },
+          dispatch.sessionId,
+        )) {
+          if (event.type === 'approval.requested') await registerApproval(event.approval);
+        }
+      }
+    };
     const recoverPendingQuestions = async (): Promise<
       Extract<ProviderEvent, { type: 'question' }>[]
     > => {
@@ -1980,6 +2135,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
             .then((value) => ({ succeeded: true as const, value }))
             .catch(() => ({ succeeded: false as const, value: undefined })),
           recoverPendingQuestions(),
+          recoverPendingApprovals(),
         ]);
         for (const question of recoveredQuestions) yield question;
         const status = statusType(statusLookup.value);
@@ -2024,11 +2180,14 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         }
         const hasPendingQuestion =
           (activeQuestionSessions.get(dispatch.sessionId)?.pending.size ?? 0) > 0;
+        const hasPendingApproval =
+          (activeApprovalSessions.get(dispatch.sessionId)?.approvals.size ?? 0) > 0;
         const hasTurnEvidence = Boolean(
           currentTurnMessages.length > 0 ||
           emittedText.trim() ||
           emittedToolStates.size > 0 ||
-          hasPendingQuestion,
+          hasPendingQuestion ||
+          hasPendingApproval,
         );
         if (
           shouldFailOpenCodeTurnWithoutEvidence({
@@ -2044,6 +2203,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         if (status === 'idle' || (statusLookup.succeeded && status === undefined)) {
           done =
             !hasPendingQuestion &&
+            !hasPendingApproval &&
             shouldReconcileOpenCodeSessionCompletion({
               status,
               statusLookupSucceeded: statusLookup.succeeded,
@@ -2079,22 +2239,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       const normalizedEvents = normalizeOpenCodeEvent(event, dispatch.sessionId);
       for (const normalized of normalizedEvents) {
         if (normalized.type !== 'approval.requested') continue;
-        const active = activeApprovalSessions.get(dispatch.sessionId);
-        if (!active || active.requestId !== request.requestId) {
-          await client.abort(dispatch.sessionId).catch(() => undefined);
-          throw new Error('OpenCode approval arrived outside the active request binding.');
-        }
-        if (active.approvalIds.has(normalized.approval.id)) continue;
-        active.approvalIds.add(normalized.approval.id);
-        if (!request.onApprovalRequested) {
-          await respondToPersistentOpenCodeApproval({
-            sessionId: dispatch.sessionId,
-            approvalId: normalized.approval.id,
-            response: 'reject',
-          }).catch(() => undefined);
-          throw new Error('OpenCode requested approval without an active approval handler.');
-        }
-        await request.onApprovalRequested(normalized.approval);
+        await registerApproval(normalized.approval);
       }
 
       const identity = observedIdentity(event);
@@ -2346,6 +2491,8 @@ export async function disposeOpenCodePersistentRuntimes(): Promise<void> {
     releaseToolGatewaySessionAuthority(sessionId);
   }
   activeApprovalSessions.clear();
+  approvalResponseFlights.clear();
+  settledApprovalResponses.clear();
   turnGate.clear();
   await sessions.disposeAll();
 }

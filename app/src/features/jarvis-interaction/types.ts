@@ -68,7 +68,21 @@ export interface JarvisPlanReview {
   revisionOf?: string;
 }
 
-export type JarvisPermissionStatus = 'pending' | 'approved' | 'approved_plan' | 'denied' | 'edited';
+export type JarvisPermissionStatus =
+  'pending' | 'approved' | 'approved_plan' | 'denied' | 'edited' | 'cancelled';
+
+export interface OpenCodeApprovalHarnessRoute {
+  protocol: 'opencode-approval-v1';
+  chatId: string;
+  accountId: string;
+  workspaceId: string;
+  projectId?: string;
+  worktreeId?: string;
+  workingDirectory?: string;
+  sessionId: string;
+  approvalId: string;
+  capability: string;
+}
 
 export interface JarvisPermissionRequest {
   id: string;
@@ -86,11 +100,7 @@ export interface JarvisPermissionRequest {
   planId?: string;
   status: JarvisPermissionStatus;
   instruction?: string;
-  harness?: {
-    sessionId: string;
-    approvalId: string;
-    capability: string;
-  };
+  harness?: OpenCodeApprovalHarnessRoute;
 }
 
 export type JarvisAgentStatus =

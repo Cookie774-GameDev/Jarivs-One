@@ -3070,7 +3070,22 @@ export function appendToolGatewayContextCitations(
   });
 }
 
-function openCodePermissionRequest(approval: VibeSpaceApproval): JarvisPermissionRequest {
+function openCodePermissionRequest(
+  approval: VibeSpaceApproval,
+  authority: Readonly<{
+    chatId: string;
+    accountId?: string;
+    workspaceId?: string;
+    projectId?: string;
+    worktreeId?: string;
+    workingDirectory?: string;
+  }>,
+): JarvisPermissionRequest {
+  const accountId = authority.accountId?.trim();
+  const workspaceId = authority.workspaceId?.trim();
+  if (!accountId || !workspaceId) {
+    throw new Error('OpenCode approval scope is incomplete.');
+  }
   const targets =
     typeof approval.pattern === 'string'
       ? [approval.pattern]
@@ -3097,6 +3112,15 @@ function openCodePermissionRequest(approval: VibeSpaceApproval): JarvisPermissio
     ...(targets?.length ? { targets: targets.slice(0, 32) } : {}),
     status: 'pending',
     harness: {
+      protocol: 'opencode-approval-v1',
+      chatId: authority.chatId,
+      accountId,
+      workspaceId,
+      ...(authority.projectId?.trim() ? { projectId: authority.projectId.trim() } : {}),
+      ...(authority.worktreeId?.trim() ? { worktreeId: authority.worktreeId.trim() } : {}),
+      ...(authority.workingDirectory?.trim()
+        ? { workingDirectory: authority.workingDirectory.trim() }
+        : {}),
       sessionId: approval.sessionId,
       approvalId: approval.id,
       capability: approval.capability,
@@ -6857,7 +6881,10 @@ export function startRuntimeListener(
           ) {
             return;
           }
-          const request = openCodePermissionRequest(approval);
+          const request = openCodePermissionRequest(approval, {
+            ...providerRequest,
+            chatId: String(chatId),
+          });
           if (
             mayAutoApproveOpenCodeRequest({
               approveAllForRun,

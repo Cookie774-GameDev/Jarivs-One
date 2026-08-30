@@ -68,6 +68,7 @@ import {
   publicTextFromTurnMessages,
   persistentOpenCodeSessionErrorMessage,
   requireAuthoritativeOpenCodeModel,
+  respondToPersistentOpenCodeApproval,
   respondToPersistentOpenCodeQuestion,
   shouldReportPersistentTurnFailure,
   shouldFailOpenCodeTurnWithoutEvidence,
@@ -132,6 +133,7 @@ function jsonResponse(value: unknown, status = 200): Response {
 function configureManagedQuestionTransport(
   events: readonly { type: string; properties?: Readonly<Record<string, unknown>> }[],
   options: {
+    pendingPermissions?: readonly Readonly<Record<string, unknown>>[];
     pendingQuestions?: readonly Readonly<Record<string, unknown>>[];
     sessionStatuses?: readonly (string | null)[];
     persistedMessages?: readonly Readonly<Record<string, unknown>>[];
@@ -178,6 +180,8 @@ function configureManagedQuestionTransport(
     }
     if (path.startsWith('/question?')) return jsonResponse(options.pendingQuestions ?? []);
     if (path.startsWith('/question/')) return jsonResponse(true);
+    if (path.startsWith('/permission?')) return jsonResponse(options.pendingPermissions ?? []);
+    if (path.includes('/permissions/')) return jsonResponse(true);
     if (path.startsWith('/session/status')) {
       const statuses = options.sessionStatuses ?? ['busy'];
       const status = statuses[Math.min(statusReadIndex, statuses.length - 1)]!;
@@ -208,6 +212,16 @@ function configureManagedQuestionTransport(
       if (event) yield event;
     }
   });
+}
+
+function pendingPermission() {
+  return {
+    id: 'perm_external_write',
+    sessionID: 'ses_question_exact',
+    permission: 'external_directory',
+    patterns: ['D:\\VibeSpace-Testing\\temp\\approval.txt'],
+    metadata: { title: 'Write the approved file' },
+  } as const;
 }
 
 function questionAskedEvent(toolCallId = 'call_question_exact') {
@@ -733,6 +747,107 @@ describe('persistent OpenCode question transport authority', () => {
         expectedBlockId: projection.route.blockId,
       }),
     ).rejects.toThrow(/no longer active/i);
+  });
+});
+
+describe('persistent OpenCode approval recovery', () => {
+  beforeEach(async () => {
+    await disposeOpenCodePersistentRuntimes();
+    invalidateOpenCodePersistentCaches();
+    if (typeof localStorage !== 'undefined') localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    await disposeOpenCodePersistentRuntimes();
+    invalidateOpenCodePersistentCaches();
+  });
+
+  it('recovers a pending permission when the optional event feed closes before permission.asked', async () => {
+    const onApprovalRequested = vi.fn(async () => undefined);
+    configureManagedQuestionTransport([], {
+      pendingPermissions: [pendingPermission()],
+      sessionStatuses: ['busy'],
+    });
+    const iterator = openCodePersistentAdapter.send!({
+      ...questionProviderRequest('request-permission-recovery'),
+      onApprovalRequested,
+    })[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toMatchObject({ value: { type: 'session' } });
+    await expect(
+      Promise.race([
+        iterator.next(),
+        new Promise<never>((_resolve, reject) =>
+          setTimeout(() => reject(new Error('permission recovery timed out')), 750),
+        ),
+      ]),
+    ).resolves.toMatchObject({ done: false });
+    expect(onApprovalRequested).toHaveBeenCalledOnce();
+    expect(onApprovalRequested).toHaveBeenCalledWith({
+      id: 'perm_external_write',
+      sessionId: 'ses_question_exact',
+      title: 'Write the approved file',
+      capability: 'external_directory',
+      pattern: ['D:\\VibeSpace-Testing\\temp\\approval.txt'],
+    });
+
+    await iterator.return?.();
+  });
+
+  it('rebinds a persisted exact approval route after the originating iterator is gone', async () => {
+    const onApprovalRequested = vi.fn(async () => undefined);
+    configureManagedQuestionTransport([], {
+      pendingPermissions: [pendingPermission()],
+      sessionStatuses: ['busy'],
+    });
+    const iterator = openCodePersistentAdapter.send!({
+      ...questionProviderRequest('request-permission-rebind'),
+      onApprovalRequested,
+    })[Symbol.asyncIterator]();
+    await expect(iterator.next()).resolves.toMatchObject({ value: { type: 'session' } });
+    await expect(iterator.next()).resolves.toMatchObject({ done: false });
+    expect(onApprovalRequested).toHaveBeenCalledOnce();
+    await iterator.return?.();
+
+    await expect(
+      respondToPersistentOpenCodeApproval({
+        sessionId: 'ses_question_exact',
+        approvalId: 'perm_external_write',
+        response: 'once',
+        route: {
+          protocol: 'opencode-approval-v1',
+          chatId: 'chat-request-permission-rebind',
+          accountId: 'account-question-test',
+          workspaceId: 'workspace-question-test',
+          workingDirectory: 'C:\\workspace',
+          sessionId: 'ses_question_exact',
+          approvalId: 'perm_external_write',
+          capability: 'external_directory',
+        },
+      }),
+    ).resolves.toBeUndefined();
+    expect(
+      nativeOpenCodeMocks.request.mock.calls.filter(([, path]) => path.includes('/permissions/')),
+    ).toHaveLength(1);
+
+    await expect(
+      respondToPersistentOpenCodeApproval({
+        sessionId: 'ses_question_exact',
+        approvalId: 'perm_external_write',
+        response: 'once',
+        route: {
+          protocol: 'opencode-approval-v1',
+          chatId: 'chat-request-permission-rebind',
+          accountId: 'account-question-test',
+          workspaceId: 'workspace-question-test',
+          workingDirectory: 'C:\\workspace',
+          sessionId: 'ses_question_exact',
+          approvalId: 'perm_external_write',
+          capability: 'external_directory',
+        },
+      }),
+    ).rejects.toThrow(/no longer pending|no longer active/i);
   });
 });
 

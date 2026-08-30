@@ -46,6 +46,11 @@ const harnessPermissionPart: Extract<Part, { kind: 'permission_request' }> = {
     action: 'run_command',
     targets: ['terminal:4'],
     harness: {
+      protocol: 'opencode-approval-v1',
+      chatId: 'chat_1',
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      workingDirectory: 'C:\\workspace',
       sessionId: 'session-1',
       approvalId: 'approval-1',
       capability: 'terminal.write',
@@ -70,6 +75,15 @@ describe('PermissionRequestCard', () => {
     });
     repo.update.mockResolvedValue({});
   });
+
+  function persist(part: Extract<Part, { kind: 'permission_request' }>) {
+    repo.getById.mockResolvedValue({
+      id: 'msg_1',
+      chat_id: 'chat_1',
+      role: 'assistant',
+      parts: [part],
+    });
+  }
 
   it('approves a request once and dispatches permission context', async () => {
     render(
@@ -139,6 +153,7 @@ describe('PermissionRequestCard', () => {
     ['Approve once', 'approved', 'once'],
     ['Approve all safe changes', 'approved_plan', 'always'],
   ] as const)('maps %s to the exact OpenCode approval', async (button, _status, response) => {
+    persist(harnessPermissionPart);
     render(
       <PermissionRequestCard
         part={harnessPermissionPart}
@@ -154,6 +169,7 @@ describe('PermissionRequestCard', () => {
         sessionId: 'session-1',
         approvalId: 'approval-1',
         response,
+        route: harnessPermissionPart.request.harness,
       }),
     );
     expect(repo.grantMutation).toHaveBeenCalledWith('session-1', 'terminal.write', response);
@@ -161,6 +177,7 @@ describe('PermissionRequestCard', () => {
   });
 
   it('rejects the exact OpenCode approval on deny', async () => {
+    persist(harnessPermissionPart);
     render(
       <PermissionRequestCard
         part={harnessPermissionPart}
@@ -175,12 +192,14 @@ describe('PermissionRequestCard', () => {
         sessionId: 'session-1',
         approvalId: 'approval-1',
         response: 'reject',
+        route: harnessPermissionPart.request.harness,
       }),
     );
     expect(repo.grantMutation).not.toHaveBeenCalled();
   });
 
   it('rejects an edited OpenCode request before sending the narrowed instruction', async () => {
+    persist(harnessPermissionPart);
     render(
       <PermissionRequestCard
         part={harnessPermissionPart}
@@ -202,10 +221,100 @@ describe('PermissionRequestCard', () => {
       sessionId: 'session-1',
       approvalId: 'approval-1',
       response: 'reject',
+      route: harnessPermissionPart.request.harness,
     });
     expect(window.dispatchEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         detail: expect.objectContaining({ text: expect.stringContaining('Use terminal 4 only.') }),
+      }),
+    );
+  });
+
+  it('renders exact approval identity and a distinct cancel action', () => {
+    persist(harnessPermissionPart);
+    render(
+      <PermissionRequestCard
+        part={harnessPermissionPart}
+        messageId={'msg_1' as never}
+        chatId="chat_1"
+      />,
+    );
+
+    expect(screen.getByTestId('permission-request').getAttribute('data-approval-id')).toBe(
+      'approval-1',
+    );
+    expect((screen.getByRole('button', { name: /^Cancel$/i }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+  });
+
+  it('does not persist an approved status when the exact native reply fails', async () => {
+    persist(harnessPermissionPart);
+    repo.respondToApproval.mockRejectedValueOnce(
+      new Error('OpenCode approval is no longer pending.'),
+    );
+    render(
+      <PermissionRequestCard
+        part={harnessPermissionPart}
+        messageId={'msg_1' as never}
+        chatId="chat_1"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Approve once/i }));
+
+    await screen.findByRole('alert');
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('fails a stale persisted request closed before replying', async () => {
+    persist({
+      ...harnessPermissionPart,
+      request: { ...harnessPermissionPart.request, status: 'denied' },
+    });
+    render(
+      <PermissionRequestCard
+        part={harnessPermissionPart}
+        messageId={'msg_1' as never}
+        chatId="chat_1"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Approve once/i }));
+
+    await screen.findByRole('alert');
+    expect(repo.respondToApproval).not.toHaveBeenCalled();
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('cancels the exact pending approval and persists cancelled truth after native rejection', async () => {
+    persist(harnessPermissionPart);
+    render(
+      <PermissionRequestCard
+        part={harnessPermissionPart}
+        messageId={'msg_1' as never}
+        chatId="chat_1"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
+
+    await waitFor(() =>
+      expect(repo.respondToApproval).toHaveBeenCalledWith(
+        expect.objectContaining({
+          response: 'reject',
+          route: harnessPermissionPart.request.harness,
+        }),
+      ),
+    );
+    expect(repo.update).toHaveBeenCalledWith(
+      'msg_1',
+      expect.objectContaining({
+        parts: [
+          expect.objectContaining({
+            request: expect.objectContaining({ status: 'cancelled' }),
+          }),
+        ],
       }),
     );
   });
