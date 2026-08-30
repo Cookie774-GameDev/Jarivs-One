@@ -133,36 +133,39 @@ class JarvisVoiceInputServiceImpl {
     const generation = ++this.generation;
     dispatchExclusiveEvent(VOICE_EXCLUSIVE_START_EVENT);
 
-    const pending = createSelectedSttSession({
-      onOpen: () => {
-        if (generation !== this.generation || !this.wantsActive) return;
-        this.active = true;
-        this.emit('voice:start', undefined);
-        this.armInactivityTimer();
+    const pending = createSelectedSttSession(
+      {
+        onOpen: () => {
+          if (generation !== this.generation || !this.wantsActive) return;
+          this.active = true;
+          this.emit('voice:start', undefined);
+          this.armInactivityTimer();
+        },
+        onPartial: (text) => {
+          if (generation !== this.generation || !this.wantsActive) return;
+          this.armInactivityTimer();
+          this.emit('voice:partial', { text });
+        },
+        onFinal: (text) => {
+          if (generation !== this.generation || !this.wantsActive) return;
+          this.armInactivityTimer();
+          this.emit('voice:final', { text });
+        },
+        onError: (message) => {
+          if (generation !== this.generation || !this.wantsActive) return;
+          const safeMessage = safeFailureMessage(new Error(message));
+          this.emit('voice:error', {
+            kind: classifyFailure(safeMessage),
+            message: safeMessage,
+          });
+        },
+        onClose: () => {
+          if (generation !== this.generation) return;
+          this.finishSession();
+        },
       },
-      onPartial: (text) => {
-        if (generation !== this.generation || !this.wantsActive) return;
-        this.armInactivityTimer();
-        this.emit('voice:partial', { text });
-      },
-      onFinal: (text) => {
-        if (generation !== this.generation || !this.wantsActive) return;
-        this.armInactivityTimer();
-        this.emit('voice:final', { text });
-      },
-      onError: (message) => {
-        if (generation !== this.generation || !this.wantsActive) return;
-        const safeMessage = safeFailureMessage(new Error(message));
-        this.emit('voice:error', {
-          kind: classifyFailure(safeMessage),
-          message: safeMessage,
-        });
-      },
-      onClose: () => {
-        if (generation !== this.generation) return;
-        this.finishSession();
-      },
-    });
+      { supersedeActive: true, requester: 'jarvis-voice' },
+    );
     this.pending = pending;
     void pending.then(
       (session) => {

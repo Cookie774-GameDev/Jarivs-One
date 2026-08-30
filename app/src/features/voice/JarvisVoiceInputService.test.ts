@@ -50,6 +50,10 @@ describe('JarvisVoiceInputService', () => {
     expect(service.startListening()).toBe(true);
     expect(service.startListening()).toBe(true);
     await vi.waitFor(() => expect(selectedStt.create).toHaveBeenCalledOnce());
+    expect(selectedStt.create).toHaveBeenCalledWith(expect.any(Object), {
+      supersedeActive: true,
+      requester: 'jarvis-voice',
+    });
 
     events.onPartial?.('hello');
     events.onFinal?.('hello Jarvis');

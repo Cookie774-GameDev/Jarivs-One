@@ -46,7 +46,21 @@ export interface GlobalDictationSession {
 
 export const NO_ENGINE_MESSAGE = NO_DICTATION_ENGINE_REASON;
 
-let activeSessionToken: symbol | null = null;
+export const SELECTED_STT_SESSION_SUPERSEDED_MESSAGE =
+  'The previous VibeSpace dictation request was superseded by a newer microphone destination.';
+
+export interface SelectedSttSessionClaimOptions {
+  readonly supersedeActive?: boolean;
+  readonly requester?: 'jarvis-voice';
+}
+
+interface ActiveSelectedSttClaim {
+  readonly token: symbol;
+  superseded: boolean;
+  cancel: (() => void) | null;
+}
+
+let activeSelectedSttClaim: ActiveSelectedSttClaim | null = null;
 
 function micAvailable(): boolean {
   return (
@@ -168,61 +182,104 @@ function createWebSpeechSession(events: DictationEvents): GlobalDictationSession
  */
 export async function createSelectedSttSession(
   events: DictationEvents = {},
+  options: SelectedSttSessionClaimOptions = {},
 ): Promise<GlobalDictationSession> {
   if (!micAvailable()) {
     throw new Error(
       'Microphone capture is not available in this runtime. Check your microphone permission for VibeSpace.',
     );
   }
-  if (activeSessionToken) {
-    throw new Error(
-      'Another VibeSpace dictation session is already using the microphone. Stop it, then try again.',
-    );
+  const previousClaim = activeSelectedSttClaim;
+  if (previousClaim) {
+    if (!(options.supersedeActive && options.requester === 'jarvis-voice')) {
+      throw new Error(
+        'Another VibeSpace dictation session is already using the microphone. Stop it, then try again.',
+      );
+    }
+    previousClaim.superseded = true;
+    try {
+      previousClaim.cancel?.();
+    } finally {
+      if (activeSelectedSttClaim === previousClaim) activeSelectedSttClaim = null;
+    }
   }
 
   const token = Symbol('selected-stt-session');
-  activeSessionToken = token;
+  const claim: ActiveSelectedSttClaim = { token, superseded: false, cancel: null };
+  activeSelectedSttClaim = claim;
   let released = false;
+  const isCurrent = () => !claim.superseded && activeSelectedSttClaim?.token === token;
+  const assertCurrent = () => {
+    if (!isCurrent()) throw new Error(SELECTED_STT_SESSION_SUPERSEDED_MESSAGE);
+  };
   const release = () => {
     if (released) return;
     released = true;
-    if (activeSessionToken === token) activeSessionToken = null;
+    if (activeSelectedSttClaim?.token === token) activeSelectedSttClaim = null;
   };
   const scopedEvents: DictationEvents = {
-    ...events,
+    onOpen: () => {
+      if (isCurrent()) events.onOpen?.();
+    },
+    onPartial: (text) => {
+      if (isCurrent()) events.onPartial?.(text);
+    },
+    onFinal: (text) => {
+      if (isCurrent()) events.onFinal?.(text);
+    },
+    onLevel: (level) => {
+      if (isCurrent()) events.onLevel?.(level);
+    },
+    onError: (message) => {
+      if (isCurrent()) events.onError?.(message);
+    },
     onClose: () => {
       release();
-      events.onClose?.();
+      if (!claim.superseded) events.onClose?.();
     },
   };
-  const withRelease = (session: GlobalDictationSession): GlobalDictationSession => ({
-    ...session,
-    stop: async () => {
+  const adoptSession = (session: GlobalDictationSession): GlobalDictationSession => {
+    const wrapped: GlobalDictationSession = {
+      ...session,
+      stop: async () => {
+        try {
+          await session.stop();
+        } finally {
+          release();
+        }
+      },
+      cancel: () => {
+        try {
+          session.cancel();
+        } finally {
+          release();
+        }
+      },
+    };
+    if (!isCurrent()) {
       try {
-        await session.stop();
-      } finally {
+        wrapped.cancel();
+      } catch {
         release();
       }
-    },
-    cancel: () => {
-      try {
-        session.cancel();
-      } finally {
-        release();
-      }
-    },
-  });
+      throw new Error(SELECTED_STT_SESSION_SUPERSEDED_MESSAGE);
+    }
+    claim.cancel = wrapped.cancel;
+    return wrapped;
+  };
 
   try {
     const provider = getComposerSttProvider();
     if (provider === 'faster-whisper') {
       const model = getFasterWhisperModel();
-      if (!(await fasterWhisperReady())) {
+      const ready = await fasterWhisperReady();
+      assertCurrent();
+      if (!ready) {
         throw new Error(
           `The selected local faster-whisper model (${model}) is not ready. Install or repair it in Settings → Speech to Text, then retry.`,
         );
       }
-      return withRelease(
+      return adoptSession(
         await createBatchSession(
           'faster-whisper',
           `Local faster-whisper (${model})`,
@@ -235,13 +292,15 @@ export async function createSelectedSttSession(
     if (provider === 'deepgram') {
       const optionId = readDeepgramSttOption();
       const option = getDeepgramSttOption(optionId);
-      if (!(await getDeepgramVoiceKey())) {
+      const deepgramKey = await getDeepgramVoiceKey();
+      assertCurrent();
+      if (!deepgramKey) {
         throw new Error(
           `The selected Deepgram model ${option.label} (${option.runtimeModel}, ${option.endpointVersion}/listen) needs a connected Deepgram key. Connect it in Settings → Speech to Text, then retry.`,
         );
       }
       const session = await createDeepgramDictationSession(scopedEvents, optionId);
-      return withRelease({
+      return adoptSession({
         engine: 'deepgram',
         engineLabel: `Deepgram · ${option.label} (${option.runtimeModel}, ${option.endpointVersion}/listen)`,
         streaming: true,
@@ -256,7 +315,7 @@ export async function createSelectedSttSession(
         `The selected built-in system speech engine is unavailable in this window. ${NO_ENGINE_MESSAGE}`,
       );
     }
-    return withRelease(createWebSpeechSession(scopedEvents));
+    return adoptSession(createWebSpeechSession(scopedEvents));
   } catch (error) {
     release();
     throw error;

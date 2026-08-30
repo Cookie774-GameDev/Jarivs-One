@@ -73,7 +73,11 @@ vi.mock('./deepgramDictation', () => ({
   createDeepgramDictationSession: mocks.deepgramSession,
 }));
 
-import { createGlobalDictationSession, NO_ENGINE_MESSAGE } from './dictationSession';
+import {
+  createGlobalDictationSession,
+  createSelectedSttSession,
+  NO_ENGINE_MESSAGE,
+} from './dictationSession';
 import { formatVoiceFailure } from '@/features/voice/VoiceService';
 import { useAuthStore } from '@/stores/auth';
 
@@ -175,6 +179,50 @@ describe('createGlobalDictationSession engine resolution', () => {
     expect(mocks.voiceService.startListening).not.toHaveBeenCalled();
     expect(session.getFinalText()).toBe('deepgram text');
     await session.stop();
+  });
+
+  it('lets an explicit voice handoff supersede an active selected-STT session', async () => {
+    mocks.voiceService.isSupported.mockReturnValue(true);
+
+    const first = await createSelectedSttSession();
+    const replacement = await createSelectedSttSession(
+      {},
+      { supersedeActive: true, requester: 'jarvis-voice' },
+    );
+
+    expect(mocks.voiceService.stopListening).toHaveBeenCalledOnce();
+    expect(mocks.voiceService.startListening).toHaveBeenCalledTimes(2);
+    replacement.cancel();
+    first.cancel();
+  });
+
+  it('cancels a late pending capture after an explicit voice handoff supersedes it', async () => {
+    mocks.composer.provider = 'faster-whisper';
+    mocks.fasterWhisper.checkInstalled.mockResolvedValue(true);
+    const firstRecorder = {
+      captureWav: () => new Blob(['late'], { type: 'audio/wav' }),
+      stop: vi.fn(),
+    };
+    let resolveFirstRecorder!: (recorder: typeof firstRecorder) => void;
+    mocks.composer.startBatchAudioRecorder.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirstRecorder = resolve;
+        }),
+    );
+
+    const first = createSelectedSttSession();
+    await vi.waitFor(() => expect(mocks.composer.startBatchAudioRecorder).toHaveBeenCalledOnce());
+
+    const replacement = await createSelectedSttSession(
+      {},
+      { supersedeActive: true, requester: 'jarvis-voice' },
+    );
+    resolveFirstRecorder(firstRecorder);
+
+    await expect(first).rejects.toThrow(/superseded by a newer microphone destination/i);
+    expect(firstRecorder.stop).toHaveBeenCalledOnce();
+    replacement.cancel();
   });
 
   it('does not silently downgrade a selected Deepgram model when its key is missing', async () => {
