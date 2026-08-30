@@ -77,6 +77,7 @@ mod siyuan;
 mod static_server;
 mod terminal;
 pub mod terminal_cli;
+mod terminal_peer_fabric;
 mod terminal_snapshot;
 mod wallpaper_master;
 mod workbench_browser_surface;
@@ -438,6 +439,7 @@ fn run_ordinary(
         .manage(kernel_host::KernelHostState::default())
         .manage(terminal::TerminalState::default())
         .manage(terminal_cli::TerminalCliState::default())
+        .manage(terminal_peer_fabric::TerminalPeerFabricState::default())
         .manage(pets::PetWindowState::default())
         .manage(terminal_snapshot::PersistenceFlushState::default())
         .manage(siyuan::SiyuanRuntimeState::default())
@@ -685,6 +687,7 @@ fn run_ordinary(
             harness::server::opencode_server_event_cancel,
             harness::tool_gateway::tool_gateway_respond,
             command_center_tool::command_center_tool,
+            terminal_peer_fabric::terminal_peer_fabric,
             context_search::context_search_replace_documents,
             context_search::context_search_delete_documents,
             context_search::context_search_query,
@@ -978,6 +981,7 @@ harness::server::opencode_server_event_stream
 harness::server::opencode_server_event_cancel
 harness::tool_gateway::tool_gateway_respond
 command_center_tool::command_center_tool
+terminal_peer_fabric::terminal_peer_fabric
 context_search::context_search_replace_documents
 context_search::context_search_delete_documents
 context_search::context_search_query
@@ -1128,9 +1132,9 @@ wallpaper_master::wallpaper_find_local_master
 wallpaper_master::wallpaper_cache_full_master
 wallpaper_master::wallpaper_full_cache_path";
     const ORDINARY_HANDLER_AUTHORITY_SHA256: &str =
-        "9b5810657bfdcecf4ad61ea10dcf52199bcb585743f394d1fdd615da8bae10d5";
+        "f76eaa0e7db5d634b586a8d05e9fe3779132e9d90f2ae22ce427b581a7ead479";
     const ORDINARY_HANDLER_NORMALIZED_SHA256: &str =
-        "fb3f67c24754853337acd4f2c9e99cb88ab2f97be4945c7519a1ddd065c9f965";
+        "193e3214fe133e68d37c70bee1a517f9fffc67e92a1445708a96bc928494ccb5";
 
     #[derive(Debug, PartialEq, Eq)]
     struct NativeBuilderManifest<'a> {
@@ -1287,6 +1291,21 @@ wallpaper_master::wallpaper_full_cache_path";
         assert!(ordinary.contains("harness::tool_gateway::tool_gateway_respond,"));
         assert!(ordinary.contains("harness::tool_gateway::start_tool_gateway_server("));
         assert!(ordinary.contains("harness::server::shutdown_owned_server(app_handle);"));
+    }
+
+    #[test]
+    fn terminal_peer_fabric_capability_is_registered_only_on_the_ordinary_builder() {
+        let source = include_str!("lib.rs");
+        let visual_test =
+            function_source(source, "fn run_monochrome_visual_test(", "fn run_ordinary(");
+        let ordinary = function_source(source, "fn run_ordinary(", "#[cfg(test)]");
+
+        assert!(!visual_test.contains("TerminalPeerFabricState"));
+        assert!(!visual_test.contains("terminal_peer_fabric::terminal_peer_fabric"));
+        assert!(
+            ordinary.contains(".manage(terminal_peer_fabric::TerminalPeerFabricState::default())")
+        );
+        assert!(ordinary.contains("terminal_peer_fabric::terminal_peer_fabric,"));
     }
 
     #[test]

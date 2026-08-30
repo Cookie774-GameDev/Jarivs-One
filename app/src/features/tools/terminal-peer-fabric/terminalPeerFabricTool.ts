@@ -10,7 +10,10 @@ export const TERMINAL_PEER_FABRIC_TOOL = Object.freeze({
 export type TerminalPeerFabricCapability = Readonly<{
   available: boolean;
   version?: string;
+  operations?: readonly TerminalPeerFabricOperation[];
 }>;
+
+export type TerminalPeerFabricOperation = 'connect' | 'team.status';
 
 export type ConnectTeamRequest = Readonly<{
   correlationId: string;
@@ -40,13 +43,28 @@ type InvokeFn = <T>(command: string, args?: Record<string, unknown>) => Promise<
 
 function compatibleCapability(value: unknown): TerminalPeerFabricCapability {
   if (!value || typeof value !== 'object') return { available: false };
-  const candidate = value as { available?: unknown; version?: unknown };
-  if (candidate.available !== true || typeof candidate.version !== 'string') {
+  const candidate = value as {
+    available?: unknown;
+    version?: unknown;
+    operations?: unknown;
+  };
+  if (
+    candidate.available !== true ||
+    typeof candidate.version !== 'string' ||
+    !Array.isArray(candidate.operations)
+  ) {
     return { available: false };
   }
   const version = candidate.version.trim();
   if (!/^1\.\d+\.\d+(?:[-+][a-z0-9.-]+)?$/iu.test(version)) return { available: false };
-  return { available: true, version };
+  const operations = candidate.operations.filter(
+    (operation): operation is TerminalPeerFabricOperation =>
+      operation === 'connect' || operation === 'team.status',
+  );
+  if (!operations.includes('connect') || !operations.includes('team.status')) {
+    return { available: false };
+  }
+  return { available: true, version, operations: Object.freeze([...new Set(operations)]) };
 }
 
 export function createTerminalPeerFabricCommandPort(

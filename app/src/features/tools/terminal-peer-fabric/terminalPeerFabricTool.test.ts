@@ -26,9 +26,24 @@ describe('Terminal Peer Fabric preloaded tool', () => {
   });
 
   it('accepts only compatible versioned native capabilities', async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      available: true,
+      version: '1.2.0',
+      operations: ['connect', 'team.status'],
+    });
+    const port = createTerminalPeerFabricCommandPort(invoke);
+
+    await expect(port.capability()).resolves.toEqual({
+      available: true,
+      version: '1.2.0',
+      operations: ['connect', 'team.status'],
+    });
+  });
+
+  it('does not advertise a versioned endpoint that cannot connect a team', async () => {
     const invoke = vi.fn().mockResolvedValue({ available: true, version: '1.2.0' });
     const port = createTerminalPeerFabricCommandPort(invoke);
 
-    await expect(port.capability()).resolves.toEqual({ available: true, version: '1.2.0' });
+    await expect(port.capability()).resolves.toEqual({ available: false });
   });
 });

@@ -26,9 +26,20 @@ export function TerminalPeerFabricToolCard({
   React.useEffect(() => {
     let active = true;
     const probe = window.setTimeout(() => {
-      void port.capability().then((result) => {
-        if (active) setCapability(result.available ? 'available' : 'unavailable');
-      });
+      void port
+        .capability()
+        .then((result) => {
+          if (active) {
+            setCapability(
+              result.available && result.operations?.includes('connect')
+                ? 'available'
+                : 'unavailable',
+            );
+          }
+        })
+        .catch(() => {
+          if (active) setCapability('unavailable');
+        });
       if (eligibleTerminalCount == null) {
         void readLiveTargetSnapshot().then((targets) => {
           if (active) setDiscoveredCount(targets.length);
