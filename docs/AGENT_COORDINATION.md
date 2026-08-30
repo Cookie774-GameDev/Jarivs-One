@@ -2390,3 +2390,23 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Licensing boundary preserved: all added sounds are procedural Web Audio synthesis; no Epidemic/third-party binary is embedded or redistributed.
 - Rollback: base commit `49635ca8d67a8c83d77c801e02190c4b685bf78a` preserves the prior cue routing.
 - Boundaries honored: no app, PR #31, Stripe, Supabase, DNS, billing, release, or non-homepage route mutation.
+
+## 2026-08-30 — codex-g56-20260830-a14 / official-site-app-replica-rev18
+
+- Status: active; exact `site/index.html` and task-owned evidence claim acquired after confirming an empty live lock and a clean worktree.
+- Branch/upstream/base: `main` / `origin/main` / `2558aca56a9176fc418f6d0dc2be939c295fc121`; no merge, rebase, or cherry-pick state.
+- Approved scope: replace only the retired Liquid AI panel in Issue 07 with a same-sized, responsive VibeSpace app simulation derived from existing website imagery and recent Playwright references.
+- Interaction contract: three deterministic simulated chats; selecting one starts its visible route; composing a message returns a truthful download/app-coming-soon response with a site link.
+- Boundaries: do not open, run, edit, or write to the VibeSpace app repository; no real agents, terminal commands, backend calls, payments, account access, external effects, or unrelated homepage redesign.
+- Next: create red interaction/layout tests, implement the single-file replica, then verify responsive geometry, keyboard/accessibility, reduced motion, runtime bounds, and fresh console/network behavior.
+
+### Implementation and verification checkpoint
+
+- `site/index.html`: retired the SVG/Canvas Liquid AI owner and replaced only that Issue 07A position with a warm VibeSpace application simulation derived from existing site media and captured reference imagery.
+- Interactions: three chat selectors each start a deterministic visible route; rapid switching cancels stale timers; the composer returns a truthful `Download VibeSpace` link to `#plans`; no command, agent, process, API, or external effect is invoked.
+- Responsive result: 1920×1080, 1440×900, 1024×768, 900×900, 768×1024, 390×844, and 320×568 each report zero document and replica-window overflow, contained composer geometry, and fitting chat labels.
+- Accessibility/runtime: Arrow-key chat selection passed; reduced motion removes message animation and settles with zero timers; axe-core 4.10.3 returned zero WCAG A/AA violations at 1440×900 and 390×844; fresh console warnings/errors were zero.
+- Static verification: red-first contract moved from 9 expected failures to 9 passes; all 10 inline scripts parse; all 150 IDs are unique; `git diff --check` passes.
+- Evidence: `evidence/app-replica-rev18/`; pre-deployment HTML SHA-256 `A439F343B5A8CF718A2F1EC3B9D8D8647B658269B11F04E6CDD518A74A9A1DAA`.
+- Boundary confirmation: the real VibeSpace application was not opened, run, or edited. No app repository, backend, billing, Supabase, Stripe, account, DNS, or unrelated site section was mutated.
+- Next: commit and push the verified artifact, wait for Pages, repeat exact-byte public and interaction checks, then release only this task's lock.
