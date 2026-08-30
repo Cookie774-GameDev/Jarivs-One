@@ -145,7 +145,7 @@ async function validSnapshot(
     if (
       document.accountId !== scope.accountId ||
       document.projectId !== scope.projectId ||
-      document.root !== scope.root ||
+      pathKey(document.root, scope.root) !== pathKey(scope.root, scope.root) ||
       documentIds.has(document.documentId) ||
       paths.has(key)
     ) {
@@ -216,9 +216,23 @@ function publicHistory(revision: MarkdownRevisionV1): MarkdownHistoryProjection 
 }
 
 const liveScopeOperations = new Map<string, Promise<void>>();
+const invokingScopeDependencies = new Set<string>();
 
 function scopeOperationKey(scope: MarkdownLibraryScope): string {
-  return JSON.stringify([scope.accountId, scope.projectId, scope.root]);
+  return JSON.stringify([scope.accountId, scope.projectId, pathKey(scope.root, scope.root)]);
+}
+
+function invokeScopeDependency<T>(
+  scope: MarkdownLibraryScope,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const key = scopeOperationKey(scope);
+  invokingScopeDependencies.add(key);
+  try {
+    return Promise.resolve(operation());
+  } finally {
+    invokingScopeDependencies.delete(key);
+  }
 }
 
 async function serializeScopeOperation<T>(
@@ -226,6 +240,9 @@ async function serializeScopeOperation<T>(
   operation: () => Promise<T>,
 ): Promise<T> {
   const key = scopeOperationKey(scope);
+  if (invokingScopeDependencies.has(key)) {
+    throw new Error('markdown_library_scope_reentrant');
+  }
   const prior = liveScopeOperations.get(key) ?? Promise.resolve();
   let release!: () => void;
   const ownership = new Promise<void>((resolve) => {
@@ -250,7 +267,10 @@ export function createMarkdownLibraryAuthority(input: {
   const now = input.now ?? Date.now;
 
   async function readSnapshot(scope: MarkdownLibraryScope) {
-    return validSnapshot(await input.repository.readProjectIndex(scope), scope);
+    return validSnapshot(
+      await invokeScopeDependency(scope, () => input.repository.readProjectIndex(scope)),
+      scope,
+    );
   }
 
   function samePreparation(
@@ -286,26 +306,32 @@ export function createMarkdownLibraryAuthority(input: {
           revision.documentId === pending.documentId &&
           revision.revision === pending.targetRevision,
       )!;
-      const physical = await input.filePort.readText({ path: document.path, root: scope.root });
+      const physical = await invokeScopeDependency(scope, () =>
+        input.filePort.readText({ path: document.path, root: scope.root }),
+      );
       if (physical === null) throw new Error('markdown_library_rollback_recovery_failed');
       const physicalSha256 = await sha256Text(physical);
       if (physicalSha256 === target.contentSha256) {
         let compensated = false;
         try {
-          compensated = await input.filePort.compareAndWrite({
-            path: document.path,
-            root: scope.root,
-            expectedSha256: target.contentSha256,
-            content: currentRevision.content,
-          });
+          compensated = await invokeScopeDependency(scope, () =>
+            input.filePort.compareAndWrite({
+              path: document.path,
+              root: scope.root,
+              expectedSha256: target.contentSha256,
+              content: currentRevision.content,
+            }),
+          );
         } catch {
           compensated = false;
         }
         if (!compensated) {
-          const observed = await input.filePort.readText({
-            path: document.path,
-            root: scope.root,
-          });
+          const observed = await invokeScopeDependency(scope, () =>
+            input.filePort.readText({
+              path: document.path,
+              root: scope.root,
+            }),
+          );
           if (observed === null || (await sha256Text(observed)) !== document.contentSha256) {
             throw new Error('markdown_library_rollback_compensation_failed');
           }
@@ -325,11 +351,13 @@ export function createMarkdownLibraryAuthority(input: {
       );
       let replaced = false;
       try {
-        replaced = await input.repository.replaceProjectIndex({
-          scope,
-          expectedGeneration: snapshot.generation,
-          next: cleared,
-        });
+        replaced = await invokeScopeDependency(scope, () =>
+          input.repository.replaceProjectIndex({
+            scope,
+            expectedGeneration: snapshot.generation,
+            next: cleared,
+          }),
+        );
       } catch {
         replaced = false;
       }
@@ -340,7 +368,9 @@ export function createMarkdownLibraryAuthority(input: {
           (candidate) => candidate.documentId === pending.documentId,
         );
         const observedContent = observedDocument
-          ? await input.filePort.readText({ path: observedDocument.path, root: scope.root })
+          ? await invokeScopeDependency(scope, () =>
+              input.filePort.readText({ path: observedDocument.path, root: scope.root }),
+            )
           : null;
         if (
           observedDocument &&
@@ -371,7 +401,9 @@ export function createMarkdownLibraryAuthority(input: {
       scopeInput: MarkdownLibraryScope,
     ): Promise<readonly MarkdownDocumentMetadataV1[]> {
       const { scope, snapshot } = await read(scopeInput);
-      const inventory = await input.filePort.scanMarkdown(scope);
+      const inventory = await invokeScopeDependency(scope, () =>
+        input.filePort.scanMarkdown(scope),
+      );
       const seen = new Set<string>();
       const nextDocuments: MarkdownDocumentMetadataV1[] = [];
       const nextRevisions = [...snapshot.revisions];
@@ -447,11 +479,13 @@ export function createMarkdownLibraryAuthority(input: {
         scope,
       );
       if (
-        !(await input.repository.replaceProjectIndex({
-          scope,
-          expectedGeneration: snapshot.generation,
-          next,
-        }))
+        !(await invokeScopeDependency(scope, () =>
+          input.repository.replaceProjectIndex({
+            scope,
+            expectedGeneration: snapshot.generation,
+            next,
+          }),
+        ))
       ) {
         throw new Error('markdown_library_index_conflict');
       }
@@ -537,10 +571,12 @@ export function createMarkdownLibraryAuthority(input: {
       if (!document || !target || target.revision === document.revision) {
         throw new Error('markdown_library_revision_unavailable');
       }
-      const currentContent = await input.filePort.readText({
-        path: document.path,
-        root: scope.root,
-      });
+      const currentContent = await invokeScopeDependency(scope, () =>
+        input.filePort.readText({
+          path: document.path,
+          root: scope.root,
+        }),
+      );
       if (
         currentContent === null ||
         (await sha256Text(currentContent)) !== document.contentSha256
@@ -588,11 +624,13 @@ export function createMarkdownLibraryAuthority(input: {
       );
       let prepared = false;
       try {
-        prepared = await input.repository.replaceProjectIndex({
-          scope,
-          expectedGeneration: snapshot.generation,
-          next: preparedNext,
-        });
+        prepared = await invokeScopeDependency(scope, () =>
+          input.repository.replaceProjectIndex({
+            scope,
+            expectedGeneration: snapshot.generation,
+            next: preparedNext,
+          }),
+        );
       } catch {
         prepared = false;
       }
@@ -607,12 +645,14 @@ export function createMarkdownLibraryAuthority(input: {
 
       let wroteTarget = false;
       try {
-        wroteTarget = await input.filePort.compareAndWrite({
-          path: document.path,
-          root: scope.root,
-          expectedSha256: document.contentSha256,
-          content: target.content,
-        });
+        wroteTarget = await invokeScopeDependency(scope, () =>
+          input.filePort.compareAndWrite({
+            path: document.path,
+            root: scope.root,
+            expectedSha256: document.contentSha256,
+            content: target.content,
+          }),
+        );
       } catch {
         wroteTarget = false;
       }
@@ -636,11 +676,13 @@ export function createMarkdownLibraryAuthority(input: {
       );
       let finalizedRepository = false;
       try {
-        finalizedRepository = await input.repository.replaceProjectIndex({
-          scope,
-          expectedGeneration: preparedSnapshot.generation,
-          next: finalized,
-        });
+        finalizedRepository = await invokeScopeDependency(scope, () =>
+          input.repository.replaceProjectIndex({
+            scope,
+            expectedGeneration: preparedSnapshot.generation,
+            next: finalized,
+          }),
+        );
       } catch {
         finalizedRepository = false;
       }
@@ -651,7 +693,9 @@ export function createMarkdownLibraryAuthority(input: {
         (candidate) => candidate.documentId === document.documentId,
       );
       const observedContent = observedDocument
-        ? await input.filePort.readText({ path: observedDocument.path, root: scope.root })
+        ? await invokeScopeDependency(scope, () =>
+            input.filePort.readText({ path: observedDocument.path, root: scope.root }),
+          )
         : null;
       if (
         !observed.pendingRollback &&

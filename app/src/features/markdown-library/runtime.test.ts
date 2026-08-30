@@ -375,6 +375,137 @@ describe('Markdown Library authority', () => {
     ).toMatchObject({ revision: 3 });
   });
 
+  it.each([
+    ['drive root', 'C:\\Repo', 'c:\\repo', 'C:\\Repo\\docs\\goal-release.md'],
+    [
+      'UNC root',
+      '\\\\Server\\Share',
+      '\\\\server\\share',
+      '\\\\Server\\Share\\docs\\goal-release.md',
+    ],
+  ] as const)(
+    'serializes mixed-case %s aliases as one physical scope',
+    async (_label, firstRoot, secondRoot, path) => {
+      snapshot = emptySnapshot();
+      files = new Map([[path, '# Release goal\nFirst']]);
+      let releaseScan!: () => void;
+      const scanReleased = new Promise<void>((resolve) => {
+        releaseScan = resolve;
+      });
+      let enterScan!: () => void;
+      const scanEntered = new Promise<void>((resolve) => {
+        enterScan = resolve;
+      });
+      scan.mockImplementationOnce(async () => {
+        enterScan();
+        await scanReleased;
+        return [{ path, content: files.get(path)!, modifiedAt: 1 }];
+      });
+      const firstAuthority = createMarkdownLibraryAuthority({
+        filePort,
+        repository,
+        now: () => 500,
+      });
+      const secondAuthority = createMarkdownLibraryAuthority({
+        filePort,
+        repository,
+        now: () => 600,
+      });
+      const firstScope = { ...scope, root: firstRoot };
+      const secondScope = { ...scope, root: secondRoot };
+
+      const first = firstAuthority.reindex(firstScope);
+      await scanEntered;
+      let secondSettled = false;
+      const second = secondAuthority.list(secondScope).then((documents) => {
+        secondSettled = true;
+        return documents;
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(secondSettled).toBe(false);
+      releaseScan();
+      await first;
+      await expect(second).resolves.toHaveLength(1);
+    },
+  );
+
+  it('fails nested repository callbacks fast and releases the outer scope lease', async () => {
+    const nestedScope = { ...scope, root: 'C:\\reentrant-repository' };
+    let authority!: ReturnType<typeof createMarkdownLibraryAuthority>;
+    let nestedResults: PromiseSettledResult<unknown>[] = [];
+    let firstRead = true;
+    repository = {
+      ...repository,
+      readProjectIndex: vi.fn(async () => {
+        if (firstRead) {
+          firstRead = false;
+          nestedResults = await Promise.allSettled([
+            authority.list(nestedScope),
+            authority.history(nestedScope, 'mdoc_missing'),
+            authority.reindex(nestedScope),
+            authority.rollback(nestedScope, 'mdoc_missing', 1),
+          ]);
+        }
+        return snapshot;
+      }),
+    };
+    authority = createMarkdownLibraryAuthority({ filePort, repository, now: () => 500 });
+
+    const terminal = await Promise.race([
+      authority.list(nestedScope).then(() => 'completed'),
+      new Promise<'timed_out'>((resolve) => setTimeout(() => resolve('timed_out'), 250)),
+    ]);
+
+    expect(terminal).toBe('completed');
+    expect(nestedResults).toHaveLength(4);
+    expect(
+      nestedResults.every(
+        (result) =>
+          result.status === 'rejected' &&
+          result.reason instanceof Error &&
+          result.reason.message === 'markdown_library_scope_reentrant',
+      ),
+    ).toBe(true);
+    await expect(authority.list(nestedScope)).resolves.toEqual([]);
+  });
+
+  it('fails nested file-port callbacks fast and releases the outer scope lease', async () => {
+    const nestedScope = { ...scope, root: 'C:\\reentrant-file-port' };
+    const path = 'C:\\reentrant-file-port\\goal-release.md';
+    files = new Map([[path, '# Release goal\nFirst']]);
+    let authority!: ReturnType<typeof createMarkdownLibraryAuthority>;
+    let nestedResults: PromiseSettledResult<unknown>[] = [];
+    scan.mockImplementationOnce(async () => {
+      nestedResults = await Promise.allSettled([
+        authority.list(nestedScope),
+        authority.history(nestedScope, 'mdoc_missing'),
+        authority.reindex(nestedScope),
+        authority.rollback(nestedScope, 'mdoc_missing', 1),
+      ]);
+      return [{ path, content: files.get(path)!, modifiedAt: 1 }];
+    });
+    authority = createMarkdownLibraryAuthority({ filePort, repository, now: () => 500 });
+
+    const terminal = await Promise.race([
+      authority.reindex(nestedScope).then(() => 'completed'),
+      new Promise<'timed_out'>((resolve) => setTimeout(() => resolve('timed_out'), 250)),
+    ]);
+
+    expect(terminal).toBe('completed');
+    expect(nestedResults).toHaveLength(4);
+    expect(
+      nestedResults.every(
+        (result) =>
+          result.status === 'rejected' &&
+          result.reason instanceof Error &&
+          result.reason.message === 'markdown_library_scope_reentrant',
+      ),
+    ).toBe(true);
+    await expect(authority.list(nestedScope)).resolves.toHaveLength(1);
+  });
+
   it('rejects stale files and compensates a physical rollback when index CAS loses', async () => {
     const authority = createMarkdownLibraryAuthority({ filePort, repository, now: () => 500 });
     await authority.reindex(scope);
