@@ -33,8 +33,7 @@ export interface JarvisContractValidationError {
 }
 
 export type JarvisContractValidationResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; errors: readonly JarvisContractValidationError[] };
+  { ok: true; value: T } | { ok: false; errors: readonly JarvisContractValidationError[] };
 
 type ValidationPath = readonly (string | number)[];
 type ValidationErrors = JarvisContractValidationError[];
@@ -465,9 +464,7 @@ function hasOwn(record: RecordValue, key: string): boolean {
 }
 
 type OwnFieldInspection =
-  | { kind: 'missing' }
-  | { kind: 'accessor' }
-  | { kind: 'data'; value: unknown };
+  { kind: 'missing' } | { kind: 'accessor' } | { kind: 'data'; value: unknown };
 
 function inspectOwnField(record: RecordValue, key: string): OwnFieldInspection {
   const descriptor = Object.getOwnPropertyDescriptor(record, key);
@@ -2537,6 +2534,98 @@ function validateRunShape(value: unknown, path: ValidationPath, errors: Validati
   }
 }
 
+function validateCaoTargetLeaseShape(
+  value: unknown,
+  path: ValidationPath,
+  errors: ValidationErrors,
+): void {
+  const record = validateClosedRecord(
+    value,
+    [
+      'schemaVersion',
+      'kind',
+      'leaseId',
+      'accountId',
+      'workspaceId',
+      'projectId',
+      'runId',
+      'selectionMode',
+      'targets',
+      'acquiredAt',
+      'expiresAt',
+    ],
+    path,
+    errors,
+  );
+  if (!record) return;
+  validateRequiredField(record, 'schemaVersion', path, errors, (entry, entryPath, entryErrors) =>
+    validateLiteral(entry, 1, entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'kind', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, ['cao_target_lease'], entryPath, entryErrors),
+  );
+  for (const key of ['leaseId', 'accountId', 'workspaceId', 'projectId', 'runId']) {
+    validateRequiredField(record, key, path, errors, validateIdentifier);
+  }
+  validateRequiredField(record, 'selectionMode', path, errors, (entry, entryPath, entryErrors) =>
+    validateEnum(entry, ['explicit_single', 'explicit_set'], entryPath, entryErrors),
+  );
+  validateRequiredField(record, 'targets', path, errors, (entry, entryPath, entryErrors) => {
+    validateArray(entry, entryPath, entryErrors, (target, targetPath, targetErrors) => {
+      const targetRecord = validateClosedRecord(
+        target,
+        ['kind', 'targetId', 'revision'],
+        targetPath,
+        targetErrors,
+      );
+      if (!targetRecord) return;
+      validateRequiredField(
+        targetRecord,
+        'kind',
+        targetPath,
+        targetErrors,
+        (kind, kindPath, kindErrors) =>
+          validateEnum(kind, ['chat', 'terminal'], kindPath, kindErrors),
+      );
+      validateRequiredField(targetRecord, 'targetId', targetPath, targetErrors, validateIdentifier);
+      validateRequiredField(
+        targetRecord,
+        'revision',
+        targetPath,
+        targetErrors,
+        validateNonNegativeInteger,
+      );
+    });
+    if (!Array.isArray(entry) || entry.length === 0 || entry.length > 32) {
+      addError(entryErrors, 'invalid_type', entryPath);
+      return;
+    }
+    const identities = entry.map((target) => {
+      if (!isRecordValue(target)) return undefined;
+      return `${String(dataField(target, 'kind'))}:${String(dataField(target, 'targetId'))}`;
+    });
+    if (new Set(identities).size !== identities.length) {
+      addError(entryErrors, 'invalid_type', entryPath);
+    }
+  });
+  validateRequiredField(record, 'acquiredAt', path, errors, validateFiniteNumber);
+  validateRequiredField(record, 'expiresAt', path, errors, validateFiniteNumber);
+  const acquiredAt = dataField(record, 'acquiredAt');
+  const expiresAt = dataField(record, 'expiresAt');
+  if (
+    typeof acquiredAt === 'number' &&
+    typeof expiresAt === 'number' &&
+    (!(expiresAt > acquiredAt) || acquiredAt < 0)
+  ) {
+    addError(errors, 'invalid_type', childPath(path, 'expiresAt'));
+  }
+  const selectionMode = dataField(record, 'selectionMode');
+  const targets = dataField(record, 'targets');
+  if (selectionMode === 'explicit_single' && Array.isArray(targets) && targets.length !== 1) {
+    addError(errors, 'invalid_type', childPath(path, 'targets'));
+  }
+}
+
 function validateEventShape(value: unknown, path: ValidationPath, errors: ValidationErrors): void {
   const record = validateClosedRecord(
     value,
@@ -2555,6 +2644,7 @@ function validateEventShape(value: unknown, path: ValidationPath, errors: Valida
       'canonicalResultEvidence',
       'producerSourceEvidence',
       'liveEvidence',
+      'caoTargetLease',
     ],
     path,
     errors,
@@ -2588,12 +2678,17 @@ function validateEventShape(value: unknown, path: ValidationPath, errors: Valida
     validateProducerSourceEvidenceShape,
   );
   validateOptionalField(record, 'liveEvidence', path, errors, validateDurableLiveEvidenceShape);
+  validateOptionalField(record, 'caoTargetLease', path, errors, validateCaoTargetLeaseShape);
   const runId = dataField(record, 'runId');
   const seq = dataField(record, 'seq');
   for (const key of ['canonicalResultEvidence', 'producerSourceEvidence', 'liveEvidence']) {
     const evidence = dataField(record, key);
     if (isRecordValue(evidence))
       requireEqualBinding(evidence, 'runId', runId, childPath(path, key), errors);
+  }
+  const targetLease = dataField(record, 'caoTargetLease');
+  if (isRecordValue(targetLease)) {
+    requireEqualBinding(targetLease, 'runId', runId, childPath(path, 'caoTargetLease'), errors);
   }
   const sourceEvidence = dataField(record, 'producerSourceEvidence');
   if (isRecordValue(sourceEvidence)) {

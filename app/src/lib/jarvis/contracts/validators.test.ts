@@ -608,8 +608,7 @@ describe('Task 3 public contract barrel', () => {
       message: string;
     };
     type ExpectedResult<T> =
-      | { ok: true; value: T }
-      | { ok: false; errors: readonly ExpectedError[] };
+      { ok: true; value: T } | { ok: false; errors: readonly ExpectedError[] };
 
     expectTypeOf<JarvisContractValidationError>().toEqualTypeOf<ExpectedError>();
     expectTypeOf<JarvisContractValidationResult<string>>().toEqualTypeOf<ExpectedResult<string>>();
@@ -3521,5 +3520,53 @@ describe('JARVIS context freshness and conflict metadata', () => {
     second.conflict = conflict;
 
     expect(validateJarvisContextPack(input).ok).toBe(false);
+  });
+});
+
+describe('CAO target lease journal contract', () => {
+  const targetLease = {
+    schemaVersion: 1,
+    kind: 'cao_target_lease',
+    leaseId: 'cao_lease_alpha',
+    accountId: 'account-alpha',
+    workspaceId: 'workspace-alpha',
+    projectId: 'project-alpha',
+    runId: 'jrun_alpha',
+    selectionMode: 'explicit_set',
+    targets: [
+      { kind: 'chat', targetId: 'chat-alpha', revision: 4 },
+      { kind: 'terminal', targetId: 'terminal-alpha', revision: 9 },
+    ],
+    acquiredAt: 1_000,
+    expiresAt: 61_000,
+  } as const;
+
+  it('accepts one closed versioned exact-scope target lease on a journal event', () => {
+    expect(
+      validateJarvisEvent({
+        ...validEvent(),
+        runId: 'jrun_alpha',
+        caoTargetLease: targetLease,
+      }),
+    ).toMatchObject({ ok: true });
+  });
+
+  it.each([
+    ['unknown field', { ...targetLease, guessedTarget: 'chat-beta' }],
+    ['wrong version', { ...targetLease, schemaVersion: 2 }],
+    ['cross-run binding', { ...targetLease, runId: 'jrun_beta' }],
+    ['empty targets', { ...targetLease, targets: [] }],
+    [
+      'malformed revision',
+      { ...targetLease, targets: [{ kind: 'chat', targetId: 'chat-alpha', revision: -1 }] },
+    ],
+  ])('rejects %s', (_case, caoTargetLease) => {
+    expect(
+      validateJarvisEvent({
+        ...validEvent(),
+        runId: 'jrun_alpha',
+        caoTargetLease,
+      }).ok,
+    ).toBe(false);
   });
 });

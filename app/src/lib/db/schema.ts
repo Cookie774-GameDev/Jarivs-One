@@ -30,6 +30,7 @@ import type { ContextEmbeddingRecordV1 } from '@/features/context/semanticSearch
 import type { PromptForgeJob } from '@/features/prompt-forge/contracts';
 import type { MemoryEvidenceItem } from '@/features/jarvis-memory/types';
 import type {
+  CaoTargetLeaseV1,
   JarvisCanonicalResultEvidenceV1,
   JarvisDurableLiveEvidenceV1,
   JarvisExecutionEvidenceV1,
@@ -341,6 +342,7 @@ export type JarvisEventRow = {
   canonical_result_evidence?: JarvisCanonicalResultEvidenceV1;
   producer_source_evidence?: JarvisProducerSourceEvidenceV1;
   live_evidence?: JarvisDurableLiveEvidenceV1;
+  cao_target_lease?: CaoTargetLeaseV1;
 };
 
 export type JarvisApprovalRow = {

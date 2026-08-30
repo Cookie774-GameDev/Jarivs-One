@@ -1260,3 +1260,35 @@ describe('Task 18 execution evidence mappers', () => {
     }
   });
 });
+
+describe('CAO target lease event mapping', () => {
+  it('round-trips a detached lease as an existing journal event fact', () => {
+    const caoTargetLease = {
+      schemaVersion: 1,
+      kind: 'cao_target_lease',
+      leaseId: 'cao_lease_alpha',
+      accountId: 'account-1',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      runId: 'run-1',
+      selectionMode: 'explicit_set',
+      targets: [
+        { kind: 'chat', targetId: 'chat-1', revision: 4 },
+        { kind: 'terminal', targetId: 'terminal-1', revision: 9 },
+      ],
+      acquiredAt: 4_050,
+      expiresAt: 64_050,
+    } as const;
+    const value = { ...event(), caoTargetLease } as JarvisEvent;
+
+    const row = toJarvisEventRow(value);
+    expect(row.cao_target_lease).toEqual(caoTargetLease);
+    expect(row.cao_target_lease).not.toBe(caoTargetLease);
+    expect(row.cao_target_lease?.targets).not.toBe(caoTargetLease.targets);
+
+    const mapped = fromJarvisEventRow(row);
+    expect(mapped.caoTargetLease).toEqual(caoTargetLease);
+    expect(mapped.caoTargetLease).not.toBe(row.cao_target_lease);
+    expect(mapped.caoTargetLease?.targets).not.toBe(row.cao_target_lease?.targets);
+  });
+});

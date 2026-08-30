@@ -287,6 +287,9 @@ export function toJarvisEventRow(value: JarvisEvent): JarvisEventRow {
     ...(value.liveEvidence === undefined
       ? {}
       : { live_evidence: cloneDetached(value.liveEvidence) }),
+    ...(value.caoTargetLease === undefined
+      ? {}
+      : { cao_target_lease: cloneDetached(value.caoTargetLease) }),
   };
 }
 
@@ -312,6 +315,9 @@ export function fromJarvisEventRow(row: JarvisEventRow): JarvisEvent {
       ? {}
       : { producerSourceEvidence: cloneDetached(row.producer_source_evidence) }),
     ...(row.live_evidence === undefined ? {} : { liveEvidence: cloneDetached(row.live_evidence) }),
+    ...(row.cao_target_lease === undefined
+      ? {}
+      : { caoTargetLease: cloneDetached(row.cao_target_lease) }),
   };
   assertValidJarvisEvent(value);
   return value;

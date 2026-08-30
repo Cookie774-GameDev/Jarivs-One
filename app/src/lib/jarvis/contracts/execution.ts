@@ -287,12 +287,7 @@ export type JarvisProducerSourceEvidenceV1 = {
 }[JarvisLiveProducerKind];
 
 export type JarvisLiveCapabilityCategory =
-  | 'tool'
-  | 'plugin'
-  | 'mcp'
-  | 'terminal'
-  | 'agent'
-  | 'entitlement';
+  'tool' | 'plugin' | 'mcp' | 'terminal' | 'agent' | 'entitlement';
 
 type JarvisDurableLiveEvidenceCommon = Readonly<{
   schemaVersion: 1;
@@ -348,6 +343,26 @@ export interface JarvisRun {
   transportAttempts?: readonly JarvisTransportAttemptV1[];
 }
 
+export type CaoTargetKind = 'chat' | 'terminal';
+
+export type CaoTargetLeaseV1 = Readonly<{
+  schemaVersion: 1;
+  kind: 'cao_target_lease';
+  leaseId: string;
+  accountId: string;
+  workspaceId: string;
+  projectId: string;
+  runId: string;
+  selectionMode: 'explicit_single' | 'explicit_set';
+  targets: readonly Readonly<{
+    kind: CaoTargetKind;
+    targetId: string;
+    revision: number;
+  }>[];
+  acquiredAt: number;
+  expiresAt: number;
+}>;
+
 export interface JarvisEvent {
   runId: string;
   seq: number;
@@ -374,6 +389,7 @@ export interface JarvisEvent {
   canonicalResultEvidence?: JarvisCanonicalResultEvidenceV1;
   producerSourceEvidence?: JarvisProducerSourceEvidenceV1;
   liveEvidence?: JarvisDurableLiveEvidenceV1;
+  caoTargetLease?: CaoTargetLeaseV1;
 }
 
 export type AllocateJarvisRunInput = Omit<
@@ -823,8 +839,7 @@ export interface JarvisApprovalV1 extends JarvisApproval {
 }
 
 export type JarvisAuthorityBoundResult<T> =
-  | { kind: 'committed'; value: T }
-  | { kind: 'account_authority_revoked' };
+  { kind: 'committed'; value: T } | { kind: 'account_authority_revoked' };
 
 const INVALID_CANONICAL_APPROVAL_JSON = 'Invalid canonical approval JSON.';
 
