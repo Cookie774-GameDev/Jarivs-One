@@ -2450,3 +2450,20 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Public quality verification: zero document overflow, zero clipped plan titles, zero fresh console warnings/errors, and zero non-static network failures. Final local axe-core 4.10.3 audits returned zero WCAG A/AA violations at 1440x900 and 390x844.
 - Rollback: exact pre-edit HTML remains at `evidence/subscriptions-editorial-rev19/recovery/VibeSpace-Final-Website-BEFORE-subscriptions-editorial-20260830-153541.html`, SHA-256 `A439F343B5A8CF718A2F1EC3B9D8D8647B658269B11F04E6CDD518A74A9A1DAA`.
 - Boundaries honored: only the official website HTML, task evidence, and coordination record changed. The VibeSpace application repository, Supabase, Stripe, billing, checkout, accounts, and DNS were not opened or mutated.
+
+## 2026-08-30 — codex-g56-20260830-a16 / official-site-authoritative-plans-rev20
+
+- Status: active; exact `site/index.html`, coordination, and task-owned evidence claim acquired with no overlapping live owner.
+- Branch/upstream/base: `main` / `origin/main` / `6ff76bfbedd0b040302471310a40307e7802e987`; clean worktree before claim, no merge/rebase/cherry-pick state.
+- Approved scope: replace inaccurate website plan prices/perks with the current UnifiedChungus authority and add a warm copper hover/focus effect to the existing editorial plan cards.
+- Source of truth: freshly fetched `origin/UnifiedChungus` commit `adc1ee3a5b0e056ac6f5efc258afd6df5a25b4f8`; `docs/SUBSCRIPTION_PLANS_REFERENCE.md` and `supabase/functions/_shared/billingCatalog.ts` agree on Access/add-on totals and monthly shared credits.
+- Preservation: retain five-card rail, app-coming-soon/payment-opening-later truth, no checkout, keyboard selection, reduced motion, anchors, diagnostics, and all unrelated website sections.
+- Next: capture the rendered baseline, add red source/interaction contracts, implement the bounded data and hover correction, then verify and publish the exact tested artifact.
+### 2026-08-30T16:53:14-05:00 — codex-g56-20260830-a16 / official-site-authoritative-plans-rev20 / implementation checkpoint
+- Branch / base HEAD: `main` / `6ff76bfbedd0b040302471310a40307e7802e987`.
+- Owned files: `site/index.html`, `evidence/authoritative-plans-rev20/**`, `docs/AGENT_COORDINATION.md`.
+- Implemented: authoritative UnifiedChungus Access + feature-plan totals, complete visible perk/boundary matrices, prominent $20 Access trial disclosure, warm peach/copper hover and focus treatment, truthful coming-soon/no-checkout copy, and deterministic authority diagnostics.
+- Authority: `origin/UnifiedChungus` commit `adc1ee3a5b0e056ac6f5efc258afd6df5a25b4f8`; verified `docs/SUBSCRIPTION_PLANS_REFERENCE.md`, billing catalog, and access-pricing tests.
+- Verification: rev20 contract 13/13; app replica regression 9/9; browser console 0 warnings/errors; viewport matrix 1920×1080, 1440×900, 1024×768, 900×900, 768×1024, 390×844, 320×568 with no document overflow, title clipping, footer clipping, or card x-overflow; warm computed hover and keyboard ArrowRight selection passed; `git diff --check` passed.
+- Evidence: `evidence/authoritative-plans-rev20/AUDIT.md` plus desktop/mobile screenshots.
+- Next: commit, push `main`, verify the deployed exact artifact, record final SHA/checkpoint, and release only this task's lock.
