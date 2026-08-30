@@ -2,7 +2,10 @@ import {
   DIRECT_GATEWAY_LIFECYCLE_TIMING_NAMES,
   DIRECT_GATEWAY_STAGE_NAMES,
 } from './contextGatewayAcceptanceMetrics';
-import type { ContextGatewayAcceptanceInput } from './contextGatewayAcceptanceSuite';
+import {
+  REQUIRED_PHASE0_SCENARIOS,
+  type ContextGatewayAcceptanceInput,
+} from './contextGatewayAcceptanceSuite';
 import { CONTEXT_RETRIEVAL_STAGE_NAMES } from './contextGatewayRetrievalAcceptance';
 
 type JsonRecord = Record<string, unknown>;
@@ -67,6 +70,89 @@ function safeInteger(value: unknown, label: string): number {
     throw new TypeError(`${label} must be a non-negative safe integer`);
   }
   return value;
+}
+
+function fullGitSha(value: unknown, label: string): string {
+  const result = safeString(value, label, 64);
+  if (!/^[0-9a-f]{40}$/iu.test(result)) throw new TypeError(`${label} must be a full Git SHA`);
+  return result;
+}
+
+function sha256(value: unknown, label: string): string {
+  const result = safeString(value, label, 80);
+  if (!/^sha256:[0-9a-f]{64}$/iu.test(result)) throw new TypeError(`${label} must be SHA-256`);
+  return result;
+}
+
+function canonicalIso(value: unknown, label: string): string {
+  const result = safeString(value, label, 64);
+  const timestamp = Date.parse(result);
+  if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString() !== result) {
+    throw new TypeError(`${label} must be a canonical ISO timestamp`);
+  }
+  return result;
+}
+
+function enumValue(value: unknown, allowed: ReadonlySet<string>, label: string): string {
+  const result = safeString(value, label, 128);
+  if (!allowed.has(result)) throw new TypeError(`${label} is invalid`);
+  return result;
+}
+
+function contextUri(
+  value: unknown,
+  kind: 'receipt' | 'source' | 'evidence',
+  label: string,
+): string {
+  const result = safeString(value, label, 1_024);
+  const prefix = `vibespace:context/${kind}/`;
+  const suffix = result.startsWith(prefix) ? result.slice(prefix.length) : '';
+  const segments = suffix.split('/');
+  if (
+    !suffix ||
+    segments.some(
+      (segment) =>
+        !segment || segment === '.' || segment === '..' || !/^[A-Za-z0-9._~:@+-]+$/u.test(segment),
+    )
+  ) {
+    throw new TypeError(`${label} must be a canonical Context URI`);
+  }
+  return result;
+}
+
+const PHASE0_ROUTE_FIXTURES = new Set(['deepseek_v4_flash_vision_exp', 'secondary_authenticated']);
+const PHASE0_SCENARIO_IDS = new Set<string>(REQUIRED_PHASE0_SCENARIOS);
+
+function phase0Identity(value: unknown, label: string): void {
+  const identity = record(value, label);
+  const stringFields = [
+    'providerId',
+    'connectionId',
+    'providerQualifiedModelId',
+    'upstreamProviderId',
+    'upstreamModelId',
+    'variant',
+    'effort',
+    'performance',
+    'fastMode',
+    'cwd',
+    'authBillingRoute',
+    'identityPathId',
+  ] as const;
+  exactKeys(identity, [...stringFields, 'catalogRevision', 'sessionIdentityHash'], label);
+  for (const field of stringFields) safeString(identity[field], `${label}.${field}`, 512);
+  sha256(identity.catalogRevision, `${label}.catalogRevision`);
+  sha256(identity.sessionIdentityHash, `${label}.sessionIdentityHash`);
+}
+
+function canonicalContextUriArray(
+  value: unknown,
+  kind: 'source' | 'evidence',
+  label: string,
+): void {
+  for (const [index, item] of boundedArray(value, label, 16).entries()) {
+    contextUri(item, kind, `${label}[${index}]`);
+  }
 }
 
 function boundedArray(value: unknown, label: string, maxLength = 1_000): unknown[] {
@@ -223,7 +309,7 @@ export function parseContextGatewayAcceptanceInput(value: unknown): ContextGatew
       'externalBlockers',
     ],
     'acceptance',
-    ['focusedReport', 'deepReport', 'rollbackProof', 'isolationProof'],
+    ['focusedReport', 'deepReport', 'rollbackProof', 'isolationProof', 'phase0Proof'],
   );
 
   const build = record(input.build, 'acceptance.build');
@@ -231,6 +317,364 @@ export function parseContextGatewayAcceptanceInput(value: unknown): ContextGatew
   safeString(build.commitSha, 'acceptance.build.commitSha', 64);
   safeString(build.buildId, 'acceptance.build.buildId', 256);
   safeString(build.runtimeGeneration, 'acceptance.build.runtimeGeneration', 256);
+
+  if ('phase0Proof' in input) {
+    const proof = record(input.phase0Proof, 'acceptance.phase0Proof');
+    exactKeys(
+      proof,
+      [
+        'evidenceId',
+        'nativeRunId',
+        'recordedAt',
+        'commitSha',
+        'runtimeGeneration',
+        'executableSha256',
+        'officialDesktop',
+        'hmrEventsDuringTurns',
+        'unexpectedReloadEventsDuringTurns',
+        'inFlightReloadCount',
+        'routes',
+        'scenarios',
+        'artifact',
+        'citations',
+        'safety',
+      ],
+      'acceptance.phase0Proof',
+    );
+    safeString(proof.evidenceId, 'acceptance.phase0Proof.evidenceId', 256);
+    safeString(proof.nativeRunId, 'acceptance.phase0Proof.nativeRunId', 256);
+    canonicalIso(proof.recordedAt, 'acceptance.phase0Proof.recordedAt');
+    fullGitSha(proof.commitSha, 'acceptance.phase0Proof.commitSha');
+    safeString(proof.runtimeGeneration, 'acceptance.phase0Proof.runtimeGeneration', 256);
+    sha256(proof.executableSha256, 'acceptance.phase0Proof.executableSha256');
+    bool(proof.officialDesktop, 'acceptance.phase0Proof.officialDesktop');
+    for (const field of [
+      'hmrEventsDuringTurns',
+      'unexpectedReloadEventsDuringTurns',
+      'inFlightReloadCount',
+    ]) {
+      safeInteger(proof[field], `acceptance.phase0Proof.${field}`);
+    }
+    for (const [index, routeValue] of boundedArray(
+      proof.routes,
+      'acceptance.phase0Proof.routes',
+      2,
+    ).entries()) {
+      const label = `acceptance.phase0Proof.routes[${index}]`;
+      const route = record(routeValue, label);
+      exactKeys(
+        route,
+        [
+          'fixture',
+          'evidenceId',
+          'nativeRunId',
+          'requested',
+          'observed',
+          'liveCatalogAuthenticated',
+          'completedThroughOpenCode',
+          'contextReceiptVerified',
+          'silentFallbackUsed',
+        ],
+        label,
+      );
+      enumValue(route.fixture, PHASE0_ROUTE_FIXTURES, `${label}.fixture`);
+      safeString(route.evidenceId, `${label}.evidenceId`, 256);
+      safeString(route.nativeRunId, `${label}.nativeRunId`, 256);
+      phase0Identity(route.requested, `${label}.requested`);
+      phase0Identity(route.observed, `${label}.observed`);
+      for (const field of [
+        'liveCatalogAuthenticated',
+        'completedThroughOpenCode',
+        'contextReceiptVerified',
+        'silentFallbackUsed',
+      ]) {
+        bool(route[field], `${label}.${field}`);
+      }
+    }
+    for (const [index, scenarioValue] of boundedArray(
+      proof.scenarios,
+      'acceptance.phase0Proof.scenarios',
+      13,
+    ).entries()) {
+      const label = `acceptance.phase0Proof.scenarios[${index}]`;
+      const scenario = record(scenarioValue, label);
+      exactKeys(
+        scenario,
+        [
+          'scenarioId',
+          'evidenceId',
+          'nativeRunId',
+          'activation',
+          'routeFixture',
+          'requestFixtureHash',
+          'requestedIdentity',
+          'observedIdentity',
+          'gateway',
+          'outcome',
+        ],
+        label,
+        ['exactFile', 'binary', 'lifecycle', 'isolation', 'reloadAfterPriorTerminal'],
+      );
+      enumValue(scenario.scenarioId, PHASE0_SCENARIO_IDS, `${label}.scenarioId`);
+      safeString(scenario.evidenceId, `${label}.evidenceId`, 256);
+      safeString(scenario.nativeRunId, `${label}.nativeRunId`, 256);
+      enumValue(
+        scenario.activation,
+        new Set(['automatic', 'explicit_rlm_on', 'fixture']),
+        `${label}.activation`,
+      );
+      enumValue(scenario.routeFixture, PHASE0_ROUTE_FIXTURES, `${label}.routeFixture`);
+      sha256(scenario.requestFixtureHash, `${label}.requestFixtureHash`);
+      phase0Identity(scenario.requestedIdentity, `${label}.requestedIdentity`);
+      phase0Identity(scenario.observedIdentity, `${label}.observedIdentity`);
+      const gateway = record(scenario.gateway, `${label}.gateway`);
+      exactKeys(
+        gateway,
+        [
+          'operation',
+          'invocationCount',
+          'initialMatchCount',
+          'continuationCount',
+          'receiptUri',
+          'sourceUris',
+          'evidenceUris',
+        ],
+        `${label}.gateway`,
+      );
+      enumValue(gateway.operation, new Set(['investigate']), `${label}.gateway.operation`);
+      safeInteger(gateway.invocationCount, `${label}.gateway.invocationCount`);
+      if (gateway.initialMatchCount !== null)
+        safeInteger(gateway.initialMatchCount, `${label}.gateway.initialMatchCount`);
+      safeInteger(gateway.continuationCount, `${label}.gateway.continuationCount`);
+      if (gateway.receiptUri !== null)
+        contextUri(gateway.receiptUri, 'receipt', `${label}.gateway.receiptUri`);
+      canonicalContextUriArray(gateway.sourceUris, 'source', `${label}.gateway.sourceUris`);
+      canonicalContextUriArray(gateway.evidenceUris, 'evidence', `${label}.gateway.evidenceUris`);
+
+      const outcome = record(scenario.outcome, `${label}.outcome`);
+      exactKeys(
+        outcome,
+        [
+          'terminalStatus',
+          'groundedFinalAnswer',
+          'duplicateDispatchCount',
+          'duplicateToolEffectCount',
+          'localFallbackUsed',
+        ],
+        `${label}.outcome`,
+      );
+      enumValue(
+        outcome.terminalStatus,
+        new Set(['done', 'cancelled', 'denied', 'failed']),
+        `${label}.outcome.terminalStatus`,
+      );
+      bool(outcome.groundedFinalAnswer, `${label}.outcome.groundedFinalAnswer`);
+      safeInteger(outcome.duplicateDispatchCount, `${label}.outcome.duplicateDispatchCount`);
+      safeInteger(outcome.duplicateToolEffectCount, `${label}.outcome.duplicateToolEffectCount`);
+      bool(outcome.localFallbackUsed, `${label}.outcome.localFallbackUsed`);
+
+      if ('exactFile' in scenario) {
+        const exactFile = record(scenario.exactFile, `${label}.exactFile`);
+        exactKeys(
+          exactFile,
+          [
+            'permitted',
+            'resultCode',
+            'sourceIdentityVerified',
+            'requestedPathHash',
+            'observedPathHash',
+            'policyRootHash',
+            'policyBoundary',
+          ],
+          `${label}.exactFile`,
+        );
+        bool(exactFile.permitted, `${label}.exactFile.permitted`);
+        enumValue(
+          exactFile.resultCode,
+          new Set(['ok', 'external_directory']),
+          `${label}.exactFile.resultCode`,
+        );
+        bool(exactFile.sourceIdentityVerified, `${label}.exactFile.sourceIdentityVerified`);
+        sha256(exactFile.requestedPathHash, `${label}.exactFile.requestedPathHash`);
+        sha256(exactFile.observedPathHash, `${label}.exactFile.observedPathHash`);
+        sha256(exactFile.policyRootHash, `${label}.exactFile.policyRootHash`);
+        enumValue(
+          exactFile.policyBoundary,
+          new Set(['within_project', 'external_directory']),
+          `${label}.exactFile.policyBoundary`,
+        );
+      }
+      if ('binary' in scenario) {
+        const binary = record(scenario.binary, `${label}.binary`);
+        exactKeys(
+          binary,
+          ['graphMetadataPresent', 'physicalTextExcluded', 'remainingCorpusCompleted'],
+          `${label}.binary`,
+        );
+        for (const field of [
+          'graphMetadataPresent',
+          'physicalTextExcluded',
+          'remainingCorpusCompleted',
+        ]) {
+          bool(binary[field], `${label}.binary.${field}`);
+        }
+      }
+      if ('lifecycle' in scenario) {
+        const lifecycle = record(scenario.lifecycle, `${label}.lifecycle`);
+        exactKeys(
+          lifecycle,
+          [
+            'attempted',
+            'recovered',
+            'routeIdentityStable',
+            'sessionIdentityStable',
+            'noLateEvents',
+            'attemptIds',
+            'logicalDispatchCount',
+            'terminalAttemptId',
+            'toolEffectCount',
+            'lateEventCount',
+          ],
+          `${label}.lifecycle`,
+        );
+        for (const field of [
+          'attempted',
+          'recovered',
+          'routeIdentityStable',
+          'sessionIdentityStable',
+          'noLateEvents',
+        ]) {
+          bool(lifecycle[field], `${label}.lifecycle.${field}`);
+        }
+        const attemptIds = boundedArray(lifecycle.attemptIds, `${label}.lifecycle.attemptIds`, 16);
+        for (const [attemptIndex, attemptId] of attemptIds.entries()) {
+          safeString(attemptId, `${label}.lifecycle.attemptIds[${attemptIndex}]`, 256);
+        }
+        safeInteger(lifecycle.logicalDispatchCount, `${label}.lifecycle.logicalDispatchCount`);
+        safeString(lifecycle.terminalAttemptId, `${label}.lifecycle.terminalAttemptId`, 256);
+        safeInteger(lifecycle.toolEffectCount, `${label}.lifecycle.toolEffectCount`);
+        safeInteger(lifecycle.lateEventCount, `${label}.lifecycle.lateEventCount`);
+      }
+      if ('isolation' in scenario) {
+        const isolation = record(scenario.isolation, `${label}.isolation`);
+        exactKeys(
+          isolation,
+          [
+            'sourceProjectHash',
+            'otherProjectHash',
+            'crossProjectReadBlocked',
+            'crossProjectEvidenceReuseBlocked',
+          ],
+          `${label}.isolation`,
+        );
+        sha256(isolation.sourceProjectHash, `${label}.isolation.sourceProjectHash`);
+        sha256(isolation.otherProjectHash, `${label}.isolation.otherProjectHash`);
+        bool(isolation.crossProjectReadBlocked, `${label}.isolation.crossProjectReadBlocked`);
+        bool(
+          isolation.crossProjectEvidenceReuseBlocked,
+          `${label}.isolation.crossProjectEvidenceReuseBlocked`,
+        );
+      }
+      if ('reloadAfterPriorTerminal' in scenario) {
+        bool(scenario.reloadAfterPriorTerminal, `${label}.reloadAfterPriorTerminal`);
+      }
+    }
+    const artifact = record(proof.artifact, 'acceptance.phase0Proof.artifact');
+    exactKeys(
+      artifact,
+      [
+        'evidenceId',
+        'nativeRunId',
+        'requiredRoot',
+        'observedRoot',
+        'exists',
+        'readbackVerified',
+        'manifest',
+      ],
+      'acceptance.phase0Proof.artifact',
+    );
+    safeString(artifact.evidenceId, 'acceptance.phase0Proof.artifact.evidenceId', 256);
+    safeString(artifact.nativeRunId, 'acceptance.phase0Proof.artifact.nativeRunId', 256);
+    safeString(artifact.requiredRoot, 'acceptance.phase0Proof.artifact.requiredRoot', 512);
+    safeString(artifact.observedRoot, 'acceptance.phase0Proof.artifact.observedRoot', 512);
+    bool(artifact.exists, 'acceptance.phase0Proof.artifact.exists');
+    bool(artifact.readbackVerified, 'acceptance.phase0Proof.artifact.readbackVerified');
+    for (const [index, entryValue] of boundedArray(
+      artifact.manifest,
+      'acceptance.phase0Proof.artifact.manifest',
+      256,
+    ).entries()) {
+      const label = `acceptance.phase0Proof.artifact.manifest[${index}]`;
+      const entry = record(entryValue, label);
+      exactKeys(entry, ['relativePath', 'byteCount', 'sha256'], label);
+      safeString(entry.relativePath, `${label}.relativePath`, 512);
+      safeInteger(entry.byteCount, `${label}.byteCount`);
+      sha256(entry.sha256, `${label}.sha256`);
+    }
+    for (const [index, citationValue] of boundedArray(
+      proof.citations,
+      'acceptance.phase0Proof.citations',
+      3,
+    ).entries()) {
+      const label = `acceptance.phase0Proof.citations[${index}]`;
+      const citation = record(citationValue, label);
+      exactKeys(
+        citation,
+        [
+          'uri',
+          'kind',
+          'nativeRunId',
+          'targetHash',
+          'renderedPublicly',
+          'resolverInvoked',
+          'resolved',
+          'projectScopeMatches',
+          'sessionScopeMatches',
+        ],
+        label,
+      );
+      const kind = enumValue(
+        citation.kind,
+        new Set(['receipt', 'source', 'evidence']),
+        `${label}.kind`,
+      ) as 'receipt' | 'source' | 'evidence';
+      contextUri(citation.uri, kind, `${label}.uri`);
+      safeString(citation.nativeRunId, `${label}.nativeRunId`, 256);
+      sha256(citation.targetHash, `${label}.targetHash`);
+      for (const field of [
+        'renderedPublicly',
+        'resolverInvoked',
+        'resolved',
+        'projectScopeMatches',
+        'sessionScopeMatches',
+      ]) {
+        bool(citation[field], `${label}.${field}`);
+      }
+    }
+    const safetyLabels = new Set<string>([
+      'before',
+      'after',
+      ...REQUIRED_PHASE0_SCENARIOS.map((scenarioId) => `during:${scenarioId}`),
+    ]);
+    for (const [index, snapshotValue] of boundedArray(
+      proof.safety,
+      'acceptance.phase0Proof.safety',
+      15,
+    ).entries()) {
+      const label = `acceptance.phase0Proof.safety[${index}]`;
+      const snapshot = record(snapshotValue, label);
+      exactKeys(
+        snapshot,
+        ['label', 'nativeRunId', 'capturedAt', 'ollamaProcessCount', 'listener11434Count'],
+        label,
+      );
+      enumValue(snapshot.label, safetyLabels, `${label}.label`);
+      safeString(snapshot.nativeRunId, `${label}.nativeRunId`, 256);
+      canonicalIso(snapshot.capturedAt, `${label}.capturedAt`);
+      safeInteger(snapshot.ollamaProcessCount, `${label}.ollamaProcessCount`);
+      safeInteger(snapshot.listener11434Count, `${label}.listener11434Count`);
+    }
+  }
 
   for (const [index, rowValue] of boundedArray(
     input.directReports,

@@ -14,7 +14,225 @@ function incompleteEnvelope(): Record<string, unknown> {
   };
 }
 
+function phase0Envelope(): Record<string, unknown> {
+  return {
+    ...incompleteEnvelope(),
+    phase0Proof: {
+      evidenceId: 'phase0-proof-1',
+      nativeRunId: 'native-run-1',
+      recordedAt: '2026-08-30T08:00:00.000Z',
+      commitSha: '0123456789abcdef0123456789abcdef01234567',
+      runtimeGeneration: 'generation-42',
+      executableSha256: `sha256:${'d'.repeat(64)}`,
+      officialDesktop: true,
+      hmrEventsDuringTurns: 0,
+      unexpectedReloadEventsDuringTurns: 0,
+      inFlightReloadCount: 0,
+      routes: [],
+      scenarios: [],
+      artifact: {
+        evidenceId: 'artifact-proof-1',
+        nativeRunId: 'native-run-1',
+        requiredRoot: 'D:\\VibeSpace-RLM-UAT\\opencode-live-latency-20260829',
+        observedRoot: 'D:\\VibeSpace-RLM-UAT\\opencode-live-latency-20260829',
+        exists: true,
+        readbackVerified: true,
+        manifest: [],
+      },
+      citations: [],
+      safety: [],
+    },
+  };
+}
+
+function phase0Identity() {
+  return {
+    providerId: 'opencode',
+    connectionId: 'opencode-cli',
+    providerQualifiedModelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+    upstreamProviderId: 'opencode-go',
+    upstreamModelId: 'deepseek-v4-flash-vision-exp',
+    variant: 'high',
+    effort: 'high',
+    performance: 'quality',
+    fastMode: 'off',
+    cwd: 'C:\\repo',
+    authBillingRoute: 'opencode-go',
+    catalogRevision: `sha256:${'a'.repeat(64)}`,
+    sessionIdentityHash: `sha256:${'b'.repeat(64)}`,
+    identityPathId: 'opencode-live-catalog-to-native-receipt-v1',
+  };
+}
+
 describe('parseContextGatewayAcceptanceInput', () => {
+  it('accepts the exact metadata-only Phase 0 proof envelope', () => {
+    const input = phase0Envelope();
+    expect(parseContextGatewayAcceptanceInput(input)).toEqual(input);
+  });
+
+  it('rejects malformed or secret-bearing nested Phase 0 evidence', () => {
+    const malformed = phase0Envelope();
+    (malformed.phase0Proof as Record<string, unknown>).executableSha256 = 'not-a-sha';
+    expect(() => parseContextGatewayAcceptanceInput(malformed)).toThrow('SHA-256');
+
+    const secretBearing = phase0Envelope();
+    const artifact = (secretBearing.phase0Proof as any).artifact;
+    artifact.prompt = 'raw private prompt';
+    expect(() => parseContextGatewayAcceptanceInput(secretBearing)).toThrow('unknown field');
+  });
+
+  it('parses exact nested Phase 0 rows and rejects unknown scenario or secret fields', () => {
+    const input = phase0Envelope();
+    const proof = (input as any).phase0Proof;
+    const identity = phase0Identity();
+    proof.routes = [
+      {
+        fixture: 'deepseek_v4_flash_vision_exp',
+        evidenceId: 'route-1',
+        nativeRunId: 'native-run-1',
+        requested: identity,
+        observed: identity,
+        liveCatalogAuthenticated: true,
+        completedThroughOpenCode: true,
+        contextReceiptVerified: true,
+        silentFallbackUsed: false,
+      },
+    ];
+    proof.scenarios = [
+      {
+        scenarioId: 'reload',
+        evidenceId: 'scenario-reload',
+        nativeRunId: 'native-run-1',
+        activation: 'fixture',
+        routeFixture: 'deepseek_v4_flash_vision_exp',
+        requestFixtureHash: `sha256:${'7'.repeat(64)}`,
+        requestedIdentity: identity,
+        observedIdentity: identity,
+        gateway: {
+          operation: 'investigate',
+          invocationCount: 1,
+          initialMatchCount: 1,
+          continuationCount: 0,
+          receiptUri: 'vibespace:context/receipt/reload',
+          sourceUris: ['vibespace:context/source/reload'],
+          evidenceUris: ['vibespace:context/evidence/reload'],
+        },
+        outcome: {
+          terminalStatus: 'done',
+          groundedFinalAnswer: true,
+          duplicateDispatchCount: 0,
+          duplicateToolEffectCount: 0,
+          localFallbackUsed: false,
+        },
+        exactFile: {
+          permitted: true,
+          resultCode: 'ok',
+          sourceIdentityVerified: true,
+          requestedPathHash: `sha256:${'3'.repeat(64)}`,
+          observedPathHash: `sha256:${'3'.repeat(64)}`,
+          policyRootHash: `sha256:${'4'.repeat(64)}`,
+          policyBoundary: 'within_project',
+        },
+        lifecycle: {
+          attempted: true,
+          recovered: true,
+          routeIdentityStable: true,
+          sessionIdentityStable: true,
+          noLateEvents: true,
+          attemptIds: ['attempt-1'],
+          logicalDispatchCount: 1,
+          terminalAttemptId: 'attempt-1',
+          toolEffectCount: 1,
+          lateEventCount: 0,
+        },
+        reloadAfterPriorTerminal: true,
+      },
+    ];
+    proof.citations = [
+      {
+        uri: 'vibespace:context/receipt/reload',
+        kind: 'receipt',
+        nativeRunId: 'native-run-1',
+        targetHash: `sha256:${'c'.repeat(64)}`,
+        renderedPublicly: true,
+        resolverInvoked: true,
+        resolved: true,
+        projectScopeMatches: true,
+        sessionScopeMatches: true,
+      },
+    ];
+    proof.safety = [
+      {
+        label: 'before',
+        nativeRunId: 'native-run-1',
+        capturedAt: '2026-08-30T08:00:00.000Z',
+        ollamaProcessCount: 0,
+        listener11434Count: 0,
+      },
+    ];
+    expect(parseContextGatewayAcceptanceInput(input)).toEqual(input);
+
+    const missingBinding = structuredClone(input) as any;
+    delete missingBinding.phase0Proof.artifact.nativeRunId;
+    expect(() => parseContextGatewayAcceptanceInput(missingBinding)).toThrow('nativeRunId');
+
+    const missingTarget = structuredClone(input) as any;
+    delete missingTarget.phase0Proof.citations[0].targetHash;
+    expect(() => parseContextGatewayAcceptanceInput(missingTarget)).toThrow('targetHash');
+
+    const missingAttempts = structuredClone(input) as any;
+    delete missingAttempts.phase0Proof.scenarios[0].lifecycle.attemptIds;
+    expect(() => parseContextGatewayAcceptanceInput(missingAttempts)).toThrow('attemptIds');
+
+    const malformedRequestFixture = structuredClone(input) as any;
+    malformedRequestFixture.phase0Proof.scenarios[0].requestFixtureHash = 'not-a-sha';
+    expect(() => parseContextGatewayAcceptanceInput(malformedRequestFixture)).toThrow('SHA-256');
+
+    const malformedPathBinding = structuredClone(input) as any;
+    malformedPathBinding.phase0Proof.scenarios[0].exactFile.requestedPathHash = 'not-a-sha';
+    expect(() => parseContextGatewayAcceptanceInput(malformedPathBinding)).toThrow('SHA-256');
+
+    const malformedPolicyBoundary = structuredClone(input) as any;
+    malformedPolicyBoundary.phase0Proof.scenarios[0].exactFile.policyBoundary = 'elsewhere';
+    expect(() => parseContextGatewayAcceptanceInput(malformedPolicyBoundary)).toThrow(
+      'policyBoundary',
+    );
+
+    for (const field of ['initialMatchCount', 'continuationCount']) {
+      const negativeCount = structuredClone(input) as any;
+      negativeCount.phase0Proof.scenarios[0].gateway[field] = -1;
+      expect(() => parseContextGatewayAcceptanceInput(negativeCount)).toThrow(
+        'non-negative safe integer',
+      );
+    }
+
+    const malformedUri = structuredClone(input) as any;
+    malformedUri.phase0Proof.citations[0].uri = 'vibespace:context/receipt/../';
+    expect(() => parseContextGatewayAcceptanceInput(malformedUri)).toThrow('canonical Context URI');
+
+    const secret = structuredClone(input) as any;
+    secret.phase0Proof.routes[0].output = 'raw provider output';
+    expect(() => parseContextGatewayAcceptanceInput(secret)).toThrow('unknown field');
+
+    const unknownScenario = structuredClone(input) as any;
+    unknownScenario.phase0Proof.scenarios[0].scenarioId = 'invented';
+    expect(() => parseContextGatewayAcceptanceInput(unknownScenario)).toThrow('scenarioId');
+
+    const credentialInjectors = [
+      (value: any) => (value.phase0Proof.routes[0].requested.credential = 'secret'),
+      (value: any) => (value.phase0Proof.scenarios[0].credential = 'secret'),
+      (value: any) => (value.phase0Proof.scenarios[0].gateway.authorization = 'secret'),
+      (value: any) => (value.phase0Proof.artifact.environment = 'secret'),
+      (value: any) => (value.phase0Proof.citations[0].token = 'secret'),
+      (value: any) => (value.phase0Proof.safety[0].hiddenReasoning = 'secret'),
+    ];
+    for (const inject of credentialInjectors) {
+      const credential = structuredClone(input) as any;
+      inject(credential);
+      expect(() => parseContextGatewayAcceptanceInput(credential)).toThrow('unknown field');
+    }
+  });
+
   it('accepts the bounded metadata-only incomplete envelope', () => {
     expect(parseContextGatewayAcceptanceInput(incompleteEnvelope())).toEqual(incompleteEnvelope());
   });
