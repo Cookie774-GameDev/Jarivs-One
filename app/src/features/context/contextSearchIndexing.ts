@@ -190,7 +190,7 @@ async function documentFor(
   candidate: Candidate,
   dependencies: Required<Pick<Dependencies, 'stat' | 'read' | 'hash'>>,
   signal?: AbortSignal,
-): Promise<ContextSearchDocumentInput> {
+): Promise<ContextSearchDocumentInput | null> {
   abortIfNeeded(signal);
   const access = { root: map.rootDir, strictProjectBoundary: true };
   const before = await dependencies.stat(candidate.absolutePath, true, access);
@@ -207,9 +207,11 @@ async function documentFor(
   }
   const read = await dependencies.read(candidate.absolutePath, MAX_FILE_BYTES + 1, access);
   abortIfNeeded(signal);
-  if (!read.ok || read.content.includes('\uFFFD')) {
-    return failSource(candidate, !read.ok ? read.error.code : 'undecodable');
-  }
+  if (!read.ok) return failSource(candidate, read.error.code);
+  // Binary/media files still belong in the recursive Context graph, but a
+  // replacement character proves their decoded bytes are not safe full text.
+  // Keep the structural node and omit only its physical RLM document.
+  if (read.content.includes('\uFFFD')) return null;
   const bytes = new TextEncoder().encode(read.content).byteLength;
   if (bytes > MAX_FILE_BYTES || bytes !== before.size) return fail('source_changed');
   const decision = classifyJarvisSource({
@@ -317,6 +319,7 @@ export function createContextSearchIndexPopulationPort(
         };
         for (const candidate of candidates) {
           const document = await documentFor(map, candidate, dependencies, signal);
+          if (!document) continue;
           const bytes = new TextEncoder().encode(document.body).byteLength;
           if (
             batch.length >= MAX_BATCH_DOCUMENTS ||
@@ -332,16 +335,12 @@ export function createContextSearchIndexPopulationPort(
         abortIfNeeded(signal);
         const final = await port.status(accountId, map.id);
         abortIfNeeded(signal);
-        if (
-          affected !== candidates.length ||
-          final.documentCount !== candidates.length ||
-          final.needsRebuild
-        ) {
+        if (final.documentCount !== affected || final.needsRebuild) {
           fail('count_mismatch');
         }
         return Object.freeze({
           mapId: map.id,
-          documentCount: candidates.length,
+          documentCount: affected,
           bodyBytes,
           status: 'ready' as const,
         });

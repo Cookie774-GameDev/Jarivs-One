@@ -6,6 +6,7 @@ import {
   buildSiyuanSafeIndex,
   createDurableSiyuanIndexJobControl,
   createSiyuanIndexJobControl,
+  projectSiyuanMapForContextSearch,
   scanSiyuanFilesystemIndex,
   siyuanIndexPolicyFingerprint,
 } from './siyuanSafeIndex';
@@ -135,6 +136,21 @@ describe('SiYuan safe read-only index', () => {
         { id: 'file:README.md', kind: 'file' },
       ],
     });
+  });
+
+  it('projects a picker verbatim drive root to the strict physical Context Search reader', () => {
+    const persisted = map();
+    persisted.rootDir = '\\\\?\\C:\\Users\\viper\\projects';
+    persisted.tree.rootDir = persisted.rootDir;
+
+    const projected = projectSiyuanMapForContextSearch(persisted);
+
+    expect(projected.id).toBe(persisted.id);
+    expect(projected.status).toBe('active');
+    expect(projected.rootDir).toBe('C:/Users/viper/projects');
+    expect(projected.tree.rootDir).toBe('C:/Users/viper/projects');
+    expect(projected.tree.nodes).toBe(persisted.tree.nodes);
+    expect(persisted.rootDir).toBe('\\\\?\\C:\\Users\\viper\\projects');
   });
 
   it('keeps source pointers inside the selected root and excludes credentials', () => {

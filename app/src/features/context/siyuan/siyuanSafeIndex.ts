@@ -42,6 +42,19 @@ export interface SiyuanSafeIndex {
   summarized: number;
 }
 
+export function projectSiyuanMapForContextSearch(map: ContextMapRecord): ContextMapRecord {
+  const readableRoot = normalizeSiyuanFilesystemPath(map.rootDir);
+  if (readableRoot === map.rootDir && readableRoot === map.tree.rootDir) return map;
+  return {
+    ...map,
+    rootDir: readableRoot,
+    tree: {
+      ...map.tree,
+      rootDir: readableRoot,
+    },
+  };
+}
+
 export function buildProjectContextTreeFromSiyuanIndex(
   seed: ProjectContextTree,
   entries: readonly SiyuanSafeIndexEntry[],

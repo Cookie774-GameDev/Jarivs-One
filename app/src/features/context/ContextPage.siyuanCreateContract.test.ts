@@ -70,6 +70,18 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(creation).toContain('productionSiyuanContextMaps.read(projectId, generatedMap)');
   });
 
+  it('lets the first map choose its exact summary model before creation', () => {
+    const summaries = source.indexOf('Every eligible item discovered by the safe scan');
+    const createButton = source.indexOf('onClick={() => void makeSkillTree()}', summaries);
+    const picker = source.indexOf('data-siyuan-create-summary-model-picker', summaries);
+
+    expect(summaries).toBeGreaterThan(-1);
+    expect(picker).toBeGreaterThan(summaries);
+    expect(picker).toBeLessThan(createButton);
+    expect(source.slice(picker, createButton)).toContain('<SiyuanSummaryModelPicker');
+    expect(source.slice(picker, createButton)).toContain('onChange={selectSummaryModel}');
+  });
+
   it('preserves fresh local ingestion eligibility through RLM and SiYuan creation', () => {
     expect(source).toContain('populatePersistedCreatedContextMap({');
     expect(creationLifecycleSource).toContain(
@@ -94,6 +106,7 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(completedTree).toBeGreaterThan(-1);
     expect(completedSave).toBeGreaterThan(completedTree);
     expect(completedPopulation).toBeGreaterThan(completedSave);
+    expect(creation).toContain('projectSiyuanMapForContextSearch(completedMap)');
   });
 
   it('hydrates older paused or completed SiYuan maps into durable Context and RLM state', () => {
@@ -102,6 +115,7 @@ describe('ContextPage SiYuan creation contract', () => {
     expect(source).toContain('buildProjectContextTreeFromSiyuanIndex(selectedMap.tree, entries)');
     expect(source).toContain('expectedUpdatedAt: selectedMap.updatedAt');
     expect(source).toContain('contextSearchIndexPopulation.repairEmptyMap(');
+    expect(source).toContain('projectSiyuanMapForContextSearch(completedMap)');
     expect(source).toContain('applyPersistenceState(persisted)');
     expect(source).not.toContain("controller.abort('siyuan_context_map_hydration_detached')");
   });

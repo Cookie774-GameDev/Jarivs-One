@@ -132,6 +132,7 @@ import {
 import {
   buildProjectContextTreeFromSiyuanIndex,
   createSiyuanIndexJobControl,
+  projectSiyuanMapForContextSearch,
   siyuanIndexPolicyFingerprint,
 } from './siyuan/siyuanSafeIndex';
 import {
@@ -897,7 +898,7 @@ export function ContextPage() {
         }
         await contextSearchIndexPopulation.repairEmptyMap(
           persisted.accountId,
-          completedMap,
+          projectSiyuanMapForContextSearch(completedMap),
           controller.signal,
         );
         if (!active) return;
@@ -2213,7 +2214,7 @@ export function ContextPage() {
         }
         await contextSearchIndexPopulation.populateCreatedMap(
           completedPersistence.accountId,
-          completedMap,
+          projectSiyuanMapForContextSearch(completedMap),
           controller.signal,
         );
         setSiyuanTree(completedTree);
@@ -2632,6 +2633,27 @@ export function ContextPage() {
                     </label>
                   ))}
                 </div>
+                {summaryMode !== 'none' ? (
+                  <div
+                    data-siyuan-create-summary-model-picker
+                    className="mt-2 rounded-lg border border-border/80 bg-paper-soft/70 p-2"
+                  >
+                    <p className="text-metadata font-medium text-foreground">
+                      Summary model for this map
+                    </p>
+                    <p className="mb-1.5 text-[10px] leading-4 text-muted-foreground">
+                      Choose the exact route before creation. Cloud routes pause for scope approval
+                      before any file is sent.
+                    </p>
+                    <SiyuanSummaryModelPicker
+                      groups={summaryModelGroups}
+                      selectedRouteId={summaryModelRouteId}
+                      selectedEffort={summaryModelEffort}
+                      onChange={selectSummaryModel}
+                      disabled={generating}
+                    />
+                  </div>
+                ) : null}
                 {summaryMode === 'selected' ? (
                   <div className="mt-2 min-w-0 max-w-full space-y-1.5 overflow-hidden">
                     <p className="text-metadata text-muted-foreground">
