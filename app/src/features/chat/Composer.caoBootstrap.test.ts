@@ -3,6 +3,7 @@ import type { ChatModelSelection } from '@/lib/ai/modelSelection';
 import { OPENCODE_CLI_CONNECTION } from '@/lib/ai/adapters/catalog';
 import type { ProviderId } from '@/types';
 import { resolveComposerCaoBootstrap } from './Composer';
+import { bootstrapCaoLearning } from '@/features/cao/bootstrap';
 
 const deepSeekSelection: ChatModelSelection = {
   mode: 'single',
@@ -17,8 +18,9 @@ const deepSeekSelection: ChatModelSelection = {
 describe('Composer CAO bootstrap', () => {
   it('replaces the user-facing student selection with the fixed native learner authority', () => {
     const resolved = resolveComposerCaoBootstrap({
-      text: 'Have CAO learn the terminal cancellation workflow',
-      confirmedReferenceKeys: [],
+      decision: bootstrapCaoLearning({
+        text: 'Have CAO learn the terminal cancellation workflow',
+      }),
       selectedModel: deepSeekSelection,
       skillIds: ['analyze'],
     });
@@ -39,14 +41,17 @@ describe('Composer CAO bootstrap', () => {
 
   it('gives a confirmed @CAO reference and action-oriented natural language the identical route', () => {
     const selected = resolveComposerCaoBootstrap({
-      text: 'Learn the terminal cancellation workflow',
-      confirmedReferenceKeys: ['cao:jarvis-cao'],
+      decision: bootstrapCaoLearning({
+        text: 'Learn the terminal cancellation workflow',
+        confirmedReferenceKeys: ['cao:jarvis-cao'],
+      }),
       selectedModel: deepSeekSelection,
       skillIds: [],
     });
     const natural = resolveComposerCaoBootstrap({
-      text: 'Have Jarvis CAO learn the terminal cancellation workflow',
-      confirmedReferenceKeys: [],
+      decision: bootstrapCaoLearning({
+        text: 'Have Jarvis CAO learn the terminal cancellation workflow',
+      }),
       selectedModel: deepSeekSelection,
       skillIds: [],
     });
@@ -60,12 +65,28 @@ describe('Composer CAO bootstrap', () => {
     for (const text of ['Explain the cancellation workflow', 'Should CAO learn this?']) {
       expect(
         resolveComposerCaoBootstrap({
-          text,
-          confirmedReferenceKeys: [],
+          decision: bootstrapCaoLearning({ text }),
           selectedModel: deepSeekSelection,
           skillIds: ['analyze'],
         }),
       ).toBeNull();
     }
+  });
+
+  it('cannot acquire CAO authority from an automatic rewrite of rejected original text', () => {
+    const originalDecision = bootstrapCaoLearning({ text: 'Should CAO learn this workflow?' });
+    const rewrittenDecision = bootstrapCaoLearning({
+      text: 'Have CAO learn this workflow',
+    });
+
+    expect(originalDecision).toBeNull();
+    expect(rewrittenDecision).not.toBeNull();
+    expect(
+      resolveComposerCaoBootstrap({
+        decision: originalDecision,
+        selectedModel: deepSeekSelection,
+        skillIds: ['analyze'],
+      }),
+    ).toBeNull();
   });
 });

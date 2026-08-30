@@ -216,6 +216,7 @@ import {
   executeInstalledJarvisRegisteredAction,
   handleInstalledJarvisKernelClientRequest,
   installJarvisKernelRuntimeHost,
+  assertRuntimeCaoExecutionIdentity,
   liveVariantLookupForChatSelection,
   mayAutoApproveOpenCodeRequest,
   openCodeToolsForInteractionMode,
@@ -230,11 +231,12 @@ import {
   shouldSuppressProviderPreview,
   startRuntimeListener as startKernelAwareRuntimeListener,
 } from './runtime';
+import { CAO_LEARNER_IDENTITY } from '@/features/cao/bootstrap';
 import { TOOL_GATEWAY_CATALOG } from '@/lib/harness/toolGatewayProtocol';
 import { setPermissionAccess } from '@/features/jarvis-interaction/permissionAccessStore';
 import { selectionFromOption } from './modelSelection';
 import { DEFAULT_CUSTOM_STEPS } from './stacks/presets';
-import { PROVIDER_CONNECTIONS } from './adapters/catalog';
+import { CODEX_CLI_CONNECTION, PROVIDER_CONNECTIONS } from './adapters/catalog';
 import { GEMINI_API_CONNECTION, GROQ_API_CONNECTION } from './adapters/nativeCatalog';
 import {
   resetDiscoveredConnectionModelsForTests,
@@ -634,6 +636,160 @@ type TrackedStopper = (() => void) & {
 const activeStoppers: TrackedStopper[] = [];
 
 describe('startRuntimeListener agent routing', () => {
+  it('fails closed unless every observed CAO execution identity field is exact', () => {
+    expect(
+      assertRuntimeCaoExecutionIdentity(undefined, {
+        providerId: 'opencode',
+        connectionId: 'opencode-cli',
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        reasoningEffort: 'medium',
+      }),
+    ).toBeNull();
+
+    expect(assertRuntimeCaoExecutionIdentity(CAO_LEARNER_IDENTITY, CAO_LEARNER_IDENTITY)).toBe(
+      CAO_LEARNER_IDENTITY,
+    );
+
+    for (const observed of [
+      { ...CAO_LEARNER_IDENTITY, providerId: 'opencode' },
+      { ...CAO_LEARNER_IDENTITY, connectionId: 'opencode-cli' },
+      { ...CAO_LEARNER_IDENTITY, modelId: 'gpt-5.6-sol' },
+      { ...CAO_LEARNER_IDENTITY, reasoningEffort: 'medium' },
+    ]) {
+      expect(() => assertRuntimeCaoExecutionIdentity(CAO_LEARNER_IDENTITY, observed)).toThrow(
+        'cao_learner_execution_identity_mismatch',
+      );
+    }
+  });
+
+  it('rejects a mismatched CAO provider response before publishing success', async () => {
+    const selection = selectionFromOption('openai', 'gpt-5.6-terra', CODEX_CLI_CONNECTION);
+    setDiscoveredConnectionModels(CODEX_CLI_CONNECTION.id, [
+      {
+        id: 'gpt-5.6-terra',
+        label: 'GPT-5.6 Terra',
+        source: 'provider_list',
+        lastVerifiedAt: 1,
+      },
+    ]);
+    writeConnectionPickerStates({
+      'openai-codex': { available: true, auth: 'authenticated' },
+    });
+    useAuthStore.setState({ chatModelSelection: selection });
+    const jarvis = agent('agent_cao_identity', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_cao_identity' as ChatId;
+    const updateMessage = vi.fn(async () => undefined);
+    mocks.runAgent.mockResolvedValueOnce({
+      text: 'Untrusted fallback output',
+      usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+      provider: 'openai',
+      model: 'gpt-5.6-sol',
+    });
+    const runStates: Array<{ status?: string; errorCode?: string }> = [];
+    const onRunState = (event: Event) => {
+      runStates.push((event as CustomEvent<{ status?: string; errorCode?: string }>).detail);
+    };
+    window.addEventListener('jarvis:run-state', onRunState);
+    trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => []),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: 'msg_cao_identity' as MessageId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId,
+            text: 'Have CAO learn the renderer workflow',
+            modelSelectionOverride: selection,
+            reasoningPreference: { mode: 'normal', effortOverride: 'high' },
+            runtimeSettings: { effort: 'high', performance: 'quality' },
+            automaticModelRoutingEligible: false,
+            caoAuthority: CAO_LEARNER_IDENTITY,
+          },
+        }),
+      );
+
+      await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(runStates.at(-1)?.status).toBe('error'));
+      expect(runStates.some((state) => state.status === 'done')).toBe(false);
+      expect(JSON.stringify(updateMessage.mock.calls)).not.toContain('Untrusted fallback output');
+    } finally {
+      window.removeEventListener('jarvis:run-state', onRunState);
+    }
+  });
+
+  it('rejects mismatched CAO request controls before provider dispatch', async () => {
+    const selection = selectionFromOption('openai', 'gpt-5.6-terra', CODEX_CLI_CONNECTION);
+    setDiscoveredConnectionModels(CODEX_CLI_CONNECTION.id, [
+      {
+        id: 'gpt-5.6-terra',
+        label: 'GPT-5.6 Terra',
+        source: 'provider_list',
+        lastVerifiedAt: 1,
+      },
+    ]);
+    writeConnectionPickerStates({
+      'openai-codex': { available: true, auth: 'authenticated' },
+    });
+    useAuthStore.setState({ chatModelSelection: selection });
+    const jarvis = agent('agent_cao_request_identity', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_cao_request_identity' as ChatId;
+    const runStates: Array<{ status?: string; errorCode?: string }> = [];
+    const onRunState = (event: Event) => {
+      runStates.push((event as CustomEvent<{ status?: string; errorCode?: string }>).detail);
+    };
+    window.addEventListener('jarvis:run-state', onRunState);
+    trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => []),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: 'msg_cao_request_identity' as MessageId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId,
+            text: 'Have CAO learn the renderer workflow',
+            modelSelectionOverride: selection,
+            reasoningPreference: { mode: 'normal', effortOverride: 'medium' },
+            runtimeSettings: { effort: 'medium', performance: 'quality' },
+            automaticModelRoutingEligible: false,
+            caoAuthority: CAO_LEARNER_IDENTITY,
+          },
+        }),
+      );
+
+      await vi.waitFor(() => expect(runStates.at(-1)?.status).toBe('error'));
+      expect(mocks.runAgent).not.toHaveBeenCalled();
+      expect(runStates.some((state) => state.status === 'done')).toBe(false);
+    } finally {
+      window.removeEventListener('jarvis:run-state', onRunState);
+    }
+  });
+
   it('uses the upstream live-provider key without changing the captured OpenCode route', () => {
     const captured = {
       providerId: 'opencode',

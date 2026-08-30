@@ -177,7 +177,9 @@ import {
   CAO_LEARNER_IDENTITY,
   bootstrapCaoLearning,
   projectCaoPublicStatus,
+  type CaoBootstrapDecision,
   type CaoPublicStatus,
+  type CaoLearnerExecutionIdentity,
 } from '@/features/cao/bootstrap';
 import type { JarvisArtifactV1 } from '@/lib/jarvis/contracts/execution';
 import { jarvisArtifactRepo } from '@/lib/db/jarvisRepositories';
@@ -709,19 +711,16 @@ export type ComposerCaoBootstrap = Readonly<{
   modelSelection: ChatModelSelection;
   reasoningPreference: ReasoningPreference;
   skillIds: readonly string[];
+  requestedIdentity: CaoLearnerExecutionIdentity;
   publicStatus: CaoPublicStatus;
 }>;
 
 export function resolveComposerCaoBootstrap(input: {
-  text: string;
-  confirmedReferenceKeys: readonly string[];
+  decision: CaoBootstrapDecision | null;
   selectedModel: ChatModelSelection;
   skillIds: readonly string[];
 }): ComposerCaoBootstrap | null {
-  const decision = bootstrapCaoLearning({
-    text: input.text,
-    confirmedReferenceKeys: input.confirmedReferenceKeys,
-  });
+  const { decision } = input;
   if (!decision) return null;
   return Object.freeze({
     modelSelection: selectionFromOption(
@@ -731,6 +730,7 @@ export function resolveComposerCaoBootstrap(input: {
     ),
     reasoningPreference: Object.freeze({ mode: 'normal', effortOverride: 'high' }),
     skillIds: Object.freeze(Array.from(new Set([...input.skillIds, ...decision.skillIds]))),
+    requestedIdentity: decision.requestedIdentity,
     publicStatus: projectCaoPublicStatus(decision),
   });
 }
@@ -3127,11 +3127,10 @@ export function Composer({
     const confirmedReferenceKeysForSend = confirmedCatalogReferences.map(
       (reference) => reference.key,
     );
-    const caoRequested =
-      bootstrapCaoLearning({
-        text: rawSendText,
-        confirmedReferenceKeys: confirmedReferenceKeysForSend,
-      }) !== null;
+    const caoDecision = bootstrapCaoLearning({
+      text: rawSendText,
+      confirmedReferenceKeys: confirmedReferenceKeysForSend,
+    });
 
     const currentReasoning = readChatReasoningPreference(String(chatId));
     const currentRuntime = readChatRuntimePolicyState(String(chatId));
@@ -3139,7 +3138,7 @@ export function Composer({
       (value): value is EffortLabel =>
         value !== null && liveAuthorityRejectsEffort(value, authoritativeLiveEfforts),
     );
-    if (invalidEffort && !caoRequested) {
+    if (invalidEffort && !caoDecision) {
       toast.error(
         'Cannot send',
         `Effort “${invalidEffort}” is not available for the selected live model.`,
@@ -3258,8 +3257,7 @@ export function Composer({
       .map((confirmed) => confirmed.value!)
       .slice(0, 6);
     const caoBootstrap = resolveComposerCaoBootstrap({
-      text: rawSendText,
-      confirmedReferenceKeys: confirmedReferenceKeysForSend,
+      decision: caoDecision,
       selectedModel: selectedForSend,
       skillIds: confirmedSkillIdsForSend,
     });
@@ -3534,7 +3532,12 @@ export function Composer({
               tokenOptimizationPreferences.allowStructuralCodeCompression,
             // The model chosen in Composer is an explicit user override.
             automaticModelRoutingEligible: false,
-            ...(caoBootstrap ? { caoBootstrap: caoBootstrap.publicStatus } : {}),
+            ...(caoBootstrap
+              ? {
+                  caoAuthority: caoBootstrap.requestedIdentity,
+                  caoBootstrap: caoBootstrap.publicStatus,
+                }
+              : {}),
           },
         }),
       );

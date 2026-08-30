@@ -25,6 +25,11 @@ import {
   DEFAULT_CHAT_RUNTIME_SETTINGS,
   type ChatRuntimeSettings,
 } from '@/features/chat/runtime/chatRuntimeCommandController';
+import {
+  assertCaoLearnerExecutionIdentity,
+  type CaoLearnerExecutionIdentity,
+  type CaoPublicStatus,
+} from '@/features/cao/bootstrap';
 import type { AccessLevel } from '@/lib/permissions/OpenCodePermissionProfile';
 import {
   acknowledgeConnectionRouteDisclosure,
@@ -2499,6 +2504,26 @@ export interface SendDetail {
    * remains eligible for the user's enabled automatic-routing policy.
    */
   automaticModelRoutingEligible?: boolean;
+  /** Fixed requested identity for an explicitly classified first-party CAO turn. */
+  caoAuthority?: CaoLearnerExecutionIdentity;
+  /** Compact public projection only; never contains the CAO objective or private state. */
+  caoBootstrap?: CaoPublicStatus;
+}
+
+export function assertRuntimeCaoExecutionIdentity(
+  requested: CaoLearnerExecutionIdentity | undefined,
+  observed: Partial<Record<keyof CaoLearnerExecutionIdentity, string | null | undefined>>,
+): CaoLearnerExecutionIdentity | null {
+  if (!requested) return null;
+  return assertCaoLearnerExecutionIdentity({
+    requested,
+    observed: {
+      providerId: observed.providerId ?? '',
+      connectionId: observed.connectionId ?? '',
+      modelId: observed.modelId ?? '',
+      reasoningEffort: observed.reasoningEffort ?? '',
+    },
+  });
 }
 
 export function buildApprovalContinuationProviderText(
@@ -5599,6 +5624,19 @@ export function startRuntimeListener(
       failEarlySetup('model', error);
       return;
     }
+    try {
+      assertRuntimeCaoExecutionIdentity(detail.caoAuthority, {
+        providerId:
+          chatModelSelection.mode === 'single' ? chatModelSelection.providerId : undefined,
+        connectionId:
+          chatModelSelection.mode === 'single' ? chatModelSelection.connectionId : undefined,
+        modelId: chatModelSelection.mode === 'single' ? chatModelSelection.modelId : undefined,
+        reasoningEffort: reasoningPolicy?.resolvedEffort,
+      });
+    } catch (error) {
+      failEarlySetup('model', error);
+      return;
+    }
     const bufferExactLiteralStreaming =
       (reasoningPolicy?.mode === 'token-saver' && explicitExactLiteralFromRequest(text) !== null) ||
       explicitResponseContract !== null ||
@@ -5974,6 +6012,7 @@ export function startRuntimeListener(
           let canonicalSpokenText: string | undefined;
           let canonicalProviderId: string;
           let canonicalModelId: string;
+          let canonicalConnectionId: string | undefined;
           let canonicalResponseParts: readonly Part[] = [];
           let canonicalVoiceCancelled = false;
           let canonicalResponseContractFailed = false;
@@ -6087,6 +6126,7 @@ export function startRuntimeListener(
             canonicalSpokenText = undefined;
             canonicalProviderId = model.providerId;
             canonicalModelId = model.modelId;
+            canonicalConnectionId = model.connectionId;
           } else {
             const selected = chatModelSelection.mode === 'single' ? chatModelSelection : null;
             if (!selected) throw new Error('kernel_single_model_selection_required');
@@ -6247,6 +6287,7 @@ export function startRuntimeListener(
             canonicalSpokenText = response.spokenText;
             canonicalProviderId = response.provider.providerId;
             canonicalModelId = response.provider.modelId;
+            canonicalConnectionId = response.provider.connectionId;
             canonicalResponseParts = response.parts;
             canonicalReadScopeUnverified = response.enforcement.violations.includes(
               'explicit_read_scope_unverified',
@@ -6258,6 +6299,12 @@ export function startRuntimeListener(
               'explicit_response_contract_failed_closed',
             );
           }
+          assertRuntimeCaoExecutionIdentity(detail.caoAuthority, {
+            providerId: canonicalProviderId,
+            connectionId: canonicalConnectionId,
+            modelId: canonicalModelId,
+            reasoningEffort: reasoningPolicy?.resolvedEffort,
+          });
           controller.signal.throwIfAborted();
           if (canonicalVoiceCancelled) {
             useAgentStore.getState().setRunState(agent.id, 'idle');
@@ -6853,6 +6900,12 @@ export function startRuntimeListener(
         : shouldRunLocalFinalBossRevision(reasoningPolicy?.mode, runnable.model.provider)
           ? await runBoundedLocalFinalBossRevision(runAgent, providerRequest)
           : await runAgent(providerRequest);
+      assertRuntimeCaoExecutionIdentity(detail.caoAuthority, {
+        providerId: response.provider,
+        connectionId: providerRequest.connectionId,
+        modelId: response.model,
+        reasoningEffort: reasoningPolicy?.resolvedEffort,
+      });
       controller.signal.throwIfAborted();
       if (!responseCompositionVisible) {
         setLiveAgentActivityPhase(chatId, agentActivityId, {
