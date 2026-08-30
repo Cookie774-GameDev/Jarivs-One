@@ -2475,3 +2475,22 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Tests: authoritative plan contract 13/13; app replica regression 9/9; responsive matrix and keyboard/hover checks recorded in `evidence/authoritative-plans-rev20/AUDIT.md`; `git diff --check` passed.
 - Remaining truthful boundary: the site documents the catalog, but the app and payments remain coming later and no checkout was created.
 - Lock: released only `.agent-coordination.lock/owner.txt` owned by `codex-g56-20260830-a16`; no other agent state touched.
+## 2026-08-30 — codex-g56-20260830-a17 / official-site-plan-usage-perks-rev21
+
+- Status: active; exact `site/index.html`, coordination, and task-owned evidence claim acquired with no overlapping live owner.
+- Branch/upstream/base: `main` / `origin/main` / `cc71fc31d7427ef755adb4119074df533e292391`; clean worktree before claim.
+- Approved bounded scope: preserve the rev20 subscription UI exactly while clarifying that the $20 Access subscription includes full access to the VibeSpace app and adding truthful maximum Jarvis Call/SMS equivalents to the paid feature plans.
+- Authority: `origin/UnifiedChungus` `docs/SUBSCRIPTION_PLANS_REFERENCE.md`; shared pool rates are 100 credits per PSTN phone minute and 10 credits per SMS text. Spark has no Jarvis Call or SMS entitlement; paid-tier maximums assume the entire monthly shared pool is spent on one service.
+- Boundaries: no styling/layout redesign, no app repository, Supabase, Stripe, checkout, account, DNS, or billing mutation.
+- Next: add and run a red entitlement contract, implement copy-only changes, then verify responsive geometry and publish the exact tested artifact.
+
+### 2026-08-30T19:05:00-05:00 — codex-g56-20260830-a17 / official-site-plan-usage-perks-rev21 / implementation checkpoint
+
+- Branch / base HEAD: `main` / `cc71fc31d7427ef755adb4119074df533e292391`.
+- Owned files: `site/index.html`, `evidence/plan-usage-perks-rev21/**`, `docs/AGENT_COORDINATION.md`.
+- Implemented: added explicit full-access wording across all five plans, Spark-only exclusions for call/SMS, truthful `Up to X Jarvis Call minutes` and `Up to Y SMS texts` entries, shared-pool assumption note, and diagnostics updates (`fullAppAccess`, conversion constants, revision token).
+- Source of truth: `origin/UnifiedChungus`, `docs/SUBSCRIPTION_PLANS_REFERENCE.md`, authority commit `adc1ee3a5b0e056ac6f5efc258afd6df5a25b4f8`.
+- Verification: red contract `node evidence/plan-usage-perks-rev21/plan-usage-perks-contract.test.cjs` passed `7/7`; responsive/interaction artifact captures at 1440×900 and 390×844 retained; `git diff --check` run (no whitespace issues).
+- Evidence artifact: `evidence/plan-usage-perks-rev21/AUDIT.md`; screenshots `desktop-1440x900.png` and `mobile-390x844.png`.
+- Exact artifact SHA-256: `site/index.html` `A5AE64C14A8273B9023E40417540306B48FDA572432F44054ADD274E08B3C949`; runtime `window.__cinematicRecovery.revision=rev21-plan-usage-perks`.
+- Next: commit and push `origin/main`, verify public bytes, run live checks against `?rev=<sha>`, then close task-owned lock.
