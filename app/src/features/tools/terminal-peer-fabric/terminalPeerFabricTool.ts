@@ -68,11 +68,12 @@ export function createTerminalPeerFabricCommandPort(
     return invoke<FabricReceipt>('terminal_peer_fabric', { request });
   };
 
-  return Object.freeze({
+  const port: TerminalPeerFabricCommandPort = {
     capability,
     connect: (request) => operate({ action: 'connect', ...request }),
     command: (request) => operate({ action: 'command', ...request }),
-  });
+  };
+  return Object.freeze(port);
 }
 
 export const terminalPeerFabricCommandPort = createTerminalPeerFabricCommandPort();
