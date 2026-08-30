@@ -61,7 +61,7 @@ import {
 import {
   CONTEXT_MIME,
   MAX_ACTIVE_CONTEXT_MAPS,
-  contextMapFilePath,
+  contextMapBackingFilePath,
   contextNodeFilePath,
   findContextFileNodeByPath,
   findContextNode,
@@ -3328,7 +3328,7 @@ function ContextMapList({
   const mapRow = (map: ContextMapRecord) => {
     const selected = map.id === selectedMapId;
     const deleted = map.status === 'deleted';
-    const mapFilePath = map.filePath ?? contextMapFilePath(map.rootDir);
+    const mapFilePath = contextMapBackingFilePath(map);
     const job = jobSnapshots[map.id];
     const exactFileCountSummary = formatSiyuanIndexCountSummary({
       kind: 'files',
@@ -3343,15 +3343,15 @@ function ContextMapList({
     return (
       <div
         key={map.id}
-        draggable={!deleted}
+        draggable={!deleted && Boolean(mapFilePath)}
         onDragStart={(event) => {
-          if (deleted) return;
+          if (deleted || !mapFilePath) return;
           event.dataTransfer.effectAllowed = 'copy';
           event.dataTransfer.setData('application/x-jarvis-file', mapFilePath);
           event.dataTransfer.setData('text/plain', mapFilePath);
         }}
         onMouseDown={(event) => {
-          if (event.button === 2 && !deleted) {
+          if (event.button === 2 && !deleted && mapFilePath) {
             event.stopPropagation();
             startRightClickDrag(event, 'file', { path: mapFilePath });
           }
@@ -3375,7 +3375,16 @@ function ContextMapList({
             </span>
             <span className="block truncate font-mono text-metadata text-muted-foreground">
               {exactFileCountSummary}
-              {indexedItemSummary ? ` · ${indexedItemSummary}` : ''} - {mapFilePath}
+              {mapFilePath ? (
+                <>
+                  {indexedItemSummary ? ` · ${indexedItemSummary}` : ''} - {mapFilePath}
+                </>
+              ) : (
+                <>
+                  {indexedItemSummary ? ` · ${indexedItemSummary}` : ''} · Stored internally ·{' '}
+                  {map.rootDir}
+                </>
+              )}
             </span>
             {!deleted && job && job.phase !== 'completed' ? (
               <span

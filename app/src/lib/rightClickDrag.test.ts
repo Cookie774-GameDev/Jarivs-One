@@ -73,4 +73,88 @@ describe('startRightClickDrag', () => {
     window.removeEventListener('jarvis:composer:insert-text', inserted);
     dropTarget.remove();
   });
+
+  it.each(['siyuan-metadata-index-v1', 'siyuan-managed-v1', 'context-map-v2'])(
+    'does not synthesize a right-drag path for virtual root model %s',
+    (model) => {
+      const event = new MouseEvent('mousedown', {
+        button: 2,
+        buttons: 2,
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+        cancelable: true,
+      });
+
+      startRightClickDrag(event, 'context', {
+        node: { id: 'root', title: 'Virtual map', kind: 'root', summary: 'Root' },
+        tree: { rootDir: 'C:\\vault', model },
+      });
+      document.dispatchEvent(
+        new MouseEvent('mousemove', {
+          buttons: 2,
+          clientX: 30,
+          clientY: 30,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(document.body.classList.contains('jarvis-terminal-right-dragging')).toBe(false);
+    },
+  );
+
+  it('preserves exact legacy root-file right-drag authority', () => {
+    const dropTarget = document.createElement('div');
+    dropTarget.dataset.terminalDrop = 'chat';
+    document.body.appendChild(dropTarget);
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: vi.fn(() => dropTarget),
+    });
+    const inserted = vi.fn();
+    window.addEventListener('jarvis:composer:insert-text', inserted);
+
+    startRightClickDrag(
+      new MouseEvent('mousedown', {
+        button: 2,
+        buttons: 2,
+        clientX: 10,
+        clientY: 10,
+        bubbles: true,
+        cancelable: true,
+      }),
+      'context',
+      {
+        node: { id: 'root', title: 'Legacy map', kind: 'root', summary: 'Root' },
+        tree: { rootDir: 'C:\\vault', model: 'local-fallback' },
+      },
+    );
+    document.dispatchEvent(
+      new MouseEvent('mousemove', {
+        buttons: 2,
+        clientX: 30,
+        clientY: 30,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    document.dispatchEvent(
+      new MouseEvent('mouseup', {
+        button: 2,
+        buttons: 0,
+        clientX: 31,
+        clientY: 31,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+
+    expect(inserted).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { text: 'C:\\vault\\context_map.json' } }),
+    );
+    window.removeEventListener('jarvis:composer:insert-text', inserted);
+    dropTarget.remove();
+  });
 });

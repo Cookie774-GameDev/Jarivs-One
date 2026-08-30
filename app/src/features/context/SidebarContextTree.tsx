@@ -8,7 +8,7 @@ import { startRightClickDrag } from '@/lib/rightClickDrag';
 import {
   CONTEXT_MIME,
   MAX_ACTIVE_CONTEXT_MAPS,
-  contextMapFilePath,
+  contextMapBackingFilePath,
   contextNodeFilePath,
   nodeToAttachment,
   serializeContextAttachment,
@@ -66,12 +66,14 @@ export function SidebarContextTree({ navOpen, onOpenContext }: SidebarContextTre
 
   React.useEffect(() => {
     const onUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ projectId?: string | null; mapId?: string | null }>).detail;
+      const detail = (event as CustomEvent<{ projectId?: string | null; mapId?: string | null }>)
+        .detail;
       if ((detail?.projectId ?? null) !== (projectId ?? null)) return;
       refreshMaps();
     };
     window.addEventListener('jarvis:context-tree-updated', onUpdated as EventListener);
-    return () => window.removeEventListener('jarvis:context-tree-updated', onUpdated as EventListener);
+    return () =>
+      window.removeEventListener('jarvis:context-tree-updated', onUpdated as EventListener);
   }, [projectId, refreshMaps]);
 
   const selectMap = React.useCallback(
@@ -131,7 +133,9 @@ export function SidebarContextTree({ navOpen, onOpenContext }: SidebarContextTre
         className="flex w-full items-center gap-2 rounded-md bg-accent-copper/10 px-2 py-1.5 text-left text-metadata text-accent-copper transition-colors hover:bg-accent-copper/15"
       >
         <Zap className="h-3.5 w-3.5" />
-        <span className="min-w-0 flex-1 truncate">{activeCount}/{MAX_ACTIVE_CONTEXT_MAPS} active maps</span>
+        <span className="min-w-0 flex-1 truncate">
+          {activeCount}/{MAX_ACTIVE_CONTEXT_MAPS} active maps
+        </span>
       </button>
       {maps.slice(0, 8).map((map) => (
         <SidebarContextMap
@@ -160,7 +164,8 @@ function SidebarContextMap({
   const [open, setOpen] = React.useState(selected && map.status === 'active');
   const deleted = map.status === 'deleted';
   const hasChildren = map.tree.nodes.length > 0;
-  const mapFilePath = map.filePath ?? contextMapFilePath(map.rootDir);
+  const mapFilePath = contextMapBackingFilePath(map);
+  const mapLocation = mapFilePath ?? `${map.name} · Stored internally · Source ${map.rootDir}`;
 
   React.useEffect(() => {
     if (selected && !deleted) setOpen(true);
@@ -192,31 +197,33 @@ function SidebarContextMap({
         )}
         <button
           type="button"
-          draggable={!deleted}
+          draggable={!deleted && Boolean(mapFilePath)}
           onDragStart={(event) => {
-            if (deleted) return;
+            if (deleted || !mapFilePath) return;
             event.dataTransfer.effectAllowed = 'copy';
             event.dataTransfer.setData('application/x-jarvis-file', mapFilePath);
             event.dataTransfer.setData('text/plain', mapFilePath);
           }}
           onMouseDown={(event) => {
-            if (event.button === 2 && !deleted) {
+            if (event.button === 2 && !deleted && mapFilePath) {
               event.stopPropagation();
               startRightClickDrag(event, 'file', { path: mapFilePath });
             }
           }}
           onClick={() => onSelectMap(map.id)}
           className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus-visible:outline-none"
-          title={mapFilePath}
+          title={mapLocation}
         >
           <Layers3 className="h-3.5 w-3.5 shrink-0 text-accent-copper" />
           <span className="min-w-0 flex-1 truncate text-foreground">{map.name}</span>
-          <span className={cn(
-            'rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide',
-            deleted
-              ? 'border-muted-foreground/25 bg-muted text-muted-foreground'
-              : 'border-accent-copper/35 bg-accent-copper/10 text-accent-copper',
-          )}>
+          <span
+            className={cn(
+              'rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide',
+              deleted
+                ? 'border-muted-foreground/25 bg-muted text-muted-foreground'
+                : 'border-accent-copper/35 bg-accent-copper/10 text-accent-copper',
+            )}
+          >
             {deleted ? 'Deleted' : 'Active'}
           </span>
         </button>
@@ -224,7 +231,13 @@ function SidebarContextMap({
       {open && hasChildren ? (
         <div className="mt-0.5">
           {map.tree.nodes.slice(0, 8).map((node) => (
-            <SidebarContextNode key={node.id} tree={map.tree} node={node} depth={0} onOpenContext={onOpenContext} />
+            <SidebarContextNode
+              key={node.id}
+              tree={map.tree}
+              node={node}
+              depth={0}
+              onOpenContext={onOpenContext}
+            />
           ))}
         </div>
       ) : null}
@@ -308,21 +321,27 @@ function SidebarContextNode({
           className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus-visible:outline-none"
           title={node.summary}
         >
-          {node.kind === 'file'
-            ? <FileText className="h-3.5 w-3.5 shrink-0 text-accent-honey" />
-            : <Network className="h-3.5 w-3.5 shrink-0 text-accent-copper" />}
+          {node.kind === 'file' ? (
+            <FileText className="h-3.5 w-3.5 shrink-0 text-accent-honey" />
+          ) : (
+            <Network className="h-3.5 w-3.5 shrink-0 text-accent-copper" />
+          )}
           <span className="min-w-0 flex-1 truncate">{node.title}</span>
         </button>
       </div>
-      {open && hasChildren && node.children!.slice(0, 8).map((child) => (
-        <SidebarContextNode
-          key={child.id}
-          tree={tree}
-          node={child}
-          depth={depth + 1}
-          onOpenContext={onOpenContext}
-        />
-      ))}
+      {open &&
+        hasChildren &&
+        node
+          .children!.slice(0, 8)
+          .map((child) => (
+            <SidebarContextNode
+              key={child.id}
+              tree={tree}
+              node={child}
+              depth={depth + 1}
+              onOpenContext={onOpenContext}
+            />
+          ))}
     </div>
   );
 }

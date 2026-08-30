@@ -80,8 +80,9 @@ const LEGACY_INSPECTOR_TRANSITION = Object.freeze({
 import type { WorkspaceId } from '@/types/common';
 import {
   CONTEXT_MIME,
-  contextMapFilePath,
+  contextMapBackingFilePath,
   contextNodeFilePath,
+  contextTreeBackingFilePath,
   flattenContextNodes,
   formatContextAttachmentForTerminal,
   nodeToAttachment,
@@ -671,8 +672,11 @@ function InspectorContextPanel({
     );
   }
 
-  const mapAttachment = treeMapAttachment(tree);
-  const mapPath = contextMapFilePath(tree.rootDir);
+  const selectedMap = contextState?.maps.find((map) => map.id === contextState.selectedMapId);
+  const mapPath = selectedMap
+    ? contextMapBackingFilePath(selectedMap)
+    : contextTreeBackingFilePath(tree);
+  const mapAttachment = treeMapAttachment(tree, mapPath);
 
   return (
     <div
@@ -1320,22 +1324,23 @@ function TerminalResourceRow({
   );
 }
 
-function treeMapAttachment(tree: ProjectContextTree): ContextAttachment {
+function treeMapAttachment(
+  tree: ProjectContextTree,
+  backingFilePath = contextTreeBackingFilePath(tree),
+): ContextAttachment {
   const root = flattenContextNodes(tree.nodes).find((node) => node.kind === 'root');
-  if (root) return nodeToAttachment(tree, root);
-  return {
-    projectId: tree.projectId,
-    rootDir: tree.rootDir,
-    generatedAt: tree.generatedAt,
-    nodeId: '__jarvis-context-root__',
-    title: 'Project Context Map',
-    kind: 'root',
-    summary: tree.summary,
-    path: contextMapFilePath(tree.rootDir),
-    tags: ['context-map'],
-    sizeBytes: tree.totalBytes,
-    childrenCount: tree.nodes.length,
-  };
+  const attachment = root
+    ? nodeToAttachment(tree, root)
+    : nodeToAttachment(tree, {
+        id: '__jarvis-context-root__',
+        title: 'Project Context Map',
+        kind: 'root',
+        summary: tree.summary,
+        tags: ['context-map'],
+        sizeBytes: tree.totalBytes,
+        children: tree.nodes,
+      });
+  return { ...attachment, path: backingFilePath };
 }
 
 function toolAttachment({
@@ -1845,9 +1850,7 @@ function TerminalRow({ session }: { session: TerminalSession }) {
         <div className="text-metadata text-muted-foreground truncate" title={session.cwd}>
           {session.cwd ?? '~'} · {formatRelative(session.created_at)}
         </div>
-        {isWorking ? (
-          <span className="sr-only">Terminal is working</span>
-        ) : null}
+        {isWorking ? <span className="sr-only">Terminal is working</span> : null}
       </div>
       <Button
         variant="ghost"
@@ -2066,14 +2069,12 @@ function BenchmarksContextPanel() {
         const { fetchBenchmarkLeaderboard } = await import('@/features/benchmarks/benchmarkApi');
         const result = await fetchBenchmarkLeaderboard();
         if (cancelled) return;
-        const top = result.rows
-          .slice(0, 5)
-          .map((r) => ({
-            id: r.id,
-            model: r.model,
-            provider: r.provider,
-            intelligenceIndex: r.intelligenceIndex,
-          }));
+        const top = result.rows.slice(0, 5).map((r) => ({
+          id: r.id,
+          model: r.model,
+          provider: r.provider,
+          intelligenceIndex: r.intelligenceIndex,
+        }));
         setRows(top);
         setSourceHint(
           result.fromCache
@@ -2095,17 +2096,19 @@ function BenchmarksContextPanel() {
     return <PlaceholderCard title="Top Intelligence Index" body="Loading verified leaderboard…" />;
   }
   if (rows.length === 0) {
-    return <PlaceholderCard title="Top Intelligence Index" body="No verified benchmark rows available yet." />;
+    return (
+      <PlaceholderCard
+        title="Top Intelligence Index"
+        body="No verified benchmark rows available yet."
+      />
+    );
   }
 
   return (
     <StripCard eyebrow="Top Intelligence Index" hint={sourceHint}>
       <ol className="flex flex-col gap-1.5">
         {rows.map((r, i) => (
-          <li
-            key={r.id}
-            className="flex items-center gap-2 rounded-md bg-paper-soft px-2 py-1.5"
-          >
+          <li key={r.id} className="flex items-center gap-2 rounded-md bg-paper-soft px-2 py-1.5">
             <span className="text-metadata text-muted-foreground tabular-nums shrink-0 w-4">
               {i + 1}
             </span>

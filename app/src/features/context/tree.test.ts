@@ -17,14 +17,96 @@ import {
   generateProjectContextTree,
   isContextTreeCoverageBounded,
   MAX_CONTEXT_FILE_BYTES,
+  CONTEXT_MIME,
+  contextMapBackingFilePath,
   contextMapCollectionKey,
   contextMapSlashOptions,
+  contextNodeFilePath,
   contextStorageKey,
+  contextTreeBackingFilePath,
   loadStoredContextMaps,
+  nodeToAttachment,
   resolveContextMapRecord,
   type ContextMapRecord,
   type ProjectContextTree,
 } from './tree';
+
+describe('Context map physical file authority', () => {
+  const tree = (model: string): ProjectContextTree => ({
+    version: 1,
+    projectId: 'project-authority',
+    rootDir: 'C:\\vault',
+    generatedAt: 1,
+    model,
+    fileCount: 1,
+    totalBytes: 12,
+    summary: 'Context authority fixture',
+    nodes: [],
+  });
+
+  const record = (model: string, filePath?: string): ContextMapRecord => ({
+    id: `map-${model}`,
+    projectId: 'project-authority',
+    rootDir: 'C:\\vault',
+    ...(filePath === undefined ? {} : { filePath }),
+    name: 'Authority map',
+    status: 'active',
+    createdAt: 1,
+    updatedAt: 1,
+    tree: tree(model),
+  });
+
+  it.each(['siyuan-metadata-index-v1', 'siyuan-managed-v1', 'context-map-v2'])(
+    'denies invented root-file authority for virtual model %s',
+    (model) => {
+      const map = record(model, 'C:\\vault\\context_map.json');
+      const root = {
+        id: '__jarvis-context-root__',
+        title: 'Vault',
+        kind: 'root' as const,
+        summary: 'Root',
+      };
+
+      expect(contextMapBackingFilePath(map)).toBeUndefined();
+      expect(nodeToAttachment(map.tree, root).path).toBeUndefined();
+    },
+  );
+
+  it('requires explicit backing-file evidence for a legacy map row', () => {
+    expect(contextMapBackingFilePath(record('local-fallback'))).toBeUndefined();
+    expect(
+      contextMapBackingFilePath(record('local-fallback', ' C:\\vault\\context_map.json ')),
+    ).toBe('C:\\vault\\context_map.json');
+    expect(contextTreeBackingFilePath(tree('local-fallback'))).toBe('C:\\vault\\context_map.json');
+    expect(
+      nodeToAttachment(tree('local-fallback'), {
+        id: '__jarvis-context-root__',
+        title: 'Vault',
+        kind: 'root',
+        summary: 'Root',
+        path: 'C:\\vault',
+      }).path,
+    ).toBe('C:\\vault\\context_map.json');
+  });
+
+  it('preserves exact physical authority for a real child file', () => {
+    const managed = tree('context-map-v2');
+    const child = {
+      id: 'notes-file',
+      title: 'notes.md',
+      kind: 'file' as const,
+      summary: 'Notes',
+      path: 'notes.md',
+    };
+
+    expect(nodeToAttachment(managed, child)).toMatchObject({
+      path: 'notes.md',
+      kind: 'file',
+    });
+    expect(contextNodeFilePath(managed, child)).toBe('C:\\vault\\notes.md');
+    expect(CONTEXT_MIME).toBe('application/x-jarvis-context');
+  });
+});
 
 describe('Context map scan coverage', () => {
   it('conservatively marks an exact-cap legacy map as bounded without rewriting it', () => {

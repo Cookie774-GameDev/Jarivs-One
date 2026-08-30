@@ -123,6 +123,20 @@ describe('Context Map focused user-testing repairs', () => {
     expect(source).toContain('{focusedProgressLabel}');
   });
 
+  it('does not project an internal Context map as a physical context_map.json file', () => {
+    const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
+    const mapRowStart = source.indexOf('const mapRow = (map: ContextMapRecord) => {');
+    const mapRowEnd = source.indexOf('function FirstContextMapTutorial()', mapRowStart);
+    const mapRow = source.slice(mapRowStart, mapRowEnd);
+
+    expect(mapRow).toContain('contextMapBackingFilePath(map)');
+    expect(mapRow).toContain('draggable={!deleted && Boolean(mapFilePath)}');
+    expect(mapRow).toContain('if (deleted || !mapFilePath) return;');
+    expect(mapRow).toContain('mapFilePath ? (');
+    expect(mapRow).toContain('Stored internally');
+    expect(mapRow).toContain('{map.rootDir}');
+  });
+
   it('keeps a durable SiYuan job running when the user leaves Context', () => {
     const source = readFileSync(resolve('src/features/context/ContextPage.tsx'), 'utf8');
 

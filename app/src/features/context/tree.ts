@@ -394,7 +394,7 @@ export function saveContextTree(
     id: existing?.id ?? uniqueContextMapId(tree, collection.maps),
     projectId: tree.projectId,
     rootDir: tree.rootDir,
-    filePath: contextMapFilePath(tree.rootDir),
+    ...(isVirtualContextMapTree(tree) ? {} : { filePath: contextMapFilePath(tree.rootDir) }),
     name: options.name?.trim() || existing?.name || contextMapName(tree),
     status: 'active',
     createdAt: existing?.createdAt ?? now,
@@ -513,19 +513,18 @@ function normalizeContextMapRecord(
   const updatedAt = typeof record.updatedAt === 'number' ? record.updatedAt : createdAt;
   const id =
     typeof record.id === 'string' && record.id.trim() ? record.id : uniqueContextMapId(tree, []);
+  const rootDir =
+    typeof record.rootDir === 'string' && record.rootDir.trim() ? record.rootDir : tree.rootDir;
+  const filePath = isVirtualContextMapTree(tree)
+    ? undefined
+    : typeof record.filePath === 'string' && record.filePath.trim()
+      ? record.filePath.trim()
+      : contextMapFilePath(rootDir);
   return {
     id,
     projectId,
-    rootDir:
-      typeof record.rootDir === 'string' && record.rootDir.trim() ? record.rootDir : tree.rootDir,
-    filePath:
-      typeof record.filePath === 'string' && record.filePath.trim()
-        ? record.filePath.trim()
-        : contextMapFilePath(
-            typeof record.rootDir === 'string' && record.rootDir.trim()
-              ? record.rootDir
-              : tree.rootDir,
-          ),
+    rootDir,
+    ...(filePath ? { filePath } : {}),
     name:
       typeof record.name === 'string' && record.name.trim()
         ? record.name.trim()
@@ -677,6 +676,34 @@ export function contextMapFilePath(rootDir: string): string {
   return `${cleanRoot}${separator}context_map.json`;
 }
 
+const VIRTUAL_CONTEXT_MAP_MODELS = new Set([
+  'siyuan-metadata-index-v1',
+  'siyuan-managed-v1',
+  'context-map-v2',
+]);
+
+export function isVirtualContextMapTree(tree: Pick<ProjectContextTree, 'model'>): boolean {
+  return (
+    typeof tree.model === 'string' &&
+    VIRTUAL_CONTEXT_MAP_MODELS.has(tree.model.trim().toLowerCase())
+  );
+}
+
+export function contextMapBackingFilePath(
+  map: Pick<ContextMapRecord, 'tree' | 'filePath'>,
+): string | undefined {
+  if (isVirtualContextMapTree(map.tree)) return undefined;
+  const path = map.filePath?.trim();
+  return path || undefined;
+}
+
+export function contextTreeBackingFilePath(
+  tree: Pick<ProjectContextTree, 'model' | 'rootDir'>,
+): string | undefined {
+  const rootDir = tree.rootDir.trim();
+  return isVirtualContextMapTree(tree) || !rootDir ? undefined : contextMapFilePath(rootDir);
+}
+
 export function serializeContextAttachment(attachment: ContextAttachment): string {
   return JSON.stringify(attachment);
 }
@@ -721,7 +748,7 @@ export function nodeToAttachment(
     title: node.title,
     kind: node.kind,
     summary: node.summary,
-    path: node.id === '__jarvis-context-root__' ? contextMapFilePath(tree.rootDir) : node.path,
+    path: node.kind === 'root' ? contextTreeBackingFilePath(tree) : node.path,
     tags: node.tags,
     sizeBytes: node.sizeBytes,
     createdAt: node.createdAt,

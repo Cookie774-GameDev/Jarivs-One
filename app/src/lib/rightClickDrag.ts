@@ -1,11 +1,19 @@
-import { contextMapFilePath, contextNodeFilePath } from '@/features/context/tree';
+import {
+  contextNodeFilePath,
+  contextTreeBackingFilePath,
+  isVirtualContextMapTree,
+} from '@/features/context/tree';
 
 export function startRightClickDrag(
   e: React.MouseEvent | MouseEvent,
   type: 'file' | 'context',
-  data: { path: string } | { node: any; tree: any }
+  data: { path: string } | { node: any; tree: any },
 ) {
   if (e.button !== 2) return;
+  if (type === 'context') {
+    const { node, tree } = data as { node: any; tree: any };
+    if (node.kind === 'root' && isVirtualContextMapTree(tree)) return;
+  }
   e.preventDefault();
   e.stopPropagation();
 
@@ -27,7 +35,8 @@ export function startRightClickDrag(
   } else {
     const { node, tree } = data as { node: any; tree: any };
     const filePath = contextNodeFilePath(tree, node);
-    path = filePath || (node.kind === 'root' && tree?.rootDir ? contextMapFilePath(tree.rootDir) : node.path) || node.title;
+    const rootPath = node.kind === 'root' ? contextTreeBackingFilePath(tree) : undefined;
+    path = filePath || rootPath || node.path || node.title;
     label = node.title;
   }
 
@@ -110,7 +119,7 @@ export function startRightClickDrag(
           window.dispatchEvent(
             new CustomEvent('jarvis:composer:insert-text', {
               detail: { text: path, chatId: targetChatId },
-            })
+            }),
           );
         } else if (kind === 'pane') {
           const targetPaneId = dropTarget.dataset.terminalDropPaneId;
@@ -118,7 +127,7 @@ export function startRightClickDrag(
             window.dispatchEvent(
               new CustomEvent('jarvis:terminal:write-text', {
                 detail: { paneId: targetPaneId, text: path },
-              })
+              }),
             );
           }
         }
