@@ -662,7 +662,7 @@ describe('startRuntimeListener agent routing', () => {
     }
   });
 
-  it('rejects a mismatched CAO provider response before publishing success', async () => {
+  it('rejects mismatched terminal CAO completion evidence before publishing success', async () => {
     const selection = selectionFromOption('openai', 'gpt-5.6-terra', CODEX_CLI_CONNECTION);
     setDiscoveredConnectionModels(CODEX_CLI_CONNECTION.id, [
       {
@@ -679,11 +679,25 @@ describe('startRuntimeListener agent routing', () => {
     const jarvis = agent('agent_cao_identity', 'jarvis', 'You are Jarvis.');
     const chatId = 'chat_cao_identity' as ChatId;
     const updateMessage = vi.fn(async () => undefined);
-    mocks.runAgent.mockResolvedValueOnce({
-      text: 'Untrusted fallback output',
-      usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
-      provider: 'openai',
-      model: 'gpt-5.6-sol',
+    mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      await providerInput.onHarnessSessionBound?.({ sessionId: 'session_cao_identity' });
+      await providerInput.onProviderCompletionEvidence?.({
+        observedAt: 3,
+        requestId: providerInput.requestId,
+        sessionId: 'session_cao_identity',
+        providerId: 'openai',
+        connectionId: 'opencode-cli',
+        modelId: 'gpt-5.6-terra',
+        reasoningEffort: 'high',
+        usage: { capturedAt: 3 },
+        finishReason: 'stop',
+      });
+      return {
+        text: 'Untrusted fallback output',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'openai',
+        model: 'gpt-5.6-terra',
+      };
     });
     const runStates: Array<{ status?: string; errorCode?: string }> = [];
     const onRunState = (event: Event) => {
@@ -725,6 +739,168 @@ describe('startRuntimeListener agent routing', () => {
       await vi.waitFor(() => expect(runStates.at(-1)?.status).toBe('error'));
       expect(runStates.some((state) => state.status === 'done')).toBe(false);
       expect(JSON.stringify(updateMessage.mock.calls)).not.toContain('Untrusted fallback output');
+    } finally {
+      window.removeEventListener('jarvis:run-state', onRunState);
+    }
+  });
+
+  it('publishes CAO success only from an exact request and session-bound completion receipt', async () => {
+    const selection = selectionFromOption('openai', 'gpt-5.6-terra', CODEX_CLI_CONNECTION);
+    setDiscoveredConnectionModels(CODEX_CLI_CONNECTION.id, [
+      {
+        id: 'gpt-5.6-terra',
+        label: 'GPT-5.6 Terra',
+        source: 'provider_list',
+        lastVerifiedAt: 1,
+      },
+    ]);
+    writeConnectionPickerStates({
+      'openai-codex': { available: true, auth: 'authenticated' },
+    });
+    useAuthStore.setState({ chatModelSelection: selection });
+    const jarvis = agent('agent_cao_exact_receipt', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_cao_exact_receipt' as ChatId;
+    const updateMessage = vi.fn(async () => undefined);
+    mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      expect(providerInput.requestId).toBe('msg_cao_exact_receipt');
+      await providerInput.onHarnessSessionBound?.({ sessionId: 'session_cao_exact_receipt' });
+      await providerInput.onProviderCompletionEvidence?.({
+        observedAt: 3,
+        requestId: 'msg_cao_exact_receipt',
+        sessionId: 'session_cao_exact_receipt',
+        providerId: 'openai',
+        connectionId: 'openai-codex',
+        modelId: 'gpt-5.6-terra',
+        reasoningEffort: 'high',
+        usage: { capturedAt: 3 },
+        finishReason: 'stop',
+      });
+      return {
+        text: 'Verified CAO output',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'openai',
+        model: 'gpt-5.6-terra',
+      };
+    });
+    const runStates: Array<{ status?: string; errorCode?: string }> = [];
+    const onRunState = (event: Event) => {
+      runStates.push((event as CustomEvent<{ status?: string; errorCode?: string }>).detail);
+    };
+    window.addEventListener('jarvis:run-state', onRunState);
+    trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => []),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: 'msg_cao_exact_receipt' as MessageId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage,
+      }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId,
+            text: 'Have CAO learn the renderer workflow',
+            modelSelectionOverride: selection,
+            reasoningPreference: { mode: 'normal', effortOverride: 'high' },
+            runtimeSettings: { effort: 'high', performance: 'quality' },
+            automaticModelRoutingEligible: false,
+            caoAuthority: CAO_LEARNER_IDENTITY,
+          },
+        }),
+      );
+
+      await vi.waitFor(() => expect(runStates.at(-1)?.status).toBe('done'));
+      expect(JSON.stringify(updateMessage.mock.calls)).toContain('Verified CAO output');
+      expect(mocks.runAgent).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener('jarvis:run-state', onRunState);
+    }
+  });
+
+  it('reports cancellation when a late mismatched CAO response arrives after abort', async () => {
+    const selection = selectionFromOption('openai', 'gpt-5.6-terra', CODEX_CLI_CONNECTION);
+    setDiscoveredConnectionModels(CODEX_CLI_CONNECTION.id, [
+      {
+        id: 'gpt-5.6-terra',
+        label: 'GPT-5.6 Terra',
+        source: 'provider_list',
+        lastVerifiedAt: 1,
+      },
+    ]);
+    writeConnectionPickerStates({
+      'openai-codex': { available: true, auth: 'authenticated' },
+    });
+    useAuthStore.setState({ chatModelSelection: selection });
+    const jarvis = agent('agent_cao_late_abort', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_cao_late_abort' as ChatId;
+    const response = deferred<{
+      text: string;
+      usage: { input_tokens: number; output_tokens: number; cost_usd: number };
+      provider: ProviderId;
+      model: string;
+    }>();
+    mocks.runAgent.mockImplementationOnce(() => response.promise);
+    const runStates: Array<{ status?: string; errorCode?: string }> = [];
+    const onRunState = (event: Event) => {
+      runStates.push((event as CustomEvent<{ status?: string; errorCode?: string }>).detail);
+    };
+    window.addEventListener('jarvis:run-state', onRunState);
+    trackListener(
+      startRuntimeListener({
+        getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+        getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+        getAgentForChat: vi.fn(async () => jarvis),
+        getMessages: vi.fn(async () => []),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: 'msg_cao_late_abort_assistant' as MessageId,
+          created_at: 2,
+          updated_at: 2,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId,
+            cancellationKey: 'msg_cao_late_abort' as MessageId,
+            text: 'Have CAO learn the renderer workflow',
+            modelSelectionOverride: selection,
+            reasoningPreference: { mode: 'normal', effortOverride: 'high' },
+            runtimeSettings: { effort: 'high', performance: 'quality' },
+            automaticModelRoutingEligible: false,
+            caoAuthority: CAO_LEARNER_IDENTITY,
+          },
+        }),
+      );
+      await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+      window.dispatchEvent(
+        new CustomEvent('jarvis:cancel', {
+          detail: { messageId: 'msg_cao_late_abort' as MessageId },
+        }),
+      );
+      response.resolve({
+        text: 'Late mismatched output',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'openai',
+        model: 'gpt-5.6-sol',
+      });
+
+      await vi.waitFor(() => expect(runStates.at(-1)?.status).toBe('cancelled'));
+      expect(runStates.some((state) => state.status === 'error')).toBe(false);
+      expect(runStates.some((state) => state.status === 'done')).toBe(false);
     } finally {
       window.removeEventListener('jarvis:run-state', onRunState);
     }
@@ -5617,6 +5793,52 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     };
   }
 
+  async function installKernelTestHost(
+    database: ReturnType<typeof createJarvisDb>,
+    randomUuid: string,
+  ) {
+    return installJarvisKernelRuntimeHost({
+      db: database,
+      bindKernelActions: () =>
+        ({
+          create: vi.fn() as never,
+          decide: vi.fn() as never,
+          execute: vi.fn() as never,
+          executeAutoApprovedSafe: vi.fn() as never,
+        }) as never,
+      capabilitySnapshots: {
+        getForAccount: vi.fn(async () => ({
+          capturedAt: 1,
+          tools: [],
+          plugins: [],
+          mcps: [],
+          terminals: [],
+          agents: [],
+          entitlements: { source: 'unavailable' as const, capabilities: [] },
+        })),
+      },
+      randomUUID: () => randomUuid,
+      now: () => 10,
+    });
+  }
+
+  function configureCaoRuntimeSelection() {
+    const selection = selectionFromOption('openai', 'gpt-5.6-terra', CODEX_CLI_CONNECTION);
+    setDiscoveredConnectionModels(CODEX_CLI_CONNECTION.id, [
+      {
+        id: 'gpt-5.6-terra',
+        label: 'GPT-5.6 Terra',
+        source: 'provider_list',
+        lastVerifiedAt: 1,
+      },
+    ]);
+    writeConnectionPickerStates({
+      'openai-codex': { available: true, auth: 'authenticated' },
+    });
+    useAuthStore.setState({ chatModelSelection: selection });
+    return selection;
+  }
+
   it('binds Command Center effects to the exact current account session', async () => {
     const order: string[] = [];
     const read = {
@@ -5866,6 +6088,233 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     expect(mocks.runAgent).not.toHaveBeenCalled();
     expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
   });
+
+  it('publishes a kernel CAO turn only from the exact canonical response envelope identity', async () => {
+    const selection = configureCaoRuntimeSelection();
+    const protectedJarvis = agent('agent_kernel_cao_exact', 'jarvis', 'LEGACY SYSTEM PROMPT', true);
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const database = createJarvisDb(uniqueTestDbName('runtime-kernel-cao-exact'), TEST_INDEXED_DB);
+    await database.open();
+    await database.chats.add({
+      id: harness.chatId,
+      workspace_id: 'workspace_runtime_kernel_cao_exact' as never,
+      title: 'Kernel CAO exact identity',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      await providerInput.onHarnessSessionBound?.({ sessionId: 'session_kernel_cao_exact' });
+      await providerInput.onProviderCompletionEvidence?.({
+        observedAt: 3,
+        requestId: providerInput.requestId,
+        sessionId: 'session_kernel_cao_exact',
+        providerId: 'openai',
+        connectionId: 'openai-codex',
+        modelId: 'gpt-5.6-terra',
+        reasoningEffort: 'high',
+        usage: { capturedAt: 3 },
+        finishReason: 'stop',
+      });
+      return {
+        text: 'Canonical kernel CAO output.',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'openai' as ProviderId,
+        model: 'gpt-5.6-terra',
+      };
+    });
+    const disposeHost = await installKernelTestHost(database, 'runtime-kernel-cao-exact');
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
+    );
+    const runStates: Array<{ status?: string; errorCode?: string }> = [];
+    const onRunState = (event: Event) => {
+      runStates.push((event as CustomEvent<{ status?: string; errorCode?: string }>).detail);
+    };
+    window.addEventListener('jarvis:run-state', onRunState);
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            accountId: 'runtime-test-account',
+            chatId: harness.chatId,
+            text: 'Have CAO learn the renderer workflow',
+            modelSelectionOverride: selection,
+            reasoningPreference: { mode: 'normal', effortOverride: 'high' },
+            runtimeSettings: { effort: 'high', performance: 'quality' },
+            automaticModelRoutingEligible: false,
+            caoAuthority: CAO_LEARNER_IDENTITY,
+          },
+        }),
+      );
+
+      await vi.waitFor(() => expect(runStates.at(-1)?.status).toBe('done'), { timeout: 3_000 });
+      const persisted = await database.messages.where('chat_id').equals(harness.chatId).first();
+      expect(JSON.stringify(persisted?.parts)).toContain('Canonical kernel CAO output.');
+      expect(mocks.runAgent).toHaveBeenCalledOnce();
+    } finally {
+      window.removeEventListener('jarvis:run-state', onRunState);
+      stop();
+      await stop.whenIdle();
+      disposeHost();
+      database.close();
+      await database.delete();
+    }
+  }, 15_000);
+
+  it('keeps canonical CAO voice cancellation authoritative over a mismatched response envelope', async () => {
+    const selection = configureCaoRuntimeSelection();
+    const protectedJarvis = agent(
+      'agent_kernel_cao_voice_cancel',
+      'jarvis',
+      'LEGACY SYSTEM PROMPT',
+      true,
+    );
+    const harness = kernelRuntimeBindings(protectedJarvis);
+    const database = createJarvisDb(
+      uniqueTestDbName('runtime-kernel-cao-voice-cancel'),
+      TEST_INDEXED_DB,
+    );
+    await database.open();
+    await database.chats.add({
+      id: harness.chatId,
+      workspace_id: 'workspace_runtime_kernel_cao_voice_cancel' as never,
+      title: 'Kernel CAO voice cancellation',
+      mode: 'chat',
+      active_agent_ids: [protectedJarvis.id],
+      created_at: 1,
+      updated_at: 1,
+    });
+    const voiceSessionId = 'vsession_runtime_kernel_cao_voice_cancel';
+    useVoiceStore.getState().beginSession(
+      createVoiceSessionBinding({
+        sessionId: voiceSessionId,
+        accountId: 'runtime-test-account',
+        chatId: harness.chatId,
+        startedAt: 1,
+      }),
+    );
+    mocks.runAgent.mockImplementationOnce(async (providerInput) => {
+      await providerInput.onHarnessSessionBound?.({ sessionId: 'session_kernel_cao_voice' });
+      await providerInput.onProviderCompletionEvidence?.({
+        observedAt: 3,
+        requestId: providerInput.requestId,
+        sessionId: 'session_kernel_cao_voice',
+        providerId: 'openai',
+        connectionId: 'openai-codex',
+        modelId: 'gpt-5.6-terra',
+        reasoningEffort: 'high',
+        usage: { capturedAt: 3 },
+        finishReason: 'stop',
+      });
+      return {
+        text: 'Canonical voice response.',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: 'openai' as ProviderId,
+        model: 'gpt-5.6-terra',
+      };
+    });
+    interceptNextKernelRuntime((kernel) => {
+      const startVoiceTurn = kernel.startVoiceTurn.bind(kernel);
+      return Object.freeze({
+        ...kernel,
+        async startVoiceTurn(input: Parameters<JarvisKernelRuntime['startVoiceTurn']>[0]) {
+          const outcome = await startVoiceTurn(input);
+          if (outcome.kind === 'account_authority_revoked') return outcome;
+          const originalHandle = outcome.value.handle;
+          const handle = Object.freeze({
+            ...originalHandle,
+            requestCancellation() {
+              return originalHandle.requestCancellation();
+            },
+            commitResponseReady() {
+              return originalHandle.commitResponseReady();
+            },
+            async runValidatedPlayback() {
+              const playback = await originalHandle.runValidatedPlayback();
+              if (playback.kind === 'account_authority_revoked' || !playback.value.committed) {
+                return playback;
+              }
+              return Object.freeze({
+                kind: 'committed' as const,
+                value: Object.freeze({
+                  ...playback.value,
+                  run: Object.freeze({ ...playback.value.run, status: 'cancelled' as const }),
+                }),
+              });
+            },
+            dispose() {
+              originalHandle.dispose();
+            },
+          });
+          return Object.freeze({
+            ...outcome,
+            value: Object.freeze({
+              ...outcome.value,
+              result: Object.freeze({
+                ...outcome.value.result,
+                response: Object.freeze({
+                  ...outcome.value.result.response,
+                  provider: Object.freeze({
+                    ...outcome.value.result.response.provider,
+                    connectionId: 'opencode-cli',
+                    modelId: 'gpt-5.6-sol',
+                  }),
+                }),
+              }),
+              handle,
+            }),
+          });
+        },
+      });
+    });
+    const disposeHost = await installKernelTestHost(database, 'runtime-kernel-cao-voice-cancel');
+    const stop = trackListener(
+      startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
+    );
+    const runStates: Array<{ status?: string; errorCode?: string }> = [];
+    const onRunState = (event: Event) => {
+      runStates.push((event as CustomEvent<{ status?: string; errorCode?: string }>).detail);
+    };
+    window.addEventListener('jarvis:run-state', onRunState);
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            accountId: 'runtime-test-account',
+            voiceSessionId,
+            chatId: harness.chatId,
+            text: 'Have CAO learn the renderer workflow',
+            cancellationKey: 'msg_kernel_user' as MessageId,
+            speakReply: true,
+            modelSelectionOverride: selection,
+            reasoningPreference: { mode: 'normal', effortOverride: 'high' },
+            runtimeSettings: { effort: 'high', performance: 'quality' },
+            automaticModelRoutingEligible: false,
+            caoAuthority: CAO_LEARNER_IDENTITY,
+          },
+        }),
+      );
+
+      await vi.waitFor(() => expect(runStates.at(-1)?.status).toMatch(/cancelled|error/u), {
+        timeout: 3_000,
+      });
+      expect(runStates.at(-1)?.status).toBe('cancelled');
+      expect(runStates.some((state) => state.status === 'error')).toBe(false);
+      expect(runStates.some((state) => state.status === 'done')).toBe(false);
+    } finally {
+      window.removeEventListener('jarvis:run-state', onRunState);
+      stop();
+      await stop.whenIdle();
+      disposeHost();
+      useVoiceStore.getState().reset();
+      database.close();
+      await database.delete();
+    }
+  }, 15_000);
 
   it('fails an unsafe grounded audit closed through the installed kernel before any preview is visible', async () => {
     const openCodeConnection = PROVIDER_CONNECTIONS.find(

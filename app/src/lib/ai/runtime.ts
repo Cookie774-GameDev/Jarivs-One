@@ -36,7 +36,12 @@ import {
   buildConnectionRouteDisclosure,
   needsConnectionRouteDisclosure,
 } from './connectionDisclosure';
-import { jarvisProviderAttemptEvidenceRevalidator, runAgent, type RunAgentRequest } from './router';
+import {
+  jarvisProviderAttemptEvidenceRevalidator,
+  runAgent,
+  type ProviderCompletionEvidence,
+  type RunAgentRequest,
+} from './router';
 import {
   runBoundedLocalFinalBossRevision,
   shouldRunLocalFinalBossRevision,
@@ -6299,12 +6304,6 @@ export function startRuntimeListener(
               'explicit_response_contract_failed_closed',
             );
           }
-          assertRuntimeCaoExecutionIdentity(detail.caoAuthority, {
-            providerId: canonicalProviderId,
-            connectionId: canonicalConnectionId,
-            modelId: canonicalModelId,
-            reasoningEffort: reasoningPolicy?.resolvedEffort,
-          });
           controller.signal.throwIfAborted();
           if (canonicalVoiceCancelled) {
             useAgentStore.getState().setRunState(agent.id, 'idle');
@@ -6319,6 +6318,12 @@ export function startRuntimeListener(
             updateStructuredAgentStatus(detail.structuredContext, 'cancelled', 'Cancelled');
             return;
           }
+          assertRuntimeCaoExecutionIdentity(detail.caoAuthority, {
+            providerId: canonicalProviderId,
+            connectionId: canonicalConnectionId,
+            modelId: canonicalModelId,
+            reasoningEffort: reasoningPolicy?.resolvedEffort,
+          });
           if (
             canonicalReadScopeUnverified ||
             canonicalRootAuditIncomplete ||
@@ -6695,10 +6700,12 @@ export function startRuntimeListener(
         detail.approveAllForRun === true || readPermissionAccess(String(chatId)).approveAll;
       const runAccessLevel =
         detail.accessLevel ?? (interactionMode === 'agent' ? 'full' : 'read-only');
+      let caoProviderSessionId: string | null = null;
+      let caoCompletionEvidence: Readonly<ProviderCompletionEvidence> | null = null;
       const providerRequest: RunAgentRequest = {
         agent: runnable,
         chatId: String(chatId),
-        ...(explicitReadRoot ? { requestId: String(placeholder.id) } : {}),
+        ...(explicitReadRoot || detail.caoAuthority ? { requestId: String(placeholder.id) } : {}),
         ...(structuredAgent ? { parentChatId: structuredAgent.parentChatId } : {}),
         messages: [
           ...prepareOpenCodeMessagesForInteractionMode(requestMessages, {
@@ -6782,10 +6789,41 @@ export function startRuntimeListener(
           chatId: String(chatId),
           explicitReadRoot: Boolean(explicitReadRoot),
         }),
-        ...(structuredAgent
+        ...(structuredAgent || detail.caoAuthority
           ? {
-              onHarnessSessionBound: (binding: { sessionId: string; parentSessionId?: string }) =>
-                updateStructuredAgentHarnessBinding(detail.structuredContext, binding),
+              onHarnessSessionBound: (binding: { sessionId: string; parentSessionId?: string }) => {
+                controller.signal.throwIfAborted();
+                if (detail.caoAuthority) {
+                  if (
+                    !binding.sessionId.trim() ||
+                    (caoProviderSessionId !== null && caoProviderSessionId !== binding.sessionId)
+                  ) {
+                    throw new Error('cao_learner_completion_session_mismatch');
+                  }
+                  caoProviderSessionId = binding.sessionId;
+                }
+                if (structuredAgent) {
+                  updateStructuredAgentHarnessBinding(detail.structuredContext, binding);
+                }
+              },
+            }
+          : {}),
+        ...(detail.caoAuthority
+          ? {
+              onProviderCompletionEvidence: (evidence: Readonly<ProviderCompletionEvidence>) => {
+                controller.signal.throwIfAborted();
+                if (
+                  evidence.requestId !== String(placeholder.id) ||
+                  caoProviderSessionId === null ||
+                  evidence.sessionId !== caoProviderSessionId
+                ) {
+                  throw new Error('cao_learner_completion_binding_mismatch');
+                }
+                caoCompletionEvidence = Object.freeze({
+                  ...evidence,
+                  usage: Object.freeze({ ...evidence.usage }),
+                });
+              },
             }
           : {}),
         onApprovalRequested: async (approval: VibeSpaceApproval) => {
@@ -6900,13 +6938,12 @@ export function startRuntimeListener(
         : shouldRunLocalFinalBossRevision(reasoningPolicy?.mode, runnable.model.provider)
           ? await runBoundedLocalFinalBossRevision(runAgent, providerRequest)
           : await runAgent(providerRequest);
-      assertRuntimeCaoExecutionIdentity(detail.caoAuthority, {
-        providerId: response.provider,
-        connectionId: providerRequest.connectionId,
-        modelId: response.model,
-        reasoningEffort: reasoningPolicy?.resolvedEffort,
-      });
       controller.signal.throwIfAborted();
+      const observedCaoIdentity = caoCompletionEvidence;
+      if (detail.caoAuthority && observedCaoIdentity === null) {
+        throw new Error('cao_learner_completion_evidence_missing');
+      }
+      assertRuntimeCaoExecutionIdentity(detail.caoAuthority, observedCaoIdentity ?? {});
       if (!responseCompositionVisible) {
         setLiveAgentActivityPhase(chatId, agentActivityId, {
           category: 'response',
@@ -7284,7 +7321,7 @@ export function startRuntimeListener(
       cancelPendingFlush();
       await settleStreamingWrites();
 
-      const aborted = isAbortError(err);
+      const aborted = controller.signal.aborted || isAbortError(err);
 
       await mirrorShadowOutcome(aborted ? 'cancelled' : 'failed', true);
 
