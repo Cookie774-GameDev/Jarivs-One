@@ -14,7 +14,7 @@ const scope = {
 } as const;
 
 function emptySnapshot(): MarkdownLibrarySnapshot {
-  return { generation: 0, documents: [], revisions: [] };
+  return { generation: 0, documents: [], revisions: [], pendingRollback: null };
 }
 
 describe('Markdown Library authority', () => {
@@ -92,6 +92,39 @@ describe('Markdown Library authority', () => {
     ).toHaveLength(2);
   });
 
+  it('reuses retained revision truth when a physical path is removed and later re-added', async () => {
+    const authority = createMarkdownLibraryAuthority({ filePort, repository, now: () => 500 });
+    const path = 'C:\\repo\\docs\\generated\\goal-release.md';
+    const original = files.get(path)!;
+
+    await authority.reindex(scope);
+    const originalDocument = snapshot.documents.find(({ path: candidate }) => candidate === path)!;
+    files.delete(path);
+    await authority.reindex(scope);
+    files.set(path, original);
+    await authority.reindex(scope);
+
+    const restored = (await authority.list(scope)).find(
+      ({ path: candidate }) => candidate === path,
+    )!;
+    expect(restored).toMatchObject({
+      documentId: originalDocument.documentId,
+      revision: 1,
+      contentSha256: originalDocument.contentSha256,
+    });
+    expect(
+      snapshot.revisions.filter(({ documentId }) => documentId === originalDocument.documentId),
+    ).toHaveLength(1);
+  });
+
+  it('validates the complete replacement snapshot before repository CAS', async () => {
+    snapshot = { ...emptySnapshot(), generation: Number.MAX_SAFE_INTEGER };
+    const authority = createMarkdownLibraryAuthority({ filePort, repository, now: () => 500 });
+
+    await expect(authority.reindex(scope)).rejects.toThrow('markdown_library_index_invalid');
+    expect(replace).not.toHaveBeenCalled();
+  });
+
   it('lists and filters only bounded account/project metadata without revision content', async () => {
     const authority = createMarkdownLibraryAuthority({ filePort, repository, now: () => 500 });
     await authority.reindex(scope);
@@ -101,16 +134,86 @@ describe('Markdown Library authority', () => {
     ]);
     expect(await authority.list(scope, { limit: 1 })).toHaveLength(1);
     const goal = snapshot.documents.find(({ kind }) => kind === 'goal')!;
-    expect(await authority.history(scope, goal.documentId)).toEqual([
-      {
-        revision: 1,
-        contentSha256: goal.contentSha256,
-        sizeBytes: goal.sizeBytes,
-        createdAt: 500,
-      },
-    ]);
+    expect(await authority.history(scope, goal.documentId)).toEqual({
+      items: [
+        {
+          revision: 1,
+          contentSha256: goal.contentSha256,
+          sizeBytes: goal.sizeBytes,
+          createdAt: 500,
+        },
+      ],
+      nextCursor: null,
+    });
     expect(JSON.stringify(await authority.list(scope))).not.toContain('First');
     expect(JSON.stringify(await authority.history(scope, goal.documentId))).not.toContain('First');
+  });
+
+  it('paginates metadata-only history through a clamped stable document cursor', async () => {
+    let now = 500;
+    const authority = createMarkdownLibraryAuthority({ filePort, repository, now: () => now });
+    const path = 'C:\\repo\\docs\\generated\\goal-release.md';
+    await authority.reindex(scope);
+    const id = snapshot.documents.find(({ path: candidate }) => candidate === path)!.documentId;
+    files.set(path, '# Release goal\nSecond');
+    now = 600;
+    await authority.reindex(scope);
+    files.set(path, '# Release goal\nThird');
+    now = 700;
+    await authority.reindex(scope);
+
+    const first = await authority.history(scope, id, { limit: 2 });
+    expect(first.items.map(({ revision }) => revision)).toEqual([3, 2]);
+    expect(first.nextCursor).toEqual({ schemaVersion: 1, documentId: id, beforeRevision: 2 });
+    const second = await authority.history(scope, id, { limit: 999, cursor: first.nextCursor! });
+    expect(second.items.map(({ revision }) => revision)).toEqual([1]);
+    expect(second.nextCursor).toBeNull();
+    expect((await authority.history(scope, id, { limit: 0 })).items).toHaveLength(1);
+    expect(JSON.stringify(first)).not.toContain('Third');
+
+    const other = snapshot.documents.find(({ documentId }) => documentId !== id)!;
+    await expect(
+      authority.history(scope, id, {
+        cursor: { schemaVersion: 1, documentId: other.documentId, beforeRevision: 2 },
+      }),
+    ).rejects.toThrow('markdown_library_history_cursor_invalid');
+
+    const manyRevisions = await Promise.all(
+      Array.from({ length: 205 }, async (_value, index) => {
+        const revision = index + 1;
+        const content = `# Release goal\nVersion ${revision}`;
+        return {
+          schemaVersion: 1 as const,
+          documentId: id,
+          revision,
+          contentSha256: await sha256Text(content),
+          sizeBytes: new TextEncoder().encode(content).byteLength,
+          createdAt: 1_000 + revision,
+          content,
+        };
+      }),
+    );
+    const latest = manyRevisions.at(-1)!;
+    snapshot = {
+      generation: snapshot.generation + 1,
+      documents: snapshot.documents.map((candidate) =>
+        candidate.documentId === id
+          ? {
+              ...candidate,
+              contentSha256: latest.contentSha256,
+              sizeBytes: latest.sizeBytes,
+              revision: latest.revision,
+              indexedAt: latest.createdAt,
+            }
+          : candidate,
+      ),
+      revisions: [
+        ...snapshot.revisions.filter(({ documentId }) => documentId !== id),
+        ...manyRevisions,
+      ],
+      pendingRollback: null,
+    };
+    expect((await authority.history(scope, id, { limit: 999 })).items).toHaveLength(200);
   });
 
   it('rolls back through exact file and index authority while appending a new revision', async () => {
@@ -136,6 +239,62 @@ describe('Markdown Library authority', () => {
     );
   });
 
+  it('recognizes repository throw-after-commit truth without compensating the committed file', async () => {
+    const authority = createMarkdownLibraryAuthority({ filePort, repository, now: () => 700 });
+    const path = 'C:\\repo\\docs\\generated\\goal-release.md';
+    const firstContent = files.get(path)!;
+    await authority.reindex(scope);
+    files.set(path, '# Release goal\nSecond');
+    await authority.reindex(scope);
+    const document = snapshot.documents.find(({ path: candidate }) => candidate === path)!;
+    let acknowledgementLost = false;
+    replace.mockImplementation(async ({ expectedGeneration, next }) => {
+      if (snapshot.generation !== expectedGeneration) return false;
+      snapshot = next;
+      if (!acknowledgementLost && next.pendingRollback === null) {
+        acknowledgementLost = true;
+        throw new Error('commit acknowledgement lost');
+      }
+      return true;
+    });
+
+    await expect(authority.rollback(scope, document.documentId, 1)).resolves.toMatchObject({
+      revision: 3,
+    });
+    expect(files.get(path)).toBe(firstContent);
+    expect(
+      snapshot.documents.find(({ documentId }) => documentId === document.documentId),
+    ).toMatchObject({ revision: 3 });
+  });
+
+  it('recovers a durable prepared rollback after reload by restoring the indexed file truth', async () => {
+    const authority = createMarkdownLibraryAuthority({ filePort, repository, now: () => 700 });
+    const path = 'C:\\repo\\docs\\generated\\goal-release.md';
+    const firstContent = files.get(path)!;
+    await authority.reindex(scope);
+    files.set(path, '# Release goal\nSecond');
+    await authority.reindex(scope);
+    const document = snapshot.documents.find(({ path: candidate }) => candidate === path)!;
+    files.set(path, firstContent);
+    snapshot = {
+      ...snapshot,
+      generation: snapshot.generation + 1,
+      pendingRollback: {
+        schemaVersion: 1,
+        documentId: document.documentId,
+        fromRevision: document.revision,
+        targetRevision: 1,
+        createdAt: 700,
+      },
+    };
+
+    const reloaded = createMarkdownLibraryAuthority({ filePort, repository, now: () => 800 });
+    await reloaded.list(scope);
+
+    expect(files.get(path)).toBe('# Release goal\nSecond');
+    expect(snapshot.pendingRollback).toBeNull();
+  });
+
   it('rejects stale files and compensates a physical rollback when index CAS loses', async () => {
     const authority = createMarkdownLibraryAuthority({ filePort, repository, now: () => 500 });
     await authority.reindex(scope);
@@ -151,7 +310,16 @@ describe('Markdown Library authority', () => {
     expect(replace).toHaveBeenCalledTimes(2);
 
     files.set(document.path, secondContent);
-    replace.mockResolvedValueOnce(false);
+    let rejectFinalOnce = true;
+    replace.mockImplementation(async ({ expectedGeneration, next }) => {
+      if (snapshot.generation !== expectedGeneration) return false;
+      if (rejectFinalOnce && snapshot.pendingRollback && next.pendingRollback === null) {
+        rejectFinalOnce = false;
+        return false;
+      }
+      snapshot = next;
+      return true;
+    });
 
     await expect(authority.rollback(scope, document.documentId, 1)).rejects.toThrow(
       'markdown_library_index_conflict',
@@ -169,13 +337,31 @@ describe('Markdown Library authority', () => {
     await authority.reindex(scope);
     const document = snapshot.documents.find(({ documentId }) => documentId === first.documentId)!;
 
-    replace.mockRejectedValueOnce(new Error('database unavailable'));
+    let throwBeforeFinalOnce = true;
+    replace.mockImplementation(async ({ expectedGeneration, next }) => {
+      if (snapshot.generation !== expectedGeneration) return false;
+      if (throwBeforeFinalOnce && snapshot.pendingRollback && next.pendingRollback === null) {
+        throwBeforeFinalOnce = false;
+        throw new Error('database unavailable');
+      }
+      snapshot = next;
+      return true;
+    });
     await expect(authority.rollback(scope, document.documentId, 1)).rejects.toThrow(
       'markdown_library_index_conflict',
     );
     expect(files.get(document.path)).toBe(secondContent);
 
-    replace.mockResolvedValueOnce(false);
+    let rejectFinalOnce = true;
+    replace.mockImplementation(async ({ expectedGeneration, next }) => {
+      if (snapshot.generation !== expectedGeneration) return false;
+      if (rejectFinalOnce && snapshot.pendingRollback && next.pendingRollback === null) {
+        rejectFinalOnce = false;
+        return false;
+      }
+      snapshot = next;
+      return true;
+    });
     compareAndWrite
       .mockImplementationOnce(async ({ path, content }) => {
         files.set(path, content);

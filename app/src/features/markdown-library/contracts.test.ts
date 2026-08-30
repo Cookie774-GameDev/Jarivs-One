@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  parseMarkdownHistoryCursor,
   parseMarkdownDocumentMetadata,
+  parseMarkdownRollbackPreparation,
   parseMarkdownRevision,
   type MarkdownDocumentMetadataV1,
+  type MarkdownHistoryCursorV1,
+  type MarkdownRollbackPreparationV1,
   type MarkdownRevisionV1,
 } from './contracts';
 
@@ -31,12 +35,44 @@ const revision: MarkdownRevisionV1 = {
   content: '# Release goal\n',
 };
 
+const historyCursor: MarkdownHistoryCursorV1 = {
+  schemaVersion: 1,
+  documentId: document.documentId,
+  beforeRevision: 2,
+};
+
+const rollbackPreparation: MarkdownRollbackPreparationV1 = {
+  schemaVersion: 1,
+  documentId: document.documentId,
+  fromRevision: 2,
+  targetRevision: 1,
+  createdAt: 300,
+};
+
 describe('Markdown Library V1 contracts', () => {
   it('accepts exact typed/versioned document and immutable revision records', () => {
     expect(parseMarkdownDocumentMetadata(document)).toEqual(document);
     expect(parseMarkdownRevision(revision)).toEqual(revision);
     expect(Object.isFrozen(parseMarkdownDocumentMetadata(document))).toBe(true);
     expect(Object.isFrozen(parseMarkdownRevision(revision))).toBe(true);
+  });
+
+  it('accepts only exact document-bound history cursors', () => {
+    expect(parseMarkdownHistoryCursor(historyCursor)).toEqual(historyCursor);
+    expect(Object.isFrozen(parseMarkdownHistoryCursor(historyCursor))).toBe(true);
+    expect(parseMarkdownHistoryCursor({ ...historyCursor, beforeRevision: 0 })).toBeNull();
+    expect(parseMarkdownHistoryCursor({ ...historyCursor, projectId: 'project-alpha' })).toBeNull();
+  });
+
+  it('accepts only exact durable rollback preparations', () => {
+    expect(parseMarkdownRollbackPreparation(rollbackPreparation)).toEqual(rollbackPreparation);
+    expect(Object.isFrozen(parseMarkdownRollbackPreparation(rollbackPreparation))).toBe(true);
+    expect(
+      parseMarkdownRollbackPreparation({ ...rollbackPreparation, targetRevision: 2 }),
+    ).toBeNull();
+    expect(
+      parseMarkdownRollbackPreparation({ ...rollbackPreparation, originalContent: '# hidden' }),
+    ).toBeNull();
   });
 
   it.each([

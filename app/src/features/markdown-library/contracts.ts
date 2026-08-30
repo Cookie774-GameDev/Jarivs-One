@@ -34,6 +34,20 @@ export type MarkdownRevisionV1 = Readonly<{
   content: string;
 }>;
 
+export type MarkdownHistoryCursorV1 = Readonly<{
+  schemaVersion: 1;
+  documentId: `mdoc_${string}`;
+  beforeRevision: number;
+}>;
+
+export type MarkdownRollbackPreparationV1 = Readonly<{
+  schemaVersion: 1;
+  documentId: `mdoc_${string}`;
+  fromRevision: number;
+  targetRevision: number;
+  createdAt: number;
+}>;
+
 const DOCUMENT_KEYS = new Set([
   'schemaVersion',
   'documentId',
@@ -56,6 +70,14 @@ const REVISION_KEYS = new Set([
   'sizeBytes',
   'createdAt',
   'content',
+]);
+const HISTORY_CURSOR_KEYS = new Set(['schemaVersion', 'documentId', 'beforeRevision']);
+const ROLLBACK_PREPARATION_KEYS = new Set([
+  'schemaVersion',
+  'documentId',
+  'fromRevision',
+  'targetRevision',
+  'createdAt',
 ]);
 const DOCUMENT_ID = /^mdoc_[a-f0-9]{32}$/u;
 const SCOPE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
@@ -171,5 +193,48 @@ export function parseMarkdownRevision(input: unknown): MarkdownRevisionV1 | null
     sizeBytes: record.sizeBytes,
     createdAt: record.createdAt,
     content: record.content,
+  });
+}
+
+export function parseMarkdownHistoryCursor(input: unknown): MarkdownHistoryCursorV1 | null {
+  const record = recordOf(input);
+  if (
+    !record ||
+    !exactKeys(record, HISTORY_CURSOR_KEYS) ||
+    record.schemaVersion !== 1 ||
+    !exactDocumentId(record.documentId) ||
+    !safeInteger(record.beforeRevision, 1)
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    schemaVersion: 1,
+    documentId: record.documentId,
+    beforeRevision: record.beforeRevision,
+  });
+}
+
+export function parseMarkdownRollbackPreparation(
+  input: unknown,
+): MarkdownRollbackPreparationV1 | null {
+  const record = recordOf(input);
+  if (
+    !record ||
+    !exactKeys(record, ROLLBACK_PREPARATION_KEYS) ||
+    record.schemaVersion !== 1 ||
+    !exactDocumentId(record.documentId) ||
+    !safeInteger(record.fromRevision, 1) ||
+    !safeInteger(record.targetRevision, 1) ||
+    record.fromRevision === record.targetRevision ||
+    !safeInteger(record.createdAt, 0)
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    schemaVersion: 1,
+    documentId: record.documentId,
+    fromRevision: record.fromRevision,
+    targetRevision: record.targetRevision,
+    createdAt: record.createdAt,
   });
 }

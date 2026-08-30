@@ -3,10 +3,14 @@ import { sha256Text } from '@/lib/fs';
 import {
   MARKDOWN_LIBRARY_MAX_BYTES,
   parseMarkdownDocumentMetadata,
+  parseMarkdownHistoryCursor,
+  parseMarkdownRollbackPreparation,
   parseMarkdownRevision,
   type MarkdownDocumentMetadataV1,
+  type MarkdownHistoryCursorV1,
   type MarkdownLibraryDocumentKind,
   type MarkdownLibraryScope,
+  type MarkdownRollbackPreparationV1,
   type MarkdownRevisionV1,
 } from './contracts';
 
@@ -20,6 +24,7 @@ export type MarkdownLibrarySnapshot = Readonly<{
   generation: number;
   documents: readonly MarkdownDocumentMetadataV1[];
   revisions: readonly MarkdownRevisionV1[];
+  pendingRollback: MarkdownRollbackPreparationV1 | null;
 }>;
 
 export interface MarkdownLibraryFilePort {
@@ -49,6 +54,11 @@ export type MarkdownHistoryProjection = Readonly<{
   createdAt: number;
 }>;
 
+export type MarkdownHistoryPage = Readonly<{
+  items: readonly MarkdownHistoryProjection[];
+  nextCursor: MarkdownHistoryCursorV1 | null;
+}>;
+
 const SCOPE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const KINDS: readonly Exclude<MarkdownLibraryDocumentKind, 'custom'>[] = [
   'goal',
@@ -62,6 +72,8 @@ const KINDS: readonly Exclude<MarkdownLibraryDocumentKind, 'custom'>[] = [
 ];
 const DEFAULT_LIST_LIMIT = 100;
 const MAX_LIST_LIMIT = 200;
+const DEFAULT_HISTORY_LIMIT = 100;
+const MAX_HISTORY_LIMIT = 200;
 
 function normalizeScope(input: MarkdownLibraryScope): MarkdownLibraryScope {
   const root = normalizePortableAbsolutePath(input.root);
@@ -119,6 +131,13 @@ async function validSnapshot(
   }
   const safeDocuments = documents as MarkdownDocumentMetadataV1[];
   const safeRevisions = revisions as MarkdownRevisionV1[];
+  const pendingRollback =
+    input.pendingRollback === null || input.pendingRollback === undefined
+      ? null
+      : parseMarkdownRollbackPreparation(input.pendingRollback);
+  if (input.pendingRollback !== null && input.pendingRollback !== undefined && !pendingRollback) {
+    throw new Error('markdown_library_index_invalid');
+  }
   const documentIds = new Set<string>();
   const paths = new Set<string>();
   for (const document of safeDocuments) {
@@ -155,10 +174,29 @@ async function validSnapshot(
       throw new Error('markdown_library_index_invalid');
     }
   }
+  if (pendingRollback) {
+    const document = safeDocuments.find(
+      (candidate) => candidate.documentId === pendingRollback.documentId,
+    );
+    const target = safeRevisions.find(
+      (revision) =>
+        revision.documentId === pendingRollback.documentId &&
+        revision.revision === pendingRollback.targetRevision,
+    );
+    if (
+      !document ||
+      !target ||
+      document.revision !== pendingRollback.fromRevision ||
+      document.contentSha256 === target.contentSha256
+    ) {
+      throw new Error('markdown_library_index_invalid');
+    }
+  }
   return Object.freeze({
     generation: input.generation,
     documents: Object.freeze(safeDocuments),
     revisions: Object.freeze(safeRevisions),
+    pendingRollback,
   });
 }
 
@@ -178,9 +216,120 @@ export function createMarkdownLibraryAuthority(input: {
 }) {
   const now = input.now ?? Date.now;
 
+  async function readSnapshot(scope: MarkdownLibraryScope) {
+    return validSnapshot(await input.repository.readProjectIndex(scope), scope);
+  }
+
+  function samePreparation(
+    left: MarkdownRollbackPreparationV1 | null,
+    right: MarkdownRollbackPreparationV1,
+  ): boolean {
+    return (
+      left !== null &&
+      left.documentId === right.documentId &&
+      left.fromRevision === right.fromRevision &&
+      left.targetRevision === right.targetRevision &&
+      left.createdAt === right.createdAt
+    );
+  }
+
+  async function recoverPendingRollback(
+    scope: MarkdownLibraryScope,
+    initial: MarkdownLibrarySnapshot,
+  ): Promise<MarkdownLibrarySnapshot> {
+    let snapshot = initial;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const pending = snapshot.pendingRollback;
+      if (!pending) return snapshot;
+      const document = snapshot.documents.find(
+        (candidate) => candidate.documentId === pending.documentId,
+      )!;
+      const currentRevision = snapshot.revisions.find(
+        (revision) =>
+          revision.documentId === pending.documentId && revision.revision === pending.fromRevision,
+      )!;
+      const target = snapshot.revisions.find(
+        (revision) =>
+          revision.documentId === pending.documentId &&
+          revision.revision === pending.targetRevision,
+      )!;
+      const physical = await input.filePort.readText({ path: document.path, root: scope.root });
+      if (physical === null) throw new Error('markdown_library_rollback_recovery_failed');
+      const physicalSha256 = await sha256Text(physical);
+      if (physicalSha256 === target.contentSha256) {
+        let compensated = false;
+        try {
+          compensated = await input.filePort.compareAndWrite({
+            path: document.path,
+            root: scope.root,
+            expectedSha256: target.contentSha256,
+            content: currentRevision.content,
+          });
+        } catch {
+          compensated = false;
+        }
+        if (!compensated) {
+          const observed = await input.filePort.readText({
+            path: document.path,
+            root: scope.root,
+          });
+          if (observed === null || (await sha256Text(observed)) !== document.contentSha256) {
+            throw new Error('markdown_library_rollback_compensation_failed');
+          }
+        }
+      } else if (physicalSha256 !== document.contentSha256) {
+        throw new Error('markdown_library_rollback_compensation_failed');
+      }
+
+      const cleared = await validSnapshot(
+        Object.freeze({
+          generation: snapshot.generation + 1,
+          documents: snapshot.documents,
+          revisions: snapshot.revisions,
+          pendingRollback: null,
+        }),
+        scope,
+      );
+      let replaced = false;
+      try {
+        replaced = await input.repository.replaceProjectIndex({
+          scope,
+          expectedGeneration: snapshot.generation,
+          next: cleared,
+        });
+      } catch {
+        replaced = false;
+      }
+      if (replaced) return cleared;
+      const observed = await readSnapshot(scope);
+      if (!observed.pendingRollback) {
+        const observedDocument = observed.documents.find(
+          (candidate) => candidate.documentId === pending.documentId,
+        );
+        const observedContent = observedDocument
+          ? await input.filePort.readText({ path: observedDocument.path, root: scope.root })
+          : null;
+        if (
+          observedDocument &&
+          observedContent !== null &&
+          (await sha256Text(observedContent)) === observedDocument.contentSha256
+        ) {
+          return observed;
+        }
+        throw new Error('markdown_library_rollback_recovery_failed');
+      }
+      if (!samePreparation(observed.pendingRollback, pending)) {
+        throw new Error('markdown_library_rollback_recovery_failed');
+      }
+      snapshot = observed;
+    }
+    throw new Error('markdown_library_rollback_recovery_failed');
+  }
+
   async function read(scopeInput: MarkdownLibraryScope) {
     const scope = normalizeScope(scopeInput);
-    const snapshot = await validSnapshot(await input.repository.readProjectIndex(scope), scope);
+    let snapshot = await readSnapshot(scope);
+    if (snapshot.pendingRollback) snapshot = await recoverPendingRollback(scope, snapshot);
     return { scope, snapshot };
   }
 
@@ -216,8 +365,14 @@ export function createMarkdownLibraryAuthority(input: {
           (document) => pathKey(document.path, scope.root) === pathKey(path, scope.root),
         );
         if (prior && prior.documentId !== id) throw new Error('markdown_library_index_invalid');
-        const changed = prior?.contentSha256 !== sha256;
-        const revision = prior ? (changed ? prior.revision + 1 : prior.revision) : 1;
+        const retainedRevision = snapshot.revisions
+          .filter((candidate) => candidate.documentId === id)
+          .sort((left, right) => left.revision - right.revision)
+          .at(-1);
+        const priorRevision = prior?.revision ?? retainedRevision?.revision;
+        const priorSha256 = prior?.contentSha256 ?? retainedRevision?.contentSha256;
+        const changed = priorSha256 !== sha256;
+        const revision = priorRevision ? (changed ? priorRevision + 1 : priorRevision) : 1;
         const document = parseMarkdownDocumentMetadata({
           schemaVersion: 1,
           documentId: id,
@@ -234,7 +389,7 @@ export function createMarkdownLibraryAuthority(input: {
         });
         if (!document) throw new Error('markdown_library_inventory_invalid');
         nextDocuments.push(document);
-        if (!prior || changed) {
+        if (!priorRevision || changed) {
           const history = parseMarkdownRevision({
             schemaVersion: 1,
             documentId: id,
@@ -249,11 +404,15 @@ export function createMarkdownLibraryAuthority(input: {
         }
       }
       nextDocuments.sort((left, right) => left.path.localeCompare(right.path, 'en-US'));
-      const next = Object.freeze({
-        generation: snapshot.generation + 1,
-        documents: Object.freeze(nextDocuments),
-        revisions: Object.freeze(nextRevisions),
-      });
+      const next = await validSnapshot(
+        Object.freeze({
+          generation: snapshot.generation + 1,
+          documents: Object.freeze(nextDocuments),
+          revisions: Object.freeze(nextRevisions),
+          pendingRollback: null,
+        }),
+        scope,
+      );
       if (
         !(await input.repository.replaceProjectIndex({
           scope,
@@ -296,16 +455,40 @@ export function createMarkdownLibraryAuthority(input: {
     async history(
       scopeInput: MarkdownLibraryScope,
       id: string,
-    ): Promise<readonly MarkdownHistoryProjection[]> {
+      options: Readonly<{ limit?: number; cursor?: MarkdownHistoryCursorV1 }> = {},
+    ): Promise<MarkdownHistoryPage> {
       const { snapshot } = await read(scopeInput);
-      if (!snapshot.documents.some((document) => document.documentId === id))
-        return Object.freeze([]);
-      return Object.freeze(
-        snapshot.revisions
-          .filter((revision) => revision.documentId === id)
-          .sort((left, right) => left.revision - right.revision)
-          .map(publicHistory),
-      );
+      const cursor = options.cursor ? parseMarkdownHistoryCursor(options.cursor) : null;
+      if (options.cursor && (!cursor || cursor.documentId !== id)) {
+        throw new Error('markdown_library_history_cursor_invalid');
+      }
+      const limit = Number.isInteger(options.limit)
+        ? Math.min(MAX_HISTORY_LIMIT, Math.max(1, options.limit!))
+        : DEFAULT_HISTORY_LIMIT;
+      if (!snapshot.documents.some((document) => document.documentId === id)) {
+        return Object.freeze({ items: Object.freeze([]), nextCursor: null });
+      }
+      const candidates = snapshot.revisions
+        .filter(
+          (revision) =>
+            revision.documentId === id &&
+            (cursor === null || revision.revision < cursor.beforeRevision),
+        )
+        .sort((left, right) => right.revision - left.revision);
+      const page = candidates.slice(0, limit);
+      const last = page.at(-1);
+      const nextCursor =
+        last && candidates.length > page.length
+          ? Object.freeze({
+              schemaVersion: 1 as const,
+              documentId: last.documentId,
+              beforeRevision: last.revision,
+            })
+          : null;
+      return Object.freeze({
+        items: Object.freeze(page.map(publicHistory)),
+        nextCursor,
+      });
     },
 
     async rollback(
@@ -334,16 +517,6 @@ export function createMarkdownLibraryAuthority(input: {
       if (target.contentSha256 === document.contentSha256) {
         throw new Error('markdown_library_revision_current');
       }
-      if (
-        !(await input.filePort.compareAndWrite({
-          path: document.path,
-          root: scope.root,
-          expectedSha256: document.contentSha256,
-          content: target.content,
-        }))
-      ) {
-        throw new Error('markdown_library_file_stale');
-      }
       const createdAt = now();
       const nextRevisionNumber = document.revision + 1;
       const rolledBack = parseMarkdownDocumentMetadata({
@@ -363,39 +536,104 @@ export function createMarkdownLibraryAuthority(input: {
         content: target.content,
       });
       if (!rolledBack || !revision) throw new Error('markdown_library_rollback_invalid');
-      const next = Object.freeze({
-        generation: snapshot.generation + 1,
-        documents: Object.freeze(
-          snapshot.documents.map((candidate) =>
-            candidate.documentId === document.documentId ? rolledBack : candidate,
-          ),
-        ),
-        revisions: Object.freeze([...snapshot.revisions, revision]),
+      const preparation = parseMarkdownRollbackPreparation({
+        schemaVersion: 1,
+        documentId: document.documentId,
+        fromRevision: document.revision,
+        targetRevision: target.revision,
+        createdAt,
       });
-      let replaced = false;
+      if (!preparation) throw new Error('markdown_library_rollback_invalid');
+      const preparedNext = await validSnapshot(
+        Object.freeze({
+          generation: snapshot.generation + 1,
+          documents: snapshot.documents,
+          revisions: snapshot.revisions,
+          pendingRollback: preparation,
+        }),
+        scope,
+      );
+      let prepared = false;
       try {
-        replaced = await input.repository.replaceProjectIndex({
+        prepared = await input.repository.replaceProjectIndex({
           scope,
           expectedGeneration: snapshot.generation,
-          next,
+          next: preparedNext,
         });
       } catch {
-        replaced = false;
+        prepared = false;
       }
-      if (replaced) return rolledBack;
-      let compensated = false;
+      let preparedSnapshot = preparedNext;
+      if (!prepared) {
+        const observed = await readSnapshot(scope);
+        if (!samePreparation(observed.pendingRollback, preparation)) {
+          throw new Error('markdown_library_index_conflict');
+        }
+        preparedSnapshot = observed;
+      }
+
+      let wroteTarget = false;
       try {
-        compensated = await input.filePort.compareAndWrite({
+        wroteTarget = await input.filePort.compareAndWrite({
           path: document.path,
           root: scope.root,
-          expectedSha256: target.contentSha256,
-          content: currentContent,
+          expectedSha256: document.contentSha256,
+          content: target.content,
         });
       } catch {
-        compensated = false;
+        wroteTarget = false;
       }
-      if (!compensated) throw new Error('markdown_library_rollback_compensation_failed');
-      throw new Error('markdown_library_index_conflict');
+      if (!wroteTarget) {
+        await recoverPendingRollback(scope, preparedSnapshot);
+        throw new Error('markdown_library_file_stale');
+      }
+
+      const finalized = await validSnapshot(
+        Object.freeze({
+          generation: preparedSnapshot.generation + 1,
+          documents: Object.freeze(
+            preparedSnapshot.documents.map((candidate) =>
+              candidate.documentId === document.documentId ? rolledBack : candidate,
+            ),
+          ),
+          revisions: Object.freeze([...preparedSnapshot.revisions, revision]),
+          pendingRollback: null,
+        }),
+        scope,
+      );
+      let finalizedRepository = false;
+      try {
+        finalizedRepository = await input.repository.replaceProjectIndex({
+          scope,
+          expectedGeneration: preparedSnapshot.generation,
+          next: finalized,
+        });
+      } catch {
+        finalizedRepository = false;
+      }
+      if (finalizedRepository) return rolledBack;
+
+      const observed = await readSnapshot(scope);
+      const observedDocument = observed.documents.find(
+        (candidate) => candidate.documentId === document.documentId,
+      );
+      const observedContent = observedDocument
+        ? await input.filePort.readText({ path: observedDocument.path, root: scope.root })
+        : null;
+      if (
+        !observed.pendingRollback &&
+        observedDocument?.revision === rolledBack.revision &&
+        observedDocument.contentSha256 === rolledBack.contentSha256 &&
+        observedContent !== null &&
+        (await sha256Text(observedContent)) === rolledBack.contentSha256
+      ) {
+        return rolledBack;
+      }
+      if (samePreparation(observed.pendingRollback, preparation)) {
+        await recoverPendingRollback(scope, observed);
+        throw new Error('markdown_library_index_conflict');
+      }
+      throw new Error('markdown_library_rollback_recovery_failed');
     },
   });
 }
