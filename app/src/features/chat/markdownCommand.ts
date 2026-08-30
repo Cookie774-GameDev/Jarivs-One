@@ -96,11 +96,11 @@ export function buildMarkdownCreationInstruction(input: {
     `[VibeSpace /md ${input.kind}] Create one polished Markdown document from this brief: ${input.brief.trim() || '(use the current chat request)'}`,
     `Required structure: ${SECTIONS[input.kind]}`,
     `Save it beneath ${destination}. Choose a short descriptive collision-safe filename ending in .md.`,
-    'Use the existing approved file action exactly once with a payload shaped like {"actionId":"files.create","params":{"path":"<absolute path>","content":"<markdown>","root":"<active project root when available>","attachToChat":true}}.',
+    'Use the existing approved file action exactly once with a payload shaped like {"actionId":"files.create","params":{"path":"<absolute path>","content":"<markdown>","root":"<active project root when available>","attachToChat":false}}.',
     'Never overwrite an existing file. If the name exists, create a numbered copy.',
     'Use relevant attached files, project files, chat context, and Context Map evidence. Never invent facts, citations, file paths, requirements, or completion evidence.',
     sourceRule,
-    'After creation, attach the resulting file to this chat and report its exact absolute path.',
+    'After creation, report its exact absolute path. Do not attach the resulting file to this chat unless the user explicitly requested attachment in this turn.',
   ].join('\n');
 }
 
