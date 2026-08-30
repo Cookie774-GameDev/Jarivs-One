@@ -2549,6 +2549,190 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     stop();
   });
 
+  it('reconciles authoritative OpenCode snapshots before completion and rejects stale recovery after cancellation', async () => {
+    const openCodeConnection = PROVIDER_CONNECTIONS.find(
+      (connection) => connection.id === 'opencode-cli',
+    )!;
+    useAuthStore.setState({
+      chatModelSelection: selectionFromOption(
+        openCodeConnection.providerId as ProviderId,
+        'opencode-go/deepseek-v4-flash-vision-exp',
+        openCodeConnection,
+      ),
+    });
+    const jarvis = agent('agent_snapshot_recovery', 'jarvis', 'You are Jarvis.');
+    const chatId = 'chat_snapshot_recovery' as ChatId;
+    const userMessageId = 'msg_snapshot_recovery_user' as MessageId;
+    const placeholderId = 'msg_snapshot_recovery_assistant' as MessageId;
+    const userMessage: Message = {
+      id: userMessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'Inspect, edit, and verify the project.' }],
+      created_at: 1,
+      updated_at: 1,
+    };
+    const durableWrites: Part[][] = [];
+    const updateMessage = vi.fn(async (_id: MessageId, patch: { parts?: Part[] }) => {
+      if (patch.parts) durableWrites.push(structuredClone(patch.parts));
+    });
+    let providerInput!: Parameters<typeof mocks.runAgent>[0];
+    mocks.runAgent.mockImplementationOnce((input) => {
+      providerInput = input;
+      return new Promise((_, reject) => {
+        const rejectCancelled = () =>
+          reject(new DOMException('Snapshot recovery cancelled', 'AbortError'));
+        if (input.signal.aborted) rejectCancelled();
+        else input.signal.addEventListener('abort', rejectCancelled, { once: true });
+      });
+    });
+    const stop = trackListener(
+      startRuntimeListener(
+        {
+          getAgentById: (id) => (id === jarvis.id ? jarvis : null),
+          getAgentBySlug: (slug) => (slug === 'jarvis' ? jarvis : null),
+          getAgentForChat: vi.fn(async () => jarvis),
+          getMessages: vi.fn(async () => [userMessage]),
+          appendMessage: vi.fn(async (message) => ({
+            ...message,
+            id: placeholderId,
+            created_at: 2,
+            updated_at: 2,
+          })),
+          updateMessage,
+        },
+        { flushIntervalMs: 0 },
+      ),
+    );
+
+    try {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:send', {
+          detail: {
+            chatId,
+            text: 'Inspect, edit, and verify the project.',
+            interactionMode: 'agent',
+            cancellationKey: userMessageId,
+          },
+        }),
+      );
+      await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+      expect(providerInput.onPublicTimelineSnapshot).toEqual(expect.any(Function));
+
+      const recoveredSnapshot = {
+        timeline: [
+          { kind: 'text', text: 'I read the relevant source first.' },
+          {
+            kind: 'tool_call',
+            tool: 'read',
+            call_id: 'opencode-tool-1',
+            args: { path: 'runtime.ts' },
+          },
+          {
+            kind: 'tool_result',
+            call_id: 'opencode-tool-1',
+            result: { status: 'completed' as const },
+          },
+          {
+            kind: 'tool_call',
+            tool: 'grep',
+            call_id: 'opencode-tool-search',
+            args: {},
+          },
+          {
+            kind: 'tool_result',
+            call_id: 'opencode-tool-search',
+            result: { status: 'completed' as const },
+          },
+          {
+            kind: 'tool_call',
+            tool: 'edit',
+            call_id: 'opencode-tool-2',
+            args: { path: 'runtime.ts' },
+          },
+        ],
+        finalText: 'I am applying the bounded repair now.',
+      } as const;
+      providerInput.onChunk?.({
+        delta: recoveredSnapshot.finalText,
+        streamPartId: 'native-progress-1',
+      } as LLMStreamChunk & { streamPartId: string });
+      await providerInput.onPublicTimelineSnapshot?.(recoveredSnapshot);
+
+      expect(durableWrites.at(-1)).toEqual([
+        ...recoveredSnapshot.timeline,
+        { kind: 'text', text: recoveredSnapshot.finalText },
+      ]);
+      expect(getChatActivityEvents(chatId).at(-1)?.detail).toBe(recoveredSnapshot.finalText);
+
+      const updatedSnapshot = {
+        timeline: [
+          ...recoveredSnapshot.timeline,
+          {
+            kind: 'tool_result',
+            call_id: 'opencode-tool-2',
+            result: { status: 'completed' as const },
+          },
+          {
+            kind: 'tool_call',
+            tool: 'verify.test',
+            call_id: 'opencode-tool-3',
+            args: {},
+          },
+        ],
+        finalText:
+          'I applied the bounded repair. I am running the focused verification now. This third sentence stays out of the compact activity detail.',
+      } as const;
+      providerInput.onChunk?.({
+        delta: updatedSnapshot.finalText,
+        mode: 'replace',
+        streamPartId: 'native-progress-1',
+      } as LLMStreamChunk & { streamPartId: string });
+      await vi.waitFor(() =>
+        expect(durableWrites.at(-1)).toEqual([
+          ...recoveredSnapshot.timeline,
+          { kind: 'text', text: updatedSnapshot.finalText },
+        ]),
+      );
+      await providerInput.onPublicTimelineSnapshot?.(updatedSnapshot);
+      expect(durableWrites.at(-1)).toEqual([
+        ...updatedSnapshot.timeline,
+        { kind: 'text', text: updatedSnapshot.finalText },
+      ]);
+      expect(getChatActivityEvents(chatId).at(-1)?.detail).toBe(
+        'I applied the bounded repair. I am running the focused verification now.',
+      );
+      const writesAfterRecovery = durableWrites.length;
+      await providerInput.onPublicTimelineSnapshot?.(updatedSnapshot);
+      expect(durableWrites).toHaveLength(writesAfterRecovery);
+
+      window.dispatchEvent(
+        new CustomEvent('jarvis:cancel', { detail: { messageId: userMessageId } }),
+      );
+      await stop.whenIdle();
+      const cancelledParts = durableWrites.at(-1) ?? [];
+      expect(cancelledParts.slice(0, -1)).toEqual(updatedSnapshot.timeline);
+      expect(JSON.stringify(cancelledParts)).toContain(updatedSnapshot.finalText);
+      expect(JSON.stringify(cancelledParts)).toContain('[cancelled]');
+      const writesAfterCancel = durableWrites.length;
+
+      await expect(
+        providerInput.onPublicTimelineSnapshot?.({
+          timeline: [
+            ...updatedSnapshot.timeline,
+            { kind: 'tool_result', call_id: 'opencode-tool-3', error: 'Tool failed' },
+          ],
+          finalText: 'STALE POST-CANCEL RECOVERY',
+        }),
+      ).rejects.toMatchObject({ name: 'AbortError' });
+      expect(durableWrites).toHaveLength(writesAfterCancel);
+      expect(JSON.stringify(durableWrites)).not.toContain('STALE POST-CANCEL RECOVERY');
+    } finally {
+      stop();
+      await stop.whenIdle();
+    }
+  });
+
   it('keeps one projected OpenCode question in the same placeholder through resolution and completion', async () => {
     const openCodeConnection = PROVIDER_CONNECTIONS.find(
       (connection) => connection.id === 'opencode-cli',

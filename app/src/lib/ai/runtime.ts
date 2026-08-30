@@ -5825,6 +5825,98 @@ export function startRuntimeListener(
     let hasNativeOpenCodeTextIdentity = false;
     const currentOpenCodeChronologyParts = (): Part[] =>
       liveOpenCodeChronology.map((part) => ({ ...part }));
+    const conciseOpenCodeProgress = (text: string): string => {
+      const normalized = text.replace(/\s+/gu, ' ').trim();
+      const sentences = normalized.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/gu) ?? [];
+      const concise = sentences
+        .slice(0, 2)
+        .map((sentence) => sentence.trim())
+        .join(' ');
+      return concise.length <= 600 ? concise : `${concise.slice(0, 599).trimEnd()}…`;
+    };
+    const reconcileOpenCodePublicSnapshot = (
+      snapshot: Readonly<import('./openCodePublicTimeline').OpenCodePublicTimelineSnapshot>,
+    ): boolean => {
+      const priorTextIdentities = [...liveOpenCodeTextIndexes.entries()].flatMap(
+        ([streamPartId, index]) => {
+          const part = liveOpenCodeChronology[index];
+          return part?.kind === 'text' ? [{ streamPartId, index, text: part.text }] : [];
+        },
+      );
+      const nextChronology: Part[] = [
+        ...snapshot.timeline.map((part): Part => structuredClone(part)),
+        ...(snapshot.finalText ? ([{ kind: 'text', text: snapshot.finalText }] as const) : []),
+      ];
+      if (JSON.stringify(nextChronology) === JSON.stringify(liveOpenCodeChronology)) return false;
+
+      const nextTools = new Map<
+        string,
+        {
+          call: Extract<Part, { kind: 'tool_call' }>;
+          result?: Extract<Part, { kind: 'tool_result' }>;
+        }
+      >();
+      const nextToolIndexes = new Map<string, { call: number; result?: number }>();
+      nextChronology.forEach((part, index) => {
+        if (part.kind === 'tool_call') {
+          if (nextTools.has(part.call_id)) {
+            throw new Error('OpenCode public snapshot duplicated a tool call.');
+          }
+          nextTools.set(part.call_id, { call: part });
+          nextToolIndexes.set(part.call_id, { call: index });
+          return;
+        }
+        if (part.kind !== 'tool_result') return;
+        const tool = nextTools.get(part.call_id);
+        const indexes = nextToolIndexes.get(part.call_id);
+        if (!tool || !indexes || tool.result || indexes.result !== undefined) {
+          throw new Error('OpenCode public snapshot contained an invalid tool result.');
+        }
+        tool.result = part;
+        indexes.result = index;
+      });
+
+      liveOpenCodeChronology.splice(0, liveOpenCodeChronology.length, ...nextChronology);
+      liveOpenCodeTextIndexes.clear();
+      const availableTextIndexes = nextChronology.flatMap((part, index) =>
+        part.kind === 'text' ? [index] : [],
+      );
+      const claimedTextIndexes = new Set<number>();
+      priorTextIdentities.forEach(({ streamPartId, text }) => {
+        const index = availableTextIndexes.find(
+          (candidate) =>
+            !claimedTextIndexes.has(candidate) &&
+            nextChronology[candidate]?.kind === 'text' &&
+            nextChronology[candidate].text === text,
+        );
+        if (index === undefined) return;
+        claimedTextIndexes.add(index);
+        liveOpenCodeTextIndexes.set(streamPartId, index);
+      });
+      const trailingPriorIdentity = priorTextIdentities.reduce<
+        (typeof priorTextIdentities)[number] | undefined
+      >(
+        (latest, candidate) =>
+          latest === undefined || candidate.index > latest.index ? candidate : latest,
+        undefined,
+      );
+      const finalTextIndex = availableTextIndexes.at(-1);
+      if (
+        trailingPriorIdentity &&
+        finalTextIndex !== undefined &&
+        !liveOpenCodeTextIndexes.has(trailingPriorIdentity.streamPartId) &&
+        !claimedTextIndexes.has(finalTextIndex)
+      ) {
+        liveOpenCodeTextIndexes.set(trailingPriorIdentity.streamPartId, finalTextIndex);
+      }
+      liveOpenCodeToolIndexes.clear();
+      liveOpenCodeTools.clear();
+      nextTools.forEach((tool, callId) => liveOpenCodeTools.set(callId, tool));
+      nextToolIndexes.forEach((indexes, callId) => liveOpenCodeToolIndexes.set(callId, indexes));
+      hasNativeOpenCodeTextIdentity = nextChronology.some((part) => part.kind === 'text');
+      acc = nextChronology.flatMap((part) => (part.kind === 'text' ? [part.text] : [])).join('');
+      return true;
+    };
     const currentOpenCodeResponseParts = (): Part[] =>
       hasNativeOpenCodeTextIdentity
         ? currentOpenCodeChronologyParts()
@@ -6974,6 +7066,30 @@ export function startRuntimeListener(
             }
           }
           if (detail.caoAuthority) return;
+          cancelPendingFlush();
+          await settleStreamingWrites();
+          controller.signal.throwIfAborted();
+          await bindings.updateMessage(placeholder.id, {
+            parts: currentOpenCodeStreamingParts(),
+          });
+        },
+        onPublicTimelineSnapshot: async (snapshot) => {
+          controller.signal.throwIfAborted();
+          if (detail.caoAuthority || !reconcileOpenCodePublicSnapshot(snapshot)) return;
+          if (snapshot.finalText) {
+            if (!responseCompositionVisible) {
+              responseCompositionVisible = true;
+              useAgentStore.getState().setVerb(agent.id, 'preparing response');
+            }
+            useChatActivityStore.getState().update(chatId, agentActivityId, {
+              category: 'response',
+              status: 'running',
+              title: `@${agent.slug} is preparing the final response`,
+              subtitle: `${runnable.model.provider}/${runnable.model.model}`,
+              detail: conciseOpenCodeProgress(snapshot.finalText),
+              ts: Date.now(),
+            });
+          }
           cancelPendingFlush();
           await settleStreamingWrites();
           controller.signal.throwIfAborted();
