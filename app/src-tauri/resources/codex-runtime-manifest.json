@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "releases": [
+    {
+      "kind": "codex",
+      "platform": "windows",
+      "architecture": "x86_64",
+      "version": "0.151.0",
+      "package": "@openai/codex",
+      "asset": "codex-0.151.0-win32-x64.tgz",
+      "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.151.0-win32-x64.tgz",
+      "compressedBytes": 147584554,
+      "sha256": "9044e64402bf6a92774fe35a8cb86010d254c0d3390d5a7ee9047024588d7355",
+      "npmIntegrity": "sha512-sLT7xvID3jhU6tkzcwRPnMEclKRwUPbpo0mtfxIF9KpdZH3VJV7sM2/kXWXyvUM7Zt/YeyOaeATTEysbRz8Yog==",
+      "entrypoint": "package/vendor/x86_64-pc-windows-msvc/bin/codex.exe",
+      "license": "Apache-2.0",
+      "maximumExpandedBytes": 536870912,
+      "maximumEntries": 128
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "releases": [
+    {
+      "kind": "opencodex",
+      "platform": "windows",
+      "architecture": "x86_64",
+      "version": "2.36.0",
+      "package": "@bitkyc08/opencodex",
+      "asset": "opencodex-2.36.0.tgz",
+      "url": "https://registry.npmjs.org/@bitkyc08/opencodex/-/opencodex-2.36.0.tgz",
+      "compressedBytes": 9520432,
+      "sha256": "95f2bab63125a94b5b53d5cc912a225812aed0a17b926cf556d6fc37651be915",
+      "npmIntegrity": "sha512-lnWaGRuxSl1OODq+rUz8kc3HnHs7hZKH9q5HOeUmXyv6CXzNwbSQnptNMS+aIc6aWWOUxhvG2o4f2udtVPS2Kw==",
+      "entrypoint": "package/bin/ocx.mjs",
+      "license": "MIT",
+      "maximumExpandedBytes": 536870912,
+      "maximumEntries": 4096
+    }
+  ]
+}
