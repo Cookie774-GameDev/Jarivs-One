@@ -60,6 +60,10 @@ vi.mock('@/features/tasks', () => ({
 }));
 
 vi.mock('@/features/jarvis-memory/caoScheduledLearningRuntime', () => ({
+  createCaoScheduledLearningDexiePersistence: () => ({
+    load: vi.fn(async () => null),
+  }),
+  subscribeCaoScheduledLearningStatus: vi.fn(() => vi.fn()),
   runCaoScheduledLearning,
   runManualCaoLearningChecks: runWorkspaceCaoLearningChecks,
 }));
@@ -381,6 +385,9 @@ describe('SchedulePage Jarvis lifecycle', () => {
     expect(screen.getByText('learning-md')).toBeTruthy();
     expect(screen.getByText('policy-strict')).toBeTruthy();
     expect(screen.getByText('Active')).toBeTruthy();
+    expect(screen.getByText('Schedule active')).toBeTruthy();
+    expect(screen.getByText('Operations floor')).toBeTruthy();
+    expect(await screen.findByText(/No durable learning snapshot yet/i)).toBeTruthy();
     expect(screen.getByText('Completed')).toBeTruthy();
     expect(screen.getByText('Partial')).toBeTruthy();
 

@@ -104,6 +104,7 @@ import {
   type ScheduleDraft,
 } from './scheduleDraftPersistence';
 import { runCaoScheduledLearning } from '@/features/jarvis-memory/caoScheduledLearningRuntime';
+import { CaoOperationsFloorProjection } from './CaoOperationsFloorProjection';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -2572,6 +2573,28 @@ function JarvisActionOutputView({
 }) {
   const metadata = parseJarvisScheduleMetadata(event);
   const cao = metadata?.caoSupervision;
+  const activeAccountId = getActiveAccountIdentity()?.accountId;
+  const caoOperationsScope = React.useMemo(
+    () =>
+      activeAccountId && cao
+        ? {
+            accountId: activeAccountId,
+            workspaceId: String(event.workspace_id),
+            projectId: cao.projectId,
+            scheduleId: cao.scheduleId,
+            targetId: cao.targetId,
+            scheduleAnchorAt: event.start_at,
+          }
+        : null,
+    [
+      activeAccountId,
+      cao?.projectId,
+      cao?.scheduleId,
+      cao?.targetId,
+      event.start_at,
+      event.workspace_id,
+    ],
+  );
   const modelIdentity = metadata
     ? describeJarvisScheduleModelIdentity(metadata.modelSelection)
     : null;
@@ -2703,6 +2726,19 @@ function JarvisActionOutputView({
               <span aria-label="CAO saved model identity">{modelIdentity.summary}</span>
             </p>
           ) : null}
+          {caoOperationsScope ? (
+            <CaoOperationsFloorProjection
+              scope={caoOperationsScope}
+              scheduleState={event.status === 'cancelled' ? 'paused' : 'active'}
+            />
+          ) : (
+            <div
+              className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-metadata text-destructive"
+              role="status"
+            >
+              CAO operational identity unavailable
+            </div>
+          )}
           <div className="mt-3">
             <div className="text-metadata font-semibold uppercase tracking-wide text-muted-foreground">
               Run history · categorical grade
