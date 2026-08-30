@@ -2421,3 +2421,22 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Repository CI at deployment checkpoint: Rust `cargo check`, frontend typecheck, and Vite build passed; the broader pre-existing Vitest job remained in progress and did not gate the already-successful Pages deployment.
 - Rollback: base commit `2558aca56a9176fc418f6d0dc2be939c295fc121`; audit evidence is preserved under `evidence/app-replica-rev18/`.
 - Boundary confirmation: only the official website HTML, task evidence, and coordination record changed. The VibeSpace application repository was not opened, run, or edited.
+
+## 2026-08-30 — codex-g56-20260830-a15 / official-site-subscriptions-editorial-rev19
+
+- Status: active; exact `site/index.html`, coordination, and task-owned evidence claim acquired after confirming no live owner lock and a clean worktree.
+- Branch/upstream/base: `main` / `origin/main` / `d5dc3a56ca980cff1296fea653f3ea8709173c5e`; no merge, rebase, or cherry-pick state.
+- Approved scope: create and checksum an exact recovery copy before any content edit, then restyle only the existing five-tier subscriptions section into the website's cream/charcoal/copper luxury-editorial system.
+- Preservation: retain all tier facts, coming-soon/payment truth, horizontal rail, keyboard controls, selection inspector, reduced-motion behavior, anchors, and diagnostics.
+- Boundaries: no VibeSpace app repository, Supabase, Stripe, billing, checkout, account, DNS, or unrelated homepage mutation.
+- Next: create the recovery copy, establish a red visual/contract baseline, implement the bounded section refinement, and run responsive/accessibility/runtime verification before publishing.
+
+### Implementation and verification checkpoint
+
+- Recovery first: exact pre-edit copy preserved at `evidence/subscriptions-editorial-rev19/recovery/VibeSpace-Final-Website-BEFORE-subscriptions-editorial-20260830-153541.html`; SHA-256 `A439F343B5A8CF718A2F1EC3B9D8D8647B658269B11F04E6CDD518A74A9A1DAA`, 627,502 bytes.
+- `site/index.html`: added one bounded rev19 style owner that converts the subscriptions studio into ivory editorial paper, charcoal typography, copper rules, layered plan sheets, an authored selected state, and a compact coming-soon badge.
+- Preservation: all five plans, facts, payment/app-coming-soon truth, rail controls, snap behavior, selection inspector, keyboard interaction, reduced motion, anchors, and diagnostics remain intact.
+- Red/green evidence: initial contract moved 2/10 → 10/10; inherited full-card badge overlay reproduced at 10/11 and fixed to 11/11; expanded final contract is 13/13. Existing app-replica regression contract remains 9/9.
+- Responsive/accessibility: seven viewport matrix reports zero document/studio/card overflow and zero title clipping; axe-core 4.10.3 reports zero WCAG A/AA violations at desktop and mobile; reduced-motion transform/transition/glare checks pass; fresh console warnings/errors are zero.
+- Pre-deployment HTML SHA-256: `0DAC8C7C9C2583EE0D76D7D52C79030BA4A256BEA666539648FACDE9349EA52E`.
+- Next: commit/push only owned files, wait for Pages, verify exact public bytes and live interaction, then record completion and release the owned lock.

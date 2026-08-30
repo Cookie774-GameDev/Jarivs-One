@@ -1,0 +1,12 @@
+{
+  "desktop": {
+    "incomplete": 2,
+    "passes": 33,
+    "violations": []
+  },
+  "mobile": {
+    "incomplete": 2,
+    "passes": 33,
+    "violations": []
+  }
+}

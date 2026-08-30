@@ -1,0 +1,121 @@
+[
+  {
+    "cardInternalOverflows": 0,
+    "deckOverflow": "auto",
+    "docOverflow": 0,
+    "pressed": 1,
+    "selected": 1,
+    "studio": [
+      184,
+      1720
+    ],
+    "studioOverflow": 0,
+    "titleClips": [],
+    "viewport": [
+      1920,
+      1080
+    ]
+  },
+  {
+    "cardInternalOverflows": 0,
+    "deckOverflow": "auto",
+    "docOverflow": 0,
+    "pressed": 1,
+    "selected": 1,
+    "studio": [
+      58,
+      1367
+    ],
+    "studioOverflow": 0,
+    "titleClips": [],
+    "viewport": [
+      1440,
+      900
+    ]
+  },
+  {
+    "cardInternalOverflows": 0,
+    "deckOverflow": "auto",
+    "docOverflow": 0,
+    "pressed": 1,
+    "selected": 1,
+    "studio": [
+      41,
+      968
+    ],
+    "studioOverflow": 0,
+    "titleClips": [],
+    "viewport": [
+      1024,
+      768
+    ]
+  },
+  {
+    "cardInternalOverflows": 0,
+    "deckOverflow": "auto",
+    "docOverflow": 0,
+    "pressed": 1,
+    "selected": 1,
+    "studio": [
+      42,
+      843
+    ],
+    "studioOverflow": 0,
+    "titleClips": [],
+    "viewport": [
+      900,
+      900
+    ]
+  },
+  {
+    "cardInternalOverflows": 0,
+    "deckOverflow": "auto",
+    "docOverflow": 0,
+    "pressed": 1,
+    "selected": 1,
+    "studio": [
+      38,
+      714
+    ],
+    "studioOverflow": 0,
+    "titleClips": [],
+    "viewport": [
+      768,
+      1024
+    ]
+  },
+  {
+    "cardInternalOverflows": 0,
+    "deckOverflow": "auto",
+    "docOverflow": 0,
+    "pressed": 1,
+    "selected": 1,
+    "studio": [
+      20,
+      356
+    ],
+    "studioOverflow": 0,
+    "titleClips": [],
+    "viewport": [
+      390,
+      844
+    ]
+  },
+  {
+    "cardInternalOverflows": 0,
+    "deckOverflow": "auto",
+    "docOverflow": 0,
+    "pressed": 1,
+    "selected": 1,
+    "studio": [
+      17,
+      288
+    ],
+    "studioOverflow": 0,
+    "titleClips": [],
+    "viewport": [
+      320,
+      568
+    ]
+  }
+]
