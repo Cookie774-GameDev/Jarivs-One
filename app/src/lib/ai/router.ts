@@ -330,6 +330,10 @@ export interface RunAgentRequest {
       fileLabel?: string;
     }>,
   ) => void | Promise<void>;
+  /** Whole authoritative OpenCode public snapshot; replaces prior snapshot for this request. */
+  onPublicTimelineSnapshot?: (
+    snapshot: Readonly<import('./openCodePublicTimeline').OpenCodePublicTimelineSnapshot>,
+  ) => void | Promise<void>;
   onProviderCompletionEvidence?: (
     evidence: Readonly<ProviderCompletionEvidence>,
   ) => void | Promise<void>;
@@ -501,7 +505,11 @@ async function executePersistentOpenCode(
     }
 
     let text = '';
+    const textParts: string[] = [];
+    const textPartIndexes = new Map<string, number>();
     let first = true;
+    let publicTimelineSnapshot:
+      Readonly<import('./openCodePublicTimeline').OpenCodePublicTimelineSnapshot> | undefined;
     let finishReason: string | undefined;
     let usage: Extract<ProviderEvent, { type: 'usage' }>['usage'] | undefined;
     let observedSessionId: string | undefined;
@@ -565,13 +573,31 @@ async function executePersistentOpenCode(
         if (req.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
         if (event.type === 'text') {
           diagnosticCode = 'router_chunk_delivery';
-          text += event.delta;
+          if (event.streamPartId) {
+            const existingIndex = textPartIndexes.get(event.streamPartId);
+            if (existingIndex === undefined) {
+              textPartIndexes.set(event.streamPartId, textParts.length);
+              textParts.push(event.delta);
+            } else {
+              textParts[existingIndex] =
+                event.mode === 'replace'
+                  ? event.delta
+                  : `${textParts[existingIndex] ?? ''}${event.delta}`;
+            }
+            text = textParts.join('');
+          } else {
+            text += event.delta;
+          }
           req.onChunk?.({
             delta: event.delta,
             first,
+            ...(event.mode === 'replace' ? { mode: 'replace' as const } : {}),
             ...(event.streamPartId ? { streamPartId: event.streamPartId } : {}),
           });
           first = false;
+        } else if (event.type === 'public_timeline') {
+          publicTimelineSnapshot = event.snapshot;
+          await req.onPublicTimelineSnapshot?.(event.snapshot);
         } else if (event.type === 'usage') {
           diagnosticCode = 'router_usage_event';
           usage = mergeUsageSnapshots(usage, event.usage);
@@ -654,8 +680,16 @@ async function executePersistentOpenCode(
       });
     }
     req.onChunk?.({ delta: '', done: true });
+    const finalText = publicTimelineSnapshot?.finalText || text;
+    if (publicTimelineSnapshot) {
+      console.debug('OpenCode public timeline selected.', {
+        checkpointParts: publicTimelineSnapshot.timeline.length,
+        hasFinalText: Boolean(publicTimelineSnapshot.finalText),
+        streamedTextParts: textParts.length,
+      });
+    }
     return {
-      text,
+      text: finalText,
       usage: {
         input_tokens: usageNumber(usage?.inputTokens),
         output_tokens: usageNumber(usage?.outputTokens),
@@ -664,6 +698,9 @@ async function executePersistentOpenCode(
       provider: (selection.providerId === 'local' ? 'ollama' : selection.providerId) as ProviderId,
       model: selection.modelId,
       ...(finishReason ? { finish_reason: finishReason } : {}),
+      ...(publicTimelineSnapshot
+        ? { public_timeline: Object.freeze([...publicTimelineSnapshot.timeline]) }
+        : {}),
       tool_evidence: Object.freeze({
         completedReadOnlyFilesystem,
         anyToolObserved,
@@ -810,6 +847,8 @@ async function runKernelSmokeCliConnection(
   }
 
   let text = '';
+  const textParts: string[] = [];
+  const textPartIndexes = new Map<string, number>();
   let first = true;
   let finishReason: string | undefined;
   let usage: Extract<ProviderEvent, { type: 'usage' }>['usage'] | undefined;
@@ -826,10 +865,25 @@ async function runKernelSmokeCliConnection(
   })) {
     if (args.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
     if (event.type === 'text') {
-      text += event.delta;
+      if (event.streamPartId) {
+        const existingIndex = textPartIndexes.get(event.streamPartId);
+        if (existingIndex === undefined) {
+          textPartIndexes.set(event.streamPartId, textParts.length);
+          textParts.push(event.delta);
+        } else {
+          textParts[existingIndex] =
+            event.mode === 'replace'
+              ? event.delta
+              : `${textParts[existingIndex] ?? ''}${event.delta}`;
+        }
+        text = textParts.join('');
+      } else {
+        text += event.delta;
+      }
       args.onChunk?.({
         delta: event.delta,
         first,
+        ...(event.mode === 'replace' ? { mode: 'replace' as const } : {}),
         ...(event.streamPartId ? { streamPartId: event.streamPartId } : {}),
       });
       first = false;

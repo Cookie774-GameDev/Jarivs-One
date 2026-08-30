@@ -84,8 +84,15 @@ export type ProviderEvent =
   | {
       type: 'text';
       delta: string;
+      /** Replace the matching native text part instead of appending to it. */
+      mode?: 'append' | 'replace';
       /** Request-local opaque identity for one native provider text part. */
       streamPartId?: string;
+    }
+  | {
+      /** Complete authoritative replacement snapshot from persisted OpenCode messages. */
+      type: 'public_timeline';
+      snapshot: import('../openCodePublicTimeline').OpenCodePublicTimelineSnapshot;
     }
   | { type: 'reasoning'; delta: string }
   | { type: 'session'; sessionId: string }

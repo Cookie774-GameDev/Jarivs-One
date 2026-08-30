@@ -288,6 +288,97 @@ describe('canonical OpenCode AI routing', () => {
     ]);
   });
 
+  it('uses the authoritative OpenCode snapshot final answer without flattening checkpoints', async () => {
+    const snapshot = {
+      finalText: 'The full game is ready.',
+      timeline: [
+        { kind: 'text' as const, text: 'I built the game shell.' },
+        {
+          kind: 'tool_call' as const,
+          tool: 'write',
+          call_id: 'opencode-tool-1',
+          args: { path: 'index.html' },
+        },
+        {
+          kind: 'tool_result' as const,
+          call_id: 'opencode-tool-1',
+          result: { status: 'completed' as const },
+        },
+      ],
+    };
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield {
+          type: 'text',
+          delta: 'I built the game shell.',
+          streamPartId: 'opencode-text-1',
+        } as const;
+        yield {
+          type: 'text',
+          delta: 'The full game is ready.',
+          streamPartId: 'opencode-text-2',
+        } as const;
+        yield { type: 'public_timeline', snapshot } as const;
+        yield { type: 'done', finishReason: 'stop' } as const;
+      })(),
+    );
+    const onPublicTimelineSnapshot = vi.fn();
+
+    const result = await runAgent({
+      agent: openaiAgent,
+      messages: [{ role: 'user', content: 'MAKE ME A FULL HTML GAME OKAY' }],
+      onPublicTimelineSnapshot,
+    } as Parameters<typeof runAgent>[0] & {
+      onPublicTimelineSnapshot: (value: typeof snapshot) => void;
+    });
+
+    expect(result.text).toBe('The full game is ready.');
+    expect((result as typeof result & { public_timeline?: unknown }).public_timeline).toEqual(
+      snapshot.timeline,
+    );
+    expect(onPublicTimelineSnapshot).toHaveBeenCalledExactlyOnceWith(snapshot);
+  });
+
+  it('forwards native text-part corrections as replacements without duplicating the answer', async () => {
+    openCodeSend.mockImplementationOnce(() =>
+      (async function* () {
+        yield {
+          type: 'text',
+          delta: 'I built teh game.',
+          streamPartId: 'opencode-text-1',
+        } as const;
+        yield {
+          type: 'text',
+          delta: 'I built the game.',
+          mode: 'replace',
+          streamPartId: 'opencode-text-1',
+        } as const;
+        yield { type: 'done', finishReason: 'stop' } as const;
+      })(),
+    );
+    const onChunk = vi.fn();
+
+    const result = await runAgent({
+      agent: openaiAgent,
+      messages: [{ role: 'user', content: 'build it' }],
+      onChunk,
+    });
+
+    expect(onChunk.mock.calls).toEqual([
+      [{ delta: 'I built teh game.', first: true, streamPartId: 'opencode-text-1' }],
+      [
+        {
+          delta: 'I built the game.',
+          first: false,
+          mode: 'replace',
+          streamPartId: 'opencode-text-1',
+        },
+      ],
+      [{ delta: '', done: true }],
+    ]);
+    expect(result.text).toBe('I built the game.');
+  });
+
   it('returns the latest bounded OpenCode todo snapshots without generic tool payloads', async () => {
     openCodeSend.mockImplementationOnce(() =>
       (async function* () {

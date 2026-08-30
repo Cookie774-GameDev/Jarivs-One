@@ -266,6 +266,7 @@ import type {
   JarvisHiveStackPlanV1,
   JarvisLiveEvidencePrimaryHostAccountSession,
   JarvisModelSnapshot,
+  JarvisResponseEnvelope,
   JarvisSourceRef,
 } from '@/lib/jarvis/contracts';
 import type {
@@ -420,6 +421,34 @@ export function createCanonicalProviderEvidenceAuthority(
         ? current
         : null;
     },
+  });
+}
+
+function isSupersededOpenCodeEnvelopePart(part: Part): boolean {
+  return (
+    part.kind === 'reasoning' ||
+    part.kind === 'tool_call' ||
+    part.kind === 'tool_result' ||
+    part.kind === 'action_proposal'
+  );
+}
+
+export function prependOpenCodePublicTimeline(
+  envelope: Readonly<JarvisResponseEnvelope>,
+  timeline: readonly import('./openCodePublicTimeline').OpenCodePublicTimelinePart[],
+): Readonly<JarvisResponseEnvelope> {
+  if (timeline.length === 0) return envelope;
+  const projected = timeline.map((part): Part => structuredClone(part));
+  const preservedEnvelopeParts = envelope.parts.filter(
+    (part) => !isSupersededOpenCodeEnvelopePart(part),
+  );
+  return Object.freeze({
+    ...envelope,
+    parts: Object.freeze(
+      [...projected, ...preservedEnvelopeParts.map((part) => structuredClone(part))].map((part) =>
+        Object.freeze(part),
+      ),
+    ),
   });
 }
 
@@ -1234,6 +1263,10 @@ export async function installJarvisKernelRuntimeHost(
     Readonly<RawProviderResponse>,
     readonly import('./openCodeChecklist').OpenCodeChecklistSnapshot[]
   >();
+  const providerPublicTimeline = new WeakMap<
+    Readonly<RawProviderResponse>,
+    readonly import('./openCodePublicTimeline').OpenCodePublicTimelinePart[]
+  >();
   const providerControlEvidence = new WeakMap<
     Readonly<RawProviderResponse>,
     Readonly<{
@@ -1569,6 +1602,7 @@ export async function installJarvisKernelRuntimeHost(
                   completedAt,
                 });
                 providerArtifactDrafts.set(raw, Object.freeze([]));
+                providerPublicTimeline.set(raw, Object.freeze([...(result.public_timeline ?? [])]));
                 providerChecklistEvidence.set(
                   raw,
                   Object.freeze([...(result.checklist_evidence ?? [])]),
@@ -1628,11 +1662,31 @@ export async function installJarvisKernelRuntimeHost(
       });
     },
     async processResponse(raw, request) {
-      const envelope = await responseModule.processJarvisResponse(raw, request, {
+      const processedEnvelope = await responseModule.processJarvisResponse(raw, request, {
         async repair() {
           throw new Error('kernel_response_repair_provider_unavailable');
         },
       });
+      const publicTimeline = providerPublicTimeline.get(raw) ?? [];
+      providerPublicTimeline.delete(raw);
+      const suppressedEnvelopeParts = processedEnvelope.parts.filter(
+        isSupersededOpenCodeEnvelopePart,
+      ).length;
+      const envelope = prependOpenCodePublicTimeline(processedEnvelope, publicTimeline);
+      if (publicTimeline.length > 0) {
+        devConsole.log({
+          channel: 'ai',
+          level: 'info',
+          message: 'OpenCode public timeline committed',
+          detail: {
+            checkpointParts: publicTimeline.length,
+            textParts: publicTimeline.filter((part) => part.kind === 'text').length,
+            toolCalls: publicTimeline.filter((part) => part.kind === 'tool_call').length,
+            toolResults: publicTimeline.filter((part) => part.kind === 'tool_result').length,
+            suppressedEnvelopeParts,
+          },
+        });
+      }
       const approvalContinuationOutcome = approvalContinuationOutcomesByRun.get(request.runId);
       if (approvalContinuationOutcome) {
         approvalContinuationOutcomesByRun.delete(request.runId);
@@ -6389,11 +6443,15 @@ export function startRuntimeListener(
                 }
                 liveOpenCodeChronology[existingIndex] = {
                   kind: 'text',
-                  text: existingPart.text + chunk.delta,
+                  text: chunk.mode === 'replace' ? chunk.delta : existingPart.text + chunk.delta,
                 };
               }
             }
-            acc += chunk.delta;
+            acc = chunk.streamPartId
+              ? liveOpenCodeChronology
+                  .flatMap((part) => (part.kind === 'text' ? [part.text] : []))
+                  .join('')
+              : acc + chunk.delta;
             if (!bufferExactLiteralStreaming) {
               scheduleFlush();
               scheduleSpeechDelta();
@@ -6695,17 +6753,16 @@ export function startRuntimeListener(
             },
           ]
         : responseTextParts;
-      const chronologicalText = liveOpenCodeChronology
-        .flatMap((part) => (part.kind === 'text' ? [part.text] : []))
-        .join('');
-      const mayUseNativeChronology =
-        hasNativeOpenCodeTextIdentity &&
-        !oversizedResponseAttachment &&
-        displayResponseParts.every((part) => part.kind === 'text') &&
-        chronologicalText === finalText;
+      const authoritativePublicTimeline: Part[] = (response.public_timeline ?? []).map(
+        (part): Part => structuredClone(part),
+      );
+      const authoritativeDisplayResponseParts =
+        authoritativePublicTimeline.length > 0
+          ? displayResponseParts.filter((part) => !isSupersededOpenCodeEnvelopePart(part))
+          : displayResponseParts;
       const finalParts: Part[] = [
-        ...(mayUseNativeChronology
-          ? currentOpenCodeChronologyParts()
+        ...(authoritativePublicTimeline.length > 0
+          ? [...authoritativePublicTimeline, ...authoritativeDisplayResponseParts]
           : [...displayResponseParts, ...currentOpenCodeToolParts()]),
         ...openCodeChecklistParts(response.checklist_evidence ?? []),
         ...currentOpenCodeQuestionParts(),

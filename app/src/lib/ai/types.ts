@@ -149,6 +149,8 @@ export function observeResponseBody(
 export interface LLMStreamChunk {
   /** Text delta to append. Empty string is allowed (e.g., on the final chunk). */
   delta: string;
+  /** Replace the matching native text part instead of appending to it. */
+  mode?: 'append' | 'replace';
   /** Request-local opaque identity for one native provider text part. */
   streamPartId?: string;
   /** True only on the very first text chunk in a stream. */
@@ -172,7 +174,7 @@ export interface TokenUsage {
  * store's per-agent token totals.
  */
 export interface LLMResponse {
-  /** The full accumulated text. Equal to the concatenation of all chunk deltas. */
+  /** Final public answer text. OpenCode checkpoints are carried separately below. */
   text: string;
   /** Token + dollar usage. */
   usage: TokenUsage;
@@ -199,6 +201,8 @@ export interface LLMResponse {
     complete: boolean;
     issueCount: number;
   }>;
+  /** Ordered display-only OpenCode checkpoints and safe tool lifecycle before the final answer. */
+  public_timeline?: readonly import('./openCodePublicTimeline').OpenCodePublicTimelinePart[];
 }
 
 /**

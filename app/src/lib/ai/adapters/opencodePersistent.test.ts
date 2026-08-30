@@ -48,8 +48,10 @@ import {
   classifyExplicitRootInventoryScope,
   combineSystemPrompt,
   contextSystemAddendum,
+  currentTurnOpenCodeMessages,
   createGenerationSafeAsyncCache,
   createOpenCodeTextStreamPartTracker,
+  createOpenCodeToolCallTracker,
   createPersistentOpenCodeRuntimeSupervisor,
   disposeOpenCodePersistentRuntimes,
   filterOpenCodeModelsToConnectedProviders,
@@ -63,10 +65,12 @@ import {
   openCodePersistentAdapter,
   parseOpenCodeLiveModels,
   parseConnectedOpenCodeProviderIds,
+  publicTextFromTurnMessages,
   persistentOpenCodeSessionErrorMessage,
   requireAuthoritativeOpenCodeModel,
   respondToPersistentOpenCodeQuestion,
   shouldReportPersistentTurnFailure,
+  shouldFailOpenCodeTurnWithoutEvidence,
   shouldReconcileOpenCodeSessionCompletion,
   toolsForPolicy,
   toOpenCodeDiscoveredModels,
@@ -127,7 +131,18 @@ function jsonResponse(value: unknown, status = 200): Response {
 
 function configureManagedQuestionTransport(
   events: readonly { type: string; properties?: Readonly<Record<string, unknown>> }[],
+  options: {
+    pendingQuestions?: readonly Readonly<Record<string, unknown>>[];
+    sessionStatuses?: readonly (string | null)[];
+    persistedMessages?: readonly Readonly<Record<string, unknown>>[];
+    persistedMessagePolls?: readonly (readonly Readonly<Record<string, unknown>>[])[];
+    eventStartDelayMs?: number;
+    eventBurstCount?: number;
+    lifecycle?: string[];
+  } = {},
 ): void {
+  let statusReadIndex = 0;
+  let messageReadIndex = 0;
   nativeOpenCodeMocks.request.mockImplementation(async (_generation, path, init) => {
     if (path.startsWith('/global/health')) {
       return jsonResponse({ healthy: true, version: '1.18.21' });
@@ -144,27 +159,53 @@ function configureManagedQuestionTransport(
       });
     }
     if (path.includes('/message?')) {
-      return jsonResponse([
+      const fallbackMessages = options.persistedMessages ?? [
         {
-          info: { role: 'assistant', providerID: 'openai', modelID: 'gpt-question-test' },
+          info: {
+            id: 'msg_question_default',
+            role: 'assistant',
+            providerID: 'openai',
+            modelID: 'gpt-question-test',
+            time: { completed: 1 },
+          },
           parts: [{ type: 'text', text: 'Question handled.' }],
         },
-      ]);
+      ];
+      const polls = options.persistedMessagePolls ?? [[], fallbackMessages];
+      const messages = polls[Math.min(messageReadIndex, polls.length - 1)] ?? [];
+      messageReadIndex += 1;
+      return jsonResponse(messages);
     }
+    if (path.startsWith('/question?')) return jsonResponse(options.pendingQuestions ?? []);
     if (path.startsWith('/question/')) return jsonResponse(true);
+    if (path.startsWith('/session/status')) {
+      const statuses = options.sessionStatuses ?? ['busy'];
+      const status = statuses[Math.min(statusReadIndex, statuses.length - 1)]!;
+      statusReadIndex += 1;
+      return jsonResponse(status === null ? {} : { ses_question_exact: { type: status } });
+    }
     if (/^\/session(?:\?|$)/u.test(path) && init?.method === 'POST') {
       return jsonResponse({ id: 'ses_question_exact' });
     }
     if (path.includes('/abort')) return jsonResponse(true);
-    if (path.includes('/prompt_async')) return jsonResponse(true);
+    if (path.includes('/prompt_async')) {
+      options.lifecycle?.push('prompt-async');
+      return jsonResponse(true);
+    }
     if (path.startsWith('/session/') && init?.method === 'PATCH') return jsonResponse(true);
     if (path.startsWith('/session/')) return jsonResponse({ id: 'ses_question_exact' });
     throw new Error(`Unexpected managed OpenCode test path: ${path}`);
   });
   nativeOpenCodeMocks.events.mockImplementation(async function* (_generation, _path, signal) {
-    for (const event of events) {
+    options.lifecycle?.push('event-subscription-started');
+    if (options.eventStartDelayMs) {
+      await new Promise((resolve) => setTimeout(resolve, options.eventStartDelayMs));
+    }
+    const count = options.eventBurstCount ?? events.length;
+    for (let index = 0; index < count; index += 1) {
       if (signal?.aborted) return;
-      yield event;
+      const event = events[index % events.length];
+      if (event) yield event;
     }
   });
 }
@@ -336,6 +377,143 @@ describe('persistent OpenCode question transport authority', () => {
     expect(() => bindPersistentOpenCodeQuestionRoute(projection.route)).toThrow(
       /no longer active/i,
     );
+  });
+
+  it('recovers a pending question when the v2 event feed omits question.asked and closes mid-turn', async () => {
+    const pending = questionAskedEvent().properties;
+    configureManagedQuestionTransport(
+      [
+        {
+          type: 'message.part.updated',
+          properties: {
+            sessionID: 'ses_question_exact',
+            part: {
+              id: 'prt_question_exact',
+              sessionID: 'ses_question_exact',
+              messageID: 'msg_question_exact',
+              type: 'tool',
+              tool: 'question',
+              callID: 'call_question_exact',
+              state: { status: 'running', input: { questions: validNativeQuestions } },
+            },
+          },
+        },
+      ],
+      { pendingQuestions: [pending], sessionStatuses: ['busy'] },
+    );
+
+    const iterator = openCodePersistentAdapter.send!(
+      questionProviderRequest('request-question-v2-recovery'),
+    )[Symbol.asyncIterator]();
+    await expect(iterator.next()).resolves.toMatchObject({
+      done: false,
+      value: { type: 'session', sessionId: 'ses_question_exact' },
+    });
+
+    let recovered: ProviderEvent | undefined;
+    for (let index = 0; index < 4 && !recovered; index += 1) {
+      const next = await iterator.next();
+      if (!next.done && next.value.type === 'question') recovered = next.value;
+    }
+    expect(recovered).toMatchObject({
+      type: 'question',
+      request: {
+        id: 'que_question_exact',
+        sessionId: 'ses_question_exact',
+        tool: { messageId: 'msg_question_exact', callId: 'call_question_exact' },
+      },
+    });
+    expect(
+      nativeOpenCodeMocks.request.mock.calls.some(([, path]) => path.startsWith('/question?')),
+    ).toBe(true);
+
+    await iterator.return?.();
+  });
+
+  it('recovers a pending question immediately when heartbeat events starve the status poll', async () => {
+    const pending = questionAskedEvent().properties;
+    configureManagedQuestionTransport([], {
+      pendingQuestions: [pending],
+      sessionStatuses: ['busy'],
+    });
+    nativeOpenCodeMocks.events.mockImplementation(async function* (_generation, _path, signal) {
+      yield {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'ses_question_exact',
+          part: {
+            id: 'prt_question_exact',
+            sessionID: 'ses_question_exact',
+            messageID: 'msg_question_exact',
+            type: 'tool',
+            tool: 'question',
+            callID: 'call_question_exact',
+            state: { status: 'running', input: { questions: validNativeQuestions } },
+          },
+        },
+      };
+      while (!signal?.aborted) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        yield { type: 'server.heartbeat' };
+      }
+    });
+    const abort = new AbortController();
+    const iterator = openCodePersistentAdapter.send!(
+      questionProviderRequest('request-question-heartbeat-recovery', abort.signal),
+    )[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toMatchObject({ value: { type: 'session' } });
+    await expect(iterator.next()).resolves.toMatchObject({
+      value: { type: 'tool', name: 'question', status: 'started' },
+    });
+    await expect(
+      Promise.race([
+        iterator.next(),
+        new Promise<never>((_resolve, reject) =>
+          setTimeout(() => reject(new Error('question recovery was starved')), 750),
+        ),
+      ]),
+    ).resolves.toMatchObject({
+      done: false,
+      value: { type: 'question', request: { id: 'que_question_exact' } },
+    });
+
+    abort.abort();
+    await iterator.return?.();
+  });
+
+  it('reconciles pending questions on schedule when the native stream contains only heartbeats', async () => {
+    const pending = questionAskedEvent().properties;
+    configureManagedQuestionTransport([], {
+      pendingQuestions: [pending],
+      sessionStatuses: ['busy'],
+    });
+    nativeOpenCodeMocks.events.mockImplementation(async function* (_generation, _path, signal) {
+      while (!signal?.aborted) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        yield { type: 'server.heartbeat' };
+      }
+    });
+    const abort = new AbortController();
+    const iterator = openCodePersistentAdapter.send!(
+      questionProviderRequest('request-question-heartbeat-only', abort.signal),
+    )[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toMatchObject({ value: { type: 'session' } });
+    await expect(
+      Promise.race([
+        iterator.next(),
+        new Promise<never>((_resolve, reject) =>
+          setTimeout(() => reject(new Error('scheduled reconciliation was starved')), 750),
+        ),
+      ]),
+    ).resolves.toMatchObject({
+      done: false,
+      value: { type: 'question', request: { id: 'que_question_exact' } },
+    });
+
+    abort.abort();
+    await iterator.return?.();
   });
 
   it('publishes validated observed execution identity to the exact Tool Gateway session and releases it', async () => {
@@ -825,6 +1003,747 @@ describe('persistent OpenCode live authority', () => {
     expect(JSON.stringify([firstPart, secondPart])).not.toMatch(
       /ses-private|msg-private|part-a|part-b/iu,
     );
+  });
+
+  it('maps native OpenCode tool calls to stable request-local lifecycle identities', () => {
+    const callId = createOpenCodeToolCallTracker();
+
+    expect(callId('call-private-read')).toBe('opencode-tool-1');
+    expect(callId('call-private-read')).toBe('opencode-tool-1');
+    expect(callId('call-private-edit')).toBe('opencode-tool-2');
+    expect(JSON.stringify([callId('call-private-read'), callId('call-private-edit')])).not.toMatch(
+      /call-private/iu,
+    );
+  });
+
+  it('activates the native event subscription before prompt dispatch and retains the immediate first text part', async () => {
+    const lifecycle: string[] = [];
+    configureManagedQuestionTransport(
+      [
+        {
+          type: 'message.updated',
+          properties: {
+            sessionID: 'ses_question_exact',
+            info: {
+              role: 'assistant',
+              sessionID: 'ses_question_exact',
+              providerID: 'openai',
+              modelID: 'gpt-question-test',
+            },
+          },
+        },
+        {
+          type: 'message.part.updated',
+          properties: {
+            sessionID: 'ses_question_exact',
+            part: {
+              id: 'part-immediate-first-text',
+              sessionID: 'ses_question_exact',
+              messageID: 'message-immediate-first-text',
+              type: 'text',
+              text: 'I started immediately.',
+            },
+          },
+        },
+        { type: 'session.idle', properties: { sessionID: 'ses_question_exact' } },
+      ],
+      { lifecycle },
+    );
+
+    const events: ProviderEvent[] = [];
+    for await (const event of openCodePersistentAdapter.send!(
+      questionProviderRequest('request-subscribe-before-dispatch'),
+    )) {
+      events.push(event);
+      if (event.type === 'done') break;
+    }
+
+    expect(lifecycle.indexOf('event-subscription-started')).toBeGreaterThanOrEqual(0);
+    expect(lifecycle.indexOf('event-subscription-started')).toBeLessThan(
+      lifecycle.indexOf('prompt-async'),
+    );
+    expect(events).toContainEqual({
+      type: 'text',
+      delta: 'I started immediately.',
+      streamPartId: 'opencode-text-1',
+    });
+  });
+
+  it('never projects the current user message as assistant output', async () => {
+    configureManagedQuestionTransport(
+      [
+        {
+          type: 'message.updated',
+          properties: {
+            sessionID: 'ses_question_exact',
+            info: {
+              id: 'message-current-user',
+              role: 'user',
+              sessionID: 'ses_question_exact',
+            },
+          },
+        },
+        {
+          type: 'message.part.updated',
+          properties: {
+            sessionID: 'ses_question_exact',
+            part: {
+              id: 'part-current-user',
+              sessionID: 'ses_question_exact',
+              messageID: 'message-current-user',
+              type: 'text',
+              text: 'Make the game.',
+            },
+          },
+        },
+        {
+          type: 'message.updated',
+          properties: {
+            sessionID: 'ses_question_exact',
+            info: {
+              id: 'message-current-assistant',
+              role: 'assistant',
+              sessionID: 'ses_question_exact',
+              providerID: 'openai',
+              modelID: 'gpt-question-test',
+              time: { completed: 1 },
+            },
+          },
+        },
+        {
+          type: 'message.part.updated',
+          properties: {
+            sessionID: 'ses_question_exact',
+            part: {
+              id: 'part-current-assistant',
+              sessionID: 'ses_question_exact',
+              messageID: 'message-current-assistant',
+              type: 'text',
+              text: 'The game is ready.',
+            },
+          },
+        },
+        { type: 'session.idle', properties: { sessionID: 'ses_question_exact' } },
+      ],
+      {
+        persistedMessages: [
+          {
+            info: {
+              id: 'message-current-assistant',
+              role: 'assistant',
+              providerID: 'openai',
+              modelID: 'gpt-question-test',
+              time: { completed: 1 },
+            },
+            parts: [
+              {
+                id: 'part-current-assistant',
+                sessionID: 'ses_question_exact',
+                messageID: 'message-current-assistant',
+                type: 'text',
+                text: 'The game is ready.',
+              },
+            ],
+          },
+        ],
+      },
+    );
+
+    const events: ProviderEvent[] = [];
+    for await (const event of openCodePersistentAdapter.send!(
+      questionProviderRequest('request-user-echo-filter'),
+    )) {
+      events.push(event);
+      if (event.type === 'done') break;
+    }
+
+    expect(events.filter((event) => event.type === 'text')).toEqual([
+      {
+        type: 'text',
+        delta: 'The game is ready.',
+        streamPartId: 'opencode-text-1',
+      },
+    ]);
+    expect(JSON.stringify(events)).not.toContain('Make the game.');
+  });
+
+  it('emits a native non-prefix text correction as an opaque part replacement', async () => {
+    configureManagedQuestionTransport(
+      [
+        {
+          type: 'message.updated',
+          properties: {
+            sessionID: 'ses_question_exact',
+            info: {
+              role: 'assistant',
+              sessionID: 'ses_question_exact',
+              providerID: 'openai',
+              modelID: 'gpt-question-test',
+            },
+          },
+        },
+        {
+          type: 'message.part.updated',
+          properties: {
+            part: {
+              id: 'part-private',
+              sessionID: 'ses_question_exact',
+              messageID: 'message-private',
+              type: 'text',
+              text: 'I built teh game.',
+            },
+          },
+        },
+        {
+          type: 'message.part.updated',
+          properties: {
+            part: {
+              id: 'part-private',
+              sessionID: 'ses_question_exact',
+              messageID: 'message-private',
+              type: 'text',
+              text: 'I built the game.',
+            },
+          },
+        },
+      ],
+      { sessionStatuses: ['busy'] },
+    );
+    const abort = new AbortController();
+    const iterator = openCodePersistentAdapter.send!(
+      questionProviderRequest('request-text-replacement', abort.signal),
+    )[Symbol.asyncIterator]();
+    const textEvents: ProviderEvent[] = [];
+    for (let index = 0; index < 8 && textEvents.length < 2; index += 1) {
+      const next = await iterator.next();
+      if (!next.done && next.value.type === 'text') textEvents.push(next.value);
+    }
+    abort.abort();
+    await iterator.return?.();
+
+    expect(textEvents).toEqual([
+      { type: 'text', delta: 'I built teh game.', streamPartId: 'opencode-text-1' },
+      {
+        type: 'text',
+        delta: 'I built the game.',
+        mode: 'replace',
+        streamPartId: 'opencode-text-1',
+      },
+    ]);
+    expect(JSON.stringify(textEvents)).not.toMatch(/ses_question|message-private|part-private/iu);
+  });
+
+  it('recovers ordered text and tool receipts when the native event stream is lost', async () => {
+    configureManagedQuestionTransport([], {
+      sessionStatuses: [null],
+      persistedMessages: [
+        {
+          info: {
+            id: 'message-history-recovery',
+            role: 'assistant',
+            providerID: 'openai',
+            modelID: 'gpt-question-test',
+            time: { completed: 1 },
+          },
+          parts: [
+            {
+              id: 'part-text-1',
+              sessionID: 'ses_question_exact',
+              messageID: 'message-1',
+              type: 'text',
+              text: 'I checked the empty project.',
+            },
+            {
+              id: 'part-tool-1',
+              sessionID: 'ses_question_exact',
+              messageID: 'message-1',
+              type: 'tool',
+              tool: 'write',
+              callID: 'call-write-1',
+              state: {
+                status: 'completed',
+                input: { filePath: 'C:\\private\\index.html', content: 'must-not-survive' },
+                output: 'must-not-survive',
+              },
+            },
+            {
+              id: 'part-text-2',
+              sessionID: 'ses_question_exact',
+              messageID: 'message-2',
+              type: 'text',
+              text: 'The game is ready.',
+            },
+          ],
+        },
+      ],
+    });
+    const iterator = openCodePersistentAdapter.send!(
+      questionProviderRequest('request-history-recovery'),
+    )[Symbol.asyncIterator]();
+    const events: ProviderEvent[] = [];
+    for (let index = 0; index < 12; index += 1) {
+      const next = await iterator.next();
+      if (next.done) break;
+      events.push(next.value);
+      if (next.value.type === 'done') break;
+    }
+
+    expect(events.filter((event) => event.type === 'text' || event.type === 'tool')).toEqual([
+      {
+        type: 'text',
+        delta: 'I checked the empty project.',
+        streamPartId: 'opencode-text-1',
+      },
+      {
+        type: 'tool',
+        name: 'write',
+        status: 'started',
+        callId: 'opencode-tool-1',
+        fileLabel: 'index.html',
+      },
+      {
+        type: 'tool',
+        name: 'write',
+        status: 'completed',
+        callId: 'opencode-tool-1',
+        fileLabel: 'index.html',
+      },
+      { type: 'text', delta: 'The game is ready.', streamPartId: 'opencode-text-2' },
+    ]);
+    expect(events.find((event) => event.type === 'public_timeline')).toEqual({
+      type: 'public_timeline',
+      snapshot: {
+        finalText: 'The game is ready.',
+        timeline: [
+          { kind: 'text', text: 'I checked the empty project.' },
+          {
+            kind: 'tool_call',
+            tool: 'write',
+            call_id: 'opencode-tool-1',
+            args: { path: 'index.html' },
+          },
+          {
+            kind: 'tool_result',
+            call_id: 'opencode-tool-1',
+            result: { status: 'completed' },
+          },
+        ],
+      },
+    });
+    expect(events.at(-1)).toMatchObject({ type: 'done' });
+    expect(JSON.stringify(events)).not.toMatch(/must-not-survive|private/iu);
+  });
+
+  it('reconciles ordered persisted text and tool parts before completing on an immediate idle event', async () => {
+    configureManagedQuestionTransport(
+      [{ type: 'session.idle', properties: { sessionID: 'ses_question_exact' } }],
+      {
+        persistedMessagePolls: [
+          [],
+          [
+            {
+              info: {
+                id: 'message-immediate-idle-recovery',
+                role: 'assistant',
+                providerID: 'openai',
+                modelID: 'gpt-question-test',
+                time: { completed: 1 },
+              },
+              parts: [
+                {
+                  id: 'part-idle-text-1',
+                  sessionID: 'ses_question_exact',
+                  messageID: 'message-immediate-idle-recovery',
+                  type: 'text',
+                  text: 'I inspected the project. ',
+                },
+                {
+                  id: 'part-idle-tool-1',
+                  sessionID: 'ses_question_exact',
+                  messageID: 'message-immediate-idle-recovery',
+                  type: 'tool',
+                  tool: 'write',
+                  callID: 'call-private-immediate-idle',
+                  state: {
+                    status: 'completed',
+                    input: {
+                      filePath: 'C:\\private\\game.js',
+                      content: 'must-not-survive',
+                    },
+                    output: 'must-not-survive',
+                  },
+                },
+                {
+                  id: 'part-idle-text-2',
+                  sessionID: 'ses_question_exact',
+                  messageID: 'message-immediate-idle-recovery',
+                  type: 'text',
+                  text: 'The game is ready.',
+                },
+              ],
+            },
+          ],
+        ],
+      },
+    );
+
+    const events: ProviderEvent[] = [];
+    for await (const event of openCodePersistentAdapter.send!(
+      questionProviderRequest('request-immediate-idle-recovery'),
+    )) {
+      events.push(event);
+      if (event.type === 'done') break;
+    }
+
+    expect(events.filter((event) => event.type === 'text' || event.type === 'tool')).toEqual([
+      {
+        type: 'text',
+        delta: 'I inspected the project. ',
+        streamPartId: 'opencode-text-1',
+      },
+      {
+        type: 'tool',
+        name: 'write',
+        status: 'started',
+        callId: 'opencode-tool-1',
+        fileLabel: 'game.js',
+      },
+      {
+        type: 'tool',
+        name: 'write',
+        status: 'completed',
+        callId: 'opencode-tool-1',
+        fileLabel: 'game.js',
+      },
+      { type: 'text', delta: 'The game is ready.', streamPartId: 'opencode-text-2' },
+    ]);
+    expect(events.at(-1)).toMatchObject({ type: 'done' });
+    expect(JSON.stringify(events)).not.toMatch(
+      /must-not-survive|call-private|message-immediate|part-idle|C:\\\\private/iu,
+    );
+  });
+
+  it('filters persisted recovery to canonical message identities created after dispatch', () => {
+    const baseline = [
+      { info: { id: 'msg-old-user', role: 'user' }, parts: [{ type: 'text', text: 'Old' }] },
+      {
+        info: { id: 'msg-old-assistant', role: 'assistant' },
+        parts: [{ type: 'text', text: 'Historical answer.' }],
+      },
+    ];
+    const current = [
+      ...baseline,
+      { info: { id: 'msg-new-user', role: 'user' }, parts: [{ type: 'text', text: 'New' }] },
+      {
+        info: { id: 'msg-new-a', role: 'assistant' },
+        parts: [
+          { type: 'text', text: 'First checkpoint. ' },
+          { type: 'reasoning', text: 'Private reasoning must not cross.' },
+        ],
+      },
+      {
+        info: { id: 'msg-new-b', role: 'assistant' },
+        parts: [{ type: 'agent_message', text: 'Final answer.' }],
+      },
+      { info: { role: 'assistant' }, parts: [{ type: 'text', text: 'Missing identity.' }] },
+    ];
+
+    const filtered = currentTurnOpenCodeMessages(
+      current,
+      new Set(['msg-old-user', 'msg-old-assistant']),
+    );
+
+    expect(filtered.map((message) => message.info?.id)).toEqual([
+      'msg-new-user',
+      'msg-new-a',
+      'msg-new-b',
+    ]);
+    expect(publicTextFromTurnMessages(filtered)).toBe('First checkpoint. Final answer.');
+  });
+
+  it('never replays or completes from historical messages in a reused persistent session', async () => {
+    const historical = [
+      { info: { id: 'msg-old-user', role: 'user' }, parts: [{ type: 'text', text: 'Old' }] },
+      {
+        info: {
+          id: 'msg-old-assistant',
+          role: 'assistant',
+          providerID: 'openai',
+          modelID: 'gpt-question-test',
+          time: { completed: 1 },
+        },
+        parts: [
+          { type: 'text', text: 'Historical answer must not replay.' },
+          {
+            type: 'tool',
+            tool: 'read',
+            callID: 'call-old-read',
+            state: { status: 'completed', input: { filePath: 'old.js' } },
+          },
+        ],
+      },
+    ];
+    configureManagedQuestionTransport([], {
+      sessionStatuses: [null],
+      persistedMessagePolls: [historical, historical, historical],
+    });
+    const abort = new AbortController();
+    const iterator = openCodePersistentAdapter.send!(
+      questionProviderRequest('request-reused-history-only', abort.signal),
+    )[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toMatchObject({
+      done: false,
+      value: { type: 'session' },
+    });
+    const pending = iterator.next();
+    setTimeout(() => abort.abort(), 1_100);
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    await iterator.return?.();
+  });
+
+  it('recovers only the new multi-message turn in exact public text and tool order', async () => {
+    const historical = [
+      { info: { id: 'msg-old-user', role: 'user' }, parts: [{ type: 'text', text: 'Old' }] },
+      {
+        info: {
+          id: 'msg-old-assistant',
+          role: 'assistant',
+          providerID: 'openai',
+          modelID: 'gpt-question-test',
+          time: { completed: 1 },
+        },
+        parts: [{ type: 'text', text: 'Historical answer.' }],
+      },
+    ];
+    const assistantInfo = (id: string) => ({
+      id,
+      role: 'assistant',
+      providerID: 'openai',
+      modelID: 'gpt-question-test',
+      time: { completed: 1 },
+    });
+    const current = [
+      ...historical,
+      { info: { id: 'msg-current-user', role: 'user' }, parts: [{ type: 'text', text: 'New' }] },
+      {
+        info: assistantInfo('msg-current-1'),
+        parts: [{ id: 'part-current-1', type: 'text', text: 'I inspected the project. ' }],
+      },
+      {
+        info: assistantInfo('msg-current-2'),
+        parts: [{ id: 'part-reasoning', type: 'reasoning', text: 'Private chain.' }],
+      },
+      {
+        info: assistantInfo('msg-current-3'),
+        parts: [
+          {
+            id: 'part-read',
+            type: 'tool',
+            tool: 'read',
+            callID: 'call-read-current',
+            state: { status: 'completed', input: { filePath: 'C:\\private\\game.js' } },
+          },
+        ],
+      },
+      {
+        info: assistantInfo('msg-current-4'),
+        parts: [{ id: 'part-current-2', type: 'text', text: 'I found the game loop. ' }],
+      },
+      {
+        info: assistantInfo('msg-current-5'),
+        parts: [
+          {
+            id: 'part-edit',
+            type: 'tool',
+            tool: 'edit',
+            callID: 'call-edit-current',
+            state: { status: 'completed', input: { filePath: 'C:\\private\\player.js' } },
+          },
+        ],
+      },
+      {
+        info: assistantInfo('msg-current-6'),
+        parts: [{ id: 'part-current-3', type: 'text', text: 'I finished the implementation. ' }],
+      },
+      {
+        info: assistantInfo('msg-current-7'),
+        parts: [
+          {
+            id: 'part-command',
+            type: 'tool',
+            tool: 'bash',
+            callID: 'call-test-current',
+            state: { status: 'completed', input: { command: 'private command' } },
+          },
+        ],
+      },
+      {
+        info: assistantInfo('msg-current-8'),
+        parts: [{ id: 'part-current-4', type: 'text', text: 'The game is ready.' }],
+      },
+    ];
+    configureManagedQuestionTransport([], {
+      sessionStatuses: [null],
+      persistedMessagePolls: [historical, current],
+    });
+
+    const events: ProviderEvent[] = [];
+    for await (const event of openCodePersistentAdapter.send!(
+      questionProviderRequest('request-current-turn-recovery'),
+    )) {
+      events.push(event);
+      if (event.type === 'done') break;
+    }
+
+    expect(events.filter((event) => event.type === 'text' || event.type === 'tool')).toEqual([
+      { type: 'text', delta: 'I inspected the project. ', streamPartId: 'opencode-text-1' },
+      {
+        type: 'tool',
+        name: 'read',
+        status: 'started',
+        callId: 'opencode-tool-1',
+        fileLabel: 'game.js',
+      },
+      {
+        type: 'tool',
+        name: 'read',
+        status: 'completed',
+        callId: 'opencode-tool-1',
+        fileLabel: 'game.js',
+      },
+      { type: 'text', delta: 'I found the game loop. ', streamPartId: 'opencode-text-2' },
+      {
+        type: 'tool',
+        name: 'edit',
+        status: 'started',
+        callId: 'opencode-tool-2',
+        fileLabel: 'player.js',
+      },
+      {
+        type: 'tool',
+        name: 'edit',
+        status: 'completed',
+        callId: 'opencode-tool-2',
+        fileLabel: 'player.js',
+      },
+      { type: 'text', delta: 'I finished the implementation. ', streamPartId: 'opencode-text-3' },
+      { type: 'tool', name: 'bash', status: 'started', callId: 'opencode-tool-3' },
+      { type: 'tool', name: 'bash', status: 'completed', callId: 'opencode-tool-3' },
+      { type: 'text', delta: 'The game is ready.', streamPartId: 'opencode-text-4' },
+    ]);
+    expect(events.some((event) => event.type === 'reasoning')).toBe(false);
+    expect(JSON.stringify(events)).not.toMatch(
+      /Historical answer|Private chain|private command|C:\\\\private/iu,
+    );
+    expect(events.at(-1)).toMatchObject({ type: 'done' });
+  });
+
+  it('delivers current-turn tool activity from persisted history while the session remains busy', async () => {
+    const historical = [
+      { info: { id: 'msg-old-user', role: 'user' }, parts: [{ type: 'text', text: 'Old' }] },
+      {
+        info: {
+          id: 'msg-old-assistant',
+          role: 'assistant',
+          providerID: 'openai',
+          modelID: 'gpt-question-test',
+          time: { completed: 1 },
+        },
+        parts: [{ type: 'text', text: 'Historical answer.' }],
+      },
+    ];
+    const current = [
+      ...historical,
+      {
+        info: {
+          id: 'msg-current-tool-first',
+          role: 'assistant',
+          providerID: 'openai',
+          modelID: 'gpt-question-test',
+          time: { created: 2 },
+        },
+        parts: [
+          { id: 'part-step-start', type: 'step-start' },
+          {
+            id: 'part-current-read',
+            type: 'tool',
+            tool: 'read',
+            callID: 'call-current-read',
+            state: { status: 'running', input: { filePath: 'C:\\private\\game.js' } },
+          },
+        ],
+      },
+    ];
+    configureManagedQuestionTransport([], {
+      sessionStatuses: ['busy'],
+      persistedMessagePolls: [historical, current],
+    });
+    const abort = new AbortController();
+    const iterator = openCodePersistentAdapter.send!(
+      questionProviderRequest('request-busy-tool-first', abort.signal),
+    )[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toMatchObject({
+      done: false,
+      value: { type: 'session' },
+    });
+    await expect(iterator.next()).resolves.toEqual({
+      done: false,
+      value: {
+        type: 'tool',
+        name: 'read',
+        status: 'started',
+        callId: 'opencode-tool-1',
+        fileLabel: 'game.js',
+      },
+    });
+    abort.abort();
+    await expect(iterator.next()).rejects.toMatchObject({ name: 'AbortError' });
+    await iterator.return?.();
+  });
+
+  it('does not starve persisted-history recovery behind a busy global event feed', async () => {
+    configureManagedQuestionTransport([{ type: 'server.heartbeat' }], {
+      sessionStatuses: [null],
+      eventStartDelayMs: 750,
+      eventBurstCount: 1_000_000,
+      persistedMessages: [
+        {
+          info: {
+            id: 'message-busy-feed-recovery',
+            role: 'assistant',
+            providerID: 'openai',
+            modelID: 'gpt-question-test',
+            time: { completed: 1 },
+          },
+          parts: [
+            {
+              id: 'part-busy-feed-text',
+              sessionID: 'ses_question_exact',
+              messageID: 'message-busy-feed',
+              type: 'text',
+              text: 'Recovered after a busy feed.',
+            },
+          ],
+        },
+      ],
+    });
+
+    const events: ProviderEvent[] = [];
+    for await (const event of openCodePersistentAdapter.send!(
+      questionProviderRequest('request-busy-feed-recovery'),
+    )) {
+      events.push(event);
+      if (event.type === 'done') break;
+    }
+
+    expect(events).toContainEqual({
+      type: 'text',
+      delta: 'Recovered after a busy feed.',
+      streamPartId: 'opencode-text-1',
+    });
+    expect(events.at(-1)).toMatchObject({ type: 'done' });
   });
 
   it('reconciles persisted todo evidence when idle polling wins the live-event race', () => {
@@ -1349,6 +2268,7 @@ describe('persistent OpenCode live authority', () => {
         statusLookupSucceeded: true,
         streamedText: 'OK',
         hasPersistedAssistantIdentity: true,
+        hasPersistedAssistantCompletion: true,
       }),
     ).toBe(true);
     expect(
@@ -1356,6 +2276,7 @@ describe('persistent OpenCode live authority', () => {
         statusLookupSucceeded: false,
         streamedText: 'OK',
         hasPersistedAssistantIdentity: true,
+        hasPersistedAssistantCompletion: true,
       }),
     ).toBe(false);
     expect(
@@ -1363,6 +2284,7 @@ describe('persistent OpenCode live authority', () => {
         statusLookupSucceeded: true,
         streamedText: '',
         hasPersistedAssistantIdentity: true,
+        hasPersistedAssistantCompletion: true,
       }),
     ).toBe(false);
     expect(
@@ -1370,6 +2292,7 @@ describe('persistent OpenCode live authority', () => {
         statusLookupSucceeded: true,
         streamedText: 'OK',
         hasPersistedAssistantIdentity: false,
+        hasPersistedAssistantCompletion: true,
       }),
     ).toBe(false);
     expect(
@@ -1378,7 +2301,57 @@ describe('persistent OpenCode live authority', () => {
         statusLookupSucceeded: true,
         streamedText: '',
         hasPersistedAssistantIdentity: false,
+        hasPersistedAssistantCompletion: true,
       }),
     ).toBe(true);
+    expect(
+      shouldReconcileOpenCodeSessionCompletion({
+        statusLookupSucceeded: true,
+        streamedText: 'Still working',
+        hasPersistedAssistantIdentity: true,
+        hasPersistedAssistantCompletion: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('fails closed only for authoritative idle or bounded undefined status without turn evidence', () => {
+    expect(
+      shouldFailOpenCodeTurnWithoutEvidence({
+        status: 'idle',
+        statusLookupSucceeded: true,
+        elapsedMs: 0,
+        hasTurnEvidence: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldFailOpenCodeTurnWithoutEvidence({
+        statusLookupSucceeded: true,
+        elapsedMs: 1_999,
+        hasTurnEvidence: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldFailOpenCodeTurnWithoutEvidence({
+        statusLookupSucceeded: true,
+        elapsedMs: 2_000,
+        hasTurnEvidence: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldFailOpenCodeTurnWithoutEvidence({
+        status: 'idle',
+        statusLookupSucceeded: true,
+        elapsedMs: 10_000,
+        hasTurnEvidence: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldFailOpenCodeTurnWithoutEvidence({
+        status: 'busy',
+        statusLookupSucceeded: true,
+        elapsedMs: 10_000,
+        hasTurnEvidence: false,
+      }),
+    ).toBe(false);
   });
 });

@@ -219,6 +219,7 @@ import {
   mayAutoApproveOpenCodeRequest,
   openCodeToolsForInteractionMode,
   prepareOpenCodeMessagesForInteractionMode,
+  prependOpenCodePublicTimeline,
   reconcileApprovalContinuationResponse,
   resolveRuntimeReasoningPolicy,
   missingExplicitRootAuditCategories,
@@ -246,6 +247,150 @@ function startRuntimeListener(
   const [bindings, options] = args;
   return startKernelAwareRuntimeListener(bindings, options ?? { jarvisKernelMode: 'legacy' });
 }
+
+describe('canonical OpenCode public chronology', () => {
+  it('prepends the authoritative display timeline even when Jarvis policy edits the final text', () => {
+    const envelope = {
+      schemaVersion: 1,
+      requestId: 'jreq-opencode-chronology',
+      runId: 'jrun-opencode-chronology',
+      mode: 'direct_answer',
+      displayText: 'The game is ready, Sir.',
+      parts: [{ kind: 'text', text: 'The game is ready, Sir.' }],
+      artifactIds: [],
+      sourceRefs: [],
+      provider: {
+        providerId: 'opencode',
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        connectionMode: 'external-cli',
+        capabilities: {},
+        capturedAt: 1,
+      },
+      enforcement: {
+        linted: true,
+        violations: [],
+        repairAttempted: false,
+        repairSucceeded: false,
+        fallbackUsed: false,
+      },
+      completedAt: 1,
+    } satisfies JarvisResponseEnvelope;
+
+    const timeline = [
+      { kind: 'text' as const, text: 'I inspected the project.' },
+      {
+        kind: 'tool_call' as const,
+        tool: 'read',
+        call_id: 'opencode-tool-1',
+        args: { path: 'game.js' },
+      },
+      {
+        kind: 'tool_result' as const,
+        call_id: 'opencode-tool-1',
+        result: { status: 'completed' as const },
+      },
+    ];
+
+    expect(prependOpenCodePublicTimeline(envelope, timeline)).toEqual({
+      ...envelope,
+      parts: [
+        { kind: 'text', text: 'I inspected the project.' },
+        {
+          kind: 'tool_call',
+          tool: 'read',
+          call_id: 'opencode-tool-1',
+          args: { path: 'game.js' },
+        },
+        {
+          kind: 'tool_result',
+          call_id: 'opencode-tool-1',
+          result: { status: 'completed' },
+        },
+        { kind: 'text', text: 'The game is ready, Sir.' },
+      ],
+    });
+    expect(JSON.stringify(timeline)).not.toMatch(/private|reasoning|output/iu);
+  });
+
+  it('replaces inferred operation parts with the authoritative OpenCode tool lifecycle', () => {
+    const envelope = {
+      schemaVersion: 1,
+      requestId: 'jreq-opencode-authority',
+      runId: 'jrun-opencode-authority',
+      mode: 'direct_answer',
+      displayText: 'The game is ready, Sir.',
+      parts: [
+        {
+          kind: 'tool_call',
+          tool: 'files.create',
+          call_id: 'jarvis-inferred-tool',
+          args: { path: 'duplicate.html' },
+        },
+        {
+          kind: 'tool_result',
+          call_id: 'jarvis-inferred-tool',
+          result: { status: 'completed' },
+        },
+        {
+          kind: 'action_proposal',
+          call_id: 'jarvis-inferred-action',
+          action_id: 'files.create',
+          params: { path: 'duplicate.html' },
+          status: 'pending',
+        },
+        { kind: 'reasoning', text: 'private reasoning' },
+        { kind: 'text', text: 'The game is ready, Sir.' },
+      ],
+      artifactIds: [],
+      sourceRefs: [],
+      provider: {
+        providerId: 'opencode',
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        connectionMode: 'external-cli',
+        capabilities: {},
+        capturedAt: 1,
+      },
+      enforcement: {
+        linted: true,
+        violations: [],
+        repairAttempted: false,
+        repairSucceeded: false,
+        fallbackUsed: false,
+      },
+      completedAt: 1,
+    } satisfies JarvisResponseEnvelope;
+
+    const result = prependOpenCodePublicTimeline(envelope, [
+      {
+        kind: 'tool_call',
+        tool: 'write',
+        call_id: 'opencode-tool-1',
+        args: { path: 'index.html' },
+      },
+      {
+        kind: 'tool_result',
+        call_id: 'opencode-tool-1',
+        result: { status: 'completed' },
+      },
+    ]);
+
+    expect(result.parts).toEqual([
+      {
+        kind: 'tool_call',
+        tool: 'write',
+        call_id: 'opencode-tool-1',
+        args: { path: 'index.html' },
+      },
+      {
+        kind: 'tool_result',
+        call_id: 'opencode-tool-1',
+        result: { status: 'completed' },
+      },
+      { kind: 'text', text: 'The game is ready, Sir.' },
+    ]);
+    expect(JSON.stringify(result.parts)).not.toMatch(/jarvis-inferred|duplicate|reasoning/iu);
+  });
+});
 
 describe('approval continuation provider evidence', () => {
   it('binds only the validated canonical status and never raw action payloads', () => {
@@ -1719,7 +1864,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     stop();
   });
 
-  it('persists one ordered safe receipt per OpenCode tool call through completion', async () => {
+  it('persists five OpenCode checkpoints interleaved with four tool lifecycles through completion', async () => {
     const openCodeConnection = PROVIDER_CONNECTIONS.find(
       (connection) => connection.id === 'opencode-cli',
     )!;
@@ -1751,6 +1896,11 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
         first: true,
         streamPartId: 'opencode-text-1',
       } as LLMStreamChunk & { streamPartId: string });
+      input.onChunk?.({
+        delta: 'I inspected the game structure. ',
+        mode: 'replace',
+        streamPartId: 'opencode-text-1',
+      } as LLMStreamChunk & { streamPartId: string });
       await input.onToolActivity?.({
         name: 'read',
         status: 'started',
@@ -1770,15 +1920,83 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
         fileLabel: 'Composer.tsx',
       });
       input.onChunk?.({
-        delta: 'The full HTML game is ready.',
+        delta: 'I found the game loop. ',
         streamPartId: 'opencode-text-2',
+      } as LLMStreamChunk & { streamPartId: string });
+      await input.onToolActivity?.({
+        name: 'edit',
+        status: 'started',
+        callId: 'edit-1',
+        fileLabel: 'player.js',
+      });
+      await input.onToolActivity?.({
+        name: 'edit',
+        status: 'completed',
+        callId: 'edit-1',
+        fileLabel: 'player.js',
+      });
+      input.onChunk?.({
+        delta: 'I implemented the player systems. ',
+        streamPartId: 'opencode-text-3',
+      } as LLMStreamChunk & { streamPartId: string });
+      await input.onToolActivity?.({
+        name: 'bash',
+        status: 'started',
+        callId: 'command-1',
+      });
+      await input.onToolActivity?.({
+        name: 'bash',
+        status: 'completed',
+        callId: 'command-1',
+      });
+      input.onChunk?.({
+        delta: 'I exercised the finished build. ',
+        streamPartId: 'opencode-text-4',
+      } as LLMStreamChunk & { streamPartId: string });
+      await input.onToolActivity?.({
+        name: 'verify.test',
+        status: 'started',
+        callId: 'verify-1',
+      });
+      await input.onToolActivity?.({
+        name: 'verify.test',
+        status: 'completed',
+        callId: 'verify-1',
+      });
+      input.onChunk?.({
+        delta: 'The full HTML game is ready.',
+        streamPartId: 'opencode-text-5',
       } as LLMStreamChunk & { streamPartId: string });
       input.onChunk?.({ delta: '', done: true });
       return {
-        text: 'I inspected the existing game structure. The full HTML game is ready.',
+        text: 'The full HTML game is ready.',
         usage: { input_tokens: 2, output_tokens: 1, cost_usd: 0 },
         provider: 'opencode',
         model: 'opencode-go/deepseek-v4-flash-vision-exp',
+        public_timeline: [
+          { kind: 'text', text: 'I inspected the game structure. ' },
+          {
+            kind: 'tool_call',
+            tool: 'read',
+            call_id: 'read-1',
+            args: { path: 'Composer.tsx' },
+          },
+          { kind: 'tool_result', call_id: 'read-1', result: { status: 'completed' } },
+          { kind: 'text', text: 'I found the game loop. ' },
+          {
+            kind: 'tool_call',
+            tool: 'edit',
+            call_id: 'edit-1',
+            args: { path: 'player.js' },
+          },
+          { kind: 'tool_result', call_id: 'edit-1', result: { status: 'completed' } },
+          { kind: 'text', text: 'I implemented the player systems. ' },
+          { kind: 'tool_call', tool: 'bash', call_id: 'command-1', args: {} },
+          { kind: 'tool_result', call_id: 'command-1', result: { status: 'completed' } },
+          { kind: 'text', text: 'I exercised the finished build. ' },
+          { kind: 'tool_call', tool: 'verify.test', call_id: 'verify-1', args: {} },
+          { kind: 'tool_result', call_id: 'verify-1', result: { status: 'completed' } },
+        ],
       };
     });
     const stop = trackListener(
@@ -1815,8 +2033,8 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       ).toBe(true),
     );
     const finalParts = durableWrites.at(-1) ?? [];
-    expect(finalParts.slice(0, 4)).toEqual([
-      { kind: 'text', text: 'I inspected the existing game structure. ' },
+    expect(finalParts.slice(0, 13)).toEqual([
+      { kind: 'text', text: 'I inspected the game structure. ' },
       {
         kind: 'tool_call',
         tool: 'read',
@@ -1824,6 +2042,20 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
         args: { path: 'Composer.tsx' },
       },
       { kind: 'tool_result', call_id: 'read-1', result: { status: 'completed' } },
+      { kind: 'text', text: 'I found the game loop. ' },
+      {
+        kind: 'tool_call',
+        tool: 'edit',
+        call_id: 'edit-1',
+        args: { path: 'player.js' },
+      },
+      { kind: 'tool_result', call_id: 'edit-1', result: { status: 'completed' } },
+      { kind: 'text', text: 'I implemented the player systems. ' },
+      { kind: 'tool_call', tool: 'bash', call_id: 'command-1', args: {} },
+      { kind: 'tool_result', call_id: 'command-1', result: { status: 'completed' } },
+      { kind: 'text', text: 'I exercised the finished build. ' },
+      { kind: 'tool_call', tool: 'verify.test', call_id: 'verify-1', args: {} },
+      { kind: 'tool_result', call_id: 'verify-1', result: { status: 'completed' } },
       { kind: 'text', text: 'The full HTML game is ready.' },
     ]);
     expect(finalParts).toContainEqual({
@@ -5774,6 +6006,20 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
         provider: providerInput.agent.model.provider,
         model: providerInput.agent.model.model,
         finish_reason: 'length',
+        public_timeline: [
+          { kind: 'text', text: 'I inspected the project first.' },
+          {
+            kind: 'tool_call',
+            tool: 'read',
+            call_id: 'opencode-tool-1',
+            args: { path: 'game.js' },
+          },
+          {
+            kind: 'tool_result',
+            call_id: 'opencode-tool-1',
+            result: { status: 'completed' },
+          },
+        ],
       };
     });
     const getCapabilities = vi.fn(async () => ({
@@ -5827,6 +6073,28 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       await vi.waitFor(async () => {
         expect(await database.messages.where('chat_id').equals(harness.chatId).count()).toBe(1);
       });
+      const persistedAssistant = await database.messages
+        .where('chat_id')
+        .equals(harness.chatId)
+        .first();
+      expect(persistedAssistant?.parts.slice(0, 4)).toEqual([
+        { kind: 'text', text: 'I inspected the project first.' },
+        {
+          kind: 'tool_call',
+          tool: 'read',
+          call_id: 'opencode-tool-1',
+          args: { path: 'game.js' },
+        },
+        {
+          kind: 'tool_result',
+          call_id: 'opencode-tool-1',
+          result: { status: 'completed' },
+        },
+        {
+          kind: 'text',
+          text: 'The provider reported partial, but executor or journal verification is still required, sir.',
+        },
+      ]);
       const providerInput = mocks.runAgent.mock.calls[0]![0];
       expect(providerInput.signal).toBeInstanceOf(AbortSignal);
       expect(providerInput.tools).toEqual(

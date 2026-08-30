@@ -71,6 +71,7 @@ import type {
   OpenCodeQuestionReplyRequest,
   OpenCodeQuestionRejectRequest,
 } from '@/lib/ai/openCodeQuestionReply';
+import { projectOpenCodePublicTimeline } from '@/lib/ai/openCodePublicTimeline';
 import {
   executeOpenCodeQuestionRequest,
   type OpenCodeQuestionDispatchReceipt,
@@ -80,6 +81,7 @@ const SESSION_REGISTRY_KEY = 'vibespace.opencode-session-registry.v1';
 const AUTH_CACHE_TTL_MS = 60_000;
 const MODEL_CACHE_TTL_MS = 60_000;
 const TURN_IDLE_POLL_MS = 500;
+const TURN_NO_EVIDENCE_GRACE_MS = 2_000;
 const TURN_MAX_WALL_MS = 30 * 60_000;
 
 type PersistentTurnFailureStage =
@@ -127,9 +129,42 @@ export interface OpenCodeLiveModel {
   supportsOpenCodeFastMode: boolean;
 }
 
-interface OpenCodeMessageRecord {
+export interface OpenCodeMessageRecord {
   info?: Record<string, unknown>;
   parts?: readonly Record<string, unknown>[];
+}
+
+const MAX_OPEN_CODE_MESSAGE_BASELINE = 100;
+
+function canonicalOpenCodeMessageId(message: OpenCodeMessageRecord): string | undefined {
+  return cleanIdentifier(message.info?.id);
+}
+
+function captureOpenCodeMessageBaseline(
+  messages: readonly OpenCodeMessageRecord[],
+): ReadonlySet<string> {
+  if (messages.length > MAX_OPEN_CODE_MESSAGE_BASELINE) {
+    throw new Error('OpenCode session history exceeded the bounded current-turn baseline.');
+  }
+  const ids = new Set<string>();
+  for (const message of messages) {
+    const id = canonicalOpenCodeMessageId(message);
+    if (!id) {
+      throw new Error('OpenCode session history lacks canonical message identity.');
+    }
+    ids.add(id);
+  }
+  return ids;
+}
+
+export function currentTurnOpenCodeMessages(
+  messages: readonly OpenCodeMessageRecord[],
+  baselineMessageIds: ReadonlySet<string>,
+): readonly OpenCodeMessageRecord[] {
+  return messages.filter((message) => {
+    const id = canonicalOpenCodeMessageId(message);
+    return Boolean(id && !baselineMessageIds.has(id));
+  });
 }
 
 function recordOf(value: unknown): Record<string, unknown> | undefined {
@@ -357,6 +392,15 @@ class OpenCodeHttpSdk implements OpenCodeSdkClientLike {
     );
     return Array.isArray(value)
       ? value.map((entry) => recordOf(entry) as OpenCodeMessageRecord).filter(Boolean)
+      : [];
+  }
+
+  async pendingQuestions(): Promise<readonly Record<string, unknown>[]> {
+    const value = unwrapData(
+      await requestJson(this.handle.generation, this.handle.scope, '/question', {}, 30_000),
+    );
+    return Array.isArray(value)
+      ? value.map((entry) => recordOf(entry)).filter((entry) => entry !== undefined)
       : [];
   }
 
@@ -798,10 +842,10 @@ export function requireAuthoritativeOpenCodeModel(
   return model;
 }
 
-function statusType(value: unknown): string {
+function statusType(value: unknown): string | undefined {
   if (typeof value === 'string') return value.toLocaleLowerCase('en-US');
   const record = recordOf(value);
-  return cleanIdentifier(record?.type ?? record?.status, 64)?.toLocaleLowerCase('en-US') ?? '';
+  return cleanIdentifier(record?.type ?? record?.status, 64)?.toLocaleLowerCase('en-US');
 }
 
 function eventSessionId(event: OpenCodeRawEvent): string | undefined {
@@ -1165,29 +1209,58 @@ export function shouldReconcileOpenCodeSessionCompletion(input: {
   statusLookupSucceeded: boolean;
   streamedText: string;
   hasPersistedAssistantIdentity: boolean;
+  hasPersistedAssistantCompletion: boolean;
 }): boolean {
-  if (input.status === 'idle') return true;
+  if (input.status === 'idle') return input.hasPersistedAssistantCompletion;
   return Boolean(
     input.statusLookupSucceeded &&
     input.status === undefined &&
     input.streamedText.trim() &&
-    input.hasPersistedAssistantIdentity,
+    input.hasPersistedAssistantIdentity &&
+    input.hasPersistedAssistantCompletion,
   );
 }
 
-function assistantTextFromMessages(messages: readonly OpenCodeMessageRecord[]): string {
+export function shouldFailOpenCodeTurnWithoutEvidence(input: {
+  status?: string;
+  statusLookupSucceeded: boolean;
+  elapsedMs: number;
+  hasTurnEvidence: boolean;
+}): boolean {
+  if (input.hasTurnEvidence || !input.statusLookupSucceeded) return false;
+  if (input.status === 'idle') return true;
+  return input.status === undefined && input.elapsedMs >= TURN_NO_EVIDENCE_GRACE_MS;
+}
+
+function persistedAssistantTurnSettled(messages: readonly OpenCodeMessageRecord[]): boolean {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const record = messages[index];
-    const role = cleanIdentifier(record.info?.role, 32)?.toLocaleLowerCase('en-US');
-    if (role !== 'assistant') continue;
-    return (record.parts ?? [])
-      .filter((part) =>
-        ['text', 'agent_message'].includes(String(part.type).toLocaleLowerCase('en-US')),
-      )
-      .map((part) => (typeof part.text === 'string' ? part.text : ''))
-      .join('');
+    const message = messages[index];
+    if (cleanIdentifier(message.info?.role, 32)?.toLocaleLowerCase('en-US') !== 'assistant') {
+      continue;
+    }
+    const completed = recordOf(message.info?.time)?.completed;
+    if (completed === undefined || completed === null) return false;
+    return !(message.parts ?? []).some((part) => {
+      if (String(part.type).toLocaleLowerCase('en-US') !== 'tool') return false;
+      const status = cleanIdentifier(recordOf(part.state)?.status, 64)?.toLocaleLowerCase('en-US');
+      return !status || status === 'pending' || status === 'running';
+    });
   }
-  return '';
+  return false;
+}
+
+export function publicTextFromTurnMessages(messages: readonly OpenCodeMessageRecord[]): string {
+  return messages
+    .filter((record) => {
+      const role = cleanIdentifier(record.info?.role, 32)?.toLocaleLowerCase('en-US');
+      return role === 'assistant';
+    })
+    .flatMap((record) => record.parts ?? [])
+    .filter((part) =>
+      ['text', 'agent_message'].includes(String(part.type).toLocaleLowerCase('en-US')),
+    )
+    .map((part) => (typeof part.text === 'string' ? part.text : ''))
+    .join('');
 }
 
 export function openCodeChecklistSnapshotsFromMessages(
@@ -1234,6 +1307,21 @@ export function createOpenCodeTextStreamPartTracker(): (partKey: string) => stri
     const streamPartId = `opencode-text-${streamIds.size + 1}`;
     streamIds.set(partKey, streamPartId);
     return streamPartId;
+  };
+}
+
+/** Maps private OpenCode tool-call identity to one request-local lifecycle key. */
+export function createOpenCodeToolCallTracker(): (callId: string) => string {
+  const callIds = new Map<string, string>();
+  return (callId: string) => {
+    const clean = cleanIdentifier(callId);
+    if (!clean) throw new Error('OpenCode tool identity was invalid.');
+    const existing = callIds.get(clean);
+    if (existing) return existing;
+    if (callIds.size >= 4_096) throw new Error('OpenCode tool identity bound was exceeded.');
+    const localCallId = `opencode-tool-${callIds.size + 1}`;
+    callIds.set(clean, localCallId);
+    return localCallId;
   };
 }
 
@@ -1576,6 +1664,8 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
   try {
     const session = await sessions.sessionForChat(scope, chatId);
     const client = session.client as PersistentOpenCodeClient;
+    const baselineMessages = await client.http.messages(session.sessionId);
+    const baselineMessageIds = captureOpenCodeMessageBaseline(baselineMessages);
     failureStage = 'live_model_authority';
     const authoritativeCatalog = await liveModels(scope);
     const liveModel = requireAuthoritativeOpenCodeModel(authoritativeCatalog, modelId);
@@ -1589,6 +1679,8 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       request.accessLevel ??
       (mode === 'ask' ? 'read-only' : mode === 'plan' ? 'read-only' : 'full');
     const eventIterator = client.http.events(abortEvents.signal)[Symbol.asyncIterator]();
+    let pendingEvent = eventIterator.next();
+    void pendingEvent.catch(() => undefined);
     const settings = defaultRuntimeSettings(request);
     failureStage = 'runtime_controls';
     assertAuthoritativeOpenCodeRuntimeControls(settings, liveModel, request.connection.id);
@@ -1630,6 +1722,10 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     if (dispatch.kind === 'command')
       throw new Error('VibeSpace slash commands must be consumed before provider dispatch.');
     if (dispatch.kind === 'rejected') throw new Error(dispatch.message);
+    if (dispatch.sessionId !== session.sessionId) {
+      await client.abort(dispatch.sessionId).catch(() => undefined);
+      throw new Error('OpenCode session identity changed after the current-turn baseline.');
+    }
     const requestedVariant = dispatch.controls.variant ?? dispatch.controls.effort;
     const observeAuthoritativeIdentity = (
       identity: Readonly<OpenCodeObservedIdentity>,
@@ -1706,6 +1802,10 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
 
     const accumulator = new OpenCodeTextAccumulator();
     const streamPartIdFor = createOpenCodeTextStreamPartTracker();
+    const toolCallIdFor = createOpenCodeToolCallTracker();
+    const emittedToolStates = new Set<string>();
+    const liveMessageRoles = new Map<string, string>();
+    let latestLiveMessageRole: string | undefined;
     let latestTextStreamPartId: string | undefined;
     let emittedText = '';
     let observedModelId: string | undefined;
@@ -1713,7 +1813,109 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
     let finishReason = 'stop';
     const startedAt = Date.now();
     failureStage = 'event_stream';
-    let pendingEvent = eventIterator.next();
+    const schedulePoll = (): Promise<{ kind: 'poll' }> =>
+      new Promise((resolve) => setTimeout(() => resolve({ kind: 'poll' }), TURN_IDLE_POLL_MS));
+    let pendingPoll = schedulePoll();
+    const toolStateKey = (tool: Extract<ProviderEvent, { type: 'tool' }>): string =>
+      `${tool.callId ?? tool.name}:${tool.status}`;
+    const requestLocalTool = (
+      tool: ProviderEvent | undefined,
+    ): Extract<ProviderEvent, { type: 'tool' }> | undefined => {
+      if (tool?.type !== 'tool' || !tool.callId) return undefined;
+      const callId = toolCallIdFor(tool.callId);
+      return {
+        ...tool,
+        callId,
+        ...(tool.checklist ? { checklist: { ...tool.checklist, callId } } : {}),
+      };
+    };
+    const reconcilePersistedEvents = (messages: readonly unknown[]): ProviderEvent[] => {
+      const recovered: ProviderEvent[] = [];
+      for (const rawMessage of messages) {
+        const message = recordOf(rawMessage);
+        const info = recordOf(message?.info);
+        if (cleanIdentifier(info?.role, 64)?.toLocaleLowerCase('en-US') !== 'assistant') continue;
+        const parts = Array.isArray(message?.parts) ? message.parts : [];
+        for (const rawPart of parts) {
+          const part = recordOf(rawPart);
+          if (!part) continue;
+          const update = extractOpenCodeTextPartUpdate({
+            type: 'message.part.updated',
+            properties: { part },
+          });
+          if (update) {
+            const emission = accumulator.ingest({ ...update, authoritativeSnapshot: true });
+            if (
+              emission.channel === 'text' &&
+              (emission.kind === 'delta' || emission.kind === 'replace') &&
+              emission.text
+            ) {
+              latestTextStreamPartId = streamPartIdFor(emission.partKey);
+              recovered.push({
+                type: 'text',
+                delta: emission.text,
+                ...(emission.kind === 'replace' ? { mode: 'replace' as const } : {}),
+                streamPartId: latestTextStreamPartId,
+              });
+            }
+          }
+          const tool = requestLocalTool(
+            normalizeToolEvent({ type: 'message.part.updated', properties: { part } }, request),
+          );
+          if (!tool) continue;
+          if (tool.status !== 'started') {
+            const started = { ...tool, status: 'started' as const };
+            const startedKey = toolStateKey(started);
+            if (!emittedToolStates.has(startedKey)) {
+              emittedToolStates.add(startedKey);
+              recovered.push(started);
+            }
+          }
+          const key = toolStateKey(tool);
+          if (!emittedToolStates.has(key)) {
+            emittedToolStates.add(key);
+            recovered.push(tool);
+          }
+        }
+      }
+      emittedText = accumulator.fullText('text');
+      return recovered;
+    };
+    const registerQuestion = async (
+      question: Extract<ProviderEvent, { type: 'question' }>,
+    ): Promise<boolean> => {
+      const active = activeQuestionSessions.get(dispatch.sessionId);
+      if (!active || active.requestId !== request.requestId) {
+        await client.abort(dispatch.sessionId).catch(() => undefined);
+        throw new Error('OpenCode question arrived outside the active request binding.');
+      }
+      const existing = active.pending.get(question.request.id);
+      if (
+        existing &&
+        (existing.sessionId !== question.request.sessionId ||
+          !sameQuestionTool(existing.tool, question.request.tool))
+      ) {
+        await client.abort(dispatch.sessionId).catch(() => undefined);
+        throw new Error('OpenCode question authority changed while waiting.');
+      }
+      if (existing) return false;
+      active.pending.set(question.request.id, question.request);
+      return true;
+    };
+    const recoverPendingQuestions = async (): Promise<
+      Extract<ProviderEvent, { type: 'question' }>[]
+    > => {
+      const propertiesList = await client.http.pendingQuestions().catch(() => []);
+      const recovered: Extract<ProviderEvent, { type: 'question' }>[] = [];
+      for (const properties of propertiesList) {
+        const question = normalizeQuestionEvent(
+          { type: 'question.asked', properties },
+          dispatch.sessionId,
+        );
+        if (question && (await registerQuestion(question))) recovered.push(question);
+      }
+      return recovered;
+    };
 
     while (!done) {
       if (!turnGate.isCurrent(turn))
@@ -1726,60 +1928,106 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       }
 
       const next = await Promise.race([
+        pendingPoll,
         pendingEvent.then((value) => ({ kind: 'event' as const, value })),
-        new Promise<{ kind: 'poll' }>((resolve) =>
-          setTimeout(() => resolve({ kind: 'poll' }), TURN_IDLE_POLL_MS),
-        ),
       ]);
       if (next.kind === 'poll') {
-        const statusLookup = await client.http
-          .status(dispatch.sessionId)
-          .then((value) => ({ succeeded: true as const, value }))
-          .catch(() => ({ succeeded: false as const, value: undefined }));
+        pendingPoll = schedulePoll();
+        const [statusLookup, recoveredQuestions] = await Promise.all([
+          client.http
+            .status(dispatch.sessionId)
+            .then((value) => ({ succeeded: true as const, value }))
+            .catch(() => ({ succeeded: false as const, value: undefined })),
+          recoverPendingQuestions(),
+        ]);
+        for (const question of recoveredQuestions) yield question;
         const status = statusType(statusLookup.value);
+        const messages = await client.http.messages(dispatch.sessionId).catch(() => []);
+        const currentTurnMessages = currentTurnOpenCodeMessages(messages, baselineMessageIds);
+        for (const recovered of reconcilePersistedEvents(currentTurnMessages)) {
+          if (recovered.type === 'text') {
+            request.onResponseObservation?.({
+              kind: 'bytes',
+              byteLength: new TextEncoder().encode(recovered.delta).byteLength,
+              observedAt: Date.now(),
+            });
+          }
+          yield recovered;
+        }
+        const publicTimeline = projectOpenCodePublicTimeline(currentTurnMessages);
+        if (publicTimeline.finalText || publicTimeline.timeline.length > 0) {
+          yield { type: 'public_timeline', snapshot: publicTimeline };
+        }
+        const canonical = publicTextFromTurnMessages(currentTurnMessages);
+        const messageIdentity = observedAssistantIdentity(currentTurnMessages);
+        if (messageIdentity) {
+          observedModelId = observeAuthoritativeIdentity(messageIdentity) ?? observedModelId;
+        }
+        if (canonical && canonical !== emittedText) {
+          const delta = canonicalOpenCodeTextSuffix(emittedText, canonical);
+          if (delta) {
+            request.onResponseObservation?.({
+              kind: 'bytes',
+              byteLength: new TextEncoder().encode(delta).byteLength,
+              observedAt: Date.now(),
+            });
+            yield { type: 'text', delta, streamPartId: latestTextStreamPartId };
+            emittedText = canonical;
+          }
+        }
+        const hasPendingQuestion =
+          (activeQuestionSessions.get(dispatch.sessionId)?.pending.size ?? 0) > 0;
+        const hasTurnEvidence = Boolean(
+          currentTurnMessages.length > 0 ||
+          emittedText.trim() ||
+          emittedToolStates.size > 0 ||
+          hasPendingQuestion,
+        );
         if (
-          status === 'idle' ||
-          (statusLookup.succeeded && status === undefined && emittedText.trim())
-        ) {
-          const messages = await client.http.messages(dispatch.sessionId).catch(() => []);
-          const canonical = assistantTextFromMessages(messages);
-          const messageIdentity = observedAssistantIdentity(messages);
-          if (messageIdentity) {
-            observedModelId = observeAuthoritativeIdentity(messageIdentity) ?? observedModelId;
-          }
-          if (canonical && canonical !== emittedText) {
-            const delta = canonicalOpenCodeTextSuffix(emittedText, canonical);
-            if (delta) {
-              request.onResponseObservation?.({
-                kind: 'bytes',
-                byteLength: new TextEncoder().encode(delta).byteLength,
-                observedAt: Date.now(),
-              });
-              yield { type: 'text', delta, streamPartId: latestTextStreamPartId };
-              emittedText = canonical;
-            }
-          }
-          done = shouldReconcileOpenCodeSessionCompletion({
+          shouldFailOpenCodeTurnWithoutEvidence({
             status,
             statusLookupSucceeded: statusLookup.succeeded,
-            streamedText: emittedText,
-            hasPersistedAssistantIdentity: Boolean(messageIdentity),
-          });
+            elapsedMs: Date.now() - startedAt,
+            hasTurnEvidence,
+          })
+        ) {
+          await client.abort(dispatch.sessionId).catch(() => undefined);
+          throw new Error('OpenCode turn ended before current-turn output became available.');
+        }
+        if (status === 'idle' || (statusLookup.succeeded && status === undefined)) {
+          done =
+            !hasPendingQuestion &&
+            shouldReconcileOpenCodeSessionCompletion({
+              status,
+              statusLookupSucceeded: statusLookup.succeeded,
+              streamedText: emittedText,
+              hasPersistedAssistantIdentity: Boolean(messageIdentity),
+              hasPersistedAssistantCompletion: persistedAssistantTurnSettled(currentTurnMessages),
+            });
         }
         continue;
       }
       if (next.value.done) {
-        // OpenCode may close its per-connection event feed after persisting the
-        // assistant record without emitting a final session.idle frame. Treat
-        // normal EOF as a reconciliation boundary; the authoritative identity
-        // and non-empty response checks below still fail closed.
-        done = true;
+        // OpenCode v2 feeds can close between flushes and omit question/idle
+        // events. Disable this exhausted iterator and let the authoritative
+        // status, message, and pending-question polls reconcile the turn.
+        pendingEvent = new Promise<IteratorResult<OpenCodeRawEvent>>(() => undefined);
         continue;
       }
       const event = next.value.value;
       pendingEvent = eventIterator.next();
       const eventScope = eventSessionId(event);
       if (eventScope && eventScope !== dispatch.sessionId) continue;
+
+      if (event.type === 'message.updated') {
+        const info = recordOf(event.properties?.info ?? event.properties?.message);
+        const role = cleanIdentifier(info?.role, 32)?.toLocaleLowerCase('en-US');
+        const messageId = cleanIdentifier(info?.id ?? info?.messageID ?? info?.messageId, 512);
+        if (role) {
+          latestLiveMessageRole = role;
+          if (messageId) liveMessageRoles.set(messageId, role);
+        }
+      }
 
       const normalizedEvents = normalizeOpenCodeEvent(event, dispatch.sessionId);
       for (const normalized of normalizedEvents) {
@@ -1811,7 +2059,16 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         }
       }
 
-      const update = extractOpenCodeTextPartUpdate(event);
+      const livePart =
+        event.type === 'message.part.updated' ? recordOf(event.properties?.part) : undefined;
+      const livePartMessageId = cleanIdentifier(livePart?.messageID ?? livePart?.messageId, 512);
+      const livePartRole =
+        (livePartMessageId ? liveMessageRoles.get(livePartMessageId) : undefined) ??
+        latestLiveMessageRole;
+      const update =
+        livePartRole && livePartRole !== 'assistant'
+          ? undefined
+          : extractOpenCodeTextPartUpdate(event);
       if (update) {
         const emission = accumulator.ingest(update);
         if (emission.kind === 'delta' && emission.channel === 'text' && emission.text) {
@@ -1824,47 +2081,40 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
           });
           yield { type: 'text', delta: emission.text, streamPartId: latestTextStreamPartId };
         } else if (emission.kind === 'replace' && emission.channel === 'text') {
-          // The legacy ProviderEvent surface is append-only. Emit only a safe suffix when possible;
-          // the final message poll below repairs any non-prefix correction canonically.
-          const full = emission.fullText;
-          if (full.startsWith(emittedText)) {
-            const suffix = full.slice(emittedText.length);
-            if (suffix) {
-              latestTextStreamPartId = streamPartIdFor(emission.partKey);
-              yield { type: 'text', delta: suffix, streamPartId: latestTextStreamPartId };
-            }
-          }
-          emittedText = full;
-        } else if (emission.kind === 'delta' && emission.channel === 'reasoning' && emission.text) {
-          yield { type: 'reasoning', delta: emission.text };
+          latestTextStreamPartId = streamPartIdFor(emission.partKey);
+          emittedText = accumulator.fullText('text');
+          request.onResponseObservation?.({
+            kind: 'bytes',
+            byteLength: new TextEncoder().encode(emission.text).byteLength,
+            observedAt: Date.now(),
+          });
+          yield {
+            type: 'text',
+            delta: emission.text,
+            mode: 'replace',
+            streamPartId: latestTextStreamPartId,
+          };
         }
       }
-      const tool = normalizeToolEvent(event, request);
+      const tool = requestLocalTool(normalizeToolEvent(event, request));
       if (tool) {
+        if (tool.type === 'tool') {
+          const key = toolStateKey(tool);
+          if (emittedToolStates.has(key)) continue;
+          emittedToolStates.add(key);
+        }
         if (tool.type === 'tool' && tool.status === 'started') {
           request.onActionDispatch?.({ observedAt: Date.now() });
         }
         yield tool;
+        if (tool.type === 'tool' && tool.name === 'question' && tool.status === 'started') {
+          for (const recoveredQuestion of await recoverPendingQuestions()) {
+            yield recoveredQuestion;
+          }
+        }
       }
       const question = normalizeQuestionEvent(event, dispatch.sessionId);
-      if (question) {
-        const active = activeQuestionSessions.get(dispatch.sessionId);
-        if (!active || active.requestId !== request.requestId) {
-          await client.abort(dispatch.sessionId).catch(() => undefined);
-          throw new Error('OpenCode question arrived outside the active request binding.');
-        }
-        const existing = active.pending.get(question.request.id);
-        if (
-          existing &&
-          (existing.sessionId !== question.request.sessionId ||
-            !sameQuestionTool(existing.tool, question.request.tool))
-        ) {
-          await client.abort(dispatch.sessionId).catch(() => undefined);
-          throw new Error('OpenCode question authority changed while waiting.');
-        }
-        if (!existing) active.pending.set(question.request.id, question.request);
-        yield question;
-      }
+      if (question && (await registerQuestion(question))) yield question;
       const usage = normalizePersistentOpenCodeUsage(event);
       if (usage) yield { type: 'usage', usage };
       if (event.type === 'session.error') {
@@ -1890,8 +2140,37 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
 
     failureStage = 'completion_authority';
     const messages = await client.http.messages(dispatch.sessionId).catch(() => []);
-    const canonical = assistantTextFromMessages(messages);
-    const messageIdentity = observedAssistantIdentity(messages);
+    const currentTurnMessages = currentTurnOpenCodeMessages(messages, baselineMessageIds);
+    for (const recovered of reconcilePersistedEvents(currentTurnMessages)) {
+      if (recovered.type === 'text') {
+        request.onResponseObservation?.({
+          kind: 'bytes',
+          byteLength: new TextEncoder().encode(recovered.delta).byteLength,
+          observedAt: Date.now(),
+        });
+      }
+      yield recovered;
+    }
+    const publicTimeline = projectOpenCodePublicTimeline(currentTurnMessages);
+    if (publicTimeline.finalText || publicTimeline.timeline.length > 0) {
+      const counts = publicTimeline.timeline.reduce(
+        (current, part) => ({
+          text: current.text + (part.kind === 'text' ? 1 : 0),
+          calls: current.calls + (part.kind === 'tool_call' ? 1 : 0),
+          results: current.results + (part.kind === 'tool_result' ? 1 : 0),
+        }),
+        { text: 0, calls: 0, results: 0 },
+      );
+      console.debug('OpenCode public timeline projected.', {
+        checkpointTextParts: counts.text,
+        toolCalls: counts.calls,
+        toolResults: counts.results,
+        hasFinalText: Boolean(publicTimeline.finalText),
+      });
+      yield { type: 'public_timeline', snapshot: publicTimeline };
+    }
+    const canonical = publicTextFromTurnMessages(currentTurnMessages);
+    const messageIdentity = observedAssistantIdentity(currentTurnMessages);
     if (messageIdentity) {
       const firstObservation = !observedModelId;
       observedModelId = observeAuthoritativeIdentity(messageIdentity) ?? observedModelId;
@@ -1906,7 +2185,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       const delta = canonicalOpenCodeTextSuffix(emittedText, canonical);
       if (delta) yield { type: 'text', delta, streamPartId: latestTextStreamPartId };
     }
-    const reconciledChecklists = openCodeChecklistSnapshotsFromMessages(messages);
+    const reconciledChecklists = openCodeChecklistSnapshotsFromMessages(currentTurnMessages);
     for (const checklist of reconciledChecklists) {
       yield {
         type: 'tool',
