@@ -35,7 +35,13 @@ function sourceRevisions(
   result: Readonly<ProductionContextGatewayQueryResult>,
 ): readonly Readonly<ContextSourceRevision>[] {
   const revisions = new Map<string, string>();
-  for (const evidence of result.evidence) revisions.set(evidence.sourceId, evidence.sourceRevision);
+  for (const evidence of result.evidence) {
+    const existing = revisions.get(evidence.sourceId);
+    if (existing !== undefined && existing !== evidence.sourceRevision) {
+      throw new Error('Context backend returned conflicting source revisions.');
+    }
+    revisions.set(evidence.sourceId, evidence.sourceRevision);
+  }
   return Object.freeze(
     [...revisions].map(([sourceId, revision]) => Object.freeze({ sourceId, revision })),
   );
@@ -46,6 +52,41 @@ function safeStageValue(value: unknown): number {
     throw new Error('Context backend returned an invalid stage timing.');
   }
   return value;
+}
+
+function safeCount(value: unknown, name: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new Error(`Context backend returned an invalid ${name}.`);
+  }
+  return value as number;
+}
+
+function assertQueryTruth(
+  result: Readonly<ProductionContextGatewayQueryResult>,
+  requestedRoute: ContextGatewayBackendRequest['route'],
+): void {
+  const candidateCount = safeCount(result.candidateCount, 'candidate count');
+  const hydratedCount = safeCount(result.hydratedCount, 'hydrated count');
+  const evidenceCount = safeCount(result.evidenceCount, 'evidence count');
+  safeCount(result.childCalls, 'child-call count');
+  safeCount(result.maxDepth, 'retrieval depth');
+  if (
+    hydratedCount > candidateCount ||
+    hydratedCount !== result.evidence.length ||
+    evidenceCount !== result.evidence.length
+  ) {
+    throw new Error('Context backend returned unreconciled retrieval counts.');
+  }
+  const expectedRoute = requestedRoute === 'deep' ? 'rlm' : 'retrieval';
+  if (result.route !== expectedRoute) {
+    throw new Error('Context backend returned a mismatched retrieval route.');
+  }
+  const citationLines = new Set(result.promptBlock.split(/\r?\n/u));
+  for (const evidence of result.evidence) {
+    if (!citationLines.has(`Citation: [${evidence.handle}]`)) {
+      throw new Error('Context backend returned evidence without a grounded citation.');
+    }
+  }
 }
 
 function safeStageTimings(
@@ -112,6 +153,7 @@ function productionBackend(
         signal: input.signal,
       });
       input.signal.throwIfAborted();
+      assertQueryTruth(result, input.route);
       const stageTimingsMs = safeStageTimings(result, dependencies.now() - startedAt);
       return Object.freeze({
         promptBlock: result.promptBlock,

@@ -18,10 +18,10 @@ import { createProductionContextGateway } from './productionContextGateway';
 
 const result: ProductionContextGatewayQueryResult = {
   route: 'retrieval',
-  promptBlock: 'validated evidence',
+  promptBlock: 'Citation: [pointer-1]\nvalidated evidence',
   evidenceCount: 1,
   candidateCount: 7,
-  hydratedCount: 5,
+  hydratedCount: 1,
   childCalls: 1,
   maxDepth: 0,
   truncated: false,
@@ -107,7 +107,7 @@ describe('production Context Gateway adapter', () => {
       evidenceHandles: ['pointer-1'],
       stageTimingsMs: expect.objectContaining({
         candidateCount: 7,
-        hydratedCount: 5,
+        hydratedCount: 1,
         siyuanReady: 2,
         queueWait: 0,
         search: 7,
@@ -172,6 +172,79 @@ describe('production Context Gateway adapter', () => {
     });
 
     await expect(gateway.prepareTurn(gatewayRequest('turn-unknown-timing'))).rejects.toMatchObject({
+      receipt: expect.objectContaining({ safeFailure: 'retrieval-failed' }),
+    });
+  });
+
+  it.each([
+    ['fractional candidates', { candidateCount: 1.5 }],
+    ['hydration beyond candidates', { candidateCount: 0, hydratedCount: 1 }],
+    ['hydration/evidence mismatch', { hydratedCount: 2 }],
+    ['reported evidence mismatch', { evidenceCount: 2 }],
+  ])('fails closed on %s before issuing retrieval count truth', async (_label, override) => {
+    const gateway = createProductionContextGateway({
+      available: () => true,
+      query: vi.fn(async () => ({ ...result, ...override })),
+      now: () => 100,
+      createId: () => `receipt-count-${_label}`,
+    });
+
+    await expect(gateway.prepareTurn(gatewayRequest(`turn-count-${_label}`))).rejects.toMatchObject(
+      {
+        receipt: expect.objectContaining({ safeFailure: 'retrieval-failed' }),
+      },
+    );
+  });
+
+  it('fails closed when one source ID claims conflicting hydrated revisions', async () => {
+    const conflictingEvidence = {
+      ...result.evidence[0]!,
+      handle: 'pointer-2',
+      sourceRevision: 'source-v3',
+      contentHash: `sha256:${'b'.repeat(64)}`,
+    };
+    const gateway = createProductionContextGateway({
+      available: () => true,
+      query: vi.fn(async () => ({
+        ...result,
+        promptBlock: `${result.promptBlock}\nCitation: [pointer-2]`,
+        evidenceCount: 2,
+        hydratedCount: 2,
+        evidence: [...result.evidence, conflictingEvidence],
+      })),
+      now: () => 100,
+      createId: () => 'receipt-conflicting-revision',
+    });
+
+    await expect(
+      gateway.prepareTurn(gatewayRequest('turn-conflicting-revision')),
+    ).rejects.toMatchObject({
+      receipt: expect.objectContaining({ safeFailure: 'stale-source' }),
+    });
+  });
+
+  it('fails closed when a hydrated handle is absent from the grounded citation block', async () => {
+    const gateway = createProductionContextGateway({
+      available: () => true,
+      query: vi.fn(async () => ({ ...result, promptBlock: 'validated but ungrounded evidence' })),
+      now: () => 100,
+      createId: () => 'receipt-ungrounded',
+    });
+
+    await expect(gateway.prepareTurn(gatewayRequest('turn-ungrounded'))).rejects.toMatchObject({
+      receipt: expect.objectContaining({ safeFailure: 'retrieval-failed' }),
+    });
+  });
+
+  it('fails closed when a focused retrieval reports a deep-route result', async () => {
+    const gateway = createProductionContextGateway({
+      available: () => true,
+      query: vi.fn(async () => ({ ...result, route: 'rlm' as const })),
+      now: () => 100,
+      createId: () => 'receipt-route-mismatch',
+    });
+
+    await expect(gateway.prepareTurn(gatewayRequest('turn-route-mismatch'))).rejects.toMatchObject({
       receipt: expect.objectContaining({ safeFailure: 'retrieval-failed' }),
     });
   });
