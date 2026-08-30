@@ -6,6 +6,7 @@
  * WAVE4_CONTRACTS.md.
  */
 import type { AgentCoordinationMode } from './agentCoordination';
+import type { ExpectedTerminalProcessBinding } from './terminalRefs';
 
 export interface TerminalViewProps {
   /** Existing session to attach to. `null`/`undefined` => spawn fresh on mount. */
@@ -24,6 +25,8 @@ export interface TerminalViewProps {
   pendingCommand?: string;
   /** Token for repeated pending commands with identical text. */
   pendingCommandId?: number;
+  /** Exact native binding required for an identity-bound pending write. */
+  pendingCommandProcessIdentity?: ExpectedTerminalProcessBinding;
   /** Action queue id whose lifecycle follows this PTY. */
   executionId?: string;
   /** Working directory for the spawned process. */

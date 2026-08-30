@@ -163,12 +163,13 @@ export function applyTerminalCommandBatch(
         const pendingCommandId = Date.now();
         next = fromLeaves(
           flattenLeaves(next).map((leaf, index) => {
-            const hit = refs.some((ref) => terminalRefMatchesLeaf(ref, leaf));
+            const hit = refs.find((ref) => terminalRefMatchesLeaf(ref, leaf));
             if (!hit) return leaf;
             return {
               ...leaf,
               pendingCommand: item.command,
               pendingCommandId: pendingCommandId + index,
+              pendingCommandProcessIdentity: hit.expectedProcess,
             };
           }),
         );

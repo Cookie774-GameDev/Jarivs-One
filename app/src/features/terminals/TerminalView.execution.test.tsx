@@ -5,6 +5,7 @@ import type { ITheme } from 'xterm';
 
 import {
   attachTerminalViewExecution,
+  buildPendingTerminalWriteArgs,
   awaitTerminalFontReadiness,
   awaitTerminalOutputReadiness,
   canonicalTerminalSpawnToken,
@@ -18,6 +19,34 @@ import {
 } from './TerminalView';
 
 describe('TerminalView canonical execution truth', () => {
+  it('binds an Instant pending write to the exact native process identity', () => {
+    const expectedProcess = {
+      projectId: 'project-a',
+      processInstanceId: 'process-a',
+      pid: 4242,
+      processStartedAt: 1_723_456_789_000,
+      runtimeGeneration: 'runtime-a',
+    };
+
+    expect(buildPendingTerminalWriteArgs('pty-a', 'inspect', expectedProcess)).toEqual({
+      sessionId: 'pty-a',
+      data: 'inspect\r',
+      expectedBinding: expectedProcess,
+    });
+    expect(buildPendingTerminalWriteArgs('pty-a', 'inspect', undefined)).toEqual({
+      sessionId: 'pty-a',
+      data: 'inspect\r',
+    });
+
+    const tileGrid = readFileSync(
+      resolve(process.cwd(), 'src/features/terminals/TileGrid.tsx'),
+      'utf8',
+    );
+    expect(tileGrid).toContain(
+      'pendingCommandProcessIdentity={leaf.pendingCommandProcessIdentity}',
+    );
+    expect(tileGrid).toContain('pendingCommandProcessIdentity: undefined');
+  });
   it('wires initial and live xterm presentation through the canonical resolver', () => {
     const source = readFileSync(
       resolve(process.cwd(), 'src/features/terminals/TerminalView.tsx'),

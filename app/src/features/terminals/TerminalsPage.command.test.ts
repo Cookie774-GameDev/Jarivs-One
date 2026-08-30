@@ -153,6 +153,37 @@ describe('commandForAgent', () => {
     expect(markExecution).toHaveBeenCalledWith('send-exact', 'starting');
   });
 
+  it('propagates the exact expected native process binding with a referenced command', () => {
+    const expectedProcess = {
+      projectId: 'project-a',
+      processInstanceId: 'process-a',
+      pid: 4242,
+      processStartedAt: 1_723_456_789_000,
+      runtimeGeneration: 'runtime-a',
+    };
+    const current: PaneNode = {
+      kind: 'leaf',
+      id: 'pane-a',
+      projectId: 'project-a',
+      sessionId: 'pty-a',
+    };
+
+    const next = applyTerminalCommandBatch(current, [
+      {
+        kind: 'shell',
+        id: 'send-bound',
+        command: 'BOUND_ONLY',
+        target: 'refs',
+        refs: [{ paneId: 'pane-a', sessionId: 'pty-a', expectedProcess }],
+      },
+    ]);
+
+    expect(flattenLeaves(next)[0]).toMatchObject({
+      pendingCommand: 'BOUND_ONLY',
+      pendingCommandProcessIdentity: expectedProcess,
+    });
+  });
+
   it('rejects a ref whose pane and session identities point at different terminals', () => {
     const current: PaneNode = {
       kind: 'split',

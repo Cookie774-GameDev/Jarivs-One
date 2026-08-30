@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use portable_pty::{native_pty_system, Child, ChildKiller, CommandBuilder, MasterPty, PtySize};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::async_runtime::{spawn_blocking, JoinHandle, Mutex as AsyncMutex};
 use tauri::{AppHandle, Emitter, State};
 
@@ -192,6 +192,31 @@ pub struct NativeProcessBinding {
     pub process_started_at: u64,
     /// Opaque identity shared by terminal sessions in this native runtime.
     pub runtime_generation: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalWriteBinding {
+    pub project_id: Option<String>,
+    pub process_instance_id: String,
+    pub pid: u32,
+    pub process_started_at: u64,
+    pub runtime_generation: String,
+}
+
+fn validate_terminal_write_binding(
+    info: &TerminalInfo,
+    expected: &TerminalWriteBinding,
+) -> Result<(), String> {
+    if info.project_id != expected.project_id
+        || info.process_binding.process_instance_id != expected.process_instance_id
+        || info.process_binding.pid != expected.pid
+        || info.process_binding.process_started_at != expected.process_started_at
+        || info.process_binding.runtime_generation != expected.runtime_generation
+    {
+        return Err("terminal: process identity changed before write".to_string());
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -1257,6 +1282,7 @@ pub async fn terminal_write(
     state: State<'_, TerminalState>,
     session_id: String,
     data: String,
+    expected_binding: Option<TerminalWriteBinding>,
 ) -> Result<(), String> {
     // Clone just the writer Arc out of the map so we don't hold the global
     // state lock across the actual I/O.
@@ -1265,6 +1291,9 @@ pub async fn terminal_write(
         let h = map
             .get(&session_id)
             .ok_or_else(|| format!("terminal: unknown session {session_id}"))?;
+        if let Some(expected) = expected_binding.as_ref() {
+            validate_terminal_write_binding(&h.info, expected)?;
+        }
         h.writer.clone()
     };
     spawn_blocking(move || {
@@ -1412,8 +1441,63 @@ mod tests {
         process_started_at_from_filetime_ticks, terminal_launch_spec, valid_cancellation_token,
         validated_kill_request, ExitReason, KillRequest, KillRequestKind, KillResultKind,
         KillStart, LifecycleArbiter, NativeProcessBinding, SpawnResponse, TerminalInfo,
-        TerminalKillResult, TerminalState, MAX_CANCELLATION_TOKEN_BYTES, WINDOWS_UNIX_EPOCH_100NS,
+        TerminalKillResult, TerminalState, TerminalWriteBinding, MAX_CANCELLATION_TOKEN_BYTES,
+        WINDOWS_UNIX_EPOCH_100NS,
     };
+
+    #[test]
+    fn exact_terminal_write_binding_rejects_every_replaced_native_identity_field() {
+        let info = TerminalInfo {
+            session_id: "tty_exact".to_string(),
+            command: "powershell".to_string(),
+            cwd: "C:\\workspace".to_string(),
+            rows: 30,
+            cols: 100,
+            started_at: 1,
+            project_id: Some("project-a".to_string()),
+            project_name: Some("Project A".to_string()),
+            deleted: false,
+            process_binding: NativeProcessBinding {
+                process_instance_id: "process-a".to_string(),
+                pid: 4242,
+                process_started_at: 1_723_456_789_000,
+                runtime_generation: "runtime-a".to_string(),
+            },
+        };
+        let exact = TerminalWriteBinding {
+            project_id: Some("project-a".to_string()),
+            process_instance_id: "process-a".to_string(),
+            pid: 4242,
+            process_started_at: 1_723_456_789_000,
+            runtime_generation: "runtime-a".to_string(),
+        };
+        assert!(super::validate_terminal_write_binding(&info, &exact).is_ok());
+
+        for changed in [
+            TerminalWriteBinding {
+                project_id: Some("project-b".to_string()),
+                ..exact.clone()
+            },
+            TerminalWriteBinding {
+                process_instance_id: "process-b".to_string(),
+                ..exact.clone()
+            },
+            TerminalWriteBinding {
+                pid: 4243,
+                ..exact.clone()
+            },
+            TerminalWriteBinding {
+                process_started_at: 1_723_456_789_001,
+                ..exact.clone()
+            },
+            TerminalWriteBinding {
+                runtime_generation: "runtime-b".to_string(),
+                ..exact.clone()
+            },
+        ] {
+            assert!(super::validate_terminal_write_binding(&info, &changed).is_err());
+        }
+    }
 
     fn exit_process_binding() -> NativeProcessBinding {
         NativeProcessBinding {

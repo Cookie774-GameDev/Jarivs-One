@@ -118,6 +118,11 @@ interface TerminalCommandQueueState {
   /** Append a shell command; returns the assigned id. */
   enqueue: (cmd: Omit<Extract<TerminalCommand, { kind: 'shell' }>, 'id' | 'kind'>) => string;
 
+  /** Append a shell-command batch in one state mutation or append nothing. */
+  enqueueBatch: (
+    cmds: readonly Omit<Extract<TerminalCommand, { kind: 'shell' }>, 'id' | 'kind'>[],
+  ) => readonly string[];
+
   /** Insert one already-identified canonical item after its queue owner is registered. */
   enqueueCanonical: (
     cmd: Omit<Extract<TerminalCommand, { kind: 'shell' }>, 'id' | 'kind' | 'canonical'> &
@@ -281,6 +286,23 @@ function newId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${(nextId++).toString(36)}`;
 }
 
+type TerminalShellCommandInput = Omit<Extract<TerminalCommand, { kind: 'shell' }>, 'id' | 'kind'>;
+
+function createQueuedShellCommand(
+  cmd: TerminalShellCommandInput,
+): Extract<TerminalCommand, { kind: 'shell' }> {
+  const id = newId('tcmd');
+  return {
+    kind: 'shell',
+    id,
+    ...cmd,
+    ...(cmd.startupCommands === undefined
+      ? {}
+      : { startupCommands: cmd.startupCommands.slice(0, 3) }),
+    ...(cmd.preserveExisting ? { preserveExisting: true } : {}),
+  };
+}
+
 function stableIdentifier(value: string, label: string): string {
   if (!value || value !== value.trim() || value.includes('\u0000')) {
     throw new TypeError(`${label} must be a stable nonblank identifier.`);
@@ -353,18 +375,14 @@ export const useTerminalCommandQueue = create<TerminalCommandQueueState>((set, g
   activeFleetRequestIds: [],
   cancelledFleetRequestIds: [],
   enqueue: (cmd) => {
-    const id = newId('tcmd');
-    const next: TerminalCommand = {
-      kind: 'shell',
-      id,
-      ...cmd,
-      ...(cmd.startupCommands === undefined
-        ? {}
-        : { startupCommands: cmd.startupCommands.slice(0, 3) }),
-      ...(cmd.preserveExisting ? { preserveExisting: true } : {}),
-    };
+    const next = createQueuedShellCommand(cmd);
     set((s) => ({ queue: [...s.queue, next] }));
-    return id;
+    return next.id;
+  },
+  enqueueBatch: (cmds) => {
+    const next = cmds.map(createQueuedShellCommand);
+    if (next.length > 0) set((state) => ({ queue: [...state.queue, ...next] }));
+    return next.map((item) => item.id);
   },
   enqueueCanonical: (cmd) => {
     const accountId = stableIdentifier(cmd.accountId, 'accountId');
@@ -487,6 +505,12 @@ export function enqueueTerminalCommand(
   cmd: Omit<Extract<TerminalCommand, { kind: 'shell' }>, 'id' | 'kind'>,
 ): string {
   return useTerminalCommandQueue.getState().enqueue(cmd);
+}
+
+export function enqueueTerminalCommandBatch(
+  cmds: readonly TerminalShellCommandInput[],
+): readonly string[] {
+  return useTerminalCommandQueue.getState().enqueueBatch(cmds);
 }
 
 export function enqueueCanonicalTerminalCommand(

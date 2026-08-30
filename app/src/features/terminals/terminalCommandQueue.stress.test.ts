@@ -5,6 +5,7 @@ import {
   enqueueCanonicalTerminalCommand,
   enqueueTerminalClose,
   enqueueTerminalCommand,
+  enqueueTerminalCommandBatch,
   jarvisTerminalCommandQueueAuthority,
   readTerminalCommandQueueDurableStateForTests,
   resetTerminalCommandQueueDurabilityForTests,
@@ -61,6 +62,28 @@ describe('terminal command queue stress', () => {
     expect(useTerminalCommandQueue.getState().queue).toHaveLength(0);
     // Second drain is idempotent - nothing double-executes.
     expect(useTerminalCommandQueue.getState().drain()).toHaveLength(0);
+  });
+
+  it('appends a shell batch atomically or leaves the queue unchanged', () => {
+    expect(
+      enqueueTerminalCommandBatch([
+        { command: 'codex', label: 'codex 1' },
+        { command: 'codex', label: 'codex 2' },
+      ]),
+    ).toHaveLength(2);
+    expect(useTerminalCommandQueue.getState().queue).toHaveLength(2);
+    useTerminalCommandQueue.getState().clear();
+
+    const invalid = { command: 'codex' } as { command: string; startupCommands?: string[] };
+    Object.defineProperty(invalid, 'startupCommands', {
+      get() {
+        throw new Error('second item invalid');
+      },
+    });
+    expect(() => enqueueTerminalCommandBatch([{ command: 'codex' }, invalid])).toThrow(
+      'second item invalid',
+    );
+    expect(useTerminalCommandQueue.getState().queue).toEqual([]);
   });
 
   it('applies the drained batch to the pane tree without exceeding MAX_PANES', () => {

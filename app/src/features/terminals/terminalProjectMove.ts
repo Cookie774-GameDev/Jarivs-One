@@ -1,12 +1,6 @@
 import type { ProjectId } from '@/types/common';
 import type { AgentCoordinationMode } from './agentCoordination';
-import {
-  MAX_PANES,
-  type PaneNode,
-  flattenLeaves,
-  fromLeaves,
-  newLeaf,
-} from './paneTree';
+import { MAX_PANES, type PaneNode, flattenLeaves, fromLeaves, newLeaf } from './paneTree';
 import { captureLiveTree, getLiveTree } from './terminalLiveCache';
 import type { TerminalRef } from './terminalRefs';
 import { terminalRefLabel } from './terminalRefs';
@@ -51,15 +45,14 @@ export function normalizeTerminalProjectId(
   return projectId;
 }
 
-export function terminalTreeStorageKey(
-  projectId: ProjectId | string | null | undefined,
-): string {
+export function terminalTreeStorageKey(projectId: ProjectId | string | null | undefined): string {
   return `${TREE_KEY_PREFIX}:${normalizeTerminalProjectId(projectId) ?? DEFAULT_PROJECT_KEY}`;
 }
 
 function stripVolatileTerminalFields(key: string, value: unknown): unknown {
   if (key === 'pendingCommand') return undefined;
   if (key === 'pendingCommandId') return undefined;
+  if (key === 'pendingCommandProcessIdentity') return undefined;
   return value;
 }
 
@@ -73,7 +66,9 @@ function cleanString(value: unknown): string | undefined {
 
 function cleanStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const strings = value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+  const strings = value.filter(
+    (item): item is string => typeof item === 'string' && item.trim().length > 0,
+  );
   return strings.length > 0 ? strings : undefined;
 }
 
@@ -96,9 +91,7 @@ function normalizeLeafForProject(
   seenIds: Set<string>,
 ): LeafNode | null {
   if (!isRecord(raw)) return null;
-  const embeddedProjectId = normalizeTerminalProjectId(
-    cleanString(raw.projectId) ?? null,
-  );
+  const embeddedProjectId = normalizeTerminalProjectId(cleanString(raw.projectId) ?? null);
   if (embeddedProjectId !== null && embeddedProjectId !== projectId) {
     return null;
   }
@@ -142,11 +135,17 @@ function normalizeTreeForProject(
     if (!right) return left;
     return {
       kind: 'split',
-      id: cleanString(raw.id) ?? `split_repair_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      id:
+        cleanString(raw.id) ??
+        `split_repair_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
       orientation: raw.orientation === 'v' ? 'v' : 'h',
-      ratio: typeof raw.ratio === 'number' && Number.isFinite(raw.ratio) && raw.ratio > 0 && raw.ratio < 1
-        ? raw.ratio
-        : 0.5,
+      ratio:
+        typeof raw.ratio === 'number' &&
+        Number.isFinite(raw.ratio) &&
+        raw.ratio > 0 &&
+        raw.ratio < 1
+          ? raw.ratio
+          : 0.5,
       left,
       right,
     };
@@ -154,10 +153,7 @@ function normalizeTreeForProject(
   return null;
 }
 
-function withProjectOwnership(
-  tree: PaneNode,
-  projectId: ProjectId | string | null,
-): PaneNode {
+function withProjectOwnership(tree: PaneNode, projectId: ProjectId | string | null): PaneNode {
   const normalized = normalizeTreeForProject(tree, projectId);
   return normalized ?? newLeaf({ command: defaultShell(), projectId });
 }
@@ -192,10 +188,7 @@ export function saveTerminalTree(
 ): void {
   if (typeof window === 'undefined') return;
   try {
-    const ownedTree = withProjectOwnership(
-      tree,
-      normalizeTerminalProjectId(projectId),
-    );
+    const ownedTree = withProjectOwnership(tree, normalizeTerminalProjectId(projectId));
     window.localStorage.setItem(
       terminalTreeStorageKey(projectId),
       JSON.stringify(ownedTree, stripVolatileTerminalFields),
@@ -246,9 +239,7 @@ function insertLeafAt(
   targetPaneId?: string | null,
 ): LeafNode[] {
   const next = [...leaves];
-  const targetIndex = targetPaneId
-    ? next.findIndex((leaf) => leaf.id === targetPaneId)
-    : -1;
+  const targetIndex = targetPaneId ? next.findIndex((leaf) => leaf.id === targetPaneId) : -1;
   next.splice(targetIndex >= 0 ? targetIndex : next.length, 0, moved);
   return next;
 }
@@ -279,11 +270,13 @@ function syncMovedSessionMetadata(
     projectId: targetProjectId,
   });
   void import('@tauri-apps/api/core')
-    .then(({ invoke }) => invoke('terminal_move', {
-      sessionId,
-      projectId: targetProjectId,
-      projectName: targetProjectName ?? null,
-    }))
+    .then(({ invoke }) =>
+      invoke('terminal_move', {
+        sessionId,
+        projectId: targetProjectId,
+        projectName: targetProjectName ?? null,
+      }),
+    )
     .catch(() => {
       // Web preview or older desktop backend: UI move remains valid.
     });
@@ -310,7 +303,14 @@ export function moveTerminalLeafToProject(input: MoveTerminalInput): TerminalMov
       };
     }
     if (input.targetPaneId && input.targetPaneId === moved.id) {
-      return { ok: true, sourceProjectId, targetProjectId, sourceTree, targetTree: sourceTree, movedLeaf: moved };
+      return {
+        ok: true,
+        sourceProjectId,
+        targetProjectId,
+        sourceTree,
+        targetTree: sourceTree,
+        movedLeaf: moved,
+      };
     }
     const nextLeaves = insertLeafAt(
       withoutMovedLeaf(sourceLeaves, moved, input.ref),
@@ -349,6 +349,7 @@ export function moveTerminalLeafToProject(input: MoveTerminalInput): TerminalMov
       projectId: targetProjectId,
       pendingCommand: undefined,
       pendingCommandId: undefined,
+      pendingCommandProcessIdentity: undefined,
     },
     dedupedTargetLeaves,
   );
@@ -358,9 +359,10 @@ export function moveTerminalLeafToProject(input: MoveTerminalInput): TerminalMov
   const nextSourceLeaves = found
     ? sourceLeaves.filter((leaf) => leaf.id !== found.id)
     : sourceLeaves;
-  const nextSourceTree = nextSourceLeaves.length > 0
-    ? fromLeaves(nextSourceLeaves)
-    : newLeaf({ command: defaultShell() });
+  const nextSourceTree =
+    nextSourceLeaves.length > 0
+      ? fromLeaves(nextSourceLeaves)
+      : newLeaf({ command: defaultShell() });
 
   captureLiveTree(sourceProjectId, nextSourceTree);
   saveTerminalTree(sourceProjectId, nextSourceTree);

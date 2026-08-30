@@ -22,6 +22,7 @@
  * `gridDimensions` covers up to 16 to leave headroom for future bumps.
  */
 import type { AgentCoordinationMode } from './agentCoordination';
+import type { ExpectedTerminalProcessBinding } from './terminalRefs';
 
 let nextId = 1;
 function generateId(prefix: string): string {
@@ -68,6 +69,8 @@ export type LeafBase = {
   pendingCommand?: string;
   /** Monotonic token so repeated identical commands still dispatch. */
   pendingCommandId?: number;
+  /** Exact native process required to accept the one-shot pending command. */
+  pendingCommandProcessIdentity?: ExpectedTerminalProcessBinding;
   /** Action queue id used to report the real PTY lifecycle back to chat. */
   executionId?: string;
   /** Optional working directory for the session. */
@@ -166,6 +169,7 @@ export function newLeaf(seed?: Partial<LeafBase>): PaneNode {
     preserveExisting: seed?.preserveExisting,
     pendingCommand: seed?.pendingCommand,
     pendingCommandId: seed?.pendingCommandId,
+    pendingCommandProcessIdentity: seed?.pendingCommandProcessIdentity,
     executionId: seed?.executionId,
     cwd: seed?.cwd,
     agentSlug: seed?.agentSlug,
@@ -204,11 +208,7 @@ export function closePane(tree: PaneNode, paneId: string): PaneNode | null {
   return recurse(tree);
 }
 
-export function updateLeaf(
-  tree: PaneNode,
-  paneId: string,
-  patch: Partial<LeafBase>,
-): PaneNode {
+export function updateLeaf(tree: PaneNode, paneId: string, patch: Partial<LeafBase>): PaneNode {
   function recurse(node: PaneNode): PaneNode {
     if (node.kind === 'leaf') {
       if (node.id !== paneId) return node;
@@ -307,6 +307,7 @@ function newLeafBase(seed?: Partial<LeafBase>): LeafBase {
     preserveExisting: seed?.preserveExisting,
     pendingCommand: seed?.pendingCommand,
     pendingCommandId: seed?.pendingCommandId,
+    pendingCommandProcessIdentity: seed?.pendingCommandProcessIdentity,
     executionId: seed?.executionId,
     cwd: seed?.cwd,
     agentSlug: seed?.agentSlug,

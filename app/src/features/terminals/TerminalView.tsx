@@ -604,6 +604,22 @@ function commandToInput(command: string): string {
   return command.endsWith('\n') || command.endsWith('\r') ? command : `${command}\r`;
 }
 
+export function buildPendingTerminalWriteArgs(
+  sessionId: string,
+  command: string,
+  expectedBinding: TerminalViewProps['pendingCommandProcessIdentity'],
+): {
+  sessionId: string;
+  data: string;
+  expectedBinding?: NonNullable<TerminalViewProps['pendingCommandProcessIdentity']>;
+} {
+  return {
+    sessionId,
+    data: commandToInput(command),
+    ...(expectedBinding ? { expectedBinding } : {}),
+  };
+}
+
 function sameTerminalPromptEvidence(
   left: TerminalPromptEvidence,
   right: TerminalPromptEvidence,
@@ -629,6 +645,7 @@ export function TerminalView({
   executionId,
   pendingCommand,
   pendingCommandId,
+  pendingCommandProcessIdentity,
   cwd,
   rows = 30,
   cols = 100,
@@ -2189,15 +2206,15 @@ export function TerminalView({
     const sid = sessionRef.current;
     if (!sid) return;
     lastPendingCommandIdRef.current = pendingCommandId;
-    invoke('terminal_write', {
-      sessionId: sid,
-      data: commandToInput(pendingCommand),
-    })
+    invoke(
+      'terminal_write',
+      buildPendingTerminalWriteArgs(sid, pendingCommand, pendingCommandProcessIdentity),
+    )
       .then(() => onPendingCommandSentRef.current?.())
       .catch(() => {
         /* backend probably gone */
       });
-  }, [activeSessionId, pendingCommand, pendingCommandId]);
+  }, [activeSessionId, pendingCommand, pendingCommandId, pendingCommandProcessIdentity]);
 
   // Reactive font-size: when the pane toolbar cycles size, update xterm's
   // option, bust the metric cache, then re-fit + IPC so the PTY learns

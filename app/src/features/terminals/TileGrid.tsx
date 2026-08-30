@@ -567,6 +567,7 @@ export function TileGrid({
       updateLeaf(currentTree, paneId, {
         pendingCommand: undefined,
         pendingCommandId: undefined,
+        pendingCommandProcessIdentity: undefined,
       }),
     );
   };
@@ -1326,6 +1327,7 @@ function Tile({
             preserveExisting={leaf.preserveExisting}
             pendingCommand={leaf.pendingCommand}
             pendingCommandId={leaf.pendingCommandId}
+            pendingCommandProcessIdentity={leaf.pendingCommandProcessIdentity}
             executionId={leaf.executionId}
             cwd={leaf.cwd}
             fontSize={fontSize}

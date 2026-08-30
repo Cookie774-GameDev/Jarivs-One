@@ -25,6 +25,8 @@ import { Dialog, DialogPortal, DialogOverlay } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { formatUserDateTime } from '@/lib/timeFormat';
+import { classifyInstantCommandInput, executeInstantCommand } from '@/features/instant-command';
+import type { InstantCommand } from '@/features/instant-command';
 import { parseAssistantInput } from './parse';
 import { executeIntent } from './execute';
 import { JARVIS_COMMAND_CATALOG } from './commands';
@@ -244,6 +246,50 @@ function renderPreview(intent: AssistantIntent): React.ReactNode {
   }
 }
 
+function renderInstantPreview(command: InstantCommand): React.ReactNode {
+  const verb = (text: string) => <span className="text-accent-copper font-medium">{text}</span>;
+  switch (command.kind) {
+    case 'legacy':
+      return renderPreview(command.intent);
+    case 'open-agent-cli':
+      return (
+        <>
+          → Will{' '}
+          {verb(
+            `queue ${command.count} ${command.provider} terminal${command.count === 1 ? '' : 's'}`,
+          )}
+          .
+        </>
+      );
+    case 'open-model-picker':
+      return <>→ Will {verb('open provider and model selection')}.</>;
+    case 'terminal-message':
+      return (
+        <>
+          → Will {verb(`queue for terminal ${command.target.ordinal}`)}:{' '}
+          <span className="text-foreground">{command.payload}</span>.
+        </>
+      );
+    case 'agent-message':
+      return (
+        <>
+          → Will {verb(`queue for ${command.target.provider}`)}:{' '}
+          <span className="text-foreground">{command.payload}</span>.
+        </>
+      );
+    case 'terminal-broadcast':
+      return (
+        <>
+          → Will{' '}
+          {verb(
+            `queue for all ${command.target.provider ? `${command.target.provider} ` : ''}terminals`,
+          )}
+          : <span className="text-foreground">{command.payload}</span>.
+        </>
+      );
+  }
+}
+
 /** Read the last-N recent commands from localStorage, defensively. */
 function readRecent(): string[] {
   if (typeof window === 'undefined') return [];
@@ -276,6 +322,8 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
   const [value, setValue] = React.useState('');
   const [recent, setRecent] = React.useState<string[]>(() => readRecent());
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const executionInFlightRef = React.useRef(false);
+  const [executionInFlight, setExecutionInFlight] = React.useState(false);
 
   // Reload recents from storage every time we open. Keeps the list in
   // sync if the user ran commands across multiple windows / tabs.
@@ -288,26 +336,46 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
     }
   }, [open]);
 
-  const intent = React.useMemo<AssistantIntent>(() => parseAssistantInput(value), [value]);
+  const instantClassification = React.useMemo(() => classifyInstantCommandInput(value), [value]);
+  const instantCommand =
+    instantClassification.status === 'matched' ? instantClassification.command : null;
+  const intent = React.useMemo<AssistantIntent | null>(
+    () => (instantClassification.status === 'unmatched' ? parseAssistantInput(value) : null),
+    [instantClassification.status, value],
+  );
 
   const handleExecute = React.useCallback(async () => {
+    if (executionInFlightRef.current) return;
     const raw = value.trim();
     if (!raw) return;
-    const result = await executeIntent(intent);
-    if (result.ok) {
-      setRecent(pushRecent(raw));
-      toast.success('Done', result.message);
-      onOpenChange(false);
-      setValue('');
-    } else {
-      // For unknown commands we DON'T persist into recents — there's no
-      // point letting the user re-run a misspelt verb.
-      if (intent.kind !== 'unknown') {
-        setRecent(pushRecent(raw));
-      }
-      toast.warning('Hmm', result.message);
+    if (instantClassification.status === 'rejected') {
+      toast.warning('Invalid command', instantClassification.reason);
+      return;
     }
-  }, [intent, onOpenChange, value]);
+    executionInFlightRef.current = true;
+    setExecutionInFlight(true);
+    try {
+      const result = instantCommand
+        ? await executeInstantCommand(instantCommand)
+        : await executeIntent(intent ?? parseAssistantInput(raw));
+      if (result.ok) {
+        setRecent(pushRecent(raw));
+        toast.success('Done', result.message);
+        onOpenChange(false);
+        setValue('');
+      } else {
+        // For unknown commands we DON'T persist into recents — there's no
+        // point letting the user re-run a misspelt verb.
+        if (instantCommand || intent?.kind !== 'unknown') {
+          setRecent(pushRecent(raw));
+        }
+        toast.warning('Hmm', result.message);
+      }
+    } finally {
+      executionInFlightRef.current = false;
+      setExecutionInFlight(false);
+    }
+  }, [instantClassification, instantCommand, intent, onOpenChange, value]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -322,7 +390,13 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
   };
 
   const showPreview = value.trim().length > 0;
-  const previewNode = showPreview ? renderPreview(intent) : null;
+  const previewNode = showPreview
+    ? instantCommand
+      ? renderInstantPreview(instantCommand)
+      : intent
+        ? renderPreview(intent)
+        : null
+    : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -369,6 +443,8 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
               autoFocus
               spellCheck={false}
               autoComplete="off"
+              disabled={executionInFlight}
+              aria-busy={executionInFlight}
               className={cn(
                 'w-full bg-transparent border-0 outline-none ring-0',
                 'text-page-title text-foreground placeholder:text-muted-foreground/70',
