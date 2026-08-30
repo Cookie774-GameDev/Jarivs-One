@@ -18,7 +18,9 @@ const {
   deleteEvent,
   getEventById,
   jarvisEventsState,
-  runManualCaoCheck,
+  runCaoScheduledLearning,
+  runWorkspaceCaoLearningChecks,
+  updateEventIfUpdatedAt,
   updateEvent,
   upcomingEventsState,
 } = vi.hoisted(() => ({
@@ -27,7 +29,9 @@ const {
   deleteEvent: vi.fn(),
   getEventById: vi.fn(),
   jarvisEventsState: { rows: [] as EventRow[] },
-  runManualCaoCheck: vi.fn(),
+  runCaoScheduledLearning: vi.fn(),
+  runWorkspaceCaoLearningChecks: vi.fn(),
+  updateEventIfUpdatedAt: vi.fn(),
   updateEvent: vi.fn(),
   upcomingEventsState: { rows: [] as RecurrenceInstance[] },
 }));
@@ -44,6 +48,7 @@ vi.mock('@/lib/db', async () => {
       create: createEvent,
       getById: getEventById,
       update: updateEvent,
+      updateIfUpdatedAt: updateEventIfUpdatedAt,
       delete: deleteEvent,
     },
   };
@@ -55,7 +60,8 @@ vi.mock('@/features/tasks', () => ({
 }));
 
 vi.mock('@/features/jarvis-memory/caoScheduledLearningRuntime', () => ({
-  runManualCaoLearningChecks: runManualCaoCheck,
+  runCaoScheduledLearning,
+  runManualCaoLearningChecks: runWorkspaceCaoLearningChecks,
 }));
 
 vi.mock('./hooks', () => ({
@@ -177,7 +183,9 @@ describe('SchedulePage Jarvis lifecycle', () => {
     updateEvent.mockReset().mockResolvedValue({});
     deleteEvent.mockReset().mockResolvedValue(undefined);
     getEventById.mockReset();
-    runManualCaoCheck.mockReset().mockResolvedValue({ status: 'completed' });
+    runCaoScheduledLearning.mockReset().mockResolvedValue({ status: 'completed' });
+    runWorkspaceCaoLearningChecks.mockReset().mockResolvedValue({ status: 'completed' });
+    updateEventIfUpdatedAt.mockReset();
 
     const route = {
       id: `${OPENCODE_CLI_CONNECTION.id}:openai/gpt-5.6-sol-fast`,
@@ -369,7 +377,18 @@ describe('SchedulePage Jarvis lifecycle', () => {
     expect(screen.getByText('Partial')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Run check now' }));
-    await waitFor(() => expect(runManualCaoCheck).toHaveBeenCalledOnce());
+    await waitFor(() => expect(runCaoScheduledLearning).toHaveBeenCalledOnce());
+    expect(runCaoScheduledLearning).toHaveBeenCalledWith({
+      scope: {
+        accountId: 'usr_local',
+        workspaceId: 'workspace_1',
+        projectId: 'project-a',
+        scheduleId: 'schedule-cao',
+        targetId: 'learning-md',
+        scheduleAnchorAt: event.start_at,
+      },
+      trigger: 'manual_force',
+    });
     expect(await screen.findByText('Check completed')).toBeTruthy();
 
     fireEvent.click(
@@ -393,11 +412,91 @@ describe('SchedulePage Jarvis lifecycle', () => {
     confirm.mockRestore();
   });
 
+  it('runs only the clicked active CAO row when two schedules are active', async () => {
+    const clicked = buildCaoEvent();
+    const siblingMetadata = parseJarvisScheduleMetadata(clicked)!;
+    const sibling = {
+      ...clicked,
+      id: 'event_cao_sibling' as EventRow['id'],
+      title: 'Jarvis Scheduled — Sibling CAO review',
+      source_ref: {
+        context: {
+          kind: 'memory' as const,
+          id: serializeJarvisScheduleMetadata({
+            ...siblingMetadata,
+            caoSupervision: {
+              ...siblingMetadata.caoSupervision!,
+              scheduleId: 'schedule-cao-sibling',
+              targetId: 'sibling-learning-md',
+            },
+          }),
+        },
+      },
+    } as EventRow;
+    jarvisEventsState.rows = [clicked, sibling];
+    upcomingEventsState.rows = [];
+    render(<SchedulePage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Jarvis Actions2/i }));
+    fireEvent.click(screen.getByText('CAO learning review').closest('button')!);
+    fireEvent.click(screen.getByRole('button', { name: 'Run check now' }));
+
+    await waitFor(() => expect(runCaoScheduledLearning).toHaveBeenCalledOnce());
+    expect(runCaoScheduledLearning).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: expect.objectContaining({
+          scheduleId: 'schedule-cao',
+          targetId: 'learning-md',
+        }),
+        trigger: 'manual_force',
+      }),
+    );
+    expect(runWorkspaceCaoLearningChecks).not.toHaveBeenCalled();
+  });
+
+  it('does not run a paused CAO row', async () => {
+    const paused = buildCaoEvent('cancelled');
+    jarvisEventsState.rows = [paused];
+    upcomingEventsState.rows = [];
+    render(<SchedulePage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Jarvis Actions1/i }));
+    fireEvent.click(screen.getByText('CAO learning review').closest('button')!);
+    fireEvent.click(screen.getByRole('button', { name: 'Run check now' }));
+
+    await waitFor(() => expect(screen.getByText('Check failed')).toBeTruthy());
+    expect(runCaoScheduledLearning).not.toHaveBeenCalled();
+    expect(runWorkspaceCaoLearningChecks).not.toHaveBeenCalled();
+  });
+
   it('edits only mutable CAO policy and timing fields while preserving exact identity', async () => {
     const event = buildCaoEvent();
+    const currentMetadata = parseJarvisScheduleMetadata(event)!;
+    if (currentMetadata.modelSelection.mode !== 'single') {
+      throw new Error('Expected the CAO fixture to use one exact model route.');
+    }
+    const current = {
+      ...event,
+      source_ref: {
+        context: {
+          ...event.source_ref!.context!,
+          id: serializeJarvisScheduleMetadata({
+            ...currentMetadata,
+            modelSelection: {
+              ...currentMetadata.modelSelection,
+              modelId: 'openai/gpt-5.6-terra',
+            },
+          }),
+        },
+      },
+    } as EventRow;
     jarvisEventsState.rows = [event];
     upcomingEventsState.rows = [];
     getEventById.mockResolvedValue(event);
+    updateEventIfUpdatedAt.mockImplementation(async (_id, _updatedAt, buildPatch) => ({
+      ...current,
+      ...buildPatch(current),
+    }));
     render(<SchedulePage />);
 
     fireEvent.click(screen.getByRole('button', { name: /Jarvis Actions1/i }));
@@ -416,12 +515,18 @@ describe('SchedulePage Jarvis lifecycle', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /Update Jarvis Action/i }));
 
-    await waitFor(() => expect(updateEvent).toHaveBeenCalledOnce());
+    await waitFor(() => expect(updateEventIfUpdatedAt).toHaveBeenCalledOnce());
+    expect(updateEventIfUpdatedAt.mock.calls[0]?.slice(0, 2)).toEqual([
+      'event_cao_inspector',
+      event.updated_at,
+    ]);
+    const patch = updateEventIfUpdatedAt.mock.calls[0]?.[2](current);
     const updated = parseJarvisScheduleMetadata({
-      ...event,
-      ...updateEvent.mock.calls[0]![1],
+      ...current,
+      ...patch,
     } as EventRow)!;
     expect(updated.prompt).toBe('Review only durable, high-confidence learning changes.');
+    expect(updated.modelSelection).toMatchObject({ modelId: 'openai/gpt-5.6-terra' });
     expect(updated.caoSupervision).toEqual({
       schemaVersion: 1,
       mode: 'cao_supervision',
@@ -436,7 +541,7 @@ describe('SchedulePage Jarvis lifecycle', () => {
     const event = buildCaoEvent();
     jarvisEventsState.rows = [event];
     upcomingEventsState.rows = [];
-    getEventById.mockResolvedValue({ ...event, updated_at: event.updated_at + 1 });
+    updateEventIfUpdatedAt.mockResolvedValue(undefined);
     render(<SchedulePage />);
 
     fireEvent.click(screen.getByRole('button', { name: /Jarvis Actions1/i }));
@@ -449,7 +554,7 @@ describe('SchedulePage Jarvis lifecycle', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /Update Jarvis Action/i }));
 
-    await waitFor(() => expect(getEventById).toHaveBeenCalledWith('event_cao_inspector'));
+    await waitFor(() => expect(updateEventIfUpdatedAt).toHaveBeenCalledOnce());
     expect(updateEvent).not.toHaveBeenCalled();
   });
 

@@ -103,7 +103,7 @@ import {
   writeScheduleDraft,
   type ScheduleDraft,
 } from './scheduleDraftPersistence';
-import { runManualCaoLearningChecks } from '@/features/jarvis-memory/caoScheduledLearningRuntime';
+import { runCaoScheduledLearning } from '@/features/jarvis-memory/caoScheduledLearningRuntime';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -915,31 +915,11 @@ export function SchedulePage() {
     }
 
     try {
-      let safeEditingJarvisEvent = editingJarvisEvent;
-      let safeEditingJarvisMetadata = safeEditingJarvisEvent
-        ? parseJarvisScheduleMetadata(safeEditingJarvisEvent)
-        : null;
+      const safeEditingJarvisEvent = editingJarvisEvent;
       if (editingCao) {
         if (!safeEditingJarvisEvent || !editingToken) {
           throw new Error('This CAO schedule edit no longer has a valid revision.');
         }
-        const latest = await eventRepo.getById(safeEditingJarvisEvent.id);
-        const latestMetadata = latest ? parseJarvisScheduleMetadata(latest) : null;
-        const latestCao = latestMetadata?.caoSupervision;
-        if (
-          !latest ||
-          latest.updated_at !== editingToken.updatedAt ||
-          !latestCao ||
-          latestCao.scheduleId !== editingCao.scheduleId ||
-          latestCao.projectId !== editingCao.projectId ||
-          latestCao.targetId !== editingCao.targetId
-        ) {
-          throw new Error(
-            'This CAO schedule changed after you opened it. Reopen the latest revision before saving.',
-          );
-        }
-        safeEditingJarvisEvent = latest;
-        safeEditingJarvisMetadata = latestMetadata;
       }
       const protectedJarvis = findProtectedJarvisAgent(
         Object.values(useAgentStore.getState().agents),
@@ -948,47 +928,81 @@ export function SchedulePage() {
       if (jarvisAction) {
         const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
         if (safeEditingJarvisEvent) {
-          const patch = buildJarvisScheduleEventUpdate(safeEditingJarvisEvent, {
-            title: title.trim(),
-            prompt: description.trim() || title.trim(),
-            startAt: start,
-            durationMs: Math.max(
-              safeEditingJarvisEvent.end_at - safeEditingJarvisEvent.start_at,
-              5 * 60 * 1000,
-            ),
-            recurrence: jarvisRecurrence,
-            ...(customIntervalMs !== undefined ? { intervalMs: customIntervalMs } : {}),
-            timezone,
-            modelSelection:
-              editingCao && safeEditingJarvisMetadata
-                ? safeEditingJarvisMetadata.modelSelection
-                : jarvisModelSelectionForSave!,
-          });
-          if (!patch) throw new Error('This saved action can no longer be edited safely.');
           if (editingCao) {
-            const patchedMetadata = parseJarvisScheduleMetadata({
-              ...safeEditingJarvisEvent,
-              ...patch,
-            } as EventRow);
-            const patchContext = patch.source_ref?.context;
-            if (!patchedMetadata?.caoSupervision || !patchContext) {
-              throw new Error('This CAO schedule can no longer be edited safely.');
-            }
-            patch.source_ref = {
-              ...patch.source_ref,
-              context: {
-                ...patchContext,
-                id: serializeJarvisScheduleMetadata({
-                  ...patchedMetadata,
-                  caoSupervision: {
-                    ...patchedMetadata.caoSupervision,
-                    policyId: caoPolicyId.trim(),
+            const updated = await eventRepo.updateIfUpdatedAt(
+              safeEditingJarvisEvent.id,
+              editingToken!.updatedAt,
+              (current) => {
+                const currentMetadata = parseJarvisScheduleMetadata(current);
+                const currentCao = currentMetadata?.caoSupervision;
+                if (
+                  String(current.workspace_id) !== String(workspaceId) ||
+                  !currentMetadata ||
+                  !currentCao ||
+                  currentCao.scheduleId !== editingCao.scheduleId ||
+                  currentCao.projectId !== editingCao.projectId ||
+                  currentCao.targetId !== editingCao.targetId
+                ) {
+                  return undefined;
+                }
+                const patch = buildJarvisScheduleEventUpdate(current, {
+                  title: title.trim(),
+                  prompt: description.trim() || title.trim(),
+                  startAt: start,
+                  durationMs: Math.max(current.end_at - current.start_at, 5 * 60 * 1000),
+                  recurrence: jarvisRecurrence,
+                  ...(customIntervalMs !== undefined ? { intervalMs: customIntervalMs } : {}),
+                  timezone,
+                  modelSelection: currentMetadata.modelSelection,
+                });
+                if (!patch) return undefined;
+                const patchedMetadata = parseJarvisScheduleMetadata({
+                  ...current,
+                  ...patch,
+                } as EventRow);
+                const patchContext = patch.source_ref?.context;
+                if (!patchedMetadata?.caoSupervision || !patchContext) return undefined;
+                return {
+                  ...patch,
+                  source_ref: {
+                    ...patch.source_ref,
+                    context: {
+                      ...patchContext,
+                      id: serializeJarvisScheduleMetadata({
+                        ...patchedMetadata,
+                        modelSelection: currentMetadata.modelSelection,
+                        caoSupervision: {
+                          ...currentCao,
+                          policyId: caoPolicyId.trim(),
+                        },
+                      }),
+                    },
                   },
-                }),
+                };
               },
-            };
+            );
+            if (!updated) {
+              throw new Error(
+                'This CAO schedule changed after you opened it. Reopen the latest revision before saving.',
+              );
+            }
+          } else {
+            const patch = buildJarvisScheduleEventUpdate(safeEditingJarvisEvent, {
+              title: title.trim(),
+              prompt: description.trim() || title.trim(),
+              startAt: start,
+              durationMs: Math.max(
+                safeEditingJarvisEvent.end_at - safeEditingJarvisEvent.start_at,
+                5 * 60 * 1000,
+              ),
+              recurrence: jarvisRecurrence,
+              ...(customIntervalMs !== undefined ? { intervalMs: customIntervalMs } : {}),
+              timezone,
+              modelSelection: jarvisModelSelectionForSave!,
+            });
+            if (!patch) throw new Error('This saved action can no longer be edited safely.');
+            await eventRepo.update(safeEditingJarvisEvent.id, patch);
           }
-          await eventRepo.update(safeEditingJarvisEvent.id, patch);
         } else {
           await eventRepo.create(
             buildJarvisScheduleEventInput({
@@ -1199,11 +1213,33 @@ export function SchedulePage() {
   };
 
   const handleRunCaoCheck = async (event: EventRow) => {
-    if (!parseJarvisScheduleMetadata(event)?.caoSupervision) return;
     const key = String(event.id);
+    const account = getActiveAccountIdentity();
+    const activeWorkspaceId = useAuthStore.getState().workspaceId;
+    const cao = parseJarvisScheduleMetadata(event)?.caoSupervision;
+    if (
+      !account ||
+      !activeWorkspaceId ||
+      event.status !== 'scheduled' ||
+      String(event.workspace_id) !== String(activeWorkspaceId) ||
+      !cao
+    ) {
+      setCaoRunStates((current) => ({ ...current, [key]: 'failed' }));
+      return;
+    }
     setCaoRunStates((current) => ({ ...current, [key]: 'running' }));
     try {
-      const result = await runManualCaoLearningChecks();
+      const result = await runCaoScheduledLearning({
+        scope: {
+          accountId: account.accountId,
+          workspaceId: String(event.workspace_id),
+          projectId: cao.projectId,
+          scheduleId: cao.scheduleId,
+          targetId: cao.targetId,
+          scheduleAnchorAt: event.start_at,
+        },
+        trigger: 'manual_force',
+      });
       setCaoRunStates((current) => ({ ...current, [key]: result.status }));
     } catch {
       setCaoRunStates((current) => ({ ...current, [key]: 'failed' }));

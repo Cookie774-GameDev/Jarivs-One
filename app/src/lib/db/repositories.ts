@@ -1658,6 +1658,40 @@ export type EventCreateInput = Pick<
     id?: EventId;
   };
 
+export type EventRevisionPatchBuilder = (current: EventRow) => Partial<EventRow> | undefined;
+
+export function createEventRevisionRepository(database?: JarvisDexie) {
+  return {
+    async updateIfUpdatedAt(
+      id: EventId,
+      expectedUpdatedAt: number,
+      buildPatch: EventRevisionPatchBuilder,
+    ): Promise<EventRow | undefined> {
+      const activeDatabase = database ?? db;
+      const syncOwner = activeDatabase === db ? captureSyncQueueOwner() : null;
+      const updated = await activeDatabase.transaction('rw', activeDatabase.events, async () => {
+        const current = await activeDatabase.events.get(id);
+        if (!current || current.updated_at !== expectedUpdatedAt) return undefined;
+        const patch = buildPatch(current);
+        if (!patch) return undefined;
+        const next: EventRow = {
+          ...current,
+          ...sanitizeUpdate(patch),
+          id: current.id,
+          created_at: current.created_at,
+          updated_at: Math.max(now(), current.updated_at + 1),
+        };
+        await activeDatabase.events.put(next);
+        return next;
+      });
+      if (updated && syncOwner) await syncUpdate('events', updated, syncOwner);
+      return updated;
+    },
+  };
+}
+
+const eventRevisionRepo = createEventRevisionRepository();
+
 /**
  * Helper — read the device IANA timezone safely. Falls back to UTC if the
  * Intl API isn't available (older runtimes).
@@ -1765,6 +1799,7 @@ export const eventRepo = {
     await syncUpdate('events', row, syncOwner);
     return row;
   },
+  updateIfUpdatedAt: eventRevisionRepo.updateIfUpdatedAt,
   async delete(id: EventId): Promise<void> {
     const syncOwner = captureSyncQueueOwner();
     await db.events.delete(id);
