@@ -1711,8 +1711,9 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       request.accessLevel ??
       (mode === 'ask' ? 'read-only' : mode === 'plan' ? 'read-only' : 'full');
     const eventIterator = client.http.events(abortEvents.signal)[Symbol.asyncIterator]();
-    let pendingEvent = eventIterator.next();
-    void pendingEvent.catch(() => undefined);
+    const nextEventOrEof = (): Promise<IteratorResult<OpenCodeRawEvent>> =>
+      eventIterator.next().catch(() => ({ done: true, value: undefined }));
+    let pendingEvent = nextEventOrEof();
     const settings = defaultRuntimeSettings(request);
     failureStage = 'runtime_controls';
     assertAuthoritativeOpenCodeRuntimeControls(settings, liveModel, request.connection.id);
@@ -2007,6 +2008,12 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
             emittedText = canonical;
           }
         }
+        if (status === 'error') {
+          finishReason = 'error';
+          reportPersistentTurnFailure('provider_reported');
+          yield { type: 'error', message: 'OpenCode session entered an error state.' };
+          return;
+        }
         const hasPendingQuestion =
           (activeQuestionSessions.get(dispatch.sessionId)?.pending.size ?? 0) > 0;
         const hasTurnEvidence = Boolean(
@@ -2047,7 +2054,7 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         continue;
       }
       const event = next.value.value;
-      pendingEvent = eventIterator.next();
+      pendingEvent = nextEventOrEof();
       const eventScope = eventSessionId(event);
       if (eventScope && eventScope !== dispatch.sessionId) continue;
 

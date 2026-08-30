@@ -430,6 +430,41 @@ describe('persistent OpenCode question transport authority', () => {
     await iterator.return?.();
   });
 
+  it('recovers the pending question UI when the optional native event iterator rejects', async () => {
+    const pending = questionAskedEvent().properties;
+    configureManagedQuestionTransport([], {
+      pendingQuestions: [pending],
+      sessionStatuses: ['busy'],
+    });
+    nativeOpenCodeMocks.events.mockImplementation(async function* () {
+      throw new Error('OpenCode native event queue exceeded safe limits.');
+    });
+
+    const iterator = openCodePersistentAdapter.send!(
+      questionProviderRequest('request-question-rejected-stream'),
+    )[Symbol.asyncIterator]();
+    await expect(iterator.next()).resolves.toMatchObject({
+      done: false,
+      value: { type: 'session', sessionId: 'ses_question_exact' },
+    });
+
+    let recovered: ProviderEvent | undefined;
+    for (let index = 0; index < 4 && !recovered; index += 1) {
+      const next = await iterator.next();
+      if (!next.done && next.value.type === 'question') recovered = next.value;
+    }
+    expect(recovered).toMatchObject({
+      type: 'question',
+      request: {
+        id: 'que_question_exact',
+        sessionId: 'ses_question_exact',
+        tool: { messageId: 'msg_question_exact', callId: 'call_question_exact' },
+      },
+    });
+
+    await iterator.return?.();
+  });
+
   it('recovers a pending question immediately when heartbeat events starve the status poll', async () => {
     const pending = questionAskedEvent().properties;
     configureManagedQuestionTransport([], {
@@ -1391,6 +1426,102 @@ describe('persistent OpenCode live authority', () => {
     });
     expect(events.at(-1)).toMatchObject({ type: 'done' });
     expect(JSON.stringify(events)).not.toMatch(/must-not-survive|private/iu);
+  });
+
+  it('recovers the persisted turn when the optional native event iterator rejects', async () => {
+    configureManagedQuestionTransport([], {
+      sessionStatuses: [null],
+      persistedMessages: [
+        {
+          info: {
+            id: 'message-rejected-stream-recovery',
+            role: 'assistant',
+            providerID: 'openai',
+            modelID: 'gpt-question-test',
+            time: { completed: 1 },
+          },
+          parts: [
+            {
+              id: 'part-rejected-stream-text',
+              sessionID: 'ses_question_exact',
+              messageID: 'message-rejected-stream-recovery',
+              type: 'text',
+              text: 'The full 3D game is ready.',
+            },
+          ],
+        },
+      ],
+    });
+    nativeOpenCodeMocks.events.mockImplementation(async function* () {
+      throw new Error('OpenCode oversized non-tool event exceeded its safe bound.');
+    });
+
+    const events: ProviderEvent[] = [];
+    for await (const event of openCodePersistentAdapter.send!(
+      questionProviderRequest('request-rejected-stream-recovery'),
+    )) {
+      events.push(event);
+      if (event.type === 'done') break;
+    }
+
+    expect(events).toContainEqual({
+      type: 'text',
+      delta: 'The full 3D game is ready.',
+      streamPartId: 'opencode-text-1',
+    });
+    expect(events.at(-1)).toMatchObject({ type: 'done' });
+  });
+
+  it('terminates truthfully when polling observes an error after the event iterator rejects', async () => {
+    configureManagedQuestionTransport([], {
+      sessionStatuses: ['error'],
+      persistedMessages: [
+        {
+          info: {
+            id: 'message-rejected-stream-error',
+            role: 'assistant',
+            providerID: 'openai',
+            modelID: 'gpt-question-test',
+            time: { created: 1 },
+          },
+          parts: [{ type: 'text', text: 'I started the requested game.' }],
+        },
+      ],
+    });
+    nativeOpenCodeMocks.events.mockImplementation(async function* () {
+      throw new Error('OpenCode native event queue exceeded safe limits.');
+    });
+    const abort = new AbortController();
+    const iterator = openCodePersistentAdapter.send!(
+      questionProviderRequest('request-rejected-stream-error', abort.signal),
+    )[Symbol.asyncIterator]();
+    const observed: ProviderEvent[] = [];
+
+    const terminal = await Promise.race([
+      (async () => {
+        for (let index = 0; index < 6; index += 1) {
+          const next = await iterator.next();
+          if (next.done) return undefined;
+          observed.push(next.value);
+          if (next.value.type === 'error') return next.value;
+        }
+        return undefined;
+      })(),
+      new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 900)),
+    ]);
+    abort.abort();
+    await iterator.return?.();
+
+    expect(terminal).toEqual({
+      type: 'error',
+      message: 'OpenCode session entered an error state.',
+    });
+    expect(observed).toContainEqual({
+      type: 'text',
+      delta: 'I started the requested game.',
+      streamPartId: 'opencode-text-1',
+    });
+    expect(observed).not.toContainEqual(expect.objectContaining({ type: 'done' }));
   });
 
   it('reconciles ordered persisted text and tool parts before completing on an immediate idle event', async () => {

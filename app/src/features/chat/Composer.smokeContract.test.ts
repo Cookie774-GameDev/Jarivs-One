@@ -30,11 +30,18 @@ describe('Composer smoke controls', () => {
   });
 
   it('renders the main model picker above app-level overlays', () => {
-    expect(source).toContain(
-      'className="z-[120] w-auto border-0 bg-transparent p-0 shadow-none"',
-    );
+    expect(source).toContain('className="z-[120] w-auto border-0 bg-transparent p-0 shadow-none"');
     expect(source).not.toContain(
       "className={cn('w-auto border-0 bg-transparent p-0 shadow-none', compact && 'z-[120]')}",
     );
+  });
+
+  it('never starts Ollama merely because the model picker opens', () => {
+    const modelPicker = source.slice(source.indexOf('function ModelPicker('));
+
+    expect(modelPicker).not.toContain('bootstrapOllamaConnection');
+    expect(source).toContain("selectedForSend.providerId === 'ollama'");
+    expect(source).toContain("selectedForSend.providerId === 'local'");
+    expect(source).toContain('bootstrapOllamaConnection({ waitTimeoutMs: 8_000 })');
   });
 });

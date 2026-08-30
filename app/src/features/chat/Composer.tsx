@@ -943,8 +943,9 @@ export function Composer({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const slashTypeaheadRef = useRef<SlashCommandTypeaheadRef>(null);
-  const [slashComboboxMetadata, setSlashComboboxMetadata] =
-    useState<SlashComboboxMetadata | null>(null);
+  const [slashComboboxMetadata, setSlashComboboxMetadata] = useState<SlashComboboxMetadata | null>(
+    null,
+  );
 
   useEffect(() => {
     setRuntimePolicy(readChatRuntimePolicyState(String(chatId)));
@@ -1065,12 +1066,7 @@ export function Composer({
       setStoppedRequest(false);
       // When the previous full reply finishes (or fails/cancels), send the next
       // queued message automatically — FIFO order.
-      if (
-        !shouldScheduleQueuedRunFlush(
-          status,
-          queuedInterruptInFlightRef.current !== null,
-        )
-      )
+      if (!shouldScheduleQueuedRunFlush(status, queuedInterruptInFlightRef.current !== null))
         return;
       if (flushTimer) clearTimeout(flushTimer);
       flushTimer = setTimeout(() => {
@@ -5363,18 +5359,20 @@ export function Composer({
                     </Hint>
                   ) : (
                     <Hint label="Send" hotkey={HOTKEYS.SEND}>
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant={canSend ? 'accent' : 'ghost'}
-                      onClick={() => void handleSend()}
-                      disabled={!canSend}
-                      aria-label="Send message"
-                      className={cn('shrink-0', compact && 'h-6 w-6 min-h-6 min-w-6')}
-                      data-sik-evidence={KERNEL_SMOKE_ENABLED ? SIK_CONTROL.chatSubmit : undefined}
-                    >
-                      <Send />
-                    </Button>
+                      <Button
+                        type="button"
+                        size="icon-sm"
+                        variant={canSend ? 'accent' : 'ghost'}
+                        onClick={() => void handleSend()}
+                        disabled={!canSend}
+                        aria-label="Send message"
+                        className={cn('shrink-0', compact && 'h-6 w-6 min-h-6 min-w-6')}
+                        data-sik-evidence={
+                          KERNEL_SMOKE_ENABLED ? SIK_CONTROL.chatSubmit : undefined
+                        }
+                      >
+                        <Send />
+                      </Button>
                     </Hint>
                   )}
                 </div>
@@ -5516,19 +5514,6 @@ function ModelPicker({
   const displayLabel = formatChatModelSelectionLabel(selection, modelCtx);
   const activeProvider = selection.mode === 'single' ? selection.providerId : undefined;
   const activeModel = selection.mode === 'single' ? selection.modelId : undefined;
-
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    void import('@/lib/ai/ollamaBootstrap').then(({ bootstrapOllamaConnection }) =>
-      bootstrapOllamaConnection({ force: true }).then((result) => {
-        if (cancelled || !result.ready) return;
-      }),
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
 
   const flatOptionIds = useMemo(
     () => flatOptions.map((option) => option.id).join('\0'),
