@@ -44,7 +44,10 @@ assert.match(persistent, /harnessRuntimeManager/);
 assert.match(persistent, /createPersistentOpenCodeRuntimeSupervisor/);
 assert.match(persistent, /nativeOpenCodeRequest/);
 assert.match(persistent, /nativeOpenCodeEvents/);
-assert.doesNotMatch(persistent, /basicAuthorization|Authorization:\s*this\.handle|globalThis\.fetch/);
+assert.doesNotMatch(
+  persistent,
+  /basicAuthorization|Authorization:\s*this\.handle|globalThis\.fetch/,
+);
 assert.match(nativeTransport, /opencode_server_request/);
 assert.match(nativeTransport, /opencode_server_event_stream/);
 assert.doesNotMatch(nativeTransport, /Authorization|Basic|baseUrl|password/);
@@ -53,15 +56,32 @@ assert.match(server, /OpenCodeTransportRoute/);
 assert.match(server, /basic_auth\(&connection\.username, Some\(&connection\.password\)\)/);
 assert.match(server, /transport_caller_allowed/);
 assert.match(server, /task\.abort\(\)/);
-assert.match(runtimeManager, /version: string;\s*source: 'system' \| 'managed';\s*generation: string;/s);
+assert.match(
+  runtimeManager,
+  /version: string;\s*source: 'system' \| 'managed';\s*generation: string;/s,
+);
 assert.doesNotMatch(runtimeManager, /baseUrl: string;|username: string;|password: string;/);
 assert.doesNotMatch(persistent, /'serve'/);
 assert.doesNotMatch(persistent, /args:\s*\['run'/);
-assert.match(persistent, /let pendingEvent = eventIterator\.next\(\)/);
+assert.match(
+  persistent,
+  /const nextEventOrEof = \(\): Promise<IteratorResult<OpenCodeRawEvent>> =>\s*eventIterator\.next\(\)\.catch\(\(\) => \(\{ done: true, value: undefined \}\)\)/s,
+);
+assert.match(persistent, /let pendingEvent = nextEventOrEof\(\)/);
 assert.match(persistent, /pendingEvent\.then/);
+assert.match(
+  persistent,
+  /pendingEvent = new Promise<IteratorResult<OpenCodeRawEvent>>\(\(\) => undefined\)/,
+);
+assert.match(persistent, /pendingEvent = nextEventOrEof\(\)/);
 assert.match(persistent, /sessions\.sessionForChat/);
 assert.match(persistent, /assertObservedModelMatches/);
-assert.match(persistent, /'vibespace_context\.query': input\.rlmEnabled/);
+assert.match(persistent, /vibespace_context: !input\.explicitReadRoot && input\.rlmEnabled/);
+assert.match(
+  persistent,
+  /bounded\.vibespace_context =\s*!input\.explicitReadRoot && input\.rlmEnabled && input\.requested\.vibespace_context === true/s,
+);
+assert.doesNotMatch(persistent, /vibespace_context\.query/);
 assert.match(legacy, /diagnostics-only|diagnostic/i);
 assert.match(composer, /runtimeSettings: runtimePolicy\.settings/);
 assert.match(composer, /accessLevel: runtimePolicy\.access/);
