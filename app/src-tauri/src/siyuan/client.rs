@@ -214,6 +214,8 @@ impl fmt::Debug for HttpSiyuanTransport {
 #[derive(Deserialize)]
 struct ApiEnvelope<T> {
     code: i64,
+    #[serde(default)]
+    msg: String,
     data: T,
 }
 
@@ -337,10 +339,10 @@ impl HttpSiyuanTransport {
         })
     }
 
-    fn read_envelope<T: DeserializeOwned>(
+    fn read_response_bytes(
         &self,
         mut response: reqwest::blocking::Response,
-    ) -> Result<T, ClientError> {
+    ) -> Result<Vec<u8>, ClientError> {
         if !response.status().is_success()
             || response
                 .content_length()
@@ -357,12 +359,38 @@ impl HttpSiyuanTransport {
         if bytes.len() as u64 > MAX_HTTP_RESPONSE_BYTES {
             return Err(ClientError::ResponseTooLarge);
         }
+        Ok(bytes)
+    }
+
+    fn read_envelope<T: DeserializeOwned>(
+        &self,
+        response: reqwest::blocking::Response,
+    ) -> Result<T, ClientError> {
+        let bytes = self.read_response_bytes(response)?;
         let envelope: ApiEnvelope<T> =
             serde_json::from_slice(&bytes).map_err(|_| ClientError::ResponseTypeMismatch)?;
         if envelope.code != 0 {
             return Err(ClientError::TransportUnavailable);
         }
         Ok(envelope.data)
+    }
+
+    fn read_block_info_envelope(
+        &self,
+        response: reqwest::blocking::Response,
+        id: &str,
+    ) -> Result<Option<BlockInfoData>, ClientError> {
+        let bytes = self.read_response_bytes(response)?;
+        let envelope: ApiEnvelope<Option<BlockInfoData>> =
+            serde_json::from_slice(&bytes).map_err(|_| ClientError::ResponseTypeMismatch)?;
+        if envelope.code == 0 {
+            return Ok(envelope.data);
+        }
+        let exact_missing_message = format!("Content block with id [{id}] not found");
+        if envelope.code == -1 && envelope.data.is_none() && envelope.msg == exact_missing_message {
+            return Ok(None);
+        }
+        Err(ClientError::TransportUnavailable)
     }
 
     fn ensure_authenticated(&self) -> Result<String, ClientError> {
@@ -421,6 +449,18 @@ impl HttpSiyuanTransport {
             .send()
             .map_err(|_| ClientError::TransportUnavailable)?;
         self.read_envelope(response)
+    }
+
+    fn post_block_info(&self, id: &str) -> Result<Option<BlockInfoData>, ClientError> {
+        let session_cookie = self.ensure_authenticated()?;
+        let response = self
+            .client
+            .post(format!("{}/api/block/getBlockInfo", self.base_url))
+            .header(reqwest::header::COOKIE, session_cookie)
+            .json(&json!({ "id": id }))
+            .send()
+            .map_err(|_| ClientError::TransportUnavailable)?;
+        self.read_block_info_envelope(response, id)
     }
 
     fn post_search<T: DeserializeOwned>(
@@ -579,8 +619,7 @@ impl HttpSiyuanTransport {
         // its database still knows an ID whose backing tree disappeared.
         // Preserve that distinction so callers can detach a stale binding
         // without treating an unknown response shape as safe.
-        let info: Option<BlockInfoData> =
-            self.post("/api/block/getBlockInfo", json!({ "id": id }))?;
+        let info = self.post_block_info(id)?;
         let info = info.ok_or(ClientError::BlockNotFound)?;
         validate_identifier(&info.notebook_id)?;
         validate_identifier(&info.root_id)?;
@@ -2000,7 +2039,8 @@ mod tests {
         let token = "m".repeat(32);
         let (port, requests, server) = mock_http_server(vec![
             r#"{"code":0,"msg":"","data":null}"#.to_owned(),
-            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":-1,"msg":"Content block with id [20260820-missing] not found","data":null}"#
+                .to_owned(),
         ]);
         let client =
             SiyuanClient::new(true, HttpSiyuanTransport::new(port, token.clone()).unwrap());
@@ -2019,6 +2059,51 @@ mod tests {
         assert!(login.starts_with("POST /api/system/loginAuth HTTP/1.1"));
         assert!(block_info.starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
         assert!(!block_info.contains(token.as_str()));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn native_get_block_keeps_legacy_success_null_missing_semantics() {
+        let token = "m".repeat(32);
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+        ]);
+        let client =
+            SiyuanClient::new(true, HttpSiyuanTransport::new(port, token.clone()).unwrap());
+
+        assert_eq!(
+            client.get_block("20260820-missing"),
+            Err(ClientError::BlockNotFound)
+        );
+
+        let login = requests.recv().unwrap();
+        let block_info = requests.recv().unwrap();
+        assert!(login.starts_with("POST /api/system/loginAuth HTTP/1.1"));
+        assert!(block_info.starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn native_get_block_keeps_other_nonzero_envelopes_transport_fail_closed() {
+        let token = "m".repeat(32);
+        let (port, requests, server) = mock_http_server(vec![
+            r#"{"code":0,"msg":"","data":null}"#.to_owned(),
+            r#"{"code":-1,"msg":"Content block with id [20260820-nearby] not found","data":null}"#
+                .to_owned(),
+        ]);
+        let client =
+            SiyuanClient::new(true, HttpSiyuanTransport::new(port, token.clone()).unwrap());
+
+        assert_eq!(
+            client.get_block("20260820-missing"),
+            Err(ClientError::TransportUnavailable)
+        );
+
+        let login = requests.recv().unwrap();
+        let block_info = requests.recv().unwrap();
+        assert!(login.starts_with("POST /api/system/loginAuth HTTP/1.1"));
+        assert!(block_info.starts_with("POST /api/block/getBlockInfo HTTP/1.1"));
         server.join().unwrap();
     }
 

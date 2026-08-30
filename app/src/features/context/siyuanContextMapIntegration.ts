@@ -19,8 +19,11 @@ import {
 } from './siyuan/siyuanMapManifest';
 import {
   clearSiyuanNodeBindings,
+  deleteSiyuanLegacyCleanupReceipt,
   deleteSiyuanNodeBindings,
+  readSiyuanLegacyCleanupReceipts,
   readSiyuanNodeBindings,
+  swapSiyuanNodeBindingWithCleanup,
   writeSiyuanNodeBindings,
 } from './siyuan/siyuanBindingStore';
 import {
@@ -130,11 +133,13 @@ function isInsideNativeSiyuanRoot(
   );
 }
 
-function isUnreadablePersistedSiyuanBinding(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    ['siyuan_block_not_found', 'siyuan_response_type_mismatch'].includes(error.message)
-  );
+function siyuanErrorCode(error: unknown): string | null {
+  if (typeof error === 'string') return error;
+  return error instanceof Error ? error.message : null;
+}
+
+function isSiyuanBlockNotFoundError(error: unknown): boolean {
+  return siyuanErrorCode(error) === 'siyuan_block_not_found';
 }
 
 function marker(mapId: string): string {
@@ -187,12 +192,20 @@ function nodeFileBlockMarkdown(
   return fields.join(' · ');
 }
 
+function isDocumentBackedEntry(entry: SiyuanSafeIndexEntry): boolean {
+  return entry.kind !== 'file' || entry.parentNodeId === null;
+}
+
+function isBlockBackedFileEntry(entry: SiyuanSafeIndexEntry): boolean {
+  return entry.kind === 'file' && entry.parentNodeId !== null;
+}
+
 function nodeManagedMarkdown(
   mapId: string,
   entry: SiyuanSafeIndexEntry,
   parentDocumentId: string,
 ): string {
-  return entry.kind === 'file'
+  return isBlockBackedFileEntry(entry)
     ? nodeFileBlockMarkdown(mapId, entry, parentDocumentId)
     : nodeDocumentMarkdown(mapId, entry, parentDocumentId);
 }
@@ -449,7 +462,7 @@ function parseContextMapMarkdown(
 }
 
 function isManagedDocumentAmbiguity(error: unknown): boolean {
-  return error instanceof Error && error.message === 'siyuan_managed_document_ambiguous';
+  return siyuanErrorCode(error) === 'siyuan_managed_document_ambiguous';
 }
 
 async function readManagedDocumentWithDuplicateRecovery(
@@ -486,7 +499,7 @@ async function readManagedDocumentWithDuplicateRecovery(
       try {
         bindingDocuments.push(await port.getBlock(projectId, id));
       } catch (error) {
-        if (!(error instanceof Error) || error.message !== 'siyuan_block_not_found') throw error;
+        if (!isSiyuanBlockNotFoundError(error)) throw error;
       }
     }
     if (bindingDocuments.length === 0) throw new Error('siyuan_managed_document_ambiguous');
@@ -649,7 +662,77 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
       ...manifest.nodeBindings,
       ...(await readSiyuanNodeBindings(projectId, record.id)),
     };
+    const createDocumentBackedNode = async (
+      entry: SiyuanSafeIndexEntry,
+      parentDocumentId: string,
+      markdown: string,
+    ): Promise<SiyuanManagedDocument> => {
+      const input = {
+        parentId: parentDocumentId,
+        path: nodeStagingPath(record, rootDocument, entry),
+        markdown,
+        marker: nodeMarker(record.id, entry.nodeId),
+      };
+      if (port.createManagedDocumentUnderParent) {
+        return port.createManagedDocumentUnderParent(projectId, rootDocument.id, input);
+      }
+      if (port.createManagedDocumentsUnderParents) {
+        const results = await port.createManagedDocumentsUnderParents(projectId, rootDocument.id, [
+          input,
+        ]);
+        if (results.length !== 1) {
+          throw new Error('siyuan_managed_document_batch_response_invalid');
+        }
+        const result = results[0]!;
+        if (!result.ok) throw result.error;
+        return result.document;
+      }
+      if (nativeSiyuanDocumentSegments(rootDocument.path)) {
+        throw new Error('siyuan_managed_document_under_parent_unavailable');
+      }
+      return port.createManagedDocument(
+        projectId,
+        `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
+        markdown,
+      );
+    };
+    for (const cleanup of await readSiyuanLegacyCleanupReceipts(projectId, record.id)) {
+      if (
+        cleanup.mapRootId !== rootDocument.id ||
+        !cleanup.expectedMarkdown.includes(nodeMarker(record.id, cleanup.nodeId))
+      ) {
+        throw new Error('siyuan_legacy_cleanup_authority_invalid');
+      }
+      try {
+        const legacyDocument = await port.getBlock(projectId, cleanup.legacyDocumentId);
+        if (
+          legacyDocument.id !== cleanup.legacyDocumentId ||
+          legacyDocument.path !== rootDocument.path ||
+          legacyDocument.markdown !== cleanup.expectedMarkdown
+        ) {
+          throw new Error('siyuan_legacy_cleanup_authority_invalid');
+        }
+        await port.deleteManagedDocument(
+          projectId,
+          cleanup.legacyDocumentId,
+          cleanup.expectedMarkdown,
+          rootDocument.id,
+        );
+      } catch (error) {
+        if (!isSiyuanBlockNotFoundError(error)) throw error;
+      }
+      await deleteSiyuanLegacyCleanupReceipt(
+        projectId,
+        record.id,
+        cleanup.nodeId,
+        cleanup.legacyDocumentId,
+      );
+    }
     const staleBindingNodeIds: string[] = [];
+    const legacyRootFileBindings: Array<{
+      entry: SiyuanSafeIndexEntry;
+      document: SiyuanManagedDocument;
+    }> = [];
     if (nativeSiyuanDocumentSegments(rootDocument.path)) {
       for (const entry of index.entries) {
         const documentId = bindings[entry.nodeId];
@@ -658,14 +741,19 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
           const document = await port.getBlock(projectId, documentId);
           if (isInsideNativeSiyuanRoot(rootDocument, document) === false) {
             staleBindingNodeIds.push(entry.nodeId);
+          } else if (
+            entry.kind === 'file' &&
+            entry.parentNodeId === null &&
+            document.id !== rootDocument.id &&
+            document.path === rootDocument.path
+          ) {
+            legacyRootFileBindings.push({ entry, document });
           }
         } catch (error) {
-          // The pinned native runtime historically surfaced a missing `.sy`
-          // tree as `siyuan_response_type_mismatch`. This containment sweep is
-          // the only safe recovery boundary: detach the unreadable saved
-          // binding, never delete or trust the unknown target, and recreate
-          // the exact managed node beneath the already-verified map root.
-          if (!isUnreadablePersistedSiyuanBinding(error)) throw error;
+          // Only an exact not-found code proves the saved target is gone.
+          // Transport and response-shape failures remain fail-closed because
+          // they cannot authorize detaching a potentially live binding.
+          if (!isSiyuanBlockNotFoundError(error)) throw error;
           staleBindingNodeIds.push(entry.nodeId);
         }
       }
@@ -679,6 +767,36 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
         message: 'SiYuan stale node bindings detached from the active map root',
         detail: { mapId: record.id, detached: staleBindingNodeIds.length },
       });
+    }
+    for (const { entry, document: legacyDocument } of legacyRootFileBindings) {
+      await options.control?.checkpoint(options.signal);
+      if (options.signal?.aborted) throw new Error('siyuan_index_cancelled');
+      const markdown = nodeDocumentMarkdown(record.id, entry, rootDocument.id);
+      // Legacy versions appended a root-level file as a block inside the map
+      // root. Create the stable child document first, durably swap the binding,
+      // and only then retire the owned legacy block. The native under-parent
+      // command is marker-idempotent, so a crash before the checkpoint safely
+      // recovers the same child document on the next run.
+      const replacement = await createDocumentBackedNode(entry, rootDocument.id, markdown);
+      await swapSiyuanNodeBindingWithCleanup(projectId, record.id, {
+        nodeId: entry.nodeId,
+        replacementDocumentId: replacement.id,
+        legacyDocumentId: legacyDocument.id,
+        expectedMarkdown: legacyDocument.markdown,
+        mapRootId: rootDocument.id,
+      });
+      bindings[entry.nodeId] = replacement.id;
+      try {
+        await port.deleteManagedDocument(
+          projectId,
+          legacyDocument.id,
+          legacyDocument.markdown,
+          rootDocument.id,
+        );
+      } catch (error) {
+        if (!isSiyuanBlockNotFoundError(error)) throw error;
+      }
+      await deleteSiyuanLegacyCleanupReceipt(projectId, record.id, entry.nodeId, legacyDocument.id);
     }
     const previouslyBoundNodeIds = new Set(Object.keys(bindings));
     durableJob = nativeFilesystemAvailable ? await readSiyuanIndexJob(projectId, record.id) : null;
@@ -706,8 +824,12 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
     let activeNodeIds = new Set(index.entries.map((entry) => entry.nodeId));
     const documentPromises = new Map<string, Promise<string>>();
     const unboundEntries = index.entries.filter((entry) => !bindings[entry.nodeId]);
-    const unboundDocumentEntries = unboundEntries.filter((entry) => entry.kind !== 'file');
-    const unboundFileEntries = unboundEntries.filter((entry) => entry.kind === 'file');
+    // A root-level file cannot be an appended block in the map-root document:
+    // refreshing the authoritative map payload replaces that document body and
+    // would invalidate the persisted child-block ID. Keep only nested files on
+    // the bounded block path; root-level files receive stable child documents.
+    const unboundDocumentEntries = unboundEntries.filter(isDocumentBackedEntry);
+    const unboundFileEntries = unboundEntries.filter(isBlockBackedFileEntry);
     const checkpointCompletedNodes = async (completedBatch: Record<string, string>) => {
       Object.assign(bindings, completedBatch);
       if (Object.keys(completedBatch).length > 0) {
@@ -844,7 +966,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
             }
             return [entry.nodeId, document.id] as const;
           })();
-          if (entry.kind !== 'file') {
+          if (isDocumentBackedEntry(entry)) {
             documentPromises.set(
               entry.nodeId,
               task.then(([, documentId]) => documentId),
@@ -1004,23 +1126,19 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
           );
         }
       } catch (error) {
-        if (!(error instanceof Error) || error.message !== 'siyuan_block_not_found') throw error;
+        if (!isSiyuanBlockNotFoundError(error)) throw error;
         delete bindings[entry.nodeId];
         await deleteSiyuanNodeBindings(projectId, record.id, [entry.nodeId]);
         let recovered;
         try {
-          if (entry.kind === 'file' && port.appendManagedBlocks) {
+          if (isBlockBackedFileEntry(entry) && port.appendManagedBlocks) {
             const ids = await port.appendManagedBlocks(projectId, rootDocument.id, [
               { parentId: parentDocumentId, markdown },
             ]);
             if (ids.length !== 1) throw new Error('siyuan_managed_block_batch_response_invalid');
             recovered = await port.getBlock(projectId, ids[0]!);
           } else {
-            recovered = await port.createManagedDocument(
-              projectId,
-              `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
-              markdown,
-            );
+            recovered = await createDocumentBackedNode(entry, parentDocumentId, markdown);
           }
         } catch (createError) {
           const existing = await port.readManagedDocument(projectId, {
@@ -1144,7 +1262,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
                 );
               }
             } catch (error) {
-              if (!(error instanceof Error) || error.message !== 'siyuan_block_not_found') {
+              if (!isSiyuanBlockNotFoundError(error)) {
                 throw error;
               }
               delete bindings[entry.nodeId];
@@ -1154,7 +1272,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
           }
           if (!documentId) {
             try {
-              if (entry.kind === 'file' && port.appendManagedBlocks) {
+              if (isBlockBackedFileEntry(entry) && port.appendManagedBlocks) {
                 const ids = await port.appendManagedBlocks(projectId, rootDocument.id, [
                   { parentId: parentDocumentId, markdown },
                 ]);
@@ -1163,11 +1281,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
                 }
                 documentId = ids[0]!;
               } else {
-                const created = await port.createManagedDocument(
-                  projectId,
-                  `/VibeSpace Context Maps/${slug(record.name)}-${slug(record.id)}/Nodes/${slug(entry.title)}-${stableNodeSlug(entry.nodeId)}`,
-                  markdown,
-                );
+                const created = await createDocumentBackedNode(entry, parentDocumentId, markdown);
                 documentId = created.id;
               }
             } catch (createError) {
@@ -1370,7 +1484,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
     }
     const compactBindingCache = Object.fromEntries(
       index.entries
-        .filter((entry) => entry.kind !== 'file')
+        .filter(isDocumentBackedEntry)
         .slice(0, SIYUAN_MANIFEST_BINDING_CACHE_LIMIT)
         .flatMap((entry) => {
           const documentId = bindings[entry.nodeId];
@@ -1720,7 +1834,7 @@ export function createSiyuanContextMapIntegration(port: ProductionSiyuanRlmPort)
             );
           }
         } catch (error) {
-          if (!(error instanceof Error) || error.message !== 'siyuan_block_not_found') throw error;
+          if (!isSiyuanBlockNotFoundError(error)) throw error;
         }
         const retiredNodeIds = Object.entries(persistedBindings)
           .filter(([, documentId]) => documentId === id)

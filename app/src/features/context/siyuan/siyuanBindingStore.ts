@@ -6,8 +6,30 @@ const SCOPE_INDEX = 'scope';
 interface StoredBinding {
   key: string;
   scope: string;
+  recordType?: 'binding';
   nodeId: string;
   documentId: string;
+}
+
+interface StoredLegacyCleanupReceipt {
+  key: string;
+  scope: string;
+  recordType: 'legacy-cleanup';
+  nodeId: string;
+  legacyDocumentId: string;
+  expectedMarkdown: string;
+  mapRootId: string;
+}
+
+export interface SiyuanLegacyCleanupReceipt {
+  nodeId: string;
+  legacyDocumentId: string;
+  expectedMarkdown: string;
+  mapRootId: string;
+}
+
+export interface SiyuanNodeBindingCleanupSwap extends SiyuanLegacyCleanupReceipt {
+  replacementDocumentId: string;
 }
 
 function scopeKey(projectId: string, mapId: string): string {
@@ -16,6 +38,15 @@ function scopeKey(projectId: string, mapId: string): string {
 
 function bindingKey(projectId: string, mapId: string, nodeId: string): string {
   return `${scopeKey(projectId, mapId)}\u0000${nodeId}`;
+}
+
+function cleanupKey(
+  projectId: string,
+  mapId: string,
+  nodeId: string,
+  legacyDocumentId: string,
+): string {
+  return `${scopeKey(projectId, mapId)}\u0000cleanup\u0000${nodeId}\u0000${legacyDocumentId}`;
 }
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
@@ -64,7 +95,9 @@ export async function readSiyuanNodeBindings(
     );
     await transactionDone(transaction);
     return Object.fromEntries(
-      (records as StoredBinding[]).map((record) => [record.nodeId, record.documentId]),
+      (records as Array<StoredBinding | StoredLegacyCleanupReceipt>)
+        .filter((record): record is StoredBinding => record.recordType !== 'legacy-cleanup')
+        .map((record) => [record.nodeId, record.documentId]),
     );
   } finally {
     database.close();
@@ -88,10 +121,90 @@ export async function writeSiyuanNodeBindings(
       store.put({
         key: bindingKey(projectId, mapId, nodeId),
         scope,
+        recordType: 'binding',
         nodeId,
         documentId,
       } satisfies StoredBinding);
     }
+    await transactionDone(transaction);
+  } finally {
+    database.close();
+  }
+}
+
+export async function readSiyuanLegacyCleanupReceipts(
+  projectId: string,
+  mapId: string,
+): Promise<SiyuanLegacyCleanupReceipt[]> {
+  const database = await openDatabase();
+  if (!database) return [];
+  try {
+    const transaction = database.transaction(STORE_NAME, 'readonly');
+    const records = await requestResult(
+      transaction.objectStore(STORE_NAME).index(SCOPE_INDEX).getAll(scopeKey(projectId, mapId)),
+    );
+    await transactionDone(transaction);
+    return (records as Array<StoredBinding | StoredLegacyCleanupReceipt>)
+      .filter(
+        (record): record is StoredLegacyCleanupReceipt => record.recordType === 'legacy-cleanup',
+      )
+      .map(({ nodeId, legacyDocumentId, expectedMarkdown, mapRootId }) => ({
+        nodeId,
+        legacyDocumentId,
+        expectedMarkdown,
+        mapRootId,
+      }));
+  } finally {
+    database.close();
+  }
+}
+
+export async function swapSiyuanNodeBindingWithCleanup(
+  projectId: string,
+  mapId: string,
+  swap: SiyuanNodeBindingCleanupSwap,
+): Promise<void> {
+  const database = await openDatabase();
+  if (!database) return;
+  try {
+    const transaction = database.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const scope = scopeKey(projectId, mapId);
+    store.put({
+      key: bindingKey(projectId, mapId, swap.nodeId),
+      scope,
+      recordType: 'binding',
+      nodeId: swap.nodeId,
+      documentId: swap.replacementDocumentId,
+    } satisfies StoredBinding);
+    store.put({
+      key: cleanupKey(projectId, mapId, swap.nodeId, swap.legacyDocumentId),
+      scope,
+      recordType: 'legacy-cleanup',
+      nodeId: swap.nodeId,
+      legacyDocumentId: swap.legacyDocumentId,
+      expectedMarkdown: swap.expectedMarkdown,
+      mapRootId: swap.mapRootId,
+    } satisfies StoredLegacyCleanupReceipt);
+    await transactionDone(transaction);
+  } finally {
+    database.close();
+  }
+}
+
+export async function deleteSiyuanLegacyCleanupReceipt(
+  projectId: string,
+  mapId: string,
+  nodeId: string,
+  legacyDocumentId: string,
+): Promise<void> {
+  const database = await openDatabase();
+  if (!database) return;
+  try {
+    const transaction = database.transaction(STORE_NAME, 'readwrite');
+    transaction
+      .objectStore(STORE_NAME)
+      .delete(cleanupKey(projectId, mapId, nodeId, legacyDocumentId));
     await transactionDone(transaction);
   } finally {
     database.close();
