@@ -6033,7 +6033,67 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       created_at: 1,
       updated_at: 1,
     });
+    const installedHostQuestion = projectOpenCodeQuestionEvent(
+      {
+        type: 'question',
+        request: {
+          id: 'que_installed_kernel_host',
+          sessionId: 'ses_installed_kernel_host',
+          tool: { messageId: 'msg_installed_kernel_host', callId: 'call_question_kernel_host' },
+          questions: [
+            {
+              header: 'Scope',
+              prompt: 'Which approved scope should I inspect?',
+              multiple: false,
+              allowCustomAnswer: true,
+              options: [{ label: 'Repository', description: 'Inspect the current repository.' }],
+            },
+          ],
+        },
+      },
+      'ses_installed_kernel_host',
+    );
+    if (!installedHostQuestion) throw new Error('expected installed-host question projection');
     mocks.runAgent.mockImplementation(async (providerInput) => {
+      expect(providerInput.onQuestionRequested).toEqual(expect.any(Function));
+      await providerInput.onQuestionRequested?.(installedHostQuestion);
+      expect(providerInput.onToolActivity).toEqual(expect.any(Function));
+      expect(providerInput.onPublicTimelineSnapshot).toEqual(expect.any(Function));
+      await providerInput.onToolActivity?.({
+        name: 'read',
+        status: 'started',
+        callId: 'opencode-tool-1',
+        fileLabel: 'game.js',
+      });
+      expect(
+        useChatActivityStore
+          .getState()
+          .eventsByChat[harness.chatId]?.some(
+            (event) => event.kind === 'tool' && event.status === 'running',
+          ),
+      ).toBe(true);
+      await providerInput.onPublicTimelineSnapshot?.({
+        finalText: 'The installed kernel host returned a partial response, Sir.',
+        timeline: [
+          { kind: 'text', text: 'I inspected the project first.' },
+          {
+            kind: 'tool_call',
+            tool: 'read',
+            call_id: 'opencode-tool-1',
+            args: { path: 'game.js' },
+          },
+          {
+            kind: 'tool_result',
+            call_id: 'opencode-tool-1',
+            result: { status: 'completed' },
+          },
+        ],
+      });
+      expect(
+        useChatActivityStore
+          .getState()
+          .eventsByChat[harness.chatId]?.filter((event) => event.kind === 'tool'),
+      ).toEqual([expect.objectContaining({ status: 'done', subtitle: 'game.js' })]);
       providerInput.onChunk?.({
         delta: 'The installed kernel host returned a partial response, Sir.',
         done: false,
@@ -6202,7 +6262,14 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       expect(mocks.buildRoutedMcpTaskContext).toHaveBeenCalledWith(
         'Run the installed kernel host.',
       );
-      expect(harness.bindings.appendMessage).not.toHaveBeenCalled();
+      expect(harness.bindings.appendMessage).toHaveBeenCalledExactlyOnceWith({
+        chat_id: harness.chatId,
+        role: 'assistant',
+        parts: [installedHostQuestion.part],
+      });
+      expect(mocks.bindPersistentOpenCodeQuestionRoute).toHaveBeenCalledWith(
+        installedHostQuestion.route,
+      );
       const canonicalRun = await database.jarvis_runs
         .where('chat_id')
         .equals(harness.chatId)

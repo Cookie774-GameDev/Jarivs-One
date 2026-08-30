@@ -1,8 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { JarvisArtifactV1 } from './types';
 import {
   conciseJarvisArtifactSummary,
   isRenderableJarvisArtifact,
+  projectJarvisArtifactReference,
+  resolveAccountJarvisArtifactAccess,
+  resolveAccountJarvisArtifactPreview,
   resolveJarvisArtifactAccess,
 } from './artifactAccess';
 
@@ -88,5 +91,175 @@ describe('conciseJarvisArtifactSummary', () => {
 
   it('returns no copy for an empty summary', () => {
     expect(conciseJarvisArtifactSummary(' \n\t ')).toBeUndefined();
+  });
+});
+
+describe('resolveAccountJarvisArtifactAccess', () => {
+  it('resolves only the exact account and opaque artifact identity through the repository', async () => {
+    const getById = vi.fn(async () => artifact({ uri: 'https://example.test/report' }));
+
+    await expect(
+      resolveAccountJarvisArtifactAccess(
+        { getById },
+        {
+          accountId: 'account-alpha',
+          artifactId: 'jart_opaque-report',
+          runtime: { desktop: true },
+        },
+      ),
+    ).resolves.toEqual({
+      kind: 'external_uri',
+      target: 'https://example.test/report',
+      hostname: 'example.test',
+    });
+    expect(getById).toHaveBeenCalledExactlyOnceWith('account-alpha', 'jart_opaque-report');
+  });
+
+  it.each([
+    { accountId: '', artifactId: 'jart_opaque-report' },
+    { accountId: ' account-alpha', artifactId: 'jart_opaque-report' },
+    { accountId: 'account-alpha', artifactId: '' },
+    { accountId: 'account-alpha', artifactId: 'jart_bad\u0000id' },
+  ])('fails closed before repository access for an invalid scope: %o', async (input) => {
+    const getById = vi.fn();
+    await expect(
+      resolveAccountJarvisArtifactAccess({ getById }, { ...input, runtime: { desktop: false } }),
+    ).resolves.toBeUndefined();
+    expect(getById).not.toHaveBeenCalled();
+  });
+
+  it('contains repository errors and unavailable or quarantined artifacts', async () => {
+    const rejected = vi.fn(async () => Promise.reject(new Error('private database unavailable')));
+    await expect(
+      resolveAccountJarvisArtifactAccess(
+        { getById: rejected },
+        {
+          accountId: 'account-alpha',
+          artifactId: 'jart_opaque-report',
+          runtime: { desktop: false },
+        },
+      ),
+    ).resolves.toBeUndefined();
+
+    const quarantined = vi.fn(async () => artifact({ state: 'quarantined' }));
+    await expect(
+      resolveAccountJarvisArtifactAccess(
+        { getById: quarantined },
+        {
+          accountId: 'account-alpha',
+          artifactId: 'jart_opaque-report',
+          runtime: { desktop: false },
+        },
+      ),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('resolveAccountJarvisArtifactPreview', () => {
+  it('projects exact account-bound digest and bounded canonical display metadata', async () => {
+    const getById = vi.fn(async () =>
+      artifact({
+        id: 'jart_opaque-report',
+        contentHash: 'a'.repeat(64),
+        title: 'Launch report',
+        safeSummary: 'A verified report.',
+        preview: { kind: 'text', text: '# Launch\n\nReady.', truncated: false, sizeBytes: 18 },
+        uri: 'https://example.test/private',
+        localReference: { kind: 'path', value: 'C:\\private\\launch.md' },
+      }),
+    );
+
+    await expect(
+      resolveAccountJarvisArtifactPreview(
+        { getById },
+        { accountId: 'account-alpha', artifactId: 'jart_opaque-report' },
+      ),
+    ).resolves.toEqual({
+      accountId: 'account-alpha',
+      artifactId: 'jart_opaque-report',
+      artifactDigest: 'a'.repeat(64),
+      title: 'Launch report',
+      safeSummary: 'A verified report.',
+      preview: { kind: 'text', text: '# Launch\n\nReady.', truncated: false },
+    });
+    expect(getById).toHaveBeenCalledExactlyOnceWith('account-alpha', 'jart_opaque-report');
+  });
+
+  it.each([
+    artifact({ contentHash: undefined }),
+    artifact({ contentHash: `sha256:${'a'.repeat(64)}` }),
+    artifact({ contentHash: 'A'.repeat(64) }),
+    artifact({ contentHash: 'a'.repeat(64), title: ' title' }),
+    artifact({ contentHash: 'a'.repeat(64), state: 'quarantined' }),
+    artifact({
+      contentHash: 'a'.repeat(64),
+      preview: { kind: 'text', text: 'x'.repeat(48_001), truncated: true, sizeBytes: 48_001 },
+    }),
+  ])('fails closed for a noncanonical or unsafe metadata snapshot', async (value) => {
+    await expect(
+      resolveAccountJarvisArtifactPreview(
+        { getById: vi.fn(async () => value) },
+        { accountId: 'account-alpha', artifactId: value.id },
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it('does not disclose URI, backing references, or image preview payloads', async () => {
+    const resolved = await resolveAccountJarvisArtifactPreview(
+      {
+        getById: vi.fn(async () =>
+          artifact({
+            contentHash: 'b'.repeat(64),
+            uri: 'https://example.test/private',
+            localReference: { kind: 'path', value: 'C:\\private\\launch.png' },
+            preview: { kind: 'image', text: 'raw-image-payload', truncated: false, sizeBytes: 17 },
+          }),
+        ),
+      },
+      { accountId: 'account-alpha', artifactId: 'artifact-access-1' },
+    );
+
+    expect(resolved).toMatchObject({ preview: { kind: 'none', truncated: false } });
+    expect(JSON.stringify(resolved)).not.toMatch(/example\.test|private|raw-image-payload/u);
+  });
+});
+
+describe('projectJarvisArtifactReference', () => {
+  it('projects only opaque identity and display metadata from a canonical artifact', () => {
+    const projected = projectJarvisArtifactReference(
+      artifact({
+        id: 'jart_opaque-report',
+        title: 'Launch report',
+        kind: 'document',
+        uri: 'https://user:password@example.test/private',
+        safeSummary: 'credential=do-not-render',
+        contentHash: 'sha256-secret-digest',
+        preview: {
+          kind: 'text',
+          text: 'private document body',
+          truncated: false,
+          sizeBytes: 21,
+        },
+        localReference: {
+          kind: 'path',
+          value: 'C:\\private\\launch.md',
+        },
+      }),
+    );
+
+    expect(projected).toEqual({
+      artifactId: 'jart_opaque-report',
+      title: 'Launch report',
+      kind: 'document',
+      state: 'ready',
+    });
+    expect(JSON.stringify(projected)).not.toMatch(
+      /password|credential|private document|private\\\\launch|sha256-secret/u,
+    );
+  });
+
+  it('rejects quarantined or contract-invalid artifacts', () => {
+    expect(projectJarvisArtifactReference(artifact({ state: 'quarantined' }))).toBeUndefined();
+    expect(projectJarvisArtifactReference(artifact({ attemptNumber: 0 }))).toBeUndefined();
   });
 });

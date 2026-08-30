@@ -541,6 +541,7 @@ describe('createKernelTurnCommit', () => {
         content: 'const shardSize = 48_000;',
       },
     };
+    const actionArtifact = artifact({ id: 'artifact-file-action' });
     const finalized = await state.commit.finalizeActionResponse({
       accountId: 'account-kernel',
       runId: 'run-kernel',
@@ -552,11 +553,14 @@ describe('createKernelTurnCommit', () => {
       outcome: 'completed',
       resultRef: 'jresult_file-read',
       result: actionResult,
+      artifacts: [actionArtifact],
       completedAt: NOW + 12,
     });
 
     expect(finalized).toMatchObject({
       committed: true,
+      artifacts: [{ id: 'artifact-file-action' }],
+      event: { artifactIds: ['artifact-file-action'] },
       message: {
         parts: [
           expect.anything(),
@@ -582,6 +586,10 @@ describe('createKernelTurnCommit', () => {
         ],
       },
     });
+    expect(await db.jarvis_artifacts.get('artifact-file-action')).toBeDefined();
+    expect(state.consumeArtifactsForCommit).toHaveBeenCalledWith(
+      expect.objectContaining({ artifacts: [actionArtifact] }),
+    );
   });
 
   it('projects each files.read in a ten-file batch onto its own part and only completes the run on the last card', async () => {

@@ -6,6 +6,7 @@ import {
   describeFsError,
   readTextFile,
   readTextFileSample,
+  sha256Text,
   writeTextFile,
 } from '@/lib/fs';
 import {
@@ -47,7 +48,14 @@ export function isCanonicalFileArtifactResult(
     );
   }
   if (evidence.actionId === 'files.create') {
-    return data.operation === 'create' && persistedReference(data.path);
+    return (
+      data.operation === 'create' &&
+      persistedReference(data.path) &&
+      typeof data.contentSha256 === 'string' &&
+      sha256Reference(data.contentSha256) &&
+      Number.isSafeInteger(data.sizeBytes) &&
+      Number(data.sizeBytes) >= 0
+    );
   }
   if (evidence.actionId === 'files.edit') {
     return data.operation === 'edit' && persistedReference(data.path);
@@ -233,7 +241,12 @@ export const FILE_ACTIONS: ActionDef[] = [
           new CustomEvent('jarvis:file:attach', { detail: { path: resolved.path } }),
         );
       }
-      return ok(`Created ${resolved.path}.`, { path: resolved.path, operation: 'create' });
+      return ok(`Created ${resolved.path}.`, {
+        path: resolved.path,
+        operation: 'create',
+        contentSha256: await sha256Text(content),
+        sizeBytes: new TextEncoder().encode(content).byteLength,
+      });
     },
   },
   {

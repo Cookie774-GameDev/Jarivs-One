@@ -62,6 +62,15 @@ export interface JarvisApprovalBindingSelectors {
   }): Promise<JarvisCanonicalActionTarget>;
 }
 
+/** @internal Carries only successful canonical file results into durable action finalization. */
+export function canonicalFileActionResponseResult(
+  actionId: string,
+  result: ActionResult,
+): ActionResult | undefined {
+  if (!result.ok || (actionId !== 'files.read' && actionId !== 'files.create')) return undefined;
+  return structuredClone(result);
+}
+
 export function createJarvisApprovalBindingSelectors(input: {
   catalog: JarvisActionCatalog;
   capabilitySnapshots: JarvisCapabilitySnapshotProvider;
@@ -426,13 +435,16 @@ function riskFor(registration: JarvisRegisteredActionDefinition): JarvisApproval
   return 'dangerous';
 }
 
-function producerFor(
+/** @internal Maps the protected registry namespace to its live-evidence authority. */
+export function jarvisProducerKindForActionRegistration(
   registration: JarvisRegisteredActionDefinition,
 ): 'action' | 'file_action' | 'terminal' | 'plugin' | 'mcp' {
   if (registration.executor.kind === 'plugin_tool') return 'plugin';
   const id = registration.executor.registryActionId.toLowerCase();
   if (id.startsWith('terminal.') || id.includes('.terminal.')) return 'terminal';
-  if (id.startsWith('file.') || id.includes('.file.')) return 'file_action';
+  if (id.startsWith('file.') || id.startsWith('files.') || id.includes('.file.')) {
+    return 'file_action';
+  }
   if (id.startsWith('mcp.') || id.includes('.mcp.')) return 'mcp';
   return 'action';
 }
@@ -817,8 +829,7 @@ async function inspectZeroEffectTail(input: {
   let providerLiveEventSeq: number | undefined;
   let providerStartedAt: number | undefined;
   let providerIdentity:
-    | Extract<JarvisLiveProducerIdentity, { producerKind: 'provider' }>
-    | undefined;
+    Extract<JarvisLiveProducerIdentity, { producerKind: 'provider' }> | undefined;
   const snapshot = input.run.scheduledRetrySnapshot;
   const startRef = `jstart_${input.run.id}_${input.attempt.requestId}_${input.attempt.attemptNumber}`;
   const resultRef = `jresult_${input.run.id}_${input.attempt.requestId}_${input.attempt.attemptNumber}_transport`;
@@ -1658,7 +1669,8 @@ export function createJarvisApprovalEngine(
     }
 
     if (outcome.kind === 'terminal_handoff_accepted') {
-      const isTerminal = producerFor(inputValue.registration) === 'terminal';
+      const isTerminal =
+        jarvisProducerKindForActionRegistration(inputValue.registration) === 'terminal';
       if (
         !isTerminal ||
         outcome.executorKind !== 'terminal' ||
@@ -1682,14 +1694,16 @@ export function createJarvisApprovalEngine(
         approvalId: inputValue.execution.approval.id,
         result: outcome.result,
       });
+      const responseResult = canonicalFileActionResponseResult(
+        inputValue.registration.id,
+        outcome.result,
+      );
       committed(
         await inputValue.execution.recordResult({
           state: outcome.result.ok ? 'completed' : 'degraded',
           resultRef: `jresult_${resultRefHash}`,
           completedAt: input.now(),
-          ...(inputValue.registration.id === 'files.read' && outcome.result.ok
-            ? { responseResult: outcome.result }
-            : {}),
+          ...(responseResult === undefined ? {} : { responseResult }),
         }),
       );
       return { kind: 'settled', result: outcome.result };
@@ -1714,7 +1728,7 @@ export function createJarvisApprovalEngine(
     if (approval.status !== 'approved') approvalError('not_approved');
     const validated = await validateStoredApproval(lifecycle, approval);
     assertLive(state);
-    const producerKind = producerFor(validated.registration);
+    const producerKind = jarvisProducerKindForActionRegistration(validated.registration);
     const ownerId = `approval:${approval.id}`;
     const claimed = committed(
       await lifecycle.claimApprovedExecution({
@@ -1938,7 +1952,7 @@ export function createJarvisApprovalEngine(
           if (registration.risk !== 'read-only' || registration.approval !== 'never') {
             approvalError('not_approved');
           }
-          const producerKind = producerFor(registration);
+          const producerKind = jarvisProducerKindForActionRegistration(registration);
           const ownerId = `approval:${prepared.approvalId}`;
           const boundContext = Object.freeze({ ...context, approvalId: prepared.approvalId });
           assertLive(state);

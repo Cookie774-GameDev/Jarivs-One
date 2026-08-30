@@ -169,6 +169,13 @@ import {
 } from '@/features/context/contextChatIntegration';
 import { MentionTypeahead } from './MentionTypeahead';
 import {
+  buildAccountReferenceCatalog,
+  filterReferenceCatalog,
+  type ReferenceCatalogEntry,
+} from '@/features/references/referenceCatalog';
+import type { JarvisArtifactV1 } from '@/lib/jarvis/contracts/execution';
+import { jarvisArtifactRepo } from '@/lib/db/jarvisRepositories';
+import {
   SlashCommandTypeahead,
   getVisibleSlashCommands,
   resolveSlashCommandSelection,
@@ -630,6 +637,14 @@ export interface ConfirmedAgentMention {
   label: string;
 }
 
+export interface ConfirmedCatalogReference {
+  key: string;
+  kind: 'plugin' | 'artifact';
+  entityId: string;
+  mention: string;
+  label: string;
+}
+
 const SLASH_REFERENCE_LABELS: Record<string, string> = {
   agents: 'Agents page/editor',
   terminals: 'Terminal surface',
@@ -648,6 +663,52 @@ export function buildConfirmedAgentMention(agent: Agent): ConfirmedAgentMention 
     slug: agent.slug,
     label: `@${agent.slug}`,
   };
+}
+
+export function buildConfirmedCatalogReference(
+  entry: Extract<ReferenceCatalogEntry, { kind: 'plugin' | 'artifact' }> | ReferenceCatalogEntry,
+): ConfirmedCatalogReference {
+  if (entry.kind === 'agent') {
+    throw new Error('agent_reference_requires_canonical_agent');
+  }
+  return Object.freeze({
+    key: entry.key,
+    kind: entry.kind,
+    entityId: entry.entityId,
+    mention: entry.mention,
+    label: entry.label,
+  });
+}
+
+export function confirmedCatalogReferenceTextForSend(
+  references: readonly ConfirmedCatalogReference[],
+): string {
+  const seen = new Set<string>();
+  return references
+    .filter((reference) => {
+      if (seen.has(reference.key)) return false;
+      seen.add(reference.key);
+      return true;
+    })
+    .map((reference) => reference.mention)
+    .join(' ');
+}
+
+type ComposerArtifactCatalogRepository = Readonly<{
+  listByAccount(accountId: string, limit?: number): Promise<JarvisArtifactV1[]>;
+}>;
+
+export async function loadComposerArtifactScope(
+  repository: ComposerArtifactCatalogRepository,
+  accountId: string,
+): Promise<Readonly<{ accountId: string; artifacts: readonly JarvisArtifactV1[] }>> {
+  if (!accountId) return Object.freeze({ accountId: '', artifacts: Object.freeze([]) });
+  try {
+    const artifacts = await repository.listByAccount(accountId, 100);
+    return Object.freeze({ accountId, artifacts: Object.freeze([...artifacts]) });
+  } catch {
+    return Object.freeze({ accountId, artifacts: Object.freeze([]) });
+  }
 }
 
 export function buildSlashReferenceCommand(cmd: SlashCommandDef): ConfirmedCommand {
@@ -843,7 +904,7 @@ function extractMentionedAgentIds(text: string, agents: Record<string, Agent>): 
 
   const seen = new Set<AgentId>();
   const out: AgentId[] = [];
-  const re = /(?:^|\s)@([a-z0-9_-]+)/gi;
+  const re = /(?:^|\s)@([a-z0-9_-]+)(?=$|\s|[.,!?;])/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     const id = slugToId[(m[1] ?? '').toLowerCase()];
@@ -903,7 +964,7 @@ export function Composer({
 }: ComposerProps) {
   const [text, setText] = useState('');
   const [mentionCtx, setMentionCtx] = useState<MentionContext | null>(null);
-  const [selectedSlug, setSelectedSlug] = useState<string>('');
+  const [selectedReferenceKey, setSelectedReferenceKey] = useState<string>('');
   const [slashCtx, setSlashCtx] = useState<SlashContext | null>(null);
   const [selectedSlashCmd, setSelectedSlashCmd] = useState<string>('');
   const [optionPickerCtx, setOptionPickerCtx] = useState<OptionPickerContext | null>(null);
@@ -919,6 +980,12 @@ export function Composer({
   );
   const [confirmedCommands, setConfirmedCommands] = useState<ConfirmedCommand[]>([]);
   const [confirmedAgentMentions, setConfirmedAgentMentions] = useState<ConfirmedAgentMention[]>([]);
+  const [confirmedCatalogReferences, setConfirmedCatalogReferences] = useState<
+    ConfirmedCatalogReference[]
+  >([]);
+  const [artifactReferenceScope, setArtifactReferenceScope] = useState<
+    Readonly<{ accountId: string; artifacts: readonly JarvisArtifactV1[] }>
+  >({ accountId: '', artifacts: [] });
   const [sending, setSending] = useState(false);
   const harnessRuntimeState = useHarnessRuntimeState();
   const harnessBlocked = harnessRuntimeState.kind !== 'ready';
@@ -1153,6 +1220,15 @@ export function Composer({
   const projectId = useAuthStore((s) => s.projectId);
   const [contextMaps, setContextMaps] = useState<readonly ContextMapRecord[]>([]);
   const pluginAccountId = useAuthStore((s) => resolveAccountIdentity(s)?.accountId ?? '');
+  useEffect(() => {
+    let current = true;
+    void loadComposerArtifactScope(jarvisArtifactRepo, pluginAccountId).then((scope) => {
+      if (current) setArtifactReferenceScope(scope);
+    });
+    return () => {
+      current = false;
+    };
+  }, [pluginAccountId]);
   const terminalPickerActive = normalizeSlashCmd(optionPickerCtx?.cmd.cmd ?? '') === 'terminals';
   const pluginPickerActive = optionPickerCtx?.cmd.cmd === 'plug';
   const themePickerActive = isGlobalThemePickerCommand(optionPickerCtx?.cmd.cmd ?? '');
@@ -1652,39 +1728,37 @@ export function Composer({
     !usingNonGoogleChatModel &&
     !usingLocalChatModel;
 
-  // Filtered agent list for the mention typeahead (case-insensitive prefix match,
-  // falling back to substring match for forgiving search).
-  const filteredAgents = useMemo<Agent[]>(() => {
-    const all = Object.values(agents);
-    const q = (mentionCtx?.query ?? '').toLowerCase();
-    if (!mentionCtx) return [];
-    if (!q) return all;
-    return all
-      .filter((a) => a.slug.toLowerCase().includes(q) || a.name.toLowerCase().includes(q))
-      .sort((a, b) => {
-        // Prefer slug-prefix matches first
-        const aPrefix = a.slug.toLowerCase().startsWith(q) ? 0 : 1;
-        const bPrefix = b.slug.toLowerCase().startsWith(q) ? 0 : 1;
-        if (aPrefix !== bPrefix) return aPrefix - bPrefix;
-        return a.slug.localeCompare(b.slug);
-      });
-  }, [agents, mentionCtx]);
-
-  const filteredAgentsSignature = useMemo(
-    () => filteredAgents.map((agent) => agent.slug).join('\0'),
-    [filteredAgents],
+  const referenceCatalog = useMemo(
+    () =>
+      buildAccountReferenceCatalog({
+        accountId: pluginAccountId,
+        artifactScope: artifactReferenceScope,
+        agents: Object.values(agents),
+        plugins: PLUGIN_CATALOG,
+      }),
+    [agents, artifactReferenceScope, pluginAccountId],
+  );
+  const filteredReferenceEntries = useMemo(
+    () =>
+      mentionCtx ? filterReferenceCatalog(referenceCatalog, mentionCtx.query) : Object.freeze([]),
+    [mentionCtx, referenceCatalog],
+  );
+  const filteredReferenceSignature = useMemo(
+    () => filteredReferenceEntries.map((entry) => entry.key).join('\0'),
+    [filteredReferenceEntries],
   );
 
-  // Keep selectedSlug in sync when filtered list changes
   useEffect(() => {
-    if (filteredAgents.length === 0) {
-      setSelectedSlug((current) => (current === '' ? current : ''));
+    if (filteredReferenceEntries.length === 0) {
+      setSelectedReferenceKey((current) => (current === '' ? current : ''));
       return;
     }
-    setSelectedSlug((current) =>
-      filteredAgents.some((agent) => agent.slug === current) ? current : filteredAgents[0]!.slug,
+    setSelectedReferenceKey((current) =>
+      filteredReferenceEntries.some((entry) => entry.key === current)
+        ? current
+        : filteredReferenceEntries[0]!.key,
     );
-  }, [filteredAgentsSignature]);
+  }, [filteredReferenceSignature]);
 
   // Filtered slash command list for the typeahead (fuzzy match on cmd + description).
   const filteredSlashCommands = useMemo<SlashCommandDef[]>(() => {
@@ -2207,6 +2281,31 @@ export function Composer({
       const pos = before.length;
       node.focus();
       node.setSelectionRange(pos, pos);
+    });
+  };
+
+  const insertCatalogReference = (entry: ReferenceCatalogEntry) => {
+    if (entry.kind === 'agent') {
+      const agent = Object.values(agents).find((candidate) => candidate.id === entry.entityId);
+      if (agent) insertMention(agent);
+      return;
+    }
+    if (!mentionCtx || !textareaRef.current) return;
+    const ta = textareaRef.current;
+    const before = text.slice(0, mentionCtx.start);
+    const after = text.slice(ta.selectionStart);
+    setText(before + after);
+    setConfirmedCatalogReferences((current) => {
+      const confirmed = buildConfirmedCatalogReference(entry);
+      if (current.some((reference) => reference.key === confirmed.key)) return current;
+      return [...current, confirmed].slice(0, 8);
+    });
+    setMentionCtx(null);
+    requestAnimationFrame(() => {
+      const node = textareaRef.current;
+      if (!node) return;
+      node.focus();
+      node.setSelectionRange(before.length, before.length);
     });
   };
 
@@ -2939,6 +3038,7 @@ export function Composer({
     const trimmed = draftText.trim();
     const hasConfirmedCommands = confirmedCommands.length > 0;
     const hasConfirmedAgentMentions = confirmedAgentMentions.length > 0;
+    const hasConfirmedCatalogReferences = confirmedCatalogReferences.length > 0;
     if (
       (!trimmed &&
         attachedFiles.length === 0 &&
@@ -2947,7 +3047,8 @@ export function Composer({
         attachedPlugins.length === 0 &&
         attachedContexts.length === 0 &&
         !hasConfirmedCommands &&
-        !hasConfirmedAgentMentions) ||
+        !hasConfirmedAgentMentions &&
+        !hasConfirmedCatalogReferences) ||
       sending
     )
       return false;
@@ -3035,6 +3136,7 @@ export function Composer({
       !rawSendText &&
       confirmedCommands.length === 0 &&
       confirmedAgentMentions.length === 0 &&
+      confirmedCatalogReferences.length === 0 &&
       attachedFiles.length === 0 &&
       attachedImages.length === 0 &&
       attachedTerminals.length === 0 &&
@@ -3045,6 +3147,7 @@ export function Composer({
     }
     const interactionModeForSend = useJarvisInteractionStore.getState().modeForChat(chatId);
     const mentionPrefix = confirmedAgentMentions.map((mention) => mention.label).join(' ');
+    const catalogReferencePrefix = confirmedCatalogReferenceTextForSend(confirmedCatalogReferences);
     const referenceText = confirmedCommandReferenceText(confirmedCommands);
     const allAboutMeCommand = confirmedCommands.find(
       (command) => command.cmd === 'allaboutme' && command.value,
@@ -3087,6 +3190,7 @@ export function Composer({
         : '';
     const sendText = [
       mentionPrefix,
+      catalogReferencePrefix,
       referenceText,
       allAboutMeText,
       markdownInstruction || rawSendText,
@@ -3224,6 +3328,7 @@ export function Composer({
     const confirmedMentionsForSend = confirmedAgentMentions;
     setConfirmedCommands([]);
     setConfirmedAgentMentions([]);
+    setConfirmedCatalogReferences([]);
 
     setSending(true);
     try {
@@ -3638,26 +3743,38 @@ export function Composer({
         setMentionCtx(null);
         return;
       }
-      if (filteredAgents.length > 0) {
+      if (filteredReferenceEntries.length > 0) {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
-          const i = filteredAgents.findIndex((a) => a.slug === selectedSlug);
-          const next = filteredAgents[(i + 1 + filteredAgents.length) % filteredAgents.length]!;
-          setSelectedSlug(next.slug);
+          const i = filteredReferenceEntries.findIndex(
+            (entry) => entry.key === selectedReferenceKey,
+          );
+          const next =
+            filteredReferenceEntries[
+              (i + 1 + filteredReferenceEntries.length) % filteredReferenceEntries.length
+            ]!;
+          setSelectedReferenceKey(next.key);
           return;
         }
         if (e.key === 'ArrowUp') {
           e.preventDefault();
-          const i = filteredAgents.findIndex((a) => a.slug === selectedSlug);
+          const i = filteredReferenceEntries.findIndex(
+            (entry) => entry.key === selectedReferenceKey,
+          );
           const baseI = i === -1 ? 0 : i;
-          const next = filteredAgents[(baseI - 1 + filteredAgents.length) % filteredAgents.length]!;
-          setSelectedSlug(next.slug);
+          const next =
+            filteredReferenceEntries[
+              (baseI - 1 + filteredReferenceEntries.length) % filteredReferenceEntries.length
+            ]!;
+          setSelectedReferenceKey(next.key);
           return;
         }
         if (e.key === 'Enter' || e.key === 'Tab') {
           e.preventDefault();
-          const agent = filteredAgents.find((a) => a.slug === selectedSlug) ?? filteredAgents[0];
-          if (agent) insertMention(agent);
+          const entry =
+            filteredReferenceEntries.find((candidate) => candidate.key === selectedReferenceKey) ??
+            filteredReferenceEntries[0];
+          if (entry) insertCatalogReference(entry);
           return;
         }
       }
@@ -4153,7 +4270,8 @@ export function Composer({
       attachedPlugins.length > 0 ||
       attachedContexts.length > 0 ||
       confirmedCommands.length > 0 ||
-      confirmedAgentMentions.length > 0) &&
+      confirmedAgentMentions.length > 0 ||
+      confirmedCatalogReferences.length > 0) &&
     !sending &&
     !harnessBlocked;
   const kernelSmokeHiveBound = KERNEL_SMOKE_ENABLED && isKernelSmokeBindingActive();
@@ -5072,6 +5190,24 @@ export function Composer({
                   </TokenList>
                 </div>
               )}
+              {confirmedCatalogReferences.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 px-2 pb-1">
+                  <TokenList>
+                    {confirmedCatalogReferences.map((reference) => (
+                      <InputToken
+                        key={reference.key}
+                        type={reference.kind === 'plugin' ? 'plugin' : 'file'}
+                        label={reference.mention}
+                        onRemove={() =>
+                          setConfirmedCatalogReferences((current) =>
+                            current.filter((candidate) => candidate.key !== reference.key),
+                          )
+                        }
+                      />
+                    ))}
+                  </TokenList>
+                </div>
+              )}
               {/* Confirmed command tokens */}
               {confirmedCommands.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 px-2 pb-1">
@@ -5465,11 +5601,11 @@ export function Composer({
               />
             ) : (
               <MentionTypeahead
-                agents={filteredAgents}
-                selectedSlug={selectedSlug}
+                entries={filteredReferenceEntries}
+                selectedKey={selectedReferenceKey}
                 query={mentionCtx?.query ?? ''}
-                onHoverSlug={setSelectedSlug}
-                onSelect={insertMention}
+                onHoverKey={setSelectedReferenceKey}
+                onSelect={insertCatalogReference}
               />
             )}
           </PopoverContent>

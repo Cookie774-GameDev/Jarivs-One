@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Agent } from '@/types';
 import type { AgentId } from '@/types/common';
 import {
+  buildConfirmedCatalogReference,
   buildConfirmedAgentMention,
   buildSlashReferenceCommand,
   canvasSnapshotToImageAttachment,
@@ -14,7 +15,11 @@ import {
   mergeActiveCanvasSourcesForPromptForge,
   resolveCanvasAttachmentModesForSend,
   resolveMentionedAgentIdsForSend,
+  confirmedCatalogReferenceTextForSend,
+  loadComposerArtifactScope,
 } from './Composer';
+import type { ReferenceCatalogEntry } from '@/features/references/referenceCatalog';
+import type { JarvisArtifactV1 } from '@/lib/jarvis/contracts/execution';
 import { findSlashCommandDef } from './SlashCommandTypeahead';
 import { buildVibeSpaceReferenceRequest } from './slashCommandRouting';
 import { compileCanvasAiContext } from '@/features/canvas/aiContext';
@@ -37,6 +42,21 @@ function agent(id: string, slug: string): Agent {
     capabilities: [],
     created_at: 1,
     updated_at: 1,
+  };
+}
+
+function artifact(): JarvisArtifactV1 {
+  return {
+    schemaVersion: 1,
+    id: 'jart_launch-report',
+    runId: 'jrun_launch',
+    requestId: 'jreq_launch',
+    attemptNumber: 1,
+    state: 'ready',
+    kind: 'document',
+    title: 'Launch report',
+    sourceRefs: [],
+    createdAt: 100,
   };
 }
 
@@ -144,6 +164,48 @@ describe('composer mention and slash confirmation helpers', () => {
     ).toEqual([reviewer.id, builder.id]);
   });
 
+  it('does not route an opaque artifact reference to an agent with the reserved prefix', () => {
+    const reserved = agent('agent_artifact', 'artifact');
+
+    expect(
+      resolveMentionedAgentIdsForSend(
+        '@artifact:jart_launch-report summarize this',
+        { [reserved.id]: reserved },
+        [],
+      ),
+    ).toEqual([]);
+  });
+
+  it('serializes confirmed plugin and artifact references without artifact backing metadata', () => {
+    const plugin: ReferenceCatalogEntry = {
+      key: 'plugin:github',
+      kind: 'plugin',
+      entityId: 'github',
+      mention: '@github',
+      label: 'GitHub',
+      description: 'Repositories and pull requests',
+    };
+    const artifact: ReferenceCatalogEntry = {
+      key: 'artifact:jart_launch-report',
+      kind: 'artifact',
+      entityId: 'jart_launch-report',
+      mention: '@artifact:jart_launch-report',
+      label: 'Launch report',
+      description: 'Document artifact · Ready',
+    };
+
+    const confirmed = [
+      buildConfirmedCatalogReference(plugin),
+      buildConfirmedCatalogReference(artifact),
+      buildConfirmedCatalogReference(artifact),
+    ];
+
+    expect(confirmedCatalogReferenceTextForSend(confirmed)).toBe(
+      '@github @artifact:jart_launch-report',
+    );
+    expect(JSON.stringify(confirmed)).not.toMatch(/path|preview|content|credential/u);
+  });
+
   it('turns page slash commands into chat reference tokens instead of navigation intents', () => {
     const agents = findSlashCommandDef('agents');
     const terminals = findSlashCommandDef('terminals');
@@ -212,6 +274,46 @@ describe('composer mention and slash confirmation helpers', () => {
     });
     bytes[0] = 0;
     expect(image.data).toBe('iVBORw0KGgo=');
+  });
+});
+
+describe('composer canonical artifact discovery', () => {
+  it('loads the bounded catalog through the exact canonical account scope', async () => {
+    const calls: Array<{ accountId: string; limit?: number }> = [];
+    const expected = artifact();
+
+    const scope = await loadComposerArtifactScope(
+      {
+        async listByAccount(accountId, limit) {
+          calls.push({ accountId, limit });
+          return [expected];
+        },
+      },
+      'account-alpha',
+    );
+
+    expect(calls).toEqual([{ accountId: 'account-alpha', limit: 100 }]);
+    expect(scope).toEqual({ accountId: 'account-alpha', artifacts: [expected] });
+  });
+
+  it('fails closed on missing identity or repository failure', async () => {
+    let calls = 0;
+    const repository = {
+      async listByAccount() {
+        calls += 1;
+        throw new Error('indexed db unavailable');
+      },
+    };
+
+    await expect(loadComposerArtifactScope(repository, '')).resolves.toEqual({
+      accountId: '',
+      artifacts: [],
+    });
+    await expect(loadComposerArtifactScope(repository, 'account-alpha')).resolves.toEqual({
+      accountId: 'account-alpha',
+      artifacts: [],
+    });
+    expect(calls).toBe(1);
   });
 });
 

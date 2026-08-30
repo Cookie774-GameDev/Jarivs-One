@@ -25,10 +25,12 @@ import {
 } from '@/lib/jarvis/actions/catalog';
 import type { JarvisRequestAttempt } from '@/lib/jarvis/requestEnvelope';
 import {
+  canonicalFileActionResponseResult,
   createJarvisApprovalBindingSelectors,
   createJarvisActionLiveEvidenceVerifiers,
   createJarvisConsequentialEffectSafetyAuthority,
   createJarvisApprovalEngine,
+  jarvisProducerKindForActionRegistration,
   JarvisApprovalError,
   jarvisIssuedActionExecutionBrand,
   jarvisIssuedApprovalLifecycleBrand,
@@ -40,6 +42,39 @@ import {
 const now = 10_000;
 const expectedNoteEffect =
   'Create one note at the registered target. Target: {"kind":"app_resource","namespace":"notes","resourceId":"hello"}';
+
+describe('canonical file-action response projection', () => {
+  it('classifies the registered files namespace as file action authority', () => {
+    expect(
+      jarvisProducerKindForActionRegistration(
+        registration({
+          id: 'files.create',
+          executor: { kind: 'builtin', registryActionId: 'files.create' },
+        }),
+      ),
+    ).toBe('file_action');
+  });
+
+  it('forwards only successful canonical file reads and creates', () => {
+    const created: ActionResult = {
+      ok: true,
+      summary: 'Created C:\\project\\docs\\game.md.',
+      data: { operation: 'create', path: 'C:\\project\\docs\\game.md' },
+    };
+    expect(canonicalFileActionResponseResult('files.create', created)).toEqual(created);
+    expect(
+      canonicalFileActionResponseResult('files.read', {
+        ok: true,
+        summary: 'Read file.',
+        data: { path: 'C:\\project\\docs\\game.md', content: '# Game' },
+      }),
+    ).toMatchObject({ ok: true });
+    expect(canonicalFileActionResponseResult('files.create', { ok: false, error: 'denied' })).toBe(
+      undefined,
+    );
+    expect(canonicalFileActionResponseResult('notes.create', created)).toBeUndefined();
+  });
+});
 
 function parentRun(overrides: Partial<JarvisRun> = {}): JarvisRun {
   const run: JarvisRun = {

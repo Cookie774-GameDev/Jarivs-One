@@ -1,19 +1,19 @@
 import { Command } from 'cmdk';
 import { Avatar } from '@/components/ui';
 import { cn, colorFromString } from '@/lib/utils';
-import type { Agent } from '@/types';
+import type { ReferenceCatalogEntry } from '@/features/references/referenceCatalog';
 
 export interface MentionTypeaheadProps {
-  /** Agents matching the typeahead query, already filtered + sorted. */
-  agents: Agent[];
-  /** Currently highlighted agent slug (controlled). */
-  selectedSlug: string;
+  /** Safe mixed reference entries matching the typeahead query. */
+  entries: readonly ReferenceCatalogEntry[];
+  /** Currently highlighted stable catalog key (controlled). */
+  selectedKey: string;
   /** What the user typed after the '@' (used for the empty-state copy). */
   query: string;
   /** Called when user clicks an item or hovers it. */
-  onHoverSlug?: (slug: string) => void;
+  onHoverKey?: (key: string) => void;
   /** Called when user activates an item (mouse click). Enter handling lives in Composer. */
-  onSelect: (agent: Agent) => void;
+  onSelect: (entry: ReferenceCatalogEntry) => void;
 }
 
 /**
@@ -24,16 +24,16 @@ export interface MentionTypeaheadProps {
  * Keyboard handling lives in Composer; this component is presentational.
  */
 export function MentionTypeahead({
-  agents,
-  selectedSlug,
+  entries,
+  selectedKey,
   query,
-  onHoverSlug,
+  onHoverKey,
   onSelect,
 }: MentionTypeaheadProps) {
   return (
     <Command
       shouldFilter={false}
-      value={selectedSlug}
+      value={selectedKey}
       // We control selection externally; this no-op keeps cmdk happy.
       onValueChange={() => {}}
       className="outline-none"
@@ -41,35 +41,32 @@ export function MentionTypeahead({
       loop
     >
       <Command.List className="max-h-[260px] overflow-y-auto py-1">
-        {agents.length === 0 ? (
+        {entries.length === 0 ? (
           <Command.Empty className="px-3 py-3 text-secondary text-muted-foreground">
-            No agents match <span className="font-mono text-foreground">@{query}</span>
+            No references match <span className="font-mono text-foreground">@{query}</span>
           </Command.Empty>
         ) : (
-          agents.map((a) => {
-            const color = colorFromString(a.slug);
+          entries.map((entry) => {
+            const color = colorFromString(entry.key);
             return (
               <Command.Item
-                key={a.id}
-                value={a.slug}
-                onSelect={() => onSelect(a)}
-                onMouseEnter={() => onHoverSlug?.(a.slug)}
+                key={entry.key}
+                value={entry.key}
+                onSelect={() => onSelect(entry)}
+                onMouseEnter={() => onHoverKey?.(entry.key)}
                 className={cn(
                   'flex items-center gap-2 px-2 py-1.5 mx-1 rounded cursor-pointer',
                   'text-secondary text-foreground',
                   'data-[selected=true]:bg-muted data-[selected=true]:text-foreground',
                 )}
               >
-                <Avatar seed={a.slug} size={20} />
-                <span
-                  className="font-mono text-secondary"
-                  style={{ color }}
-                >
-                  @{a.slug}
+                <Avatar seed={entry.key} size={20} />
+                <span className="font-mono text-secondary" style={{ color }}>
+                  {entry.mention}
                 </span>
-                <span className="text-secondary text-foreground truncate">{a.name}</span>
+                <span className="text-secondary text-foreground truncate">{entry.label}</span>
                 <span className="ml-auto text-metadata text-muted-foreground truncate max-w-[14ch]">
-                  {a.description}
+                  {entry.metadata ?? entry.description}
                 </span>
               </Command.Item>
             );

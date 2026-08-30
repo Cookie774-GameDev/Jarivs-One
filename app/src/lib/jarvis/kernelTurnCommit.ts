@@ -122,8 +122,7 @@ export type VoiceResponseReadyCommitResult =
     };
 
 type VoiceResponseReadyPortResult =
-  | VoiceResponseReadyCommitResult
-  | { committed: false; reason: 'account_authority_revoked' };
+  VoiceResponseReadyCommitResult | { committed: false; reason: 'account_authority_revoked' };
 
 /** @internal Persists one canonical provider response after approval creation. */
 export type ActionResponseReadyCommitInput = Readonly<{
@@ -169,11 +168,18 @@ export type FinalizeActionResponseInput = Readonly<{
   outcome: 'completed' | 'degraded' | 'denied' | 'handoff';
   resultRef: string;
   result?: ActionResult;
+  artifacts?: readonly JarvisArtifactV1[];
   completedAt: number;
 }>;
 
 export type FinalizeActionResponseResult =
-  | { committed: true; run: JarvisRun; event: JarvisEvent; message: Message }
+  | {
+      committed: true;
+      run: JarvisRun;
+      event: JarvisEvent;
+      message: Message;
+      artifacts: readonly JarvisArtifactV1[];
+    }
   | {
       committed: false;
       reason:
@@ -202,8 +208,7 @@ export type JarvisVoicePlaybackCommitResult =
   | { committed: false; reason: 'status_conflict'; actualStatus: JarvisRunStatus };
 
 type VoicePlaybackPortResult =
-  | JarvisVoicePlaybackCommitResult
-  | { committed: false; reason: 'account_authority_revoked' };
+  JarvisVoicePlaybackCommitResult | { committed: false; reason: 'account_authority_revoked' };
 
 /** @internal Imported only by kernelRuntime.ts and focused tests. */
 export type JarvisKernelCommitPort = Readonly<{
@@ -321,6 +326,19 @@ function assertFinalizeActionResponseInput(input: FinalizeActionResponseInput): 
   ) {
     throw new TypeError('action_response_finalize_input_invalid');
   }
+  const ids = new Set<string>();
+  for (const artifact of input.artifacts ?? []) {
+    if (
+      input.outcome !== 'completed' ||
+      artifact.runId !== input.runId ||
+      artifact.requestId !== input.requestId ||
+      artifact.attemptNumber !== input.attemptNumber ||
+      ids.has(artifact.id)
+    ) {
+      throw new TypeError('action_response_finalize_artifact_scope_mismatch');
+    }
+    ids.add(artifact.id);
+  }
 }
 
 function approvalCallId(approvalId: string): string {
@@ -340,9 +358,7 @@ function fileActionBatchParts(
   parts: Message['parts'],
 ): Extract<Message['parts'][number], { kind: 'action_proposal' }>[] {
   const proposals = parts.filter(
-    (
-      part,
-    ): part is Extract<Message['parts'][number], { kind: 'action_proposal' }> =>
+    (part): part is Extract<Message['parts'][number], { kind: 'action_proposal' }> =>
       part.kind === 'action_proposal' &&
       (part.action_id === 'files.read' || part.action_id === 'files.create'),
   );
@@ -351,14 +367,14 @@ function fileActionBatchParts(
   return proposals;
 }
 
-function approvedFileReadResult(
+function approvedFileActionResult(
   actionId: string,
   params: Readonly<Record<string, unknown>>,
   result: ActionResult | undefined,
 ): Extract<ActionResult, { ok: true }> | undefined {
   if (result === undefined) return undefined;
   if (
-    actionId !== 'files.read' ||
+    (actionId !== 'files.read' && actionId !== 'files.create') ||
     !result.ok ||
     typeof result.summary !== 'string' ||
     result.summary.length > 2_048 ||
@@ -370,15 +386,34 @@ function approvedFileReadResult(
   }
   const data = result.data as Record<string, unknown>;
   const path = data.path;
-  const content = data.content;
   if (
     typeof path !== 'string' ||
     path.length === 0 ||
     path.length > 4_096 ||
-    path !== params.path ||
-    typeof content !== 'string' ||
-    content.length > 48_000
+    path !== params.path
   ) {
+    throw new TypeError('action_response_finalize_result_invalid');
+  }
+  if (actionId === 'files.create') {
+    const contentSha256 = data.contentSha256;
+    const sizeBytes = data.sizeBytes;
+    if (
+      data.operation !== 'create' ||
+      typeof contentSha256 !== 'string' ||
+      !/^sha256:[a-f0-9]{64}$/.test(contentSha256) ||
+      !Number.isSafeInteger(sizeBytes) ||
+      (sizeBytes as number) < 0
+    ) {
+      throw new TypeError('action_response_finalize_result_invalid');
+    }
+    return {
+      ok: true,
+      summary: result.summary,
+      data: { path, operation: 'create', contentSha256, sizeBytes },
+    };
+  }
+  const content = data.content;
+  if (typeof content !== 'string' || content.length > 48_000) {
     throw new TypeError('action_response_finalize_result_invalid');
   }
   return {
@@ -649,6 +684,8 @@ export function createKernelTurnCommit(dependencies: CommitDependencies): Jarvis
       input: FinalizeActionResponseInput,
     ): Promise<FinalizeActionResponseResult> {
       assertFinalizeActionResponseInput(input);
+      const artifacts = input.artifacts ?? [];
+      const artifactRows = artifacts.map(toJarvisArtifactRow);
       if (!bindingIsCurrent(dependencies, input.accountBinding)) {
         return { committed: false, reason: 'account_authority_revoked' };
       }
@@ -687,7 +724,11 @@ export function createKernelTurnCommit(dependencies: CommitDependencies): Jarvis
             fileBatch.length >= 2 && fileBatch.some((part) => part.call_id === expectedCallId);
           if (
             current.status !== 'running' &&
-            !(isFileActionBatch && current.status === 'awaiting_approval' && input.outcome === 'completed')
+            !(
+              isFileActionBatch &&
+              current.status === 'awaiting_approval' &&
+              input.outcome === 'completed'
+            )
           ) {
             return {
               committed: false,
@@ -734,7 +775,11 @@ export function createKernelTurnCommit(dependencies: CommitDependencies): Jarvis
             ) {
               throw new TypeError('action_response_finalize_projection_conflict');
             }
-            const projectedResult = approvedFileReadResult(part.action_id, part.params, input.result);
+            const projectedResult = approvedFileActionResult(
+              part.action_id,
+              part.params,
+              input.result,
+            );
             const finalizedAction = {
               ...structuredClone(part),
               status: partStatus,
@@ -799,7 +844,11 @@ export function createKernelTurnCommit(dependencies: CommitDependencies): Jarvis
           const keepAwaitingApproval =
             isFileActionBatch && remainingBatchPending > 0 && input.outcome === 'completed';
           let transportAttempts = current.transportAttempts;
-          if (current.source === 'schedule' && input.outcome !== 'handoff' && !keepAwaitingApproval) {
+          if (
+            current.source === 'schedule' &&
+            input.outcome !== 'handoff' &&
+            !keepAwaitingApproval
+          ) {
             const attempts = structuredClone([...(current.transportAttempts ?? [])]);
             const latest = attempts.at(-1);
             if (
@@ -881,13 +930,24 @@ export function createKernelTurnCommit(dependencies: CommitDependencies): Jarvis
                       ? 'The approved file action completed; remaining batch approvals are still pending.'
                       : 'The approved protected action did not fully complete.',
             sourceRefs: responseReadyEvent.sourceRefs,
-            artifactIds: responseReadyEvent.artifactIds,
+            artifactIds: [
+              ...new Set([...responseReadyEvent.artifactIds, ...artifacts.map((a) => a.id)]),
+            ],
             createdAt: input.completedAt,
           });
           if (!bindingIsCurrent(dependencies, input.accountBinding)) {
             return { committed: false, reason: 'account_authority_revoked' };
           }
           const updatedRunRow = toJarvisRunRow(updatedRun);
+          if (artifacts.length > 0) {
+            dependencies.consumeArtifactsForCommit({
+              accountId: input.accountId,
+              runId: input.runId,
+              requestId: input.requestId,
+              attemptNumber: input.attemptNumber,
+              artifacts,
+            });
+          }
           await context.jarvis_runs.put(updatedRunRow);
           await context.jarvis_events.add(eventRow);
           await context.messages.put(message);
@@ -906,11 +966,13 @@ export function createKernelTurnCommit(dependencies: CommitDependencies): Jarvis
             createdAt: input.completedAt,
             ownerSnapshot: input.accountBinding.syncOwnerSnapshot,
           });
+          if (artifactRows.length > 0) await context.jarvis_artifacts.bulkAdd(artifactRows);
           return {
             committed: true,
             run: fromJarvisRunRow(updatedRunRow),
             event: fromJarvisEventRow(eventRow),
             message,
+            artifacts: Object.freeze(artifacts.map((value) => Object.freeze(value))),
           };
         },
       );

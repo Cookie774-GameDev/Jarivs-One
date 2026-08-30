@@ -189,6 +189,7 @@ export interface JarvisApprovalRepository {
 
 export interface JarvisArtifactRepository {
   getById(accountId: string, artifactId: string): Promise<JarvisArtifactV1 | undefined>;
+  listByAccount(accountId: string, limit?: number): Promise<JarvisArtifactV1[]>;
   listByRun(accountId: string, runId: string, limit?: number): Promise<JarvisArtifactV1[]>;
 }
 
@@ -2155,6 +2156,23 @@ export function createJarvisRepositories(
       const parent = await database.jarvis_runs.get(row.run_id);
       if (!parent || parent.account_id !== accountId) return undefined;
       return fromJarvisArtifactRow(row);
+    },
+
+    async listByAccount(accountId, inputLimit) {
+      assertAccountId(accountId);
+      const limit = normalizedLimit(inputLimit);
+      const runIds = await database.jarvis_runs
+        .where('[account_id+updated_at]')
+        .between([accountId, Dexie.minKey], [accountId, Dexie.maxKey], true, true)
+        .primaryKeys();
+      if (runIds.length === 0) return [];
+      const rows = await database.jarvis_artifacts.where('run_id').anyOf(runIds).toArray();
+      return rows
+        .sort(
+          (left, right) => right.created_at - left.created_at || left.id.localeCompare(right.id),
+        )
+        .slice(0, limit)
+        .map(fromJarvisArtifactRow);
     },
 
     async listByRun(accountId, runId, inputLimit) {

@@ -134,6 +134,7 @@ type ExpectedJarvisRepositories = {
   artifact: {
     getById(accountId: string, artifactId: string): Promise<JarvisArtifactV1 | undefined>;
     listByRun(accountId: string, runId: string, limit?: number): Promise<JarvisArtifactV1[]>;
+    listByAccount(accountId: string, limit?: number): Promise<JarvisArtifactV1[]>;
   };
 };
 
@@ -566,7 +567,11 @@ describe('Jarvis repository surface', () => {
       'listByRun',
     ]);
     expect(Object.keys(jarvisApprovalRepo).sort()).toEqual(['getById', 'listByRun']);
-    expect(Object.keys(jarvisArtifactRepo).sort()).toEqual(['getById', 'listByRun']);
+    expect(Object.keys(jarvisArtifactRepo).sort()).toEqual([
+      'getById',
+      'listByAccount',
+      'listByRun',
+    ]);
   });
 });
 
@@ -1774,6 +1779,39 @@ describe('profile mutation and integrity', () => {
 });
 
 describe('approval and artifact child ownership', () => {
+  it('lists only account-owned artifacts newest-first with a bounded limit', async () => {
+    const db = await openTestDb('jarvis-repositories-artifacts-by-account');
+    const repositories = createJarvisRepositories(db);
+    const firstRun = runFixture({ id: 'run-first', accountId: 'account-alpha' });
+    const secondRun = runFixture({ id: 'run-second', accountId: 'account-alpha' });
+    const foreignRun = runFixture({ id: 'run-foreign', accountId: 'account-beta' });
+    await repositories.run.createIdempotent(firstRun);
+    await repositories.run.createIdempotent(secondRun);
+    await repositories.run.createIdempotent(foreignRun);
+    const older = artifactFixture({
+      id: 'artifact-older',
+      runId: firstRun.id,
+      createdAt: NOW - 10,
+    });
+    const newest = artifactFixture({ id: 'artifact-newest', runId: secondRun.id, createdAt: NOW });
+    const foreign = artifactFixture({
+      id: 'artifact-foreign',
+      runId: foreignRun.id,
+      createdAt: NOW + 10,
+    });
+    await db.jarvis_artifacts.bulkPut(
+      [older, newest, foreign].map((artifact) => toJarvisArtifactRow(artifact)),
+    );
+
+    expect(await repositories.artifact.listByAccount('account-alpha')).toEqual([newest, older]);
+    expect(await repositories.artifact.listByAccount('account-alpha', 1)).toEqual([newest]);
+    expect(await repositories.artifact.listByAccount('account-beta')).toEqual([foreign]);
+    await expectRepositoryError(
+      repositories.artifact.listByAccount('account-alpha', 0),
+      'invalid_limit',
+    );
+  });
+
   it('reads approvals only through an account-owned parent run', async () => {
     const db = await openTestDb('jarvis-repositories-children');
     const repositories = createJarvisRepositories(db);

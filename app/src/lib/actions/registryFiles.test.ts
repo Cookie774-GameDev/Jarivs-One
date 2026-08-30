@@ -56,6 +56,15 @@ describe('project file actions', () => {
       { source: 'ai' },
     );
     expect(result.ok).toBe(true);
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        operation: 'create',
+        path: 'C:\\Projects\\FarmLife\\dogs.md',
+        contentSha256: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        sizeBytes: 6,
+      },
+    });
     expect(fsMocks.createTextFileWithContent).toHaveBeenCalledWith(
       'C:\\Projects\\FarmLife\\dogs.md',
       '# Dogs',
@@ -293,7 +302,12 @@ describe('canonical file artifact result truth', () => {
       isCanonicalFileArtifactResult(evidence, {
         ok: true,
         summary: 'Created.',
-        data: { path: 'C:\\Projects\\FarmLife\\created.md', operation: 'create' },
+        data: {
+          path: 'C:\\Projects\\FarmLife\\created.md',
+          operation: 'create',
+          contentSha256: `sha256:${'a'.repeat(64)}`,
+          sizeBytes: 7,
+        },
       }),
     ).toBe(true);
     expect(

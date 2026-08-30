@@ -86,6 +86,7 @@ import type {
 } from './approvalEngine';
 import type {
   CanonicalArtifactEvidenceAuthorities,
+  CanonicalFileActionEvidence,
   CanonicalPluginEvidence,
   JarvisArtifactEffectClaimCapability,
 } from './artifactProducerAdapters';
@@ -115,6 +116,74 @@ import { compileJarvisPrompt } from './promptCompiler';
 
 const jarvisKernelAccountBindingBrand: unique symbol = Symbol('jarvis.kernel.account-binding');
 const jarvisVoiceTurnHandleBrand: unique symbol = Symbol('jarvis.voice-turn-handle');
+
+function createdFileArtifactTitle(path: string): string {
+  return path.split(/[\\/]/u).filter(Boolean).at(-1) ?? 'Created file';
+}
+
+function createdFileArtifactMimeType(path: string): string | undefined {
+  if (/\.md$/iu.test(path)) return 'text/markdown';
+  if (/\.txt$/iu.test(path)) return 'text/plain';
+  if (/\.(?:html?|xhtml)$/iu.test(path)) return 'text/html';
+  if (/\.json$/iu.test(path)) return 'application/json';
+  return undefined;
+}
+
+async function canonicalCreatedFileArtifactDraft(input: {
+  approval: JarvisApprovalV1;
+  result: ActionResult | undefined;
+  createdAt: number;
+}): Promise<JarvisArtifactDraft | undefined> {
+  if (input.approval.actionId !== 'files.create' || !input.result?.ok) return undefined;
+  const params =
+    input.approval.params &&
+    typeof input.approval.params === 'object' &&
+    !Array.isArray(input.approval.params)
+      ? (input.approval.params as Record<string, unknown>)
+      : undefined;
+  const path = params?.path;
+  const content = params?.content;
+  const data = input.result.data;
+  if (
+    typeof path !== 'string' ||
+    typeof content !== 'string' ||
+    !data ||
+    typeof data !== 'object' ||
+    Array.isArray(data)
+  ) {
+    throw new Error('kernel_file_artifact_result_invalid');
+  }
+  const resultData = data as Record<string, unknown>;
+  const contentBytes = new TextEncoder().encode(content).byteLength;
+  if (resultData.path !== path) throw new Error('kernel_file_artifact_path_mismatch');
+  if (resultData.operation !== 'create') throw new Error('kernel_file_artifact_operation_mismatch');
+  if (
+    typeof resultData.contentSha256 !== 'string' ||
+    !/^sha256:[a-f0-9]{64}$/u.test(resultData.contentSha256) ||
+    resultData.contentSha256 !== `sha256:${await sha256Text(content)}`
+  ) {
+    throw new Error('kernel_file_artifact_hash_mismatch');
+  }
+  if (resultData.sizeBytes !== contentBytes) {
+    throw new Error('kernel_file_artifact_size_mismatch');
+  }
+  const mimeType = createdFileArtifactMimeType(path);
+  return Object.freeze({
+    artifact: Object.freeze({
+      kind: 'file' as const,
+      title: createdFileArtifactTitle(path),
+      ...(mimeType === undefined ? {} : { mimeType }),
+      safeSummary: 'A file created by an approved action.',
+      sourceRefs: [],
+      createdAt: input.createdAt,
+    }),
+    backing: Object.freeze({
+      kind: 'local_reference' as const,
+      localReference: Object.freeze({ kind: 'path' as const, value: path }),
+      content,
+    }),
+  });
+}
 
 /** @internal Issued only by the closed kernel runtime binding authority. */
 export interface JarvisKernelAccountBinding {
@@ -153,8 +222,7 @@ export type PreparedJarvisScheduledKernelAttempt = Readonly<{
 }>;
 
 export type JarvisScheduledKernelAttemptOutcome =
-  | { kind: 'committed'; result: JarvisKernelTurnResult }
-  | { kind: 'pre_effect_transport_failure' };
+  { kind: 'committed'; result: JarvisKernelTurnResult } | { kind: 'pre_effect_transport_failure' };
 
 export type JarvisScheduledKernelAttemptHandle = Readonly<{
   requestCancellation(): Promise<JarvisCancellationRequestResult>;
@@ -267,11 +335,7 @@ export type JarvisVoicePlaybackController = Readonly<{
   start(): Promise<JarvisVoicePlaybackAdapterResult>;
   verify(result: JarvisVoicePlaybackAdapterResult): boolean;
   abort():
-    | 'signal_delivered'
-    | 'handoff_pending'
-    | 'already_exited'
-    | 'unsupported'
-    | 'delivery_rejected';
+    'signal_delivered' | 'handoff_pending' | 'already_exited' | 'unsupported' | 'delivery_rejected';
   dispose(): void;
 }>;
 
@@ -815,15 +879,13 @@ export function createJarvisKernelRuntime(
     disposeRequested: boolean;
     responseCommit: JarvisAuthorityBoundResult<VoiceResponseReadyCommitResult> | undefined;
     responseCommitOperation:
-      | Promise<JarvisAuthorityBoundResult<VoiceResponseReadyCommitResult>>
-      | undefined;
+      Promise<JarvisAuthorityBoundResult<VoiceResponseReadyCommitResult>> | undefined;
     activeOperations: Set<Promise<unknown>>;
     cancellationRequested: boolean;
     cancellationOperation: Promise<JarvisCancellationRequestResult> | undefined;
     cancellationResult: JarvisCancellationRequestResult | undefined;
     playbackResultSource:
-      | Readonly<Extract<JarvisProducerSourceEvidenceV1, { producerKind: 'voice' }>>
-      | undefined;
+      Readonly<Extract<JarvisProducerSourceEvidenceV1, { producerKind: 'voice' }>> | undefined;
   };
   const voiceHandleStates = new WeakMap<JarvisVoiceTurnHandle, VoiceHandleState>();
   type VoiceRecoverySnapshot = Readonly<{
@@ -1770,10 +1832,7 @@ export function createJarvisKernelRuntime(
       },
     );
     const self = siblings.find((candidate) => candidate.id === approvalId);
-    if (
-      !self ||
-      (self.actionId !== 'files.create' && self.actionId !== 'files.read')
-    ) {
+    if (!self || (self.actionId !== 'files.create' && self.actionId !== 'files.read')) {
       return false;
     }
     const fileBatch = siblings.filter(
@@ -2146,6 +2205,46 @@ export function createJarvisKernelRuntime(
         });
         if (!childCurrent()) return { kind: 'account_authority_revoked' };
         if (finalizeResponseOnResult) {
+          const draft = await canonicalCreatedFileArtifactDraft({
+            approval: claimed.approval,
+            result: result.responseResult,
+            createdAt: result.completedAt,
+          });
+          let responseArtifacts: readonly JarvisArtifactV1[] = [];
+          if (draft) {
+            const boundArtifactEffectClaims: JarvisArtifactEffectClaimCapability = Object.freeze({
+              async claim(claim: Parameters<JarvisArtifactEffectClaimCapability['claim']>[0]) {
+                binding.assertCurrent();
+                if (
+                  claim.accountId !== scope.parentRun.accountId ||
+                  claim.runId !== scope.parentRun.id ||
+                  claim.requestId !== scope.requestId ||
+                  claim.attemptNumber !== scope.attemptNumber
+                ) {
+                  throw new Error('kernel_artifact_effect_scope_mismatch');
+                }
+                const effectClaim = await artifactEffectClaims.claim(claim);
+                binding.assertCurrent();
+                return effectClaim;
+              },
+            });
+            const evidence: CanonicalFileActionEvidence = Object.freeze({
+              producerId: 'file_action_result',
+              accountId: scope.parentRun.accountId,
+              runId: scope.parentRun.id,
+              requestId: scope.requestId,
+              attemptNumber: scope.attemptNumber,
+              resultRef: result.resultRef,
+              state: 'succeeded',
+              verifiedAt: result.completedAt,
+              actionId: claimed.approval.actionId,
+              actionVersion: claimed.approval.actionVersion,
+            });
+            const pipeline = artifacts.issueBoundArtifactPipeline(boundArtifactEffectClaims);
+            responseArtifacts = Object.freeze([
+              await pipeline.fileAction.materialize({ evidence, draft }),
+            ]);
+          }
           const finalized = await artifacts.commitKernelTurn.finalizeActionResponse({
             accountId: scope.parentRun.accountId,
             runId: scope.parentRun.id,
@@ -2157,6 +2256,7 @@ export function createJarvisKernelRuntime(
             outcome: result.state,
             resultRef: result.resultRef,
             ...(result.responseResult === undefined ? {} : { result: result.responseResult }),
+            ...(responseArtifacts.length === 0 ? {} : { artifacts: responseArtifacts }),
             completedAt: result.completedAt,
           });
           if (!finalized.committed) {

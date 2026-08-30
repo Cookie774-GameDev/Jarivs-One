@@ -261,6 +261,7 @@ import type {
 } from '@/lib/jarvis/kernelBridgeProtocol';
 import type { JarvisCapabilitySnapshotProvider } from '@/lib/jarvis/capabilitySnapshot';
 import type { JarvisDexie } from '@/lib/db';
+import { sha256Text } from '@/lib/fs';
 import type {
   JarvisExecutionJournal,
   JarvisHiveStackPlanV1,
@@ -506,6 +507,15 @@ export type JarvisRegisteredActionDispatchInput = Readonly<{
 }>;
 
 let installedJarvisKernelRuntimeHost: InstalledJarvisKernelRuntimeHost | null = null;
+
+type KernelQuestionProjectionPort = Readonly<{
+  accountId: string;
+  runId: string;
+  requestId: string;
+  project(part: Extract<Part, { kind: 'question_block' }>): Promise<void>;
+}>;
+
+const activeKernelQuestionProjectionPorts = new Map<string, KernelQuestionProjectionPort>();
 
 export type JarvisCommandCenterHostDependencies = Readonly<{
   kernel: Pick<JarvisKernelRuntime, 'requestCancellation'>;
@@ -1307,6 +1317,74 @@ export async function installJarvisKernelRuntimeHost(
       return null;
     },
   });
+  const fileActionArtifactAuthority = actionRunnerModule.createCanonicalFileActionEvidenceAuthority(
+    {
+      async readCanonicalFileActionResult(evidence) {
+        const events = await repositories.event.listByRun(evidence.accountId, evidence.runId, {
+          limit: 500,
+        });
+        const matches = events.filter((event) => {
+          const source = event.producerSourceEvidence;
+          return (
+            source?.producerKind === 'file_action' &&
+            source.requestId === evidence.requestId &&
+            source.attemptNumber === evidence.attemptNumber &&
+            source.phase === 'result' &&
+            source.state === 'completed' &&
+            source.resultRef === evidence.resultRef &&
+            source.observedAt === evidence.verifiedAt &&
+            source.producerIdentity.actionId === evidence.actionId &&
+            source.producerIdentity.actionVersion === evidence.actionVersion
+          );
+        });
+        if (matches.length !== 1) return null;
+        const identity = matches[0]!.producerSourceEvidence?.producerIdentity;
+        if (
+          identity?.producerKind !== 'file_action' ||
+          !identity.resultId.startsWith('approval:')
+        ) {
+          return null;
+        }
+        const approval = await repositories.approval.getById(
+          evidence.accountId,
+          identity.resultId.slice('approval:'.length),
+        );
+        const params =
+          approval?.params && typeof approval.params === 'object' && !Array.isArray(approval.params)
+            ? (approval.params as Record<string, unknown>)
+            : undefined;
+        const path = params?.path;
+        const content = params?.content;
+        if (
+          !approval ||
+          approval.status !== 'consumed' ||
+          approval.runId !== evidence.runId ||
+          approval.requestId !== evidence.requestId ||
+          approval.attemptNumber !== evidence.attemptNumber ||
+          approval.actionId !== 'files.create' ||
+          approval.actionId !== evidence.actionId ||
+          approval.actionVersion !== evidence.actionVersion ||
+          typeof path !== 'string' ||
+          typeof content !== 'string'
+        ) {
+          return null;
+        }
+        return Object.freeze({
+          evidence,
+          result: Object.freeze({
+            ok: true as const,
+            summary: `Created ${path}.`,
+            data: Object.freeze({
+              path,
+              operation: 'create' as const,
+              contentSha256: await sha256Text(content),
+              sizeBytes: new TextEncoder().encode(content).byteLength,
+            }),
+          }),
+        });
+      },
+    },
+  );
   const artifactEvidenceAuthorities = Object.freeze({
     provider: Object.freeze({
       state: 'ready' as const,
@@ -1316,7 +1394,7 @@ export async function installJarvisKernelRuntimeHost(
     fileAction: Object.freeze({
       state: 'ready' as const,
       producerId: 'file_action_result' as const,
-      authority: denyArtifactEvidence,
+      authority: fileActionArtifactAuthority,
     }),
     terminal: Object.freeze({
       state: 'ready' as const,
@@ -1526,6 +1604,70 @@ export async function installJarvisKernelRuntimeHost(
               const suppressProviderPreview = shouldSuppressProviderPreview(lastUserText);
               const startedAt = now();
               let contextCitationSessionId: string | undefined;
+              const liveToolActivityIds = new Map<string, string>();
+              const updateLiveToolActivity = (
+                activity: Readonly<{
+                  name: string;
+                  status: 'started' | 'completed' | 'failed';
+                  callId?: string;
+                  fileLabel?: string;
+                }>,
+              ): void => {
+                if (signal.aborted) return;
+                const scope = activeTurnScopes.get(providerInput.runId);
+                const callId = activity.callId?.trim();
+                const name = activity.name.trim();
+                if (
+                  !scope ||
+                  scope.accountId !== providerInput.accountId ||
+                  scope.requestId !== providerInput.requestId ||
+                  !callId ||
+                  callId.length > 512 ||
+                  !name ||
+                  name.length > 256
+                ) {
+                  return;
+                }
+                let activityId = liveToolActivityIds.get(callId);
+                const status =
+                  activity.status === 'started'
+                    ? ('running' as const)
+                    : activity.status === 'completed'
+                      ? ('done' as const)
+                      : ('error' as const);
+                if (!activityId) {
+                  activityId = createChatActivityId('tool');
+                  liveToolActivityIds.set(callId, activityId);
+                  useChatActivityStore.getState().record({
+                    id: activityId,
+                    chatId: scope.chatId,
+                    kind: 'tool',
+                    category: 'file',
+                    status,
+                    title: activity.status === 'started' ? `Running ${name}` : `Ran ${name}`,
+                    ...(activity.fileLabel ? { subtitle: activity.fileLabel } : {}),
+                    ts: now(),
+                    startedAt: now(),
+                    ...(status === 'running' ? {} : { endedAt: now() }),
+                  });
+                } else {
+                  useChatActivityStore.getState().update(scope.chatId, activityId, {
+                    status,
+                    title: activity.status === 'started' ? `Running ${name}` : `Ran ${name}`,
+                    ...(activity.fileLabel ? { subtitle: activity.fileLabel } : {}),
+                    ...(status === 'running' ? {} : { endedAt: now() }),
+                    ts: now(),
+                  });
+                }
+                setLiveAgentActivityRunPhase(providerInput.runId, {
+                  category: 'file',
+                  title:
+                    activity.status === 'started'
+                      ? `Jarvis is running ${name}`
+                      : `Jarvis ran ${name}`,
+                  ...(activity.fileLabel ? { subtitle: activity.fileLabel } : {}),
+                });
+              };
               const modelSnapshotRef = `jmodel_${providerInput.model.providerId}_${providerInput.model.modelId}_${providerInput.model.capturedAt}`;
               const response = runExplicitRootEvidenceSynthesis(
                 {
@@ -1568,6 +1710,60 @@ export async function installJarvisKernelRuntimeHost(
                       throw new Error('kernel_provider_context_session_changed');
                     }
                     contextCitationSessionId = binding.sessionId;
+                  },
+                  onQuestionRequested: async (projection) => {
+                    signal.throwIfAborted();
+                    const port = activeKernelQuestionProjectionPorts.get(providerInput.runId);
+                    if (
+                      !port ||
+                      port.accountId !== providerInput.accountId ||
+                      port.requestId !== providerInput.requestId
+                    ) {
+                      throw new Error('kernel_provider_question_scope_unavailable');
+                    }
+                    bindPersistentOpenCodeQuestionRoute(projection.route);
+                    await port.project(projection.part);
+                    signal.throwIfAborted();
+                  },
+                  onToolActivity: async (activity) => {
+                    signal.throwIfAborted();
+                    updateLiveToolActivity(activity);
+                  },
+                  onPublicTimelineSnapshot: async (snapshot) => {
+                    signal.throwIfAborted();
+                    const resultByCallId = new Map<
+                      string,
+                      Extract<(typeof snapshot.timeline)[number], { kind: 'tool_result' }>
+                    >();
+                    for (const part of snapshot.timeline) {
+                      if (part.kind === 'tool_result') resultByCallId.set(part.call_id, part);
+                    }
+                    for (const part of snapshot.timeline) {
+                      if (part.kind !== 'tool_call') continue;
+                      const resultPart = resultByCallId.get(part.call_id);
+                      updateLiveToolActivity({
+                        name: part.tool,
+                        status: resultPart?.error
+                          ? 'failed'
+                          : resultPart?.result?.status === 'completed'
+                            ? 'completed'
+                            : 'started',
+                        callId: part.call_id,
+                        ...(typeof part.args.path === 'string'
+                          ? { fileLabel: part.args.path }
+                          : {}),
+                      });
+                    }
+                    const checkpoint = [...snapshot.timeline]
+                      .reverse()
+                      .find((part) => part.kind === 'text');
+                    if (checkpoint?.kind === 'text' && checkpoint.text.trim()) {
+                      setLiveAgentActivityRunPhase(providerInput.runId, {
+                        category: 'thinking',
+                        title: 'Jarvis is auditing the request',
+                        detail: checkpoint.text,
+                      });
+                    }
                   },
                   onChunk: (chunk) => {
                     if (!chunk.delta) return;
@@ -5964,6 +6160,26 @@ export function startRuntimeListener(
             controller.signal.throwIfAborted();
             let response: import('@/lib/jarvis/contracts').JarvisResponseEnvelope;
             const releaseLiveRun = bindLiveAgentActivityRun(turn.run.id, chatId, agentActivityId);
+            const projectedQuestionBlockIds = new Set<string>();
+            const questionProjectionPort: KernelQuestionProjectionPort = Object.freeze({
+              accountId: turn.accountId,
+              runId: turn.run.id,
+              requestId: turn.attempt.requestId,
+              async project(part) {
+                controller.signal.throwIfAborted();
+                if (projectedQuestionBlockIds.has(part.block.id)) {
+                  throw new Error('kernel_provider_question_duplicate');
+                }
+                projectedQuestionBlockIds.add(part.block.id);
+                await bindings.appendMessage({
+                  chat_id: chatId as ChatId,
+                  role: 'assistant',
+                  parts: [structuredClone(part)],
+                });
+                controller.signal.throwIfAborted();
+              },
+            });
+            activeKernelQuestionProjectionPorts.set(turn.run.id, questionProjectionPort);
             try {
               if (turn.surface === 'voice') {
                 const voiceSessionId = detail.voiceSessionId;
@@ -6017,6 +6233,9 @@ export function startRuntimeListener(
               }
             } finally {
               approvalContinuationOutcomesByRun.delete(turn.run.id);
+              if (activeKernelQuestionProjectionPorts.get(turn.run.id) === questionProjectionPort) {
+                activeKernelQuestionProjectionPorts.delete(turn.run.id);
+              }
               releaseLiveRun();
             }
             setLiveAgentActivityPhase(chatId, agentActivityId, {

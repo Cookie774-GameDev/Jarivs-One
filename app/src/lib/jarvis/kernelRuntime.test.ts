@@ -228,6 +228,7 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
     requestId: string;
     approvalId: string;
     actionId: string;
+    actionParams?: Readonly<Record<string, unknown>>;
     providerResultState?: 'completed' | 'degraded';
   }): Promise<void> {
     await db.chats.add({
@@ -249,7 +250,7 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
           kind: 'action_proposal',
           call_id: `jarvisapproval:${encodeURIComponent(input.approvalId)}`,
           action_id: input.actionId,
-          params: {},
+          params: structuredClone(input.actionParams ?? {}),
           status: 'pending',
         },
       ],
@@ -1912,6 +1913,204 @@ describe('createJarvisKernelRuntime primary-host lifecycle', () => {
       'completed',
       'completed',
     ]);
+  });
+
+  it('materializes a successful files.create result and commits its reference with the response', async () => {
+    const requestId = 'request-runtime-file-artifact';
+    const approvalId = 'jappr_runtime_file_artifact';
+    const path = 'C:\\workspace\\notes\\launch.md';
+    const content = '# Launch\n\nReady.\n';
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(content));
+    const contentSha256 = `sha256:${[...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('')}`;
+    const parentRun: JarvisRun = {
+      ...kernelRun(),
+      id: 'run-runtime-file-artifact',
+      chatId: 'chat-runtime-file-artifact',
+      source: 'typed_chat',
+      status: 'running',
+      updatedAt: NOW - 5,
+    };
+    await db.jarvis_runs.add(toJarvisRunRow(parentRun));
+    await db.jarvis_events.add(
+      toJarvisEventRow({
+        runId: parentRun.id,
+        seq: 1,
+        idempotencyKey: `provider-start:${requestId}`,
+        type: 'model',
+        status: 'started',
+        title: 'Provider started',
+        safeSummary: 'The protected provider request started.',
+        sourceRefs: [],
+        artifactIds: [],
+        createdAt: NOW - 5,
+        producerSourceEvidence: {
+          schemaVersion: 1,
+          accountId: parentRun.accountId,
+          runId: parentRun.id,
+          requestId,
+          attemptNumber: 1,
+          producerKind: 'provider',
+          producerIdentity: {
+            producerKind: 'provider',
+            providerId: parentRun.model.providerId,
+            modelId: parentRun.model.modelId,
+            modelSnapshotRef: `${parentRun.model.providerId}:${parentRun.model.modelId}`,
+          },
+          resultRef: `jprovider_start:${requestId}`,
+          observedAt: NOW - 5,
+          phase: 'start',
+          state: 'started',
+        },
+      }),
+    );
+    const bindKernelActions: JarvisApprovalActionBinder = (lifecycle) => ({
+      async create(createInput) {
+        const result = await lifecycle.putPreparedApproval({
+          ...createInput,
+          secretHandleRefs: [],
+          approvalId,
+          paramsHash: 'params-hash-runtime-file-artifact',
+          targetSnapshot: {
+            kind: 'app_resource',
+            namespace: 'files',
+            resourceId: 'runtime-file-artifact',
+          },
+          risk: 'confirm',
+          capabilityId: 'capability.files.write',
+          capabilitySnapshotHash: 'capability-hash-runtime-file-artifact',
+          expectedEffect: 'Create the exact approved Markdown file.',
+          createdAt: NOW,
+        } as never);
+        if (result.kind !== 'committed') throw new Error('unexpected_authority_revocation');
+        return result.value;
+      },
+      async decide(decideInput) {
+        const result = await lifecycle.decidePreparedApproval({
+          approvalId: decideInput.approvalId,
+          decision: decideInput.decision,
+        });
+        if (result.kind !== 'committed') throw new Error('unexpected_authority_revocation');
+        return result.value;
+      },
+      async execute(executeInput) {
+        const claim = await lifecycle.claimApprovedExecution({
+          approvalId: executeInput.approvalId,
+          producerKind: 'file_action',
+          ownerId: `approval:${executeInput.approvalId}`,
+          evidenceRef: `approval:${executeInput.approvalId}:claim`,
+          startedAt: NOW + 3,
+        });
+        if (claim.kind !== 'committed') throw new Error('unexpected_authority_revocation');
+        const execution = claim.value;
+        const started = execution.beginExternalEffect(() => ({ completion: Promise.resolve() }));
+        if (started.kind !== 'committed') throw new Error('unexpected_authority_revocation');
+        await started.value.completion;
+        const settled = await execution.recordResult({
+          state: 'completed',
+          resultRef: 'jresult_runtime_file_artifact',
+          completedAt: NOW + 4,
+          responseResult: {
+            ok: true,
+            summary: `Created ${path}`,
+            data: {
+              path,
+              operation: 'create',
+              contentSha256,
+              sizeBytes: new TextEncoder().encode(content).byteLength,
+            },
+          },
+        });
+        execution.dispose();
+        if (settled.kind !== 'committed') throw new Error('unexpected_authority_revocation');
+        return { kind: 'settled' as const, result: { ok: true as const, summary: 'created' } };
+      },
+      executeAutoApprovedSafe: vi.fn() as never,
+    });
+    const runtime = createJarvisKernelRuntime({
+      db,
+      artifactEvidenceAuthorities: artifactAuthorities() as never,
+      journal: { allocateRun: vi.fn(), getRun: vi.fn() } as never,
+      cancellationDeliveryAuthority: {} as never,
+      abortRegistrationAuthority: {} as never,
+      bindKernelActions,
+      liveEvidenceVerifiers: {
+        ...unavailableVerifiers(),
+        fileAction: Object.freeze({
+          state: 'ready' as const,
+          producerKind: 'file_action' as const,
+          verifier: Object.freeze({ verify: vi.fn(async (evidence: unknown) => evidence) }),
+        }),
+      } as never,
+      prepareProvider: vi.fn() as never,
+      processResponse: vi.fn() as never,
+      takeProviderArtifactDrafts: vi.fn(() => []),
+      randomUUID: () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      now: () => NOW + 2,
+    });
+    await runtime.kernel.actions.create({
+      parentRun,
+      attempt: { kind: 'initial', requestId, runId: parentRun.id, attemptNumber: 1 },
+      actionId: 'files.create',
+      actionVersion: 1,
+      params: { path, content },
+      expiresAt: NOW + 60_000,
+    });
+    const awaitingRun: JarvisRun = { ...parentRun, status: 'awaiting_approval', updatedAt: NOW };
+    await db.jarvis_runs.put(toJarvisRunRow(awaitingRun));
+    await seedActionResponseCheckpoint({
+      parentRun: awaitingRun,
+      requestId,
+      approvalId,
+      actionId: 'files.create',
+      actionParams: { path, content },
+      providerResultState: 'completed',
+    });
+    await runtime.kernel.actions.decide({
+      parentRun: awaitingRun,
+      approvalId,
+      decision: 'approve',
+    });
+    expect(fromJarvisApprovalRow((await db.jarvis_approvals.get(approvalId))!).params).toEqual({
+      path,
+      content,
+    });
+
+    await expect(
+      runtime.kernel.actions.execute({
+        parentRun: awaitingRun,
+        approvalId,
+        context: { source: 'ai' },
+      }),
+    ).resolves.toMatchObject({ kind: 'committed', value: { kind: 'settled' } });
+
+    const artifacts = await db.jarvis_artifacts.toArray();
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]).toMatchObject({
+      id: 'jart_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      run_id: parentRun.id,
+      request_id: requestId,
+      kind: 'file',
+      title: 'launch.md',
+      mime_type: 'text/markdown',
+      local_reference: { kind: 'path', value: path },
+    });
+    const message = await db.messages.get(`msg_${requestId}` as never);
+    expect(message?.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'action_proposal',
+          status: 'success',
+        }),
+      ]),
+    );
+    const responseEvent = (
+      await db.jarvis_events.where('run_id').equals(parentRun.id).sortBy('seq')
+    )
+      .filter((event) => event.idempotency_key.startsWith('action-terminal:'))
+      .at(-1);
+    expect(responseEvent?.artifact_ids).toEqual(['jart_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']);
   });
 
   it('projects a response-backed terminal handoff before native result settlement', async () => {
