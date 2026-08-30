@@ -37,7 +37,7 @@ const plugins = [
 ] as const;
 
 describe('buildAccountReferenceCatalog', () => {
-  it('builds agent, plugin, and opaque artifact references without backing data', () => {
+  it('builds CAO, agent, plugin, and opaque artifact references without backing data', () => {
     const catalog = buildAccountReferenceCatalog({
       accountId: 'account-alpha',
       artifactScope: {
@@ -61,6 +61,16 @@ describe('buildAccountReferenceCatalog', () => {
     });
 
     expect(catalog).toEqual([
+      {
+        key: 'cao:jarvis-cao',
+        kind: 'cao',
+        entityId: 'jarvis-cao',
+        mention: '@CAO',
+        aliases: ['@Jarvis CAO'],
+        label: 'Jarvis CAO',
+        description: 'First-party learning and improvement authority',
+        metadata: 'Native · Codex learner',
+      },
       {
         key: 'agent:agent_builder',
         kind: 'agent',
@@ -101,6 +111,7 @@ describe('buildAccountReferenceCatalog', () => {
     });
 
     expect(catalog.map(({ kind, entityId }) => ({ kind, entityId }))).toEqual([
+      { kind: 'cao', entityId: 'jarvis-cao' },
       { kind: 'agent', entityId: 'agent_builder' },
       { kind: 'plugin', entityId: 'github' },
     ]);
@@ -117,7 +128,7 @@ describe('buildAccountReferenceCatalog', () => {
       plugins,
     });
 
-    expect(catalog.map((entry) => entry.kind)).toEqual(['agent', 'plugin']);
+    expect(catalog.map((entry) => entry.kind)).toEqual(['cao', 'agent', 'plugin']);
   });
 });
 
@@ -132,6 +143,12 @@ describe('filterReferenceCatalog', () => {
 
     expect(filterReferenceCatalog(catalog, 'build').map((entry) => entry.key)).toEqual([
       'agent:agent_builder',
+    ]);
+    expect(filterReferenceCatalog(catalog, 'cao').map((entry) => entry.key)).toEqual([
+      'cao:jarvis-cao',
+    ]);
+    expect(filterReferenceCatalog(catalog, 'jarvis cao').map((entry) => entry.key)).toEqual([
+      'cao:jarvis-cao',
     ]);
     expect(filterReferenceCatalog(catalog, 'github').map((entry) => entry.key)).toEqual([
       'plugin:github',

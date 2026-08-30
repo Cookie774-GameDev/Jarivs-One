@@ -173,6 +173,12 @@ import {
   filterReferenceCatalog,
   type ReferenceCatalogEntry,
 } from '@/features/references/referenceCatalog';
+import {
+  CAO_LEARNER_IDENTITY,
+  bootstrapCaoLearning,
+  projectCaoPublicStatus,
+  type CaoPublicStatus,
+} from '@/features/cao/bootstrap';
 import type { JarvisArtifactV1 } from '@/lib/jarvis/contracts/execution';
 import { jarvisArtifactRepo } from '@/lib/db/jarvisRepositories';
 import {
@@ -311,7 +317,12 @@ import {
   type ChatModelSelection,
   type ModelSelectionContext,
 } from '@/lib/ai/modelSelection';
-import type { ReasoningMode, ReasoningSelection } from '@/lib/ai/reasoningControls';
+import type {
+  ReasoningMode,
+  ReasoningPreference,
+  ReasoningSelection,
+} from '@/lib/ai/reasoningControls';
+import { CODEX_CLI_CONNECTION } from '@/lib/ai/adapters/catalog';
 import { restoreExactChatSelection, type ExactChatSelection } from './chatSelectionAuthority';
 import { ModeIndicator } from '@/features/jarvis-interaction/ModeIndicator';
 import { cycleInteractionMode, PERMISSION_MODE_OPTIONS } from '@/features/jarvis-interaction/modes';
@@ -639,7 +650,7 @@ export interface ConfirmedAgentMention {
 
 export interface ConfirmedCatalogReference {
   key: string;
-  kind: 'plugin' | 'artifact';
+  kind: 'cao' | 'plugin' | 'artifact';
   entityId: string;
   mention: string;
   label: string;
@@ -692,6 +703,36 @@ export function confirmedCatalogReferenceTextForSend(
     })
     .map((reference) => reference.mention)
     .join(' ');
+}
+
+export type ComposerCaoBootstrap = Readonly<{
+  modelSelection: ChatModelSelection;
+  reasoningPreference: ReasoningPreference;
+  skillIds: readonly string[];
+  publicStatus: CaoPublicStatus;
+}>;
+
+export function resolveComposerCaoBootstrap(input: {
+  text: string;
+  confirmedReferenceKeys: readonly string[];
+  selectedModel: ChatModelSelection;
+  skillIds: readonly string[];
+}): ComposerCaoBootstrap | null {
+  const decision = bootstrapCaoLearning({
+    text: input.text,
+    confirmedReferenceKeys: input.confirmedReferenceKeys,
+  });
+  if (!decision) return null;
+  return Object.freeze({
+    modelSelection: selectionFromOption(
+      CAO_LEARNER_IDENTITY.providerId,
+      CAO_LEARNER_IDENTITY.modelId,
+      CODEX_CLI_CONNECTION,
+    ),
+    reasoningPreference: Object.freeze({ mode: 'normal', effortOverride: 'high' }),
+    skillIds: Object.freeze(Array.from(new Set([...input.skillIds, ...decision.skillIds]))),
+    publicStatus: projectCaoPublicStatus(decision),
+  });
 }
 
 type ComposerArtifactCatalogRepository = Readonly<{
@@ -3083,6 +3124,14 @@ export function Composer({
     // When a route slash command has a remainder (e.g. "/terminals close 5 terminals"),
     // handleSlashCommand returns the remainder text so we send it as the message.
     let rawSendText = typeof slashResult === 'string' ? slashResult.trim() : afterInline;
+    const confirmedReferenceKeysForSend = confirmedCatalogReferences.map(
+      (reference) => reference.key,
+    );
+    const caoRequested =
+      bootstrapCaoLearning({
+        text: rawSendText,
+        confirmedReferenceKeys: confirmedReferenceKeysForSend,
+      }) !== null;
 
     const currentReasoning = readChatReasoningPreference(String(chatId));
     const currentRuntime = readChatRuntimePolicyState(String(chatId));
@@ -3090,7 +3139,7 @@ export function Composer({
       (value): value is EffortLabel =>
         value !== null && liveAuthorityRejectsEffort(value, authoritativeLiveEfforts),
     );
-    if (invalidEffort) {
+    if (invalidEffort && !caoRequested) {
       toast.error(
         'Cannot send',
         `Effort “${invalidEffort}” is not available for the selected live model.`,
@@ -3204,6 +3253,17 @@ export function Composer({
       auth.chatModelSelection,
       retainedExactChatSelection,
     );
+    const confirmedSkillIdsForSend = confirmedCommands
+      .filter((confirmed) => confirmed.cmd === 'skills' && confirmed.value)
+      .map((confirmed) => confirmed.value!)
+      .slice(0, 6);
+    const caoBootstrap = resolveComposerCaoBootstrap({
+      text: rawSendText,
+      confirmedReferenceKeys: confirmedReferenceKeysForSend,
+      selectedModel: selectedForSend,
+      skillIds: confirmedSkillIdsForSend,
+    });
+    if (caoBootstrap) selectedForSend = caoBootstrap.modelSelection;
     // Refresh Ollama discovery before gating local sends so a connected
     // daemon is not blocked by a stale empty catalog.
     if (
@@ -3238,10 +3298,7 @@ export function Composer({
     }
 
     // Process confirmed commands before sending
-    const skillIds = confirmedCommands
-      .filter((confirmed) => confirmed.cmd === 'skills' && confirmed.value)
-      .map((confirmed) => confirmed.value!)
-      .slice(0, 6);
+    const skillIds = caoBootstrap?.skillIds ?? confirmedSkillIdsForSend;
     let nextAttachedFiles = [...attachedFiles];
     let nextAttachedTerminals = attachedTerminals;
     let nextAttachedPlugins = attachedPlugins;
@@ -3462,8 +3519,11 @@ export function Composer({
             speakReply: voiceReplyRequestedRef.current || useAuthStore.getState().speakReplies,
             autoApproveActions: useAuthStore.getState().jarvisAutoApprove,
             modelSelectionOverride: selectedForSend,
-            reasoningPreference: readChatReasoningPreference(String(chatId)),
-            runtimeSettings: runtimePolicy.settings,
+            reasoningPreference:
+              caoBootstrap?.reasoningPreference ?? readChatReasoningPreference(String(chatId)),
+            runtimeSettings: caoBootstrap
+              ? { ...runtimePolicy.settings, effort: CAO_LEARNER_IDENTITY.reasoningEffort }
+              : runtimePolicy.settings,
             accessLevel: runtimePolicy.access,
             approveAllForRun: runtimePolicy.approveAllForRun,
             tokenOptimizationMode,
@@ -3474,6 +3534,7 @@ export function Composer({
               tokenOptimizationPreferences.allowStructuralCodeCompression,
             // The model chosen in Composer is an explicit user override.
             automaticModelRoutingEligible: false,
+            ...(caoBootstrap ? { caoBootstrap: caoBootstrap.publicStatus } : {}),
           },
         }),
       );

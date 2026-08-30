@@ -1,13 +1,15 @@
 import type { JarvisArtifactV1 } from '@/lib/jarvis/contracts/execution';
 import { projectJarvisArtifactReference } from '@/features/jarvis-command-center/artifactAccess';
+import { CAO_NATIVE_IDENTITY } from '@/features/cao/bootstrap';
 
-export type ReferenceCatalogKind = 'agent' | 'plugin' | 'artifact';
+export type ReferenceCatalogKind = 'cao' | 'agent' | 'plugin' | 'artifact';
 
 export type ReferenceCatalogEntry = Readonly<{
   key: `${ReferenceCatalogKind}:${string}`;
   kind: ReferenceCatalogKind;
   entityId: string;
   mention: string;
+  aliases?: readonly string[];
   label: string;
   description?: string;
   metadata?: string;
@@ -50,6 +52,19 @@ export function buildAccountReferenceCatalog(
   input: AccountReferenceCatalogInput,
 ): readonly ReferenceCatalogEntry[] {
   const entries: ReferenceCatalogEntry[] = [];
+
+  entries.push(
+    Object.freeze({
+      key: `cao:${CAO_NATIVE_IDENTITY.id}`,
+      kind: 'cao',
+      entityId: CAO_NATIVE_IDENTITY.id,
+      mention: CAO_NATIVE_IDENTITY.mention,
+      aliases: CAO_NATIVE_IDENTITY.aliases,
+      label: CAO_NATIVE_IDENTITY.name,
+      description: 'First-party learning and improvement authority',
+      metadata: 'Native · Codex learner',
+    }),
+  );
 
   for (const agent of input.agents) {
     if (!agent.id || !agent.slug || !agent.name) continue;
@@ -107,8 +122,12 @@ export function filterReferenceCatalog(
   const normalized = query.trim().toLocaleLowerCase();
   if (!normalized) return entries;
   return entries.filter((entry) =>
-    [entry.mention.slice(1), entry.label, entry.description, entry.metadata].some((value) =>
-      value?.toLocaleLowerCase().includes(normalized),
-    ),
+    [
+      entry.mention.slice(1),
+      ...(entry.aliases?.map((alias) => alias.slice(1)) ?? []),
+      entry.label,
+      entry.description,
+      entry.metadata,
+    ].some((value) => value?.toLocaleLowerCase().includes(normalized)),
   );
 }

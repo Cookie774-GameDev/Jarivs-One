@@ -17,10 +17,24 @@ describe('skillCatalog', () => {
     });
   });
 
-  it('seeds the five built-in presets in the unified manifest list', () => {
+  it('preserves the five editable built-in presets in the unified manifest list', () => {
     const manifests = getUnifiedSkillManifests();
     expect(manifests.filter((m) => m.isPreset)).toHaveLength(5);
     expect(manifests.map((m) => m.catalogId).sort()).toEqual(Object.keys(SKILLS).sort());
+  });
+
+  it('resolves the frozen first-party CAO skill without exposing it as an editable preset', () => {
+    const skill = resolveCatalogSkill('jarvis-cao');
+
+    expect(skill).toMatchObject({
+      id: 'jarvis-cao',
+      name: 'Jarvis CAO',
+      tools: ['files', 'terminal', 'memory'],
+    });
+    expect(Object.isFrozen(SKILLS['jarvis-cao'])).toBe(true);
+    expect(getUnifiedSkillManifests().some((manifest) => manifest.catalogId === 'jarvis-cao')).toBe(
+      false,
+    );
   });
 
   it('merges custom skills after presets', () => {
@@ -52,7 +66,9 @@ describe('skillCatalog', () => {
   });
 
   it('does not resolve disabled presets or custom skills for runtime injection', () => {
-    const customId = useSkillsStore.getState().addCustomSkill({ name: 'Quiet', description: 'Disabled' });
+    const customId = useSkillsStore
+      .getState()
+      .addCustomSkill({ name: 'Quiet', description: 'Disabled' });
     useSkillsStore.getState().setSkillEnabled('build', false, 'preset');
     useSkillsStore.getState().setSkillEnabled(customId, false, 'custom');
 

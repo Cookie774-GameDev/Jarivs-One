@@ -1,5 +1,5 @@
 /**
- * Skills catalog — the five built-in skill definitions.
+ * Skills catalog — the built-in skill definitions.
  *
  * A skill bundles a tool allowlist, a system-prompt addendum, and a UI hue.
  * User agents (.jarvis-agent.md or form-created) declare a `skills: string[]`
@@ -28,6 +28,22 @@ export interface Skill {
   /** HSL hue 0..359 for skill chips. */
   color_hue: number;
 }
+
+const JARVIS_CAO_SKILL: Skill = Object.freeze({
+  id: 'jarvis-cao',
+  name: 'Jarvis CAO',
+  description: 'First-party learning and improvement authority',
+  tools: Object.freeze(['files', 'terminal', 'memory']) as unknown as string[],
+  systemPromptAddendum: [
+    'Skill: Jarvis CAO.',
+    'Execute only an explicit, action-oriented CAO learning request through the native CAO authority.',
+    'Use the fixed Codex CLI learner route gpt-5.6-terra at high effort. Never substitute another provider, model, connection, or effort.',
+    'Require authoritative observed execution identity to match the requested learner identity exactly; fail closed when proof is absent or mismatched.',
+    'Keep the user-facing OpenCode DeepSeek student/chat identity separate from this native learner.',
+    'Never publish chain-of-thought, scratchpads, hidden reasoning, internal prompts, or private learner state. Publish only compact queued, running, completed, or failed status with an outcome or blocker.',
+  ].join('\n'),
+  color_hue: 42,
+});
 
 export const SKILLS: Record<string, Skill> = {
   build: {
@@ -103,6 +119,15 @@ export const SKILLS: Record<string, Skill> = {
   },
 };
 
+// Native CAO authority is resolvable for runtime injection but intentionally
+// absent from the editable preset enumeration and user-facing skill picker.
+Object.defineProperty(SKILLS, JARVIS_CAO_SKILL.id, {
+  value: JARVIS_CAO_SKILL,
+  enumerable: false,
+  configurable: false,
+  writable: false,
+});
+
 /**
  * Resolve a list of skill ids to skill records, dropping unknowns.
  * Implemented in the unified catalog (presets + custom + overrides).
@@ -114,11 +139,13 @@ export { resolveCatalogSkills as resolveSkills } from '@/features/skills/skillCa
  * agent body to form the effective system prompt. Empty addenda are skipped.
  */
 export function composeSkillAddenda(ids: string[]): string {
-  const { composeCatalogSkillAddenda } = require('@/features/skills/skillCatalog') as typeof import('@/features/skills/skillCatalog');
+  const { composeCatalogSkillAddenda } =
+    require('@/features/skills/skillCatalog') as typeof import('@/features/skills/skillCatalog');
   return composeCatalogSkillAddenda(ids);
 }
 
 export function unionSkillTools(ids: string[]): string[] {
-  const { unionCatalogSkillTools } = require('@/features/skills/skillCatalog') as typeof import('@/features/skills/skillCatalog');
+  const { unionCatalogSkillTools } =
+    require('@/features/skills/skillCatalog') as typeof import('@/features/skills/skillCatalog');
   return unionCatalogSkillTools(ids);
 }
