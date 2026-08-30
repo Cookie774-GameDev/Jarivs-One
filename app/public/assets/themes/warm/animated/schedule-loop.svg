@@ -1,0 +1,136 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 256 160"
+  role="img"
+  aria-labelledby="schedule-loop-title schedule-loop-desc"
+>
+  <title id="schedule-loop-title">Recurring schedule loop</title>
+  <desc id="schedule-loop-desc">
+    A warm calendar clock with a looping orbit and a gently confirming check mark.
+  </desc>
+  <defs>
+    <linearGradient id="schedule-face" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#fff8ed" />
+      <stop offset="1" stop-color="#f1dcc5" />
+    </linearGradient>
+    <filter id="schedule-glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="3.2" />
+    </filter>
+    <style>
+      .schedule-orbit {
+        animation: schedule-orbit 4.4s linear infinite;
+        transform-origin: 128px 82px;
+      }
+      .schedule-ring {
+        animation: schedule-ring 2.2s ease-in-out infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      .schedule-minute {
+        animation: schedule-minute 4.4s steps(12, end) infinite;
+        transform-origin: 128px 82px;
+      }
+      .schedule-check {
+        animation: schedule-check 4.4s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      @keyframes schedule-orbit {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes schedule-ring {
+        50% {
+          opacity: 0.56;
+          transform: scale(1.05);
+        }
+      }
+      @keyframes schedule-minute {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes schedule-check {
+        0%,
+        64%,
+        100% {
+          opacity: 0.45;
+          transform: scale(0.9);
+        }
+        72%,
+        88% {
+          opacity: 1;
+          transform: scale(1.12);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .schedule-orbit,
+        .schedule-ring,
+        .schedule-minute,
+        .schedule-check {
+          animation: none !important;
+        }
+      }
+    </style>
+  </defs>
+  <circle
+    cx="128"
+    cy="82"
+    r="56"
+    fill="#d4a258"
+    opacity=".12"
+    filter="url(#schedule-glow)"
+    class="schedule-ring"
+  />
+  <rect
+    x="73"
+    y="27"
+    width="110"
+    height="110"
+    rx="25"
+    fill="url(#schedule-face)"
+    stroke="#d9b692"
+    stroke-width="1.5"
+  />
+  <path d="M74 56h108" fill="none" stroke="#d97757" stroke-width="8" opacity=".88" />
+  <path
+    d="M98 23v14M158 23v14"
+    fill="none"
+    stroke="#8b7462"
+    stroke-linecap="round"
+    stroke-width="6"
+  />
+  <circle cx="128" cy="88" r="34" fill="#fffaf3" stroke="#e4c8a5" stroke-width="1.5" />
+  <g fill="#9aa788">
+    <circle cx="128" cy="62" r="2" />
+    <circle cx="154" cy="88" r="2" />
+    <circle cx="128" cy="114" r="2" />
+    <circle cx="102" cy="88" r="2" />
+  </g>
+  <path d="M128 88V72" fill="none" stroke="#6f6155" stroke-linecap="round" stroke-width="3.5" />
+  <path
+    d="M128 88 143 96"
+    fill="none"
+    stroke="#d97757"
+    stroke-linecap="round"
+    stroke-width="3.5"
+    class="schedule-minute"
+  />
+  <circle cx="128" cy="88" r="4.5" fill="#d97757" />
+  <g class="schedule-orbit">
+    <circle cx="128" cy="20" r="8" fill="#d4a258" opacity=".24" filter="url(#schedule-glow)" />
+    <path d="m128 14 1.8 4.2 4.2 1.8-4.2 1.8-1.8 4.2-1.8-4.2-4.2-1.8 4.2-1.8Z" fill="#d4a258" />
+  </g>
+  <g class="schedule-check">
+    <circle cx="173" cy="122" r="15" fill="#9aa788" stroke="#fff8ed" stroke-width="3" />
+    <path
+      d="m166 122 5 5 9-11"
+      fill="none"
+      stroke="#fff8ed"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="3"
+    />
+  </g>
+</svg>

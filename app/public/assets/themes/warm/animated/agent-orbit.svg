@@ -1,0 +1,123 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 256 160"
+  role="img"
+  aria-labelledby="agent-orbit-title agent-orbit-desc"
+>
+  <title id="agent-orbit-title">Agent working orbit</title>
+  <desc id="agent-orbit-desc">A warm glowing agent core with an endlessly orbiting spark.</desc>
+  <defs>
+    <linearGradient id="agent-core" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#f2bf70" />
+      <stop offset="1" stop-color="#d97757" />
+    </linearGradient>
+    <radialGradient id="agent-halo">
+      <stop stop-color="#f5c77b" stop-opacity=".42" />
+      <stop offset="1" stop-color="#d97757" stop-opacity="0" />
+    </radialGradient>
+    <filter id="agent-glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="3.5" />
+    </filter>
+    <style>
+      .agent-halo {
+        animation: agent-breathe 3.2s ease-in-out infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      .agent-ring {
+        animation: agent-ring 7s linear infinite;
+        transform-origin: 128px 80px;
+      }
+      .agent-orbit {
+        animation: agent-orbit 3.8s linear infinite;
+        transform-origin: 128px 80px;
+      }
+      .agent-spark {
+        animation: agent-spark 1.15s ease-in-out infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      .agent-eye {
+        animation: agent-blink 4.8s ease-in-out infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      @keyframes agent-breathe {
+        50% {
+          opacity: 0.64;
+          transform: scale(1.12);
+        }
+      }
+      @keyframes agent-ring {
+        to {
+          transform: rotate(-360deg);
+        }
+      }
+      @keyframes agent-orbit {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes agent-spark {
+        50% {
+          transform: scale(1.35);
+        }
+      }
+      @keyframes agent-blink {
+        0%,
+        42%,
+        46%,
+        100% {
+          transform: scaleY(1);
+        }
+        44% {
+          transform: scaleY(0.12);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .agent-halo,
+        .agent-ring,
+        .agent-orbit,
+        .agent-spark,
+        .agent-eye {
+          animation: none !important;
+        }
+      }
+    </style>
+  </defs>
+  <ellipse cx="128" cy="82" rx="73" ry="50" fill="url(#agent-halo)" class="agent-halo" />
+  <circle
+    cx="128"
+    cy="80"
+    r="50"
+    fill="none"
+    stroke="#d4a258"
+    stroke-opacity=".28"
+    stroke-width="1.5"
+    stroke-dasharray="2 8"
+    class="agent-ring"
+  />
+  <circle cx="128" cy="80" r="35" fill="#fff7ec" stroke="#e6c8a5" stroke-width="1.5" />
+  <circle cx="128" cy="80" r="25" fill="url(#agent-core)" />
+  <path
+    d="M114 80c4-8 9-12 14-12s10 4 14 12c-4 8-9 12-14 12s-10-4-14-12Z"
+    fill="#fff8ed"
+    fill-opacity=".95"
+  />
+  <circle cx="128" cy="80" r="5.5" fill="#6f6155" class="agent-eye" />
+  <circle cx="130" cy="78" r="1.8" fill="#fff8ed" />
+  <g class="agent-orbit">
+    <circle cx="178" cy="80" r="9" fill="#d97757" opacity=".2" filter="url(#agent-glow)" />
+    <path
+      d="m178 72 2.4 5.6 5.6 2.4-5.6 2.4-2.4 5.6-2.4-5.6-5.6-2.4 5.6-2.4Z"
+      fill="#d97757"
+      class="agent-spark"
+    />
+  </g>
+  <g fill="#9aa788">
+    <circle cx="74" cy="80" r="2.5" />
+    <circle cx="182" cy="80" r="2.5" />
+    <circle cx="128" cy="26" r="2.5" />
+    <circle cx="128" cy="134" r="2.5" />
+  </g>
+</svg>

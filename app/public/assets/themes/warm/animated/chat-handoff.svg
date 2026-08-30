@@ -1,0 +1,196 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 256 160"
+  role="img"
+  aria-labelledby="chat-handoff-title chat-handoff-desc"
+>
+  <title id="chat-handoff-title">Chat handoff</title>
+  <desc id="chat-handoff-desc">
+    Two warm chat cards exchange a glowing context packet in an endless loop.
+  </desc>
+  <defs>
+    <linearGradient id="handoff-left" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#fff8ed" />
+      <stop offset="1" stop-color="#f3dfca" />
+    </linearGradient>
+    <linearGradient id="handoff-right" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#f5eee1" />
+      <stop offset="1" stop-color="#d9dfcf" />
+    </linearGradient>
+    <filter id="handoff-glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="3" />
+    </filter>
+    <style>
+      .handoff-left-card {
+        animation: handoff-left 3.6s ease-in-out infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      .handoff-right-card {
+        animation: handoff-right 3.6s ease-in-out infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      .handoff-thread {
+        animation: handoff-thread 1.8s linear infinite;
+      }
+      .handoff-packet {
+        animation: handoff-packet 2.4s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      .handoff-packet-two {
+        animation-delay: -1.2s;
+      }
+      .handoff-pulse {
+        animation: handoff-pulse 2.4s ease-in-out infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      @keyframes handoff-left {
+        0%,
+        100% {
+          transform: translateY(2px) rotate(-1deg);
+        }
+        50% {
+          transform: translateY(-3px) rotate(1deg);
+        }
+      }
+      @keyframes handoff-right {
+        0%,
+        100% {
+          transform: translateY(-2px) rotate(1deg);
+        }
+        50% {
+          transform: translateY(3px) rotate(-1deg);
+        }
+      }
+      @keyframes handoff-thread {
+        to {
+          stroke-dashoffset: -18;
+        }
+      }
+      @keyframes handoff-packet {
+        0% {
+          opacity: 0;
+          transform: translate(0, 0) scale(0.65);
+        }
+        12% {
+          opacity: 1;
+        }
+        50% {
+          transform: translate(38px, -7px) scale(1);
+        }
+        88% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0;
+          transform: translate(76px, 0) scale(0.65);
+        }
+      }
+      @keyframes handoff-pulse {
+        0%,
+        100% {
+          opacity: 0.3;
+          transform: scale(0.72);
+        }
+        50% {
+          opacity: 0.8;
+          transform: scale(1.15);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .handoff-left-card,
+        .handoff-right-card,
+        .handoff-thread,
+        .handoff-packet,
+        .handoff-pulse {
+          animation: none !important;
+        }
+        .handoff-packet-two {
+          display: none;
+        }
+      }
+    </style>
+  </defs>
+  <ellipse cx="128" cy="132" rx="92" ry="10" fill="#8b7462" opacity=".1" />
+  <g class="handoff-left-card">
+    <rect
+      x="24"
+      y="38"
+      width="74"
+      height="78"
+      rx="18"
+      fill="url(#handoff-left)"
+      stroke="#d9b692"
+      stroke-width="1.5"
+    />
+    <path
+      d="m45 116-5 12 16-12"
+      fill="#f3dfca"
+      stroke="#d9b692"
+      stroke-linejoin="round"
+      stroke-width="1.5"
+    />
+    <circle cx="49" cy="62" r="8" fill="#d97757" opacity=".88" />
+    <path
+      d="M64 58h18M64 65h12M41 83h40M41 92h31"
+      fill="none"
+      stroke="#8b7462"
+      stroke-linecap="round"
+      stroke-width="3"
+      opacity=".62"
+    />
+  </g>
+  <path
+    d="M91 80c21-17 53-17 74 0"
+    fill="none"
+    stroke="#d97757"
+    stroke-linecap="round"
+    stroke-width="2"
+    stroke-dasharray="3 6"
+    class="handoff-thread"
+  />
+  <circle
+    cx="128"
+    cy="68"
+    r="16"
+    fill="#d97757"
+    opacity=".12"
+    filter="url(#handoff-glow)"
+    class="handoff-pulse"
+  />
+  <g fill="#d97757">
+    <circle cx="91" cy="80" r="5" class="handoff-packet" />
+    <circle cx="91" cy="80" r="3.5" class="handoff-packet handoff-packet-two" />
+  </g>
+  <g class="handoff-right-card">
+    <rect
+      x="158"
+      y="38"
+      width="74"
+      height="78"
+      rx="18"
+      fill="url(#handoff-right)"
+      stroke="#a9b096"
+      stroke-width="1.5"
+    />
+    <path
+      d="m211 116 5 12-16-12"
+      fill="#d9dfcf"
+      stroke="#a9b096"
+      stroke-linejoin="round"
+      stroke-width="1.5"
+    />
+    <circle cx="183" cy="62" r="8" fill="#9aa788" />
+    <path
+      d="M198 58h18M198 65h12M175 83h40M175 92h31"
+      fill="none"
+      stroke="#6f7564"
+      stroke-linecap="round"
+      stroke-width="3"
+      opacity=".62"
+    />
+  </g>
+</svg>

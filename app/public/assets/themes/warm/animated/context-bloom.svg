@@ -1,0 +1,174 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 256 160"
+  role="img"
+  aria-labelledby="context-bloom-title context-bloom-desc"
+>
+  <title id="context-bloom-title">Context map bloom</title>
+  <desc id="context-bloom-desc">
+    A SiYuan-inspired context tree repeatedly grows from a warm central project node.
+  </desc>
+  <defs>
+    <radialGradient id="context-root">
+      <stop stop-color="#f3bd70" />
+      <stop offset="1" stop-color="#d97757" />
+    </radialGradient>
+    <filter id="context-glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="3" />
+    </filter>
+    <style>
+      .context-branch {
+        stroke-dasharray: 1;
+        stroke-dashoffset: 1;
+        animation: context-grow 4.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+      .context-branch-two {
+        animation-delay: 0.25s;
+      }
+      .context-branch-three {
+        animation-delay: 0.5s;
+      }
+      .context-node {
+        animation: context-node 4.8s ease-in-out infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      .context-node-two {
+        animation-delay: 0.3s;
+      }
+      .context-node-three {
+        animation-delay: 0.6s;
+      }
+      .context-root-halo {
+        animation: context-breathe 2.4s ease-in-out infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      .context-spark {
+        animation: context-spark 4.8s ease-in-out infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      @keyframes context-grow {
+        0%,
+        10% {
+          stroke-dashoffset: 1;
+          opacity: 0.12;
+        }
+        38%,
+        82% {
+          stroke-dashoffset: 0;
+          opacity: 0.9;
+        }
+        100% {
+          stroke-dashoffset: -1;
+          opacity: 0.12;
+        }
+      }
+      @keyframes context-node {
+        0%,
+        16%,
+        100% {
+          opacity: 0.22;
+          transform: scale(0.72);
+        }
+        40%,
+        80% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+      @keyframes context-breathe {
+        50% {
+          opacity: 0.65;
+          transform: scale(1.14);
+        }
+      }
+      @keyframes context-spark {
+        0%,
+        28%,
+        100% {
+          opacity: 0;
+          transform: scale(0.5) rotate(0);
+        }
+        44%,
+        78% {
+          opacity: 1;
+          transform: scale(1) rotate(90deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .context-branch,
+        .context-node,
+        .context-root-halo,
+        .context-spark {
+          animation: none !important;
+          stroke-dashoffset: 0;
+          opacity: 1;
+        }
+      }
+    </style>
+  </defs>
+  <ellipse cx="128" cy="137" rx="83" ry="8" fill="#8b7462" opacity=".08" />
+  <circle
+    cx="128"
+    cy="93"
+    r="30"
+    fill="#d97757"
+    opacity=".14"
+    filter="url(#context-glow)"
+    class="context-root-halo"
+  />
+  <g fill="none" stroke="#9aa788" stroke-linecap="round" stroke-width="3" pathLength="1">
+    <path d="M128 87C111 75 91 67 67 62" class="context-branch" />
+    <path d="M128 87c17-12 37-20 61-25" class="context-branch context-branch-two" />
+    <path
+      d="M122 98c-19 7-34 18-45 33M134 98c19 7 34 18 45 33"
+      class="context-branch context-branch-three"
+    />
+  </g>
+  <g class="context-node">
+    <rect
+      x="43"
+      y="43"
+      width="48"
+      height="35"
+      rx="11"
+      fill="#f5eee1"
+      stroke="#a9b096"
+      stroke-width="1.5"
+    />
+    <path d="M55 55h24M55 63h17" stroke="#7a806e" stroke-linecap="round" stroke-width="3" />
+  </g>
+  <g class="context-node context-node-two">
+    <rect
+      x="165"
+      y="43"
+      width="48"
+      height="35"
+      rx="11"
+      fill="#f4e5e9"
+      stroke="#b8a2b0"
+      stroke-width="1.5"
+    />
+    <path d="M177 55h24M177 63h17" stroke="#887481" stroke-linecap="round" stroke-width="3" />
+  </g>
+  <g class="context-node context-node-three">
+    <circle cx="76" cy="132" r="12" fill="#d4a258" stroke="#fff8ed" stroke-width="3" />
+    <circle cx="180" cy="132" r="12" fill="#9aa788" stroke="#fff8ed" stroke-width="3" />
+  </g>
+  <circle cx="128" cy="93" r="21" fill="url(#context-root)" stroke="#fff8ed" stroke-width="3" />
+  <path
+    d="M118 98v-11h8v-7h4v7h8v11M111 101h34"
+    fill="none"
+    stroke="#fff8ed"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    stroke-width="3"
+  />
+  <path
+    d="m128 49 2.1 4.9 4.9 2.1-4.9 2.1-2.1 4.9-2.1-4.9-4.9-2.1 4.9-2.1Z"
+    fill="#d97757"
+    class="context-spark"
+  />
+</svg>
