@@ -3,7 +3,6 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Pin,
-  PinOff,
   FolderTree,
   MessageSquare,
   Bot,
@@ -42,12 +41,9 @@ import { chatPinPatch, isChatPinned, sortChatsForDisplay } from '@/features/chat
 import { ensureActiveChat } from '@/features/chat/chatLifecycle';
 import { useStorageDoctorSnapshot } from '@/features/doctor/StorageDoctorNotice';
 import { isStorageDoctorUnavailableError } from '@/lib/doctor/storageDoctor';
-import {
-  ChatListActivityIndicator,
-  mergeChatActivityEvents,
-  type ChatActivityEvent,
-  type ChatListRunSignal,
-} from '@/features/chat/activity';
+import { mergeChatActivityEvents, type ChatListRunSignal } from '@/features/chat/activity';
+import { ChatNavRow } from './ChatNavRow';
+export { ChatNavRow } from './ChatNavRow';
 import { useChatActivityStore } from '@/features/chat/activity/activityStore';
 import { useJarvisTaskRunStore } from '@/features/jarvis-runs/taskRunStore';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
@@ -952,95 +948,6 @@ function NavItem({ icon, label, navOpen, active, onClick, dataTour, evidenceId }
       <span className="shrink-0">{icon}</span>
       <span className="min-w-0 flex-1 truncate text-left">{label}</span>
     </button>
-  );
-}
-
-interface ChatNavRowProps {
-  chat: Chat;
-  navOpen: boolean;
-  active?: boolean;
-  activityRuns?: readonly ChatListRunSignal[];
-  activityEvents?: readonly ChatActivityEvent[];
-  onOpen: () => void;
-  onTogglePin: () => void;
-}
-
-export function ChatNavRow({
-  chat,
-  navOpen,
-  active,
-  activityRuns = [],
-  activityEvents = [],
-  onOpen,
-  onTogglePin,
-}: ChatNavRowProps) {
-  const label = (chat.title || 'Untitled chat').trim() || 'Untitled chat';
-  const pinned = isChatPinned(chat);
-
-  if (!navOpen) {
-    return (
-      <button
-        type="button"
-        onClick={onOpen}
-        title={pinned ? `${label} (pinned)` : label}
-        aria-label={pinned ? `${label}, pinned` : label}
-        aria-current={active ? 'page' : undefined}
-        className={cn(
-          'relative flex h-7 w-full items-center justify-center rounded-md text-foreground transition-colors',
-          'hover:bg-muted focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring',
-          active &&
-            'bg-muted ring-inset ring-1 ring-accent-copper/40 [html[data-theme=monochrome]_&]:ring-0',
-        )}
-      >
-        <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
-        {pinned ? (
-          <Pin className="absolute right-1 top-1 h-2 w-2 fill-accent-copper text-accent-copper" />
-        ) : null}
-      </button>
-    );
-  }
-
-  return (
-    <div
-      aria-current={active ? 'page' : undefined}
-      className={cn(
-        'group flex h-7 w-full items-center gap-0.5 rounded-md pr-0.5 transition-colors',
-        'hover:bg-muted',
-        active &&
-          'bg-muted ring-inset ring-1 ring-accent-copper/40 [html[data-theme=monochrome]_&]:ring-0',
-      )}
-    >
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-body text-foreground focus-visible:outline-none focus-visible:ring-inset focus-visible:ring-1 focus-visible:ring-ring [html[data-theme=sakura]_&]:min-h-6"
-      >
-        <MessageSquare className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-left">{label}</span>
-      </button>
-      <ChatListActivityIndicator runs={activityRuns} events={activityEvents} />
-      <Hint label={pinned ? 'Unpin chat' : 'Pin chat'}>
-        <button
-          type="button"
-          data-nav-action="true"
-          onClick={(e) => {
-            e.stopPropagation();
-            onTogglePin();
-          }}
-          aria-label={pinned ? `Unpin ${label}` : `Pin ${label}`}
-          aria-pressed={pinned}
-          className={cn(
-            'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm transition-colors',
-            'text-muted-foreground/50 hover:bg-background/80 hover:text-accent-copper [html[data-theme=monochrome]_&]:text-muted-foreground',
-            'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-            'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
-            pinned && 'opacity-100 text-accent-copper',
-          )}
-        >
-          {pinned ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
-        </button>
-      </Hint>
-    </div>
   );
 }
 
