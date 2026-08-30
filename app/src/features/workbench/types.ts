@@ -6,6 +6,7 @@ export const WORKBENCH_PANEL_KINDS = [
   'files',
   'editor',
   'device-preview',
+  'artifact-reference',
   'kanban',
   'actions',
   'notes',
@@ -50,7 +51,34 @@ export interface WorkbenchPanelSettings {
   previewLabel?: string;
   /** Plugin manifest id for a pinned plugin dashboard panel. */
   pluginId?: string;
+  /** Opaque canonical artifact identity used to restore a reference preview. */
+  artifactId?: string;
+  /** Exact canonical artifact digest required when restoring a reference preview. */
+  artifactDigest?: string;
 }
+
+export interface WorkbenchArtifactReferenceResolveInput {
+  accountId: string;
+  artifactId: string;
+}
+
+export type WorkbenchArtifactReferencePreview =
+  | Readonly<{ kind: 'none'; truncated: false }>
+  | Readonly<{ kind: 'text'; text: string; truncated: boolean }>;
+
+/** Metadata-only projection returned by an account-scoped artifact authority. */
+export interface WorkbenchArtifactReferenceSnapshot {
+  accountId: string;
+  artifactId: string;
+  artifactDigest: string;
+  title: string;
+  safeSummary?: string;
+  preview: WorkbenchArtifactReferencePreview;
+}
+
+export type WorkbenchArtifactReferenceResolver = (
+  input: Readonly<WorkbenchArtifactReferenceResolveInput>,
+) => Promise<Readonly<WorkbenchArtifactReferenceSnapshot> | null>;
 
 export interface WorkbenchPanel {
   id: string;
@@ -137,6 +165,7 @@ export const DEFAULT_PANEL_SIZE: Record<WorkbenchPanelKind, { width: number; hei
   files: { width: 320, height: 480 },
   editor: { width: 620, height: 440 },
   'device-preview': { width: 480, height: 720 },
+  'artifact-reference': { width: 440, height: 360 },
   kanban: { width: 620, height: 420 },
   actions: { width: 360, height: 360 },
   notes: { width: 360, height: 330 },
@@ -157,6 +186,7 @@ export const PANEL_TITLES: Record<WorkbenchPanelKind, string> = {
   files: 'Project files',
   editor: 'Editor',
   'device-preview': 'Device preview',
+  'artifact-reference': 'Artifact reference',
   kanban: 'Kanban',
   actions: 'Jarvis actions',
   notes: 'Notes',
