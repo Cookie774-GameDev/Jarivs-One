@@ -72,7 +72,10 @@ import type {
   OpenCodeQuestionReplyRequest,
   OpenCodeQuestionRejectRequest,
 } from '@/lib/ai/openCodeQuestionReply';
-import { projectOpenCodePublicTimeline } from '@/lib/ai/openCodePublicTimeline';
+import {
+  isFailedVibeSpaceContextOutput,
+  projectOpenCodePublicTimeline,
+} from '@/lib/ai/openCodePublicTimeline';
 import {
   executeOpenCodeQuestionRequest,
   type OpenCodeQuestionDispatchReceipt,
@@ -96,6 +99,7 @@ type PersistentTurnFailureStage =
   | 'prompt_dispatch'
   | 'session_authority'
   | 'event_stream'
+  | 'context_gateway'
   | 'completion_authority'
   | 'provider_reported';
 
@@ -986,15 +990,19 @@ export function normalizeToolEvent(
   const partType = cleanIdentifier(part.type, 64)?.toLocaleLowerCase('en-US');
   if (partType !== 'tool' && partType !== 'tool_use') return undefined;
   const state = recordOf(part.state);
+  const name = cleanIdentifier(part.tool ?? part.name, 256);
+  if (!name) return undefined;
   const rawStatus = cleanIdentifier(state?.status ?? part.status, 64)?.toLocaleLowerCase('en-US');
-  const status =
+  const transportStatus =
     rawStatus === 'completed'
       ? 'completed'
       : rawStatus === 'error' || rawStatus === 'failed'
         ? 'failed'
         : 'started';
-  const name = cleanIdentifier(part.tool ?? part.name, 256);
-  if (!name) return undefined;
+  const status =
+    transportStatus === 'completed' && isFailedVibeSpaceContextOutput(name, state?.output)
+      ? 'failed'
+      : transportStatus;
   const callId = cleanIdentifier(part.callID ?? part.callId ?? part.id);
   const rawFilePath = recordOf(state?.input);
   const filePathCandidate =
@@ -2207,6 +2215,21 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
         hasFinalText: Boolean(publicTimeline.finalText),
       });
       yield { type: 'public_timeline', snapshot: publicTimeline };
+    }
+    const failedContextCalls = new Set(
+      publicTimeline.timeline.flatMap((part) =>
+        part.kind === 'tool_call' && part.tool === 'vibespace_context' ? [part.call_id] : [],
+      ),
+    );
+    const contextGatewayFailed = publicTimeline.timeline.some(
+      (part) =>
+        part.kind === 'tool_result' &&
+        part.error === 'Tool failed' &&
+        failedContextCalls.has(part.call_id),
+    );
+    if (contextGatewayFailed) {
+      failureStage = 'context_gateway';
+      throw new Error('OpenCode Context Gateway failed safely.');
     }
     const canonical = publicTextFromTurnMessages(currentTurnMessages);
     const messageIdentity = observedAssistantIdentity(currentTurnMessages);

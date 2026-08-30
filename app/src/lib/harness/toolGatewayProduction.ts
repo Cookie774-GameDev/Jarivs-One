@@ -528,12 +528,13 @@ export function createProductionToolGatewayDependencies(): ToolGatewayDependenci
       rlm: (args, context) => {
         const auth = useAuthStore.getState();
         if (!auth.localUserId) throw new Error('rlm_context_authority_unavailable');
+        const worktreeId = context.worktree?.trim() || context.directory?.trim();
         const baseLease = {
           sessionId: context.sessionId,
           accountId: auth.localUserId,
           ...(auth.workspaceId ? { workspaceId: String(auth.workspaceId) } : {}),
           ...(auth.projectId ? { projectId: String(auth.projectId) } : {}),
-          ...(context.worktree ? { worktreeId: context.worktree } : {}),
+          ...(worktreeId ? { worktreeId } : {}),
           expiresAt: Date.now() + 30_000,
         } satisfies RlmContextLease;
         if (args.operation === 'query' || args.operation === 'investigate') {

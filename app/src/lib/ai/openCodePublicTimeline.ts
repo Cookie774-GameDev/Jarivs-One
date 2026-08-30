@@ -77,6 +77,22 @@ function toolStatus(value: unknown): 'started' | 'completed' | 'failed' {
   return 'started';
 }
 
+export function isFailedVibeSpaceContextOutput(tool: unknown, output: unknown): boolean {
+  if (boundedIdentifier(tool, 256) !== 'vibespace_context') return false;
+  if (typeof output !== 'string' || output.length < 1 || output.length > 128 * 1024) return false;
+  try {
+    const envelope = recordOf(JSON.parse(output) as unknown);
+    return Boolean(
+      envelope?.ok === false &&
+      boundedIdentifier(envelope.requestId, 200) &&
+      boundedIdentifier(envelope.code, 128) &&
+      boundedIdentifier(envelope.message, 2_048),
+    );
+  } catch {
+    return false;
+  }
+}
+
 function freezePart(part: OpenCodePublicTimelinePart): OpenCodePublicTimelinePart {
   return Object.freeze(structuredClone(part));
 }
@@ -130,7 +146,11 @@ export function projectOpenCodePublicTimeline(
         `anonymous:${messageIndex}:${partIndex}`;
       const state = recordOf(part.state);
       const fileLabel = safeFileLabel(state);
-      const status = toolStatus(state?.status ?? part.status);
+      const transportStatus = toolStatus(state?.status ?? part.status);
+      const status =
+        transportStatus === 'completed' && isFailedVibeSpaceContextOutput(tool, state?.output)
+          ? 'failed'
+          : transportStatus;
       const existing = toolsByNativeCallId.get(nativeCallId);
       if (existing) {
         if (fileLabel) existing.fileLabel = fileLabel;

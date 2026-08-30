@@ -105,6 +105,48 @@ describe('projectOpenCodePublicTimeline', () => {
     );
   });
 
+  it('projects a completed transport with a failed Context envelope as a failed tool', () => {
+    const snapshot = projectOpenCodePublicTimeline([
+      {
+        info: { role: 'assistant' },
+        parts: [
+          { type: 'text', text: 'I am checking the active project context.' },
+          {
+            type: 'tool',
+            tool: 'vibespace_context',
+            callID: 'private-context-call',
+            state: {
+              status: 'completed',
+              input: { operation: 'investigate', query: 'private project question' },
+              output: JSON.stringify({
+                requestId: 'private-request-id',
+                ok: false,
+                code: 'tool_failed',
+                message: 'The semantic tool could not be completed.',
+              }),
+            },
+          },
+          { type: 'text', text: 'Project context was unavailable, so I did not guess.' },
+        ],
+      },
+    ]);
+
+    expect(snapshot).toEqual({
+      finalText: 'Project context was unavailable, so I did not guess.',
+      timeline: [
+        { kind: 'text', text: 'I am checking the active project context.' },
+        {
+          kind: 'tool_call',
+          tool: 'vibespace_context',
+          call_id: 'opencode-tool-1',
+          args: {},
+        },
+        { kind: 'tool_result', call_id: 'opencode-tool-1', error: 'Tool failed' },
+      ],
+    });
+    expect(JSON.stringify(snapshot)).not.toMatch(/private-request|private project question/iu);
+  });
+
   it('produces stable request-local identities when the same persisted snapshot is projected again', () => {
     const messages = [
       {

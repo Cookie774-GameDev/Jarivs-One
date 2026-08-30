@@ -516,6 +516,46 @@ describe('production tool gateway dependencies', () => {
     dispose();
   });
 
+  it('uses the exact main-checkout directory when OpenCode omits its optional worktree field', async () => {
+    const authority = captureToolGatewayAuthorityClaim()!;
+    expect(
+      bindToolGatewayObservedExecutionAuthority('session-1', authority, {
+        executionIdentity: observedIdentity,
+        performance: 'quality',
+      }),
+    ).toBe(true);
+    const gatewayResult = Object.freeze({
+      promptBlock: '<vibespace_context>grounded main checkout</vibespace_context>',
+      receipt: Object.freeze({ receiptId: 'context-receipt-main-checkout' }),
+    });
+    const ask = vi.spyOn(productionContextGateway, 'ask').mockResolvedValue(gatewayResult as never);
+
+    await expect(
+      Promise.resolve(
+        createProductionToolGatewayDependencies().context.rlm(
+          { operation: 'investigate', query: 'Ground this answer in the active project.' },
+          {
+            requestId: 'request-main-checkout',
+            sessionId: 'session-1',
+            messageId: 'message-main-checkout',
+            directory: 'C:\\work\\project',
+            mutationApproved: false,
+          },
+        ),
+      ),
+    ).resolves.toMatchObject({ receipt: gatewayResult.receipt });
+    expect(ask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: expect.objectContaining({
+          projectId: 'project-a',
+          worktreeId: 'C:\\work\\project',
+        }),
+        activePaths: ['C:\\work\\project'],
+      }),
+    );
+    ask.mockRestore();
+  });
+
   it('routes the generated-schema investigate alias through the shared Gateway', async () => {
     const authority = captureToolGatewayAuthorityClaim()!;
     expect(

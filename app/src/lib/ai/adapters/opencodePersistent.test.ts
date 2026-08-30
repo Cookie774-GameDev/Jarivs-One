@@ -1086,6 +1086,40 @@ describe('persistent OpenCode live authority', () => {
     );
   });
 
+  it('fails a Context tool event when its bounded semantic response reports failure', () => {
+    const event = normalizeToolEvent(
+      {
+        type: 'message.part.updated',
+        properties: {
+          part: {
+            type: 'tool',
+            tool: 'vibespace_context',
+            callID: 'context-call-1',
+            state: {
+              status: 'completed',
+              input: { operation: 'investigate', query: 'private project question' },
+              output: JSON.stringify({
+                requestId: 'private-request-id',
+                ok: false,
+                code: 'tool_failed',
+                message: 'The semantic tool could not be completed.',
+              }),
+            },
+          },
+        },
+      },
+      {},
+    );
+
+    expect(event).toEqual({
+      type: 'tool',
+      name: 'vibespace_context',
+      status: 'failed',
+      callId: 'context-call-1',
+    });
+    expect(JSON.stringify(event)).not.toMatch(/private-request|private project question/iu);
+  });
+
   it('maps native OpenCode text parts to stable bounded opaque stream identities', () => {
     const streamPartId = createOpenCodeTextStreamPartTracker();
     const firstPart = streamPartId('["ses-private","msg-private","part-a","text"]');
@@ -1426,6 +1460,90 @@ describe('persistent OpenCode live authority', () => {
     });
     expect(events.at(-1)).toMatchObject({ type: 'done' });
     expect(JSON.stringify(events)).not.toMatch(/must-not-survive|private/iu);
+  });
+
+  it('fails the protected turn after projecting a failed Context Gateway envelope truthfully', async () => {
+    configureManagedQuestionTransport([], {
+      sessionStatuses: [null],
+      persistedMessages: [
+        {
+          info: {
+            id: 'message-context-failure',
+            role: 'assistant',
+            providerID: 'openai',
+            modelID: 'gpt-question-test',
+            time: { completed: 1 },
+          },
+          parts: [
+            {
+              id: 'part-context-tool',
+              sessionID: 'ses_question_exact',
+              messageID: 'message-context-failure',
+              type: 'tool',
+              tool: 'vibespace_context',
+              callID: 'private-context-call',
+              state: {
+                status: 'completed',
+                input: { operation: 'investigate', query: 'private project question' },
+                output: JSON.stringify({
+                  requestId: 'private-request-id',
+                  ok: false,
+                  code: 'tool_failed',
+                  message: 'The semantic tool could not be completed.',
+                }),
+              },
+            },
+            {
+              id: 'part-context-text',
+              sessionID: 'ses_question_exact',
+              messageID: 'message-context-failure',
+              type: 'text',
+              text: 'Project context failed safely, so I did not guess.',
+            },
+          ],
+        },
+      ],
+    });
+    const iterator = openCodePersistentAdapter.send!(
+      questionProviderRequest('request-context-failure'),
+    )[Symbol.asyncIterator]();
+    const events: ProviderEvent[] = [];
+
+    await expect(
+      (async () => {
+        while (true) {
+          const next = await iterator.next();
+          if (next.done) return;
+          events.push(next.value);
+        }
+      })(),
+    ).rejects.toThrow('OpenCode Context Gateway failed safely.');
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'tool',
+          name: 'vibespace_context',
+          status: 'failed',
+        }),
+        {
+          type: 'public_timeline',
+          snapshot: {
+            finalText: 'Project context failed safely, so I did not guess.',
+            timeline: [
+              {
+                kind: 'tool_call',
+                tool: 'vibespace_context',
+                call_id: 'opencode-tool-1',
+                args: {},
+              },
+              { kind: 'tool_result', call_id: 'opencode-tool-1', error: 'Tool failed' },
+            ],
+          },
+        },
+      ]),
+    );
+    expect(events.some((event) => event.type === 'done')).toBe(false);
+    expect(JSON.stringify(events)).not.toMatch(/private-request|private project question/iu);
   });
 
   it('recovers the persisted turn when the optional native event iterator rejects', async () => {
