@@ -44,11 +44,13 @@ import {
   STORES_V12,
   STORES_V13,
   STORES_V14,
+  STORES_V15,
   type BrowserChatBindingRow,
   type BrowserChatImportRow,
   type BrowserChatPermissionProfileRow,
   type BrowserChatSnapshotRow,
   type CaoTargetClaimRow,
+  type CaoControlRecordRow,
   type CanvasAssetRow,
   type CanvasCameraRow,
   type CanvasDocumentRow,
@@ -186,6 +188,9 @@ export class JarvisDexie extends Dexie {
   // V14 exact CAO target ownership (live target truth remains in chats/terminal_sessions)
   cao_target_claims!: Table<CaoTargetClaimRow, [string, string]>;
 
+  // V15 durable CAO control requests (local-only CAS envelopes)
+  cao_control_records!: EntityTable<CaoControlRecordRow, 'requestId'>;
+
   constructor(name = DB_NAME, dependencies?: JarvisDexieDependencies) {
     super(name, dependencies);
     // Replay every additive schema version for existing installations.
@@ -203,6 +208,7 @@ export class JarvisDexie extends Dexie {
     this.version(12).stores(STORES_V12);
     this.version(13).stores(STORES_V13);
     this.version(14).stores(STORES_V14);
+    this.version(15).stores(STORES_V15);
   }
 }
 

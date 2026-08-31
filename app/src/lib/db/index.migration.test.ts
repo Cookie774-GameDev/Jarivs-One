@@ -51,6 +51,7 @@ import {
   STORES_V12,
   STORES_V13,
   STORES_V14,
+  STORES_V15,
   type BrowserChatBindingRow,
   type BrowserChatImportRow,
   type BrowserChatPermissionProfileRow,
@@ -66,6 +67,7 @@ import {
   type CanvasTemplateRow,
   type CanvasTombstoneRow,
   type CaoTargetClaimRow,
+  type CaoControlRecordRow,
   type ContextAssetRow,
   type ContextEmbeddingRow,
   type ContextMigrationBackupRow,
@@ -227,6 +229,12 @@ const EXPECTED_STORES_V14 = {
   ...EXPECTED_STORES_V13,
   cao_target_claims:
     '[kind+targetId], accountId, workspaceId, projectId, runId, leaseId, expiresAt, [runId+leaseId], [accountId+workspaceId+projectId]',
+} as const;
+
+const EXPECTED_STORES_V15 = {
+  ...EXPECTED_STORES_V14,
+  cao_control_records:
+    'requestId, accountId, workspaceId, projectId, runId, status, [accountId+workspaceId+projectId], updatedAt',
 } as const;
 
 const EXPECTED_STORES_V1_SOURCE = `export const STORES_V1 = {
@@ -646,7 +654,7 @@ afterEach(async () => {
   createdNames.clear();
 });
 
-describe('Jarvis Dexie V14 additive migration', () => {
+describe('Jarvis Dexie V15 additive migration', () => {
   it('keeps the exact V1 through V4 declarations and advances only the active version', () => {
     const schemaSource = readFileSync(join(__dirname, 'schema.ts'), 'utf8');
     expect(STORES_V1).toEqual(EXPECTED_STORES_V1);
@@ -663,11 +671,12 @@ describe('Jarvis Dexie V14 additive migration', () => {
     expect(STORES_V12).toEqual(EXPECTED_STORES_V12);
     expect(STORES_V13).toEqual(EXPECTED_STORES_V13);
     expect(STORES_V14).toEqual(EXPECTED_STORES_V14);
+    expect(STORES_V15).toEqual(EXPECTED_STORES_V15);
     expect(frozenStoreBlock(schemaSource, 'STORES_V1')).toBe(EXPECTED_STORES_V1_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V2')).toBe(EXPECTED_STORES_V2_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V3')).toBe(EXPECTED_STORES_V3_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V4')).toBe(EXPECTED_STORES_V4_SOURCE);
-    expect(DB_VERSION).toBe(14);
+    expect(DB_VERSION).toBe(15);
   });
 
   it('opens durable Browser Chat workspace, import, and permission stores on a fresh V12 database', async () => {
@@ -690,12 +699,12 @@ describe('Jarvis Dexie V14 additive migration', () => {
     expect(database.table('browser_chat_permission_profiles').schema.primKey.name).toBe('id');
   });
 
-  it('opens every prior store plus local Status and CAO claim stores on a fresh V14 database', async () => {
-    const database = createTestJarvisDb(testDbName('jarvis-v14-fresh'));
+  it('opens every prior store plus local Status and CAO stores on a fresh V15 database', async () => {
+    const database = createTestJarvisDb(testDbName('jarvis-v15-fresh'));
     await database.open();
 
     expect(database.tables.map((table) => table.name).sort()).toEqual(
-      Object.keys(STORES_V14).sort(),
+      Object.keys(STORES_V15).sort(),
     );
     expect(database.agents.name).toBe('agents');
     expect(database.settings.name).toBe('settings');
@@ -784,6 +793,9 @@ describe('Jarvis Dexie V14 additive migration', () => {
     >();
     expectTypeOf<JarvisDexie['cao_target_claims']>().toEqualTypeOf<
       Table<CaoTargetClaimRow, [string, string]>
+    >();
+    expectTypeOf<JarvisDexie['cao_control_records']>().toEqualTypeOf<
+      EntityTable<CaoControlRecordRow, 'requestId'>
     >();
     expectTypeOf<JarvisDexie['context_maps']>().toEqualTypeOf<
       EntityTable<ContextMapRecordV2, 'id'>
@@ -1408,12 +1420,52 @@ describe('Jarvis Dexie V14 additive migration', () => {
     const schemaSource = readFileSync(join(__dirname, 'schema.ts'), 'utf8');
     const databaseSource = readFileSync(join(__dirname, 'database.ts'), 'utf8');
 
-    expect(schemaSource).toContain('export const DB_VERSION = 14');
+    expect(schemaSource).toContain('export const DB_VERSION = 15');
     expect(schemaSource).toContain('export const STORES_V14 = {');
     expect(schemaSource).toContain("cao_target_claims: '[kind+targetId]");
     expect(databaseSource).toContain('cao_target_claims!: Table<CaoTargetClaimRow');
     expect(databaseSource).toContain('this.version(14).stores(STORES_V14)');
     expect(databaseSource).not.toContain('.upgrade(');
+  });
+
+  it('registers the additive V15 durable CAO control-record store in the production database', () => {
+    const schemaSource = readFileSync(join(__dirname, 'schema.ts'), 'utf8');
+    const databaseSource = readFileSync(join(__dirname, 'database.ts'), 'utf8');
+
+    expect(schemaSource).toContain('export const DB_VERSION = 15');
+    expect(schemaSource).toContain('export const STORES_V15 = {');
+    expect(schemaSource).toContain("cao_control_records: 'requestId, accountId");
+    expect(databaseSource).toContain('cao_control_records!: EntityTable<CaoControlRecordRow');
+    expect(databaseSource).toContain('this.version(15).stores(STORES_V15)');
+    expect(databaseSource).not.toContain('.upgrade(');
+  });
+
+  it('preserves V14 target claims byte-for-byte while adding an empty V15 control-record store', async () => {
+    const name = testDbName('jarvis-v14-to-v15-cao-controls');
+    const legacy = new Dexie(name, TEST_INDEXED_DB);
+    openedDatabases.add(legacy);
+    legacy.version(14).stores(STORES_V14);
+    await legacy.open();
+    const preserved = {
+      kind: 'chat',
+      targetId: 'chat-v14',
+      accountId: 'account-v14',
+      workspaceId: 'workspace-v14',
+      projectId: 'project-v14',
+      runId: 'jrun-v14',
+      leaseId: 'lease-v14',
+      targetRevision: 14,
+      claimedAt: 14,
+      expiresAt: 15,
+    };
+    await legacy.table('cao_target_claims').add(preserved);
+    legacy.close();
+
+    const upgraded = createTestJarvisDb(name);
+    await upgraded.open();
+
+    await expect(upgraded.cao_target_claims.toArray()).resolves.toEqual([preserved]);
+    await expect(upgraded.table('cao_control_records').toArray()).resolves.toEqual([]);
   });
 
   it('preserves V13 rows byte-for-byte while adding an empty CAO claim store', async () => {

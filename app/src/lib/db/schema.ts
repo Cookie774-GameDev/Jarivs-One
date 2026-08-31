@@ -231,6 +231,37 @@ export type CaoTargetClaimRow = {
   expiresAt: number;
 };
 
+/** Durable compare-and-save envelope for one exact CAO control request. */
+export type CaoControlRecordRow = {
+  schemaVersion: 1;
+  revision: number;
+  requestId: string;
+  runId: string;
+  accountId: string;
+  workspaceId: string;
+  projectId: string;
+  command: {
+    action: 'supervise' | 'diagnose' | 'restart' | 'verify' | 'grade' | 'force-check' | 'cancel';
+    selectors: Array<{
+      kind: 'chat' | 'terminal';
+      selector: string;
+      by: 'id' | 'title';
+    }>;
+    source: 'natural-language' | 'catalog-reference';
+  };
+  targets: Array<{
+    kind: 'chat' | 'terminal';
+    targetId: string;
+    revision: number;
+  }>;
+  status: 'queued' | 'awaiting_approval' | 'running' | 'completed' | 'failed' | 'cancelled';
+  approvalId?: string;
+  leaseId?: string;
+  receiptId?: string;
+  errorCode?: string;
+  updatedAt: number;
+};
+
 export type JarvisModelSnapshotRow = {
   connection_id?: string;
   provider_id: string;
@@ -770,8 +801,8 @@ export type BrowserChatPermissionProfileRow = {
 };
 
 export const DB_NAME = 'jarvis-v1';
-/** Current schema version — bumped to 14 for canonical CAO target ownership. */
-export const DB_VERSION = 14;
+/** Current schema version — bumped to 15 for durable CAO control requests. */
+export const DB_VERSION = 15;
 
 /**
  * Dexie store schema strings.
@@ -983,6 +1014,13 @@ export const STORES_V14 = {
   cao_target_claims: '[kind+targetId], accountId, workspaceId, projectId, runId, leaseId, expiresAt, [runId+leaseId], [accountId+workspaceId+projectId]',
 } as const;
 
-export const STORES = STORES_V14;
+/** V15 adds local-only durable CAO control request envelopes. */
+// prettier-ignore
+export const STORES_V15 = {
+  ...STORES_V14,
+  cao_control_records: 'requestId, accountId, workspaceId, projectId, runId, status, [accountId+workspaceId+projectId], updatedAt',
+} as const;
+
+export const STORES = STORES_V15;
 
 export type StoreName = keyof typeof STORES;
