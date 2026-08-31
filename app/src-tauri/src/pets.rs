@@ -413,6 +413,7 @@ fn geometry_path(app: &AppHandle) -> Option<PathBuf> {
 }
 
 pub fn load_geometry(app: &AppHandle) -> PetGeometryState {
+    ensure_detached_pet_hosts_materialized(app);
     if let Some(path) = geometry_path(app) {
         if let Some(geometry) = read_geometry(&path) {
             return geometry;
@@ -1277,6 +1278,26 @@ fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
     Ok(PetOverlayAcquire::Ready { created: true })
 }
 
+fn ensure_detached_pet_hosts_materialized(app: &AppHandle) {
+    // `load_geometry` is called from Tauri's setup hook while the runtime still
+    // owns an authoritative event-loop target. Create both renderer-attached
+    // hosts hidden here; command-time `create_window` dispatch is intentionally
+    // fire-and-forget in tauri-runtime-wry and cannot report native creation
+    // failure back to the caller.
+    if app.get_webview_window(PET_OVERLAY_LABEL).is_none() {
+        if let Err(error) = build_pet_overlay(app, false) {
+            #[cfg(debug_assertions)]
+            eprintln!("[pets] setup pet-overlay build failed: {error}");
+        }
+    }
+    if app.get_webview_window(PET_MINI_PANEL_LABEL).is_none() {
+        if let Err(error) = build_pet_panel(app, false) {
+            #[cfg(debug_assertions)]
+            eprintln!("[pets] setup pet-mini-panel build failed: {error}");
+        }
+    }
+}
+
 fn schedule_pet_overlay_build(app: &AppHandle) -> Result<(), String> {
     let app_for_schedule = app.clone();
     std::thread::Builder::new()
@@ -1298,7 +1319,7 @@ fn schedule_pet_overlay_build(app: &AppHandle) -> Result<(), String> {
                 {
                     return;
                 }
-                if let Err(error) = build_pet_overlay(&app_for_build) {
+                if let Err(error) = build_pet_overlay(&app_for_build, true) {
                     #[cfg(debug_assertions)]
                     eprintln!("[pets] pet-overlay main-thread build failed: {error}");
                 }
@@ -1311,7 +1332,7 @@ fn schedule_pet_overlay_build(app: &AppHandle) -> Result<(), String> {
         .map_err(|error| format!("failed to schedule pet-overlay window: {error}"))
 }
 
-fn build_pet_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
+fn build_pet_overlay(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
     WebviewWindowBuilder::new(app, PET_OVERLAY_LABEL, pet_webview_url(app, "pet-overlay")?)
         .title("VibeSpace Pet")
         .inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
@@ -1326,7 +1347,7 @@ fn build_pet_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
         // native host. Materialize the detached host during the main-thread
         // build; the bounded configure path immediately applies final geometry
         // and visibility, and later hide/show calls reuse the same surface.
-        .visible(true)
+        .visible(visible)
         .focused(false)
         .shadow(false)
         .background_color(tauri::window::Color(0, 0, 0, 0))
@@ -2210,8 +2231,9 @@ mod tests {
             assert!(!builder.contains("host.add_child("));
         }
         let overlay_builder = &source[overlay_start..overlay_end];
-        assert!(overlay_builder.contains(".visible(true)"));
-        assert!(!overlay_builder.contains(".visible(false)"));
+        assert!(overlay_builder.contains(".visible(visible)"));
+        assert!(source.contains("build_pet_overlay(app, false)"));
+        assert!(source.contains("build_pet_overlay(&app_for_build, true)"));
         let panel_builder = &source[panel_start..panel_end];
         assert!(panel_builder.contains(".visible(visible)"));
         assert!(source.contains("schedule_pet_panel_build(app, true)?"));
@@ -2385,6 +2407,36 @@ mod tests {
         assert!(panel.contains("pet-mini-panel-create"));
         assert!(panel.contains("PET_DETACHED_BUILD_DELAY_MS"));
         assert!(panel.find("sleep").unwrap() < panel.find("run_on_main_thread").unwrap());
+    }
+
+    #[test]
+    fn detached_pet_hosts_are_materialized_during_tauri_setup() {
+        let source = include_str!("pets.rs");
+        let tests_start = source.find("mod tests {").expect("test module exists");
+        let production = &source[..tests_start];
+
+        let load_start = production
+            .find("pub fn load_geometry")
+            .expect("setup geometry seam exists");
+        let load_end = production[load_start..]
+            .find("pub fn save_geometry")
+            .map(|offset| load_start + offset)
+            .expect("setup geometry seam is bounded");
+        assert!(production[load_start..load_end]
+            .contains("ensure_detached_pet_hosts_materialized(app)"));
+
+        let materialize_start = production
+            .find("fn ensure_detached_pet_hosts_materialized")
+            .expect("setup materializer exists");
+        let materialize_end = production[materialize_start..]
+            .find("fn schedule_pet_overlay_build")
+            .map(|offset| materialize_start + offset)
+            .expect("setup materializer is bounded");
+        let materialize = &production[materialize_start..materialize_end];
+        assert!(materialize.contains("build_pet_overlay(app, false)"));
+        assert!(materialize.contains("build_pet_panel(app, false)"));
+        assert!(!materialize.contains("run_on_main_thread"));
+        assert!(!materialize.contains("spawn"));
     }
 
     #[test]
