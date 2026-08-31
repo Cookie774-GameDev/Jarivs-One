@@ -21,6 +21,8 @@ const MINIMUM_OPENCODE_VERSION: RuntimeVersion = RuntimeVersion {
 const MAX_REASON_LENGTH: usize = 2_048;
 const MAX_VERSION_OUTPUT_LENGTH: usize = 4_096;
 const VERSION_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+const VERSION_PROBE_TIMEOUT_REASON: &str = "OpenCode version probe timed out.";
+const MAX_TRANSIENT_VERSION_PROBE_RETRIES: usize = 1;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -286,7 +288,7 @@ where
     }
 
     let mut diagnostics = Vec::new();
-    for candidate in candidates {
+    'candidate: for candidate in candidates {
         let fingerprint_before = match fingerprinter(&candidate.path) {
             Ok(fingerprint) => fingerprint,
             Err(error) => {
@@ -294,11 +296,40 @@ where
                 continue;
             }
         };
-        let output = match probe(&candidate.path) {
-            Ok(output) => output,
-            Err(error) => {
-                diagnostics.push(error);
-                continue;
+        let mut transient_retries = 0;
+        let output = loop {
+            match probe(&candidate.path) {
+                Ok(output) => break output,
+                Err(error)
+                    if error == VERSION_PROBE_TIMEOUT_REASON
+                        && transient_retries < MAX_TRANSIENT_VERSION_PROBE_RETRIES =>
+                {
+                    let Some(canonical_retry) = canonical_native_file(&candidate.path) else {
+                        diagnostics.push(
+                            "OpenCode executable changed during its version probe.".to_string(),
+                        );
+                        continue 'candidate;
+                    };
+                    let fingerprint_retry = match fingerprinter(&canonical_retry) {
+                        Ok(fingerprint) => fingerprint,
+                        Err(error) => {
+                            diagnostics.push(error);
+                            continue 'candidate;
+                        }
+                    };
+                    if canonical_retry != candidate.path || fingerprint_retry != fingerprint_before
+                    {
+                        diagnostics.push(
+                            "OpenCode executable changed during its version probe.".to_string(),
+                        );
+                        continue 'candidate;
+                    }
+                    transient_retries += 1;
+                }
+                Err(error) => {
+                    diagnostics.push(error);
+                    continue 'candidate;
+                }
             }
         };
         let Some(canonical_after) = canonical_native_file(&candidate.path) else {
@@ -454,7 +485,7 @@ fn probe_native_version(path: &Path) -> Result<String, String> {
             let _ = child.wait();
             let _ = stdout_reader.join();
             let _ = stderr_reader.join();
-            return Err("OpenCode version probe timed out.".to_string());
+            return Err(VERSION_PROBE_TIMEOUT_REASON.to_string());
         }
         thread::sleep(Duration::from_millis(20));
     };
@@ -927,6 +958,49 @@ mod tests {
 
         assert_eq!(result.status, OpenCodeRuntimeStatus::SystemCompatible);
         assert_eq!(fingerprint_reads.get(), 2);
+    }
+
+    #[test]
+    fn detection_retries_one_transient_timeout_with_identity_checks() {
+        let fixture = FixtureRoot::new("detect-transient-timeout");
+        fixture.native("roaming/npm/node_modules/opencode-ai/bin/opencode.exe");
+        let context = context(
+            Vec::new(),
+            BTreeMap::from([(
+                "APPDATA".to_string(),
+                fixture
+                    .path()
+                    .join("roaming")
+                    .to_string_lossy()
+                    .into_owned(),
+            )]),
+            fixture.path().join("missing-managed"),
+        );
+        let probe_attempts = Cell::new(0_u8);
+        let fingerprint_reads = Cell::new(0_u8);
+
+        let result = detect_with_probe_and_fingerprinter(
+            &OpenCodeRuntimeState::default(),
+            &context,
+            |_| {
+                probe_attempts.set(probe_attempts.get() + 1);
+                if probe_attempts.get() == 1 {
+                    Err("OpenCode version probe timed out.".to_string())
+                } else {
+                    Ok("opencode 1.18.23".to_string())
+                }
+            },
+            |path| {
+                fingerprint_reads.set(fingerprint_reads.get() + 1);
+                fingerprint_sha256(path)
+            },
+        )
+        .expect("transient timeout recovery");
+
+        assert_eq!(result.status, OpenCodeRuntimeStatus::SystemCompatible);
+        assert_eq!(result.version.as_deref(), Some("1.18.23"));
+        assert_eq!(probe_attempts.get(), 2);
+        assert_eq!(fingerprint_reads.get(), 3);
     }
 
     #[test]
