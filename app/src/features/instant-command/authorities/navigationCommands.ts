@@ -55,7 +55,7 @@ function invalid(message: string, code: 'target_missing' | 'queue_failed' = 'que
   return { ok: false as const, code, message };
 }
 
-export async function executeNavigationCommand(
+async function executeNavigationCommandUnsafe(
   request: NavigationCommandRequest,
   port: NavigationAuthorityPort = defaultPort,
   signal?: AbortSignal,
@@ -103,6 +103,13 @@ export async function executeNavigationCommand(
     return success(`Opened Settings → ${section}.`);
   }
   if (request.id === 'connections.open') {
+    const keys = Object.keys(request.slots);
+    if (
+      keys.length > 1 ||
+      (keys.length === 1 && (keys[0] !== 'section' || request.slots.section !== 'providers'))
+    ) {
+      return invalid('Provider connections do not accept command arguments.');
+    }
     port.openSettings('providers');
     return success('Opened provider connections.');
   }
@@ -125,4 +132,16 @@ export async function executeNavigationCommand(
     return success(`Fullscreen ${observed ? 'on' : 'off'}.`);
   }
   return invalid('That navigation command is not implemented.');
+}
+
+export async function executeNavigationCommand(
+  request: NavigationCommandRequest,
+  port: NavigationAuthorityPort = defaultPort,
+  signal?: AbortSignal,
+): Promise<InstantResult> {
+  try {
+    return await executeNavigationCommandUnsafe(request, port, signal);
+  } catch {
+    return invalid('Navigation command failed.');
+  }
 }

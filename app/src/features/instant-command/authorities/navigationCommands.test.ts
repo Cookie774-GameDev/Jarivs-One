@@ -71,4 +71,37 @@ describe('executeNavigationCommand', () => {
     ).resolves.toEqual({ ok: true, code: 'opened', message: 'Opened provider connections.' });
     expect(port.openSettings).toHaveBeenCalledWith('providers');
   });
+
+  it.each([
+    { section: 'providers', apiKey: 'must-not-enter-command' },
+    { section: 'voice' },
+    { provider: 'openai' },
+  ])('rejects non-exact /connect slots before opening Providers', async (slots) => {
+    const port = authority();
+    const result = await executeNavigationCommand({ id: 'connections.open', slots }, port);
+    expect(result).toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Provider connections do not accept command arguments.',
+    });
+    expect(port.openSettings).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain('must-not-enter-command');
+  });
+
+  it('redacts navigation adapter failures from receipts', async () => {
+    const port = authority();
+    vi.mocked(port.openSettings).mockImplementationOnce(() => {
+      throw new Error('private provider surface detail');
+    });
+    const result = await executeNavigationCommand(
+      { id: 'connections.open', slots: { section: 'providers' } },
+      port,
+    );
+    expect(result).toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Navigation command failed.',
+    });
+    expect(JSON.stringify(result)).not.toContain('private provider surface detail');
+  });
 });
