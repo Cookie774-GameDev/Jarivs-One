@@ -20,19 +20,45 @@ const ACTION_BY_ID: Readonly<Record<string, PlaybackAction>> = Object.freeze({
   'music.mute': 'mute',
   'music.unmute': 'unmute',
 });
+const MEDIA_COMMANDS = new Set([
+  ...Object.keys(ACTION_BY_ID),
+  'music.volume',
+  'music.track',
+  'ambient.set',
+]);
+
+function hasExactKeys(value: object, expectedKeys: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...expectedKeys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+function validRequestSchema(request: Readonly<{ id: string; value?: number; text?: string }>) {
+  if (request.id === 'music.volume') return hasExactKeys(request, ['id', 'value']);
+  if (request.id === 'music.track' || request.id === 'ambient.set') {
+    return hasExactKeys(request, ['id', 'text']);
+  }
+  return hasExactKeys(request, ['id']);
+}
 
 export async function executeMediaCommand(
   request: Readonly<{ id: string; value?: number; text?: string }>,
   port: MediaCommandPort,
 ): Promise<InstantResult> {
   try {
+    if (typeof request.id !== 'string' || !MEDIA_COMMANDS.has(request.id)) {
+      return { ok: false, code: 'queue_failed', message: 'Unknown media command.' };
+    }
+    if (!validRequestSchema(request)) {
+      return { ok: false, code: 'queue_failed', message: 'Media command arguments are invalid.' };
+    }
     if (request.id === 'music.volume') {
       if (!Number.isFinite(request.value)) {
         return { ok: false, code: 'queue_failed', message: 'Music volume must be a number.' };
       }
       const requested = Math.max(0, Math.min(100, Math.round(request.value!)));
       const observed = await port.setVolume(requested);
-      if (!Number.isFinite(observed)) {
+      if (!Number.isFinite(observed) || observed < 0 || observed > 100) {
         return { ok: false, code: 'queue_failed', message: 'Music volume is unavailable.' };
       }
       const canonical = Math.max(0, Math.min(100, Math.round(observed)));
@@ -40,7 +66,7 @@ export async function executeMediaCommand(
     }
 
     if (request.id === 'music.track' || request.id === 'ambient.set') {
-      const text = request.text?.trim() ?? '';
+      const text = typeof request.text === 'string' ? request.text.trim() : '';
       if (!text || text.length > 200 || /[\u0000-\u001f\u007f]/u.test(text)) {
         const subject = request.id === 'music.track' ? 'track' : 'ambient sound';
         return { ok: false, code: 'queue_failed', message: `Name a bounded ${subject}.` };
@@ -59,7 +85,9 @@ export async function executeMediaCommand(
         : { ok: true, code: 'opened', message: 'Ambient sound changed.' };
     }
 
-    const action = ACTION_BY_ID[request.id];
+    const action = Object.prototype.hasOwnProperty.call(ACTION_BY_ID, request.id)
+      ? ACTION_BY_ID[request.id]
+      : undefined;
     if (!action) return { ok: false, code: 'queue_failed', message: 'Unknown media command.' };
     await port.action(action);
     return { ok: true, code: 'opened', message: `Music ${action}.` };

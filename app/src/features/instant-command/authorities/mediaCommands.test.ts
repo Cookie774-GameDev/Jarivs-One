@@ -67,13 +67,17 @@ describe('media command authority', () => {
     });
   });
 
-  it('bounds the observed volume and rejects a non-numeric observation', async () => {
+  it('rejects out-of-range and non-numeric volume observations without inventing state', async () => {
     await expect(
       executeMediaCommand(
         { id: 'music.volume', value: 50 },
         { action: vi.fn(), setVolume: vi.fn(async () => 140) },
       ),
-    ).resolves.toEqual({ ok: true, code: 'opened', message: 'Music volume is 100.' });
+    ).resolves.toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Music volume is unavailable.',
+    });
 
     await expect(
       executeMediaCommand(
@@ -101,4 +105,67 @@ describe('media command authority', () => {
     expect(result).toEqual({ ok: false, code: 'queue_failed', message: 'Media command failed.' });
     expect(JSON.stringify(result)).not.toContain('private backend detail');
   });
+
+  it.each(['toString', '__proto__', 'music.play\u0000', `music.${'x'.repeat(100)}`])(
+    'rejects unknown or inherited command IDs before authority dispatch: %s',
+    async (id) => {
+      const action = vi.fn();
+      const setVolume = vi.fn();
+      await expect(executeMediaCommand({ id }, { action, setVolume })).resolves.toEqual({
+        ok: false,
+        code: 'queue_failed',
+        message: 'Unknown media command.',
+      });
+      expect(action).not.toHaveBeenCalled();
+      expect(setVolume).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { id: 'music.play', value: 50 },
+    { id: 'music.volume', value: 50, text: 'secret-extra' },
+    { id: 'music.track', text: 'Northern Lights', apiKey: 'must-not-enter-command' },
+    { id: 'ambient.set', text: 'Rain', rawMessage: 'private conversation' },
+  ])('rejects non-exact media request fields before authority dispatch: $id', async (request) => {
+    const action = vi.fn();
+    const setVolume = vi.fn();
+    const selectTrack = vi.fn();
+    const setAmbient = vi.fn();
+    const result = await executeMediaCommand(request, {
+      action,
+      setVolume,
+      selectTrack,
+      setAmbient,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Media command arguments are invalid.',
+    });
+    expect(JSON.stringify(result)).not.toContain('must-not-enter-command');
+    expect(JSON.stringify(result)).not.toContain('private conversation');
+    expect(action).not.toHaveBeenCalled();
+    expect(setVolume).not.toHaveBeenCalled();
+    expect(selectTrack).not.toHaveBeenCalled();
+    expect(setAmbient).not.toHaveBeenCalled();
+  });
+
+  it.each([42, true, {}, []])(
+    'classifies malformed selection text without leaking a runtime exception: %j',
+    async (text) => {
+      const selectTrack = vi.fn();
+      await expect(
+        executeMediaCommand(
+          { id: 'music.track', text: text as never },
+          { action: vi.fn(), setVolume: vi.fn(), selectTrack },
+        ),
+      ).resolves.toEqual({
+        ok: false,
+        code: 'queue_failed',
+        message: 'Name a bounded track.',
+      });
+      expect(selectTrack).not.toHaveBeenCalled();
+    },
+  );
 });
