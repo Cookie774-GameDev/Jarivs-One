@@ -4,8 +4,19 @@ import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import type { SendDetail } from '@/lib/ai/runtime';
 import { selectionFromOption, type ChatModelSelection } from '@/lib/ai/modelSelection';
 import type { ReasoningPreference } from '@/lib/ai/reasoningControls';
-import { chatRepo, messageRepo, projectRepo, workspaceRepo } from '@/lib/db/repositories';
+import {
+  chatDispatchRepo,
+  chatRepo,
+  messageRepo,
+  projectRepo,
+  workspaceRepo,
+  type ChatDispatchClaimInput,
+  type ChatDispatchClaimResult,
+  type ChatDispatchTransitionInput,
+  type ChatDispatchTransitionResult,
+} from '@/lib/db/repositories';
 import type { Project, Workspace } from '@/lib/db/schema';
+import { captureSyncQueueOwner, type SyncQueueOwnerSnapshot } from '@/lib/cloudSyncQueueOwner';
 import { useAuthStore } from '@/stores/auth';
 import type { Chat, Message, Part } from '@/types/chat';
 import type { ChatId, MessageId, ProjectId, ProviderId, WorkspaceId } from '@/types/common';
@@ -65,20 +76,22 @@ export type ActiveDispatchScope = Readonly<{
   epoch: number;
 }>;
 
-type PersistedUserMessageInput = Readonly<{
-  id: MessageId;
-  chat_id: ChatId;
-  role: 'user';
-  parts: Part[];
-}>;
-
 export type ChatToChatDispatchDeps = {
   getChat: (id: string) => Promise<Chat | undefined>;
   getWorkspace: (id: string) => Promise<Workspace | undefined>;
   getProject: (id: string) => Promise<Project | undefined>;
   getMessage: (id: string) => Promise<Message | undefined>;
-  persistMessage: (input: PersistedUserMessageInput) => Promise<Message>;
-  updateMessageParts: (id: string, parts: Part[]) => Promise<Message>;
+  captureSyncOwner: () => SyncQueueOwnerSnapshot;
+  claimChatDispatch: (
+    input: ChatDispatchClaimInput,
+    syncOwner: SyncQueueOwnerSnapshot,
+    authorize: () => boolean,
+  ) => Promise<ChatDispatchClaimResult>;
+  transitionChatDispatch: (
+    input: ChatDispatchTransitionInput,
+    syncOwner: SyncQueueOwnerSnapshot,
+    authorize: () => boolean,
+  ) => Promise<ChatDispatchTransitionResult>;
   readActiveScope: () => ActiveDispatchScope | null;
   readModelSelection: (target: Chat) => ChatModelSelection | undefined;
   readReasoningPreference: (chatId: string) => ReasoningPreference;
@@ -173,13 +186,44 @@ function exactKeys(record: Record<string, unknown>, keys: readonly string[]): bo
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 
+function decodeUnsafeSchemeProbe(value: string): string {
+  let probe = value.normalize('NFKC');
+  for (let pass = 0; pass < 3; pass += 1) {
+    const decodedEntities = probe
+      .replace(/&#(\d{1,7});?/gu, (_match, digits: string) => {
+        const codePoint = Number.parseInt(digits, 10);
+        return Number.isSafeInteger(codePoint) && codePoint <= 0x10ffff
+          ? String.fromCodePoint(codePoint)
+          : '\ufffd';
+      })
+      .replace(/&#x([\da-f]{1,6});?/giu, (_match, digits: string) => {
+        const codePoint = Number.parseInt(digits, 16);
+        return Number.isSafeInteger(codePoint) && codePoint <= 0x10ffff
+          ? String.fromCodePoint(codePoint)
+          : '\ufffd';
+      })
+      .replace(/&(colon|tab|newline);/giu, (_match, entity: string) =>
+        entity.toLowerCase() === 'colon' ? ':' : entity.toLowerCase() === 'tab' ? '\t' : '\n',
+      );
+    let decodedPercent = decodedEntities;
+    try {
+      decodedPercent = decodeURIComponent(decodedEntities);
+    } catch {
+      // Malformed encodings remain visible to the exact byte checks below.
+    }
+    if (decodedPercent === probe) break;
+    probe = decodedPercent;
+  }
+  return probe;
+}
+
+function containsUnsafeEmbeddedScheme(value: string): boolean {
+  return /(?:^|[=\s"'(<\[{,:])(?:data|blob)\s*:/iu.test(decodeUnsafeSchemeProbe(value));
+}
+
 function safeText(value: unknown, maximumLength: number): string | null {
   if (typeof value !== 'string' || value.length > maximumLength) return null;
-  if (
-    /(?:^|[\s"'(])(?:data:[^\s,;]{1,200};base64,|blob:)/iu.test(value) ||
-    /[\u0000\ufffd]/u.test(value)
-  )
-    return null;
+  if (containsUnsafeEmbeddedScheme(value) || /[\u0000\ufffd]/u.test(value)) return null;
   return sanitizeChatHandoffText(value);
 }
 
@@ -582,21 +626,77 @@ function receiptFromMarker(
   return Object.freeze({ status: 'pending' as const, ...base });
 }
 
-async function persistState(
+function syncOwnerBindsAuthority(
+  owner: SyncQueueOwnerSnapshot,
+  authority: AuthoritySnapshot,
+): boolean {
+  return authority.identitySource === 'supabase'
+    ? owner.state === 'cloud' && owner.userId === authority.accountId
+    : owner.state === 'unbound';
+}
+
+function currentAuthorityMatches(
   deps: ChatToChatDispatchDeps,
   authority: AuthoritySnapshot,
+  originalOwner: SyncQueueOwnerSnapshot,
+): boolean {
+  const active = deps.readActiveScope();
+  if (
+    !active ||
+    active.accountId !== authority.accountId ||
+    active.identitySource !== authority.identitySource ||
+    active.workspaceId !== authority.activeWorkspaceId ||
+    active.projectId !== authority.activeProjectId ||
+    active.epoch !== authority.epoch
+  ) {
+    return false;
+  }
+  const currentOwner = deps.captureSyncOwner();
+  return (
+    syncOwnerBindsAuthority(currentOwner, authority) &&
+    currentOwner.state === originalOwner.state &&
+    (currentOwner.state !== 'cloud' ||
+      (originalOwner.state === 'cloud' && currentOwner.userId === originalOwner.userId))
+  );
+}
+
+function dispatchTarget(authority: AuthoritySnapshot) {
+  return Object.freeze({
+    chatId: authority.targetChatId as ChatId,
+    workspaceId: authority.targetWorkspaceId as WorkspaceId,
+    projectId: authority.targetProjectId as ProjectId | null,
+  });
+}
+
+async function transitionState(
+  deps: ChatToChatDispatchDeps,
+  authority: AuthoritySnapshot,
+  originalOwner: SyncQueueOwnerSnapshot,
   input: ChatToChatDispatchInput,
   envelope: CanonicalEnvelope,
   messageId: string,
+  expectedParts: Part[],
   state: DispatchState,
   failure?: DispatchFailure,
 ): Promise<boolean> {
   try {
-    const updated = await deps.updateMessageParts(
-      messageId,
-      partsFor(envelope, markerFor(authority, input, messageId, envelope, state, failure)),
+    const result = await deps.transitionChatDispatch(
+      {
+        id: messageId as MessageId,
+        target: dispatchTarget(authority),
+        expectedParts,
+        nextParts: partsFor(
+          envelope,
+          markerFor(authority, input, messageId, envelope, state, failure),
+        ),
+      },
+      originalOwner,
+      () => currentAuthorityMatches(deps, authority, originalOwner),
     );
-    return parseExistingClaim(updated, messageId, authority, input, envelope).kind === 'valid';
+    return (
+      result.status === 'transitioned' &&
+      parseExistingClaim(result.message, messageId, authority, input, envelope).kind === 'valid'
+    );
   } catch {
     return false;
   }
@@ -674,8 +774,11 @@ const browserChatToChatDispatchDeps: ChatToChatDispatchDeps = Object.freeze({
   getWorkspace: (id) => workspaceRepo.getById(id as WorkspaceId),
   getProject: (id) => projectRepo.getById(id as ProjectId),
   getMessage: (id) => messageRepo.getById(id as MessageId),
-  persistMessage: (input) => messageRepo.create(input),
-  updateMessageParts: (id, parts) => messageRepo.update(id as MessageId, { parts }),
+  captureSyncOwner: () => captureSyncQueueOwner(),
+  claimChatDispatch: (input, syncOwner, authorize) =>
+    chatDispatchRepo.claimChatDispatch(input, syncOwner, authorize),
+  transitionChatDispatch: (input, syncOwner, authorize) =>
+    chatDispatchRepo.transitionChatDispatch(input, syncOwner, authorize),
   readActiveScope: readBrowserActiveScope,
   readModelSelection: defaultModelSelection,
   readReasoningPreference: (chatId) => readChatReasoningPreference(chatId),
@@ -709,23 +812,9 @@ export async function dispatchChatToChat(
     );
   const messageId = `msg_handoff_${await digest(`chat-handoff-v${DISPATCH_VERSION}\0${initialAuthority.snapshot.accountId}\0${input.dispatchKey}`)}`;
   if (!stableValue(messageId, 512)) return rejected(input, 'invalid_input');
-  let existing: Message | undefined;
-  try {
-    existing = await deps.getMessage(messageId);
-  } catch {
-    return rejected(input, 'chat_unavailable');
-  }
-  if (existing) {
-    const claim = parseExistingClaim(
-      existing,
-      messageId,
-      initialAuthority.snapshot,
-      input,
-      envelope,
-    );
-    return claim.kind === 'valid'
-      ? receiptFromMarker(input, claim.marker)
-      : rejected(input, 'dispatch_key_conflict');
+  const originalOwner = deps.captureSyncOwner();
+  if (!syncOwnerBindsAuthority(originalOwner, initialAuthority.snapshot)) {
+    return rejected(input, 'access_denied');
   }
   let modelSelection: ChatModelSelection | undefined;
   let reasoningPreference: ReasoningPreference;
@@ -738,47 +827,67 @@ export async function dispatchChatToChat(
     return rejected(input, 'access_denied');
   }
   const pendingMarker = markerFor(initialAuthority.snapshot, input, messageId, envelope, 'pending');
-  let persisted: Message;
+  const pendingParts = partsFor(envelope, pendingMarker);
+  let claimed: ChatDispatchClaimResult;
   try {
-    persisted = await deps.persistMessage({
-      id: messageId as MessageId,
-      chat_id: initialAuthority.target.id,
-      role: 'user',
-      parts: partsFor(envelope, pendingMarker),
-    });
+    claimed = await deps.claimChatDispatch(
+      {
+        message: {
+          id: messageId as MessageId,
+          chat_id: initialAuthority.target.id,
+          role: 'user',
+          parts: pendingParts,
+        },
+        target: dispatchTarget(initialAuthority.snapshot),
+        matchesExisting: (message) =>
+          parseExistingClaim(message, messageId, initialAuthority.snapshot, input, envelope)
+            .kind === 'valid',
+      },
+      originalOwner,
+      () => currentAuthorityMatches(deps, initialAuthority.snapshot, originalOwner),
+    );
   } catch (error) {
-    let winner: Message | undefined;
-    try {
-      winner = await deps.getMessage(messageId);
-    } catch {
-      /* preserve original */
-    }
-    if (!winner) throw error;
-    const claim = parseExistingClaim(winner, messageId, initialAuthority.snapshot, input, envelope);
-    return claim.kind === 'valid'
-      ? receiptFromMarker(input, claim.marker)
-      : rejected(input, 'dispatch_key_conflict');
+    throw error;
   }
-  if (
-    parseExistingClaim(persisted, messageId, initialAuthority.snapshot, input, envelope).kind !==
-    'valid'
-  )
+  if (claimed.status === 'authority_revoked') return rejected(input, 'access_denied');
+  if (claimed.status === 'conflict') return rejected(input, 'dispatch_key_conflict');
+  if (!('message' in claimed)) return rejected(input, 'dispatch_key_conflict');
+  const parsedClaim = parseExistingClaim(
+    claimed.message,
+    messageId,
+    initialAuthority.snapshot,
+    input,
+    envelope,
+  );
+  if (parsedClaim.kind !== 'valid') return rejected(input, 'dispatch_key_conflict');
+  if (claimed.status === 'existing') return receiptFromMarker(input, parsedClaim.marker);
+  if (parsedClaim.marker.state !== 'pending') {
     return rejected(input, 'dispatch_key_conflict');
+  }
   const finalAuthority = await resolveAuthority(input, deps);
   if (
     !finalAuthority.ok ||
-    JSON.stringify(initialAuthority.snapshot) !== JSON.stringify(finalAuthority.snapshot)
+    JSON.stringify(initialAuthority.snapshot) !== JSON.stringify(finalAuthority.snapshot) ||
+    !currentAuthorityMatches(deps, initialAuthority.snapshot, originalOwner)
   ) {
-    await persistState(
-      deps,
-      initialAuthority.snapshot,
-      input,
-      envelope,
-      messageId,
-      'failed',
-      'authority_revoked',
-    );
     return rejected(input, finalAuthority.ok ? 'access_denied' : finalAuthority.reason);
+  }
+  let durablePending: Message | undefined;
+  try {
+    durablePending = await deps.getMessage(messageId);
+  } catch {
+    return rejected(input, 'chat_unavailable');
+  }
+  if (!durablePending) return rejected(input, 'dispatch_key_conflict');
+  const parsedDurable = parseExistingClaim(
+    durablePending,
+    messageId,
+    finalAuthority.snapshot,
+    input,
+    envelope,
+  );
+  if (parsedDurable.kind !== 'valid' || parsedDurable.marker.state !== 'pending') {
+    return rejected(input, 'dispatch_key_conflict');
   }
   const detail: SendDetail = {
     chatId: input.targetChatId,
@@ -790,42 +899,66 @@ export async function dispatchChatToChat(
     accessLevel: runtimePolicy.access,
     automaticModelRoutingEligible: false,
   };
+  if (!currentAuthorityMatches(deps, finalAuthority.snapshot, originalOwner)) {
+    return rejected(input, 'access_denied');
+  }
+  let terminalState: Extract<DispatchState, 'accepted' | 'failed'> = 'accepted';
+  let terminalFailure: DispatchFailure | undefined;
   try {
-    await deps.dispatchKernel(detail);
+    const acceptance = deps.dispatchKernel(detail);
+    await acceptance;
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
-    const failure: DispatchFailure = message.includes('TIMEOUT')
+    terminalState = 'failed';
+    terminalFailure = message.includes('TIMEOUT')
       ? 'runtime_timeout'
       : message.includes('CANCELLED')
         ? 'runtime_cancelled'
         : 'runtime_rejected';
-    const failed = await persistState(
-      deps,
-      finalAuthority.snapshot,
-      input,
-      envelope,
-      messageId,
-      'failed',
-      failure,
-    );
+  }
+  const postRuntimeAuthority = await resolveAuthority(input, deps);
+  if (
+    !postRuntimeAuthority.ok ||
+    JSON.stringify(finalAuthority.snapshot) !== JSON.stringify(postRuntimeAuthority.snapshot) ||
+    !currentAuthorityMatches(deps, finalAuthority.snapshot, originalOwner)
+  ) {
     return Object.freeze({
-      status: failed ? ('failed' as const) : ('pending' as const),
+      status: 'pending' as const,
       dispatchKey: input.dispatchKey,
       targetChatId: input.targetChatId,
       messageId,
-      ...(failed ? { reason: failure } : {}),
     });
   }
-  const accepted = await persistState(
+  const transitioned = await transitionState(
     deps,
-    finalAuthority.snapshot,
+    postRuntimeAuthority.snapshot,
+    originalOwner,
     input,
     envelope,
     messageId,
-    'accepted',
+    pendingParts,
+    terminalState,
+    terminalFailure,
   );
+  if (!transitioned) {
+    return Object.freeze({
+      status: 'pending' as const,
+      dispatchKey: input.dispatchKey,
+      targetChatId: input.targetChatId,
+      messageId,
+    });
+  }
+  if (terminalState === 'accepted') {
+    return Object.freeze({
+      status: 'dispatched' as const,
+      dispatchKey: input.dispatchKey,
+      targetChatId: input.targetChatId,
+      messageId,
+    });
+  }
   return Object.freeze({
-    status: accepted ? ('dispatched' as const) : ('pending' as const),
+    status: 'failed' as const,
+    reason: terminalFailure ?? 'runtime_rejected',
     dispatchKey: input.dispatchKey,
     targetChatId: input.targetChatId,
     messageId,

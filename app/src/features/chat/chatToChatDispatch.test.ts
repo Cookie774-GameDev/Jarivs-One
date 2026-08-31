@@ -1,9 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  cloudSyncQueueOwnerKey,
+  parseSyncQueueOwner,
+  type SyncQueueOwnerSnapshot,
+} from '@/lib/cloudSyncQueueOwner';
 import { createJarvisDb, type JarvisDexie } from '@/lib/db';
+import {
+  createChatDispatchRepository,
+  type ChatDispatchClaimInput,
+  type ChatDispatchClaimResult,
+  type ChatDispatchTransitionInput,
+  type ChatDispatchTransitionResult,
+} from '@/lib/db/repositories';
 import type { Project, Workspace } from '@/lib/db/schema';
 import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
-import type { Chat, Message, Part } from '@/types/chat';
+import type { Chat, Message } from '@/types/chat';
 import type { ChatId, MessageId, ProjectId, WorkspaceId } from '@/types/common';
 
 import type { ChatHandoffProjectionV1 } from './chatHandoffProjection';
@@ -114,25 +126,72 @@ function createHarness(options: HarnessOptions = {}) {
     projectId: 'project-1',
     epoch: 0,
   };
-  const persistMessage = vi.fn(
-    async (input: Parameters<ChatToChatDispatchDeps['persistMessage']>[0]) => {
+  const syncOwner = Object.freeze({
+    state: 'unbound',
+    capturedAt: 0,
+  }) satisfies SyncQueueOwnerSnapshot;
+  const claimChatDispatch = vi.fn(
+    async (
+      input: ChatDispatchClaimInput,
+      _owner: SyncQueueOwnerSnapshot,
+      authorize: () => boolean,
+    ): Promise<ChatDispatchClaimResult> => {
       if (options.persistenceError) throw options.persistenceError;
-      if (messages.has(String(input.id))) throw new Error('ConstraintError');
+      if (!authorize()) return { status: 'authority_revoked' };
+      const existing = messages.get(String(input.message.id));
+      if (existing) {
+        return input.matchesExisting(clone(existing))
+          ? { status: 'existing', message: clone(existing) }
+          : { status: 'conflict' };
+      }
       await Promise.resolve();
-      const row: Message = { ...clone(input), created_at: 30, updated_at: 30 };
-      if (messages.has(String(row.id))) throw new Error('ConstraintError');
+      if (!authorize()) return { status: 'authority_revoked' };
+      const concurrentlyExisting = messages.get(String(input.message.id));
+      if (concurrentlyExisting) {
+        return input.matchesExisting(clone(concurrentlyExisting))
+          ? { status: 'existing', message: clone(concurrentlyExisting) }
+          : { status: 'conflict' };
+      }
+      const row: Message = { ...clone(input.message), created_at: 30, updated_at: 30 };
       messages.set(String(row.id), row);
-      return clone(row);
+      return { status: 'created', message: clone(row) };
     },
   );
-  const updateMessageParts = vi.fn(async (id: string, parts: Part[]) => {
-    if (options.updateError) throw options.updateError;
-    const current = messages.get(id);
-    if (!current) throw new Error('missing');
-    const updated = { ...current, parts: clone(parts), updated_at: current.updated_at + 1 };
-    messages.set(id, updated);
-    return clone(updated);
-  });
+  const transitionChatDispatch = vi.fn(
+    async (
+      input: ChatDispatchTransitionInput,
+      _owner: SyncQueueOwnerSnapshot,
+      authorize: () => boolean,
+    ): Promise<ChatDispatchTransitionResult> => {
+      if (options.updateError) throw options.updateError;
+      if (!authorize()) return { status: 'authority_revoked' };
+      const current = messages.get(String(input.id));
+      if (!current) return { status: 'missing' };
+      if (
+        current.chat_id !== input.target.chatId ||
+        JSON.stringify(current.parts) !== JSON.stringify(input.expectedParts)
+      ) {
+        return { status: 'conflict' };
+      }
+      await Promise.resolve();
+      if (!authorize()) return { status: 'authority_revoked' };
+      const durable = messages.get(String(input.id));
+      if (
+        !durable ||
+        durable.chat_id !== input.target.chatId ||
+        JSON.stringify(durable.parts) !== JSON.stringify(input.expectedParts)
+      ) {
+        return durable ? { status: 'conflict' } : { status: 'missing' };
+      }
+      const updated = {
+        ...durable,
+        parts: clone(input.nextParts),
+        updated_at: durable.updated_at + 1,
+      };
+      messages.set(String(input.id), updated);
+      return { status: 'transitioned', message: clone(updated) };
+    },
+  );
   const dispatchKernel = vi.fn(async (detail) => {
     dispatches.push(detail);
     if (options.runtimeError) throw options.runtimeError;
@@ -142,8 +201,9 @@ function createHarness(options: HarnessOptions = {}) {
     getWorkspace: async (id) => clone(workspaces.get(id)),
     getProject: async (id) => clone(projects.get(id)),
     getMessage: async (id) => clone(messages.get(id)),
-    persistMessage,
-    updateMessageParts,
+    captureSyncOwner: () => syncOwner,
+    claimChatDispatch,
+    transitionChatDispatch,
     readActiveScope: () => clone(scope),
     readModelSelection: () => ({ mode: 'single', providerId: 'openai', modelId: 'gpt-5.5' }),
     readReasoningPreference: () => ({ mode: 'normal', effortOverride: 'high' }),
@@ -161,8 +221,8 @@ function createHarness(options: HarnessOptions = {}) {
     projects,
     messages,
     dispatches,
-    persistMessage,
-    updateMessageParts,
+    claimChatDispatch,
+    transitionChatDispatch,
     dispatchKernel,
     deps,
     setScope(next: ActiveDispatchScope) {
@@ -188,7 +248,7 @@ describe('dispatchChatToChat', () => {
     const receipt = await dispatchChatToChat(INPUT, harness.deps);
 
     expect(receipt.status).toBe('dispatched');
-    expect(harness.persistMessage).toHaveBeenCalledOnce();
+    expect(harness.claimChatDispatch).toHaveBeenCalledOnce();
     expect(harness.dispatchKernel).toHaveBeenCalledOnce();
     const message = [...harness.messages.values()][0]!;
     expect(message.role).toBe('user');
@@ -213,7 +273,7 @@ describe('dispatchChatToChat', () => {
     const first = await dispatchChatToChat(INPUT, harness.deps);
     const second = await dispatchChatToChat(INPUT, harness.deps);
     expect(second).toEqual(first);
-    expect(harness.persistMessage).toHaveBeenCalledOnce();
+    expect(harness.messages.size).toBe(1);
     expect(harness.dispatchKernel).toHaveBeenCalledOnce();
   });
 
@@ -262,12 +322,12 @@ describe('dispatchChatToChat', () => {
 
   it('detects account A to B to A epoch changes and emits nothing after persistence', async () => {
     const harness = createHarness();
-    harness.deps.persistMessage = vi.fn(async (input) => {
-      const row: Message = { ...clone(input), created_at: 30, updated_at: 30 };
-      harness.messages.set(String(row.id), row);
+    const claim = harness.deps.claimChatDispatch;
+    harness.deps.claimChatDispatch = vi.fn(async (input, owner, authorize) => {
+      const result = await claim(input, owner, authorize);
       harness.setScope({ ...harness.scope(), accountId: 'account-b', epoch: 1 });
       harness.setScope({ ...harness.scope(), accountId: 'account-a', epoch: 2 });
-      return clone(row);
+      return result;
     });
 
     await expect(dispatchChatToChat(INPUT, harness.deps)).resolves.toMatchObject({
@@ -276,18 +336,17 @@ describe('dispatchChatToChat', () => {
     });
     expect(harness.dispatchKernel).not.toHaveBeenCalled();
     expect(durablePart([...harness.messages.values()][0]!)?.dispatch).toMatchObject({
-      state: 'failed',
-      failure: 'authority_revoked',
+      state: 'pending',
     });
   });
 
   it('revalidates archive and project membership immediately after persistence', async () => {
     const archived = createHarness();
-    archived.deps.persistMessage = vi.fn(async (input) => {
-      const row: Message = { ...clone(input), created_at: 30, updated_at: 30 };
-      archived.messages.set(String(row.id), row);
+    const archivedClaim = archived.deps.claimChatDispatch;
+    archived.deps.claimChatDispatch = vi.fn(async (input, owner, authorize) => {
+      const result = await archivedClaim(input, owner, authorize);
       archived.chats.set('supervisor', { ...TARGET_CHAT, archived: true });
-      return clone(row);
+      return result;
     });
     await expect(dispatchChatToChat(INPUT, archived.deps)).resolves.toMatchObject({
       status: 'rejected',
@@ -296,11 +355,11 @@ describe('dispatchChatToChat', () => {
     expect(archived.dispatchKernel).not.toHaveBeenCalled();
 
     const moved = createHarness();
-    moved.deps.persistMessage = vi.fn(async (input) => {
-      const row: Message = { ...clone(input), created_at: 30, updated_at: 30 };
-      moved.messages.set(String(row.id), row);
+    const movedClaim = moved.deps.claimChatDispatch;
+    moved.deps.claimChatDispatch = vi.fn(async (input, owner, authorize) => {
+      const result = await movedClaim(input, owner, authorize);
       moved.projects.set('project-1', { ...PROJECT, workspace_id: 'workspace-2' as WorkspaceId });
-      return clone(row);
+      return result;
     });
     await expect(dispatchChatToChat(INPUT, moved.deps)).resolves.toMatchObject({
       status: 'rejected',
@@ -364,6 +423,36 @@ describe('dispatchChatToChat', () => {
       { ...PROJECTION, olderDigest: 'data:application/octet-stream;base64,AAAA' },
     ],
     [
+      'unquoted embedded data attribute',
+      { ...PROJECTION, olderDigest: '<img src=data:application/octet-stream;base64,AAAA>' },
+    ],
+    [
+      'quoted mixed-case blob attribute',
+      { ...PROJECTION, olderDigest: '<a HREF = "BlOb:https://example.test/private-id">' },
+    ],
+    [
+      'Markdown data destination',
+      { ...PROJECTION, olderDigest: '[attachment](DaTa:application/octet-stream;base64,AAAA)' },
+    ],
+    [
+      'percent-encoded data scheme',
+      { ...PROJECTION, olderDigest: 'src=%64%61%74%61%3Aapplication/octet-stream;base64,AAAA' },
+    ],
+    [
+      'HTML-entity encoded blob scheme',
+      { ...PROJECTION, olderDigest: 'href=b&#108;ob&#58;https://example.test/private-id' },
+    ],
+    [
+      'serialized tool-result data payload',
+      {
+        ...PROJECTION,
+        summaries: {
+          ...PROJECTION.summaries,
+          tools: ['{"result":{"src":"data:application/octet-stream;base64,AAAA"}}'],
+        },
+      },
+    ],
+    [
       'oversized collection',
       { ...PROJECTION, recentSections: Array.from({ length: 257 }, () => ({})) },
     ],
@@ -376,7 +465,7 @@ describe('dispatchChatToChat', () => {
         harness.deps,
       ),
     ).resolves.toMatchObject({ status: 'rejected', reason: 'projection_unsafe' });
-    expect(harness.persistMessage).not.toHaveBeenCalled();
+    expect(harness.claimChatDispatch).not.toHaveBeenCalled();
   });
 
   it('persists failed runtime truth and never re-emits it after retry/reload', async () => {
@@ -411,6 +500,63 @@ describe('dispatchChatToChat', () => {
     expect(receipts.every((receipt) => ['dispatched', 'pending'].includes(receipt.status))).toBe(
       true,
     );
+  });
+
+  it('re-reads the exact durable pending row immediately before dispatch', async () => {
+    const harness = createHarness();
+    const claim = harness.deps.claimChatDispatch;
+    harness.deps.claimChatDispatch = vi.fn(async (input, owner, authorize) => {
+      const result = await claim(input, owner, authorize);
+      if (result.status !== 'created') return result;
+      harness.messages.set(String(result.message.id), {
+        ...result.message,
+        parts: [{ kind: 'text', text: 'Concurrent forged row.' }],
+      });
+      return result;
+    });
+
+    await expect(dispatchChatToChat(INPUT, harness.deps)).resolves.toMatchObject({
+      status: 'rejected',
+      reason: 'dispatch_key_conflict',
+    });
+    expect(harness.dispatchKernel).not.toHaveBeenCalled();
+  });
+
+  it('does not persist a terminal state after account authority changes during runtime acceptance', async () => {
+    const harness = createHarness();
+    harness.deps.dispatchKernel = vi.fn(async (detail) => {
+      harness.dispatches.push(detail);
+      harness.setScope({
+        ...harness.scope(),
+        accountId: 'account-b',
+        epoch: harness.scope().epoch + 1,
+      });
+    });
+
+    await expect(dispatchChatToChat(INPUT, harness.deps)).resolves.toMatchObject({
+      status: 'pending',
+    });
+    expect(harness.transitionChatDispatch).not.toHaveBeenCalled();
+    expect(durablePart([...harness.messages.values()][0]!)?.dispatch.state).toBe('pending');
+  });
+
+  it('preserves concurrent pending-envelope drift instead of overwriting it after acceptance', async () => {
+    const harness = createHarness();
+    harness.deps.dispatchKernel = vi.fn(async (detail) => {
+      harness.dispatches.push(detail);
+      const [id, current] = [...harness.messages.entries()][0]!;
+      harness.messages.set(id, {
+        ...current,
+        parts: [{ kind: 'text', text: 'Second connection mutation.' }],
+      });
+    });
+
+    await expect(dispatchChatToChat(INPUT, harness.deps)).resolves.toMatchObject({
+      status: 'pending',
+    });
+    expect(harness.messages.values().next().value?.parts).toEqual([
+      { kind: 'text', text: 'Second connection mutation.' },
+    ]);
   });
 });
 
@@ -486,30 +632,32 @@ describe('durable IndexedDB claim integration', () => {
   function databaseDeps(
     database: JarvisDexie,
     dispatchKernel: ChatToChatDispatchDeps['dispatchKernel'],
+    overrides: Partial<Pick<ChatToChatDispatchDeps, 'captureSyncOwner' | 'readActiveScope'>> = {},
   ): ChatToChatDispatchDeps {
+    const repository = createChatDispatchRepository(database, () => 30);
+    const syncOwner = Object.freeze({
+      state: 'unbound',
+      capturedAt: 0,
+    }) satisfies SyncQueueOwnerSnapshot;
     return {
       getChat: (id) => database.chats.get(id as ChatId),
       getWorkspace: (id) => database.workspaces.get(id as WorkspaceId),
       getProject: (id) => database.projects.get(id as ProjectId),
       getMessage: (id) => database.messages.get(id as MessageId),
-      persistMessage: async (input) => {
-        const row: Message = { ...clone(input), created_at: 30, updated_at: 30 };
-        await database.messages.add(row);
-        return row;
-      },
-      updateMessageParts: async (id, parts) => {
-        await database.messages.update(id as MessageId, { parts: clone(parts), updated_at: 31 });
-        const row = await database.messages.get(id as MessageId);
-        if (!row) throw new Error('missing');
-        return row;
-      },
-      readActiveScope: () => ({
-        accountId: 'account-a',
-        identitySource: 'local',
-        workspaceId: 'workspace-1',
-        projectId: 'project-1',
-        epoch: 0,
-      }),
+      captureSyncOwner: overrides.captureSyncOwner ?? (() => syncOwner),
+      claimChatDispatch: (input, owner, authorize) =>
+        repository.claimChatDispatch(input, owner, authorize),
+      transitionChatDispatch: (input, owner, authorize) =>
+        repository.transitionChatDispatch(input, owner, authorize),
+      readActiveScope:
+        overrides.readActiveScope ??
+        (() => ({
+          accountId: 'account-a',
+          identitySource: 'local',
+          workspaceId: 'workspace-1',
+          projectId: 'project-1',
+          epoch: 0,
+        })),
       readModelSelection: () => undefined,
       readReasoningPreference: () => ({ mode: 'normal', effortOverride: 'high' }),
       readRuntimePolicy: () => ({
@@ -522,8 +670,8 @@ describe('durable IndexedDB claim integration', () => {
     };
   }
 
-  it('admits one concurrent claimant and remains idempotent after database reopen', async () => {
-    const name = uniqueTestDbName('chat-dispatch-claim');
+  async function openSeededDatabases(label: string) {
+    const name = uniqueTestDbName(label);
     const first = createJarvisDb(name, TEST_INDEXED_DB);
     const second = createJarvisDb(name, TEST_INDEXED_DB);
     opened = [first, second];
@@ -531,6 +679,11 @@ describe('durable IndexedDB claim integration', () => {
     await first.workspaces.put(WORKSPACE);
     await first.projects.put(PROJECT);
     await first.chats.bulkPut([SOURCE_CHAT, TARGET_CHAT]);
+    return { first, second, name };
+  }
+
+  it('admits one concurrent claimant and remains idempotent after database reopen', async () => {
+    const { first, second, name } = await openSeededDatabases('chat-dispatch-claim');
     const sends: string[] = [];
     const dispatchKernel = vi.fn(async (detail) => {
       sends.push(String(detail.cancellationKey));
@@ -552,5 +705,97 @@ describe('durable IndexedDB claim integration', () => {
     expect(replay.status).toBe('dispatched');
     expect(await reopened.messages.count()).toBe(1);
     expect(sends).toHaveLength(1);
+  });
+
+  it('rolls back a claim when cloud account authority changes inside persistence', async () => {
+    const { first } = await openSeededDatabases('chat-dispatch-claim-revocation');
+    const repository = createChatDispatchRepository(first, () => 30);
+    let scope: ActiveDispatchScope = {
+      accountId: 'account-a',
+      identitySource: 'supabase',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      epoch: 0,
+    };
+    let owner: SyncQueueOwnerSnapshot = Object.freeze({
+      state: 'cloud',
+      userId: 'account-a',
+      capturedAt: 1,
+    });
+    const deps = databaseDeps(first, vi.fn(), {
+      captureSyncOwner: () => owner,
+      readActiveScope: () => scope,
+    });
+    deps.claimChatDispatch = (input, originalOwner, authorize) => {
+      let checks = 0;
+      return repository.claimChatDispatch(input, originalOwner, () => {
+        checks += 1;
+        if (checks === 2) {
+          scope = { ...scope, accountId: 'account-b', epoch: 1 };
+          owner = Object.freeze({ state: 'cloud', userId: 'account-b', capturedAt: 2 });
+        }
+        return authorize();
+      });
+    };
+
+    await expect(dispatchChatToChat(INPUT, deps)).resolves.toMatchObject({
+      status: 'rejected',
+      reason: 'access_denied',
+    });
+    expect(await first.messages.count()).toBe(0);
+    expect(await first.sync_queue.count()).toBe(0);
+  });
+
+  it('keeps the A-owned pending row and emits no B-owned terminal payload after acceptance', async () => {
+    const { first } = await openSeededDatabases('chat-dispatch-accept-revocation');
+    let scope: ActiveDispatchScope = {
+      accountId: 'account-a',
+      identitySource: 'supabase',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      epoch: 0,
+    };
+    let owner: SyncQueueOwnerSnapshot = Object.freeze({
+      state: 'cloud',
+      userId: 'account-a',
+      capturedAt: 1,
+    });
+    const dispatchKernel = vi.fn(async () => {
+      scope = { ...scope, accountId: 'account-b', epoch: 1 };
+      owner = Object.freeze({ state: 'cloud', userId: 'account-b', capturedAt: 2 });
+    });
+    const deps = databaseDeps(first, dispatchKernel, {
+      captureSyncOwner: () => owner,
+      readActiveScope: () => scope,
+    });
+
+    await expect(dispatchChatToChat(INPUT, deps)).resolves.toMatchObject({ status: 'pending' });
+    const message = (await first.messages.toArray())[0]!;
+    expect(durablePart(message)?.dispatch.state).toBe('pending');
+    for (const row of await first.sync_queue.toArray()) {
+      expect(
+        parseSyncQueueOwner(
+          row.id,
+          (await first.settings.get(cloudSyncQueueOwnerKey(row.id)))?.value,
+        ),
+      ).toMatchObject({ state: 'cloud', userId: 'account-a' });
+    }
+  });
+
+  it('fails closed when a second connection mutates the durable pending row before CAS', async () => {
+    const { first, second } = await openSeededDatabases('chat-dispatch-cas-drift');
+    const dispatchKernel = vi.fn(async (detail) => {
+      await second.messages.update(detail.cancellationKey, {
+        parts: [{ kind: 'text', text: 'Second connection mutation.' }],
+        updated_at: 31,
+      });
+    });
+
+    await expect(
+      dispatchChatToChat(INPUT, databaseDeps(first, dispatchKernel)),
+    ).resolves.toMatchObject({ status: 'pending' });
+    await expect(first.messages.toArray()).resolves.toMatchObject([
+      { parts: [{ kind: 'text', text: 'Second connection mutation.' }] },
+    ]);
   });
 });
