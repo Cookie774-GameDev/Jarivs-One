@@ -43,6 +43,12 @@ function fixtureSeeds(
   );
 }
 
+function positivePhrases(command: CommandDefinition): readonly string[] {
+  return Object.freeze([
+    ...new Set([...command.examples, ...command.aliases.filter((alias) => alias.startsWith('/'))]),
+  ]);
+}
+
 function expandFixtures(
   seeds: readonly FixtureSeed[],
   minimum: number,
@@ -83,7 +89,7 @@ function expandFixtures(
 export function buildInstantCommandAcceptanceCorpus(
   definitions: readonly CommandDefinition[],
 ): InstantCommandAcceptanceCorpus {
-  const positiveSeeds = fixtureSeeds(definitions, (command) => command.examples);
+  const positiveSeeds = fixtureSeeds(definitions, positivePhrases);
   const negativeSeeds = fixtureSeeds(definitions, (command) => command.fixtures.negative);
   const ambiguitySeeds = fixtureSeeds(definitions, (command) => command.fixtures.ambiguity);
   const authorizationSeeds = fixtureSeeds(definitions, (command) => command.fixtures.authorization);

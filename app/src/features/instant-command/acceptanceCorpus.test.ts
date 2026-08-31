@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { INSTANT_COMMAND_CATALOG } from './catalog';
 import { buildInstantCommandAcceptanceCorpus } from './acceptanceCorpus';
+import { classifyInstantCommandInput } from './parse';
 
 describe('Instant Command exhaustive acceptance corpus', () => {
   it('builds the required deterministic fixture counts with every command represented', () => {
@@ -69,5 +70,39 @@ describe('Instant Command exhaustive acceptance corpus', () => {
   it('stays on the local catalog dependency graph', () => {
     const source = readFileSync('src/features/instant-command/acceptanceCorpus.ts', 'utf8');
     expect(source).not.toMatch(/lib\/ai|provider|openai|anthropic|ollama|11434/iu);
+  });
+
+  it('covers every canonical slash alias as an exact positive fixture bound to its command', () => {
+    const corpus = buildInstantCommandAcceptanceCorpus(INSTANT_COMMAND_CATALOG);
+    const positiveBindings = new Set(
+      corpus.positive.map((fixture) => `${fixture.commandId}\u0000${fixture.phrase}`),
+    );
+
+    for (const command of INSTANT_COMMAND_CATALOG) {
+      for (const alias of command.aliases.filter((candidate) => candidate.startsWith('/'))) {
+        expect(positiveBindings.has(`${command.id}\u0000${alias}`), `${command.id} ${alias}`).toBe(
+          true,
+        );
+      }
+    }
+    expect(positiveBindings.size).toBe(corpus.positive.length);
+  });
+
+  it('keeps secure connection and provider launch identities distinct in acceptance coverage', () => {
+    const corpus = buildInstantCommandAcceptanceCorpus(INSTANT_COMMAND_CATALOG);
+    const commandFor = (phrase: string) =>
+      corpus.positive.find((fixture) => fixture.phrase === phrase)?.commandId;
+
+    expect(commandFor('/connect')).toBe('connections.open');
+    expect(commandFor('/plugin-connect')).toBe('plugin.connect');
+    expect(commandFor('/team-connect')).toBe('team.connect');
+    expect(classifyInstantCommandInput('open Codex')).toMatchObject({
+      status: 'matched',
+      command: { kind: 'open-agent-cli', provider: 'codex' },
+    });
+    expect(classifyInstantCommandInput('open OpenCode')).toMatchObject({
+      status: 'matched',
+      command: { kind: 'open-agent-cli', provider: 'opencode' },
+    });
   });
 });
