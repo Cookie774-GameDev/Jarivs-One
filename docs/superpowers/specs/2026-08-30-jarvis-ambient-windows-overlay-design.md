@@ -44,6 +44,7 @@ When multiple Jarvis activities overlap, the visible state uses the reference pr
 The overlay is global, not confined to the VibeSpace window. It covers every connected monitor with one transparent overlay window per physical monitor.
 
 - `listening`: the user's microphone is actively listening.
+- Opening Jarvis from the top-right spawn button, Shift+Tab, launcher action, or the `Hey Jarvis` wake path immediately enters the light-blue activation edge. The authoritative `voiceModalOpen` latch keeps that edge visible while the richer voice state machine is still `idle`; once the voice machine advances, its listening/thinking/speaking/error state takes precedence.
 - `speaking`: Jarvis audio is actively playing.
 - `working`: Jarvis is interpreting, thinking, running a command, or executing an agent/task.
 - `needs`: an authoritative permission, question, plan review, or other user decision is pending.
@@ -57,7 +58,7 @@ The overlay is projection only. It does not invent task truth, replace execution
 
 ### 1. Ambient state projection
 
-A small frontend selector consumes existing authoritative VibeSpace state and produces a closed contract:
+A small frontend selector consumes existing authoritative VibeSpace state—including the voice-open activation latch—and produces a closed contract:
 
 ```ts
 type JarvisAmbientState =

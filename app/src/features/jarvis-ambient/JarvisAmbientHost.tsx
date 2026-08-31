@@ -6,6 +6,7 @@ import {
   subscribeJarvisPlaybackEnergy,
 } from '@/features/voice/jarvisPlaybackEnergy';
 import { useVoiceStore } from '@/features/voice/store';
+import { useUIStore } from '@/stores/ui';
 import { JarvisEdgeAura, normalizeAmbientSnapshot } from './JarvisEdgeAura';
 import { projectJarvisAmbientSnapshot } from './projection';
 import { getJarvisInputEnergy, subscribeJarvisInputEnergy } from './voiceEnergy';
@@ -46,6 +47,7 @@ export function JarvisAmbientHost() {
       const snapshot = projectJarvisAmbientSnapshot({
         revision,
         observedAt: Date.now(),
+        voiceOpen: useUIStore.getState().voiceModalOpen,
         voiceState: useVoiceStore.getState().state,
         runs: Object.values(useJarvisTaskRunStore.getState().runs),
         energy: currentEnergy(),
@@ -78,6 +80,7 @@ export function JarvisAmbientHost() {
 
     const unsubscribers = [
       useVoiceStore.subscribe(schedule),
+      useUIStore.subscribe(schedule),
       useJarvisTaskRunStore.subscribe(schedule),
       subscribeJarvisInputEnergy(schedule),
       subscribeJarvisPlaybackEnergy(schedule),

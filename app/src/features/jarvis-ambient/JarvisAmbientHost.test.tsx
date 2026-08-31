@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useVoiceStore } from '@/features/voice/store';
 import { setJarvisPlaybackEnergy } from '@/features/voice/jarvisPlaybackEnergy';
+import { useUIStore } from '@/stores/ui';
 import { setJarvisInputEnergy } from './voiceEnergy';
 import { JarvisAmbientHost } from './JarvisAmbientHost';
 
@@ -14,6 +15,7 @@ describe('JarvisAmbientHost', () => {
   beforeEach(() => {
     invoke.mockClear();
     useVoiceStore.getState().reset();
+    useUIStore.setState({ voiceModalOpen: false });
     setJarvisInputEnergy(0);
     setJarvisPlaybackEnergy(0);
     Object.defineProperty(window, '__TAURI_INTERNALS__', {
@@ -56,6 +58,23 @@ describe('JarvisAmbientHost', () => {
       ),
     );
     view.unmount();
+  });
+
+  it('publishes a visible physical-screen aura as soon as Jarvis is opened', async () => {
+    render(<JarvisAmbientHost />);
+    await waitFor(() => expect(invoke).toHaveBeenCalled());
+    invoke.mockClear();
+
+    act(() => useUIStore.getState().setVoiceModalOpen(true));
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        'set_jarvis_ambient_snapshot',
+        expect.objectContaining({
+          snapshot: expect.objectContaining({ state: 'listening', source: 'voice' }),
+        }),
+      ),
+    );
   });
 
   it('does not invoke native commands in an ordinary browser test surface', async () => {

@@ -7,6 +7,7 @@ export const JARVIS_AMBIENT_DONE_MS = 1_700;
 export type JarvisAmbientProjectionInput = Readonly<{
   revision: number;
   observedAt: number;
+  voiceOpen?: boolean;
   voiceState: VoiceState;
   runs: readonly JarvisTaskRunProjection[];
   energy: number;
@@ -39,7 +40,9 @@ export function projectJarvisAmbientSnapshot(
 ): JarvisAmbientSnapshot {
   const waiting = latestRun(input.runs, new Set(['waiting-for-approval', 'waiting-for-input']));
   const failed = latestRun(input.runs, new Set(['failed', 'blocked']));
-  const voice = voiceProjection(input.voiceState);
+  const voice =
+    voiceProjection(input.voiceState) ??
+    (input.voiceOpen ? (['listening', 'voice'] as const) : undefined);
   const active = latestRun(input.runs, new Set(['planning', 'running']));
   const completed = latestRun(input.runs, new Set(['completed']));
   let state: JarvisAmbientState = 'idle';

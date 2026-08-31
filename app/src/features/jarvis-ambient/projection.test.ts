@@ -23,6 +23,19 @@ function run(
 }
 
 describe('projectJarvisAmbientSnapshot', () => {
+  it('projects the Jarvis open latch as an immediate listening aura before voice state advances', () => {
+    expect(
+      projectJarvisAmbientSnapshot({
+        revision: 7,
+        observedAt: 1_000,
+        voiceOpen: true,
+        voiceState: 'idle',
+        runs: [],
+        energy: 0,
+      }),
+    ).toMatchObject({ state: 'listening', source: 'voice', energy: 0 });
+  });
+
   it('applies needs, error, speaking, listening, working, done, idle priority', () => {
     const base = { revision: 7, observedAt: 1_000, energy: 0.4 };
     expect(
