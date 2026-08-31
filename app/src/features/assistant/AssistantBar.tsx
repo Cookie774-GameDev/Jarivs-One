@@ -365,6 +365,7 @@ function pushRecent(cmd: string): string[] {
 export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
   const [value, setValue] = React.useState('');
   const [activeSuggestionIndex, setActiveSuggestionIndex] = React.useState(-1);
+  const [suggestionsDismissed, setSuggestionsDismissed] = React.useState(false);
   const [recent, setRecent] = React.useState<string[]>(() => readRecent());
   const inputRef = React.useRef<HTMLInputElement>(null);
   const executionInFlightRef = React.useRef(false);
@@ -376,6 +377,8 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
     if (open) {
       setRecent(readRecent());
       setValue('');
+      setActiveSuggestionIndex(-1);
+      setSuggestionsDismissed(false);
       // Defer focus to the next tick so the input has mounted.
       requestAnimationFrame(() => inputRef.current?.focus());
     }
@@ -386,10 +389,10 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
     instantClassification.status === 'matched' ? instantClassification.command : null;
   const instantSuggestions = React.useMemo(
     () =>
-      value.trim().length >= 2 && !instantCommand
+      value.trim().length >= 2 && !instantCommand && !suggestionsDismissed
         ? suggestInstantCommands(instantCommandHelp, value, 4)
         : [],
-    [instantCommand, value],
+    [instantCommand, suggestionsDismissed, value],
   );
   const intent = React.useMemo<AssistantIntent | null>(
     () => (instantClassification.status === 'unmatched' ? parseAssistantInput(value) : null),
@@ -449,6 +452,27 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
   }, [intent, onOpenChange, value]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape' && instantSuggestions.length > 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      setActiveSuggestionIndex(-1);
+      setSuggestionsDismissed(true);
+      return;
+    }
+    if (e.key === 'Home' || e.key === 'End') {
+      const selectableIndexes = instantSuggestions
+        .map((suggestion, index) => (suggestion.disabled ? -1 : index))
+        .filter((index) => index >= 0);
+      if (selectableIndexes.length > 0) {
+        e.preventDefault();
+        setActiveSuggestionIndex(
+          e.key === 'Home'
+            ? (selectableIndexes[0] ?? -1)
+            : (selectableIndexes[selectableIndexes.length - 1] ?? -1),
+        );
+      }
+      return;
+    }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       const selectableIndexes = instantSuggestions
         .map((suggestion, index) => (suggestion.disabled ? -1 : index))
@@ -482,6 +506,7 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
   const onPillClick = (cmd: string) => {
     setValue(cmd);
     setActiveSuggestionIndex(-1);
+    setSuggestionsDismissed(false);
     inputRef.current?.focus();
   };
 
@@ -536,6 +561,7 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
               onChange={(e) => {
                 setValue(e.target.value);
                 setActiveSuggestionIndex(-1);
+                setSuggestionsDismissed(false);
               }}
               onKeyDown={onKeyDown}
               placeholder="Tell Jarvis what to do…"
@@ -544,7 +570,9 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
               autoComplete="off"
               disabled={executionInFlight}
               aria-busy={executionInFlight}
+              role="combobox"
               aria-autocomplete="list"
+              aria-haspopup="listbox"
               aria-controls={
                 instantSuggestions.length > 0 ? 'instant-command-suggestions' : undefined
               }
@@ -561,6 +589,11 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
               )}
               aria-label="Jarvis Assistant command"
             />
+            <span role="status" aria-live="polite" className="sr-only">
+              {instantSuggestions.length > 0
+                ? `${instantSuggestions.length} Instant Command suggestions available.`
+                : ''}
+            </span>
 
             {/* Live preview */}
             <div className="min-h-[20px] mt-1.5 text-secondary italic">

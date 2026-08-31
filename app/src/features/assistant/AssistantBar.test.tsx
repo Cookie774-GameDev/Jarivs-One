@@ -65,10 +65,10 @@ describe('AssistantBar instant fast lane', () => {
     const onOpenChange = vi.fn();
     render(<AssistantBar open onOpenChange={onOpenChange} />);
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Jarvis Assistant command' }), {
+    fireEvent.change(screen.getByRole('combobox', { name: 'Jarvis Assistant command' }), {
       target: { value: 'open codex' },
     });
-    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Jarvis Assistant command' }), {
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Jarvis Assistant command' }), {
       key: 'Enter',
     });
 
@@ -96,10 +96,10 @@ describe('AssistantBar instant fast lane', () => {
     const onOpenChange = vi.fn();
     render(<AssistantBar open onOpenChange={onOpenChange} />);
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Jarvis Assistant command' }), {
+    fireEvent.change(screen.getByRole('combobox', { name: 'Jarvis Assistant command' }), {
       target: { value: 'Codex, audit' },
     });
-    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Jarvis Assistant command' }), {
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Jarvis Assistant command' }), {
       key: 'Enter',
     });
 
@@ -124,10 +124,10 @@ describe('AssistantBar instant fast lane', () => {
     const onOpenChange = vi.fn();
     render(<AssistantBar open onOpenChange={onOpenChange} />);
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Jarvis Assistant command' }), {
+    fireEvent.change(screen.getByRole('combobox', { name: 'Jarvis Assistant command' }), {
       target: { value: input },
     });
-    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Jarvis Assistant command' }), {
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Jarvis Assistant command' }), {
       key: 'Enter',
     });
 
@@ -148,7 +148,7 @@ describe('AssistantBar instant fast lane', () => {
     );
     const onOpenChange = vi.fn();
     render(<AssistantBar open onOpenChange={onOpenChange} />);
-    const input = screen.getByRole('textbox', { name: 'Jarvis Assistant command' });
+    const input = screen.getByRole('combobox', { name: 'Jarvis Assistant command' });
     fireEvent.change(input, { target: { value: 'open codex' } });
 
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -171,7 +171,7 @@ describe('AssistantBar instant fast lane', () => {
   it('discovers catalog commands locally and selects an accessible capability-gated suggestion', () => {
     const onOpenChange = vi.fn();
     render(<AssistantBar open onOpenChange={onOpenChange} />);
-    const input = screen.getByRole('textbox', { name: 'Jarvis Assistant command' });
+    const input = screen.getByRole('combobox', { name: 'Jarvis Assistant command' });
 
     fireEvent.change(input, { target: { value: 'connect terminals' } });
 
@@ -189,7 +189,7 @@ describe('AssistantBar instant fast lane', () => {
 
   it('navigates suggestions with combobox semantics and selects without executing', () => {
     render(<AssistantBar open onOpenChange={vi.fn()} />);
-    const input = screen.getByRole('textbox', { name: 'Jarvis Assistant command' });
+    const input = screen.getByRole('combobox', { name: 'Jarvis Assistant command' });
     fireEvent.change(input, { target: { value: 'connect terminals' } });
     const listbox = screen.getByRole('listbox', { name: 'Instant Command suggestions' });
 
@@ -204,9 +204,35 @@ describe('AssistantBar instant fast lane', () => {
     expect(mocks.executeIntent).not.toHaveBeenCalled();
   });
 
+  it('supports bounded Home, End, Escape, and typing recovery without dispatch', () => {
+    render(<AssistantBar open onOpenChange={vi.fn()} />);
+    const input = screen.getByRole('combobox', { name: 'Jarvis Assistant command' });
+    fireEvent.change(input, { target: { value: 'open' } });
+    const selectableOptions = screen
+      .getAllByRole('option')
+      .filter((option) => !(option.querySelector('button') as HTMLButtonElement).disabled);
+    expect(selectableOptions.length).toBeGreaterThan(1);
+    expect(screen.getByRole('status').textContent).toMatch(/suggestions available/i);
+
+    fireEvent.keyDown(input, { key: 'End' });
+    expect(input.getAttribute('aria-activedescendant')).toBe(selectableOptions.at(-1)?.id);
+    fireEvent.keyDown(input, { key: 'Home' });
+    expect(input.getAttribute('aria-activedescendant')).toBe(selectableOptions[0]?.id);
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    expect(input.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect((input as HTMLInputElement).value).toBe('open');
+    expect(mocks.submitInstantCommand).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: 'open t' } });
+    expect(input.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('listbox')).toBeTruthy();
+  });
+
   it('does not activate or select a blocked catalog suggestion', async () => {
     render(<AssistantBar open onOpenChange={vi.fn()} />);
-    const input = screen.getByRole('textbox', { name: 'Jarvis Assistant command' });
+    const input = screen.getByRole('combobox', { name: 'Jarvis Assistant command' });
     fireEvent.change(input, { target: { value: 'rename terminal' } });
     fireEvent.keyDown(input, { key: 'ArrowDown' });
     expect(input.getAttribute('aria-activedescendant')).toBeNull();
@@ -227,7 +253,7 @@ describe('AssistantBar instant fast lane', () => {
     mocks.classifyInstantCommandInput.mockReturnValue({ status: 'matched', command });
     render(<AssistantBar open onOpenChange={vi.fn()} />);
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Jarvis Assistant command' }), {
+    fireEvent.change(screen.getByRole('combobox', { name: 'Jarvis Assistant command' }), {
       target: { value: 'tell team alpha release audit' },
     });
 
