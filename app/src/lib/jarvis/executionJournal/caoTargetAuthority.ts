@@ -507,7 +507,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
         lease.targets.map(({ revision }) => revision),
       );
     } catch (error) {
-      await releaseVerifiedLease(input, lease).catch(() => undefined);
+      await releaseVerifiedLease(input, lease);
       throw error;
     }
     try {

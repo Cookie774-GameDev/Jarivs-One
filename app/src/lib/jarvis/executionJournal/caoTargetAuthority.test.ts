@@ -1099,6 +1099,88 @@ describe('CAO explicit target authority', () => {
     expect(h.rows).toEqual([]);
   });
 
+  it('reports registry unavailability when verification-drift cleanup retains ownership', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.targets.set('chat:chat-a', {
+      ...target({ revision: 8 }),
+      ownerLeaseId: acquired.leaseId,
+    });
+    vi.mocked(h.registry.releaseExact).mockRejectedValueOnce(
+      new Error('private verification release transport payload'),
+    );
+
+    await expect(
+      createCaoTargetAuthority(h.deps).verify({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_registry_unavailable$/);
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
+  it('recovers an ambiguously successful verification-drift cleanup before reporting drift', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.targets.set('chat:chat-a', {
+      ...target({ revision: 8 }),
+      ownerLeaseId: acquired.leaseId,
+    });
+    vi.mocked(h.registry.releaseExact).mockImplementationOnce(async () => {
+      h.targets.set('chat:chat-a', { ...target({ revision: 8 }), ownerLeaseId: undefined });
+      throw new Error('private post-release transport payload');
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).verify({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_revision_stale$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('does not mask a verification cleanup no-op with the original target error', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.targets.set('chat:chat-a', {
+      ...target({ locked: true }),
+      ownerLeaseId: acquired.leaseId,
+    });
+    vi.mocked(h.registry.releaseExact).mockResolvedValueOnce(undefined);
+
+    await expect(
+      createCaoTargetAuthority(h.deps).verify({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_registry_unavailable$/);
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
+  it('reports cleanup read unavailability after live verification drift', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    vi.mocked(h.registry.readExact)
+      .mockResolvedValueOnce([{ ...target({ revision: 8 }), ownerLeaseId: acquired.leaseId }])
+      .mockRejectedValueOnce(new Error('private verification cleanup read payload'));
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).verify({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_registry_unavailable$/);
+    expect(h.registry.releaseExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
   it('fails closed on expiry, target revision drift, and run scope/status drift after reload', async () => {
     const h = harness();
     const authority = createCaoTargetAuthority(h.deps);
