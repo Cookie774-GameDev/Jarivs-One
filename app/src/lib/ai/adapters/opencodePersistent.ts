@@ -1715,7 +1715,8 @@ export function contextSystemAddendum(
     `VibeSpace Context route: ${route.route.toUpperCase()}.`,
     'Before asserting historical or cross-source facts, use the high-level VibeSpace tool `vibespace_context` with an explicit operation such as `search`.',
     'Treat returned pointers/provenance as opaque and fail closed: never forge, combine, clamp, or retarget pointers.',
-    'If the tool is unavailable or returns no evidence, say so instead of inventing support.',
+    'If the tool returns no evidence or is unavailable, report that boundary once and continue every independent, authorized part of the request.',
+    'Do not claim facts that required the missing evidence, and never invent support.',
   ].join(' ');
 }
 

@@ -2527,6 +2527,23 @@ describe('persistent OpenCode live authority', () => {
     expect(tools).not.toHaveProperty('vibespace_context.query');
   });
 
+  it('keeps independent Agent work moving after an optional Context lookup returns no evidence', () => {
+    const addendum = contextSystemAddendum(
+      {
+        prompt:
+          'Use the whole project context for requirements, then create and verify the requested local dashboard.',
+        workingDirectory: 'D:\\VibeSpace-RLM-UAT\\empty-context-continuation',
+        interactionMode: 'agent',
+        accessLevel: 'full',
+      } as never,
+      { rlmEnabled: true, performance: 'quality' } as never,
+    );
+
+    expect(addendum).toContain('If the tool returns no evidence');
+    expect(addendum).toContain('continue every independent, authorized part of the request');
+    expect(addendum).toContain('Do not claim facts that required the missing evidence');
+  });
+
   it('keeps explicit-root evidence filesystem-only and before the final response contract', () => {
     const addendum = contextSystemAddendum(
       {
