@@ -9,6 +9,7 @@ function port(): ResourceCommandPort {
       { id: 'tool_3', displayName: 'Formatter' },
     ]),
     validate: vi.fn(async () => true),
+    consumeGrant: vi.fn(async () => true),
     execute: vi.fn(async () => ({ status: 'queued' as const, receiptId: 'resource_1' })),
   };
 }
@@ -37,11 +38,16 @@ describe('resource command authority', () => {
         family: 'tool',
         selector: 'tool_3',
         args: { target: 'src' },
-        approval: { commandId: 'tool.run', targetId: 'tool_3' },
+        approval: { commandId: 'tool.run', targetId: 'tool_3', nonce: 'grant_1' },
       },
       authority,
     );
     expect(authority.validate).toHaveBeenCalledWith('tool_3', { target: 'src' });
+    expect(authority.consumeGrant).toHaveBeenCalledWith('approval', {
+      commandId: 'tool.run',
+      targetId: 'tool_3',
+      nonce: 'grant_1',
+    });
     expect(authority.execute).toHaveBeenCalledOnce();
   });
 
@@ -104,11 +110,97 @@ describe('resource command authority', () => {
           family: 'context',
           selector: 'tool_3',
           args: { transcript: 'raw conversation' },
-          approval: { commandId: 'context.give_terminals', targetId: 'tool_3' },
+          approval: {
+            commandId: 'context.give_terminals',
+            targetId: 'tool_3',
+            nonce: 'grant_context',
+          },
         },
         authority,
       ),
     ).resolves.toMatchObject({ ok: false, code: 'queue_failed' });
     expect(authority.execute).not.toHaveBeenCalled();
+  });
+
+  it('consumes an exact nonce-bound grant once and rejects reuse', async () => {
+    const authority = port();
+    vi.mocked(authority.consumeGrant).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const request = {
+      id: 'project.archive',
+      family: 'project' as const,
+      selector: 'tool_3',
+      confirmation: {
+        commandId: 'project.archive',
+        targetId: 'tool_3',
+        nonce: 'grant_once',
+      },
+    };
+
+    await expect(executeResourceCommand(request, authority)).resolves.toMatchObject({ ok: true });
+    await expect(executeResourceCommand(request, authority)).resolves.toEqual({
+      ok: false,
+      code: 'confirmation_required',
+      message: 'That resource grant is expired or already used.',
+    });
+    expect(authority.execute).toHaveBeenCalledOnce();
+  });
+
+  it('rejects wrong or unbounded bindings before grant consumption or resource listing', async () => {
+    const authority = port();
+    await expect(
+      executeResourceCommand(
+        {
+          id: 'project.archive',
+          family: 'project',
+          selector: 'tool_3',
+          confirmation: {
+            commandId: 'project.archive',
+            targetId: 'tool_2',
+            nonce: 'grant_wrong',
+          },
+        },
+        authority,
+      ),
+    ).resolves.toMatchObject({ ok: false, code: 'confirmation_required' });
+    expect(authority.consumeGrant).not.toHaveBeenCalled();
+
+    vi.mocked(authority.list).mockClear();
+    await expect(
+      executeResourceCommand(
+        { id: 'tool.open', family: 'tool', selector: `bad\nselector` },
+        authority,
+      ),
+    ).resolves.toMatchObject({ ok: false, code: 'target_missing' });
+    expect(authority.list).not.toHaveBeenCalled();
+  });
+
+  it('keeps authority receipt IDs and backend exceptions out of user receipts', async () => {
+    const authority = port();
+    vi.mocked(authority.execute).mockResolvedValueOnce({
+      status: 'rejected',
+      receiptId: 'private-backend-receipt',
+    });
+    const rejected = await executeResourceCommand(
+      { id: 'tool.open', family: 'tool', selector: 'tool_3' },
+      authority,
+    );
+    expect(rejected).toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Resource command rejected.',
+    });
+    expect(JSON.stringify(rejected)).not.toContain('private-backend-receipt');
+
+    vi.mocked(authority.list).mockRejectedValueOnce(new Error('private repository detail'));
+    const failed = await executeResourceCommand(
+      { id: 'tool.open', family: 'tool', selector: 'tool_3' },
+      authority,
+    );
+    expect(failed).toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Resource command failed.',
+    });
+    expect(JSON.stringify(failed)).not.toContain('private repository detail');
   });
 });
