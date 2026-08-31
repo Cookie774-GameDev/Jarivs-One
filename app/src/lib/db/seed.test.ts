@@ -96,7 +96,7 @@ const seedHarness = vi.hoisted(() => {
   };
 });
 
-vi.mock('./index', () => ({
+vi.mock('./database', () => ({
   db: seedHarness.db,
   openDb: seedHarness.openDb,
 }));

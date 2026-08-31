@@ -83,7 +83,7 @@ import {
   newTerminalSessionId,
   newWorkspaceId,
 } from '@/lib/ids';
-import { db, type JarvisDexie } from './index';
+import { db, type JarvisDexie } from './database';
 import { enqueueLocalSyncInTransaction } from './kernelTurnTransactionAuthority';
 import type {
   MemoryEvidenceHistoryRow,

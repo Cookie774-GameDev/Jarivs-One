@@ -1374,7 +1374,7 @@ describe('Jarvis Dexie V13 additive migration', () => {
   });
 
   it('declares V13 additively without a destructive upgrade callback', () => {
-    const source = readFileSync(join(__dirname, 'index.ts'), 'utf8');
+    const source = readFileSync(join(__dirname, 'database.ts'), 'utf8');
     expect(source).not.toContain('.upgrade(');
     expect(source).toContain('this.version(1).stores(STORES_V1)');
     expect(source).toContain('this.version(2).stores(STORES_V2)');

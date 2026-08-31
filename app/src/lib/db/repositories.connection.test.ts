@@ -37,7 +37,7 @@ const state = vi.hoisted(() => ({
   settingsMutationStarted: false,
 }));
 
-vi.mock('./index', () => ({
+vi.mock('./database', () => ({
   db: {
     agents: {
       async add(row: Record<string, unknown>) {

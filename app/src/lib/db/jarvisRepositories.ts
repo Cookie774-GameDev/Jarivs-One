@@ -24,7 +24,7 @@ import {
 } from '@/lib/jarvis/artifactRuntimeInternals';
 import type { JarvisIdentityRevision } from '@/lib/jarvis/identity';
 import type { JarvisProfile } from '@/lib/jarvis/profiles/types';
-import { db, type JarvisDexie } from './index';
+import { db, type JarvisDexie } from './database';
 import {
   fromJarvisApprovalRow,
   fromJarvisArtifactRow,

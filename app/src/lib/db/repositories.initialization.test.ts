@@ -7,7 +7,7 @@ const databaseAccess = vi.hoisted(() => ({
   properties: [] as PropertyKey[],
 }));
 
-vi.mock('./index', () => ({
+vi.mock('./database', () => ({
   db: new Proxy(
     {},
     {

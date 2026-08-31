@@ -13,7 +13,7 @@ import type { ProjectId, WorkspaceId } from '@/types/common';
 import { newProjectId, newWorkspaceId } from '@/lib/ids';
 import { createBuiltinAgentRoster } from '@/lib/jarvis/builtinAgents';
 import { useAuthStore } from '@/stores/auth';
-import { db, openDb } from './index';
+import { db, openDb } from './database';
 
 /**
  * Result returned by `seedIfEmpty`.
