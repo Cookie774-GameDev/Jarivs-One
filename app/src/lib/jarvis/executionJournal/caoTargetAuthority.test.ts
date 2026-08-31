@@ -2689,4 +2689,104 @@ describe('CAO explicit target authority', () => {
     expect(h.registry.releaseExact).not.toHaveBeenCalled();
     expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
   });
+
+  it.each([null, false])(
+    'rejects a present malformed lease payload %s before registry recovery',
+    async (malformedLease) => {
+      const h = harness();
+      const acquired = await createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      });
+      const durable = structuredClone(h.rows[0]!);
+      h.deps.events.listByRun.mockResolvedValueOnce([
+        {
+          ...durable,
+          seq: 1,
+          idempotencyKey: 'unrelated-malformed-lease',
+          caoTargetLease: malformedLease,
+        } as never,
+        { ...durable, seq: 2 },
+      ]);
+      vi.mocked(h.registry.readExact).mockClear();
+
+      await expect(
+        createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+      ).rejects.toThrow(/^cao_target_journal_invalid$/);
+      expect(h.registry.readExact).not.toHaveBeenCalled();
+      expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+    },
+  );
+
+  it('rejects duplicate unrelated lease identities in one journal page', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    const durable = structuredClone(h.rows[0]!);
+    const foreignLease = {
+      ...structuredClone(durable.caoTargetLease!),
+      leaseId: 'cao_lease_foreign',
+    };
+    const foreignEvent = {
+      ...durable,
+      idempotencyKey: `cao-target-lease:${foreignLease.leaseId}`,
+      caoTargetLease: foreignLease,
+    };
+    h.deps.events.listByRun.mockResolvedValueOnce([
+      { ...foreignEvent, seq: 1 },
+      { ...foreignEvent, seq: 2 },
+      { ...durable, seq: 3 },
+    ]);
+    vi.mocked(h.registry.readExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).verify({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_journal_invalid$/);
+    expect(h.registry.readExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
+  it('rejects duplicate unrelated lease identities split across journal pages', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    const durable = structuredClone(h.rows[0]!);
+    const foreignLease = {
+      ...structuredClone(durable.caoTargetLease!),
+      leaseId: 'cao_lease_foreign',
+    };
+    const foreignEvent = {
+      ...durable,
+      idempotencyKey: `cao-target-lease:${foreignLease.leaseId}`,
+      caoTargetLease: foreignLease,
+    };
+    const filler = structuredClone(durable);
+    delete filler.caoTargetLease;
+    const firstPage = [
+      { ...foreignEvent, seq: 1 },
+      ...Array.from({ length: 499 }, (_, index) => ({
+        ...filler,
+        seq: index + 2,
+        idempotencyKey: `unrelated:${index + 2}`,
+      })),
+    ];
+    h.deps.events.listByRun.mockResolvedValueOnce(firstPage).mockResolvedValueOnce([
+      { ...foreignEvent, seq: 501 },
+      { ...durable, seq: 502 },
+    ]);
+    vi.mocked(h.registry.readExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_journal_invalid$/);
+    expect(h.registry.readExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
 });

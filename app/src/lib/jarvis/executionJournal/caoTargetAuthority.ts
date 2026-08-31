@@ -348,6 +348,7 @@ async function findLease(
 ): Promise<CaoTargetLeaseV1 | undefined> {
   let afterSeq = 0;
   let match: CaoTargetLeaseV1 | undefined;
+  const seenLeaseIds = new Set<string>();
   for (let pageNumber = 0; pageNumber < MAX_EVENT_PAGES; pageNumber += 1) {
     let page: readonly JarvisEvent[];
     try {
@@ -374,10 +375,12 @@ async function findLease(
         fail('cao_target_journal_invalid');
       }
       afterSeq = event.seq;
-      if (!event.caoTargetLease) continue;
+      if (event.caoTargetLease === undefined) continue;
       const validated = validateCaoTargetLease(event.caoTargetLease);
       if (!validated.ok) fail('cao_target_journal_invalid');
       const lease = validated.value;
+      if (seenLeaseIds.has(lease.leaseId)) fail('cao_target_journal_invalid');
+      seenLeaseIds.add(lease.leaseId);
       if (
         lease.runId !== event.runId ||
         event.type !== 'context' ||
