@@ -30,14 +30,14 @@ These items come from direct user observation on August 23. They remain unchecke
 
 ### Account, security, calls, usage, billing, and support
 
-- [ ] Refine Account information hierarchy: larger readable section headings and icons, calmer spacing, and a correctly sized “Local & private” badge that never wraps vertically or looks detached from its content.
+- [x] Refine Account information hierarchy: larger readable section headings and icons, calmer spacing, and a correctly sized “Local & private” badge that never wraps vertically or looks detached from its content — Account commits through `143fcea2`; full Account matrix 54/54; official native `3d32febe` acceptance passed at 720 px with zero horizontal overflow.
 - [x] Stabilize the Account `Local & private` badge independently of the broader hierarchy redesign — commit `b90fb630`; focused portable-backup 5/5; Playwright measured one-line `nowrap`, no shrink, 109 × 27 px.
-- [ ] Explain the local user ID in plain language as an offline data-ownership namespace—not a password or recovery secret—or remove it from the primary UI if it has no user action.
-- [ ] Expand Account Security only with capabilities the current authentication/database contract genuinely supports (for example password change, active identity/session details, recovery/support routes); never invent controls or weaken authentication.
+- [x] Explain the local user ID in plain language as an offline data-ownership namespace—not a password or recovery secret—or remove it from the primary UI if it has no user action — commits `68ad798f` and `2eba0847`; official native acceptance verified the explanation and copy action without exposing a recovery secret.
+- [x] Expand Account Security only with capabilities the current authentication/database contract genuinely supports (for example password change, active identity/session details, recovery/support routes); never invent controls or weaken authentication — commits `68ad798f`, `2eba0847`, and `1add2ad6`; security 8/8 plus official native signed-out fail-closed acceptance passed.
 - [ ] Add a Jarvis calling schedule surface showing who/what/when, status, and safe cancellation using the existing phone/schedule authority; do not expose secrets or claim an unavailable channel.
-- [ ] Make Usage show real account/route evidence with honest unavailable/stale states.
+- [x] Make Usage show real account/route evidence with honest unavailable/stale states — commits `cca4e986`, `c0448b99`, and `143fcea2`; usage/support 13/13 plus official native signed-out usage truth passed.
 - [ ] Redesign Billing plan comparison and included benefits with premium, readable presentation backed by current Stripe/entitlement truth; do not hard-code fictitious prices or mutate billing.
-- [ ] Verify Support content and actions are current and purposeful.
+- [x] Verify Support content and actions are current and purposeful — commit `cca4e986`; official native acceptance verified support/security copy actions, documentation, and license routes with keyboard focus under forced colors.
 
 ### Skills, shell, and theme polish
 
