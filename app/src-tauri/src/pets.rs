@@ -1206,16 +1206,15 @@ enum PetRegistrationAction {
 
 fn classify_pet_registration(
     webview_registered: bool,
-    _native_host_exists: bool,
+    native_host_exists: bool,
     window_registered: bool,
 ) -> PetRegistrationAction {
-    // `WebviewWindowBuilder::build` registers the WebView before Windows has
-    // necessarily exposed its HWND. Keep that registration alive and let the
-    // bounded show path retry it; destroying it during this handoff leaves a
-    // label that WebView2 cannot retire or recreate in the same process.
-    if webview_registered {
+    if webview_registered && native_host_exists {
         PetRegistrationAction::Reuse
-    } else if window_registered {
+    } else if webview_registered || window_registered {
+        // Tauri can retain a manager registration after WebView2 creation
+        // fails. Reusing that poisoned dispatcher can never materialize an
+        // HWND, so retire it before the bounded main-thread rebuild.
         PetRegistrationAction::Retire
     } else {
         PetRegistrationAction::Create
@@ -1404,11 +1403,25 @@ fn schedule_pet_overlay_build(app: &AppHandle) -> Result<(), String> {
         .map_err(|error| format!("failed to schedule pet-overlay window: {error}"))
 }
 
+fn configured_main_webview_browser_args(app: &AppHandle) -> Result<String, String> {
+    app.config()
+        .app
+        .windows
+        .iter()
+        .find(|window| window.label == "main")
+        .and_then(|window| window.additional_browser_args.as_deref())
+        .map(str::trim)
+        .filter(|args| !args.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| "main WebView2 browser arguments are unavailable".to_owned())
+}
+
 fn build_pet_overlay(
     app: &AppHandle,
     visible: bool,
     initial_position: Option<(f64, f64)>,
 ) -> Result<WebviewWindow, String> {
+    let browser_args = configured_main_webview_browser_args(app)?;
     let builder =
         WebviewWindowBuilder::new(app, PET_OVERLAY_LABEL, pet_webview_url(app, "pet-overlay")?)
             .title("VibeSpace Pet")
@@ -1427,6 +1440,7 @@ fn build_pet_overlay(
             .visible(visible)
             .focused(false)
             .shadow(false)
+            .additional_browser_args(&browser_args)
             .background_color(tauri::window::Color(0, 0, 0, 0));
     let builder = match initial_position {
         Some((x, y)) => builder.position(x, y),
@@ -1502,6 +1516,7 @@ fn build_pet_panel(
     visible: bool,
     initial_position: Option<(f64, f64)>,
 ) -> Result<WebviewWindow, String> {
+    let browser_args = configured_main_webview_browser_args(app)?;
     let builder = WebviewWindowBuilder::new(
         app,
         PET_MINI_PANEL_LABEL,
@@ -1516,6 +1531,7 @@ fn build_pet_panel(
     .always_on_top(true)
     .skip_taskbar(true)
     .visible(visible)
+    .additional_browser_args(&browser_args)
     .focused(false);
     let builder = match initial_position {
         Some((x, y)) => builder.position(x, y),
@@ -2335,6 +2351,37 @@ mod tests {
     }
 
     #[test]
+    fn detached_pet_windows_share_the_exact_main_webview2_environment_options() {
+        let source = include_str!("pets.rs");
+        let tests_start = source.find("mod tests {").expect("test module exists");
+        let production = &source[..tests_start];
+        let helper_start = production
+            .find("fn configured_main_webview_browser_args")
+            .expect("main WebView2 option resolver exists");
+        let helper_end = production[helper_start..]
+            .find("fn build_pet_overlay")
+            .map(|offset| helper_start + offset)
+            .expect("main WebView2 option resolver is bounded");
+        let helper = &production[helper_start..helper_end];
+        assert!(helper.contains("app.config()"));
+        assert!(helper.contains(".app"));
+        assert!(helper.contains(".windows"));
+        assert!(helper.contains("window.label == \"main\""));
+        assert!(helper.contains("additional_browser_args"));
+
+        for function in ["fn build_pet_overlay", "fn build_pet_panel"] {
+            let start = production.find(function).expect("Pet builder exists");
+            let end = production[start + function.len()..]
+                .find("\nfn ")
+                .map(|offset| start + function.len() + offset)
+                .unwrap_or(production.len());
+            let builder = &production[start..end];
+            assert!(builder.contains("configured_main_webview_browser_args(app)?"));
+            assert!(builder.contains(".additional_browser_args(&browser_args)"));
+        }
+    }
+
+    #[test]
     fn detached_pet_url_uses_tauri_runtime_asset_resolution() {
         let source = include_str!("pets.rs");
         let url_start = source
@@ -2702,14 +2749,18 @@ mod tests {
     }
 
     #[test]
-    fn pet_registration_preserves_a_registered_webview_while_its_native_host_materializes() {
+    fn pet_registration_retires_a_webview_registration_without_a_native_host() {
         assert_eq!(
             classify_pet_registration(true, true, true),
             PetRegistrationAction::Reuse
         );
         assert_eq!(
             classify_pet_registration(true, false, true),
-            PetRegistrationAction::Reuse
+            PetRegistrationAction::Retire
+        );
+        assert_eq!(
+            classify_pet_registration(true, false, false),
+            PetRegistrationAction::Retire
         );
         assert_eq!(
             classify_pet_registration(false, false, true),
