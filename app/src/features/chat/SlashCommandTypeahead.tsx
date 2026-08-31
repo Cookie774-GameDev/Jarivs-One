@@ -122,11 +122,11 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   {
     cmd: 'permissions',
     aliases: ['permission', 'perms'],
-    description: 'Set mode, access, and Approve All for this run',
+    description: 'Choose Agent, Plan, or Ask mode',
     icon: Shield,
     category: 'chat',
     takesArg: true,
-    argPlaceholder: 'agent | plan | ask | read | write | full | approve-all',
+    argPlaceholder: 'agent | plan | ask',
     hasOptions: true,
   },
   {

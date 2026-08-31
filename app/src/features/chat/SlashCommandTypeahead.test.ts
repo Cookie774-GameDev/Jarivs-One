@@ -163,7 +163,8 @@ describe('orderSlashCommandsForDisplay', () => {
     expect(findSlashCommandDef('permissions')).toMatchObject({
       cmd: 'permissions',
       hasOptions: true,
-      argPlaceholder: 'agent | plan | ask | read | write | full | approve-all',
+      description: 'Choose Agent, Plan, or Ask mode',
+      argPlaceholder: 'agent | plan | ask',
     });
   });
 

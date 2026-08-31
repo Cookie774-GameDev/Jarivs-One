@@ -348,8 +348,6 @@ import { useJarvisInteractionStore } from '@/features/jarvis-interaction/session
 import {
   formatPermissionPolicy,
   parsePermissionSlashArg,
-  PERMISSION_ACCESS_OPTIONS,
-  PERMISSION_APPROVE_OPTIONS,
   readPermissionAccess,
   setApproveAllForRun,
   setPermissionAccess,
@@ -1236,7 +1234,6 @@ export function Composer({
   const [selectedSlashCmd, setSelectedSlashCmd] = useState<string>('');
   const [optionPickerCtx, setOptionPickerCtx] = useState<OptionPickerContext | null>(null);
   const [selectedOptionId, setSelectedOptionId] = useState<string>('');
-  const [permissionPickerStep, setPermissionPickerStep] = useState<'mode' | 'access'>('mode');
   const interactionMode = useJarvisInteractionStore((s) => s.modeForChat(chatId));
   const setInteractionMode = useJarvisInteractionStore((s) => s.setChatMode);
   const [reasoningPreference, setReasoningPreference] = useState(() =>
@@ -1375,6 +1372,8 @@ export function Composer({
   const applyInteractionMode = useCallback(
     (nextMode: JarvisInteractionMode) => {
       const previousMode = useJarvisInteractionStore.getState().modeForChat(chatId);
+      setPermissionAccess(String(chatId), nextMode === 'agent' ? 'full' : 'read');
+      setApproveAllForRun(String(chatId), false);
       setInteractionMode(chatId, nextMode);
       const cancellationKey = activeCancellationKeyRef.current;
       if (
@@ -1890,48 +1889,12 @@ export function Composer({
     }
 
     if (normalizeSlashCmd(cmd) === 'permissions') {
-      const accessState = readPermissionAccess(String(chatId));
-      if (permissionPickerStep === 'mode') {
-        return PERMISSION_MODE_OPTIONS.map((option) => ({
-          id: option.id,
-          label: option.title,
-          description: option.description,
-          metadata: option.id === interactionMode ? 'active' : undefined,
-        }));
-      }
-      return [
-        ...PERMISSION_ACCESS_OPTIONS.map((option) => ({
-          id: option.id,
-          label: option.label,
-          description: option.description,
-          metadata: option.id === accessState.access ? 'active' : undefined,
-        })),
-        ...PERMISSION_APPROVE_OPTIONS.map((option) => ({
-          id: option.id,
-          label: option.label,
-          description: option.description,
-          metadata:
-            option.id === 'approve-all' && accessState.approveAll
-              ? 'active'
-              : option.id === 'approve-all-off' && !accessState.approveAll
-                ? 'active'
-                : undefined,
-        })),
-        {
-          id: 'status',
-          label: 'Effective policy',
-          description: formatPermissionPolicy({
-            mode: interactionMode,
-            access: accessState.access,
-            approveAll: accessState.approveAll,
-          }),
-        },
-        {
-          id: 'done',
-          label: 'Done',
-          description: 'Close the permissions control',
-        },
-      ];
+      return PERMISSION_MODE_OPTIONS.map((option) => ({
+        id: option.id,
+        label: option.title,
+        description: option.description,
+        metadata: option.id === interactionMode ? 'active' : undefined,
+      }));
     }
 
     return [];
@@ -1946,7 +1909,6 @@ export function Composer({
     reasoningPickerState,
     chatId,
     workspaceId,
-    permissionPickerStep,
   ]);
 
   // Load project files when /file picker opens
@@ -2448,21 +2410,6 @@ export function Composer({
       const parsed = parsePermissionSlashArg(option.id);
       if (parsed?.kind === 'mode') {
         applyInteractionMode(parsed.value);
-        setPermissionPickerStep('access');
-        setSelectedOptionId(readPermissionAccess(String(chatId)).access);
-        requestAnimationFrame(() => textareaRef.current?.focus());
-        return;
-      }
-      if (parsed?.kind === 'access') {
-        setPermissionAccess(String(chatId), parsed.value);
-        setSelectedOptionId(parsed.value);
-        requestAnimationFrame(() => textareaRef.current?.focus());
-        return;
-      }
-      if (parsed?.kind === 'approve-all') {
-        setApproveAllForRun(String(chatId), parsed.value);
-        requestAnimationFrame(() => textareaRef.current?.focus());
-        return;
       }
       if (parsed?.kind === 'status') {
         const accessState = readPermissionAccess(String(chatId));
@@ -2482,7 +2429,6 @@ export function Composer({
         });
       }
       setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
-      setPermissionPickerStep('mode');
       setOptionPickerCtx(null);
       setSelectedOptionId('');
       setText('');
@@ -2812,18 +2758,6 @@ export function Composer({
         setText('');
         return true;
       }
-      if (parsed?.kind === 'access') {
-        setPermissionAccess(String(chatId), parsed.value);
-        setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
-        setText('');
-        return true;
-      }
-      if (parsed?.kind === 'approve-all') {
-        setApproveAllForRun(String(chatId), parsed.value);
-        setConfirmedCommands((cur) => cur.filter((c) => c.cmd !== 'permissions'));
-        setText('');
-        return true;
-      }
       if (parsed?.kind === 'status') {
         const accessState = readPermissionAccess(String(chatId));
         await addSystem(
@@ -2836,12 +2770,9 @@ export function Composer({
         return true;
       }
       if (rest && !parsed) {
-        await addSystem(
-          'Usage: /permissions agent | plan | ask | read | write | full | approve-all | status',
-        );
+        await addSystem('Usage: /permissions agent | plan | ask');
         return true;
       }
-      setPermissionPickerStep('mode');
       openAttachPicker('permissions');
       return true;
     }

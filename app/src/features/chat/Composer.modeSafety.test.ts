@@ -18,4 +18,17 @@ describe('Composer live mode restriction integration', () => {
     expect(source).toContain("applyInteractionMode('plan')");
     expect(source).toContain("applyInteractionMode('agent')");
   });
+
+  it('binds every mode transition to its canonical access policy without extra permission tiers', () => {
+    expect(source).toContain(
+      "setPermissionAccess(String(chatId), nextMode === 'agent' ? 'full' : 'read')",
+    );
+    expect(source).toContain('setApproveAllForRun(String(chatId), false)');
+    expect(source).not.toContain('PERMISSION_ACCESS_OPTIONS');
+    expect(source).not.toContain('PERMISSION_APPROVE_OPTIONS');
+    expect(source).not.toContain('permissionPickerStep');
+    expect(source).not.toContain("parsed?.kind === 'access'");
+    expect(source).not.toContain("parsed?.kind === 'approve-all'");
+    expect(source).toContain('Usage: /permissions agent | plan | ask');
+  });
 });

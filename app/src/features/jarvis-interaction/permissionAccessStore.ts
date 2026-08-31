@@ -1,5 +1,5 @@
 export type PermissionAccessLevel = 'read' | 'write' | 'full';
-export type PermissionSlashKind = 'mode' | 'access' | 'approve-all' | 'status';
+export type PermissionSlashKind = 'mode' | 'status';
 
 export interface PermissionAccessState {
   access: PermissionAccessLevel;
@@ -132,83 +132,17 @@ export function expireApproveAllForRun(
   return writeChatAccess(chatId, { approveAll: false }, storage);
 }
 
-export function parsePermissionAccessArg(arg: string): PermissionAccessLevel | undefined {
-  const token = arg.trim().toLowerCase().replace(/[_-]+/g, ' ');
-  if (token === 'read' || token === 'read only' || token === 'readonly') return 'read';
-  if (token === 'write' || token === 'write access') return 'write';
-  if (token === 'full' || token === 'full access') return 'full';
-  return undefined;
-}
-
-export function parsePermissionApproveAllArg(arg: string): boolean | undefined {
-  const token = arg.trim().toLowerCase().replace(/[_-]+/g, ' ');
-  if (
-    token === 'approve all' ||
-    token === 'approve-all' ||
-    token === 'approve all on' ||
-    token === 'approve-all on'
-  ) {
-    return true;
-  }
-  if (
-    token === 'approve all off' ||
-    token === 'approve-all off' ||
-    token === 'approve-all-off'
-  ) {
-    return false;
-  }
-  return undefined;
-}
-
-export function parsePermissionSlashArg(arg: string):
-  | { kind: 'mode'; value: 'ask' | 'plan' | 'agent' }
-  | { kind: 'access'; value: PermissionAccessLevel }
-  | { kind: 'approve-all'; value: boolean }
-  | { kind: 'status' }
-  | undefined {
+export function parsePermissionSlashArg(
+  arg: string,
+): { kind: 'mode'; value: 'ask' | 'plan' | 'agent' } | { kind: 'status' } | undefined {
   const token = arg.trim().toLowerCase();
   if (!token) return undefined;
   if (token === 'status' || token === 'policy') return { kind: 'status' };
-  const approve = parsePermissionApproveAllArg(token);
-  if (approve !== undefined) return { kind: 'approve-all', value: approve };
-  const access = parsePermissionAccessArg(token);
-  if (access) return { kind: 'access', value: access };
   if (token === 'ask' || token === 'plan' || token === 'agent') {
     return { kind: 'mode', value: token };
   }
   return undefined;
 }
-
-export const PERMISSION_ACCESS_OPTIONS = Object.freeze([
-  {
-    id: 'read',
-    label: 'Read Only',
-    description: 'Read, search, RLM, and inspect only. No mutations.',
-  },
-  {
-    id: 'write',
-    label: 'Write Access',
-    description: 'Read plus create/edit in granted roots. No shell, delete, or browser mutation.',
-  },
-  {
-    id: 'full',
-    label: 'Full Access',
-    description: 'Write plus terminal, Git, browser, and other approved mutating tools.',
-  },
-] as const);
-
-export const PERMISSION_APPROVE_OPTIONS = Object.freeze([
-  {
-    id: 'approve-all',
-    label: 'Approve All for This Run',
-    description: 'Allow eligible asks for this run only. Hard denies still apply.',
-  },
-  {
-    id: 'approve-all-off',
-    label: 'Stop Approve All',
-    description: 'Turn off run-scoped auto-approve.',
-  },
-] as const);
 
 const FULL_ONLY_TOOLS = new Set([
   'terminal.open',
@@ -239,7 +173,11 @@ export function formatPermissionPolicy(input: {
   approveAll: boolean;
 }): string {
   const accessLabel =
-    input.access === 'read' ? 'Read Only' : input.access === 'write' ? 'Write Access' : 'Full Access';
+    input.access === 'read'
+      ? 'Read Only'
+      : input.access === 'write'
+        ? 'Write Access'
+        : 'Full Access';
   return [
     `Mode: ${input.mode === 'ask' ? 'Ask' : input.mode === 'plan' ? 'Plan' : 'Agent'}.`,
     `Access: ${accessLabel}.`,

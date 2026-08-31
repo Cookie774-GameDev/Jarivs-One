@@ -47,14 +47,16 @@ describe('permission access store', () => {
     expect(readPermissionAccess('chat-1', storage).access).toBe('full');
   });
 
-  it('parses extra /permissions options without collapsing them into Ask/Plan/Agent', () => {
+  it('accepts only canonical modes and status from /permissions', () => {
     expect(parsePermissionSlashArg('agent')).toEqual({ kind: 'mode', value: 'agent' });
-    expect(parsePermissionSlashArg('read only')).toEqual({ kind: 'access', value: 'read' });
-    expect(parsePermissionSlashArg('write')).toEqual({ kind: 'access', value: 'write' });
-    expect(parsePermissionSlashArg('full')).toEqual({ kind: 'access', value: 'full' });
-    expect(parsePermissionSlashArg('approve-all')).toEqual({ kind: 'approve-all', value: true });
-    expect(parsePermissionSlashArg('approve-all off')).toEqual({ kind: 'approve-all', value: false });
+    expect(parsePermissionSlashArg('plan')).toEqual({ kind: 'mode', value: 'plan' });
+    expect(parsePermissionSlashArg('ask')).toEqual({ kind: 'mode', value: 'ask' });
     expect(parsePermissionSlashArg('status')).toEqual({ kind: 'status' });
+    expect(parsePermissionSlashArg('read only')).toBeUndefined();
+    expect(parsePermissionSlashArg('write')).toBeUndefined();
+    expect(parsePermissionSlashArg('full')).toBeUndefined();
+    expect(parsePermissionSlashArg('approve-all')).toBeUndefined();
+    expect(parsePermissionSlashArg('approve-all off')).toBeUndefined();
     expect(parsePermissionSlashArg('nope')).toBeUndefined();
   });
 
@@ -64,8 +66,8 @@ describe('permission access store', () => {
     expect(accessAllowsTool('write', 'profile.allAboutMe.update', true)).toBe(true);
     expect(accessAllowsTool('write', 'terminal.write', true)).toBe(false);
     expect(accessAllowsTool('full', 'terminal.write', true)).toBe(true);
-    expect(
-      formatPermissionPolicy({ mode: 'agent', access: 'full', approveAll: true }),
-    ).toContain('Approve All for This Run: ON');
+    expect(formatPermissionPolicy({ mode: 'agent', access: 'full', approveAll: true })).toContain(
+      'Approve All for This Run: ON',
+    );
   });
 });
