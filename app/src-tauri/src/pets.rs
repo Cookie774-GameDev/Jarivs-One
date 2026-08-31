@@ -1171,12 +1171,16 @@ enum PetRegistrationAction {
 
 fn classify_pet_registration(
     webview_registered: bool,
-    native_host_exists: bool,
+    _native_host_exists: bool,
     window_registered: bool,
 ) -> PetRegistrationAction {
-    if webview_registered && native_host_exists {
+    // `WebviewWindowBuilder::build` registers the WebView before Windows has
+    // necessarily exposed its HWND. Keep that registration alive and let the
+    // bounded show path retry it; destroying it during this handoff leaves a
+    // label that WebView2 cannot retire or recreate in the same process.
+    if webview_registered {
         PetRegistrationAction::Reuse
-    } else if webview_registered || window_registered {
+    } else if window_registered {
         PetRegistrationAction::Retire
     } else {
         PetRegistrationAction::Create
@@ -1369,7 +1373,14 @@ fn build_pet_panel(app: &AppHandle, visible: bool) -> Result<WebviewWindow, Stri
     .map_err(|e| format!("failed to create pet-mini-panel window: {e}"))
 }
 
-fn retire_failed_pet_overlay(app: &AppHandle, created: bool) {
+fn should_preserve_pending_pet_overlay(reason: &str) -> bool {
+    reason == "not_visible"
+}
+
+fn retire_failed_pet_overlay(app: &AppHandle, created: bool, reason: &str) {
+    if should_preserve_pending_pet_overlay(reason) {
+        return;
+    }
     let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) else {
         return;
     };
@@ -1458,7 +1469,7 @@ fn show_pet_overlay_blocking(app: AppHandle) -> Result<PetOverlayShowResult, Str
     match show_existing_pet_overlay(app.clone(), x, y, created) {
         Ok(result) => Ok(result),
         Err(reason) => {
-            retire_failed_pet_overlay(&app, created);
+            retire_failed_pet_overlay(&app, created, reason);
             Ok(PetOverlayShowResult::failed_after_create(created, reason))
         }
     }
@@ -2243,7 +2254,7 @@ mod tests {
     }
 
     #[test]
-    fn overlay_visibility_requires_native_configuration_and_failed_creation_is_retired() {
+    fn overlay_visibility_requires_native_configuration_without_retiring_a_pending_host() {
         let source = include_str!("pets.rs");
         let configure_start = source
             .find("fn native_configure_pet_window")
@@ -2264,7 +2275,9 @@ mod tests {
             .map(|offset| show_start + offset)
             .expect("overlay show helper has a bounded source slice");
         let show = &source[show_start..show_end];
-        assert!(show.contains("retire_failed_pet_overlay(&app, created);"));
+        assert!(show.contains("retire_failed_pet_overlay(&app, created, reason);"));
+        assert!(should_preserve_pending_pet_overlay("not_visible"));
+        assert!(!should_preserve_pending_pet_overlay("position_failed"));
     }
 
     #[test]
@@ -2352,14 +2365,14 @@ mod tests {
     }
 
     #[test]
-    fn pet_registration_reuses_only_a_complete_live_surface() {
+    fn pet_registration_preserves_a_registered_webview_while_its_native_host_materializes() {
         assert_eq!(
             classify_pet_registration(true, true, true),
             PetRegistrationAction::Reuse
         );
         assert_eq!(
             classify_pet_registration(true, false, true),
-            PetRegistrationAction::Retire
+            PetRegistrationAction::Reuse
         );
         assert_eq!(
             classify_pet_registration(false, false, true),
