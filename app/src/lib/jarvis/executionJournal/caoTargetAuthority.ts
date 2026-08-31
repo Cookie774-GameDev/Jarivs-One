@@ -8,6 +8,7 @@ import type { CaoTargetKind, CaoTargetLeaseV1 } from '@/lib/jarvis/contracts/exe
 import { validateCaoTargetLease } from '@/lib/jarvis/contracts/validators';
 
 export const CAO_TARGET_LEASE_MAX_MS = 60_000 as const;
+const OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const EVENT_PAGE_SIZE = 500;
 const MAX_EVENT_PAGES = 20;
 const ACTIVE_RUN_STATUSES = new Set<JarvisRun['status']>([
@@ -88,7 +89,7 @@ function fail(code: string): never {
 }
 
 function validIdentifier(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
+  return typeof value === 'string' && OPAQUE_ID.test(value);
 }
 
 function assertScope(scope: LeaseScope): void {

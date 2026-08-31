@@ -135,6 +135,68 @@ const scope = {
 } as const;
 
 describe('CAO explicit target authority', () => {
+  it.each([
+    ['control-bearing account', { ...scope, accountId: 'account\nprivate' }],
+    ['oversized run', { ...scope, runId: 'r'.repeat(129) }],
+  ])('rejects %s scope before journal or registry access', async (_case, malformedScope) => {
+    const h = harness();
+    const authority = createCaoTargetAuthority(h.deps);
+
+    await expect(
+      authority.acquire({
+        ...malformedScope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow('cao_target_scope_invalid');
+    expect(h.deps.runs.getRun).not.toHaveBeenCalled();
+    expect(h.registry.claimExact).not.toHaveBeenCalled();
+  });
+
+  it('rejects a control-bearing target before run or registry access', async () => {
+    const h = harness();
+    const authority = createCaoTargetAuthority(h.deps);
+
+    await expect(
+      authority.acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: {
+          mode: 'explicit_single',
+          targets: [{ kind: 'chat', targetId: 'chat-a\nprivate' }],
+        },
+      }),
+    ).rejects.toThrow('cao_target_selection_invalid');
+    expect(h.deps.runs.getRun).not.toHaveBeenCalled();
+    expect(h.registry.claimExact).not.toHaveBeenCalled();
+  });
+
+  it('rejects a generated control-bearing lease identity before claim mutation', async () => {
+    const h = harness();
+    h.deps.newLeaseId.mockReturnValue('lease\nprivate');
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow('cao_target_lease_id_invalid');
+    expect(h.registry.claimExact).not.toHaveBeenCalled();
+    expect(h.rows).toEqual([]);
+  });
+
+  it('rejects a recovered oversized lease identity before run or journal access', async () => {
+    const h = harness();
+    const authority = createCaoTargetAuthority(h.deps);
+
+    await expect(authority.verify({ ...scope, leaseId: 'l'.repeat(129) })).rejects.toThrow(
+      'cao_target_lease_id_invalid',
+    );
+    expect(h.deps.runs.getRun).not.toHaveBeenCalled();
+    expect(h.deps.events.listByRun).not.toHaveBeenCalled();
+  });
+
   it('grants no target by default and rejects implicit or malformed multi-target selection', async () => {
     const h = harness([target(), target({ kind: 'terminal', targetId: 'terminal-a' })]);
     const authority = createCaoTargetAuthority(h.deps);
