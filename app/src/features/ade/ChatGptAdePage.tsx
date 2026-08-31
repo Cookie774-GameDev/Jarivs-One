@@ -2,6 +2,7 @@ import { useUIStore } from '@/stores/ui';
 import { ChatGptAdeTaskSurface } from './ChatGptAdeTaskSurface';
 import {
   createProductionChatGptAdeTaskRun,
+  type ChatGptAdeMissingScope,
   useProductionChatGptAdePageBinding,
 } from './productionChatGptAdeBinding';
 
@@ -27,9 +28,64 @@ function openProviders() {
   window.dispatchEvent(new CustomEvent('jarvis:settings:tab', { detail: { tab: 'providers' } }));
 }
 
+function openRoute(route: 'account' | 'chat' | 'files') {
+  useUIStore.getState().setRoute(route);
+}
+
+function ScopeRecoveryActions({
+  missingScope,
+}: {
+  missingScope: readonly ChatGptAdeMissingScope[];
+}) {
+  const needsAccount = missingScope.includes('account') || missingScope.includes('workspace');
+  return (
+    <>
+      {needsAccount ? (
+        <button
+          type="button"
+          className="rounded-lg border border-border px-3 py-2 text-sm"
+          onClick={() => openRoute('account')}
+        >
+          Open account setup
+        </button>
+      ) : null}
+      {missingScope.includes('project') ? (
+        <button
+          type="button"
+          className="rounded-lg border border-border px-3 py-2 text-sm"
+          onClick={() => openRoute('chat')}
+        >
+          Choose project
+        </button>
+      ) : null}
+      {missingScope.includes('worktree') ? (
+        <button
+          type="button"
+          className="rounded-lg border border-border px-3 py-2 text-sm"
+          onClick={() => openRoute('files')}
+        >
+          Choose project folder
+        </button>
+      ) : null}
+      {missingScope.includes('chat') ? (
+        <button
+          type="button"
+          className="rounded-lg border border-border px-3 py-2 text-sm"
+          onClick={() => openRoute('chat')}
+        >
+          Open chat
+        </button>
+      ) : null}
+    </>
+  );
+}
+
 export function ChatGptAdePage() {
   const binding = useProductionChatGptAdePageBinding();
   if (binding.authority.kind === 'unavailable') {
+    const supportsCatalogRefresh =
+      binding.authority.code === 'catalog_unavailable' ||
+      binding.authority.code === 'route_unavailable';
     return (
       <main
         className="h-full overflow-auto bg-background p-6 text-foreground"
@@ -54,20 +110,26 @@ export function ChatGptAdePage() {
               <RecoveryNotice recovery={binding.recovery} />
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="rounded-lg border border-border px-3 py-2 text-sm"
-                onClick={openProviders}
-              >
-                Open Providers
-              </button>
-              <button
-                type="button"
-                className="rounded-lg border border-border px-3 py-2 text-sm"
-                onClick={binding.refresh}
-              >
-                Retry ADE authority
-              </button>
+              {binding.authority.code === 'scope_unavailable' ? (
+                <ScopeRecoveryActions missingScope={binding.authority.missingScope} />
+              ) : (
+                <button
+                  type="button"
+                  className="rounded-lg border border-border px-3 py-2 text-sm"
+                  onClick={openProviders}
+                >
+                  Open Providers
+                </button>
+              )}
+              {supportsCatalogRefresh ? (
+                <button
+                  type="button"
+                  className="rounded-lg border border-border px-3 py-2 text-sm"
+                  onClick={binding.refresh}
+                >
+                  Retry ADE authority
+                </button>
+              ) : null}
             </div>
             <p className="mt-5 text-xs text-muted-foreground">
               No provider substitution, credential entry, write tool, or unrestricted terminal

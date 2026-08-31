@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useUIStore } from '@/stores/ui';
 
 const binding = vi.hoisted(() => ({
   useBinding: vi.fn(),
@@ -37,6 +38,7 @@ describe('ChatGptAdePage', () => {
   beforeEach(() => {
     binding.useBinding.mockReset();
     binding.createRun.mockReset();
+    useUIStore.setState({ route: 'ade', settingsOpen: false });
   });
 
   it('fails closed and routes recovery to the existing Providers surface', () => {
@@ -56,6 +58,51 @@ describe('ChatGptAdePage', () => {
     expect(screen.queryByRole('button', { name: 'Start ADE task' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Retry ADE authority' }));
     expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it('routes each missing scope prerequisite to existing authorities without refreshing catalog', () => {
+    const refresh = vi.fn();
+    binding.useBinding.mockReturnValue({
+      authority: {
+        kind: 'unavailable',
+        code: 'scope_unavailable',
+        message: 'Exact ADE scope unavailable.',
+        missingScope: ['account', 'workspace', 'project', 'worktree', 'chat'],
+      },
+      recovery: null,
+      refresh,
+    });
+    render(<ChatGptAdePage />);
+
+    expect(screen.queryByRole('button', { name: 'Retry ADE authority' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open Providers' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open account setup' }));
+    expect(useUIStore.getState().route).toBe('account');
+    fireEvent.click(screen.getByRole('button', { name: 'Choose project' }));
+    expect(useUIStore.getState().route).toBe('chat');
+    fireEvent.click(screen.getByRole('button', { name: 'Choose project folder' }));
+    expect(useUIStore.getState().route).toBe('files');
+    fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+    expect(useUIStore.getState().route).toBe('chat');
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('does not refresh catalog for runtime-control recovery', () => {
+    const refresh = vi.fn();
+    binding.useBinding.mockReturnValue({
+      authority: {
+        kind: 'unavailable',
+        code: 'runtime_authority_unavailable',
+        message: 'Choose exact runtime controls.',
+      },
+      recovery: null,
+      refresh,
+    });
+    render(<ChatGptAdePage />);
+
+    expect(screen.queryByRole('button', { name: 'Retry ADE authority' })).toBeNull();
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it('renders a runnable read-only ADE only with exact authenticated authority', async () => {

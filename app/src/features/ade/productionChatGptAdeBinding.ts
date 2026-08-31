@@ -56,10 +56,18 @@ type UnavailableCode =
   | 'catalog_unavailable'
   | 'runtime_authority_unavailable';
 
+export type ChatGptAdeMissingScope = 'account' | 'workspace' | 'project' | 'worktree' | 'chat';
+
 export type ProductionChatGptAdeAuthority =
   | Readonly<{
       kind: 'unavailable';
-      code: UnavailableCode;
+      code: 'scope_unavailable';
+      message: string;
+      missingScope: readonly ChatGptAdeMissingScope[];
+    }>
+  | Readonly<{
+      kind: 'unavailable';
+      code: Exclude<UnavailableCode, 'scope_unavailable'>;
       message: string;
     }>
   | Readonly<{
@@ -85,7 +93,10 @@ interface ResolveAuthorityInput {
   runtime: Readonly<ChatRuntimeSettings>;
 }
 
-function unavailable(code: UnavailableCode, message: string): ProductionChatGptAdeAuthority {
+function unavailable(
+  code: Exclude<UnavailableCode, 'scope_unavailable'>,
+  message: string,
+): ProductionChatGptAdeAuthority {
   return Object.freeze({ kind: 'unavailable', code, message });
 }
 
@@ -133,19 +144,23 @@ function liveVariants(values: readonly string[] | undefined): readonly LiveVaria
 export function resolveProductionChatGptAdeAuthority(
   input: Readonly<ResolveAuthorityInput>,
 ): ProductionChatGptAdeAuthority {
-  if (
-    !input.account ||
-    !safePart(input.account.accountId) ||
-    !safePart(input.workspaceId) ||
-    !safePart(input.projectId) ||
-    !safePart(input.worktreeId) ||
-    !safePart(input.activeChatId)
-  ) {
-    return unavailable(
-      'scope_unavailable',
-      'An exact account, workspace, project, worktree, and chat scope is required.',
-    );
+  const missingScope: ChatGptAdeMissingScope[] = [];
+  if (!input.account || !safePart(input.account.accountId)) missingScope.push('account');
+  if (!safePart(input.workspaceId)) missingScope.push('workspace');
+  if (!safePart(input.projectId)) missingScope.push('project');
+  if (!safePart(input.worktreeId)) missingScope.push('worktree');
+  if (!safePart(input.activeChatId)) missingScope.push('chat');
+  if (missingScope.length > 0) {
+    return Object.freeze({
+      kind: 'unavailable',
+      code: 'scope_unavailable',
+      message: 'An exact account, workspace, project, worktree, and chat scope is required.',
+      missingScope: Object.freeze(missingScope),
+    });
   }
+  const account = input.account!;
+  const workspaceId = input.workspaceId!;
+  const projectId = input.projectId!;
   const selection = input.selection;
   const connection = input.connection;
   if (
@@ -230,11 +245,11 @@ export function resolveProductionChatGptAdeAuthority(
   });
   return Object.freeze({
     kind: 'ready',
-    accountSource: input.account.source,
+    accountSource: account.source,
     scope: Object.freeze({
-      accountId: input.account.accountId,
-      workspaceId: input.workspaceId,
-      projectId: input.projectId,
+      accountId: account.accountId,
+      workspaceId,
+      projectId,
       worktreeId: input.worktreeId,
       revision: `ade-scope-${evidence.accountGeneration}-${evidence.catalogGeneration}`,
     }),

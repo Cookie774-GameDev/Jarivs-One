@@ -125,7 +125,7 @@ describe('production ChatGPT ADE binding', () => {
     }
   });
 
-  it('fails closed for stale auth, mismatched routes, missing project scope, and Ollama', () => {
+  it('returns every exact missing scope prerequisite without fabricating authority', () => {
     const base = {
       account: { accountId: 'account-a', source: 'local' as const },
       workspaceId: 'workspace-a',
@@ -155,10 +155,53 @@ describe('production ChatGPT ADE binding', () => {
         rlmEnabled: true,
       },
     };
-    expect(resolveProductionChatGptAdeAuthority({ ...base, projectId: null })).toMatchObject({
+    expect(
+      resolveProductionChatGptAdeAuthority({
+        ...base,
+        account: null,
+        workspaceId: null,
+        projectId: null,
+        worktreeId: '',
+        activeChatId: null,
+      }),
+    ).toEqual({
       kind: 'unavailable',
       code: 'scope_unavailable',
+      message: 'An exact account, workspace, project, worktree, and chat scope is required.',
+      missingScope: ['account', 'workspace', 'project', 'worktree', 'chat'],
     });
+  });
+
+  it('fails closed for stale auth, mismatched routes, and Ollama', () => {
+    const base = {
+      account: { accountId: 'account-a', source: 'local' as const },
+      workspaceId: 'workspace-a',
+      projectId: 'project-a',
+      worktreeId: 'C:\\repo',
+      activeChatId: 'chat-a',
+      selection: {
+        mode: 'single' as const,
+        providerId: 'openai' as const,
+        modelId: 'openai/gpt-5.6-sol',
+        connectionId: 'opencode-cli',
+        connectionMode: 'external-cli' as const,
+        authSource: connection.authSource,
+        capabilities: connection.capabilities,
+      },
+      connection,
+      liveModel: {
+        id: 'openai/gpt-5.6-sol',
+        label: 'GPT-5.6 Sol',
+        variants: ['high-fast'],
+      },
+      catalogEvidence: evidence,
+      runtime: {
+        effort: 'high' as const,
+        fastMode: 'on' as const,
+        performance: 'quality' as const,
+        rlmEnabled: true,
+      },
+    };
     expect(
       resolveProductionChatGptAdeAuthority({
         ...base,
