@@ -732,6 +732,214 @@ export type MessageCreateInput = Omit<Message, 'id' | 'created_at' | 'updated_at
   updated_at?: number;
 };
 
+export type ChatDispatchTargetAuthority = Readonly<{
+  chatId: ChatId;
+  workspaceId: WorkspaceId;
+  projectId: ProjectId | null;
+}>;
+
+export type ChatDispatchClaimInput = Readonly<{
+  message: MessageCreateInput & Readonly<{ id: MessageId; role: 'user' }>;
+  target: ChatDispatchTargetAuthority;
+  matchesExisting: (message: Message) => boolean;
+}>;
+
+export type ChatDispatchClaimResult =
+  | Readonly<{ status: 'created' | 'existing'; message: Message }>
+  | Readonly<{ status: 'conflict' | 'authority_revoked' }>;
+
+export type ChatDispatchTransitionInput = Readonly<{
+  id: MessageId;
+  target: ChatDispatchTargetAuthority;
+  expectedParts: Message['parts'];
+  nextParts: Message['parts'];
+}>;
+
+export type ChatDispatchTransitionResult =
+  | Readonly<{ status: 'transitioned'; message: Message }>
+  | Readonly<{ status: 'conflict' | 'missing' | 'authority_revoked' }>;
+
+const CHAT_DISPATCH_AUTHORITY_REVOKED = 'CHAT_DISPATCH_AUTHORITY_REVOKED';
+const enqueueChatDispatchSyncInTransaction = enqueueLocalSyncInTransaction;
+
+function chatMatchesDispatchTarget(chat: Chat, target: ChatDispatchTargetAuthority): boolean {
+  return (
+    chat.id === target.chatId &&
+    chat.workspace_id === target.workspaceId &&
+    (chat.project_id ? String(chat.project_id) : null) ===
+      (target.projectId ? String(target.projectId) : null) &&
+    !chat.archived
+  );
+}
+
+function exactMessageParts(left: Message['parts'], right: Message['parts']): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/**
+ * Transaction authority for Chat-to-Chat dispatch persistence. The caller
+ * supplies the owner snapshot captured with its access epoch; this repository
+ * never recaptures current auth while claiming or transitioning a dispatch.
+ */
+export function createChatDispatchRepository(database: JarvisDexie, clock: () => number = now) {
+  return {
+    async claimChatDispatch(
+      input: ChatDispatchClaimInput,
+      syncOwner: SyncQueueOwnerSnapshot,
+      authorize: () => boolean,
+    ): Promise<ChatDispatchClaimResult> {
+      if (!authorize()) return { status: 'authority_revoked' };
+      let authorityRevoked = false;
+      try {
+        return await database.transaction(
+          'rw',
+          [database.messages, database.chats, database.sync_queue, database.settings],
+          async () => {
+            const target = await database.chats.get(input.target.chatId);
+            if (!target || !chatMatchesDispatchTarget(target, input.target)) {
+              return { status: 'conflict' } as const;
+            }
+            const existing = await database.messages.get(input.message.id);
+            if (existing) {
+              let matches = false;
+              try {
+                matches = input.matchesExisting(structuredClone(existing));
+              } catch {
+                matches = false;
+              }
+              if (!authorize()) {
+                authorityRevoked = true;
+                throw new Error(CHAT_DISPATCH_AUTHORITY_REVOKED);
+              }
+              return matches
+                ? ({ status: 'existing', message: structuredClone(existing) } as const)
+                : ({ status: 'conflict' } as const);
+            }
+            if (
+              input.message.chat_id !== input.target.chatId ||
+              input.message.role !== 'user' ||
+              input.message.parts.length !== 2
+            ) {
+              return { status: 'conflict' } as const;
+            }
+            const ts = clock();
+            const row: Message = {
+              ...structuredClone(input.message),
+              created_at: input.message.created_at ?? ts,
+              updated_at: input.message.updated_at ?? ts,
+            };
+            const chatUpdatedAt = Math.max(ts, target.updated_at + 1);
+            const updatedChat: Chat = { ...target, updated_at: chatUpdatedAt };
+            await database.messages.add(row);
+            await database.chats.put(updatedChat);
+            await enqueueChatDispatchSyncInTransaction(
+              { sync_queue: database.sync_queue, settings: database.settings },
+              {
+                op: 'insert',
+                table: 'messages',
+                row,
+                createdAt: ts,
+                ownerSnapshot: syncOwner,
+              },
+            );
+            await enqueueChatDispatchSyncInTransaction(
+              { sync_queue: database.sync_queue, settings: database.settings },
+              {
+                op: 'update',
+                table: 'chats',
+                row: updatedChat,
+                createdAt: ts,
+                ownerSnapshot: syncOwner,
+              },
+            );
+            if (!authorize()) {
+              authorityRevoked = true;
+              throw new Error(CHAT_DISPATCH_AUTHORITY_REVOKED);
+            }
+            return { status: 'created', message: structuredClone(row) } as const;
+          },
+        );
+      } catch (error) {
+        if (authorityRevoked) return { status: 'authority_revoked' };
+        throw error;
+      }
+    },
+
+    async transitionChatDispatch(
+      input: ChatDispatchTransitionInput,
+      syncOwner: SyncQueueOwnerSnapshot,
+      authorize: () => boolean,
+    ): Promise<ChatDispatchTransitionResult> {
+      if (!authorize()) return { status: 'authority_revoked' };
+      let authorityRevoked = false;
+      try {
+        return await database.transaction(
+          'rw',
+          [database.messages, database.chats, database.sync_queue, database.settings],
+          async () => {
+            const [target, current] = await Promise.all([
+              database.chats.get(input.target.chatId),
+              database.messages.get(input.id),
+            ]);
+            if (!target || !chatMatchesDispatchTarget(target, input.target)) {
+              return { status: 'conflict' } as const;
+            }
+            if (!current) return { status: 'missing' } as const;
+            if (
+              current.chat_id !== input.target.chatId ||
+              current.role !== 'user' ||
+              current.parts.length !== 2 ||
+              !exactMessageParts(current.parts, input.expectedParts)
+            ) {
+              return { status: 'conflict' } as const;
+            }
+            const ts = Math.max(clock(), current.updated_at + 1);
+            const row: Message = {
+              ...current,
+              parts: structuredClone(input.nextParts),
+              updated_at: ts,
+            };
+            const chatUpdatedAt = Math.max(ts, target.updated_at + 1);
+            const updatedChat: Chat = { ...target, updated_at: chatUpdatedAt };
+            await database.messages.put(row);
+            await database.chats.put(updatedChat);
+            await enqueueChatDispatchSyncInTransaction(
+              { sync_queue: database.sync_queue, settings: database.settings },
+              {
+                op: 'update',
+                table: 'messages',
+                row,
+                createdAt: ts,
+                ownerSnapshot: syncOwner,
+              },
+            );
+            await enqueueChatDispatchSyncInTransaction(
+              { sync_queue: database.sync_queue, settings: database.settings },
+              {
+                op: 'update',
+                table: 'chats',
+                row: updatedChat,
+                createdAt: ts,
+                ownerSnapshot: syncOwner,
+              },
+            );
+            if (!authorize()) {
+              authorityRevoked = true;
+              throw new Error(CHAT_DISPATCH_AUTHORITY_REVOKED);
+            }
+            return { status: 'transitioned', message: structuredClone(row) } as const;
+          },
+        );
+      } catch (error) {
+        if (authorityRevoked) return { status: 'authority_revoked' };
+        throw error;
+      }
+    },
+  };
+}
+
+export const chatDispatchRepo = createChatDispatchRepository(db);
+
 /**
  * CRUD over the `messages` table.
  *
