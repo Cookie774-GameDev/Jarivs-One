@@ -1273,6 +1273,8 @@ export function Composer({
   const [artifactReferenceScope, setArtifactReferenceScope] = useState<
     Readonly<{ accountId: string; artifacts: readonly JarvisArtifactV1[] }>
   >({ accountId: '', artifacts: [] });
+  const artifactRefreshGenerationRef = useRef(0);
+  const artifactLoadedAccountRef = useRef('');
   const [sending, setSending] = useState(false);
   const harnessRuntimeState = useHarnessRuntimeState();
   const harnessBlocked = harnessRuntimeState.kind !== 'ready';
@@ -1545,15 +1547,22 @@ export function Composer({
   const projectId = useAuthStore((s) => s.projectId);
   const [contextMaps, setContextMaps] = useState<readonly ContextMapRecord[]>([]);
   const pluginAccountId = useAuthStore((s) => resolveAccountIdentity(s)?.accountId ?? '');
+  const mentionDiscoveryOpen = mentionCtx !== null;
   useEffect(() => {
-    let current = true;
+    if (!mentionDiscoveryOpen && artifactLoadedAccountRef.current === pluginAccountId) return;
+    const generation = artifactRefreshGenerationRef.current + 1;
+    artifactRefreshGenerationRef.current = generation;
     void loadComposerArtifactScope(jarvisArtifactRepo, pluginAccountId).then((scope) => {
-      if (current) setArtifactReferenceScope(scope);
+      if (artifactRefreshGenerationRef.current !== generation) return;
+      artifactLoadedAccountRef.current = scope.accountId;
+      setArtifactReferenceScope(scope);
     });
     return () => {
-      current = false;
+      if (artifactRefreshGenerationRef.current === generation) {
+        artifactRefreshGenerationRef.current += 1;
+      }
     };
-  }, [pluginAccountId]);
+  }, [mentionDiscoveryOpen, pluginAccountId]);
   const terminalPickerActive = normalizeSlashCmd(optionPickerCtx?.cmd.cmd ?? '') === 'terminals';
   const pluginPickerActive = optionPickerCtx?.cmd.cmd === 'plug';
   const themePickerActive = isGlobalThemePickerCommand(optionPickerCtx?.cmd.cmd ?? '');
