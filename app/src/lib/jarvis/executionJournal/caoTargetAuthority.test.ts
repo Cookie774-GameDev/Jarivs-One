@@ -925,6 +925,100 @@ describe('CAO explicit target authority', () => {
     expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
   });
 
+  it('does not persist authority when the run becomes terminal during registry claim I/O', async () => {
+    const h = harness();
+    h.deps.runs.getRun
+      .mockResolvedValueOnce(run())
+      .mockResolvedValueOnce(run({ status: 'completed' }));
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_run_inactive$/);
+    expect(h.deps.journal.appendEvent).not.toHaveBeenCalled();
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('does not persist authority when the exact run ID drifts during registry claim I/O', async () => {
+    const h = harness();
+    h.deps.runs.getRun
+      .mockResolvedValueOnce(run())
+      .mockResolvedValueOnce(run({ id: 'jrun-other' }));
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_run_not_authorized$/);
+    expect(h.deps.journal.appendEvent).not.toHaveBeenCalled();
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('does not persist authority when its lease expires during registry claim I/O', async () => {
+    const h = harness();
+    h.deps.now.mockReset();
+    h.deps.now.mockReturnValueOnce(NOW).mockReturnValueOnce(NOW + 5_000);
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_lease_stale$/);
+    expect(h.deps.journal.appendEvent).not.toHaveBeenCalled();
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('reconciles ambiguous pre-persistence cleanup before reporting run drift', async () => {
+    const h = harness();
+    h.deps.runs.getRun
+      .mockResolvedValueOnce(run())
+      .mockResolvedValueOnce(run({ status: 'failed' }));
+    vi.mocked(h.registry.releaseExact).mockImplementationOnce(async () => {
+      h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: undefined });
+      throw new Error('private pre-persistence cleanup transport payload');
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_run_inactive$/);
+    expect(h.deps.journal.appendEvent).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('reports registry unavailability without persistence when pre-persistence cleanup retains ownership', async () => {
+    const h = harness();
+    h.deps.runs.getRun
+      .mockResolvedValueOnce(run())
+      .mockResolvedValueOnce(run({ status: 'cancelled' }));
+    vi.mocked(h.registry.releaseExact).mockRejectedValueOnce(
+      new Error('private pre-persistence cleanup failure payload'),
+    );
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_registry_unavailable$/);
+    expect(h.deps.journal.appendEvent).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe('cao_lease_1');
+  });
+
   it('rolls back ownership when a journal acknowledgement accessor throws', async () => {
     const h = harness();
     h.deps.journal.appendEvent.mockImplementationOnce(async () => {

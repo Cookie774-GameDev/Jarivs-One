@@ -629,6 +629,27 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       acquiredAt,
       expiresAt,
     };
+    try {
+      const currentRun = await readRun(input.accountId, input.runId);
+      assertRun(currentRun, input);
+    } catch (error) {
+      await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
+      throw error;
+    }
+    let persistenceAt: number;
+    try {
+      persistenceAt = readNow();
+      if (!Number.isSafeInteger(persistenceAt) || persistenceAt < acquiredAt) {
+        fail('cao_target_clock_invalid');
+      }
+    } catch (error) {
+      await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
+      throw error;
+    }
+    if (persistenceAt >= expiresAt) {
+      await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
+      fail('cao_target_lease_stale');
+    }
     let appended: JarvisEvent;
     try {
       appended = await dependencies.journal.appendEvent(input.accountId, input.runId, {
