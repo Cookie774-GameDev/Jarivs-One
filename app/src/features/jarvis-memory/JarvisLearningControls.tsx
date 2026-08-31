@@ -7,13 +7,20 @@ import { Switch } from '@/components/ui/switch';
 import { useJarvisLearningStore } from './learningStore';
 import {
   cancelCaoScheduledLearning,
+  getCaoScheduledLearningStatus,
   runManualCaoLearningChecks,
+  subscribeCaoScheduledLearningStatus,
+  type CaoScheduledLearningRuntimeStatus,
 } from './caoScheduledLearningRuntime';
 
 export interface JarvisLearningControlsProps {
   onExport?: (markdown: string) => void;
   onRunCheckNow?: () => Promise<{ status: 'completed' | 'failed' | 'cancelled' }>;
   onCancelCheck?: () => void;
+  getCheckStatus?: () => CaoScheduledLearningRuntimeStatus;
+  subscribeCheckStatus?: (
+    listener: (status: CaoScheduledLearningRuntimeStatus) => void,
+  ) => () => void;
 }
 
 function downloadMarkdown(markdown: string): void {
@@ -29,6 +36,8 @@ export function JarvisLearningControls({
   onExport = downloadMarkdown,
   onRunCheckNow = runManualCaoLearningChecks,
   onCancelCheck = () => cancelCaoScheduledLearning(),
+  getCheckStatus = getCaoScheduledLearningStatus,
+  subscribeCheckStatus = subscribeCaoScheduledLearningStatus,
 }: JarvisLearningControlsProps) {
   const activeAccountId = useJarvisLearningStore((state) => state.activeAccountId);
   const profile = useJarvisLearningStore((state) => state.profiles[activeAccountId]);
@@ -47,6 +56,20 @@ export function JarvisLearningControls({
   const [checkStatus, setCheckStatus] = React.useState<
     'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
   >('idle');
+
+  React.useEffect(() => {
+    const current = getCheckStatus();
+    setCheckStatus(
+      current.scope?.accountId === activeAccountId || current.state === 'idle'
+        ? current.state
+        : 'idle',
+    );
+    return subscribeCheckStatus((next) => {
+      if (next.scope?.accountId === activeAccountId || next.state === 'idle') {
+        setCheckStatus(next.state);
+      }
+    });
+  }, [activeAccountId, getCheckStatus, subscribeCheckStatus]);
 
   if (!profile) return null;
   const recent = [...profile.items].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12);

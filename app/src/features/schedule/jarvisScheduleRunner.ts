@@ -78,11 +78,18 @@ function defaultDeps(): JarvisScheduleRunnerDeps {
 
 function caoScope(
   accountId: string,
+  workspaceId: WorkspaceId,
   event: EventRow,
   metadata: JarvisScheduleMetadata,
 ): CaoScheduledLearningScope | null {
   const cao = metadata.caoSupervision;
-  if (!cao) return null;
+  if (
+    !cao ||
+    String(event.workspace_id) !== String(workspaceId) ||
+    String(event.project_id ?? '') !== cao.projectId
+  ) {
+    return null;
+  }
   return {
     accountId,
     workspaceId: String(event.workspace_id),
@@ -330,12 +337,25 @@ export async function runDueJarvisSchedules(
   pruneSettledClaims(accountId, events, now);
 
   for (const event of events) {
+    if (String(event.workspace_id) !== String(workspaceId)) continue;
     if (event.status !== 'scheduled' || !isJarvisScheduleEvent(event)) continue;
     const parsedMetadata = parseJarvisScheduleMetadata(event);
     if (!parsedMetadata?.prompt.trim()) continue;
     result.checked += 1;
 
-    const learningScope = caoScope(accountId, event, parsedMetadata);
+    const learningScope = caoScope(accountId, workspaceId, event, parsedMetadata);
+    if (parsedMetadata.caoSupervision && !learningScope) {
+      parsedMetadata.errorHistory = [
+        ...parsedMetadata.errorHistory,
+        { at: now, error: 'CAO scheduled learning scope is invalid.' },
+      ];
+      try {
+        await deps.updateEvent(event.id, withJarvisScheduleMetadata(event, parsedMetadata));
+      } catch {
+        // Scope drift remains fail-closed even if its diagnostic cannot be persisted.
+      }
+      continue;
+    }
     let recoveryChanged = false;
     if (learningScope) {
       try {

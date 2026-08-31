@@ -2,6 +2,9 @@ import 'fake-indexeddb/auto';
 
 import { describe, expect, it, vi } from 'vitest';
 import { createJarvisDb } from '@/lib/db';
+import { buildJarvisScheduleEventInput } from '@/features/schedule/jarvisSchedules';
+import type { EventRow } from '@/types/event';
+import type { WorkspaceId } from '@/types/common';
 
 import type {
   CaoScheduledLearningPersistence,
@@ -10,6 +13,7 @@ import type {
 import {
   createCaoScheduledLearningDexiePersistence,
   createCaoScheduledLearningRuntime,
+  runManualCaoLearningChecks,
 } from './caoScheduledLearningRuntime';
 
 const SCOPE: CaoScheduledLearningScope = {
@@ -31,6 +35,42 @@ function memoryPersistence(): CaoScheduledLearningPersistence {
       value = structuredClone(snapshot);
     }),
   };
+}
+
+function supervisionEvent(input: {
+  id: string;
+  status?: EventRow['status'];
+  projectId?: string;
+  metadataProjectId?: string;
+}): EventRow {
+  const projectId = input.projectId ?? SCOPE.projectId;
+  const metadataProjectId = input.metadataProjectId ?? projectId;
+  const created = buildJarvisScheduleEventInput({
+    workspaceId: SCOPE.workspaceId as WorkspaceId,
+    projectId,
+    createdBy: 'agent_jarvis',
+    title: 'CAO supervision',
+    prompt: 'Review the bounded learning journal.',
+    startAt: SCOPE.scheduleAnchorAt,
+    recurrence: 'custom_interval',
+    intervalMs: 15 * 60 * 1_000,
+    timezone: 'UTC',
+    modelSelection: { mode: 'single', providerId: 'openai', modelId: 'gpt-test' },
+    agentId: 'agent_jarvis',
+    caoSupervision: {
+      schemaVersion: 1,
+      mode: 'cao_supervision',
+      scheduleId: SCOPE.scheduleId,
+      policyId: 'quarter-hour-v1',
+      targetId: SCOPE.targetId,
+      projectId: metadataProjectId,
+    },
+  });
+  return {
+    ...created,
+    id: input.id,
+    status: input.status ?? 'scheduled',
+  } as EventRow;
 }
 
 describe('CAO scheduled learning production runtime', () => {
@@ -237,4 +277,85 @@ describe('CAO scheduled learning production runtime', () => {
       completions: [],
     });
   });
+
+  it('restores the pending manual-force trigger in canonical status after runtime restart', async () => {
+    const persistence = memoryPersistence();
+    await persistence.save({
+      expectedRevision: 0,
+      snapshot: {
+        schemaVersion: 1,
+        revision: 1,
+        ...SCOPE,
+        lastLearningSeqConsumed: 0,
+        scheduledOccurrenceCount: 0,
+        pending: {
+          passId: 'pass-manual-restart',
+          requestId: 'request-manual-restart',
+          trigger: 'manual_force',
+          fromSeqExclusive: 0,
+          throughSeqInclusive: 8,
+          requestedAt: 2_000,
+        },
+        completions: [],
+      },
+    });
+    const runtime = createCaoScheduledLearningRuntime({
+      persistence,
+      journalHighWater: async () => 99,
+      execute: async () => ({ status: 'completed', receiptId: 'receipt-manual-restart' }),
+      now: () => 3_000,
+      newPassId: () => 'must-not-replace',
+      newRequestId: () => 'unused',
+    });
+
+    await expect(runtime.recover(SCOPE)).resolves.toMatchObject({
+      status: 'completed',
+      passId: 'pass-manual-restart',
+    });
+    expect(runtime.getStatus()).toMatchObject({ state: 'completed', trigger: 'manual_force' });
+  });
+
+  it('recovers once before a manual force and ignores paused, duplicate, and project-drifted rows', async () => {
+    const active = supervisionEvent({ id: 'event-active' });
+    const duplicate = supervisionEvent({ id: 'event-duplicate' });
+    const paused = supervisionEvent({ id: 'event-paused', status: 'cancelled' });
+    const drifted = supervisionEvent({
+      id: 'event-drifted',
+      projectId: 'project-b',
+      metadataProjectId: SCOPE.projectId,
+    });
+    const recover = vi.fn(async () => null);
+    const run = vi.fn(async () => ({ status: 'completed' as const }));
+
+    await expect(
+      runManualCaoLearningChecks({
+        getAccountIdentity: () => ({ accountId: SCOPE.accountId }),
+        getWorkspaceId: () => SCOPE.workspaceId,
+        listEvents: async () => [active, duplicate, paused, drifted],
+        recover,
+        run,
+      }),
+    ).resolves.toEqual({ status: 'completed' });
+    expect(recover).toHaveBeenCalledOnce();
+    expect(run).toHaveBeenCalledOnce();
+    expect(run).toHaveBeenCalledWith({ scope: SCOPE, trigger: 'manual_force' });
+  });
+
+  it.each(['failed', 'cancelled'] as const)(
+    'stops a manual force when durable pending recovery is %s',
+    async (status) => {
+      const run = vi.fn(async () => ({ status: 'completed' as const }));
+
+      await expect(
+        runManualCaoLearningChecks({
+          getAccountIdentity: () => ({ accountId: SCOPE.accountId }),
+          getWorkspaceId: () => SCOPE.workspaceId,
+          listEvents: async () => [supervisionEvent({ id: 'event-active' })],
+          recover: async () => ({ status }),
+          run,
+        }),
+      ).resolves.toEqual({ status });
+      expect(run).not.toHaveBeenCalled();
+    },
+  );
 });

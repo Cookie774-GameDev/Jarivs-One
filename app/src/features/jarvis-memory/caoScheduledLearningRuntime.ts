@@ -204,7 +204,24 @@ export function createCaoScheduledLearningRuntime(deps: CaoScheduledLearningRunt
   };
 
   const recover = async (scope: CaoScheduledLearningScope) => {
-    publish({ state: 'running', scope, updatedAt: now() });
+    let recoveryTrigger: CaoLearningTrigger | undefined;
+    try {
+      const snapshot = parseCaoScheduledLearningSnapshot(await deps.persistence.load(scope));
+      if (
+        snapshot &&
+        snapshot.accountId === scope.accountId &&
+        snapshot.workspaceId === scope.workspaceId &&
+        snapshot.projectId === scope.projectId &&
+        snapshot.scheduleId === scope.scheduleId &&
+        snapshot.targetId === scope.targetId &&
+        snapshot.scheduleAnchorAt === scope.scheduleAnchorAt
+      ) {
+        recoveryTrigger = snapshot.pending?.trigger;
+      }
+    } catch {
+      // The controller performs the authoritative load and stable error mapping below.
+    }
+    publish({ state: 'running', trigger: recoveryTrigger, scope, updatedAt: now() });
     try {
       const generation = cancellationGenerations.get(scopeKey(scope)) ?? 0;
       const result = await enqueue(
@@ -217,7 +234,7 @@ export function createCaoScheduledLearningRuntime(deps: CaoScheduledLearningRunt
         publish({ state: 'idle', scope, updatedAt: now() });
         return null;
       }
-      return settleStatus(result, { scope, trigger: 'scheduled' });
+      return settleStatus(result, { scope, trigger: recoveryTrigger ?? 'scheduled' });
     } catch (error) {
       publish({ state: 'failed', scope, updatedAt: now() });
       throw error;
@@ -330,9 +347,19 @@ export const cancelCaoScheduledLearning = productionRuntime.cancel;
 export const getCaoScheduledLearningStatus = productionRuntime.getStatus;
 export const subscribeCaoScheduledLearningStatus = productionRuntime.subscribe;
 
-function scopeForEvent(accountId: string, event: EventRow): CaoScheduledLearningScope | null {
+function scopeForEvent(
+  accountId: string,
+  workspaceId: string,
+  event: EventRow,
+): CaoScheduledLearningScope | null {
   const cao = parseJarvisScheduleMetadata(event)?.caoSupervision;
-  if (!cao) return null;
+  if (
+    !cao ||
+    String(event.workspace_id) !== workspaceId ||
+    String(event.project_id ?? '') !== cao.projectId
+  ) {
+    return null;
+  }
   return {
     accountId,
     workspaceId: String(event.workspace_id),
@@ -343,21 +370,57 @@ function scopeForEvent(accountId: string, event: EventRow): CaoScheduledLearning
   };
 }
 
-export async function runManualCaoLearningChecks(): Promise<{
+export interface CaoManualLearningDeps {
+  getAccountIdentity(): { accountId: string } | null;
+  getWorkspaceId(): string | null;
+  listEvents(workspaceId: string): Promise<EventRow[]>;
+  recover(
+    scope: CaoScheduledLearningScope,
+  ): Promise<{ status: 'completed' | 'failed' | 'cancelled' } | null>;
+  run(input: CaoScheduledLearningRuntimeInput): Promise<{
+    status: 'completed' | 'failed' | 'cancelled';
+  }>;
+}
+
+const productionManualLearningDeps: CaoManualLearningDeps = {
+  getAccountIdentity: getActiveAccountIdentity,
+  getWorkspaceId: () => useAuthStore.getState().workspaceId ?? null,
+  listEvents: (workspaceId) => eventRepo.list({ workspace_id: workspaceId as never }),
+  recover: productionRuntime.recover,
+  run: productionRuntime.run,
+};
+
+export async function runManualCaoLearningChecks(
+  deps: CaoManualLearningDeps = productionManualLearningDeps,
+): Promise<{
   status: 'completed' | 'failed' | 'cancelled';
 }> {
-  const account = getActiveAccountIdentity();
-  const workspaceId = useAuthStore.getState().workspaceId;
+  const account = deps.getAccountIdentity();
+  const workspaceId = deps.getWorkspaceId();
   if (!account || !workspaceId) return { status: 'failed' };
-  const events = await eventRepo.list({ workspace_id: workspaceId as never });
-  const scopes = events
+  let events: EventRow[];
+  try {
+    events = await deps.listEvents(workspaceId);
+  } catch {
+    return { status: 'failed' };
+  }
+  const uniqueScopes = new Map<string, CaoScheduledLearningScope>();
+  events
     .filter((event) => event.status === 'scheduled')
-    .map((event) => scopeForEvent(account.accountId, event))
-    .filter((scope): scope is CaoScheduledLearningScope => scope !== null);
+    .map((event) => scopeForEvent(account.accountId, workspaceId, event))
+    .filter((scope): scope is CaoScheduledLearningScope => scope !== null)
+    .forEach((scope) => uniqueScopes.set(scopeKey(scope), scope));
+  const scopes = [...uniqueScopes.values()];
   if (scopes.length === 0) return { status: 'failed' };
   for (const scope of scopes) {
-    const result = await productionRuntime.run({ scope, trigger: 'manual_force' });
-    if (result.status !== 'completed') return { status: result.status };
+    try {
+      const recovery = await deps.recover(scope);
+      if (recovery && recovery.status !== 'completed') return { status: recovery.status };
+      const result = await deps.run({ scope, trigger: 'manual_force' });
+      if (result.status !== 'completed') return { status: result.status };
+    } catch {
+      return { status: 'failed' };
+    }
   }
   return { status: 'completed' };
 }

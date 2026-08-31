@@ -63,4 +63,38 @@ describe('JarvisLearningControls', () => {
     await act(async () => pending);
     expect(screen.getByRole('status').textContent).toContain('Learning check cancelled');
   });
+
+  it('restores canonical runtime status after reload and ignores another account status', () => {
+    const scope = {
+      accountId: 'account-a',
+      workspaceId: 'workspace-a',
+      projectId: 'project-a',
+      scheduleId: 'schedule-a',
+      targetId: 'learning-md',
+      scheduleAnchorAt: 1_000,
+    };
+    let publish!: (status: {
+      state: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled';
+      scope?: typeof scope;
+    }) => void;
+    const subscribeCheckStatus = vi.fn((listener: typeof publish) => {
+      publish = listener;
+      return () => undefined;
+    });
+
+    render(
+      <JarvisLearningControls
+        getCheckStatus={() => ({ state: 'running', trigger: 'manual_force', scope })}
+        subscribeCheckStatus={subscribeCheckStatus}
+      />,
+    );
+    expect(screen.getByRole('status').textContent).toContain('Learning check running');
+    expect(screen.getByRole('button', { name: 'Cancel learning check' })).not.toBeNull();
+
+    act(() => publish({ state: 'completed', scope: { ...scope, accountId: 'account-foreign' } }));
+    expect(screen.getByRole('status').textContent).toContain('Learning check running');
+
+    act(() => publish({ state: 'completed', scope }));
+    expect(screen.getByRole('status').textContent).toContain('Learning check completed');
+  });
 });

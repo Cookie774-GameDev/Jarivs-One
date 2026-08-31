@@ -30,10 +30,12 @@ function buildEvent(overrides: {
   recurrence?: 'once' | 'daily' | 'weekly' | 'monthly' | 'weekdays';
   prompt?: string;
   status?: EventRow['status'];
+  projectId?: string;
   metadataPatch?: Partial<JarvisScheduleMetadata>;
 }): EventRow {
   const input = buildJarvisScheduleEventInput({
     workspaceId: WORKSPACE,
+    ...(overrides.projectId ? { projectId: overrides.projectId } : {}),
     createdBy: 'usr_local',
     title: 'Football news',
     prompt: overrides.prompt ?? 'Give me the top football headlines.',
@@ -230,6 +232,7 @@ describe('runDueJarvisSchedules', () => {
     const ordinary = buildEvent({ startAt: BASE_NOW - 60_000 });
     const cao = buildEvent({
       startAt: BASE_NOW - 30_000,
+      projectId: 'project-a',
       metadataPatch: {
         caoSupervision: {
           schemaVersion: 1,
@@ -265,6 +268,7 @@ describe('runDueJarvisSchedules', () => {
   it('persists a truthful CAO failure without changing ordinary schedule behavior', async () => {
     const cao = buildEvent({
       startAt: BASE_NOW - 30_000,
+      projectId: 'project-a',
       metadataPatch: {
         caoSupervision: {
           schemaVersion: 1,
@@ -289,6 +293,7 @@ describe('runDueJarvisSchedules', () => {
   it('durably records restart-recovery failure even when the next occurrence is not due', async () => {
     const cao = buildEvent({
       startAt: BASE_NOW + 60_000,
+      projectId: 'project-a',
       metadataPatch: {
         caoSupervision: {
           schemaVersion: 1,
@@ -310,6 +315,44 @@ describe('runDueJarvisSchedules', () => {
       'CAO scheduled learning failed.',
     );
   });
+
+  it.each([
+    ['workspace', { workspace_id: 'workspace-foreign' }, false],
+    ['project', { project_id: 'project-foreign' }, true],
+  ])(
+    'fails closed when dedicated CAO %s authority drifts from its persisted row',
+    async (_case, drift, recordsLocalError) => {
+      const cao = buildEvent({
+        startAt: BASE_NOW - 30_000,
+        projectId: 'project-a',
+        metadataPatch: {
+          caoSupervision: {
+            schemaVersion: 1,
+            mode: 'cao_supervision',
+            scheduleId: 'cao-schedule-drift',
+            policyId: 'quarter-hour-v1',
+            targetId: 'learning-md',
+            projectId: 'project-a',
+          },
+        },
+      });
+      Object.assign(cao, drift);
+      const { deps, dispatches, updates } = buildDeps([cao]);
+
+      await runDueJarvisSchedules(ACCOUNT, WORKSPACE, deps);
+
+      expect(dispatches).toEqual([]);
+      expect(deps.recoverCaoScheduledLearning).not.toHaveBeenCalled();
+      expect(deps.runCaoScheduledLearning).not.toHaveBeenCalled();
+      if (recordsLocalError) {
+        expect(parseJarvisScheduleMetadata(cao)?.errorHistory.at(-1)?.error).toBe(
+          'CAO scheduled learning scope is invalid.',
+        );
+      } else {
+        expect(updates).toEqual([]);
+      }
+    },
+  );
 
   it.each<
     [
