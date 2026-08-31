@@ -2789,4 +2789,30 @@ describe('CAO explicit target authority', () => {
     expect(h.registry.readExact).not.toHaveBeenCalled();
     expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
   });
+
+  it.each([
+    ['wrong event type', { type: 'tool' as const }],
+    ['earlier persistence timestamp', { createdAt: NOW - 1 }],
+    ['later persistence timestamp', { createdAt: NOW + 1 }],
+  ])(
+    'rejects an append acknowledgement with %s and clears exact ownership',
+    async (_case, acknowledgementChange) => {
+      const h = harness();
+      h.deps.journal.appendEvent.mockImplementationOnce(async (_accountId, runId, event) => {
+        const durable = { ...structuredClone(event), runId, seq: 1 } as JarvisEvent;
+        h.rows.push(durable);
+        return { ...structuredClone(durable), ...acknowledgementChange } as JarvisEvent;
+      });
+
+      await expect(
+        createCaoTargetAuthority(h.deps).acquire({
+          ...scope,
+          leaseMs: 5_000,
+          selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+        }),
+      ).rejects.toThrow(/^cao_target_lease_persistence_failed$/);
+      expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+      expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+    },
+  );
 });

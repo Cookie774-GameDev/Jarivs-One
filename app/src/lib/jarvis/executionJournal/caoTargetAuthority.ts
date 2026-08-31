@@ -420,6 +420,8 @@ function acknowledgesExactLease(
     event.runId !== scope.runId ||
     !Number.isSafeInteger(event.seq) ||
     event.seq <= 0 ||
+    event.type !== 'context' ||
+    event.createdAt !== expected.acquiredAt ||
     event.idempotencyKey !== `cao-target-lease:${expected.leaseId}` ||
     !event.caoTargetLease
   ) {
