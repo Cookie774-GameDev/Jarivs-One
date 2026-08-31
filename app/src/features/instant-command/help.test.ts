@@ -35,6 +35,23 @@ describe('Instant Command catalog help', () => {
     expect(Object.isFrozen(help[0]?.examples)).toBe(true);
   });
 
+  it('fails closed on malformed, duplicate, non-array, or unbounded catalog snapshots', () => {
+    const definition = INSTANT_COMMAND_CATALOG[0]!;
+    const malformed = { ...definition, aliases: [] } as CommandDefinition;
+
+    expect(buildInstantCommandHelp(null as never)).toEqual([]);
+    expect(buildInstantCommandHelp([malformed])).toEqual([]);
+    expect(buildInstantCommandHelp([definition, definition])).toEqual([]);
+    expect(
+      buildInstantCommandHelp(
+        Array.from({ length: 2_049 }, (_, index) => ({
+          ...definition,
+          id: `page.open.${index}`,
+        })),
+      ),
+    ).toEqual([]);
+  });
+
   it('searches locally by id, alias, and family', () => {
     const help = buildInstantCommandHelp(INSTANT_COMMAND_CATALOG);
     expect(searchInstantCommandHelp(help, 'fullscreen').map((item) => item.id)).toContain(
@@ -132,5 +149,31 @@ describe('Instant Command catalog help', () => {
       });
       expect(JSON.stringify(preview)).not.toMatch(/private|payload/iu);
     }
+  });
+
+  it('redacts parser-returned source payloads and sensitive rejection details', () => {
+    const source = '/fault private command payload';
+    const index = {
+      entries: [],
+      match: () => [],
+      matchWithOffsets: () => [
+        {
+          definition: {
+            ...INSTANT_COMMAND_CATALOG[0]!,
+            parseSlots: () => ({ status: 'rejected' as const, reason: source }),
+          },
+          alias: '/fault',
+          sourceStart: 0,
+          sourceEnd: 6,
+          remainder: 'private command payload',
+        },
+      ],
+    } satisfies CommandCatalogIndex;
+
+    expect(previewInstantCommand(index, source)).toEqual({
+      status: 'rejected',
+      reason: 'That Instant Command is incomplete or invalid.',
+    });
+    expect(JSON.stringify(previewInstantCommand(index, source))).not.toMatch(/private|payload/iu);
   });
 });
