@@ -345,9 +345,9 @@ async function findLease(
   events: Pick<JarvisEventRepository, 'listByRun'>,
   scope: LeaseScope,
   leaseId: string,
-): Promise<CaoTargetLeaseV1 | undefined> {
+): Promise<Readonly<{ lease: CaoTargetLeaseV1; eventSeq: number }> | undefined> {
   let afterSeq = 0;
-  let match: CaoTargetLeaseV1 | undefined;
+  let match: Readonly<{ lease: CaoTargetLeaseV1; eventSeq: number }> | undefined;
   const seenLeaseIds = new Set<string>();
   for (let pageNumber = 0; pageNumber < MAX_EVENT_PAGES; pageNumber += 1) {
     let page: readonly JarvisEvent[];
@@ -392,7 +392,7 @@ async function findLease(
       }
       if (lease.leaseId === leaseId) {
         if (match) fail('cao_target_journal_invalid');
-        match = structuredClone(lease);
+        match = { lease: structuredClone(lease), eventSeq: event.seq };
       }
     }
     if (canonicalPage.length < EVENT_PAGE_SIZE) return match;
@@ -539,13 +539,20 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     }
   }
 
-  async function verify(input: VerifyInput): Promise<CaoTargetLeaseV1> {
+  async function verifyLease(
+    input: VerifyInput,
+    expectedEventSeq?: number,
+  ): Promise<CaoTargetLeaseV1> {
     if (!hasExactKeys(input, VERIFY_INPUT_KEYS)) fail('cao_target_input_invalid');
     assertScope(input);
     if (!validIdentifier(input.leaseId)) fail('cao_target_lease_id_invalid');
     const run = await readRun(input.accountId, input.runId);
-    const lease = await findLease(dependencies.events, input, input.leaseId);
-    if (!lease) fail('cao_target_lease_missing');
+    const durableMatch = await findLease(dependencies.events, input, input.leaseId);
+    if (!durableMatch) fail('cao_target_lease_missing');
+    if (expectedEventSeq !== undefined && durableMatch.eventSeq !== expectedEventSeq) {
+      fail('cao_target_lease_persistence_failed');
+    }
+    const lease = durableMatch.lease;
     exactLeaseScope(lease, input);
     if (!run) {
       await releaseVerifiedLease(input, lease);
@@ -619,9 +626,10 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
   async function verifyAcquiredLease(
     input: AcquireInput,
     lease: CaoTargetLeaseV1,
+    expectedEventSeq?: number,
   ): Promise<CaoTargetLeaseV1> {
     try {
-      return await verify(verifyRequest(input, lease.leaseId));
+      return await verifyLease(verifyRequest(input, lease.leaseId), expectedEventSeq);
     } catch (error) {
       await releaseVerifiedLease(verifyRequest(input, lease.leaseId), lease);
       throw error;
@@ -775,7 +783,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
         caoTargetLease: lease,
       });
     } catch {
-      let committed: CaoTargetLeaseV1 | undefined;
+      let committed: Awaited<ReturnType<typeof findLease>>;
       try {
         committed = await findLease(dependencies.events, input, leaseId);
       } catch (error) {
@@ -794,15 +802,20 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
       fail('cao_target_lease_persistence_failed');
     }
-    return verifyAcquiredLease(input, lease);
+    return verifyAcquiredLease(input, lease, canonicalAcknowledgement.seq);
+  }
+
+  async function verify(input: VerifyInput): Promise<CaoTargetLeaseV1> {
+    return verifyLease(input);
   }
 
   async function release(input: VerifyInput): Promise<void> {
     if (!hasExactKeys(input, VERIFY_INPUT_KEYS)) fail('cao_target_input_invalid');
     assertScope(input);
     if (!validIdentifier(input.leaseId)) fail('cao_target_lease_id_invalid');
-    const lease = await findLease(dependencies.events, input, input.leaseId);
-    if (!lease) fail('cao_target_lease_missing');
+    const durableMatch = await findLease(dependencies.events, input, input.leaseId);
+    if (!durableMatch) fail('cao_target_lease_missing');
+    const lease = durableMatch.lease;
     exactLeaseScope(lease, input);
     await releaseVerifiedLease(input, lease);
   }

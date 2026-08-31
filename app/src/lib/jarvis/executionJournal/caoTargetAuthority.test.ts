@@ -2815,4 +2815,30 @@ describe('CAO explicit target authority', () => {
       expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
     },
   );
+
+  it.each([
+    ['earlier sequence', 1],
+    ['later sequence', 3],
+    ['fabricated sequence', 777],
+  ])(
+    'rejects an append acknowledgement with %s than its durable event',
+    async (_case, acknowledgedSeq) => {
+      const h = harness();
+      h.deps.journal.appendEvent.mockImplementationOnce(async (_accountId, runId, event) => {
+        const durable = { ...structuredClone(event), runId, seq: 2 } as JarvisEvent;
+        h.rows.push(durable);
+        return { ...structuredClone(durable), seq: acknowledgedSeq };
+      });
+
+      await expect(
+        createCaoTargetAuthority(h.deps).acquire({
+          ...scope,
+          leaseMs: 5_000,
+          selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+        }),
+      ).rejects.toThrow(/^cao_target_lease_persistence_failed$/);
+      expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+      expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+    },
+  );
 });
