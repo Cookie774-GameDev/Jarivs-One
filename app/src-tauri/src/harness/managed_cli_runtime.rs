@@ -10,6 +10,16 @@ const OPENCODEX_SOURCE_ENTRYPOINT: &str = "node_modules/@bitkyc08/opencodex/src/
 const OPENCODEX_PACKAGE_JSON: &str = "node_modules/@bitkyc08/opencodex/package.json";
 const OPENCODEX_BUN_EXECUTABLE: &str = "node_modules/bun/bin/bun.exe";
 const OPENCODEX_DEPENDENCY_LOCK: &str = "bun.lock";
+const CODEX_ENTRYPOINT_SHA256: &str =
+    "cf68265897197ac5f3bff6a10c168eec159842b353129726da5e3ed6b91ef0f4";
+const OPENCODEX_ENTRYPOINT_SHA256: &str =
+    "5cb1ca93c8569707eba6bd665a0f9960fe37981d8149a14e78654c3b60217a08";
+const OPENCODEX_SOURCE_ENTRYPOINT_SHA256: &str =
+    "b4ba24ff43ee62b91e8dfb1cb267d044ca2261e2b50a737e310d5ec69fee650b";
+const OPENCODEX_DEPENDENCY_LOCK_SHA256: &str =
+    "6a3e0bed984743fbe76ae63d23296a72ec1f87ab6df56ee6bd0c66d5529ac2d5";
+const OPENCODEX_BUN_EXECUTABLE_SHA256: &str =
+    "627d2e4775c24bdedee2cd7ccc18dcadae061e5345274ab6e3c4c797927bfb8f";
 const OPENCODEX_REQUIRED_FILES: &[&str] = &[
     OPENCODEX_SOURCE_ENTRYPOINT,
     OPENCODEX_DEPENDENCY_LOCK,
@@ -186,6 +196,11 @@ fn inspect_opencodex_closure(
             return Err("OpenCodex dependency closure is incomplete.");
         }
     }
+    let source_entrypoint = regular_file_within(version_root, OPENCODEX_SOURCE_ENTRYPOINT)
+        .ok_or("OpenCodex source entrypoint is missing.")?;
+    if file_sha256(&source_entrypoint).as_deref() != Some(OPENCODEX_SOURCE_ENTRYPOINT_SHA256) {
+        return Err("OpenCodex source entrypoint checksum is mismatched.");
+    }
     for (path, version) in [
         ("node_modules/bun/package.json", "1.4.0"),
         ("node_modules/@oven/bun-windows-x64/package.json", "1.4.0"),
@@ -202,12 +217,18 @@ fn inspect_opencodex_closure(
     }
     let lock_path = regular_file_within(version_root, OPENCODEX_DEPENDENCY_LOCK)
         .ok_or("OpenCodex dependency lock is missing.")?;
-    if file_sha256(&lock_path).as_deref() != receipt.dependency_lock_sha256.as_deref() {
+    let lock_sha256 = file_sha256(&lock_path);
+    if lock_sha256.as_deref() != Some(OPENCODEX_DEPENDENCY_LOCK_SHA256)
+        || lock_sha256.as_deref() != receipt.dependency_lock_sha256.as_deref()
+    {
         return Err("OpenCodex dependency closure checksum is mismatched.");
     }
     let runtime_executable = regular_file_within(version_root, OPENCODEX_BUN_EXECUTABLE)
         .ok_or("OpenCodex managed Bun runtime is missing.")?;
-    if file_sha256(&runtime_executable).as_deref() != receipt.runtime_executable_sha256.as_deref() {
+    let runtime_executable_sha256 = file_sha256(&runtime_executable);
+    if runtime_executable_sha256.as_deref() != Some(OPENCODEX_BUN_EXECUTABLE_SHA256)
+        || runtime_executable_sha256.as_deref() != receipt.runtime_executable_sha256.as_deref()
+    {
         return Err("OpenCodex managed Bun runtime checksum is mismatched.");
     }
     Ok(())
@@ -284,7 +305,14 @@ pub fn inspect_managed_runtime(
             reason: "Managed CLI entrypoint is missing or unsafe.",
         };
     };
-    if file_sha256(&entrypoint).as_deref() != Some(receipt.entrypoint_sha256.as_str()) {
+    let entrypoint_sha256 = file_sha256(&entrypoint);
+    let expected_entrypoint_sha256 = match release.kind {
+        ManagedCliKind::Codex => CODEX_ENTRYPOINT_SHA256,
+        ManagedCliKind::OpenCodex => OPENCODEX_ENTRYPOINT_SHA256,
+    };
+    if entrypoint_sha256.as_deref() != Some(expected_entrypoint_sha256)
+        || entrypoint_sha256.as_deref() != Some(receipt.entrypoint_sha256.as_str())
+    {
         return ManagedCliReadiness::Incomplete {
             reason: "Managed CLI entrypoint checksum is mismatched.",
         };
@@ -374,7 +402,7 @@ mod tests {
     }
 
     #[test]
-    fn codex_is_ready_only_when_receipt_and_native_entrypoint_match() {
+    fn codex_requires_the_artifact_pinned_native_entrypoint() {
         let root = TestRoot::new("codex");
         let release =
             embedded_managed_release(ManagedCliKind::Codex, "windows", "x86_64").expect("release");
@@ -396,17 +424,25 @@ mod tests {
             .as_bytes(),
         );
 
-        assert_eq!(
+        assert!(matches!(
             inspect_managed_runtime(root.path(), &release),
-            ManagedCliReadiness::Ready {
-                launch: super::ManagedCliLaunch {
-                    executable: version_root.join(&release.entrypoint),
-                    arguments: vec![]
-                }
-            }
-        );
+            ManagedCliReadiness::Incomplete { .. }
+        ));
 
         write_file(version_root.join(&release.entrypoint), b"MZreplaced");
+        assert!(matches!(
+            inspect_managed_runtime(root.path(), &release),
+            ManagedCliReadiness::Incomplete { .. }
+        ));
+        write_file(
+            version_root.join("vibespace-runtime.json"),
+            serde_json::to_string(&ManagedRuntimeReceipt::codex(
+                &release,
+                &sha256(b"MZreplaced"),
+            ))
+            .unwrap()
+            .as_bytes(),
+        );
         assert!(matches!(
             inspect_managed_runtime(root.path(), &release),
             ManagedCliReadiness::Incomplete { .. }
@@ -455,7 +491,7 @@ mod tests {
     }
 
     #[test]
-    fn opencodex_requires_a_pinned_dependency_closure_and_real_probe() {
+    fn opencodex_rejects_receipt_rewrites_and_probe_requires_loopback_truth() {
         let root = TestRoot::new("opencodex-complete");
         let release = embedded_managed_release(ManagedCliKind::OpenCodex, "windows", "x86_64")
             .expect("release");
@@ -519,9 +555,21 @@ mod tests {
             .as_bytes(),
         );
 
-        let candidate = inspect_managed_runtime(root.path(), &release);
-        let ManagedCliReadiness::ProbeRequired { launch, .. } = &candidate else {
-            panic!("OpenCodex must require a real bounded probe");
+        assert!(matches!(
+            inspect_managed_runtime(root.path(), &release),
+            ManagedCliReadiness::Incomplete { .. }
+        ));
+
+        let launch = super::ManagedCliLaunch {
+            executable: version_root.join("node_modules/bun/bin/bun.exe"),
+            arguments: vec![
+                version_root
+                    .join("node_modules/@bitkyc08/opencodex/src/cli/index.ts")
+                    .to_string_lossy()
+                    .into_owned(),
+                "ready".to_string(),
+                "--json".to_string(),
+            ],
         };
         assert!(launch.executable.ends_with("node_modules/bun/bin/bun.exe"));
         assert_eq!(launch.arguments.last().map(String::as_str), Some("--json"));
@@ -529,6 +577,10 @@ mod tests {
             .arguments
             .iter()
             .any(|argument| argument.ends_with("ocx.mjs")));
+        let candidate = ManagedCliReadiness::ProbeRequired {
+            launch,
+            dependency_lock_sha256: super::OPENCODEX_DEPENDENCY_LOCK_SHA256.to_string(),
+        };
 
         assert!(matches!(
             confirm_managed_runtime_probe(
@@ -557,6 +609,26 @@ mod tests {
                 }
             ),
             ManagedCliReadiness::Ready { .. }
+        ));
+
+        write_file(
+            version_root.join("node_modules/bun/bin/bun.exe"),
+            b"MZrewritten",
+        );
+        write_file(
+            version_root.join("vibespace-runtime.json"),
+            serde_json::to_string(&ManagedRuntimeReceipt::opencodex(
+                &release,
+                &sha256(b"#!/usr/bin/env node"),
+                &sha256(b"{}"),
+                &sha256(b"MZrewritten"),
+            ))
+            .unwrap()
+            .as_bytes(),
+        );
+        assert!(matches!(
+            inspect_managed_runtime(root.path(), &release),
+            ManagedCliReadiness::Incomplete { .. }
         ));
 
         fs::remove_file(version_root.join("node_modules/bun/bin/bun.exe")).unwrap();
