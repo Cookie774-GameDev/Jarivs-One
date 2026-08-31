@@ -8,16 +8,27 @@ import { useTerminalTranscriptStore } from '@/features/terminals/transcriptStore
 import { useUIStore } from '@/stores/ui';
 import type { LiveChatStatus, LiveTerminalStatus, LiveWorkStatus } from './types';
 import type { WorkspaceId } from '@/types/common';
+import type { AgentId } from '@/types/common';
+import type { AgentRunState } from '@/types/agent';
 import type { TerminalSession } from '@/types/terminal';
-import type { Chat } from '@/types/chat';
+import type { Chat, Message } from '@/types/chat';
 
 function isAgentBusy(state: string | undefined): boolean {
-  return state === 'streaming' || state === 'thinking' || state === 'tool_calling' || state === 'reading' || state === 'queued';
+  return (
+    state === 'streaming' ||
+    state === 'thinking' ||
+    state === 'tool_calling' ||
+    state === 'reading' ||
+    state === 'queued'
+  );
 }
 
 export const STATIONARY_AFTER_MS = 4_000;
 
-export function getTerminalWorkStatus(lastOutputAt?: number, hasActiveProcess = true): LiveWorkStatus {
+export function getTerminalWorkStatus(
+  lastOutputAt?: number,
+  hasActiveProcess = true,
+): LiveWorkStatus {
   if (hasActiveProcess && lastOutputAt && Date.now() - lastOutputAt < STATIONARY_AFTER_MS) {
     return 'working';
   }
@@ -25,7 +36,10 @@ export function getTerminalWorkStatus(lastOutputAt?: number, hasActiveProcess = 
   return Date.now() - lastOutputAt < STATIONARY_AFTER_MS ? 'working' : 'stationary';
 }
 
-export function useLiveTerminalStatuses(workspaceId: WorkspaceId | null, projectId: string | null): LiveTerminalStatus[] {
+export function useLiveTerminalStatuses(
+  workspaceId: WorkspaceId | null,
+  projectId: string | null,
+): LiveTerminalStatus[] {
   const sessions =
     useLiveQuery(async () => {
       if (!workspaceId) return [] as TerminalSession[];
@@ -61,39 +75,78 @@ export function useLiveTerminalStatuses(workspaceId: WorkspaceId | null, project
   }, [sessions, transcripts]);
 }
 
-export function useLiveChatStatuses(workspaceId: WorkspaceId | null, projectId: string | null): LiveChatStatus[] {
+export function useLiveChatStatuses(
+  workspaceId: WorkspaceId | null,
+  projectId: string | null,
+): LiveChatStatus[] {
   const runStates = useAgentStore((s) => s.runStates);
-  const chats =
-    useLiveQuery(async () => {
-      if (!workspaceId) return [] as Chat[];
-      const rows = await db.chats.where('workspace_id').equals(workspaceId).toArray();
-      return rows
-        .filter((c) => (projectId ? c.project_id === projectId : !c.project_id))
-        .sort((a, b) => b.updated_at - a.updated_at)
-        .slice(0, 16);
-    }, [workspaceId, projectId]) ?? [];
+  const evidence = useLiveQuery(async () => {
+    if (!workspaceId) return { chats: [] as Chat[], messages: [] as Message[] };
+    const rows = await db.chats.where('workspace_id').equals(workspaceId).toArray();
+    const chats = rows
+      .filter((c) => (projectId ? c.project_id === projectId : !c.project_id))
+      .sort((a, b) => b.updated_at - a.updated_at)
+      .slice(0, 16);
+    const chatIds = chats.map((chat) => chat.id);
+    const messages = chatIds.length
+      ? await db.messages.where('chat_id').anyOf(chatIds).toArray()
+      : [];
+    return { chats, messages };
+  }, [workspaceId, projectId]) ?? { chats: [], messages: [] };
 
-  return useMemo(() => {
-    const anyStreaming = Object.values(runStates).some((st) => isAgentBusy(st));
-    return chats.map((chat) => {
-      const recent = Date.now() - chat.updated_at < STATIONARY_AFTER_MS;
-      const status: LiveWorkStatus = anyStreaming && recent ? 'working' : 'stationary';
+  return useMemo(() => projectLiveChatStatuses({ ...evidence, runStates }), [evidence, runStates]);
+}
+
+function visibleMessagePreview(message: Message): string | undefined {
+  const visible = message.parts
+    .flatMap((part) => (part.kind === 'text' ? [part.text.trim()] : []))
+    .filter(Boolean)
+    .join('\n');
+  return visible ? visible.slice(0, 240) : undefined;
+}
+
+export function projectLiveChatStatuses(
+  input: Readonly<{
+    chats: readonly Chat[];
+    messages: readonly Message[];
+    runStates: Partial<Record<AgentId, AgentRunState>>;
+  }>,
+): LiveChatStatus[] {
+  const latestVisible = new Map<string, { message: Message; preview: string }>();
+  for (const message of input.messages) {
+    const preview = visibleMessagePreview(message);
+    if (!preview) continue;
+    const chatId = String(message.chat_id);
+    const previous = latestVisible.get(chatId)?.message;
+    if (
+      !previous ||
+      message.created_at > previous.created_at ||
+      (message.created_at === previous.created_at && String(message.id) > String(previous.id))
+    ) {
+      latestVisible.set(chatId, { message, preview });
+    }
+  }
+
+  return input.chats
+    .filter((chat) => !chat.archived)
+    .map((chat) => {
+      const latest = latestVisible.get(String(chat.id));
+      const working = chat.active_agent_ids.some((agentId) =>
+        isAgentBusy(input.runStates[agentId]),
+      );
       return {
         chatId: chat.id,
         title: chat.title?.trim() || 'Untitled chat',
-        status,
-        lastActivityAt: chat.updated_at,
-        lastMessagePreview: undefined,
+        status: working ? ('working' as const) : ('stationary' as const),
+        lastActivityAt: Math.max(chat.updated_at, latest?.message.updated_at ?? 0),
+        lastMessagePreview: latest?.preview,
       };
     });
-  }, [chats, runStates]);
 }
 
 export function focusTerminalSession(sessionId: string, paneId?: string): void {
   useUIStore.getState().setRoute('terminal');
-  window.dispatchEvent(
-    new CustomEvent('jarvis:terminal:focus', { detail: { sessionId, paneId } }),
-  );
+  window.dispatchEvent(new CustomEvent('jarvis:terminal:focus', { detail: { sessionId, paneId } }));
 }
 
 export function focusChat(chatId: string): void {
