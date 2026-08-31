@@ -4,12 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const bridge = vi.hoisted(() => ({
   showPetOverlay: vi.fn(),
   hidePetOverlay: vi.fn(async () => undefined),
+  hidePetPanel: vi.fn(async () => undefined),
   isPetOverlayVisible: vi.fn(async () => false),
   isPetPanelVisible: vi.fn(async () => false),
   reassertPetOverlayTopmost: vi.fn(async () => undefined),
 }));
 
 const settings = vi.hoisted(() => ({
+  enabled: true,
   overlayVisible: true,
   setOverlayVisible: vi.fn(),
 }));
@@ -23,7 +25,7 @@ vi.mock('./PetMiniPanel', () => ({
 vi.mock('./petTauriBridge', () => ({
   claimPetHostInstance: vi.fn(() => true),
   hidePetOverlay: bridge.hidePetOverlay,
-  hidePetPanel: vi.fn(async () => undefined),
+  hidePetPanel: bridge.hidePetPanel,
   isPetOverlayVisible: bridge.isPetOverlayVisible,
   isPetPanelVisible: bridge.isPetPanelVisible,
   isTauriRuntime: vi.fn(() => runtime.tauri),
@@ -44,7 +46,7 @@ vi.mock('./petPresentationStore', () => ({
 }));
 vi.mock('./petSettingsStore', () => {
   const state = () => ({
-    enabled: true,
+    enabled: settings.enabled,
     reducedMotion: false,
     panelMode: 'normal',
     overlayVisible: settings.overlayVisible,
@@ -94,6 +96,7 @@ describe('PetHost native overlay recovery', () => {
     vi.clearAllMocks();
     bridge.isPetPanelVisible.mockResolvedValue(false);
     bridge.isPetOverlayVisible.mockResolvedValue(false);
+    settings.enabled = true;
     settings.overlayVisible = true;
     settings.setOverlayVisible.mockClear();
     runtime.tauri = true;
@@ -109,6 +112,25 @@ describe('PetHost native overlay recovery', () => {
     });
 
     expect(settings.setOverlayVisible).not.toHaveBeenCalled();
+    expect(bridge.showPetOverlay).not.toHaveBeenCalled();
+  });
+
+  it('cold-starts a persisted disabled Pet with both native surfaces hidden', async () => {
+    settings.enabled = false;
+    settings.overlayVisible = false;
+    bridge.isPetPanelVisible.mockResolvedValue(true);
+
+    render(<PetHost />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(bridge.hidePetPanel).toHaveBeenCalledTimes(1);
+    expect(bridge.hidePetOverlay).toHaveBeenCalledTimes(1);
+    expect(bridge.hidePetPanel.mock.invocationCallOrder[0]).toBeLessThan(
+      bridge.hidePetOverlay.mock.invocationCallOrder[0],
+    );
     expect(bridge.showPetOverlay).not.toHaveBeenCalled();
   });
 

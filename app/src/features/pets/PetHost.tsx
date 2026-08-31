@@ -127,7 +127,7 @@ export function PetHost({
 
   // Poll Tauri panel visibility to reconcile the native and inline panel paths.
   React.useEffect(() => {
-    if (!runtimeEffectsEnabled || !claimed || !tauri) return;
+    if (!runtimeEffectsEnabled || !claimed || !tauri || !enabled) return;
     let cancelled = false;
     const poll = createSingleFlightRunner(async () => {
       const panelVis = await isPetPanelVisible();
@@ -155,7 +155,7 @@ export function PetHost({
       poll.stop();
       window.clearInterval(id);
     };
-  }, [claimed, runtimeEffectsEnabled, tauri]);
+  }, [claimed, enabled, runtimeEffectsEnabled, tauri]);
 
   // Renderer teardown only: tray hides and persistence checkpoints must leave the
   // detached desktop Pet alive while VibeSpace is out of the way.
@@ -196,6 +196,18 @@ export function PetHost({
 
     const sync = async () => {
       if (shuttingDownRef.current) {
+        await hidePetOverlay().catch(() => undefined);
+        return;
+      }
+      // A persisted disabled Pet owns neither detached surface. Hide the panel
+      // first because its native close path restores the overlay by design;
+      // hiding the overlay last makes the disabled state the final truth.
+      if (!enabled) {
+        setPetPanelOpenFlag(false);
+        setPanelOpen(false);
+        setHideSpriteForPanel(false);
+        setUseInlineFallback(false);
+        await hidePetPanel().catch(() => undefined);
         await hidePetOverlay().catch(() => undefined);
         return;
       }

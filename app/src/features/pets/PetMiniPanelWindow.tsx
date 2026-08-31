@@ -7,8 +7,8 @@ import { AuthGate } from '@/features/auth/AuthGate';
 import { PetMiniPanel } from './PetMiniPanel';
 import { applyThemeToDocument, useUIStore } from '@/stores/ui';
 import { installPetPresentationStorageSync } from './petPresentationStore';
-import { installPetSettingsStorageSync } from './petSettingsStore';
-import { reassertPetOverlayTopmost } from './petTauriBridge';
+import { installPetSettingsStorageSync, usePetSettingsStore } from './petSettingsStore';
+import { hidePetOverlay, hidePetPanel, reassertPetOverlayTopmost } from './petTauriBridge';
 
 export interface PetMiniPanelWindowProps {
   runtimeEffectsEnabled?: boolean;
@@ -17,6 +17,7 @@ export interface PetMiniPanelWindowProps {
 export function PetMiniPanelWindow({ runtimeEffectsEnabled = true }: PetMiniPanelWindowProps = {}) {
   const [open, setOpen] = React.useState(true);
   const theme = useUIStore((s) => s.theme);
+  const enabled = usePetSettingsStore((s) => s.enabled);
 
   React.useEffect(() => {
     applyThemeToDocument(theme);
@@ -26,6 +27,18 @@ export function PetMiniPanelWindow({ runtimeEffectsEnabled = true }: PetMiniPane
     if (!runtimeEffectsEnabled) return;
     const uninstallPresentation = installPetPresentationStorageSync();
     const uninstallSettings = installPetSettingsStorageSync();
+    if (!enabled) {
+      // The panel hide path restores the overlay, so preserve disabled truth by
+      // always applying the overlay hide after the panel has finished hiding.
+      void (async () => {
+        await hidePetPanel().catch(() => undefined);
+        await hidePetOverlay().catch(() => undefined);
+      })();
+      return () => {
+        uninstallPresentation();
+        uninstallSettings();
+      };
+    }
     const recoverTopmost = () => {
       void reassertPetOverlayTopmost().catch(() => undefined);
     };
@@ -36,7 +49,7 @@ export function PetMiniPanelWindow({ runtimeEffectsEnabled = true }: PetMiniPane
       uninstallPresentation();
       uninstallSettings();
     };
-  }, [runtimeEffectsEnabled]);
+  }, [enabled, runtimeEffectsEnabled]);
 
   const panel = (
     <PetMiniPanel open={open} windowMode onClose={() => setOpen(false)} animLabel="idlePrimary" />
