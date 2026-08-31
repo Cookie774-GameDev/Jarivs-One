@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ContextQueryError } from '@/features/context/contextQueryService';
 import { ContextGateway, ContextRequiredUnavailableError } from './ContextGateway';
 import type { ContextGatewayBackend, ContextGatewayRequest } from './contextGatewayContracts';
 
@@ -521,5 +522,23 @@ describe('ContextGateway', () => {
       }),
     ).rejects.toBeInstanceOf(ContextRequiredUnavailableError);
     expect(port.ask).not.toHaveBeenCalled();
+  });
+
+  it('preserves an exact denied SiYuan read as unauthorized scope truth', async () => {
+    const port = backend();
+    vi.mocked(port.ask).mockRejectedValueOnce(new ContextQueryError('permission_denied'));
+    const gateway = new ContextGateway(port, {
+      now: () => 100,
+      createId: () => 'receipt-permission-denied',
+    });
+
+    await expect(gateway.ask(baseRequest)).rejects.toMatchObject({
+      name: 'ContextRequiredUnavailableError',
+      receipt: {
+        receiptId: 'receipt-permission-denied',
+        safeFailure: 'unauthorized-scope',
+        evidenceHandles: [],
+      },
+    });
   });
 });

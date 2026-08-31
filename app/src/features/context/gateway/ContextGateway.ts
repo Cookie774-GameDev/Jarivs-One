@@ -111,7 +111,7 @@ function assertUnambiguousEvidenceAuthority(result: Readonly<ContextGatewayBacke
 function safeFailure(error: unknown): ContextSafeFailure {
   if (error instanceof DOMException && error.name === 'AbortError') return 'cancelled';
   const message = error instanceof Error ? error.message : String(error);
-  if (/scope|unauthor/i.test(message)) return 'unauthorized-scope';
+  if (/scope|unauthor|permission_denied/i.test(message)) return 'unauthorized-scope';
   if (/stale|revision|generation/i.test(message)) return 'stale-source';
   if (/budget|limit/i.test(message)) return 'budget-exhausted';
   if (/unavailable|not ready/i.test(message)) return 'gateway-unavailable';
