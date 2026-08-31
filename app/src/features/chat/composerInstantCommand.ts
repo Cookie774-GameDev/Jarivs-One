@@ -1,0 +1,80 @@
+import { InstantCommandEntryBoundary } from '@/features/instant-command';
+import type { InstantCommandReceipt } from '@/features/instant-command/receipt';
+
+export const COMPOSER_INSTANT_SLASH_COMMANDS = Object.freeze([
+  'connect',
+  'settings',
+  'palette',
+  'launcher',
+  'back',
+] as const);
+
+type ComposerInstantSlashCommand = (typeof COMPOSER_INSTANT_SLASH_COMMANDS)[number];
+
+export type ComposerInstantCommandInput = Readonly<{
+  source: string;
+  interactionId: string;
+  accountId: string;
+  workspaceId: string;
+  projectId: string;
+}>;
+
+export type ComposerInstantCommandResult =
+  | Readonly<{ handled: false }>
+  | Readonly<{
+      handled: true;
+      ok: boolean;
+      message: string;
+      commandId?: string;
+      status?: InstantCommandReceipt['status'];
+    }>;
+
+const COMMANDS = new Set<string>(COMPOSER_INSTANT_SLASH_COMMANDS);
+const sharedBoundary = new InstantCommandEntryBoundary();
+const SAFE_FAILURE = 'Instant Command was rejected safely.';
+
+function slashCommand(source: string): ComposerInstantSlashCommand | undefined {
+  const match = /^\/([^\s/]+)(?:\s|$)/u.exec(source.trim());
+  const command = match?.[1]?.toLowerCase();
+  return command && COMMANDS.has(command) ? (command as ComposerInstantSlashCommand) : undefined;
+}
+
+export function isComposerInstantCommandSource(source: string): boolean {
+  return slashCommand(source) !== undefined;
+}
+
+function receiptMessage(receipt: InstantCommandReceipt): string {
+  return receipt.followUp?.prompt ?? `Instant command ${receipt.status} (${receipt.commandId}).`;
+}
+
+export async function submitComposerInstantCommand(
+  input: ComposerInstantCommandInput,
+  boundary: InstantCommandEntryBoundary = sharedBoundary,
+): Promise<ComposerInstantCommandResult> {
+  if (!isComposerInstantCommandSource(input.source)) return Object.freeze({ handled: false });
+  const outcome = await boundary.submit({
+    interactionId: input.interactionId,
+    trigger: 'typed',
+    source: input.source,
+    context: {
+      correlationId: input.interactionId,
+      accountId: input.accountId,
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+    },
+  });
+  if (outcome.kind === 'rejected') {
+    return Object.freeze({ handled: true, ok: false, message: outcome.reason });
+  }
+  if (outcome.kind !== 'command') {
+    return Object.freeze({ handled: true, ok: false, message: SAFE_FAILURE });
+  }
+  const ok = outcome.receipt.status === 'completed' || outcome.receipt.status === 'queued';
+  return Object.freeze({
+    handled: true,
+    ok,
+    commandId: outcome.receipt.commandId,
+    status: outcome.receipt.status,
+    message: receiptMessage(outcome.receipt),
+  });
+}

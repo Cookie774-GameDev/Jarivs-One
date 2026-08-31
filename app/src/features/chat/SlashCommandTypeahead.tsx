@@ -82,7 +82,9 @@ export function isChatAttachSlashCmd(cmd: string): boolean {
 }
 
 export function isImmediateLocalSlashCommand(cmd: string): boolean {
-  return ['doctor', 'mcp'].includes(normalizeSlashCmd(cmd));
+  return ['doctor', 'mcp', 'connect', 'settings', 'palette', 'launcher', 'back'].includes(
+    normalizeSlashCmd(cmd),
+  );
 }
 
 export function findSlashCommandDef(cmd: string): SlashCommandDef | undefined {
@@ -414,6 +416,33 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
   },
   { cmd: 'commands', description: 'Command catalog', icon: Zap, category: 'utility' },
   { cmd: 'help', description: 'Show help', icon: HelpCircle, category: 'utility' },
+  {
+    cmd: 'connect',
+    description: 'Open secure provider connections',
+    icon: Plug,
+    category: 'utility',
+    takesArg: true,
+    argPlaceholder: '[supported provider]',
+  },
+  {
+    cmd: 'settings',
+    description: 'Open VibeSpace Settings',
+    icon: SlidersHorizontal,
+    category: 'utility',
+  },
+  {
+    cmd: 'palette',
+    description: 'Open the command palette',
+    icon: Palette,
+    category: 'utility',
+  },
+  {
+    cmd: 'launcher',
+    description: 'Open the quick launcher',
+    icon: Sparkles,
+    category: 'utility',
+  },
+  { cmd: 'back', description: 'Go back one page', icon: Undo2, category: 'utility' },
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -442,6 +471,7 @@ export function resolveSlashCommandSelection(
   if (commands.length === 0) return '';
   const exactCommand = commands.find((command) => command.cmd === normalizeSlashCmd(query));
   if (exactCommand) return exactCommand.cmd;
+  if (query.trim()) return commands[0]?.cmd ?? '';
   const displayCommands = orderSlashCommandsForDisplay(commands);
   return displayCommands.some((command) => command.cmd === current)
     ? current

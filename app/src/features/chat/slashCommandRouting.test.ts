@@ -49,6 +49,11 @@ const expected = {
   redo: ['vibespace-ui', 'local'],
   commands: ['vibespace-ui', 'local'],
   help: ['vibespace-ui', 'local'],
+  connect: ['vibespace-ui', 'local'],
+  settings: ['vibespace-ui', 'local'],
+  palette: ['vibespace-ui', 'local'],
+  launcher: ['vibespace-ui', 'local'],
+  back: ['vibespace-ui', 'local'],
 } as const;
 
 describe('Section 20 slash command routing', () => {
@@ -100,6 +105,11 @@ describe('Section 20 slash command routing', () => {
     });
     expect(classifySlashCommand('/ACCESS')).toMatchObject({ command: 'access' });
     expect(classifySlashCommand('/approve-all on')).toMatchObject({ command: 'approveall' });
+    expect(classifySlashCommand('/connect openrouter')).toMatchObject({
+      command: 'connect',
+      owner: 'vibespace-ui',
+      execution: 'local',
+    });
     expect(classifySlashCommand('nope')).toBeUndefined();
     expect(classifySlashCommand('//help')).toBeUndefined();
     expect(classifySlashCommand('')).toBeUndefined();

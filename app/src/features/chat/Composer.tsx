@@ -231,6 +231,10 @@ import {
 } from './slashProjectFiles';
 import { buildVibeSpaceReferenceRequest, classifySlashCommand } from './slashCommandRouting';
 import {
+  isComposerInstantCommandSource,
+  submitComposerInstantCommand,
+} from './composerInstantCommand';
+import {
   formatRlmStatus,
   markRlmIndexRefreshed,
   parseRlmSlashArgument,
@@ -1362,6 +1366,7 @@ export function Composer({
     >(),
   );
   const sendingRef = useRef(sending);
+  const instantCommandInFlightRef = useRef(false);
   sendingRef.current = sending;
   const activeCancellationKeyRef = useRef<string | null>(null);
   const queuedDispatchInFlightRef = useRef<string | null>(null);
@@ -2578,6 +2583,29 @@ export function Composer({
 
   const handleSlashCommand = async (trimmed: string): Promise<boolean | string> => {
     if (!trimmed.startsWith('/')) return false;
+    if (isComposerInstantCommandSource(trimmed)) {
+      if (instantCommandInFlightRef.current) return true;
+      instantCommandInFlightRef.current = true;
+      setText('');
+      setSlashCtx(null);
+      try {
+        const auth = useAuthStore.getState();
+        const interactionId = `chat-${crypto.randomUUID()}`;
+        const result = await submitComposerInstantCommand({
+          source: trimmed,
+          interactionId,
+          accountId: resolveAccountIdentity(auth)?.accountId ?? 'local-account',
+          workspaceId: String(workspaceId ?? auth.workspaceId ?? 'local-workspace'),
+          projectId: String(projectId ?? auth.projectId ?? 'local-project'),
+        });
+        if (!result.handled || !result.ok) {
+          toast.warning('Invalid command', result.handled ? result.message : 'Unknown command.');
+        }
+      } finally {
+        instantCommandInFlightRef.current = false;
+      }
+      return true;
+    }
     const [cmdRaw, ...restParts] = trimmed.slice(1).split(/\s+/);
     const classification = classifySlashCommand(cmdRaw ?? '');
     const cmd = classification?.command ?? normalizeSlashCmd(cmdRaw ?? '');

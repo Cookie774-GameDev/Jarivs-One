@@ -1,15 +1,8 @@
 export type CommandOwner =
-  | 'vibespace-ui'
-  | 'vibespace-context'
-  | 'vibespace-tool'
-  | 'opencode-agent';
+  'vibespace-ui' | 'vibespace-context' | 'vibespace-tool' | 'opencode-agent';
 
 export type CommandExecution =
-  | 'local'
-  | 'reference'
-  | 'attachment'
-  | 'agent-request'
-  | 'structured-agent-request';
+  'local' | 'reference' | 'attachment' | 'agent-request' | 'structured-agent-request';
 
 export const SLASH_COMMAND_ALIASES = {
   terminal: 'terminals',
@@ -76,6 +69,11 @@ const ROUTES = {
   redo: { owner: 'vibespace-ui', execution: 'local' },
   commands: { owner: 'vibespace-ui', execution: 'local' },
   help: { owner: 'vibespace-ui', execution: 'local' },
+  connect: { owner: 'vibespace-ui', execution: 'local' },
+  settings: { owner: 'vibespace-ui', execution: 'local' },
+  palette: { owner: 'vibespace-ui', execution: 'local' },
+  launcher: { owner: 'vibespace-ui', execution: 'local' },
+  back: { owner: 'vibespace-ui', execution: 'local' },
 } as const satisfies Record<string, { owner: CommandOwner; execution: CommandExecution }>;
 
 export type Section20Command = keyof typeof ROUTES;

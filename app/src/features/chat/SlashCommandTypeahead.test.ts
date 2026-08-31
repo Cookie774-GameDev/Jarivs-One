@@ -102,6 +102,23 @@ describe('orderSlashCommandsForDisplay', () => {
     );
   });
 
+  it('selects the highest-scoring command prefix ahead of incidental description matches', () => {
+    const candidates = SLASH_COMMANDS.map((command) => ({
+      command,
+      score: slashCmdMatchScore('conn', command),
+    }))
+      .filter(({ score }) => score > 0)
+      .sort(
+        (left, right) =>
+          right.score - left.score || left.command.cmd.localeCompare(right.command.cmd),
+      )
+      .map(({ command }) => command);
+
+    expect(candidates[0]?.cmd).toBe('connect');
+    expect(candidates.some((command) => command.cmd === 'fast')).toBe(true);
+    expect(resolveSlashCommandSelection('conn', candidates, '')).toBe('connect');
+  });
+
   it('keeps every registered exact alias visible and selects its canonical command', () => {
     for (const [alias, canonical] of Object.entries(SLASH_COMMAND_ALIASES)) {
       const candidates = SLASH_COMMANDS.filter((command) => slashCmdMatchScore(alias, command) > 0);
@@ -192,6 +209,20 @@ describe('orderSlashCommandsForDisplay', () => {
     expect(isImmediateLocalSlashCommand('mcp')).toBe(true);
     expect(isImmediateLocalSlashCommand('doctor')).toBe(true);
     expect(isImmediateLocalSlashCommand('usage')).toBe(false);
+  });
+
+  it('offers the five collision-free Instant commands as immediate local actions', () => {
+    for (const command of ['connect', 'settings', 'palette', 'launcher', 'back']) {
+      expect(findSlashCommandDef(command)).toMatchObject({
+        cmd: command,
+        category: 'utility',
+      });
+      expect(isImmediateLocalSlashCommand(command)).toBe(true);
+    }
+    expect(findSlashCommandDef('connect')).toMatchObject({
+      takesArg: true,
+      argPlaceholder: '[supported provider]',
+    });
   });
 
   it('keeps picker-selected /usage executable instead of converting it to a decorative chip', () => {
