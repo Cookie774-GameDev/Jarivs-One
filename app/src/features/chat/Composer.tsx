@@ -251,6 +251,19 @@ import {
   hasOsFileDrag,
   type MediaAttachDetail,
 } from './dropPayload';
+import {
+  CHAT_SEND_CONTEXT_EVENT,
+  VIBESPACE_CHAT_MIME,
+  readChatDragPayload,
+  resolveAcceptedChatDrop,
+  type ChatDragPayloadV1,
+} from './chatDragPayload';
+import {
+  projectChatHandoff,
+  renderChatHandoffPrompt,
+  type ChatHandoffProjectionV1,
+} from './chatHandoffProjection';
+import { ChatHandoffDraftCard } from './ChatHandoffDraftCard';
 import { ComposerMediaStrip } from './ComposerMediaStrip';
 import {
   MediaPreviewPanel,
@@ -590,6 +603,33 @@ export interface ComposerProps {
   compact?: boolean;
   /** Disable slash commands that navigate the main canvas. */
   disableRouteSlashCommands?: boolean;
+}
+
+export function buildComposerChatHandoffPayload(
+  input: Readonly<{
+    projection: ChatHandoffProjectionV1;
+    instruction: string;
+    draftText: string;
+  }>,
+) {
+  const instruction = [input.instruction.trim(), input.draftText.trim()]
+    .filter(Boolean)
+    .join('\n\n');
+  return {
+    text: renderChatHandoffPrompt(input.projection, instruction),
+    part: {
+      kind: 'chat_handoff' as const,
+      handoff: {
+        version: 1 as const,
+        sourceChatId: input.projection.source.chatId,
+        sourceTitle: input.projection.source.title,
+        snapshotAt: input.projection.snapshotAt,
+        boundaryMessageId: input.projection.boundaryMessageId,
+        instruction,
+        projection: input.projection,
+      },
+    },
+  };
 }
 
 const LINE_HEIGHT = 20; // px - matches body type scale
@@ -1041,6 +1081,11 @@ export function Composer({
   const [attachedContexts, setAttachedContexts] = useState<ContextChatAttachment[]>([]);
   const [mediaPreview, setMediaPreview] = useState<MediaPreviewTarget | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [pendingHandoff, setPendingHandoff] = useState<ChatHandoffProjectionV1 | null>(null);
+  const pendingHandoffRef = useRef<ChatHandoffProjectionV1 | null>(null);
+  const [handoffInstruction, setHandoffInstruction] = useState(
+    'Review this context and continue from the latest truthful state.',
+  );
   // V2 — speech-to-text in the composer.
   const [sttListening, setSttListening] = useState(false);
   const [sttAwaitingFinal, setSttAwaitingFinal] = useState(false);
@@ -3087,6 +3132,7 @@ export function Composer({
         attachedTerminals.length === 0 &&
         attachedPlugins.length === 0 &&
         attachedContexts.length === 0 &&
+        !pendingHandoff &&
         !hasConfirmedCommands &&
         !hasConfirmedAgentMentions &&
         !hasConfirmedCatalogReferences) ||
@@ -3189,7 +3235,8 @@ export function Composer({
       attachedImages.length === 0 &&
       attachedTerminals.length === 0 &&
       attachedPlugins.length === 0 &&
-      attachedContexts.length === 0
+      attachedContexts.length === 0 &&
+      !pendingHandoff
     ) {
       return true;
     }
@@ -3236,12 +3283,19 @@ export function Composer({
             fullyLocal: offlineMode,
           })
         : '';
+    const handoffPayload = pendingHandoff
+      ? buildComposerChatHandoffPayload({
+          projection: pendingHandoff,
+          instruction: handoffInstruction,
+          draftText: markdownInstruction || rawSendText,
+        })
+      : null;
     const sendText = [
       mentionPrefix,
       catalogReferencePrefix,
       referenceText,
       allAboutMeText,
-      markdownInstruction || rawSendText,
+      handoffPayload ? handoffPayload.text : markdownInstruction || rawSendText,
     ]
       .filter(Boolean)
       .join(' ')
@@ -3438,6 +3492,7 @@ export function Composer({
         role: 'user',
         parts: [
           { kind: 'text', text: persistedText },
+          ...(handoffPayload ? [handoffPayload.part] : []),
           ...attachedImages.map((image) => ({
             kind: 'image' as const,
             url: `data:${image.mimeType};base64,${image.data}`,
@@ -3552,6 +3607,8 @@ export function Composer({
       setAttachedTerminals([]);
       setAttachedPlugins([]);
       setAttachedContexts([]);
+      pendingHandoffRef.current = null;
+      setPendingHandoff(null);
       setMentionCtx(null);
       playUiSound('chat_message_send');
       return true;
@@ -4335,7 +4392,8 @@ export function Composer({
       attachedContexts.length > 0 ||
       confirmedCommands.length > 0 ||
       confirmedAgentMentions.length > 0 ||
-      confirmedCatalogReferences.length > 0) &&
+      confirmedCatalogReferences.length > 0 ||
+      pendingHandoff !== null) &&
     !sending &&
     !harnessBlocked;
   const kernelSmokeHiveBound = KERNEL_SMOKE_ENABLED && isKernelSmokeBindingActive();
@@ -4383,6 +4441,48 @@ export function Composer({
     });
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, []);
+
+  const addChatHandoff = useCallback(
+    async (payload: ChatDragPayloadV1) => {
+      const accepted = await resolveAcceptedChatDrop(
+        { payload, targetChatId: String(chatId) },
+        {
+          getChat: (id) => chatRepo.getById(id),
+          canAccess: (source, target) => !source.archived && !target.archived,
+        },
+      );
+      if (!accepted.ok) {
+        toast.warning(
+          accepted.reason === 'same_chat' ? 'That chat is already here' : 'Chat handoff rejected',
+          accepted.reason === 'same_chat'
+            ? 'Choose a different source chat.'
+            : 'The source chat is stale, inaccessible, or no longer available.',
+        );
+        return false;
+      }
+      const messages = await messageRepo.listByChat(accepted.chat.id);
+      const projection = projectChatHandoff({ sourceChat: accepted.chat, messages });
+      if (pendingHandoffRef.current?.source.chatId !== projection.source.chatId) {
+        setHandoffInstruction('Review this context and continue from the latest truthful state.');
+      }
+      pendingHandoffRef.current = projection;
+      setPendingHandoff(projection);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+      return true;
+    },
+    [chatId],
+  );
+
+  useEffect(() => {
+    const onSendContext = (event: Event) => {
+      if (String(useUIStore.getState().activeChatId ?? '') !== String(chatId)) return;
+      const payload = (event as CustomEvent<ChatDragPayloadV1>).detail;
+      if (payload) void addChatHandoff(payload);
+    };
+    window.addEventListener(CHAT_SEND_CONTEXT_EVENT, onSendContext as EventListener);
+    return () =>
+      window.removeEventListener(CHAT_SEND_CONTEXT_EVENT, onSendContext as EventListener);
+  }, [addChatHandoff, chatId]);
 
   useEffect(() => {
     const onAttachFile = (event: Event) => {
@@ -5093,7 +5193,11 @@ export function Composer({
               data-hive-active={chatModelSelection.mode === 'hive' ? 'true' : undefined}
               data-composer-drop-zone="true"
               onDragOver={(e) => {
-                if (getChatDragKind(e.dataTransfer.types) || hasOsFileDrag(e.dataTransfer.types)) {
+                if (
+                  Array.from(e.dataTransfer.types).includes(VIBESPACE_CHAT_MIME) ||
+                  getChatDragKind(e.dataTransfer.types) ||
+                  hasOsFileDrag(e.dataTransfer.types)
+                ) {
                   e.preventDefault();
                   e.stopPropagation();
                   e.dataTransfer.dropEffect = 'copy';
@@ -5106,6 +5210,14 @@ export function Composer({
                 }
               }}
               onDrop={(e) => {
+                const chatHandoff = readChatDragPayload(e.dataTransfer);
+                if (chatHandoff) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragOver(false);
+                  void addChatHandoff(chatHandoff);
+                  return;
+                }
                 const fileList = e.dataTransfer.files;
                 if (fileList && fileList.length > 0) {
                   e.preventDefault();
@@ -5135,6 +5247,19 @@ export function Composer({
                 compact && 'p-1',
               )}
             >
+              {pendingHandoff ? (
+                <div className="p-2 pb-0">
+                  <ChatHandoffDraftCard
+                    handoff={pendingHandoff}
+                    instruction={handoffInstruction}
+                    onInstructionChange={setHandoffInstruction}
+                    onRemove={() => {
+                      pendingHandoffRef.current = null;
+                      setPendingHandoff(null);
+                    }}
+                  />
+                </div>
+              ) : null}
               {/* Media sits above the input as an extension of the chat box */}
               <ComposerMediaStrip
                 images={attachedImages}

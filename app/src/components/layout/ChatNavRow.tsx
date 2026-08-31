@@ -8,10 +8,11 @@ import {
   type ChatActivityEvent,
   type ChatListRunSignal,
 } from '@/features/chat/activity';
-import { writeChatDragPayload } from '@/features/chat/chatDragPayload';
-
-export const CHAT_SEND_CONTEXT_EVENT = 'vibespace:chat-send-context';
-export const CHAT_OPEN_BESIDE_EVENT = 'vibespace:chat-open-beside';
+import {
+  CHAT_OPEN_BESIDE_EVENT,
+  CHAT_SEND_CONTEXT_EVENT,
+  writeChatDragPayload,
+} from '@/features/chat/chatDragPayload';
 
 export interface ChatNavRowProps {
   chat: Chat;

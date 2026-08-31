@@ -541,6 +541,32 @@ export function MessagePart({
       );
     }
 
+    case 'chat_handoff': {
+      const handoff = part.handoff;
+      return (
+        <section
+          aria-label={`Handoff from ${handoff.sourceTitle}`}
+          className="max-w-xl rounded-md border border-accent-copper/30 bg-elevated px-3 py-2"
+        >
+          <div className="flex items-center gap-1.5 text-secondary font-semibold text-foreground">
+            <FileText className="h-3.5 w-3.5 text-accent-copper" aria-hidden="true" />
+            <span>Handoff from {handoff.sourceTitle}</span>
+          </div>
+          <p className="mt-1 whitespace-pre-wrap break-words text-body text-foreground">
+            {handoff.instruction}
+          </p>
+          {handoff.projection.goal ? (
+            <p className="mt-1 text-secondary text-muted-foreground">
+              Goal: <span className="text-foreground">{handoff.projection.goal}</span>
+            </p>
+          ) : null}
+          <p className="mt-1 text-metadata text-muted-foreground">
+            Safe context snapshot · {handoff.projection.status}
+          </p>
+        </section>
+      );
+    }
+
     default: {
       // Exhaustive check - new Part kinds will surface here at compile time.
       const _exhaustive: never = part;

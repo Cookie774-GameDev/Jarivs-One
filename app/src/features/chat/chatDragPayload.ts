@@ -2,6 +2,8 @@ import type { Chat } from '@/types/chat';
 import type { ChatId } from '@/types/common';
 
 export const VIBESPACE_CHAT_MIME = 'application/x-vibespace-chat';
+export const CHAT_SEND_CONTEXT_EVENT = 'vibespace:chat-send-context';
+export const CHAT_OPEN_BESIDE_EVENT = 'vibespace:chat-open-beside';
 
 export type ChatDragPayloadV1 = Readonly<{
   version: 1;

@@ -123,7 +123,11 @@ export type Part =
       receipt: TokenOptimizationReceipt;
       usage?: ReconciledTokenUsage;
     }
-  | { kind: 'usage_card'; snapshots: UsageSnapshot[]; scope: 'connection' | 'all' };
+  | { kind: 'usage_card'; snapshots: UsageSnapshot[]; scope: 'connection' | 'all' }
+  | {
+      kind: 'chat_handoff';
+      handoff: import('@/features/chat/chatHandoffProjection').ChatHandoffMessagePartV1;
+    };
 
 /**
  * A single message in a chat thread.
