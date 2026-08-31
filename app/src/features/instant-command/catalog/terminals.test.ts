@@ -9,7 +9,23 @@ describe('terminal and agent command catalog', () => {
     ['Codex', { provider: 'codex' }],
     ['all terminals', { scope: 'all' }],
   ])('uses one deterministic selector grammar for %s', (source, expected) => {
-    expect(parseTerminalSelectorText(source)).toEqual(expected);
+    const selector = parseTerminalSelectorText(source);
+    expect(selector).toEqual(expected);
+    expect(Object.isFrozen(selector)).toBe(true);
+  });
+
+  it.each([
+    42 as unknown as string,
+    '',
+    'terminal\nprivate',
+    'x'.repeat(257),
+    'terminal 0',
+    'terminal 1025',
+    'terminal 999999999999999999999',
+    'pane ../private',
+    'session bad/id',
+  ])('fails closed for malformed or unbounded selectors: %j', (source) => {
+    expect(parseTerminalSelectorText(source)).toBeNull();
   });
 
   it('declares the exhaustive terminal and agent lifecycle IDs without granting blocked authority', () => {
@@ -44,20 +60,40 @@ describe('terminal and agent command catalog', () => {
   it('preserves message payload casing and punctuation after the exact selector', () => {
     const input = TERMINAL_AGENT_COMMAND_INPUTS.find((entry) => entry.id === 'agent.message')!;
     const source = 'message agent terminal two: Review API.ts, please!';
-    expect(
-      input.parseSlots?.(
-        {
-          definition: undefined as never,
-          alias: 'message agent',
-          sourceStart: 0,
-          sourceEnd: 'message agent'.length,
-          remainder: 'terminal two: Review API.ts, please!',
-        },
-        source,
-      ),
-    ).toEqual({
+    const parsed = input.parseSlots?.(
+      {
+        definition: undefined as never,
+        alias: 'message agent',
+        sourceStart: 0,
+        sourceEnd: 'message agent'.length,
+        remainder: 'terminal two: Review API.ts, please!',
+      },
+      source,
+    );
+    expect(parsed).toEqual({
       status: 'parsed',
       slots: { selector: { ordinal: 2 }, payload: 'Review API.ts, please!' },
     });
+    expect(Object.isFrozen(parsed)).toBe(true);
+    expect(Object.isFrozen(parsed && 'slots' in parsed ? parsed.slots : undefined)).toBe(true);
+  });
+
+  it.each([
+    'message agent terminal two: private\npayload',
+    `message agent terminal two: ${'x'.repeat(4_097)}`,
+  ])('fails closed when direct message slot parsing bypasses source bounds', (source) => {
+    const input = TERMINAL_AGENT_COMMAND_INPUTS.find((entry) => entry.id === 'agent.message')!;
+    const parsed = input.parseSlots?.(
+      {
+        definition: undefined as never,
+        alias: 'message agent',
+        sourceStart: 0,
+        sourceEnd: 'message agent'.length,
+        remainder: source.slice('message agent'.length),
+      },
+      source,
+    );
+    expect(parsed).toEqual({ status: 'rejected', reason: 'Name a terminal, then a message.' });
+    expect(JSON.stringify(parsed)).not.toMatch(/private|payload|x{20}/iu);
   });
 });
