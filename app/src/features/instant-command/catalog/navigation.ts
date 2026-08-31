@@ -6,6 +6,10 @@ import type {
   CommandAvailability,
   CommandSafety,
 } from '../catalogTypes';
+import {
+  CONNECT_PROVIDER_FOCUS_IDS,
+  parseProviderConnectionTarget,
+} from '../providerConnectionEntrypoint';
 
 export type NavigationCommandInput = Readonly<{
   id: string;
@@ -169,16 +173,36 @@ export const NAVIGATION_COMMAND_INPUTS: readonly NavigationCommandInput[] = Obje
     }),
     Object.freeze({
       id: 'connections.open',
-      aliases: Object.freeze(['/connect', 'connect provider']),
+      aliases: Object.freeze([
+        '/connect',
+        'connect provider',
+        ...CONNECT_PROVIDER_FOCUS_IDS.map((providerId) => `/connect ${providerId}`),
+      ]),
       authority: 'ui.route',
       safety: 'read',
       availability: 'available',
-      slotGrammar: 'none',
-      parseSlots: () =>
-        Object.freeze({
-          status: 'parsed' as const,
-          slots: Object.freeze({ section: 'providers' }),
-        }),
+      slotGrammar: 'remainder',
+      parseSlots: (match: CatalogMatch) => {
+        const aliasProvider = match.alias.startsWith('/connect ')
+          ? match.alias.slice('/connect '.length)
+          : undefined;
+        if (aliasProvider && match.remainder) {
+          return Object.freeze({
+            status: 'rejected' as const,
+            reason: 'Choose one supported provider in Settings.',
+          });
+        }
+        const target = parseProviderConnectionTarget(aliasProvider ?? match.remainder);
+        return target.ok
+          ? Object.freeze({
+              status: 'parsed' as const,
+              slots: Object.freeze({
+                section: 'providers',
+                ...(target.providerId ? { providerId: target.providerId } : {}),
+              }),
+            })
+          : Object.freeze({ status: 'rejected' as const, reason: target.reason });
+      },
     }),
     ...(
       [

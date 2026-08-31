@@ -204,6 +204,25 @@ describe('AssistantBar instant fast lane', () => {
     expect(mocks.executeIntent).not.toHaveBeenCalled();
   });
 
+  it('selects an exact credential-free provider focus through accessible /connect typeahead', () => {
+    render(<AssistantBar open onOpenChange={vi.fn()} />);
+    const input = screen.getByRole('combobox', { name: 'Jarvis Assistant command' });
+    fireEvent.change(input, { target: { value: '/connect openr' } });
+
+    const option = screen.getByRole('option');
+    expect(option.id).toBe('instant-command-option-connections-open');
+    expect(
+      screen.getByRole('button', { name: 'Use suggestion: /connect openrouter' }),
+    ).toBeTruthy();
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(input.getAttribute('aria-activedescendant')).toBe(option.id);
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect((input as HTMLInputElement).value).toBe('/connect openrouter');
+    expect(mocks.submitInstantCommand).not.toHaveBeenCalled();
+    expect(localStorage.getItem('jarvis-assistant-recent')).toBeNull();
+  });
+
   it('supports bounded Home, End, Escape, and typing recovery without dispatch', () => {
     render(<AssistantBar open onOpenChange={vi.fn()} />);
     const input = screen.getByRole('combobox', { name: 'Jarvis Assistant command' });

@@ -91,15 +91,52 @@ describe('navigation command catalog', () => {
   it('exposes /connect only as a route to the existing secure Providers surface', () => {
     const connect = NAVIGATION_COMMAND_INPUTS.find((command) => command.id === 'connections.open');
     expect(connect).toMatchObject({
-      aliases: ['/connect', 'connect provider'],
+      aliases: expect.arrayContaining(['/connect', 'connect provider', '/connect openai']),
       authority: 'ui.route',
       safety: 'read',
       availability: 'available',
     });
-    expect(connect?.parseSlots?.(undefined as never, '/connect')).toEqual({
+    expect(
+      connect?.parseSlots?.(
+        {
+          definition: undefined as never,
+          alias: '/connect',
+          sourceStart: 0,
+          sourceEnd: '/connect'.length,
+          remainder: '',
+        },
+        '/connect',
+      ),
+    ).toEqual({
       status: 'parsed',
       slots: { section: 'providers' },
     });
+    expect(
+      connect?.parseSlots?.(
+        {
+          definition: undefined as never,
+          alias: '/connect openai',
+          sourceStart: 0,
+          sourceEnd: '/connect openai'.length,
+          remainder: '',
+        },
+        '/connect openai',
+      ),
+    ).toEqual({ status: 'parsed', slots: { section: 'providers', providerId: 'openai' } });
+    for (const remainder of ['ollama', 'unknown', 'openai extra', 'sk-private']) {
+      expect(
+        connect?.parseSlots?.(
+          {
+            definition: undefined as never,
+            alias: '/connect',
+            sourceStart: 0,
+            sourceEnd: '/connect'.length,
+            remainder,
+          },
+          `/connect ${remainder}`,
+        ),
+      ).toEqual({ status: 'rejected', reason: 'Choose one supported provider in Settings.' });
+    }
   });
 
   it('exposes only typed settings sections and parses fullscreen state locally', () => {

@@ -46,6 +46,17 @@ describe('Instant Command catalog suggestions', () => {
     }
   });
 
+  it('selects the exact supported /connect provider alias without taking secret text', () => {
+    expect(suggestInstantCommands(help, '/connect openr', 1)).toEqual([
+      expect.objectContaining({
+        id: 'connections.open',
+        label: '/connect openrouter',
+        disabled: false,
+      }),
+    ]);
+    expect(suggestInstantCommands(help, '/connect sk-private', 1)).toEqual([]);
+  });
+
   it('ranks an exact alias ahead of incidental metadata and alias prefixes ahead of broad matches', () => {
     const connection = help.find((item) => item.id === 'connections.open')!;
     const team = help.find((item) => item.id === 'team.connect')!;

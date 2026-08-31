@@ -5,6 +5,10 @@ import { rememberSettingsTab } from '@/features/settings/settingsTabMemory';
 import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import type { InstantResult } from '../types';
+import {
+  openProviderConnectionEntrypoint,
+  parseProviderConnectionTarget,
+} from '../providerConnectionEntrypoint';
 
 export type NavigationCommandRequest = Readonly<{
   id: string;
@@ -18,6 +22,7 @@ export type NavigationAuthorityPort = Readonly<{
   goBack: () => void;
   goForward: () => void;
   openSettings: (section?: SettingsTab) => void;
+  openProviderConnections?: (providerId?: string) => void;
   closeSettings: () => void;
   openPalette: () => void;
   openLauncher: () => void;
@@ -54,6 +59,10 @@ const defaultPort: NavigationAuthorityPort = {
       window.dispatchEvent(new CustomEvent('jarvis:settings:tab', { detail: { tab: section } }));
     }
   },
+  openProviderConnections: (providerId) => {
+    const result = openProviderConnectionEntrypoint(providerId);
+    if (!result.ok) throw new Error('provider_connection_target_invalid');
+  },
   closeSettings: () => useUIStore.getState().setSettingsOpen(false),
   openPalette: () => useUIStore.getState().setPaletteOpen(true),
   openLauncher: () => useUIStore.getState().setLauncherOpen(true),
@@ -82,7 +91,11 @@ function validSlotSchema(request: NavigationCommandRequest): boolean {
   if (request.id === 'settings.section.open') return hasExactKeys(request.slots, ['section']);
   if (request.id === 'fullscreen.set') return hasExactKeys(request.slots, ['enabled']);
   if (request.id === 'connections.open') {
-    return hasExactKeys(request.slots, []) || hasExactKeys(request.slots, ['section']);
+    return (
+      hasExactKeys(request.slots, []) ||
+      hasExactKeys(request.slots, ['section']) ||
+      hasExactKeys(request.slots, ['providerId', 'section'])
+    );
   }
   return hasExactKeys(request.slots, []);
 }
@@ -147,13 +160,25 @@ async function executeNavigationCommandUnsafe(
   if (request.id === 'connections.open') {
     const keys = Object.keys(request.slots);
     if (
-      keys.length > 1 ||
-      (keys.length === 1 && (keys[0] !== 'section' || request.slots.section !== 'providers'))
+      (keys.length > 0 && request.slots.section !== 'providers') ||
+      keys.some((key) => key !== 'section' && key !== 'providerId')
     ) {
       return invalid('Provider connections do not accept command arguments.');
     }
-    port.openSettings('providers');
-    return success('Opened provider connections.');
+    const target = parseProviderConnectionTarget(request.slots.providerId);
+    if (!target.ok) return invalid(target.reason);
+    if (port.openProviderConnections) {
+      port.openProviderConnections(target.providerId);
+    } else if (!target.providerId) {
+      port.openSettings('providers');
+    } else {
+      return invalid('Choose one supported provider in Settings.');
+    }
+    return success(
+      target.providerId
+        ? `Opened provider connections for ${target.providerId}.`
+        : 'Opened provider connections.',
+    );
   }
   if (request.id === 'palette.open') {
     port.openPalette();

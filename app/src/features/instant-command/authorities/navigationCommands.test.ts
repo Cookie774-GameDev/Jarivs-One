@@ -9,6 +9,7 @@ function authority() {
     goBack: vi.fn(),
     goForward: vi.fn(),
     openSettings: vi.fn(),
+    openProviderConnections: vi.fn(),
     closeSettings: vi.fn(),
     openPalette: vi.fn(),
     openLauncher: vi.fn(),
@@ -69,28 +70,41 @@ describe('executeNavigationCommand', () => {
     await expect(
       executeNavigationCommand({ id: 'connections.open', slots: { section: 'providers' } }, port),
     ).resolves.toEqual({ ok: true, code: 'opened', message: 'Opened provider connections.' });
-    expect(port.openSettings).toHaveBeenCalledWith('providers');
+    expect(port.openSettings).not.toHaveBeenCalled();
+    expect(port.openProviderConnections).toHaveBeenCalledWith(undefined);
   });
 
   it.each([
-    { section: 'providers', apiKey: 'must-not-enter-command' },
-    { section: 'voice' },
-    { provider: 'openai' },
-  ])('rejects non-exact /connect slots before opening Providers', async (slots) => {
-    const port = authority();
-    const result = await executeNavigationCommand({ id: 'connections.open', slots }, port);
-    expect(result).toEqual({
-      ok: false,
-      code: 'queue_failed',
-      message: 'Provider connections do not accept command arguments.',
-    });
-    expect(port.openSettings).not.toHaveBeenCalled();
-    expect(JSON.stringify(result)).not.toContain('must-not-enter-command');
-  });
+    [
+      { section: 'providers', apiKey: 'must-not-enter-command' },
+      'Provider connections do not accept command arguments.',
+    ],
+    [{ section: 'voice' }, 'Provider connections do not accept command arguments.'],
+    [{ provider: 'openai' }, 'Provider connections do not accept command arguments.'],
+    [{ section: 'providers', providerId: 'ollama' }, 'Choose one supported provider in Settings.'],
+    [
+      { section: 'providers', providerId: 'openai', extra: true },
+      'Provider connections do not accept command arguments.',
+    ],
+  ] as const)(
+    'rejects non-exact /connect slots before opening Providers',
+    async (slots, message) => {
+      const port = authority();
+      const result = await executeNavigationCommand({ id: 'connections.open', slots }, port);
+      expect(result).toEqual({
+        ok: false,
+        code: 'queue_failed',
+        message,
+      });
+      expect(port.openSettings).not.toHaveBeenCalled();
+      expect(port.openProviderConnections).not.toHaveBeenCalled();
+      expect(JSON.stringify(result)).not.toContain('must-not-enter-command');
+    },
+  );
 
   it('redacts navigation adapter failures from receipts', async () => {
     const port = authority();
-    vi.mocked(port.openSettings).mockImplementationOnce(() => {
+    vi.mocked(port.openProviderConnections!).mockImplementationOnce(() => {
       throw new Error('private provider surface detail');
     });
     const result = await executeNavigationCommand(
@@ -147,7 +161,27 @@ describe('executeNavigationCommand', () => {
     await expect(
       executeNavigationCommand({ id: 'connections.open', slots: {} }, port),
     ).resolves.toEqual({ ok: true, code: 'opened', message: 'Opened provider connections.' });
-    expect(port.openSettings).toHaveBeenCalledWith('providers');
+    expect(port.openSettings).not.toHaveBeenCalled();
+    expect(port.openProviderConnections).toHaveBeenCalledWith(undefined);
+  });
+
+  it('focuses one exact supported provider without accepting secret or extra arguments', async () => {
+    const port = authority();
+    await expect(
+      executeNavigationCommand(
+        {
+          id: 'connections.open',
+          slots: { section: 'providers', providerId: 'openrouter' },
+        },
+        port,
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      code: 'opened',
+      message: 'Opened provider connections for openrouter.',
+    });
+    expect(port.openProviderConnections).toHaveBeenCalledWith('openrouter');
+    expect(port.openSettings).not.toHaveBeenCalled();
   });
 
   it.each([undefined, null, 'true', 1])(

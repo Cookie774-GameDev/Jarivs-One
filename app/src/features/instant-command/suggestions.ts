@@ -80,6 +80,16 @@ function suggestionRank(item: InstantCommandHelpItem, query: string): number {
   return 5;
 }
 
+function suggestionLabel(item: InstantCommandHelpItem, query: string): string {
+  if (item.id !== 'connections.open' || !query.startsWith('/connect ')) {
+    return item.examples[0]!;
+  }
+  const candidate = item.aliases
+    .filter((alias) => normalized(alias).startsWith(query))
+    .sort((left, right) => left.length - right.length || left.localeCompare(right))[0];
+  return candidate ?? item.examples[0]!;
+}
+
 export function suggestInstantCommands(
   items: readonly InstantCommandHelpItem[],
   query: string,
@@ -116,7 +126,7 @@ export function suggestInstantCommands(
             : '';
         return Object.freeze({
           id: item.id,
-          label: item.examples[0]!,
+          label: suggestionLabel(item, queryKey),
           detail: `${item.family} · ${item.safety} · ${item.availability}${item.argumentHint ? ` · ${item.argumentHint}` : ''}`,
           disabled: item.availability === 'blocked',
           confirmationRequired,
