@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ChatBackendAffinityCorruptError,
   ChatBackendLockedError,
   lockChatBackendOnFirstMessage,
   resolveChatBackendAffinity,
@@ -41,19 +42,13 @@ describe('chat backend affinity', () => {
     ).toEqual({ version: 1, backend: 'codex', locked: true, selectedAt: 110, lockedAt: 120 });
   });
 
-  it('fails closed to OpenCode for malformed or unsupported metadata', () => {
-    expect(
+  it('quarantines malformed or unsupported persisted metadata instead of changing backend', () => {
+    expect(() =>
       resolveChatBackendAffinity(
         { version: 2, backend: 'codex', locked: false, selectedAt: 999 },
         { hasCommittedUserMessage: true, chatCreatedAt: 100 },
       ),
-    ).toEqual({
-      version: 1,
-      backend: 'opencode',
-      locked: true,
-      selectedAt: 100,
-      lockedAt: 100,
-    });
+    ).toThrowError(ChatBackendAffinityCorruptError);
   });
 
   it('allows either backend before the first committed message', () => {
@@ -81,6 +76,25 @@ describe('chat backend affinity', () => {
 
     expect(locked).toEqual({ ...selected, locked: true, lockedAt: 200 });
     expect(lockChatBackendOnFirstMessage(locked, 300)).toBe(locked);
+  });
+
+  it('keeps the lock timestamp monotonic when the commit clock is earlier than selection', () => {
+    const selected = {
+      version: 1 as const,
+      backend: 'codex' as const,
+      locked: false,
+      selectedAt: 150,
+    };
+
+    const locked = lockChatBackendOnFirstMessage(selected, 125);
+
+    expect(locked).toEqual({ ...selected, locked: true, lockedAt: 150 });
+    expect(
+      resolveChatBackendAffinity(locked, {
+        hasCommittedUserMessage: true,
+        chatCreatedAt: 100,
+      }),
+    ).toEqual(locked);
   });
 
   it('makes selecting the same locked backend idempotent', () => {

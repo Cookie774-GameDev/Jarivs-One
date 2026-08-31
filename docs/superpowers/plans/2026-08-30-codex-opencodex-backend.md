@@ -22,15 +22,15 @@
 ## Milestone 3 — Provider/auth bridge and exact identity
 
 1. Add failing tests for account/workspace lease scope, expiry/revalidation, environment reference injection, redaction, incompatible provider failure, and no key persistence.
-2. Implement a narrow bridge over the existing secret-handle authority; never add a second vault.
+2. Add a narrow account/workspace-scoped lease at the existing OS-keyring boundary, or require explicit compatible OpenCodex login. Do not treat the plugin-only secret handle as core-provider authority and never add a second vault.
 3. Add observed catalog/identity checks for provider/model/effort/Fast/CWD and reject fallback/combo/Ollama.
 4. Verify credential scans and identity mismatch boundaries; exact commit.
 
 ## Milestone 4 — Structured Codex adapter
 
-1. Add protocol fixtures from documented structured Codex events and failing parser tests for text, public progress, question, approval, tools, safe args/results/diffs, usage, error/cancel/done, unsafe control stripping, bounds, and privacy.
+1. Add protocol fixtures from generated Codex 0.151.0 structured types and failing parser tests for text, public progress, exact turn-start binding, question, informed ephemeral approval controls, tools, safe args/results/diffs, streamed-summary reconciliation, nonterminal error followed by authoritative completion, unsafe control stripping, bounds, and privacy.
 2. Implement Codex app-server/structured JSON transport with generation-safe bounded queues and cancellation.
-3. Implement persistent chat-to-thread binding, sequence dedupe, replay/reconnect, crash recovery, and exact terminal truth.
+3. Implement persistent chat-to-thread binding, process-generation ownership, exact turn binding before scoped projection, item-lifecycle idempotence, bounded replay/reconnect reconciliation, crash recovery, bounded in-memory native approval request handles, and exact terminal truth from `turn/completed`. Do not assume notification sequence IDs; Codex 0.151.0 does not provide them.
 4. Map only sanitized events into the existing `ProviderEvent` contract. Do not create UI/runtime stores.
 5. Route by immutable Chat backend; preserve the OpenCode path byte-for-byte where possible.
 6. Run parser/adapter/router/runtime regression boundaries and exact commit.
@@ -57,4 +57,3 @@
 - Blocked until handoff: `types/chat.ts`, `Composer.tsx`, Chat lifecycle/view, activity ledger, `runtime.ts`, OpenCode server/transport, and official native controller.
 - First RED command: `npm --prefix app test -- --run src/lib/ai/backend/chatBackend.test.ts`.
 - First GREEN boundary: focused test, `npm --prefix app run typecheck`, exact Prettier, `git diff --check` on owned files, scoped secret scan.
-

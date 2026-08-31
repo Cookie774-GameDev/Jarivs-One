@@ -1,6 +1,24 @@
 import type { ProviderEvent, UsageSnapshot, UsageValue } from './types';
 
 export type CodexApprovalKind = 'command' | 'file_change' | 'permissions';
+export type CodexSimpleApprovalDecision = 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+
+export interface CodexRequestedPermissionSummary {
+  networkRequested: boolean;
+  fileSystemReadCount: number;
+  fileSystemWriteCount: number;
+  fileSystemEntryCount: number;
+}
+
+export interface CodexApprovalDisplay {
+  action: CodexApprovalKind;
+  reason?: string;
+  commandPreview?: string;
+  cwdLabel?: string;
+  fileLabels?: readonly string[];
+  availableDecisions?: readonly CodexSimpleApprovalDecision[];
+  requestedPermissions?: CodexRequestedPermissionSummary;
+}
 
 export interface CodexApprovalControlRequest {
   type: 'approval';
@@ -9,9 +27,52 @@ export interface CodexApprovalControlRequest {
   threadId: string;
   turnId: string;
   itemId: string;
+  /** Opaque JSON-RPC request identity for a future process-scoped secure response store. */
+  responseHandle: string;
+  requestMethod: string;
+  responseKind: string;
+  nativeApprovalId?: string;
+  display: Readonly<CodexApprovalDisplay>;
 }
 
-export type CodexControlRequest = CodexApprovalControlRequest;
+export interface CodexQuestionControlRequest {
+  type: 'question';
+  requestId: string;
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  questions: readonly Readonly<{
+    id: string;
+    header: string;
+    prompt: string;
+    options: readonly Readonly<{ label: string; description: string }>[];
+    allowCustomAnswer: boolean;
+  }>[];
+}
+
+export interface CodexSecureQuestionControlRequest {
+  type: 'secure_question';
+  requestId: string;
+  threadId: string;
+  turnId: string;
+  itemId: string;
+  questionIds: readonly string[];
+}
+
+export interface CodexTurnBindingControlRequest {
+  type: 'turn_binding';
+  threadId: string;
+  turnId: string;
+}
+
+export type CodexControlRequest =
+  | CodexApprovalControlRequest
+  | CodexQuestionControlRequest
+  | CodexSecureQuestionControlRequest
+  | CodexTurnBindingControlRequest
+  | { type: 'plan_delta'; itemId: string; delta: string }
+  | { type: 'plan_snapshot'; itemId: string; text: string }
+  | { type: 'resolved'; requestId: string };
 
 export interface CodexAppServerProjection {
   recognized: boolean;
@@ -21,14 +82,36 @@ export interface CodexAppServerProjection {
 
 export interface CodexAppServerProjectionOptions {
   capturedAt?: number;
+  scope?: Readonly<{
+    activeGeneration: number;
+    messageGeneration: number;
+    threadId: string;
+    turnId?: string;
+  }>;
 }
 
 const MAX_PUBLIC_TEXT = 32_768;
-const MAX_RESULT_TEXT = 8_192;
 const MAX_IDENTIFIER = 256;
 const ANSI_ESCAPE = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001b\\))/gu;
 const UNSAFE_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001a\u001c-\u001f\u007f]/u;
 const UNSAFE_CONTROL_GLOBAL = /[\u0000-\u0008\u000b\u000c\u000e-\u001a\u001c-\u001f\u007f]/gu;
+const SCOPED_METHODS = new Set([
+  'error',
+  'item/agentMessage/delta',
+  'item/completed',
+  'item/commandExecution/requestApproval',
+  'item/fileChange/requestApproval',
+  'item/permissions/requestApproval',
+  'item/plan/delta',
+  'item/reasoning/summaryTextDelta',
+  'item/reasoning/textDelta',
+  'item/started',
+  'item/tool/requestUserInput',
+  'serverRequest/resolved',
+  'thread/tokenUsage/updated',
+  'turn/completed',
+  'turn/started',
+]);
 
 function recordOf(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -49,6 +132,19 @@ function safePublicText(value: unknown, maximum = MAX_PUBLIC_TEXT): string | und
     .replace(UNSAFE_CONTROL_GLOBAL, '')
     .slice(0, maximum);
   return sanitized || undefined;
+}
+
+function safeApprovalText(value: unknown, maximum: number): string | undefined {
+  const text = safePublicText(value, maximum);
+  if (!text) return undefined;
+  return text
+    .replace(
+      /\b(api[_-]?key|token|password|secret)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/giu,
+      '$1=[redacted]',
+    )
+    .replace(/\b(?:sk|rk|pk)-[A-Za-z0-9_-]{8,}\b/gu, '[redacted]')
+    .replace(/[A-Za-z]:[\\/][^\s"'`]+/gu, '[path]')
+    .replace(/(^|[\s"'`])\/(?:[^\s"'`/]+\/)*[^\s"'`]*/gu, '$1[path]');
 }
 
 function leafFileLabel(value: unknown): string | undefined {
@@ -101,6 +197,70 @@ function firstActionFileLabel(actions: unknown): string | undefined {
   return undefined;
 }
 
+function approvalFileLabels(params: Record<string, unknown>): string[] {
+  const labels: string[] = [];
+  const add = (value: unknown) => {
+    const label = leafFileLabel(value);
+    if (label && !labels.includes(label) && labels.length < 8) labels.push(label);
+  };
+  if (Array.isArray(params.commandActions)) {
+    for (const action of params.commandActions) {
+      const record = recordOf(action);
+      add(record?.path);
+    }
+  }
+  add(params.grantRoot);
+  return labels;
+}
+
+function approvalCommandPreview(actions: unknown, command: unknown): string {
+  const fallback = () => safeApprovalText(command, 1_024) ?? 'Run command';
+  if (!Array.isArray(actions)) return fallback();
+  const summaries = actions.slice(0, 3).flatMap((action) => {
+    const record = recordOf(action);
+    const label = leafFileLabel(record?.path);
+    if (record?.type === 'read') return [`Read${label ? ` ${label}` : ' file'}`];
+    if (record?.type === 'listFiles') return [`List files${label ? ` in ${label}` : ''}`];
+    if (record?.type === 'search') return [`Search${label ? ` ${label}` : ''}`];
+    if (record?.type === 'unknown') {
+      const preview = safeApprovalText(record.command, 1_024);
+      return preview ? [preview] : [];
+    }
+    return [];
+  });
+  return summaries.length > 0 ? summaries.join('; ') : fallback();
+}
+
+function simpleApprovalDecisions(value: unknown): CodexSimpleApprovalDecision[] {
+  if (!Array.isArray(value)) return [];
+  const decisions: CodexSimpleApprovalDecision[] = [];
+  for (const candidate of value) {
+    if (
+      (candidate === 'accept' ||
+        candidate === 'acceptForSession' ||
+        candidate === 'decline' ||
+        candidate === 'cancel') &&
+      !decisions.includes(candidate)
+    ) {
+      decisions.push(candidate);
+    }
+  }
+  return decisions;
+}
+
+function requestedPermissionSummary(value: unknown): CodexRequestedPermissionSummary | undefined {
+  const profile = recordOf(value);
+  if (!profile) return undefined;
+  const network = recordOf(profile.network);
+  const fileSystem = recordOf(profile.fileSystem);
+  return {
+    networkRequested: network?.enabled === true,
+    fileSystemReadCount: Array.isArray(fileSystem?.read) ? fileSystem.read.length : 0,
+    fileSystemWriteCount: Array.isArray(fileSystem?.write) ? fileSystem.write.length : 0,
+    fileSystemEntryCount: Array.isArray(fileSystem?.entries) ? fileSystem.entries.length : 0,
+  };
+}
+
 function finiteNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
@@ -114,14 +274,24 @@ function normalizeItem(item: Record<string, unknown>, method: string): ProviderE
   const type = item.type;
   const callId = safeIdentifier(item.id);
 
+  if (type === 'agentMessage') {
+    const delta = safePublicText(item.text);
+    return delta && callId ? [{ type: 'text', delta, mode: 'replace', streamPartId: callId }] : [];
+  }
+
+  if (type === 'reasoning') {
+    return [];
+  }
+
   if (type === 'commandExecution') {
     const result: Record<string, unknown> = {};
-    const output = safePublicText(item.aggregatedOutput, MAX_RESULT_TEXT);
     const exitCode = finiteNumber(item.exitCode);
     const durationMs = finiteNumber(item.durationMs);
-    if (output) result.output = output;
     if (exitCode !== undefined) result.exitCode = exitCode;
     if (durationMs !== undefined) result.durationMs = durationMs;
+    if (typeof item.aggregatedOutput === 'string' && item.aggregatedOutput.length > 0) {
+      result.outputAvailable = true;
+    }
     const hasResult = Object.keys(result).length > 0;
     return [
       {
@@ -185,19 +355,38 @@ function normalizeQuestion(message: Record<string, unknown>, params: Record<stri
     return projection([{ type: 'error', message: 'Codex returned a malformed question request.' }]);
   }
   if (rawQuestions.some((question) => recordOf(question)?.isSecret === true)) {
-    return projection([
-      {
-        type: 'warning',
-        message: 'Codex requested secret input. Use the secure credential setup action.',
-      },
-    ]);
+    const questionIds = rawQuestions.flatMap((question) => {
+      const id = safeIdentifier(recordOf(question)?.id);
+      return id ? [id] : [];
+    });
+    return projection(
+      [
+        {
+          type: 'warning',
+          message: 'Codex requested secret input. Use the secure credential setup action.',
+        },
+      ],
+      questionIds.length > 0
+        ? [
+            {
+              type: 'secure_question',
+              requestId,
+              threadId: sessionId,
+              turnId,
+              itemId,
+              questionIds,
+            },
+          ]
+        : [],
+    );
   }
 
   const questions = rawQuestions.slice(0, 3).flatMap((question) => {
     const record = recordOf(question);
+    const id = safeIdentifier(record?.id);
     const header = safePublicText(record?.header, 120);
     const prompt = safePublicText(record?.question, 1_024);
-    if (!header || !prompt) return [];
+    if (!id || !header || !prompt) return [];
     const options = Array.isArray(record?.options)
       ? record.options.slice(0, 20).flatMap((option) => {
           const optionRecord = recordOf(option);
@@ -208,6 +397,7 @@ function normalizeQuestion(message: Record<string, unknown>, params: Record<stri
       : [];
     return [
       {
+        id,
         header,
         prompt,
         options,
@@ -220,24 +410,36 @@ function normalizeQuestion(message: Record<string, unknown>, params: Record<stri
     return projection([{ type: 'error', message: 'Codex returned a malformed question request.' }]);
   }
 
-  return projection([
-    {
-      type: 'question',
-      request: {
-        id: requestId,
-        sessionId,
-        questions,
-        tool: { messageId: turnId, callId: itemId },
+  return projection(
+    [
+      {
+        type: 'question',
+        request: {
+          id: requestId,
+          sessionId,
+          questions: questions.map(({ id: _id, ...question }) => question),
+          tool: { messageId: turnId, callId: itemId },
+        },
       },
-    },
-  ]);
+    ],
+    [
+      {
+        type: 'question',
+        requestId,
+        threadId: sessionId,
+        turnId,
+        itemId,
+        questions,
+      },
+    ],
+  );
 }
 
 function approvalKind(method: string): CodexApprovalKind | undefined {
-  if (method === 'item/commandExecution/requestApproval' || method === 'execCommandApproval') {
+  if (method === 'item/commandExecution/requestApproval') {
     return 'command';
   }
-  if (method === 'item/fileChange/requestApproval' || method === 'applyPatchApproval') {
+  if (method === 'item/fileChange/requestApproval') {
     return 'file_change';
   }
   if (method === 'item/permissions/requestApproval') return 'permissions';
@@ -256,7 +458,76 @@ function normalizeApproval(
   if (!requestId || !threadId || !turnId || !itemId) {
     return projection([{ type: 'error', message: 'Codex returned a malformed approval request.' }]);
   }
-  return projection([], [{ type: 'approval', kind, requestId, threadId, turnId, itemId }]);
+  const reason = safeApprovalText(params.reason, 512);
+  const responseKind = safeIdentifier(params.kind) ?? kind;
+  const nativeApprovalId = safeIdentifier(params.approvalId);
+  const fileLabels = approvalFileLabels(params);
+  const cwdLabel = leafFileLabel(params.cwd);
+  const availableDecisions = simpleApprovalDecisions(params.availableDecisions);
+  const requestedPermissions = requestedPermissionSummary(
+    params.permissions ?? params.additionalPermissions,
+  );
+  const display: CodexApprovalDisplay = {
+    ...(reason ? { reason } : {}),
+    action: kind,
+    ...(kind === 'command'
+      ? { commandPreview: approvalCommandPreview(params.commandActions, params.command) }
+      : {}),
+    ...(cwdLabel ? { cwdLabel } : {}),
+    ...(fileLabels.length > 0 ? { fileLabels } : {}),
+    ...(availableDecisions.length > 0 ? { availableDecisions } : {}),
+    ...(requestedPermissions ? { requestedPermissions } : {}),
+  };
+  return projection(
+    [],
+    [
+      {
+        type: 'approval',
+        kind,
+        requestId,
+        threadId,
+        turnId,
+        itemId,
+        responseHandle: requestId,
+        requestMethod: safeIdentifier(message.method) ?? '',
+        responseKind,
+        ...(nativeApprovalId ? { nativeApprovalId } : {}),
+        display,
+      },
+    ],
+  );
+}
+
+export function normalizeCodexThreadBindingResponse(
+  value: unknown,
+  expectedRequestId: string,
+): CodexAppServerProjection {
+  const response = recordOf(value);
+  if (safeIdentifier(response?.id) !== expectedRequestId) return projection([], [], false);
+  const sessionId = safeIdentifier(recordOf(recordOf(response?.result)?.thread)?.id);
+  return sessionId
+    ? projection([{ type: 'session', sessionId }])
+    : projection([{ type: 'error', message: 'Codex returned a malformed thread binding.' }]);
+}
+
+function isWithinActiveScope(
+  method: string,
+  params: Record<string, unknown>,
+  options: CodexAppServerProjectionOptions,
+): boolean {
+  const scope = options.scope;
+  if (!scope || scope.activeGeneration !== scope.messageGeneration) return false;
+  const threadId = safeIdentifier(params.threadId);
+  if (!threadId || threadId !== scope.threadId) return false;
+  if (method === 'serverRequest/resolved') return true;
+  const turnId =
+    safeIdentifier(params.turnId) ??
+    (method === 'turn/completed' || method === 'turn/started'
+      ? safeIdentifier(recordOf(params.turn)?.id)
+      : undefined);
+  if (method === 'turn/started') return scope.turnId ? turnId === scope.turnId : Boolean(turnId);
+  if (!scope.turnId) return false;
+  return turnId === scope.turnId;
 }
 
 export function normalizeCodexAppServerMessage(
@@ -269,8 +540,15 @@ export function normalizeCodexAppServerMessage(
   if (!message || !method) return projection([], [], false);
 
   if (method === 'thread/started') {
-    const sessionId = safeIdentifier(recordOf(params.thread)?.id);
-    return projection(sessionId ? [{ type: 'session', sessionId }] : []);
+    return projection();
+  }
+  if (SCOPED_METHODS.has(method) && !isWithinActiveScope(method, params, options)) {
+    return projection();
+  }
+  if (method === 'turn/started') {
+    const threadId = safeIdentifier(params.threadId);
+    const turnId = safeIdentifier(recordOf(params.turn)?.id);
+    return projection([], threadId && turnId ? [{ type: 'turn_binding', threadId, turnId }] : []);
   }
   if (method === 'item/agentMessage/delta') {
     const delta = safePublicText(params.delta);
@@ -284,14 +562,29 @@ export function normalizeCodexAppServerMessage(
     return projection(delta ? [{ type: 'reasoning', delta }] : []);
   }
   if (method === 'item/reasoning/textDelta') return projection();
+  if (method === 'item/plan/delta') {
+    const itemId = safeIdentifier(params.itemId);
+    const delta = safePublicText(params.delta);
+    return projection([], itemId && delta ? [{ type: 'plan_delta', itemId, delta }] : []);
+  }
   if (method === 'item/started' || method === 'item/completed') {
     const item = recordOf(params.item);
+    if (item?.type === 'plan') {
+      const itemId = safeIdentifier(item.id);
+      const text = safePublicText(item.text);
+      return projection([], itemId && text ? [{ type: 'plan_snapshot', itemId, text }] : []);
+    }
     return projection(item ? normalizeItem(item, method) : []);
   }
   if (method === 'item/tool/requestUserInput') return normalizeQuestion(message, params);
 
   const kind = approvalKind(method);
   if (kind) return normalizeApproval(message, params, kind);
+
+  if (method === 'serverRequest/resolved') {
+    const requestId = safeIdentifier(params.requestId);
+    return projection([], requestId ? [{ type: 'resolved', requestId }] : []);
+  }
 
   if (method === 'thread/tokenUsage/updated') {
     const last = recordOf(recordOf(params.tokenUsage)?.last);
@@ -334,9 +627,12 @@ export function normalizeCodexAppServerMessage(
   }
 
   if (method === 'error') {
-    const message = safePublicText(params.message, 2_048);
+    const message = safePublicText(recordOf(params.error)?.message, 2_048);
     return projection([
-      { type: 'error', message: message ?? 'Codex app-server reported an error.' },
+      {
+        type: 'warning',
+        message: message ?? 'Codex app-server reported an error.',
+      },
     ]);
   }
 

@@ -27,6 +27,15 @@ export class ChatBackendLockedError extends Error {
   }
 }
 
+export class ChatBackendAffinityCorruptError extends Error {
+  readonly code = 'chat_backend_affinity_corrupt';
+
+  constructor() {
+    super('Chat backend metadata is unsupported or corrupt; recovery is required.');
+    this.name = 'ChatBackendAffinityCorruptError';
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -86,9 +95,10 @@ export function resolveChatBackendAffinity(
   value: unknown,
   options: ResolveChatBackendAffinityOptions,
 ): ChatBackendAffinityV1 {
-  if (!isChatBackendAffinity(value)) {
+  if (value === undefined) {
     return legacyAffinity(options);
   }
+  if (!isChatBackendAffinity(value)) throw new ChatBackendAffinityCorruptError();
 
   if (options.hasCommittedUserMessage && !value.locked) {
     return { ...value, locked: true, lockedAt: value.selectedAt };
@@ -131,6 +141,8 @@ export function lockChatBackendOnFirstMessage(
   return {
     ...affinity,
     locked: true,
-    lockedAt: isTimestamp(committedAt) ? committedAt : affinity.selectedAt,
+    lockedAt: isTimestamp(committedAt)
+      ? Math.max(committedAt, affinity.selectedAt)
+      : affinity.selectedAt,
   };
 }

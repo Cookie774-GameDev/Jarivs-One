@@ -46,9 +46,9 @@ interface ChatBackendAffinityV1 {
 
 Rules:
 
-1. Missing or invalid legacy metadata resolves deterministically to locked `opencode` for any chat that already has a committed user message, and unlocked `opencode` for a new empty chat.
+1. Truly absent legacy metadata resolves deterministically to locked `opencode` for any chat that already has a committed user message, and unlocked `opencode` for a new empty chat. Present-but-invalid or unsupported metadata is quarantined and fails closed; it never changes backend.
 2. Before the first committed user message, `/cli opencode` or `/cli codex` may replace the selection.
-3. Committing the first user message atomically locks the existing selection. Readiness/install failure does not lock a chat because no user message was committed.
+3. Committing the first user message atomically locks the existing selection. `lockedAt` is monotonic (`>= selectedAt`) even if an imported timestamp or host clock moves backward. Readiness/install failure does not lock a chat because no user message was committed.
 4. Once locked, a different backend is rejected with a typed error; selecting the same backend is idempotent.
 5. Repositories enforce the transition. UI state and localStorage are never backend authority.
 6. Branch/duplicate/export/import/recovery copy versioned affinity but never copy secrets or transient process/session ownership.
@@ -82,7 +82,7 @@ OpenCode's lifecycle and server state remain untouched.
 
 Chat state retains only connection identifiers and backend affinity. Plaintext credentials never enter Chat records, OpenCodex metadata, arguments, logs, snapshots, receipts, or test evidence.
 
-The bridge uses the existing account/workspace-scoped secret authority to lease one provider credential into the owned process environment or requires an explicit compatible OpenCodex login. The exact requested tuple is captured once per turn:
+The repository's current core provider credentials are provider-global OS-keyring entries, so they are not sufficient for this milestone's account/workspace isolation. Add a narrow account/workspace-scoped lease bridge over the existing keyring boundary, or require an explicit compatible OpenCodex login. Never repurpose the plugin-only secret handle as core-provider authority. The exact requested tuple is captured once per turn:
 
 `account + workspace + project + backend + provider + model + effort + Fast + CWD + context revision`
 
@@ -94,13 +94,15 @@ Codex is a `ProviderAdapter`, not a second runtime. The adapter owns:
 
 - persistent chat-to-Codex-thread binding;
 - incremental structured stream parsing;
-- generation and event-sequence dedupe;
+- process-generation ownership, item-lifecycle idempotence, and bounded replay reconciliation;
 - replay/reconnect reconciliation;
 - cancellation and crash recovery;
 - exact identity and CWD verification;
 - mapping into existing `ProviderEvent` variants.
 
-Protocol-designated public text/progress and safe tool data map to the existing chronology. Hidden reasoning, raw environment, credentials, unsafe control sequences, restricted contents, and unbounded payloads are discarded or redacted before a `ProviderEvent` is emitted. Tool call IDs and event sequence IDs provide exactly-once projection.
+Protocol-designated public text/progress and safe tool data map to the existing chronology. Hidden reasoning, raw environment, credentials, unsafe control sequences, restricted contents, and unbounded payloads are discarded or redacted before a `ProviderEvent` is emitted. Codex 0.151.0 notifications do not provide a durable monotonic event sequence, so exactly-once behavior uses active process-generation ownership, exact `turn/started` binding, strict thread/turn scope, item lifecycle IDs, streamed-summary reconciliation, terminal idempotence, bounded queues, and authoritative thread/turn reconciliation after reconnect. Intermediate `error` notifications remain nonterminal diagnostics; only the structured `turn/completed` status determines turn completion, interruption, or failure.
+
+Approval controls are ephemeral and informed. They expose only bounded sanitized command/action labels, leaf-only path labels, simple server-advertised decisions, and a privacy-safe requested-permission summary. An opaque request handle binds the later decision to raw native request data retained only in the transport's bounded in-memory pending-request store; raw commands, paths, permission payloads, and reusable authority never enter Chat persistence or the activity ledger.
 
 ## Ask, Plan, and Agent
 
@@ -117,22 +119,21 @@ Both backends receive the same context lease, execution identity, citations, and
 ## Recovery and truth
 
 - Session binding persists separately from backend affinity; process ownership never does.
-- Reconnect resumes from the last durable sequence and deduplicates replay.
+- Reconnect reads the authoritative thread/turn state, reconciles item lifecycle IDs, and deduplicates already-durable terminal/items without assuming a nonexistent notification sequence.
 - Crash recovery validates backend, generation, identity, and session/thread before resuming.
-- Terminal state is based on a structured completion/error/cancel event, never process spawn or idle timeout alone.
+- Terminal state is based on the authoritative structured `turn/completed` status, never an intermediate error notification, process spawn, or idle timeout alone.
 - Errors state the exact failing boundary and expose a safe setup/retry/recovery action. No silent fallback.
 
 ## Ownership conflict matrix
 
-| Surface | Current owner | This milestone action |
-|---|---|---|
-| `types/chat.ts`, Composer, Chat view/lifecycle | Chat handoff delivery | Start with new pure contract; integrate only after release/handoff |
-| Chat activity ledger/console | Public activity task | Reuse after release; no parallel projection UI |
-| OpenCode native server/transport | PR31 master continuation | Preserve unchanged; add separate Codex/OpenCodex peers later |
-| Instant Command/Calyx | Instant catalog tasks | Keep `/cli` in Chat slash authority; do not alter global command engine |
-| Official native CDP | Sole native controller | Coordinate one immutable-SHA acceptance run; never launch a competing app |
+| Surface                                        | Current owner            | This milestone action                                                     |
+| ---------------------------------------------- | ------------------------ | ------------------------------------------------------------------------- |
+| `types/chat.ts`, Composer, Chat view/lifecycle | Chat handoff delivery    | Start with new pure contract; integrate only after release/handoff        |
+| Chat activity ledger/console                   | Public activity task     | Reuse after release; no parallel projection UI                            |
+| OpenCode native server/transport               | PR31 master continuation | Preserve unchanged; add separate Codex/OpenCodex peers later              |
+| Instant Command/Calyx                          | Instant catalog tasks    | Keep `/cli` in Chat slash authority; do not alter global command engine   |
+| Official native CDP                            | Sole native controller   | Coordinate one immutable-SHA acceptance run; never launch a competing app |
 
 ## Acceptance bar
 
 Focused/unit/integration gates must pass with real exit 0, followed by typecheck, build, formatting, diff, and secret/security checks. Final acceptance uses the official native Tauri app via Playwright/CDP at one immutable SHA and proves both immutable backends, exact provider identity, Ask/Plan/Agent, events, approvals, cancellation, recovery, RLM/SiYuan, no secrets, no unexplained errors, and no Ollama process or port-11434 listener.
-
