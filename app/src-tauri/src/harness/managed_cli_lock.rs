@@ -35,6 +35,14 @@ pub struct ManagedOpenCodexDependencyLock {
     pub runs_dependency_scripts: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct EmbeddedOpenCodexInstallFiles {
+    pub package_json: &'static str,
+    pub bun_lock: &'static str,
+    pub bunfig: &'static str,
+    pub dependency_lock: ManagedOpenCodexDependencyLock,
+}
+
 fn sha256(value: &str) -> String {
     let normalized = value.replace("\r\n", "\n");
     format!("{:x}", Sha256::digest(normalized.as_bytes()))
@@ -101,6 +109,15 @@ pub fn embedded_opencodex_dependency_lock() -> Result<ManagedOpenCodexDependency
     validate_opencodex_dependency_lock(PACKAGE_JSON, BUN_LOCK, BUNFIG)
 }
 
+pub fn embedded_opencodex_install_files() -> Result<EmbeddedOpenCodexInstallFiles, String> {
+    Ok(EmbeddedOpenCodexInstallFiles {
+        package_json: PACKAGE_JSON,
+        bun_lock: BUN_LOCK,
+        bunfig: BUNFIG,
+        dependency_lock: embedded_opencodex_dependency_lock()?,
+    })
+}
+
 pub fn managed_bun_install_arguments(root: &Path) -> Vec<String> {
     let root = root.to_string_lossy().into_owned();
     let config = Path::new(&root)
@@ -124,8 +141,8 @@ pub fn managed_bun_install_arguments(root: &Path) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        embedded_opencodex_dependency_lock, managed_bun_install_arguments,
-        validate_opencodex_dependency_lock,
+        embedded_opencodex_dependency_lock, embedded_opencodex_install_files,
+        managed_bun_install_arguments, validate_opencodex_dependency_lock,
     };
     use std::path::Path;
 
@@ -225,5 +242,17 @@ mod tests {
                 "npm" | "npm.cmd" | "node" | "node.exe" | "cmd" | "cmd.exe" | "powershell"
             )
         }));
+    }
+
+    #[test]
+    fn embedded_install_files_are_the_validated_authority() {
+        let files = embedded_opencodex_install_files().expect("install files");
+        assert_eq!(files.package_json, PACKAGE_JSON);
+        assert_eq!(files.bun_lock, BUN_LOCK);
+        assert_eq!(files.bunfig, BUNFIG);
+        assert_eq!(
+            files.dependency_lock.lock_sha256,
+            super::EXPECTED_LOCK_SHA256
+        );
     }
 }

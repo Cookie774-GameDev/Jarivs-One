@@ -4,6 +4,7 @@ pub mod managed_bun_materializer;
 pub mod managed_cli_lock;
 pub mod managed_cli_manifest;
 pub mod managed_cli_runtime;
+pub mod managed_opencodex_materializer;
 pub mod manifest;
 pub mod runtime;
 pub mod server;

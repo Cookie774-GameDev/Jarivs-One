@@ -8,7 +8,7 @@ const RUNTIME_RECEIPT_SCHEMA_VERSION: u32 = 1;
 const OPENCODEX_ENTRYPOINT: &str = "node_modules/@bitkyc08/opencodex/bin/ocx.mjs";
 const OPENCODEX_SOURCE_ENTRYPOINT: &str = "node_modules/@bitkyc08/opencodex/src/cli/index.ts";
 const OPENCODEX_PACKAGE_JSON: &str = "node_modules/@bitkyc08/opencodex/package.json";
-const OPENCODEX_BUN_EXECUTABLE: &str = "node_modules/bun/bin/bun.exe";
+const OPENCODEX_BUN_EXECUTABLE: &str = "node_modules/@oven/bun-windows-x64/bin/bun.exe";
 const OPENCODEX_DEPENDENCY_LOCK: &str = "bun.lock";
 const CODEX_ENTRYPOINT_SHA256: &str =
     "cf68265897197ac5f3bff6a10c168eec159842b353129726da5e3ed6b91ef0f4";
@@ -514,7 +514,10 @@ mod tests {
                 "node_modules/bun/package.json",
                 &b"{\"version\":\"1.4.0\"}"[..],
             ),
-            ("node_modules/bun/bin/bun.exe", &b"MZfixture"[..]),
+            (
+                "node_modules/@oven/bun-windows-x64/bin/bun.exe",
+                &b"MZfixture"[..],
+            ),
             ("node_modules/@bufbuild/protobuf/package.json", &b"{}"[..]),
             (
                 "node_modules/@modelcontextprotocol/sdk/package.json",
@@ -561,7 +564,7 @@ mod tests {
         ));
 
         let launch = super::ManagedCliLaunch {
-            executable: version_root.join("node_modules/bun/bin/bun.exe"),
+            executable: version_root.join("node_modules/@oven/bun-windows-x64/bin/bun.exe"),
             arguments: vec![
                 version_root
                     .join("node_modules/@bitkyc08/opencodex/src/cli/index.ts")
@@ -571,7 +574,9 @@ mod tests {
                 "--json".to_string(),
             ],
         };
-        assert!(launch.executable.ends_with("node_modules/bun/bin/bun.exe"));
+        assert!(launch
+            .executable
+            .ends_with("node_modules/@oven/bun-windows-x64/bin/bun.exe"));
         assert_eq!(launch.arguments.last().map(String::as_str), Some("--json"));
         assert!(!launch
             .arguments
@@ -612,7 +617,7 @@ mod tests {
         ));
 
         write_file(
-            version_root.join("node_modules/bun/bin/bun.exe"),
+            version_root.join("node_modules/@oven/bun-windows-x64/bin/bun.exe"),
             b"MZrewritten",
         );
         write_file(
@@ -631,7 +636,8 @@ mod tests {
             ManagedCliReadiness::Incomplete { .. }
         ));
 
-        fs::remove_file(version_root.join("node_modules/bun/bin/bun.exe")).unwrap();
+        fs::remove_file(version_root.join("node_modules/@oven/bun-windows-x64/bin/bun.exe"))
+            .unwrap();
         assert!(matches!(
             inspect_managed_runtime(root.path(), &release),
             ManagedCliReadiness::Incomplete { .. }
