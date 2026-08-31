@@ -583,7 +583,12 @@ describe('canonical file-action artifact evidence authority', () => {
         result: Object.freeze({
           ok: true as const,
           summary: 'Created file.',
-          data: Object.freeze({ path: 'C:\\Projects\\FarmLife\\created.md', operation: 'create' }),
+          data: Object.freeze({
+            path: 'C:\\Projects\\FarmLife\\created.md',
+            operation: 'create',
+            contentSha256: `sha256:${'a'.repeat(64)}`,
+            sizeBytes: 128,
+          }),
         }),
       }),
     );

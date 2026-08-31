@@ -120,6 +120,7 @@ function ArtifactReferencePanel({ panel }: { panel: WorkbenchPanel }) {
 
   React.useEffect(() => {
     let current = true;
+    let requestGeneration = 0;
     if (
       !authority ||
       !stableText(authority.accountId, ARTIFACT_ID_LIMIT) ||
@@ -133,25 +134,39 @@ function ArtifactReferencePanel({ panel }: { panel: WorkbenchPanel }) {
       };
     }
 
-    setState({ kind: 'loading' });
-    void authority
-      .resolve({ accountId: authority.accountId, artifactId })
-      .then((value) => {
-        if (!current) return;
-        const artifact = verifiedArtifactSnapshot({
-          accountId: authority.accountId,
-          artifactId,
-          artifactDigest,
-          value,
+    const resolveCurrent = (loading: boolean) => {
+      const generation = ++requestGeneration;
+      if (loading) setState({ kind: 'loading' });
+      void authority
+        .resolve({ accountId: authority.accountId, artifactId })
+        .then((value) => {
+          if (!current || generation !== requestGeneration) return;
+          const artifact = verifiedArtifactSnapshot({
+            accountId: authority.accountId,
+            artifactId,
+            artifactDigest,
+            value,
+          });
+          setState(artifact ? { kind: 'ready', artifact } : { kind: 'unavailable' });
+        })
+        .catch(() => {
+          if (current && generation === requestGeneration) setState({ kind: 'unavailable' });
         });
-        setState(artifact ? { kind: 'ready', artifact } : { kind: 'unavailable' });
-      })
-      .catch(() => {
-        if (current) setState({ kind: 'unavailable' });
-      });
+    };
+    const revalidate = () => resolveCurrent(false);
+    const revalidateVisible = () => {
+      if (document.visibilityState === 'visible') revalidate();
+    };
+
+    resolveCurrent(true);
+    window.addEventListener('focus', revalidate);
+    document.addEventListener('visibilitychange', revalidateVisible);
 
     return () => {
       current = false;
+      requestGeneration += 1;
+      window.removeEventListener('focus', revalidate);
+      document.removeEventListener('visibilitychange', revalidateVisible);
     };
   }, [artifactDigest, artifactId, authority]);
 

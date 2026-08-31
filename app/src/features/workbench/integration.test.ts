@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveInitialRoute } from '@/stores/ui';
 import { getAllActions, performAction } from '@/features/command-palette/actions';
@@ -241,5 +241,24 @@ describe('Workbench integration seams', () => {
     await Promise.resolve();
     expect(screen.queryByText('Stale artifact')).toBeNull();
     expect(screen.getByText('Current safe preview.')).toBeTruthy();
+  });
+
+  it('revalidates a restored artifact digest when the application regains focus', async () => {
+    const resolve = vi
+      .fn<WorkbenchArtifactReferenceResolver>()
+      .mockResolvedValueOnce(resolvedArtifact())
+      .mockResolvedValueOnce(null);
+
+    renderArtifactReference(resolve);
+    expect(await screen.findByRole('heading', { name: 'Verified design document' })).toBeTruthy();
+
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+      await Promise.resolve();
+    });
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/artifact preview unavailable/i);
+    expect(resolve).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('Verified design document')).toBeNull();
   });
 });

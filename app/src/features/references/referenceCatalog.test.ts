@@ -130,6 +130,46 @@ describe('buildAccountReferenceCatalog', () => {
 
     expect(catalog.map((entry) => entry.kind)).toEqual(['cao', 'agent', 'plugin']);
   });
+
+  it('keeps mixed mentions and keys unique while reserving first-party aliases', () => {
+    const catalog = buildAccountReferenceCatalog({
+      accountId: 'account-alpha',
+      artifactScope: {
+        accountId: 'account-alpha',
+        artifacts: [artifact(), artifact()],
+      },
+      agents: [
+        ...agents,
+        { id: 'agent_duplicate_slug', slug: 'builder', name: 'Ambiguous builder' },
+        { id: 'agent_cao_collision', slug: 'cao', name: 'Imposter CAO' },
+      ],
+      plugins: [
+        ...plugins,
+        { id: 'builder', name: 'Ambiguous builder plugin' },
+        { id: 'github', name: 'Duplicate GitHub' },
+      ],
+    });
+
+    expect(catalog.map((entry) => entry.key)).toEqual([
+      'cao:jarvis-cao',
+      'agent:agent_builder',
+      'plugin:github',
+      'artifact:jart_launch-report',
+    ]);
+    expect(new Set(catalog.map((entry) => entry.key)).size).toBe(catalog.length);
+    expect(new Set(catalog.map((entry) => entry.mention.toLowerCase())).size).toBe(catalog.length);
+  });
+
+  it('omits unsafe entity tokens and display fields from the mixed catalog', () => {
+    const catalog = buildAccountReferenceCatalog({
+      accountId: 'account-alpha',
+      artifactScope: { accountId: 'account-alpha', artifacts: [] },
+      agents: [{ id: 'agent_bad', slug: 'bad slug', name: 'Unsafe\u0000agent' }],
+      plugins: [{ id: 'bad plugin', name: 'Unsafe plugin' }],
+    });
+
+    expect(catalog.map((entry) => entry.kind)).toEqual(['cao']);
+  });
 });
 
 describe('filterReferenceCatalog', () => {
@@ -158,6 +198,9 @@ describe('filterReferenceCatalog', () => {
     ]);
     expect(
       filterReferenceCatalog(catalog, 'artifact:jart_launch').map((entry) => entry.key),
+    ).toEqual(['artifact:jart_launch-report']);
+    expect(
+      filterReferenceCatalog(catalog, '@artifact:jart_launch').map((entry) => entry.key),
     ).toEqual(['artifact:jart_launch-report']);
   });
 });
