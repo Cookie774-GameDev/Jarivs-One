@@ -26,6 +26,31 @@ describe('Workbench persistence', () => {
     );
   });
 
+  it('persists and restores a ChatGPT ADE panel without runtime authority state', () => {
+    const document = createDefaultWorkbenchDocument();
+    document.panels.push({
+      id: 'ade-1',
+      kind: 'ade',
+      title: 'ChatGPT ADE',
+      x: 120,
+      y: 80,
+      width: 620,
+      height: 560,
+      z: 4,
+      minimized: false,
+      status: 'idle',
+      settings: {},
+    });
+
+    const saved = saveWorkbenchDocument(document, window.localStorage);
+    expect(saved.ok).toBe(true);
+    const restored = loadWorkbenchDocument(window.localStorage);
+    expect(restored.document.panels).toContainEqual(
+      expect.objectContaining({ id: 'ade-1', kind: 'ade', title: 'ChatGPT ADE' }),
+    );
+    expect(window.localStorage.getItem(WORKBENCH_STORAGE_KEY)).not.toContain('executionIdentity');
+  });
+
   it('recovers from a corrupt primary document without persisting terminal output', () => {
     const document = createDefaultWorkbenchDocument();
     saveWorkbenchDocument(document, window.localStorage);

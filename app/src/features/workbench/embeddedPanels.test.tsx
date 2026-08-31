@@ -2,7 +2,13 @@ import * as React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ReferencePanel } from './ReferencePanel';
+import { EmbeddedSurface, isEmbeddedSurfaceKind } from './EmbeddedSurface';
+import { PanelPalette } from './PanelPalette';
 import type { WorkbenchPanel } from './types';
+
+vi.mock('@/features/ade', () => ({
+  ChatGptAdePage: () => <div data-testid="chatgpt-ade-page">ChatGPT ADE unavailable truth</div>,
+}));
 
 vi.mock('@/features/chat', () => ({
   ChatThread: () => <div data-testid="workbench-chat-thread">thread</div>,
@@ -30,7 +36,10 @@ vi.mock('@/features/files/projectFiles', async () => {
   };
 });
 
-function panel(kind: WorkbenchPanel['kind'], settings: WorkbenchPanel['settings'] = {}): WorkbenchPanel {
+function panel(
+  kind: WorkbenchPanel['kind'],
+  settings: WorkbenchPanel['settings'] = {},
+): WorkbenchPanel {
   return {
     id: `${kind}-1`,
     kind,
@@ -47,6 +56,19 @@ function panel(kind: WorkbenchPanel['kind'], settings: WorkbenchPanel['settings'
 }
 
 describe('Workbench embedded panels', () => {
+  it('offers and renders the truthful ChatGPT ADE surface as an embedded panel', async () => {
+    const onAdd = vi.fn();
+    render(<PanelPalette onAdd={onAdd} />);
+
+    screen.getByRole('button', { name: 'Add ChatGPT ADE' }).click();
+    expect(onAdd).toHaveBeenCalledWith('ade');
+    expect(isEmbeddedSurfaceKind('ade')).toBe(true);
+
+    render(<EmbeddedSurface panel={panel('ade')} />);
+    expect(await screen.findByTestId('chatgpt-ade-page')).toBeTruthy();
+    expect(screen.getByTestId('workbench-embedded-ade')).toBeTruthy();
+  });
+
   it('renders real files surface instead of route-redirect placeholder copy', () => {
     render(<ReferencePanel panel={panel('files')} onUpdate={() => undefined} />);
     expect(screen.getByTestId('workbench-files-panel')).toBeTruthy();

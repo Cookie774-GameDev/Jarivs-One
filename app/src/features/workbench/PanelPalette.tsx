@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {
   Activity,
+  AppWindow,
   Bot,
   Boxes,
   Code2,
@@ -29,6 +30,7 @@ const palette: Array<{
   { kind: 'browser', label: 'Browser', icon: Globe2 },
   { kind: 'jarvis', label: 'Jarvis', icon: Bot },
   { kind: 'agent', label: 'Agent', icon: Sparkles },
+  { kind: 'ade', label: 'ChatGPT ADE', icon: AppWindow },
   { kind: 'files', label: 'Files', icon: FileText },
   { kind: 'editor', label: 'Editor', icon: Code2 },
   { kind: 'kanban', label: 'Kanban', icon: KanbanSquare },
