@@ -50,6 +50,33 @@ describe('buildCatalogIndex', () => {
     ).toThrow(/negative fixture/i);
   });
 
+  it('rejects unsafe or unbounded ids, authorities, aliases, and examples', () => {
+    expect(() => buildCatalogIndex([definition({ id: 'navigation bad' })])).toThrow(/id/i);
+    expect(() => buildCatalogIndex([definition({ authority: 'ui route' })])).toThrow(/authority/i);
+    expect(() => buildCatalogIndex([definition({ aliases: ['x'.repeat(201)] })])).toThrow(/alias/i);
+    expect(() => buildCatalogIndex([definition({ examples: ['open\nchat'] })])).toThrow(/example/i);
+  });
+
+  it('rejects empty, control-bearing, or unbounded fixture values', () => {
+    expect(() =>
+      buildCatalogIndex([
+        definition({ fixtures: { ...definition().fixtures, negative: ['   '] } }),
+      ]),
+    ).toThrow(/negative fixture/i);
+    expect(() =>
+      buildCatalogIndex([
+        definition({ fixtures: { ...definition().fixtures, ambiguity: ['bad\nfixture'] } }),
+      ]),
+    ).toThrow(/ambiguity fixture/i);
+    expect(() =>
+      buildCatalogIndex([
+        definition({
+          fixtures: { ...definition().fixtures, authorization: ['x'.repeat(501)] },
+        }),
+      ]),
+    ).toThrow(/authorization fixture/i);
+  });
+
   it('matches a normalized token prefix without scanning unrelated commands', () => {
     const index = buildCatalogIndex([
       definition(),
@@ -84,5 +111,11 @@ describe('buildCatalogIndex', () => {
     expect(source.slice(match!.sourceStart, match!.sourceEnd).replace(/\s+/gu, ' ')).toBe(
       'MESSAGE terminal',
     );
+  });
+
+  it('rejects oversized or control-bearing source before matching', () => {
+    const index = buildCatalogIndex([definition()]);
+    expect(index.match(`open chat ${'x'.repeat(4_097)}`)).toEqual([]);
+    expect(index.match('open chat\u0000hidden')).toEqual([]);
   });
 });
