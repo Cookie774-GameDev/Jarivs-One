@@ -7,9 +7,13 @@ import { toast } from '@/components/ui/toast';
 import { validatePassword } from '@/features/auth/authValidation';
 import { formatAuthError } from '@/features/auth/authErrors';
 import { getSupabaseClient } from '@/lib/supabase/client';
+import { useAuthStore } from '@/stores/auth';
 
 export function AccountSecurityPanel({ accountId }: { accountId: string }) {
   const normalizedAccountId = accountId.trim();
+  const cloudSession = useAuthStore((state) => state.cloudSession);
+  const activeSessionId = cloudSession?.user_id.trim() ?? '';
+  const ownsActiveSession = Boolean(normalizedAccountId && activeSessionId === normalizedAccountId);
   const [password, setPassword] = React.useState('');
   const [confirmation, setConfirmation] = React.useState('');
   const [busy, setBusy] = React.useState(false);
@@ -36,16 +40,18 @@ export function AccountSecurityPanel({ accountId }: { accountId: string }) {
     };
   }, [normalizedAccountId]);
 
-  if (!normalizedAccountId) {
+  if (!ownsActiveSession) {
+    const guidance =
+      normalizedAccountId && activeSessionId
+        ? 'The active cloud session is unavailable for this account. Reload Account or sign in again before changing security settings.'
+        : 'Sign in to change your cloud account password.';
     return (
       <section className="mt-5 rounded-2xl border border-border/70 bg-background/45 p-4">
         <div className="flex items-center gap-2">
           <KeyRound className="h-4 w-4 text-accent-copper" />
           <h3 className="text-ui-strong text-foreground">Account security</h3>
         </div>
-        <p className="mt-2 text-secondary text-muted-foreground">
-          Sign in to change your cloud account password.
-        </p>
+        <p className="mt-2 text-secondary text-muted-foreground">{guidance}</p>
       </section>
     );
   }
@@ -72,7 +78,9 @@ export function AccountSecurityPanel({ accountId }: { accountId: string }) {
     const operationAccount = normalizedAccountId;
     const operationGeneration = generationRef.current;
     const isCurrentOperation = () =>
-      accountRef.current === operationAccount && generationRef.current === operationGeneration;
+      accountRef.current === operationAccount &&
+      generationRef.current === operationGeneration &&
+      useAuthStore.getState().cloudSession?.user_id.trim() === operationAccount;
 
     setBusy(true);
     try {
@@ -95,6 +103,21 @@ export function AccountSecurityPanel({ accountId }: { accountId: string }) {
 
   return (
     <section className="mt-5 rounded-2xl border border-border/70 bg-background/45 p-4">
+      <div className="mb-4 rounded-xl border border-border/60 bg-muted/30 p-3">
+        <h4 className="text-ui-strong text-foreground">Active cloud session</h4>
+        <p className="mt-1 text-secondary text-foreground">
+          {cloudSession?.email?.trim() || 'Email unavailable'}
+        </p>
+        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-metadata text-muted-foreground">
+          <span>Account ID: {normalizedAccountId}</span>
+          <span>
+            Session expires:{' '}
+            {cloudSession?.expires_at
+              ? new Date(cloudSession.expires_at * 1000).toLocaleString()
+              : 'not reported'}
+          </span>
+        </div>
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <KeyRound className="h-4 w-4 text-accent-copper" />

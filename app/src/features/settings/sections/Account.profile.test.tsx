@@ -129,6 +129,15 @@ describe('Account profile editing', () => {
     );
   });
 
+  it('explains the local id as an offline ownership namespace instead of a secret', () => {
+    render(<Account profileOnly />);
+
+    expect(screen.getByRole('heading', { name: 'Local data ownership' })).toBeTruthy();
+    expect(screen.getByText(/offline data-ownership namespace/i)).toBeTruthy();
+    expect(screen.getByText(/not a password or recovery secret/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Copy local user id' })).toBeTruthy();
+  });
+
   it('writes display_name through Supabase profiles when signed in', async () => {
     useAuthStore.setState({
       displayName: 'Original',

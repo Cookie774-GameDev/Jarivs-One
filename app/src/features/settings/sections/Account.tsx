@@ -601,8 +601,21 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
 
       <Separator />
 
-      <section className="flex flex-col gap-3">
-        <Label>Local user ID</Label>
+      <section className="flex flex-col gap-3" aria-labelledby="local-data-ownership-heading">
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-muted/40 text-muted-foreground">
+            <ShieldCheck className="size-4" aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <h3 id="local-data-ownership-heading" className="text-ui-strong text-foreground">
+              Local data ownership
+            </h3>
+            <p className="mt-1 text-ui-small leading-relaxed text-muted-foreground">
+              Your local user ID is an offline data-ownership namespace for records saved on this
+              device. It is not a password or recovery secret.
+            </p>
+          </div>
+        </div>
         <div className="flex items-center gap-2 max-w-md">
           <code className="flex-1 px-2.5 h-8 inline-flex items-center rounded-md border border-border bg-muted font-mono text-secondary text-muted-foreground select-all">
             {localUserId ?? 'not assigned'}
@@ -617,9 +630,6 @@ export function Account({ profileOnly = true }: { profileOnly?: boolean }) {
             {copied ? <Check className="text-success" /> : <Copy />}
           </Button>
         </div>
-        <p className="text-metadata text-muted-foreground">
-          Generated locally. Used as the owner of your offline data.
-        </p>
       </section>
 
       <Separator />
