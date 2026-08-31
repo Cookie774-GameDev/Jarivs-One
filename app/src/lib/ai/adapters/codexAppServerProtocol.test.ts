@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildCodexApprovalResponse,
+  buildCodexQuestionResponse,
   buildCodexThreadResumeRequest,
   buildCodexThreadStartRequest,
+  buildCodexTurnInterruptRequest,
   buildCodexTurnStartRequest,
   validateCodexThreadStartResponse,
   type CodexBackendIdentity,
@@ -225,5 +228,105 @@ describe('Codex app-server request protocol', () => {
         },
       }),
     ).toThrow(/writable root/iu);
+  });
+
+  it('answers only an explicitly offered simple approval and never lets Ask or Plan accept', () => {
+    expect(
+      buildCodexApprovalResponse({
+        responseHandle: 'approval_1',
+        kind: 'command',
+        decision: 'accept',
+        availableDecisions: ['accept', 'decline'],
+        mode: {
+          kind: 'agent',
+          approvalPolicy: 'on-request',
+          sandbox: {
+            kind: 'workspace-write',
+            writableRoots: ['C:\\workspace\\game'],
+            networkAccess: false,
+          },
+        },
+      }),
+    ).toEqual({ id: 'approval_1', result: { decision: 'accept' } });
+
+    expect(() =>
+      buildCodexApprovalResponse({
+        responseHandle: 'approval_1',
+        kind: 'file_change',
+        decision: 'accept',
+        availableDecisions: ['accept', 'decline'],
+        mode: { kind: 'plan' },
+      }),
+    ).toThrow(/read-only/iu);
+    expect(() =>
+      buildCodexApprovalResponse({
+        responseHandle: 'approval_1',
+        kind: 'command',
+        decision: 'acceptForSession',
+        availableDecisions: ['accept', 'decline'],
+        mode: {
+          kind: 'agent',
+          approvalPolicy: 'on-request',
+          sandbox: { kind: 'danger-full-access' },
+        },
+      }),
+    ).toThrow(/offered/iu);
+  });
+
+  it('answers the exact question set without allowing missing, extra, or control-bearing values', () => {
+    expect(
+      buildCodexQuestionResponse({
+        responseHandle: 'question_1',
+        questionIds: ['engine', 'difficulty'],
+        answers: {
+          engine: ['Three.js'],
+          difficulty: ['Hard', 'Adaptive'],
+        },
+      }),
+    ).toEqual({
+      id: 'question_1',
+      result: {
+        answers: {
+          engine: { answers: ['Three.js'] },
+          difficulty: { answers: ['Hard', 'Adaptive'] },
+        },
+      },
+    });
+
+    expect(() =>
+      buildCodexQuestionResponse({
+        responseHandle: 'question_1',
+        questionIds: ['engine'],
+        answers: { engine: ['Three.js'], extra: ['unsafe'] },
+      }),
+    ).toThrow(/question/iu);
+    expect(() =>
+      buildCodexQuestionResponse({
+        responseHandle: 'question_1',
+        questionIds: ['engine'],
+        answers: { engine: ['bad\u0000answer'] },
+      }),
+    ).toThrow(/answer/iu);
+  });
+
+  it('builds cancellation only for the exact active thread and turn', () => {
+    expect(
+      buildCodexTurnInterruptRequest({
+        requestId: 'interrupt_1',
+        threadId: 'thread_1',
+        turnId: 'turn_1',
+      }),
+    ).toEqual({
+      id: 'interrupt_1',
+      method: 'turn/interrupt',
+      params: { threadId: 'thread_1', turnId: 'turn_1' },
+    });
+    expect(() =>
+      buildCodexTurnInterruptRequest({
+        requestId: 'interrupt_1',
+        threadId: 'thread_1',
+        turnId: 'turn_1\nwrong',
+      }),
+    ).toThrow(/identifier/iu);
   });
 });

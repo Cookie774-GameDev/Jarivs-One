@@ -43,11 +43,37 @@ export type CodexThreadStartValidation =
       field: string;
     };
 
+export type CodexSimpleApprovalDecision = 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+
+export interface CodexApprovalResponseInput {
+  responseHandle: string;
+  kind: 'command' | 'file_change';
+  decision: CodexSimpleApprovalDecision;
+  availableDecisions: readonly CodexSimpleApprovalDecision[];
+  mode: CodexExecutionMode;
+}
+
+export interface CodexQuestionResponseInput {
+  responseHandle: string;
+  questionIds: readonly string[];
+  answers: Readonly<Record<string, readonly string[]>>;
+}
+
+export interface CodexTurnInterruptRequestInput {
+  requestId: string;
+  threadId: string;
+  turnId: string;
+}
+
 const MAX_IDENTIFIER = 256;
 const MAX_TEXT = 1_048_576;
 const MAX_WRITABLE_ROOTS = 16;
+const MAX_QUESTIONS = 16;
+const MAX_ANSWERS_PER_QUESTION = 8;
+const MAX_ANSWER_TEXT = 32_768;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:/+@-]*$/u;
 const UNSAFE_CONTROL = /[\u0000-\u001f\u007f]/u;
+const UNSAFE_ANSWER_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 
 type ApprovalPolicy = 'on-request' | 'never';
 type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
@@ -286,4 +312,70 @@ export function validateCodexThreadStartResponse(
     }
   }
   return { ok: true, threadId };
+}
+
+export function buildCodexApprovalResponse(input: Readonly<CodexApprovalResponseInput>) {
+  const responseHandle = requireIdentifier(input.responseHandle, 'approval response');
+  if (input.kind !== 'command' && input.kind !== 'file_change') {
+    throw new Error('Codex approval kind is unsupported.');
+  }
+  if (!input.availableDecisions.includes(input.decision)) {
+    throw new Error('Codex approval decision was not offered by the server.');
+  }
+  if (
+    (input.mode.kind === 'ask' || input.mode.kind === 'plan') &&
+    (input.decision === 'accept' || input.decision === 'acceptForSession')
+  ) {
+    throw new Error('Codex read-only modes cannot accept mutation approval.');
+  }
+  return { id: responseHandle, result: { decision: input.decision } };
+}
+
+export function buildCodexQuestionResponse(input: Readonly<CodexQuestionResponseInput>) {
+  const responseHandle = requireIdentifier(input.responseHandle, 'question response');
+  if (input.questionIds.length === 0 || input.questionIds.length > MAX_QUESTIONS) {
+    throw new Error('Codex question set is invalid.');
+  }
+  const questionIds = input.questionIds.map((id) => requireIdentifier(id, 'question'));
+  if (new Set(questionIds).size !== questionIds.length) {
+    throw new Error('Codex question identifiers must be unique.');
+  }
+  const answerKeys = Object.keys(input.answers);
+  if (
+    answerKeys.length !== questionIds.length ||
+    answerKeys.some((key) => !questionIds.includes(key))
+  ) {
+    throw new Error('Codex answers must match the exact question set.');
+  }
+  const answers: Record<string, { answers: string[] }> = {};
+  for (const questionId of questionIds) {
+    const values = input.answers[questionId];
+    if (!Array.isArray(values) || values.length === 0 || values.length > MAX_ANSWERS_PER_QUESTION) {
+      throw new Error('Codex question answer count is invalid.');
+    }
+    const safeAnswers = values.map((answer) => {
+      if (
+        typeof answer !== 'string' ||
+        answer.length === 0 ||
+        answer.length > MAX_ANSWER_TEXT ||
+        UNSAFE_ANSWER_CONTROL.test(answer)
+      ) {
+        throw new Error('Codex question answer text is invalid.');
+      }
+      return answer;
+    });
+    answers[questionId] = { answers: safeAnswers };
+  }
+  return { id: responseHandle, result: { answers } };
+}
+
+export function buildCodexTurnInterruptRequest(input: Readonly<CodexTurnInterruptRequestInput>) {
+  return {
+    id: requireIdentifier(input.requestId, 'request'),
+    method: 'turn/interrupt' as const,
+    params: {
+      threadId: requireIdentifier(input.threadId, 'thread'),
+      turnId: requireIdentifier(input.turnId, 'turn'),
+    },
+  };
 }
