@@ -1,50 +1,114 @@
-export function ChatGptAdePage() {
+import { useUIStore } from '@/stores/ui';
+import { ChatGptAdeTaskSurface } from './ChatGptAdeTaskSurface';
+import {
+  createProductionChatGptAdeTaskRun,
+  useProductionChatGptAdePageBinding,
+} from './productionChatGptAdeBinding';
+
+function RecoveryNotice({
+  recovery,
+}: {
+  recovery: ReturnType<typeof useProductionChatGptAdePageBinding>['recovery'];
+}) {
+  if (!recovery) return null;
+  const label =
+    recovery.status === 'interrupted'
+      ? 'Previous ADE run was interrupted. Start a new run to retry safely.'
+      : `Previous ADE run ${recovery.status}.`;
   return (
-    <main
+    <p className="rounded-xl border border-border/60 bg-background/45 px-4 py-3 text-sm text-muted-foreground">
+      {label}
+    </p>
+  );
+}
+
+function openProviders() {
+  useUIStore.getState().setSettingsOpen(true);
+  window.dispatchEvent(new CustomEvent('jarvis:settings:tab', { detail: { tab: 'providers' } }));
+}
+
+export function ChatGptAdePage() {
+  const binding = useProductionChatGptAdePageBinding();
+  if (binding.authority.kind === 'unavailable') {
+    return (
+      <main
+        className="h-full overflow-auto bg-background p-6 text-foreground"
+        data-ade-implementation-state="unavailable"
+        data-monochrome-route="ade"
+      >
+        <div className="mx-auto flex min-h-full w-full max-w-4xl items-center justify-center">
+          <section className="w-full rounded-2xl border border-border/70 bg-card/70 p-6 shadow-sm backdrop-blur-sm">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              VibeSpace-local agent development environment
+            </p>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+              <h1 className="text-2xl font-semibold">ChatGPT ADE</h1>
+              <span className="rounded-full border border-border/70 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                ADE unavailable
+              </span>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-muted-foreground">
+              {binding.authority.message}
+            </p>
+            <div className="mt-5">
+              <RecoveryNotice recovery={binding.recovery} />
+            </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-border px-3 py-2 text-sm"
+                onClick={openProviders}
+              >
+                Open Providers
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-border px-3 py-2 text-sm"
+                onClick={binding.refresh}
+              >
+                Retry ADE authority
+              </button>
+            </div>
+            <p className="mt-5 text-xs text-muted-foreground">
+              No provider substitution, credential entry, write tool, or unrestricted terminal
+              authority is enabled here.
+            </p>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
+  const authority = binding.authority;
+  return (
+    <section
       className="h-full overflow-auto bg-background p-6 text-foreground"
-      data-ade-implementation-state="not-implemented"
+      data-ade-implementation-state="read-capable"
       data-monochrome-route="ade"
     >
-      <div className="mx-auto flex min-h-full w-full max-w-4xl items-center justify-center">
-        <section className="w-full rounded-2xl border border-border/70 bg-card/70 p-6 shadow-sm backdrop-blur-sm">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            VibeSpace-local agent development environment
-          </p>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-            <h1 className="text-2xl font-semibold">ChatGPT ADE</h1>
-            <span className="rounded-full border border-border/70 bg-background/55 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Not implemented
-            </span>
+      <div className="mx-auto mb-4 w-full max-w-4xl space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              VibeSpace-local agent development environment
+            </p>
+            <h1 className="mt-1 text-2xl font-semibold">ChatGPT ADE</h1>
           </div>
-
-          <p className="mt-4 max-w-2xl text-sm leading-6 text-muted-foreground">
-            The scoped adapter, Context policy, terminal linkage, durable lifecycle, and safe task
-            presentation are staged. VibeSpace will not expose a runnable ADE until the remaining
-            production and native proof gates are complete.
-          </p>
-
-          <dl className="mt-6 grid gap-3 text-sm sm:grid-cols-2">
-            <div className="rounded-xl border border-border/60 bg-background/40 p-4">
-              <dt className="font-medium">Production dispatch</dt>
-              <dd className="mt-1 text-muted-foreground">
-                Production model dispatcher is not bound to the exact observed route.
-              </dd>
-            </div>
-            <div className="rounded-xl border border-border/60 bg-background/40 p-4">
-              <dt className="font-medium">Native acceptance</dt>
-              <dd className="mt-1 text-muted-foreground">
-                Official native acceptance is pending for task, terminal, cancellation, and route
-                identity behavior.
-              </dd>
-            </div>
-          </dl>
-
-          <p className="mt-5 text-xs text-muted-foreground">
-            No model substitution, duplicate context system, or unrestricted terminal authority is
-            enabled by this route.
-          </p>
-        </section>
+          <span className="rounded-full border border-border/70 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Read capable
+          </span>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Authenticated account · {authority.accountSource}
+        </p>
+        <RecoveryNotice recovery={binding.recovery} />
       </div>
-    </main>
+      <ChatGptAdeTaskSurface
+        executionIdentity={authority.executionIdentity}
+        scope={authority.scope}
+        accessCeiling="read"
+        createRun={(draft) => createProductionChatGptAdeTaskRun(authority, draft)}
+      />
+    </section>
   );
 }

@@ -46,6 +46,98 @@ export interface DurableProductionChatGptAdeRun {
   flushHistory(): Promise<void>;
 }
 
+export interface ChatGptAdeRecoveryProjection {
+  runId: string;
+  status: 'interrupted' | 'completed' | 'failed' | 'cancelled';
+  updatedAt: number;
+  retryable: boolean;
+}
+
+interface ChatGptAdeRecoveryRepository {
+  listByAccount(accountId: string, options?: unknown): Promise<JarvisRun[]>;
+}
+
+function validAuthorityPart(value: string): boolean {
+  const clean = value.trim();
+  return Boolean(clean && clean.length <= 1_024 && !/[\u0000-\u001f\u007f]/u.test(clean));
+}
+
+export function createChatGptAdeRunSeed(input: {
+  runId: string;
+  scope: Readonly<ChatGptAdeRunRequest['scope']>;
+  executionIdentity: Readonly<ChatGptAdeRunRequest['executionIdentity']>;
+  now?: number;
+}): Readonly<JarvisRun> {
+  const { scope, executionIdentity } = input;
+  if (
+    ![
+      input.runId,
+      scope.accountId,
+      scope.workspaceId,
+      scope.projectId,
+      scope.worktreeId,
+      scope.revision,
+      executionIdentity.transportConnectionId,
+      executionIdentity.upstreamProviderId,
+      executionIdentity.upstreamModelId,
+    ].every(validAuthorityPart)
+  ) {
+    throw new TypeError('ade_run_seed_invalid');
+  }
+  const capturedAt = input.now ?? Date.now();
+  return Object.freeze({
+    id: input.runId.trim(),
+    accountId: scope.accountId,
+    workspaceId: scope.workspaceId,
+    projectId: scope.projectId,
+    source: 'chatgpt_ade',
+    status: 'queued',
+    agentId: 'chatgpt-ade',
+    identityVersion: 1,
+    profileRevisionId: `chatgpt-ade:${scope.revision}`,
+    model: Object.freeze({
+      connectionId: executionIdentity.transportConnectionId,
+      providerId: executionIdentity.upstreamProviderId,
+      modelId: executionIdentity.upstreamModelId,
+      connectionMode: 'external-cli',
+      capabilities: Object.freeze({ tools: true }),
+      capturedAt,
+    }),
+    createdAt: capturedAt,
+    updatedAt: capturedAt,
+  });
+}
+
+export async function readLatestChatGptAdeRecovery(input: {
+  accountId: string;
+  projectId: string;
+  repository?: Readonly<ChatGptAdeRecoveryRepository>;
+}): Promise<Readonly<ChatGptAdeRecoveryProjection> | null> {
+  if (!validAuthorityPart(input.accountId) || !validAuthorityPart(input.projectId)) return null;
+  const runs = await (input.repository ?? jarvisRunRepo).listByAccount(input.accountId, {
+    limit: 100,
+  });
+  const latest = runs
+    .filter((run) => run.source === 'chatgpt_ade' && run.projectId === input.projectId)
+    .sort((left, right) => right.updatedAt - left.updatedAt)[0];
+  if (!latest) return null;
+  if (['queued', 'compiling', 'running', 'awaiting_approval'].includes(latest.status)) {
+    return Object.freeze({
+      runId: latest.id,
+      status: 'interrupted',
+      updatedAt: latest.updatedAt,
+      retryable: true,
+    });
+  }
+  if (!['completed', 'failed', 'cancelled'].includes(latest.status)) return null;
+  return Object.freeze({
+    runId: latest.id,
+    status: latest.status as 'completed' | 'failed' | 'cancelled',
+    updatedAt: latest.updatedAt,
+    retryable: latest.status !== 'completed',
+  });
+}
+
 function requestMatchesSeed(
   input: Readonly<ChatGptAdeRunRequest>,
   seed: Readonly<JarvisRun>,

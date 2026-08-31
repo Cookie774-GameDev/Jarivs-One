@@ -14,8 +14,10 @@ import {
   revokeTerminalContextBridgeIdentity,
 } from '@/features/terminals/terminalContextBridgeIdentity';
 import {
+  createChatGptAdeRunSeed,
   createDurableProductionChatGptAdeRun,
   createProductionChatGptAdeAdapter,
+  readLatestChatGptAdeRecovery,
 } from './productionChatGptAde';
 
 const now = 1_725_000_000_000;
@@ -83,6 +85,41 @@ function preparedTurn(): Readonly<PreparedContextTurn> {
 afterEach(() => resetTerminalContextBridgeIdentitiesForTests());
 
 describe('createProductionChatGptAdeAdapter', () => {
+  it('creates an exact durable ADE seed and projects reload recovery without restoring output', async () => {
+    const seed = createChatGptAdeRunSeed({
+      runId: 'ade-run-new',
+      scope,
+      executionIdentity,
+      now,
+    });
+    expect(seed).toMatchObject({
+      id: 'ade-run-new',
+      accountId: 'account-a',
+      projectId: 'project-a',
+      source: 'chatgpt_ade',
+      status: 'queued',
+      model: {
+        connectionId: executionIdentity.transportConnectionId,
+        providerId: executionIdentity.upstreamProviderId,
+        modelId: executionIdentity.upstreamModelId,
+      },
+    });
+
+    const interrupted = await readLatestChatGptAdeRecovery({
+      accountId: scope.accountId,
+      projectId: scope.projectId,
+      repository: {
+        listByAccount: vi.fn(async () => [{ ...seed, status: 'running' as const }]),
+      },
+    });
+    expect(interrupted).toEqual({
+      runId: 'ade-run-new',
+      status: 'interrupted',
+      updatedAt: now,
+      retryable: true,
+    });
+    expect(interrupted).not.toHaveProperty('output');
+  });
   it('persists the exact run and running transition before provider dispatch', async () => {
     const order: string[] = [];
     let current = jarvisRun;

@@ -7,7 +7,11 @@ import { PanelPalette } from './PanelPalette';
 import type { WorkbenchPanel } from './types';
 
 vi.mock('@/features/ade', () => ({
-  ChatGptAdePage: () => <div data-testid="chatgpt-ade-page">ChatGPT ADE unavailable truth</div>,
+  ChatGptAdePage: () => (
+    <div data-testid="chatgpt-ade-page" data-ade-implementation-state="read-capable">
+      ChatGPT ADE authenticated authority
+    </div>
+  ),
 }));
 
 vi.mock('@/features/chat', () => ({
@@ -66,6 +70,9 @@ describe('Workbench embedded panels', () => {
 
     render(<EmbeddedSurface panel={panel('ade')} />);
     expect(await screen.findByTestId('chatgpt-ade-page')).toBeTruthy();
+    expect(
+      screen.getByTestId('chatgpt-ade-page').getAttribute('data-ade-implementation-state'),
+    ).toBe('read-capable');
     expect(screen.getByTestId('workbench-embedded-ade')).toBeTruthy();
   });
 
