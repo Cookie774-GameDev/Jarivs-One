@@ -173,6 +173,27 @@ describe('chatWorkspaceLayout', () => {
     });
   });
 
+  it('treats a throwing native localStorage getter as unavailable during startup', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'localStorage');
+    expect(descriptor?.configurable).toBe(true);
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('Storage is blocked', 'SecurityError');
+      },
+    });
+
+    try {
+      expect(loadChatWorkspaceLayout(scope)).toEqual(onePane);
+      expect(saveChatWorkspaceLayout(scope, onePane)).toEqual({
+        ok: false,
+        reason: 'storage_unavailable',
+      });
+    } finally {
+      Object.defineProperty(window, 'localStorage', descriptor!);
+    }
+  });
+
   it('replaces the primary pane for global navigation without disturbing other bindings', () => {
     expect(
       replacePrimaryChatPane(

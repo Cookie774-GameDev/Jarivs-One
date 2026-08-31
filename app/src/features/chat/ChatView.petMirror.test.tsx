@@ -2,6 +2,22 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatView } from './ChatView';
 import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
+import type { Chat } from '@/types/chat';
+
+const accessibleChats = vi.hoisted(() => [
+  {
+    id: 'chat-1' as Chat['id'],
+    workspace_id: 'workspace-test' as Chat['workspace_id'],
+    project_id: null,
+    title: 'Pet mirrored chat',
+    mode: 'chat' as const,
+    active_agent_ids: [],
+    created_at: 1,
+    updated_at: 1,
+  },
+]);
+
+vi.mock('dexie-react-hooks', () => ({ useLiveQuery: () => accessibleChats }));
 
 vi.mock('./ChatThread', () => ({
   ChatThread: () => <div data-testid="main-chat-thread" />,

@@ -27,6 +27,7 @@ import { ChatWorkspace, type ChatWorkspaceOpenResult } from './ChatWorkspace';
 import {
   addChatPane,
   chatWorkspaceStorageKey,
+  clearChatWorkspaceLayout,
   closeChatPane,
   focusChatPane,
   loadChatWorkspaceLayout,
@@ -213,6 +214,7 @@ export function ChatView() {
           } satisfies ChatWorkspaceLayoutV1)
         : null);
     if (!next) {
+      if (scope) clearChatWorkspaceLayout(scope);
       operationEpochRef.current += 1;
       layoutRef.current = null;
       setLayoutState(null);
@@ -225,6 +227,7 @@ export function ChatView() {
     accessibleChats,
     activeChatId,
     commitLayout,
+    scope,
     setActiveChat,
     visualChatFixture,
     workspaceLayout,
@@ -372,7 +375,7 @@ export function ChatView() {
         focusedChatId: visualChatFixture.activeConversationId,
       } satisfies ChatWorkspaceLayoutV1)
     : accessibleChats === undefined
-      ? workspaceLayout
+      ? null
       : (() => {
           if (!workspaceLayout) return null;
           const accessibleIds = accessibleChats.map((chat) => String(chat.id));
@@ -390,7 +393,7 @@ export function ChatView() {
               : null)
           );
         })();
-  const focusedChatId = effectiveLayout?.focusedChatId ?? activeChatId ?? undefined;
+  const focusedChatId = isVisualEmptyChat ? undefined : effectiveLayout?.focusedChatId;
 
   return (
     <TooltipProvider delayDuration={400}>

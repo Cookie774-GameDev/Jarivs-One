@@ -274,6 +274,44 @@ describe('ChatView handoff workspace integration', () => {
     expect(screen.queryByTestId('thread-missing-chat')).toBeNull();
   });
 
+  it('never mounts a persisted stale surface while canonical access hydrates and durably clears an empty result', async () => {
+    const key = chatWorkspaceStorageKey(scope);
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        version: 1,
+        chatIds: ['stale-chat'],
+        focusedChatId: 'stale-chat',
+      }),
+    );
+    testState.liveChats = undefined;
+    useUIStore.setState({ activeChatId: 'stale-chat' });
+
+    const first = render(<ChatView />);
+    const firstRoot = first.container.querySelector('[data-vibespace-page="chat"]');
+    expect(screen.queryByTestId('thread-stale-chat')).toBeNull();
+    expect(first.container.querySelector('[data-composer-drop-zone="true"]')).toBeNull();
+    expect(firstRoot?.getAttribute('data-terminal-drop')).toBeNull();
+    expect(firstRoot?.getAttribute('data-terminal-drop-chat-id')).toBeNull();
+
+    testState.liveChats = [];
+    first.rerender(<ChatView />);
+    await waitFor(() => expect(useUIStore.getState().activeChatId).toBeNull());
+    await waitFor(() => expect(testState.ensureActiveChat).toHaveBeenCalled());
+    expect(localStorage.getItem(key)).toBeNull();
+    expect(firstRoot?.getAttribute('data-terminal-drop')).toBeNull();
+    expect(firstRoot?.getAttribute('data-terminal-drop-chat-id')).toBeNull();
+
+    first.unmount();
+    testState.ensureActiveChat.mockClear();
+    const remounted = render(<ChatView />);
+    await waitFor(() => expect(testState.ensureActiveChat).toHaveBeenCalled());
+    await screen.findByText(/Could not open a chat yet/);
+    expect(screen.queryByTestId('thread-stale-chat')).toBeNull();
+    expect(remounted.container.querySelector('[data-composer-drop-zone="true"]')).toBeNull();
+    expect(localStorage.getItem(key)).toBeNull();
+  });
+
   it('rejects an in-flight open-beside result after the account scope changes', async () => {
     let resolveSource!: (chat: Chat) => void;
     const sourcePending = new Promise<Chat>((resolve) => {

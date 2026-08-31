@@ -22,6 +22,10 @@ export type SaveChatWorkspaceLayoutResult =
   Readonly<{ ok: true }> | Readonly<{ ok: false; reason: 'storage_unavailable' }>;
 
 type WorkspaceStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+type ResolvedWorkspaceStorage = Readonly<{
+  target: WorkspaceStorage;
+  native: boolean;
+}>;
 
 const SAFE_CHAT_ID = /^[^\u0000-\u001f\u007f]{1,512}$/;
 const LAYOUT_KEYS = ['chatIds', 'focusedChatId', 'version'] as const;
@@ -63,9 +67,14 @@ function parseLayout(value: unknown): ChatWorkspaceLayoutV1 | null {
   };
 }
 
-function availableStorage(storage?: WorkspaceStorage): WorkspaceStorage | undefined {
-  if (storage) return storage;
-  return typeof window === 'undefined' ? undefined : window.localStorage;
+function availableStorage(storage?: WorkspaceStorage): ResolvedWorkspaceStorage | undefined {
+  if (storage) return { target: storage, native: false };
+  if (typeof window === 'undefined') return undefined;
+  try {
+    return { target: window.localStorage, native: true };
+  } catch {
+    return undefined;
+  }
 }
 
 function scopePart(value: string | null): string {
@@ -90,8 +99,9 @@ export function loadChatWorkspaceLayout(
   storage?: WorkspaceStorage,
 ): ChatWorkspaceLayoutV1 {
   const fallback = defaultLayout(scope.primaryChatId);
-  const target = availableStorage(storage);
-  if (!target) return fallback;
+  const resolved = availableStorage(storage);
+  if (!resolved) return fallback;
+  const { target } = resolved;
   const key = chatWorkspaceStorageKey(scope);
   let stored: string | null;
   try {
@@ -121,15 +131,16 @@ export function saveChatWorkspaceLayout(
 ): SaveChatWorkspaceLayoutResult {
   const parsed = parseLayout(layout);
   if (!parsed) throw new Error('Invalid chat workspace layout.');
-  const target = availableStorage(storage);
-  if (!target) return { ok: false, reason: 'storage_unavailable' };
+  const resolved = availableStorage(storage);
+  if (!resolved) return { ok: false, reason: 'storage_unavailable' };
+  const { target } = resolved;
   const key = chatWorkspaceStorageKey(scope);
   try {
     target.setItem(key, JSON.stringify(parsed));
   } catch {
     return { ok: false, reason: 'storage_unavailable' };
   }
-  if (typeof window !== 'undefined' && target === window.localStorage) {
+  if (resolved.native) {
     window.dispatchEvent(
       new CustomEvent(CHAT_WORKSPACE_LAYOUT_STORAGE_EVENT, {
         detail: { key, layout: parsed },
@@ -137,6 +148,20 @@ export function saveChatWorkspaceLayout(
     );
   }
   return { ok: true };
+}
+
+export function clearChatWorkspaceLayout(
+  scope: Pick<ChatWorkspaceScope, 'accountId' | 'workspaceId' | 'projectId'>,
+  storage?: WorkspaceStorage,
+): SaveChatWorkspaceLayoutResult {
+  const resolved = availableStorage(storage);
+  if (!resolved) return { ok: false, reason: 'storage_unavailable' };
+  try {
+    resolved.target.removeItem(chatWorkspaceStorageKey(scope));
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'storage_unavailable' };
+  }
 }
 
 export function addChatPane(layout: ChatWorkspaceLayoutV1, chatId: string): AddChatPaneResult {

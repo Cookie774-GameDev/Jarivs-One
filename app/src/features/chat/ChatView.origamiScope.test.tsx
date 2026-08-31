@@ -2,9 +2,24 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { usePetPresentationStore } from '@/features/pets/petPresentationStore';
 import { useUIStore } from '@/stores/ui';
+import type { Chat } from '@/types/chat';
 import { ChatView } from './ChatView';
 
 const ensureActiveChatMock = vi.hoisted(() => vi.fn());
+const accessibleChats = vi.hoisted(() => [
+  {
+    id: 'chat-active' as Chat['id'],
+    workspace_id: 'workspace-test' as Chat['workspace_id'],
+    project_id: null,
+    title: 'Active chat',
+    mode: 'chat' as const,
+    active_agent_ids: [],
+    created_at: 1,
+    updated_at: 1,
+  },
+]);
+
+vi.mock('dexie-react-hooks', () => ({ useLiveQuery: () => accessibleChats }));
 
 vi.mock('./chatLifecycle', () => ({
   ensureActiveChat: ensureActiveChatMock,
