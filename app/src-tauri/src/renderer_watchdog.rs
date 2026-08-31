@@ -846,16 +846,19 @@ fn native_recovery_resume_action(
     has_incomplete_recovery: bool,
     time_since_last_action: Option<Duration>,
     recreate_attempts: u8,
+    allow_process_restart: bool,
 ) -> Option<RecoveryAction> {
     if !has_incomplete_recovery {
         return None;
     }
-    // A retained native lifecycle may be resumed once, but a failed resume has
-    // already incremented the bounded recreate counter. Yield after that
-    // failure so the ordinary policy can restart the app (or fail closed while
-    // terminal sessions make a process restart unsafe) instead of retrying the
-    // same unregister phase forever.
-    if recreate_attempts > 0 {
+    // A failed resume has already incremented the bounded recreate counter.
+    // When restart is safe, yield so the ordinary policy can escalate. Live
+    // PTYs forbid that restart, so continue the retained phase only through the
+    // same bounded recreate cap and then fail closed.
+    if recreate_attempts > 0 && allow_process_restart {
+        return None;
+    }
+    if recreate_attempts >= MAX_WEBVIEW_RECREATIONS_WHILE_RESTART_BLOCKED {
         return None;
     }
     if time_since_last_action
@@ -2075,6 +2078,7 @@ pub(crate) fn install<R: Runtime>(app: &mut tauri::App<R>) {
                     has_incomplete_recovery,
                     time_since_last_action,
                     recovery.recreate_attempts,
+                    allow_process_restart,
                 )
                 .unwrap_or_else(|| {
                     next_recovery_action_for_reason(
@@ -2944,18 +2948,18 @@ mod tests {
     #[test]
     fn failed_incomplete_native_recovery_yields_to_bounded_escalation() {
         assert_eq!(
-            native_recovery_resume_action(true, Some(Duration::from_secs(1)), 0),
+            native_recovery_resume_action(true, Some(Duration::from_secs(1)), 0, true),
             Some(RecoveryAction::None)
         );
         assert_eq!(
-            native_recovery_resume_action(true, Some(Duration::from_secs(21)), 0),
+            native_recovery_resume_action(true, Some(Duration::from_secs(21)), 0, true),
             Some(RecoveryAction::RecreateWebview)
         );
         assert_eq!(
-            native_recovery_resume_action(true, Some(Duration::from_secs(21)), 1),
+            native_recovery_resume_action(true, Some(Duration::from_secs(21)), 1, true),
             None
         );
-        let escalated = native_recovery_resume_action(true, Some(Duration::from_secs(21)), 1)
+        let escalated = native_recovery_resume_action(true, Some(Duration::from_secs(21)), 1, true)
             .unwrap_or_else(|| {
                 next_recovery_action_for_reason(
                     Some(RecoveryReason::HeartbeatStale),
@@ -2966,7 +2970,28 @@ mod tests {
                 )
             });
         assert_eq!(escalated, RecoveryAction::RestartApplication);
-        assert_eq!(native_recovery_resume_action(false, None, 0), None);
+        assert_eq!(native_recovery_resume_action(false, None, 0, true), None);
+    }
+
+    #[test]
+    fn incomplete_native_recovery_retries_boundedly_while_live_ptys_block_restart() {
+        assert_eq!(
+            native_recovery_resume_action(true, Some(Duration::from_secs(21)), 1, false),
+            Some(RecoveryAction::RecreateWebview)
+        );
+        assert_eq!(
+            native_recovery_resume_action(true, Some(Duration::from_secs(21)), 2, false),
+            Some(RecoveryAction::RecreateWebview)
+        );
+        assert_eq!(
+            native_recovery_resume_action(
+                true,
+                Some(Duration::from_secs(21)),
+                super::MAX_WEBVIEW_RECREATIONS_WHILE_RESTART_BLOCKED,
+                false,
+            ),
+            None
+        );
     }
 
     #[test]

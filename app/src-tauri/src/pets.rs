@@ -312,6 +312,8 @@ pub struct PetWindowState {
     pub overlay_lifecycle: Mutex<()>,
     pub panel_lifecycle: Mutex<()>,
     pub reconstrain_generation: AtomicU64,
+    pub overlay_visibility_generation: AtomicU64,
+    pub panel_visibility_generation: AtomicU64,
     pub topmost_watchdog_started: AtomicBool,
 }
 
@@ -1340,13 +1342,44 @@ fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
     Ok(PetOverlayAcquire::Ready { created: true })
 }
 
-fn schedule_setup_pet_hide(window: WebviewWindow, label: &'static str) -> Result<(), String> {
+fn visibility_generation<'a>(state: &'a PetWindowState, label: &str) -> &'a AtomicU64 {
+    if label == PET_OVERLAY_LABEL {
+        &state.overlay_visibility_generation
+    } else {
+        &state.panel_visibility_generation
+    }
+}
+
+fn record_pet_visibility_intent(app: &AppHandle, label: &str) -> u64 {
+    visibility_generation(&app.state::<PetWindowState>(), label)
+        .fetch_add(1, Ordering::SeqCst)
+        .wrapping_add(1)
+}
+
+fn schedule_setup_pet_hide(
+    app: AppHandle,
+    window: WebviewWindow,
+    label: &'static str,
+    setup_generation: u64,
+) -> Result<(), String> {
     std::thread::Builder::new()
         .name(format!("{label}-setup-hide"))
         .spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(
                 PET_SETUP_MATERIALIZATION_DELAY_MS,
             ));
+            let state = app.state::<PetWindowState>();
+            let lifecycle = if label == PET_OVERLAY_LABEL {
+                state.overlay_lifecycle.lock()
+            } else {
+                state.panel_lifecycle.lock()
+            };
+            let Ok(_lifecycle) = lifecycle else {
+                return;
+            };
+            if visibility_generation(&state, label).load(Ordering::SeqCst) != setup_generation {
+                return;
+            }
             let still_offscreen = window
                 .outer_position()
                 .map(|position| position.x <= -31_000 && position.y <= -31_000)
@@ -1370,10 +1403,18 @@ pub fn materialize_detached_pet_hosts(app: &tauri::App) {
     // host after a bounded offscreen materialization interval so command-time
     // show reuses an authoritative HWND without flashing on the desktop.
     let handle = app.handle();
+    let state = handle.state::<PetWindowState>();
+    let overlay_setup_generation = state.overlay_visibility_generation.load(Ordering::SeqCst);
+    let panel_setup_generation = state.panel_visibility_generation.load(Ordering::SeqCst);
     if handle.get_webview_window(PET_OVERLAY_LABEL).is_none() {
         match build_pet_overlay(app, handle, true, Some(PET_SETUP_OFFSCREEN_POSITION)) {
             Ok(window) => {
-                if let Err(error) = schedule_setup_pet_hide(window, PET_OVERLAY_LABEL) {
+                if let Err(error) = schedule_setup_pet_hide(
+                    handle.clone(),
+                    window,
+                    PET_OVERLAY_LABEL,
+                    overlay_setup_generation,
+                ) {
                     #[cfg(debug_assertions)]
                     eprintln!("[pets] {error}");
                 }
@@ -1387,7 +1428,12 @@ pub fn materialize_detached_pet_hosts(app: &tauri::App) {
     if handle.get_webview_window(PET_MINI_PANEL_LABEL).is_none() {
         match build_pet_panel(app, handle, true, Some(PET_SETUP_OFFSCREEN_POSITION)) {
             Ok(window) => {
-                if let Err(error) = schedule_setup_pet_hide(window, PET_MINI_PANEL_LABEL) {
+                if let Err(error) = schedule_setup_pet_hide(
+                    handle.clone(),
+                    window,
+                    PET_MINI_PANEL_LABEL,
+                    panel_setup_generation,
+                ) {
                     #[cfg(debug_assertions)]
                     eprintln!("[pets] {error}");
                 }
@@ -1602,6 +1648,7 @@ pub async fn pet_show_overlay(app: AppHandle) -> Result<PetOverlayShowResult, St
     #[cfg(debug_assertions)]
     eprintln!("[pets] pet_show_overlay invoked");
 
+    record_pet_visibility_intent(&app, PET_OVERLAY_LABEL);
     tauri::async_runtime::spawn_blocking(move || show_pet_overlay_blocking(app))
         .await
         .map_err(|_| "pet overlay worker failed".to_string())?
@@ -1780,6 +1827,12 @@ pub async fn pet_hide_overlay(app: AppHandle) -> Result<(), String> {
     #[cfg(debug_assertions)]
     eprintln!("[pets] pet_hide_overlay invoked");
 
+    record_pet_visibility_intent(&app, PET_OVERLAY_LABEL);
+    let state = app.state::<PetWindowState>();
+    let _lifecycle = state
+        .overlay_lifecycle
+        .lock()
+        .map_err(|_| "overlay_lifecycle_unavailable".to_string())?;
     if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
         hide_pet_window(&win).map_err(str::to_string)?;
     }
@@ -2039,6 +2092,7 @@ pub async fn pet_open_or_focus_panel(
     near_y: Option<f64>,
     panel_mode: Option<PetPanelMode>,
 ) -> Result<PetPanelOpenResult, String> {
+    record_pet_visibility_intent(&app, PET_MINI_PANEL_LABEL);
     tauri::async_runtime::spawn_blocking(move || {
         open_or_focus_pet_panel_blocking(app, near_x, near_y, panel_mode)
     })
@@ -2375,6 +2429,49 @@ mod tests {
     }
 
     #[test]
+    fn delayed_setup_hide_is_generation_fenced_from_explicit_visibility_intent() {
+        let source = include_str!("pets.rs");
+        let tests_start = source.find("mod tests {").expect("test module exists");
+        let production = &source[..tests_start];
+        let state_start = production
+            .find("pub struct PetWindowState")
+            .expect("pet window state exists");
+        let state_end = production[state_start..]
+            .find("pub struct PetOverlayShowResult")
+            .map(|offset| state_start + offset)
+            .expect("pet window state is bounded");
+        let state = &production[state_start..state_end];
+        assert!(state.contains("overlay_visibility_generation: AtomicU64"));
+        assert!(state.contains("panel_visibility_generation: AtomicU64"));
+
+        let hide_start = production
+            .find("fn schedule_setup_pet_hide")
+            .expect("setup hide scheduler exists");
+        let hide_end = production[hide_start..]
+            .find("pub fn materialize_detached_pet_hosts")
+            .map(|offset| hide_start + offset)
+            .expect("setup hide scheduler is bounded");
+        let hide = &production[hide_start..hide_end];
+        assert!(hide.contains("setup_generation"));
+        assert!(hide.contains("visibility_generation"));
+        assert!(hide.find("lifecycle.lock()").unwrap() < hide.rfind("setup_generation").unwrap());
+
+        let show_start = production
+            .find("pub async fn pet_show_overlay")
+            .expect("overlay show command exists");
+        let show_end = production[show_start..]
+            .find("fn show_pet_overlay_blocking")
+            .map(|offset| show_start + offset)
+            .expect("overlay show command is bounded");
+        let show = &production[show_start..show_end];
+        assert!(show.contains("record_pet_visibility_intent(&app, PET_OVERLAY_LABEL)"));
+        assert!(
+            show.find("record_pet_visibility_intent").unwrap()
+                < show.find("spawn_blocking").unwrap()
+        );
+    }
+
+    #[test]
     fn detached_pet_windows_build_renderer_attached_native_webview_windows() {
         let source = include_str!("pets.rs");
         let overlay_start = source
@@ -2642,7 +2739,7 @@ mod tests {
             .contains("build_pet_panel(app, handle, true, Some(PET_SETUP_OFFSCREEN_POSITION))"));
         assert_eq!(
             materialize
-                .matches("schedule_setup_pet_hide(window")
+                .matches("if let Err(error) = schedule_setup_pet_hide(")
                 .count(),
             2
         );
@@ -3329,6 +3426,8 @@ pub fn init_pet_state(app: &AppHandle) -> PetWindowState {
         overlay_lifecycle: Mutex::new(()),
         panel_lifecycle: Mutex::new(()),
         reconstrain_generation: AtomicU64::new(0),
+        overlay_visibility_generation: AtomicU64::new(0),
+        panel_visibility_generation: AtomicU64::new(0),
         topmost_watchdog_started: AtomicBool::new(false),
     }
 }
