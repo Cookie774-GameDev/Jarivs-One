@@ -130,7 +130,9 @@ import { toast } from '@/components/ui/toast';
 import type {
   Agent,
   AgentId,
+  Chat,
   ChatId,
+  Message,
   ProjectId,
   ProviderId,
   TerminalSessionId,
@@ -261,6 +263,7 @@ import {
 import {
   projectChatHandoff,
   renderChatHandoffPrompt,
+  sanitizeChatHandoffText,
   type ChatHandoffProjectionV1,
 } from './chatHandoffProjection';
 import { ChatHandoffDraftCard } from './ChatHandoffDraftCard';
@@ -612,9 +615,9 @@ export function buildComposerChatHandoffPayload(
     draftText: string;
   }>,
 ) {
-  const instruction = [input.instruction.trim(), input.draftText.trim()]
-    .filter(Boolean)
-    .join('\n\n');
+  const instruction = sanitizeChatHandoffText(
+    [input.instruction.trim(), input.draftText.trim()].filter(Boolean).join('\n\n'),
+  );
   return {
     text: renderChatHandoffPrompt(input.projection, instruction),
     part: {
@@ -630,6 +633,135 @@ export function buildComposerChatHandoffPayload(
       },
     },
   };
+}
+
+export async function resolveComposerChatHandoffDraft(
+  input: Readonly<{
+    payload: ChatDragPayloadV1;
+    targetChatId: string;
+    now?: number;
+  }>,
+  deps: Readonly<{
+    getChat: (id: string) => Promise<Chat | undefined>;
+    listMessages: (chatId: string) => Promise<readonly Message[]>;
+    canAccess: (source: Chat, target: Chat) => boolean;
+  }>,
+): Promise<
+  | Readonly<{ ok: true; projection: ChatHandoffProjectionV1 }>
+  | Readonly<{
+      ok: false;
+      reason: 'invalid_payload' | 'same_chat' | 'chat_unavailable' | 'access_denied';
+    }>
+> {
+  const accepted = await resolveAcceptedChatDrop(
+    { payload: input.payload, targetChatId: input.targetChatId },
+    {
+      getChat: (id) => deps.getChat(String(id)),
+      canAccess: deps.canAccess,
+    },
+  );
+  if (!accepted.ok) return accepted;
+  const messages = await deps.listMessages(String(accepted.chat.id));
+  return {
+    ok: true,
+    projection: projectChatHandoff({ sourceChat: accepted.chat, messages, now: input.now }),
+  };
+}
+
+export function buildQueuedComposerChatHandoff(
+  input: Readonly<{
+    projection: ChatHandoffProjectionV1;
+    instruction: string;
+    draftText: string;
+  }>,
+) {
+  const payload = buildComposerChatHandoffPayload(input);
+  return Object.freeze({ text: payload.text, payload: Object.freeze(payload) });
+}
+
+export function composerChatHandoffDeliveryKey(
+  payload: ReturnType<typeof buildComposerChatHandoffPayload>,
+): string {
+  const handoff = payload.part.handoff;
+  return [
+    handoff.sourceChatId,
+    handoff.snapshotAt,
+    handoff.boundaryMessageId ?? '',
+    handoff.instruction,
+  ].join('\u001f');
+}
+
+export type ComposerChatHandoffDeliveryReceipt<T> = Readonly<{ key: string; value: T }>;
+
+export async function deliverComposerChatHandoff<T>(input: {
+  key: string;
+  previousReceipt?: ComposerChatHandoffDeliveryReceipt<T> | null;
+  persist: () => Promise<T>;
+  dispatch: (value: T) => Promise<void>;
+}): Promise<
+  | Readonly<{ ok: true; receipt: ComposerChatHandoffDeliveryReceipt<T> }>
+  | Readonly<{
+      ok: false;
+      receipt: ComposerChatHandoffDeliveryReceipt<T> | null;
+      error: unknown;
+    }>
+> {
+  let receipt = input.previousReceipt?.key === input.key ? input.previousReceipt : null;
+  try {
+    if (!receipt) receipt = Object.freeze({ key: input.key, value: await input.persist() });
+    await input.dispatch(receipt.value);
+    return { ok: true, receipt };
+  } catch (error) {
+    return { ok: false, receipt, error };
+  }
+}
+
+export function resolveComposerPersistedText(
+  input: Readonly<{
+    sendText: string;
+    handoff: boolean;
+    oversizedSummary: string | null;
+  }>,
+): string {
+  if (input.handoff) return input.sendText;
+  return input.oversizedSummary ?? (input.sendText || 'Attached context.');
+}
+
+export function dispatchComposerSendWithAcceptance(
+  detail: Readonly<{ chatId: string | ChatId; cancellationKey: string; text: string }> &
+    Record<string, unknown>,
+  options: Readonly<{ timeoutMs?: number }> = {},
+): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('jarvis:run-state', onRunState as EventListener);
+      clearTimeout(timeout);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onRunState = (event: Event) => {
+      const state = (event as CustomEvent<{ chatId?: string; status?: string }>).detail;
+      if (String(state?.chatId) !== String(detail.chatId)) return;
+      if (state?.status === 'running') finish();
+      else if (state?.status === 'error' || state?.status === 'cancelled') {
+        finish(new Error(`Chat handoff dispatch rejected before acceptance (${state.status}).`));
+      }
+    };
+    const timeout = setTimeout(
+      () => finish(new Error('Chat handoff dispatch did not acknowledge runtime acceptance.')),
+      timeoutMs,
+    );
+    window.addEventListener('jarvis:run-state', onRunState as EventListener);
+    try {
+      window.dispatchEvent(new CustomEvent('jarvis:send', { detail }));
+    } catch (error) {
+      finish(error instanceof Error ? error : new Error('Chat handoff dispatch failed.'));
+    }
+  });
 }
 
 const LINE_HEIGHT = 20; // px - matches body type scale
@@ -1083,6 +1215,9 @@ export function Composer({
   const [dragOver, setDragOver] = useState(false);
   const [pendingHandoff, setPendingHandoff] = useState<ChatHandoffProjectionV1 | null>(null);
   const pendingHandoffRef = useRef<ChatHandoffProjectionV1 | null>(null);
+  const pendingHandoffDeliveryRef = useRef<ComposerChatHandoffDeliveryReceipt<Message> | null>(
+    null,
+  );
   const [handoffInstruction, setHandoffInstruction] = useState(
     'Review this context and continue from the latest truthful state.',
   );
@@ -1145,6 +1280,9 @@ export function Composer({
 
   const queuedMessagesRef = useRef(queuedMessages);
   queuedMessagesRef.current = queuedMessages;
+  const queuedHandoffsRef = useRef(
+    new Map<string, ReturnType<typeof buildComposerChatHandoffPayload>>(),
+  );
   const sendingRef = useRef(sending);
   sendingRef.current = sending;
   const activeCancellationKeyRef = useRef<string | null>(null);
@@ -1259,6 +1397,16 @@ export function Composer({
   const enqueueCurrentMessage = (draft: string, flushMode: QueueFlushMode = 'after-run') => {
     const item = createQueuedMessage(draft, flushMode);
     if (!item) return;
+    if (pendingHandoff) {
+      queuedHandoffsRef.current.set(
+        item.id,
+        buildQueuedComposerChatHandoff({
+          projection: pendingHandoff,
+          instruction: handoffInstruction,
+          draftText: draft,
+        }).payload,
+      );
+    }
     setQueuedMessages((current) => [...current, item]);
     setText('');
     const notice = getQueuedMessageNotice(item.text, flushMode);
@@ -1269,12 +1417,14 @@ export function Composer({
     setQueuedMessages((current) => {
       const queued = current.find((message) => message.id === id);
       if (queued) setText(queued.text);
+      queuedHandoffsRef.current.delete(id);
       return current.filter((message) => message.id !== id);
     });
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
   const deleteQueuedMessage = (id: string) => {
+    queuedHandoffsRef.current.delete(id);
     setQueuedMessages((current) => current.filter((message) => message.id !== id));
   };
 
@@ -3117,6 +3267,7 @@ export function Composer({
       bypassQueue?: boolean;
       flushMode?: QueueFlushMode;
       promptForgeApproved?: boolean;
+      handoffPayload?: ReturnType<typeof buildComposerChatHandoffPayload> | null;
     } = {},
   ): Promise<boolean> => {
     if (harnessBlocked) return false;
@@ -3133,6 +3284,7 @@ export function Composer({
         attachedPlugins.length === 0 &&
         attachedContexts.length === 0 &&
         !pendingHandoff &&
+        !options.handoffPayload &&
         !hasConfirmedCommands &&
         !hasConfirmedAgentMentions &&
         !hasConfirmedCatalogReferences) ||
@@ -3236,7 +3388,8 @@ export function Composer({
       attachedTerminals.length === 0 &&
       attachedPlugins.length === 0 &&
       attachedContexts.length === 0 &&
-      !pendingHandoff
+      !pendingHandoff &&
+      !options.handoffPayload
     ) {
       return true;
     }
@@ -3283,13 +3436,16 @@ export function Composer({
             fullyLocal: offlineMode,
           })
         : '';
-    const handoffPayload = pendingHandoff
-      ? buildComposerChatHandoffPayload({
-          projection: pendingHandoff,
-          instruction: handoffInstruction,
-          draftText: markdownInstruction || rawSendText,
-        })
-      : null;
+    const handoffPayload =
+      options.handoffPayload !== undefined
+        ? options.handoffPayload
+        : pendingHandoff
+          ? buildComposerChatHandoffPayload({
+              projection: pendingHandoff,
+              instruction: handoffInstruction,
+              draftText: markdownInstruction || rawSendText,
+            })
+          : null;
     const sendText = [
       mentionPrefix,
       catalogReferencePrefix,
@@ -3476,63 +3632,21 @@ export function Composer({
       // New real user turns invalidate redo history for this chat.
       clearRedoStack(String(chatId));
       let oversizedAttachment: Awaited<ReturnType<typeof createOversizedMessageAttachment>> = null;
-      try {
-        oversizedAttachment = await createOversizedMessageAttachment(sendText);
-      } catch {
-        toast.warning(
-          'Long-message attachment unavailable',
-          'The message will remain inline so none of your text is lost.',
-        );
+      if (!handoffPayload) {
+        try {
+          oversizedAttachment = await createOversizedMessageAttachment(sendText);
+        } catch {
+          toast.warning(
+            'Long-message attachment unavailable',
+            'The message will remain inline so none of your text is lost.',
+          );
+        }
       }
-      const persistedText = oversizedAttachment
-        ? oversizedMessageSummary(oversizedAttachment)
-        : sendText || 'Attached context.';
-      const userMessage = await messageRepo.create({
-        chat_id: chatId as ChatId,
-        role: 'user',
-        parts: [
-          { kind: 'text', text: persistedText },
-          ...(handoffPayload ? [handoffPayload.part] : []),
-          ...attachedImages.map((image) => ({
-            kind: 'image' as const,
-            url: `data:${image.mimeType};base64,${image.data}`,
-            alt: image.name,
-          })),
-          ...(oversizedAttachment
-            ? [
-                {
-                  kind: 'file_ref' as const,
-                  ref: {
-                    kind: 'file' as const,
-                    id: oversizedAttachment.path,
-                    excerpt: 'Temporary long-message attachment · expires after 24 hours',
-                  },
-                },
-              ]
-            : []),
-          ...nextAttachedFiles.map((path) => ({
-            kind: 'file_ref' as const,
-            ref: { kind: 'file' as const, id: path },
-          })),
-          ...nextAttachedTerminals.map((ref) => ({
-            kind: 'file_ref' as const,
-            ref: {
-              kind: 'memory' as const,
-              id: `terminal:${terminalRefKey(ref)}`,
-              excerpt: `Terminal reference: ${terminalRefLabel(ref)}`,
-            },
-          })),
-          ...nextAttachedContexts.map((context) => ({
-            kind: 'file_ref' as const,
-            ref: {
-              kind: 'memory' as const,
-              id: `context:${contextChatAttachmentKey(context)}`,
-              excerpt: `Context: ${context.title}`,
-            },
-          })),
-        ],
+      const persistedText = resolveComposerPersistedText({
+        sendText,
+        handoff: Boolean(handoffPayload),
+        oversizedSummary: oversizedAttachment ? oversizedMessageSummary(oversizedAttachment) : null,
       });
-
       const mentionedAgentIds = resolveMentionedAgentIdsForSend(
         sendText,
         agents,
@@ -3549,53 +3663,115 @@ export function Composer({
         ...(oversizedAttachment ? { oversizedPath: oversizedAttachment.path } : {}),
         supportsFiles: connectionSupportsFileAttachments(selectedForSend),
       });
-      activeCancellationKeyRef.current = String(userMessage.id);
       const tokenOptimizationPreferences = browserTokenOptimizationPreferences.getSnapshot();
       const tokenOptimizationMode = browserTokenOptimizationPreferences.resolveMode(String(chatId));
       // UI keeps full videos; vision path only receives image/* (+ sampled frames).
       const visionAttachments = await visionAttachmentsForSend(attachedImages);
-      window.dispatchEvent(
-        new CustomEvent('jarvis:send', {
-          detail: {
-            chatId,
-            cancellationKey: userMessage.id,
-            text: persistedText,
-            mentionedAgentIds,
-            filePaths: messageFilePaths,
-            imageAttachments: visionAttachments,
-            terminalRefs: nextAttachedTerminals,
-            contextNodes: nextAttachedContexts,
-            pluginIds,
-            skillIds,
-            forceAllAboutMeUpdate,
-            interactionMode: interactionModeForSend,
-            speakReply: voiceReplyRequestedRef.current || useAuthStore.getState().speakReplies,
-            autoApproveActions: useAuthStore.getState().jarvisAutoApprove,
-            modelSelectionOverride: selectedForSend,
-            reasoningPreference:
-              caoBootstrap?.reasoningPreference ?? readChatReasoningPreference(String(chatId)),
-            runtimeSettings: caoBootstrap
-              ? { ...runtimePolicy.settings, effort: CAO_LEARNER_IDENTITY.reasoningEffort }
-              : runtimePolicy.settings,
-            accessLevel: runtimePolicy.access,
-            approveAllForRun: runtimePolicy.approveAllForRun,
-            tokenOptimizationMode,
-            tokenOptimizationOutputLimit: tokenOptimizationPreferences.defaultMaxOutputTokens,
-            showTokenOptimizationReport:
-              tokenOptimizationPreferences.showOptimizationReportAutomatically,
-            allowStructuralCodeCompression:
-              tokenOptimizationPreferences.allowStructuralCodeCompression,
-            // The model chosen in Composer is an explicit user override.
-            automaticModelRoutingEligible: false,
-            ...(caoBootstrap
-              ? {
-                  caoAuthority: caoBootstrap.requestedIdentity,
-                  caoBootstrap: caoBootstrap.publicStatus,
-                }
-              : {}),
-          },
-        }),
-      );
+      const persistUserMessage = () =>
+        messageRepo.create({
+          chat_id: chatId as ChatId,
+          role: 'user',
+          parts: [
+            { kind: 'text', text: persistedText },
+            ...(handoffPayload ? [handoffPayload.part] : []),
+            ...attachedImages.map((image) => ({
+              kind: 'image' as const,
+              url: `data:${image.mimeType};base64,${image.data}`,
+              alt: image.name,
+            })),
+            ...(oversizedAttachment
+              ? [
+                  {
+                    kind: 'file_ref' as const,
+                    ref: {
+                      kind: 'file' as const,
+                      id: oversizedAttachment.path,
+                      excerpt: 'Temporary long-message attachment · expires after 24 hours',
+                    },
+                  },
+                ]
+              : []),
+            ...nextAttachedFiles.map((path) => ({
+              kind: 'file_ref' as const,
+              ref: { kind: 'file' as const, id: path },
+            })),
+            ...nextAttachedTerminals.map((ref) => ({
+              kind: 'file_ref' as const,
+              ref: {
+                kind: 'memory' as const,
+                id: `terminal:${terminalRefKey(ref)}`,
+                excerpt: `Terminal reference: ${terminalRefLabel(ref)}`,
+              },
+            })),
+            ...nextAttachedContexts.map((context) => ({
+              kind: 'file_ref' as const,
+              ref: {
+                kind: 'memory' as const,
+                id: `context:${contextChatAttachmentKey(context)}`,
+                excerpt: `Context: ${context.title}`,
+              },
+            })),
+          ],
+        });
+      const dispatchUserMessage = async (userMessage: Message, requireAcceptance: boolean) => {
+        activeCancellationKeyRef.current = String(userMessage.id);
+        const detail = {
+          chatId,
+          cancellationKey: userMessage.id,
+          text: persistedText,
+          mentionedAgentIds,
+          filePaths: messageFilePaths,
+          imageAttachments: visionAttachments,
+          terminalRefs: nextAttachedTerminals,
+          contextNodes: nextAttachedContexts,
+          pluginIds,
+          skillIds,
+          forceAllAboutMeUpdate,
+          interactionMode: interactionModeForSend,
+          speakReply: voiceReplyRequestedRef.current || useAuthStore.getState().speakReplies,
+          autoApproveActions: useAuthStore.getState().jarvisAutoApprove,
+          modelSelectionOverride: selectedForSend,
+          reasoningPreference:
+            caoBootstrap?.reasoningPreference ?? readChatReasoningPreference(String(chatId)),
+          runtimeSettings: caoBootstrap
+            ? { ...runtimePolicy.settings, effort: CAO_LEARNER_IDENTITY.reasoningEffort }
+            : runtimePolicy.settings,
+          accessLevel: runtimePolicy.access,
+          approveAllForRun: runtimePolicy.approveAllForRun,
+          tokenOptimizationMode,
+          tokenOptimizationOutputLimit: tokenOptimizationPreferences.defaultMaxOutputTokens,
+          showTokenOptimizationReport:
+            tokenOptimizationPreferences.showOptimizationReportAutomatically,
+          allowStructuralCodeCompression:
+            tokenOptimizationPreferences.allowStructuralCodeCompression,
+          // The model chosen in Composer is an explicit user override.
+          automaticModelRoutingEligible: false,
+          ...(caoBootstrap
+            ? {
+                caoAuthority: caoBootstrap.requestedIdentity,
+                caoBootstrap: caoBootstrap.publicStatus,
+              }
+            : {}),
+        };
+        if (requireAcceptance) await dispatchComposerSendWithAcceptance(detail);
+        else window.dispatchEvent(new CustomEvent('jarvis:send', { detail }));
+      };
+      let userMessage: Message;
+      if (handoffPayload) {
+        const delivery = await deliverComposerChatHandoff({
+          key: composerChatHandoffDeliveryKey(handoffPayload),
+          previousReceipt: pendingHandoffDeliveryRef.current,
+          persist: persistUserMessage,
+          dispatch: (message) => dispatchUserMessage(message, true),
+        });
+        pendingHandoffDeliveryRef.current = delivery.receipt;
+        if (!delivery.ok) throw delivery.error;
+        userMessage = delivery.receipt.value;
+        pendingHandoffDeliveryRef.current = null;
+      } else {
+        userMessage = await persistUserMessage();
+        await dispatchUserMessage(userMessage, false);
+      }
       if (runtimePolicy.approveAllForRun) {
         const cleared = clearApproveAllForRun(String(chatId));
         setRuntimePolicy(cleared);
@@ -3607,8 +3783,10 @@ export function Composer({
       setAttachedTerminals([]);
       setAttachedPlugins([]);
       setAttachedContexts([]);
-      pendingHandoffRef.current = null;
-      setPendingHandoff(null);
+      if (options.handoffPayload === undefined) {
+        pendingHandoffRef.current = null;
+        setPendingHandoff(null);
+      }
       setMentionCtx(null);
       playUiSound('chat_message_send');
       return true;
@@ -3636,8 +3814,13 @@ export function Composer({
     void dispatchQueuedMessageAfterAcceptance(
       queued,
       payload,
-      (nextPayload) => handleSend(nextPayload, { bypassQueue: true }),
+      (nextPayload) =>
+        handleSend(nextPayload, {
+          bypassQueue: true,
+          handoffPayload: queuedHandoffsRef.current.get(queued.id) ?? null,
+        }),
       (acceptedId) => {
+        queuedHandoffsRef.current.delete(acceptedId);
         setQueuedMessages((current) => {
           const remaining = current.filter((message) => message.id !== acceptedId);
           queuedMessagesRef.current = remaining;
@@ -3660,6 +3843,13 @@ export function Composer({
     if (queuedInterruptInFlightRef.current) return;
     const queued = queuedMessagesRef.current.find((message) => message.id === id);
     if (!queued) return;
+    if (queuedHandoffsRef.current.has(id) && jarvisRunning) {
+      toast.info(
+        'Handoff remains queued',
+        'A handoff keeps its accepted snapshot and structured receipt, so it will send after this reply finishes.',
+      );
+      return;
+    }
     if (!jarvisRunning || !activeCancellationKeyRef.current) {
       if (!jarvisRunning) dispatchQueuedMessage(queued);
       return;
@@ -4444,24 +4634,24 @@ export function Composer({
 
   const addChatHandoff = useCallback(
     async (payload: ChatDragPayloadV1) => {
-      const accepted = await resolveAcceptedChatDrop(
+      const resolved = await resolveComposerChatHandoffDraft(
         { payload, targetChatId: String(chatId) },
         {
-          getChat: (id) => chatRepo.getById(id),
+          getChat: (id) => chatRepo.getById(id as ChatId),
+          listMessages: (id) => messageRepo.listByChat(id as ChatId),
           canAccess: (source, target) => !source.archived && !target.archived,
         },
       );
-      if (!accepted.ok) {
+      if (!resolved.ok) {
         toast.warning(
-          accepted.reason === 'same_chat' ? 'That chat is already here' : 'Chat handoff rejected',
-          accepted.reason === 'same_chat'
+          resolved.reason === 'same_chat' ? 'That chat is already here' : 'Chat handoff rejected',
+          resolved.reason === 'same_chat'
             ? 'Choose a different source chat.'
             : 'The source chat is stale, inaccessible, or no longer available.',
         );
         return false;
       }
-      const messages = await messageRepo.listByChat(accepted.chat.id);
-      const projection = projectChatHandoff({ sourceChat: accepted.chat, messages });
+      const projection = resolved.projection;
       if (pendingHandoffRef.current?.source.chatId !== projection.source.chatId) {
         setHandoffInstruction('Review this context and continue from the latest truthful state.');
       }

@@ -96,6 +96,108 @@ describe('safe chat handoff projection', () => {
     expect(projection.summaries.actions).toEqual(['nav.goto — success — Open the Schedule page.']);
   });
 
+  it('redacts standalone credentials and credential-bearing metadata before projection', () => {
+    const stripeFixture = ['sk', 'live', '1234567890abcdefghijklmnop'].join('_');
+    const githubFixture = `ghp_${'1234567890abcdefghijklmnopqrstuv'}`;
+    const awsFixture = `AKIA${'1234567890ABCDEF'}`;
+    const projection = projectChatHandoff({
+      sourceChat: {
+        ...sourceChat,
+        title: `Deploy ${stripeFixture}`,
+      },
+      now,
+      messages: [
+        message('credentials', now - 2_000, 'assistant', [
+          {
+            kind: 'text',
+            text: `Use ${githubFixture} and ${awsFixture}.`,
+          },
+          {
+            kind: 'tool_call',
+            tool: `fetch_${githubFixture}`,
+            call_id: 'call-secret',
+            args: {},
+          },
+          {
+            kind: 'file_ref',
+            ref: {
+              kind: 'file',
+              id: `C:/tmp/${['sk', 'test', '1234567890abcdefghijklmnop'].join('_')}.txt`,
+            },
+          },
+          {
+            kind: 'jarvis_source_ref',
+            source: {
+              id: 'source-secret',
+              kind: 'web',
+              label: 'signed download',
+              uri: 'https://example.test/file?X-Amz-Signature=0123456789abcdef&token=plain-secret',
+              trust: 'external_untrusted',
+              sensitivity: 'public',
+            },
+          },
+        ]),
+      ],
+    });
+
+    const serialized = JSON.stringify(projection);
+    expect(serialized).not.toMatch(
+      /sk_live_|sk_test_|ghp_123|AKIA123|0123456789abcdef|plain-secret/,
+    );
+    expect(serialized).toContain('[REDACTED]');
+  });
+
+  it('reports tool and action outcomes truthfully without raw payloads', () => {
+    const projection = projectChatHandoff({
+      sourceChat,
+      now,
+      messages: [
+        message('outcomes', now - 1_000, 'assistant', [
+          { kind: 'tool_call', tool: 'deploy', call_id: 'tool-error', args: {} },
+          {
+            kind: 'tool_result',
+            call_id: 'tool-error',
+            error: 'Deployment failed: bearer abcdefghijklmnop',
+          },
+          {
+            kind: 'action_proposal',
+            call_id: 'action-error',
+            action_id: 'nav.goto',
+            params: {},
+            status: 'error',
+            error: 'Blocked by policy',
+          },
+          {
+            kind: 'action_proposal',
+            call_id: 'action-success',
+            action_id: 'files.write',
+            params: {},
+            status: 'success',
+            result: { summary: 'Wrote src/app.ts', secret: 'must-not-leak' },
+          },
+        ]),
+      ],
+    });
+
+    expect(projection.summaries.tools).toEqual(['deploy — error: Deployment failed: [REDACTED]']);
+    expect(projection.summaries.actions).toContain('nav.goto — error: Blocked by policy');
+    expect(projection.summaries.actions).toContain('files.write — success: Wrote src/app.ts');
+    expect(projection.summaries.blockers).toContain(
+      'deploy — error: Deployment failed: [REDACTED]',
+    );
+    expect(projection.summaries.results).toContain('files.write — success: Wrote src/app.ts');
+    expect(JSON.stringify(projection)).not.toContain('must-not-leak');
+  });
+
+  it('renders the exact snapshot and three-day boundary metadata', () => {
+    const projection = projectChatHandoff({ sourceChat, now, messages: [] });
+    const prompt = renderChatHandoffPrompt(projection, 'Continue.');
+
+    expect(prompt).toContain(`Snapshot at: ${now}`);
+    expect(prompt).toContain(`Three-day boundary at: ${boundary}`);
+    expect(prompt).toContain('Boundary message: none');
+  });
+
   it('deduplicates repeated visible fragments by stable message/part content', () => {
     const projection = projectChatHandoff({
       sourceChat,

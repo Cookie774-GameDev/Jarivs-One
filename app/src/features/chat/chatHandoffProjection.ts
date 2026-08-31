@@ -6,6 +6,13 @@ const OLDER_DIGEST_LIMIT = 12_000;
 const SECRET_ASSIGNMENT =
   /\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|credential)\s*[:=]\s*[^\s,;]+/gi;
 const BEARER_TOKEN = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi;
+const STANDALONE_CREDENTIAL =
+  /(?<![A-Za-z0-9])(?:sk_(?:live|test|prod)_[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{20,}|pypi-[A-Za-z0-9_-]{20,}|SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|(?:AKIA|ASIA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[0-9A-Za-z-]{10,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,})(?![A-Za-z0-9])/g;
+const SIGNED_QUERY_VALUE =
+  /([?&](?:x-amz-(?:signature|credential|security-token)|signature|sig|token|access_token|refresh_token|client_secret|password|code|key|api_key)=)[^&#\s]+/gi;
+const URI_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+(?::[^\s/@]*)?@/gi;
+const PRIVATE_KEY_BLOCK =
+  /-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----[\s\S]{0,100000}?-----END(?: [A-Z0-9]+)? PRIVATE KEY-----/g;
 
 export type SafeVisibleMessageSection = Readonly<{
   messageId: string;
@@ -57,8 +64,30 @@ function unique(values: readonly string[]): readonly string[] {
   return [...new Set(values.filter(Boolean))];
 }
 
-function sanitizeText(value: string): string {
-  return value.replace(SECRET_ASSIGNMENT, '[REDACTED]').replace(BEARER_TOKEN, '[REDACTED]');
+export function sanitizeChatHandoffText(value: string): string {
+  return value
+    .replace(PRIVATE_KEY_BLOCK, '[REDACTED]')
+    .replace(SECRET_ASSIGNMENT, '[REDACTED]')
+    .replace(BEARER_TOKEN, '[REDACTED]')
+    .replace(STANDALONE_CREDENTIAL, '[REDACTED]')
+    .replace(SIGNED_QUERY_VALUE, '$1[REDACTED]')
+    .replace(URI_USERINFO, '$1[REDACTED]@');
+}
+
+function safeOutcomeSummary(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const safe = sanitizeChatHandoffText(value).trim();
+    return safe ? safe.slice(0, 500) : null;
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  for (const key of ['summary', 'message', 'status', 'path'] as const) {
+    if (typeof record[key] === 'string') {
+      const safe = sanitizeChatHandoffText(record[key]).trim();
+      if (safe) return safe.slice(0, 500);
+    }
+  }
+  return null;
 }
 
 function splitComplete(value: string): readonly string[] {
@@ -75,45 +104,73 @@ function safeVisibleParts(parts: readonly Part[]): {
   files: string[];
   tools: string[];
   actions: string[];
+  blockers: string[];
+  results: string[];
 } {
   const text: string[] = [];
   const files: string[] = [];
   const tools: string[] = [];
   const actions: string[] = [];
+  const blockers: string[] = [];
+  const results: string[] = [];
   const seenText = new Set<string>();
-  const completedCalls = new Set(
-    parts.flatMap((part) => (part.kind === 'tool_result' ? [part.call_id] : [])),
+  const toolResults = new Map(
+    parts.flatMap((part) => (part.kind === 'tool_result' ? [[part.call_id, part] as const] : [])),
   );
 
   for (const part of parts) {
     if (part.kind === 'text') {
-      const safe = sanitizeText(part.text).trim();
+      const safe = sanitizeChatHandoffText(part.text).trim();
       if (safe && !seenText.has(safe)) {
         seenText.add(safe);
         text.push(safe);
       }
     } else if (part.kind === 'stack_step') {
-      const safe = sanitizeText(part.text).trim();
+      const safe = sanitizeChatHandoffText(part.text).trim();
       if (safe && !seenText.has(safe)) {
         seenText.add(safe);
         text.push(`${part.label} — ${part.status}: ${safe}`);
       }
     } else if (part.kind === 'tool_call') {
-      tools.push(`${part.tool} — ${completedCalls.has(part.call_id) ? 'completed' : 'called'}`);
+      const toolName = sanitizeChatHandoffText(part.tool);
+      const outcome = toolResults.get(part.call_id);
+      if (outcome?.error) {
+        const summary = `${toolName} — error: ${sanitizeChatHandoffText(outcome.error).slice(0, 500)}`;
+        tools.push(summary);
+        blockers.push(summary);
+      } else if (outcome) {
+        const safeResult = safeOutcomeSummary(outcome.result);
+        const summary = `${toolName} — completed${safeResult ? `: ${safeResult}` : ''}`;
+        tools.push(summary);
+        results.push(summary);
+      } else {
+        tools.push(`${toolName} — called`);
+      }
     } else if (part.kind === 'action_proposal') {
-      const rationale = part.rationale ? ` — ${sanitizeText(part.rationale)}` : '';
-      actions.push(`${part.action_id} — ${part.status}${rationale}`);
+      const actionId = sanitizeChatHandoffText(part.action_id);
+      const rationale = part.rationale
+        ? ` — ${sanitizeChatHandoffText(part.rationale).slice(0, 500)}`
+        : '';
+      const outcome = part.error
+        ? sanitizeChatHandoffText(part.error).slice(0, 500)
+        : part.status === 'success'
+          ? safeOutcomeSummary(part.result)
+          : null;
+      const summary = `${actionId} — ${part.status}${outcome ? `: ${outcome}` : ''}${rationale}`;
+      actions.push(summary);
+      if (part.status === 'error' || part.status === 'cancelled') blockers.push(summary);
+      if (part.status === 'success') results.push(summary);
     } else if (part.kind === 'file_ref') {
-      files.push(part.ref.id);
+      files.push(sanitizeChatHandoffText(part.ref.id));
     } else if (part.kind === 'jarvis_source_ref' && part.source.sensitivity === 'public') {
-      if (part.source.uri) files.push(part.source.uri);
+      if (part.source.uri) files.push(sanitizeChatHandoffText(part.source.uri));
     } else if (part.kind === 'jarvis_artifact_ref' && part.artifact.safeSummary) {
-      const safe = sanitizeText(part.artifact.safeSummary).trim();
+      const safe = sanitizeChatHandoffText(part.artifact.safeSummary).trim();
       if (safe && !seenText.has(safe)) text.push(safe);
     }
   }
 
-  return { text: text.join('\n\n'), files, tools, actions };
+  return { text: text.join('\n\n'), files, tools, actions, blockers, results };
 }
 
 function threeCalendarDayBoundary(now: number): number {
@@ -149,6 +206,8 @@ export function projectChatHandoff(
   const files: string[] = [];
   const tools: string[] = [];
   const actions: string[] = [];
+  const outcomeBlockers: string[] = [];
+  const outcomeResults: string[] = [];
   const recentSections: SafeVisibleMessageSection[] = [];
   const olderLines: string[] = [];
   const allVisibleTexts: string[] = [];
@@ -158,6 +217,8 @@ export function projectChatHandoff(
     files.push(...safe.files);
     tools.push(...safe.tools);
     actions.push(...safe.actions);
+    outcomeBlockers.push(...safe.blockers);
+    outcomeResults.push(...safe.results);
     if (!safe.text) continue;
     allVisibleTexts.push(safe.text);
     if (message.created_at >= boundaryAt) {
@@ -193,7 +254,7 @@ export function projectChatHandoff(
     policyVersion: HANDOFF_POLICY_VERSION,
     source: Object.freeze({
       chatId: String(input.sourceChat.id),
-      title: input.sourceChat.title,
+      title: sanitizeChatHandoffText(input.sourceChat.title),
       workspaceId: String(input.sourceChat.workspace_id),
       projectId: input.sourceChat.project_id ? String(input.sourceChat.project_id) : null,
     }),
@@ -215,10 +276,16 @@ export function projectChatHandoff(
         summariesFromText(allVisibleTexts, /\b(decid|decision|chosen|choose)\b/i),
       ),
       blockers: Object.freeze(
-        summariesFromText(allVisibleTexts, /\b(blocked|blocker|cannot|failed)\b/i),
+        unique([
+          ...summariesFromText(allVisibleTexts, /\b(blocked|blocker|cannot|failed)\b/i),
+          ...outcomeBlockers,
+        ]),
       ),
       results: Object.freeze(
-        summariesFromText(allVisibleTexts, /\b(result|completed|passed|done|success)\b/i),
+        unique([
+          ...summariesFromText(allVisibleTexts, /\b(result|completed|passed|done|success)\b/i),
+          ...outcomeResults,
+        ]),
       ),
     }),
   });
@@ -245,6 +312,9 @@ export function renderChatHandoffPrompt(
   return [
     instruction.trim(),
     `Chat handoff from “${projection.source.title}” (${projection.source.chatId})`,
+    `Snapshot at: ${projection.snapshotAt} (${new Date(projection.snapshotAt).toISOString()})`,
+    `Three-day boundary at: ${projection.boundaryAt} (${new Date(projection.boundaryAt).toISOString()})`,
+    `Boundary message: ${projection.boundaryMessageId ?? 'none'}`,
     projection.goal ? `Current goal: ${projection.goal}` : '',
     `Status: ${projection.status}`,
     summaryGroups,
