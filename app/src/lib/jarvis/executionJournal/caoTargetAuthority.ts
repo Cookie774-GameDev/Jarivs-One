@@ -197,6 +197,14 @@ function validDependencyEntry(value: unknown): value is object {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function canonicalDependencyValue<T>(value: T): T | undefined {
+  try {
+    return structuredClone(value);
+  } catch {
+    return undefined;
+  }
+}
+
 function assertLiveTargets(
   rows: readonly CaoLiveTarget[],
   requested: readonly CaoTargetIdentity[],
@@ -279,9 +287,12 @@ async function findLease(
     } catch {
       fail('cao_target_journal_unavailable');
     }
-    if (!Array.isArray(page)) fail('cao_target_journal_invalid');
-    if (page.some((event) => !validDependencyEntry(event))) fail('cao_target_journal_invalid');
-    for (const event of page) {
+    const canonicalPage = canonicalDependencyValue(page);
+    if (!Array.isArray(canonicalPage)) fail('cao_target_journal_invalid');
+    if (canonicalPage.some((event) => !validDependencyEntry(event))) {
+      fail('cao_target_journal_invalid');
+    }
+    for (const event of canonicalPage) {
       if (
         event.runId !== scope.runId ||
         !Number.isSafeInteger(event.seq) ||
@@ -299,7 +310,7 @@ async function findLease(
         match = structuredClone(lease);
       }
     }
-    if (page.length < EVENT_PAGE_SIZE) return match;
+    if (canonicalPage.length < EVENT_PAGE_SIZE) return match;
   }
   fail('cao_target_journal_scan_exceeded');
 }
@@ -382,8 +393,12 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     } catch {
       fail('cao_target_registry_unavailable');
     }
-    if (!Array.isArray(rows)) fail('cao_target_registry_invalid');
-    if (rows.some((row) => !validDependencyEntry(row))) fail('cao_target_registry_invalid');
+    const canonicalRows = canonicalDependencyValue(rows);
+    if (!Array.isArray(canonicalRows)) fail('cao_target_registry_invalid');
+    if (canonicalRows.some((row) => !validDependencyEntry(row))) {
+      fail('cao_target_registry_invalid');
+    }
+    rows = canonicalRows;
     if (rows.length !== lease.targets.length) fail('cao_target_missing');
     const byIdentity = new Map<string, CaoLiveTarget>();
     for (const row of rows) {
@@ -459,10 +474,12 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     } catch {
       fail('cao_target_registry_unavailable');
     }
-    if (!Array.isArray(liveRows)) fail('cao_target_registry_invalid');
-    if (liveRows.some((row) => !validDependencyEntry(row))) {
+    const canonicalRows = canonicalDependencyValue(liveRows);
+    if (!Array.isArray(canonicalRows)) fail('cao_target_registry_invalid');
+    if (canonicalRows.some((row) => !validDependencyEntry(row))) {
       fail('cao_target_registry_invalid');
     }
+    liveRows = canonicalRows;
     try {
       assertLiveTargets(
         liveRows,
@@ -539,7 +556,8 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     } catch {
       fail('cao_target_registry_unavailable');
     }
-    if (!validRegistryClaim(claim)) {
+    const canonicalClaim = canonicalDependencyValue(claim);
+    if (!validRegistryClaim(canonicalClaim)) {
       const provisionalLease: CaoTargetLeaseV1 = {
         schemaVersion: 1,
         kind: 'cao_target_lease',
@@ -556,6 +574,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       await releaseVerifiedLease(verifyRequest(input, leaseId), provisionalLease);
       fail('cao_target_registry_invalid');
     }
+    claim = canonicalClaim;
     if (!claim.applied) registryFailure(claim.reason);
     let exactClaimTargets: readonly CaoLiveTarget[];
     try {

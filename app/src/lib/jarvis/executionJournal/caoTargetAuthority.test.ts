@@ -703,6 +703,105 @@ describe('CAO explicit target authority', () => {
     expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
   });
 
+  it('redacts a throwing journal entry accessor before registry recovery', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    const poisonedEvent = {};
+    Object.defineProperty(poisonedEvent, 'seq', {
+      enumerable: true,
+      get: () => {
+        throw new Error('private journal adapter payload');
+      },
+    });
+    h.deps.events.listByRun.mockResolvedValueOnce([poisonedEvent] as never);
+    vi.mocked(h.registry.readExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_journal_invalid$/);
+    expect(h.registry.readExact).not.toHaveBeenCalled();
+  });
+
+  it('reconciles an applied claim whose live-row accessor throws', async () => {
+    const h = harness();
+    vi.mocked(h.registry.claimExact).mockImplementationOnce(async (request) => {
+      h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: request.leaseId });
+      const poisonedRow = {};
+      Object.defineProperty(poisonedRow, 'kind', {
+        enumerable: true,
+        get: () => {
+          throw new Error('private registry row payload');
+        },
+      });
+      return { applied: true, targets: [poisonedRow] } as never;
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_registry_invalid$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+    expect(h.rows).toEqual([]);
+  });
+
+  it('redacts a throwing claim discriminator and reconciles possible ownership', async () => {
+    const h = harness();
+    vi.mocked(h.registry.claimExact).mockImplementationOnce(async (request) => {
+      h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: request.leaseId });
+      const poisonedClaim = {};
+      Object.defineProperty(poisonedClaim, 'applied', {
+        enumerable: true,
+        get: () => {
+          throw new Error('private claim adapter payload');
+        },
+      });
+      return poisonedClaim as never;
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_registry_invalid$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+    expect(h.rows).toEqual([]);
+  });
+
+  it('redacts a throwing verification-row accessor without releasing valid authority', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    const poisonedRow = {};
+    Object.defineProperty(poisonedRow, 'kind', {
+      enumerable: true,
+      get: () => {
+        throw new Error('private verification adapter payload');
+      },
+    });
+    vi.mocked(h.registry.readExact).mockResolvedValueOnce([poisonedRow] as never);
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).verify({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_registry_invalid$/);
+    expect(h.registry.releaseExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
   it('redacts a throwing acquisition clock before target claim', async () => {
     const h = harness();
     h.deps.now.mockImplementationOnce(() => {
