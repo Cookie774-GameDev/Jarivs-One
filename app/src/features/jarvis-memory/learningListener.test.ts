@@ -283,6 +283,44 @@ describe('Jarvis learning event listener', () => {
     window.removeEventListener('jarvis:memory-status', onStatus);
   });
 
+  it('restores the last durable profile after an optimistic save fails', async () => {
+    const statuses: string[] = [];
+    const onStatus = (event: Event) =>
+      statuses.push((event as CustomEvent<{ state: string }>).detail.state);
+    window.addEventListener('jarvis:memory-status', onStatus);
+    useJarvisLearningStore.getState().setAccount('account-a');
+    useJarvisLearningStore.getState().remember({
+      value: 'I prefer durable answers',
+      category: 'response-style',
+      source: { kind: 'explicit' },
+    });
+    const durable = useJarvisLearningStore.getState().exportMarkdown();
+    useJarvisLearningStore.getState().clearForTests();
+    stop = startJarvisLearningListener({
+      getAccountId: () => 'account-a',
+      load: async () => durable,
+      save: async () => {
+        throw new Error('write unavailable');
+      },
+      debounceMs: 0,
+      onError: vi.fn(),
+    });
+    await vi.waitFor(() =>
+      expect(useJarvisLearningStore.getState().exportMarkdown()).toContain('durable answers'),
+    );
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId: 'chat-1', text: 'Remember that I prefer optimistic answers.' },
+      }),
+    );
+
+    await vi.waitFor(() => expect(statuses).toContain('error'));
+    await vi.waitFor(() => expect(statuses).toContain('recovered'));
+    expect(useJarvisLearningStore.getState().exportMarkdown()).toContain('durable answers');
+    expect(useJarvisLearningStore.getState().exportMarkdown()).not.toContain('optimistic answers');
+    window.removeEventListener('jarvis:memory-status', onStatus);
+  });
+
   it('keeps automatic learning memory-only through nineteen messages and writes on message twenty', async () => {
     const save = vi.fn(async (_accountId: string, _markdown: string) => undefined);
     stop = startJarvisLearningListener({
