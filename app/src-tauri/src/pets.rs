@@ -27,6 +27,7 @@ const PET_AUTOSTART_VALUE_NAME: &str = "VibeSpace";
 const TOPMOST_WATCHDOG_INTERVAL_MS: u64 = 1000;
 const PET_CREATED_SURFACE_READY_ATTEMPTS: usize = 50;
 const PET_CREATED_SURFACE_READY_POLL_MS: u64 = 20;
+const PET_MAIN_THREAD_CONFIG_TIMEOUT_MS: u64 = 250;
 const PET_DETACHED_BUILD_DELAY_MS: u64 = 80;
 const PET_SETUP_OFFSCREEN_POSITION: (f64, f64) = (-32_000.0, -32_000.0);
 const PET_SETUP_MATERIALIZATION_DELAY_MS: u64 = 1_000;
@@ -939,6 +940,36 @@ fn native_show_pet_window(win: &WebviewWindow, title: &str, focus: bool) -> bool
     }
 }
 
+#[cfg(target_os = "windows")]
+#[allow(clippy::too_many_arguments)]
+fn configure_pet_surface_on_main_thread(
+    app: &AppHandle,
+    win: &WebviewWindow,
+    title: &'static str,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    focus: bool,
+) -> bool {
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let win = win.clone();
+    if app
+        .run_on_main_thread(move || {
+            let ready = native_configure_pet_window(&win, title, x, y, width, height, focus);
+            let _ = sender.send(ready);
+        })
+        .is_err()
+    {
+        return false;
+    }
+    receiver
+        .recv_timeout(std::time::Duration::from_millis(
+            PET_MAIN_THREAD_CONFIG_TIMEOUT_MS,
+        ))
+        .unwrap_or(false)
+}
+
 fn configure_pet_surface_until_ready<F>(
     _created: bool,
     retry_attempts: usize,
@@ -1645,7 +1676,8 @@ fn show_existing_pet_overlay(
             PET_CREATED_SURFACE_READY_ATTEMPTS,
             std::time::Duration::from_millis(PET_CREATED_SURFACE_READY_POLL_MS),
             || {
-                native_configure_pet_window(
+                configure_pet_surface_on_main_thread(
+                    &app,
                     &win,
                     "VibeSpace Pet",
                     x as i32,
@@ -2060,7 +2092,8 @@ fn open_or_focus_pet_panel_blocking(
             PET_CREATED_SURFACE_READY_ATTEMPTS,
             std::time::Duration::from_millis(PET_CREATED_SURFACE_READY_POLL_MS),
             || {
-                native_configure_pet_window(
+                configure_pet_surface_on_main_thread(
+                    &app,
                     &win,
                     "VibeSpace Pet Panel",
                     x as i32,
@@ -2721,6 +2754,32 @@ mod tests {
 
         assert!(stage < show);
         assert!(show < verify);
+    }
+
+    #[test]
+    fn windows_pet_native_configuration_runs_on_the_event_loop_thread() {
+        let source = include_str!("pets.rs");
+        let helper_start = source
+            .find("fn configure_pet_surface_on_main_thread")
+            .expect("main-thread native configure helper exists");
+        let helper_end = source[helper_start..]
+            .find("fn configure_pet_surface_until_ready")
+            .map(|offset| helper_start + offset)
+            .expect("main-thread native configure helper is bounded");
+        let helper = &source[helper_start..helper_end];
+        assert!(helper.contains("run_on_main_thread"));
+        assert!(helper.contains("sync_channel"));
+        assert!(helper.contains("recv_timeout"));
+        assert!(helper.contains("native_configure_pet_window"));
+
+        let tests_start = source.find("mod tests {").expect("test module exists");
+        let production = &source[..tests_start];
+        assert_eq!(
+            production
+                .matches("configure_pet_surface_on_main_thread(")
+                .count(),
+            3
+        );
     }
 
     #[test]
