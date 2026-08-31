@@ -43,4 +43,42 @@ describe('createInstantCommandReceipt', () => {
       }),
     ).toThrow(/follow-up/i);
   });
+
+  it('rejects duplicate or excessive targets and unbounded follow-up prompts', () => {
+    const base = {
+      commandId: 'terminal.close',
+      correlationId: 'corr-1',
+      acceptedAtMs: 1,
+    } as const;
+    expect(() =>
+      createInstantCommandReceipt({
+        ...base,
+        status: 'queued',
+        targetIds: ['pane-1', 'pane-1'],
+      }),
+    ).toThrow(/target/i);
+    expect(() =>
+      createInstantCommandReceipt({
+        ...base,
+        status: 'queued',
+        targetIds: Array.from({ length: 129 }, (_, index) => `pane-${index}`),
+      }),
+    ).toThrow(/target/i);
+    expect(() =>
+      createInstantCommandReceipt({
+        ...base,
+        status: 'needs_confirmation',
+        targetIds: ['pane-1'],
+        followUp: { kind: 'confirmation', prompt: 'x'.repeat(201) },
+      }),
+    ).toThrow(/prompt/i);
+    expect(() =>
+      createInstantCommandReceipt({
+        ...base,
+        status: 'needs_confirmation',
+        targetIds: ['pane-1'],
+        followUp: { kind: 'confirmation', prompt: 'Confirm\nnow' },
+      }),
+    ).toThrow(/prompt/i);
+  });
 });

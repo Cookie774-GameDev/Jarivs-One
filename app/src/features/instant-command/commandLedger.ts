@@ -16,16 +16,31 @@ type ExecutionRecord<T> = Readonly<{ fingerprint: string; result: Promise<T> }>;
 type ConfirmationRecord = Readonly<{
   fingerprint: string;
   expiresAtMs: number;
-  used: boolean;
 }>;
 
+const SAFE_BINDING_VALUE = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,255}$/u;
+
+function requireBindingValue(label: string, value: string): void {
+  if (!SAFE_BINDING_VALUE.test(value)) throw new Error(`Invalid command binding ${label}`);
+}
+
 function fingerprint(binding: InstantCommandBinding): string {
+  requireBindingValue('account', binding.accountId);
+  requireBindingValue('workspace', binding.workspaceId);
+  requireBindingValue('project', binding.projectId);
+  requireBindingValue('command', binding.commandId);
+  requireBindingValue('arguments', binding.argumentDigest);
+  if (binding.targetIds.length > 128) throw new Error('Invalid command binding targets');
+  binding.targetIds.forEach((target) => requireBindingValue('target', target));
+  if (new Set(binding.targetIds).size !== binding.targetIds.length) {
+    throw new Error('Duplicate command binding target');
+  }
   return JSON.stringify([
     binding.accountId,
     binding.workspaceId,
     binding.projectId,
     binding.commandId,
-    [...binding.targetIds],
+    [...binding.targetIds].sort(),
     binding.argumentDigest,
   ]);
 }
@@ -64,22 +79,26 @@ export class InstantCommandLedger {
   issueConfirmation(binding: InstantCommandBinding, ttlMs: number): string {
     if (!Number.isFinite(ttlMs) || ttlMs <= 0) throw new Error('Invalid confirmation expiry');
     const token = this.#createToken();
+    requireBindingValue('confirmation token', token);
+    const existing = this.#confirmations.get(token);
+    if (existing && existing.expiresAtMs > this.#now()) {
+      throw new Error('Confirmation token collision');
+    }
     this.#confirmations.set(token, {
       fingerprint: fingerprint(binding),
       expiresAtMs: this.#now() + ttlMs,
-      used: false,
     });
     return token;
   }
 
   consumeConfirmation(token: string, binding: InstantCommandBinding): boolean {
     const record = this.#confirmations.get(token);
-    if (!record || record.used || record.expiresAtMs < this.#now()) {
+    if (!record || record.expiresAtMs <= this.#now()) {
       this.#confirmations.delete(token);
       return false;
     }
     if (record.fingerprint !== fingerprint(binding)) return false;
-    this.#confirmations.set(token, { ...record, used: true });
+    this.#confirmations.delete(token);
     return true;
   }
 }

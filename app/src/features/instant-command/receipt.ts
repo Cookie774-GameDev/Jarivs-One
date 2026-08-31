@@ -26,6 +26,9 @@ export function createInstantCommandReceipt(input: InstantCommandReceipt): Insta
   if (input.targetIds.some((target) => !SAFE_IDENTIFIER.test(target))) {
     throw new Error('Invalid target id');
   }
+  if (input.targetIds.length > 128 || new Set(input.targetIds).size !== input.targetIds.length) {
+    throw new Error('Invalid receipt targets');
+  }
   const requiredFollowUp =
     input.status === 'needs_confirmation'
       ? 'confirmation'
@@ -37,6 +40,14 @@ export function createInstantCommandReceipt(input: InstantCommandReceipt): Insta
     (!requiredFollowUp && input.followUp)
   ) {
     throw new Error('Receipt follow-up does not match status');
+  }
+  if (
+    input.followUp &&
+    (!input.followUp.prompt.trim() ||
+      input.followUp.prompt.length > 200 ||
+      /[\u0000-\u001f\u007f]/u.test(input.followUp.prompt))
+  ) {
+    throw new Error('Invalid receipt follow-up prompt');
   }
   const followUp = input.followUp
     ? Object.freeze({ kind: input.followUp.kind, prompt: input.followUp.prompt })
