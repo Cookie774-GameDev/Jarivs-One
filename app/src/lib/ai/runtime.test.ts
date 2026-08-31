@@ -93,8 +93,7 @@ const mocks = vi.hoisted(() => ({
   buildRoutedMcpTaskContext: vi.fn(),
   bindPersistentOpenCodeQuestionRoute: vi.fn(),
   kernelRuntimeInterceptor: null as
-    | ((composition: JarvisKernelRuntimeComposition) => JarvisKernelRuntimeComposition)
-    | null,
+    ((composition: JarvisKernelRuntimeComposition) => JarvisKernelRuntimeComposition) | null,
 }));
 
 vi.mock('@/lib/nativeFetch', () => ({ nativeFetch: mocks.nativeFetch }));
@@ -2604,6 +2603,25 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
         { flushIntervalMs: 0 },
       ),
     );
+    const runStates: Array<{
+      chatId?: string;
+      cancellationKey?: string;
+      status?: string;
+      errorCode?: string;
+    }> = [];
+    const onRunState = (event: Event) => {
+      runStates.push(
+        (
+          event as CustomEvent<{
+            chatId?: string;
+            cancellationKey?: string;
+            status?: string;
+            errorCode?: string;
+          }>
+        ).detail,
+      );
+    };
+    window.addEventListener('jarvis:run-state', onRunState);
 
     try {
       window.dispatchEvent(
@@ -2714,6 +2732,16 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       expect(cancelledParts.slice(0, -1)).toEqual(updatedSnapshot.timeline);
       expect(JSON.stringify(cancelledParts)).toContain(updatedSnapshot.finalText);
       expect(JSON.stringify(cancelledParts)).toContain('[cancelled]');
+      expect(runStates).toContainEqual({
+        chatId: String(chatId),
+        cancellationKey: String(userMessageId),
+        status: 'running',
+      });
+      expect(runStates).toContainEqual({
+        chatId: String(chatId),
+        cancellationKey: String(userMessageId),
+        status: 'cancelled',
+      });
       const writesAfterCancel = durableWrites.length;
 
       await expect(
@@ -2728,6 +2756,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       expect(durableWrites).toHaveLength(writesAfterCancel);
       expect(JSON.stringify(durableWrites)).not.toContain('STALE POST-CANCEL RECOVERY');
     } finally {
+      window.removeEventListener('jarvis:run-state', onRunState);
       stop();
       await stop.whenIdle();
     }
@@ -6984,9 +7013,9 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       expect(
         useChatActivityStore
           .getState()
-          .eventsByChat[
-            harness.chatId
-          ]?.some((event) => event.kind === 'tool' && event.status === 'running'),
+          .eventsByChat[harness.chatId]?.some(
+            (event) => event.kind === 'tool' && event.status === 'running',
+          ),
       ).toBe(true);
       await providerInput.onPublicTimelineSnapshot?.({
         finalText: 'The installed kernel host returned a partial response, Sir.',
@@ -9116,6 +9145,7 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
       );
       expect(runStates).toContainEqual({
         chatId: String(harness.chatId),
+        cancellationKey: String(detail.cancellationKey),
         status: 'error',
         errorCode: 'kernel_runtime_setup_agent',
       });

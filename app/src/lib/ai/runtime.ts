@@ -3156,11 +3156,13 @@ function dispatchRunState(
   chatId: ChatId | string,
   status: 'running' | 'done' | 'error' | 'cancelled',
   errorCode?: string,
+  cancellationKey?: string | null,
 ): void {
   window.dispatchEvent(
     new CustomEvent('jarvis:run-state', {
       detail: {
         chatId: String(chatId),
+        ...(cancellationKey ? { cancellationKey: String(cancellationKey) } : {}),
         status,
         ...(status === 'error' && errorCode ? { errorCode } : {}),
       },
@@ -4663,7 +4665,7 @@ export function startRuntimeListener(
   const releaseVoiceTurnWithoutReply = (detail: SendDetail, chatId: ChatId | string): void => {
     if (detail.speakReply !== true) return;
     window.dispatchEvent(new CustomEvent(STREAMING_VOICE_END_EVENT));
-    dispatchRunState(chatId, 'error');
+    dispatchRunState(chatId, 'error', undefined, detail.cancellationKey);
   };
 
   const handleSend = async (e: Event) => {
@@ -4682,6 +4684,10 @@ export function startRuntimeListener(
     }
 
     const cancellationKey = detail.cancellationKey ?? null;
+    const dispatchCurrentRunState = (
+      status: 'running' | 'done' | 'error' | 'cancelled',
+      errorCode?: string,
+    ): void => dispatchRunState(chatId, status, errorCode, cancellationKey);
     if (cancellationKey && inFlight.has(cancellationKey)) {
       devConsole.log({
         channel: 'ai',
@@ -4690,7 +4696,7 @@ export function startRuntimeListener(
         detail: { messageId: cancellationKey },
       });
       releaseVoiceTurnWithoutReply(detail, chatId);
-      dispatchRunState(chatId, 'error', 'kernel_runtime_duplicate_request');
+      dispatchCurrentRunState('error', 'kernel_runtime_duplicate_request');
       return;
     }
     const controller = new AbortController();
@@ -4726,7 +4732,7 @@ export function startRuntimeListener(
       });
       toast.error('Cannot send', 'The requested AI turn could not be prepared safely.');
       releaseVoiceTurnWithoutReply(detail, chatId);
-      dispatchRunState(chatId, 'error', `kernel_runtime_setup_${stage}`);
+      dispatchCurrentRunState('error', `kernel_runtime_setup_${stage}`);
       releaseOperationTracking();
     };
     const stopEarlyIfAborted = (stage: 'routing_history'): boolean => {
@@ -4738,7 +4744,7 @@ export function startRuntimeListener(
         detail: { chatId, stage },
       });
       releaseVoiceTurnWithoutReply(detail, chatId);
-      dispatchRunState(chatId, 'cancelled');
+      dispatchCurrentRunState('cancelled');
       releaseOperationTracking();
       return true;
     };
@@ -4752,7 +4758,7 @@ export function startRuntimeListener(
     } catch {
       toast.error('Cannot send', 'The selected chat connection could not be verified.');
       releaseVoiceTurnWithoutReply(detail, chatId);
-      dispatchRunState(chatId, 'error', 'kernel_runtime_chat_unavailable');
+      dispatchCurrentRunState('error', 'kernel_runtime_chat_unavailable');
       releaseOperationTracking();
       return;
     }
@@ -4764,7 +4770,7 @@ export function startRuntimeListener(
         detail: { chatId, stage: 'chat' },
       });
       releaseVoiceTurnWithoutReply(detail, chatId);
-      dispatchRunState(chatId, 'cancelled');
+      dispatchCurrentRunState('cancelled');
       releaseOperationTracking();
       return;
     }
@@ -4856,7 +4862,7 @@ export function startRuntimeListener(
       console.warn('[jarvis runtime] no agent resolvable for chat', chatId);
       toast.error('Jarvis unavailable', 'No Jarvis agent is available for this chat.');
       releaseVoiceTurnWithoutReply(detail, chatId);
-      dispatchRunState(chatId, 'error', 'kernel_runtime_agent_unavailable');
+      dispatchCurrentRunState('error', 'kernel_runtime_agent_unavailable');
       releaseOperationTracking();
       return;
     }
@@ -4922,7 +4928,7 @@ export function startRuntimeListener(
       if (!sendValidation.ok) {
         toast.error('Cannot send', sendValidation.message);
         releaseVoiceTurnWithoutReply(detail, chatId);
-        dispatchRunState(chatId, 'error', 'kernel_runtime_model_access');
+        dispatchCurrentRunState('error', 'kernel_runtime_model_access');
         releaseOperationTracking();
         return;
       }
@@ -5624,7 +5630,7 @@ export function startRuntimeListener(
         });
         toast.error('Cannot send', sendValidation.message);
         releaseVoiceTurnWithoutReply(detail, chatId);
-        dispatchRunState(chatId, 'error', 'kernel_runtime_model_access');
+        dispatchCurrentRunState('error', 'kernel_runtime_model_access');
         releaseOperationTracking();
         return;
       }
@@ -6146,7 +6152,7 @@ export function startRuntimeListener(
           const llmMessages = toLLMMessages(history, undefined, includeImages);
           useAgentStore.getState().setRunState(agent.id, 'streaming');
           useAgentStore.getState().setVerb(agent.id, 'thinking');
-          dispatchRunState(chatId, 'running');
+          dispatchCurrentRunState('running');
           let canonicalDisplayText: string;
           let canonicalSpokenText: string | undefined;
           let canonicalProviderId: string;
@@ -6451,7 +6457,7 @@ export function startRuntimeListener(
               subtitle: 'Voice playback stopped after the response was saved.',
               ts: Date.now(),
             });
-            dispatchRunState(chatId, 'cancelled');
+            dispatchCurrentRunState('cancelled');
             updateStructuredAgentStatus(detail.structuredContext, 'cancelled', 'Cancelled');
             return;
           }
@@ -6478,8 +6484,7 @@ export function startRuntimeListener(
               subtitle: `${canonicalProviderId}/${canonicalModelId}`,
               ts: Date.now(),
             });
-            dispatchRunState(
-              chatId,
+            dispatchCurrentRunState(
               'error',
               canonicalReadScopeUnverified
                 ? 'kernel_filesystem_evidence_failed_closed'
@@ -6548,7 +6553,7 @@ export function startRuntimeListener(
               ts: Date.now(),
             });
             // The public runtime event union has no waiting state; keep it live.
-            dispatchRunState(chatId, 'running');
+            dispatchCurrentRunState('running');
             updateStructuredAgentStatus(
               detail.structuredContext,
               'waiting_permission',
@@ -6564,7 +6569,7 @@ export function startRuntimeListener(
             subtitle: `${canonicalProviderId}/${canonicalModelId}`,
             ts: Date.now(),
           });
-          dispatchRunState(chatId, 'done');
+          dispatchCurrentRunState('done');
           updateStructuredAgentStatus(detail.structuredContext, 'done', 'Finished');
           void notifyDone(
             'jarvis',
@@ -6589,7 +6594,7 @@ export function startRuntimeListener(
       });
       placeholderId = placeholder.id;
       inFlight.set(placeholder.id, controller);
-      dispatchRunState(chatId, 'running');
+      dispatchCurrentRunState('running');
       const handleOpenCodeQuestionResolved = (event: Event): void => {
         const resolved = (
           event as CustomEvent<{
@@ -7342,8 +7347,7 @@ export function startRuntimeListener(
           subtitle: `${response.provider}/${response.model}`,
           ts: Date.now(),
         });
-        dispatchRunState(
-          chatId,
+        dispatchCurrentRunState(
           'error',
           explicitReadScopeUnverified
             ? 'kernel_filesystem_evidence_failed_closed'
@@ -7441,7 +7445,7 @@ export function startRuntimeListener(
           subtitle: `${response.provider}/${response.model}`,
           ts: Date.now(),
         });
-        dispatchRunState(chatId, 'running');
+        dispatchCurrentRunState('running');
         updateStructuredAgentStatus(
           detail.structuredContext,
           'waiting_permission',
@@ -7458,7 +7462,7 @@ export function startRuntimeListener(
         subtitle: `${response.provider}/${response.model} · ${response.usage.input_tokens}+${response.usage.output_tokens} tokens`,
         ts: Date.now(),
       });
-      dispatchRunState(chatId, 'done');
+      dispatchCurrentRunState('done');
       updateStructuredAgentStatus(detail.structuredContext, 'done', 'Finished');
 
       devConsole.log({
@@ -7527,8 +7531,7 @@ export function startRuntimeListener(
         subtitle: aborted ? 'Cancelled by user' : safeErrorMessage(err, 'Unknown error'),
         ts: Date.now(),
       });
-      dispatchRunState(
-        chatId,
+      dispatchCurrentRunState(
         aborted ? 'cancelled' : 'error',
         aborted ? undefined : safeKernelRuntimeErrorCode(err),
       );
