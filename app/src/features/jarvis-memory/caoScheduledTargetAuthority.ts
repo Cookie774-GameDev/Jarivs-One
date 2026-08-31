@@ -5,6 +5,8 @@ import { validateCaoTargetLease } from '@/lib/jarvis/contracts/validators';
 const OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 export type CaoScheduledTargetAuthorityErrorCode =
+  | 'cao_learning_execution_result_invalid'
+  | 'cao_learning_execution_unavailable'
   | 'cao_learning_target_lease_required'
   | 'cao_learning_target_lease_scope_mismatch'
   | 'cao_learning_target_lease_invalid'
@@ -88,6 +90,27 @@ function isStableAuthorityError(error: unknown): error is Error {
   return error instanceof Error && /^cao_(?:target|run)_[a-z0-9_]+$/.test(error.message);
 }
 
+function snapshotExecutionResult(value: unknown): CaoLearningExecutionResult {
+  try {
+    if (!value || typeof value !== 'object') {
+      throw new CaoScheduledTargetAuthorityError('cao_learning_execution_result_invalid');
+    }
+    const candidate = value as { status?: unknown; receiptId?: unknown };
+    if (candidate.status === 'completed') {
+      if (typeof candidate.receiptId !== 'string' || !validId(candidate.receiptId)) {
+        throw new CaoScheduledTargetAuthorityError('cao_learning_execution_result_invalid');
+      }
+      return { status: 'completed', receiptId: candidate.receiptId };
+    }
+    if (candidate.status === 'failed' || candidate.status === 'cancelled') {
+      return { status: candidate.status };
+    }
+  } catch (error) {
+    if (error instanceof CaoScheduledTargetAuthorityError) throw error;
+  }
+  throw new CaoScheduledTargetAuthorityError('cao_learning_execution_result_invalid');
+}
+
 export function createCaoScheduledTargetExecution(dependencies: Dependencies): Readonly<{
   execute(input: CaoScheduledTargetExecutionInput): Promise<CaoLearningExecutionResult>;
 }> {
@@ -119,7 +142,13 @@ export function createCaoScheduledTargetExecution(dependencies: Dependencies): R
       const snapshot = structuredClone(input);
       requireExplicitAuthority(snapshot);
       await verifyExact(snapshot);
-      const result = await dependencies.execute(snapshot.execution);
+      let recoveredResult: CaoLearningExecutionResult;
+      try {
+        recoveredResult = await dependencies.execute(snapshot.execution);
+      } catch {
+        throw new CaoScheduledTargetAuthorityError('cao_learning_execution_unavailable');
+      }
+      const result = snapshotExecutionResult(recoveredResult);
       if (result.status === 'completed') await verifyExact(snapshot);
       return result;
     },

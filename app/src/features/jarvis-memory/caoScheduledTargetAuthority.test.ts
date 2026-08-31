@@ -261,6 +261,61 @@ describe('createCaoScheduledTargetExecution', () => {
     expect(String(failure)).not.toContain('private completion registry payload');
   });
 
+  it.each([
+    ['blank completed receipt', { status: 'completed', receiptId: '' }],
+    ['unknown result status', { status: 'recovered', receiptId: 'receipt-1' }],
+  ])('rejects a %s before it can become durable completion truth', async (_case, result) => {
+    const verify = vi.fn().mockResolvedValue(lease());
+    const scoped = createCaoScheduledTargetExecution({
+      authority: { verify },
+      execute: vi.fn().mockResolvedValue(result),
+    });
+
+    await expect(scoped.execute(input())).rejects.toMatchObject({
+      code: 'cao_learning_execution_result_invalid',
+    });
+    expect(verify).toHaveBeenCalledOnce();
+  });
+
+  it('snapshots a valid completed receipt before asynchronous authority revalidation', async () => {
+    let resolveCompletionVerify!: (value: CaoTargetLeaseV1) => void;
+    const verify = vi
+      .fn()
+      .mockResolvedValueOnce(lease())
+      .mockImplementationOnce(
+        () =>
+          new Promise<CaoTargetLeaseV1>((resolve) => {
+            resolveCompletionVerify = resolve;
+          }),
+      );
+    const mutableResult = { status: 'completed' as const, receiptId: 'receipt-original' };
+    const scoped = createCaoScheduledTargetExecution({
+      authority: { verify },
+      execute: vi.fn().mockResolvedValue(mutableResult),
+    });
+
+    const pending = scoped.execute(input());
+    await vi.waitFor(() => expect(verify).toHaveBeenCalledTimes(2));
+    mutableResult.receiptId = 'receipt-mutated';
+    resolveCompletionVerify(lease());
+
+    await expect(pending).resolves.toEqual({
+      status: 'completed',
+      receiptId: 'receipt-original',
+    });
+  });
+
+  it('redacts unknown worker failures without exposing execution details', async () => {
+    const scoped = createCaoScheduledTargetExecution({
+      authority: { verify: vi.fn().mockResolvedValue(lease()) },
+      execute: vi.fn().mockRejectedValue(new Error('private worker path and payload')),
+    });
+
+    const failure = await scoped.execute(input()).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ code: 'cao_learning_execution_unavailable' });
+    expect(String(failure)).not.toContain('private worker path');
+  });
+
   it('does not revalidate work that already failed or was cancelled', async () => {
     const verify = vi.fn().mockResolvedValue(lease());
     const execute = vi
