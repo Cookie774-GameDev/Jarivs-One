@@ -3,6 +3,21 @@ import type { CaoTargetKind, CaoTargetLeaseV1 } from '@/lib/jarvis/contracts/exe
 import { validateCaoTargetLease } from '@/lib/jarvis/contracts/validators';
 
 const OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const INPUT_KEYS = new Set(['execution', 'runId', 'leaseId', 'targetKind', 'targetRevision']);
+const EXECUTION_KEYS = new Set([
+  'accountId',
+  'workspaceId',
+  'projectId',
+  'scheduleId',
+  'targetId',
+  'passId',
+  'requestId',
+  'trigger',
+  'fromSeqExclusive',
+  'throughSeqInclusive',
+  'requestedAt',
+  'scheduledDueAt',
+]);
 
 export type CaoScheduledTargetAuthorityErrorCode =
   | 'cao_learning_execution_input_invalid'
@@ -53,6 +68,9 @@ function validId(value: string): boolean {
 }
 
 function requireExplicitAuthority(input: CaoScheduledTargetExecutionInput): void {
+  if (Object.keys(input).some((key) => !INPUT_KEYS.has(key))) {
+    throw new CaoScheduledTargetAuthorityError('cao_learning_execution_input_invalid');
+  }
   if (!validId(input.leaseId) || !validId(input.runId)) {
     throw new CaoScheduledTargetAuthorityError('cao_learning_target_lease_required');
   }
@@ -62,6 +80,7 @@ function requireExplicitAuthority(input: CaoScheduledTargetExecutionInput): void
   const { execution } = input;
   if (
     !execution ||
+    Object.keys(execution).some((key) => !EXECUTION_KEYS.has(key)) ||
     ![
       execution.accountId,
       execution.workspaceId,
@@ -78,6 +97,7 @@ function requireExplicitAuthority(input: CaoScheduledTargetExecutionInput): void
     execution.throughSeqInclusive < execution.fromSeqExclusive ||
     !Number.isSafeInteger(execution.requestedAt) ||
     execution.requestedAt < 0 ||
+    (execution.trigger === 'scheduled') !== (execution.scheduledDueAt !== undefined) ||
     (execution.scheduledDueAt !== undefined &&
       (!Number.isSafeInteger(execution.scheduledDueAt) || execution.scheduledDueAt < 0))
   ) {

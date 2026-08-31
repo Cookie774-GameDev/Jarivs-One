@@ -19,6 +19,7 @@ const execution = {
   fromSeqExclusive: 4,
   throughSeqInclusive: 9,
   requestedAt: 1_000,
+  scheduledDueAt: 1_000,
 };
 
 function lease(overrides: Partial<CaoTargetLeaseV1> = {}): CaoTargetLeaseV1 {
@@ -272,6 +273,32 @@ describe('createCaoScheduledTargetExecution', () => {
     const scoped = createCaoScheduledTargetExecution({ authority: { verify }, execute });
 
     await expect(scoped.execute(input({ execution: recovered }))).rejects.toMatchObject({
+      code: 'cao_learning_execution_input_invalid',
+    });
+    expect(verify).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['unknown binding field', input({ implicitRenew: true })],
+    [
+      'unknown execution field',
+      input({ execution: { ...execution, privatePath: 'private/recovered/path' } }),
+    ],
+    [
+      'scheduled work without its due time',
+      input({ execution: { ...execution, scheduledDueAt: undefined } }),
+    ],
+    [
+      'manual work carrying a scheduled due time',
+      input({ execution: { ...execution, trigger: 'manual_force' } }),
+    ],
+  ])('rejects %s as recovered schema drift', async (_case, recovered) => {
+    const verify = vi.fn();
+    const execute = vi.fn();
+    const scoped = createCaoScheduledTargetExecution({ authority: { verify }, execute });
+
+    await expect(scoped.execute(recovered as never)).rejects.toMatchObject({
       code: 'cao_learning_execution_input_invalid',
     });
     expect(verify).not.toHaveBeenCalled();
