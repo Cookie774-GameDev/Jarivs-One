@@ -203,4 +203,107 @@ describe('resource command authority', () => {
     });
     expect(JSON.stringify(failed)).not.toContain('private repository detail');
   });
+
+  it.each([
+    { id: 'tool.open', family: 'billing', selector: 'tool_3' },
+    { id: 'tool.open\u0000', family: 'tool', selector: 'tool_3' },
+    { id: `tool.${'x'.repeat(100)}`, family: 'tool', selector: 'tool_3' },
+  ])('rejects an invalid family or command shape before authority access', async (request) => {
+    const authority = port();
+    await expect(executeResourceCommand(request as never, authority)).resolves.toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'That resource command is not allowed.',
+    });
+    expect(authority.list).not.toHaveBeenCalled();
+    expect(authority.execute).not.toHaveBeenCalled();
+  });
+
+  it('finds credential and raw-context keys nested inside arrays before dispatch', async () => {
+    const credentialAuthority = port();
+    await expect(
+      executeResourceCommand(
+        {
+          id: 'chat.create',
+          family: 'chat',
+          args: { items: [{ metadata: { apiToken: 'not-allowed' } }] },
+        },
+        credentialAuthority,
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Credentials must use the existing secure connection surface.',
+    });
+    expect(credentialAuthority.execute).not.toHaveBeenCalled();
+
+    const contextAuthority = port();
+    await expect(
+      executeResourceCommand(
+        {
+          id: 'context.map.create',
+          family: 'context',
+          args: { items: [{ rawMessage: 'private conversation' }] },
+        },
+        contextAuthority,
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Context commands accept references, not raw transcripts.',
+    });
+    expect(contextAuthority.execute).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on cyclic and oversized argument graphs before dispatch', async () => {
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const cyclicAuthority = port();
+    await expect(
+      executeResourceCommand({ id: 'chat.create', family: 'chat', args: cyclic }, cyclicAuthority),
+    ).resolves.toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Resource arguments are invalid.',
+    });
+    expect(cyclicAuthority.execute).not.toHaveBeenCalled();
+
+    const oversizedAuthority = port();
+    await expect(
+      executeResourceCommand(
+        {
+          id: 'chat.create',
+          family: 'chat',
+          args: { items: Array.from({ length: 1_001 }, (_, index) => ({ index })) },
+        },
+        oversizedAuthority,
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Resource arguments are invalid.',
+    });
+    expect(oversizedAuthority.execute).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { status: 'stored', receiptId: 'resource_1' },
+    { status: 'queued', receiptId: '' },
+    { status: 'queued', receiptId: 'bad\u0000receipt' },
+    { status: 'completed', receiptId: 'r'.repeat(257) },
+  ])(
+    'does not project malformed authority receipts as durable success: $status',
+    async (receipt) => {
+      const authority = port();
+      vi.mocked(authority.execute).mockResolvedValueOnce(receipt as never);
+
+      await expect(
+        executeResourceCommand({ id: 'tool.open', family: 'tool', selector: 'tool_3' }, authority),
+      ).resolves.toEqual({
+        ok: false,
+        code: 'queue_failed',
+        message: 'Resource authority receipt is unavailable.',
+      });
+    },
+  );
 });

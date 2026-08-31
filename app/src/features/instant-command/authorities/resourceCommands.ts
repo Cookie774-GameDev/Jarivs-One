@@ -38,6 +38,9 @@ export type ResourceCommandPort = Readonly<{
 const READ_FILE_COMMANDS = new Set(['files.open', 'files.search', 'file.reveal', 'file.open']);
 const SENSITIVE_KEY = /(?:api.?key|secret|token|credential|password|billing)/iu;
 const RAW_CONTEXT_KEY = /(?:transcript|conversation|raw.?message|hidden.?reasoning)/iu;
+const MAX_ARGUMENT_NODES = 1_000;
+const MAX_ARGUMENT_DEPTH = 16;
+const MAX_ARGUMENT_STRING_LENGTH = 4_096;
 const ALLOWED_COMMANDS: Readonly<Record<ResourceFamily, ReadonlySet<string>>> = Object.freeze({
   tool: new Set(['tool.open', 'tool.run', 'tool.stop']),
   skill: new Set(['skill.open', 'skill.enable', 'skill.disable']),
@@ -74,18 +77,64 @@ const APPROVAL_COMMANDS = new Set([
   'context.give_terminals',
 ]);
 
-function containsCredentialMaterial(value: unknown): boolean {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  return Object.entries(value as Record<string, unknown>).some(
-    ([key, nested]) => SENSITIVE_KEY.test(key) || containsCredentialMaterial(nested),
-  );
-}
+type ArgumentInspection = Readonly<{
+  invalid: boolean;
+  containsCredential: boolean;
+  containsRawContext: boolean;
+}>;
 
-function containsRawContext(value: unknown): boolean {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  return Object.entries(value as Record<string, unknown>).some(
-    ([key, nested]) => RAW_CONTEXT_KEY.test(key) || containsRawContext(nested),
-  );
+function inspectArguments(value: unknown): ArgumentInspection {
+  let nodes = 0;
+  let invalid = false;
+  let containsCredential = false;
+  let containsRawContext = false;
+  const ancestors = new WeakSet<object>();
+
+  const visit = (current: unknown, depth: number): void => {
+    nodes += 1;
+    if (invalid || nodes > MAX_ARGUMENT_NODES || depth > MAX_ARGUMENT_DEPTH) {
+      invalid = true;
+      return;
+    }
+    if (typeof current === 'string') {
+      if (current.length > MAX_ARGUMENT_STRING_LENGTH || /[\u0000\u007f]/u.test(current)) {
+        invalid = true;
+      }
+      return;
+    }
+    if (
+      current === null ||
+      typeof current === 'boolean' ||
+      (typeof current === 'number' && Number.isFinite(current))
+    ) {
+      return;
+    }
+    if (typeof current !== 'object') {
+      invalid = true;
+      return;
+    }
+    if (ancestors.has(current)) {
+      invalid = true;
+      return;
+    }
+    ancestors.add(current);
+    if (Array.isArray(current)) {
+      for (const nested of current) visit(nested, depth + 1);
+    } else {
+      const prototype = Object.getPrototypeOf(current);
+      if (prototype !== Object.prototype && prototype !== null) invalid = true;
+      for (const [key, nested] of Object.entries(current)) {
+        if (!boundedBinding(key)) invalid = true;
+        if (SENSITIVE_KEY.test(key)) containsCredential = true;
+        if (RAW_CONTEXT_KEY.test(key)) containsRawContext = true;
+        visit(nested, depth + 1);
+      }
+    }
+    ancestors.delete(current);
+  };
+
+  visit(value, 0);
+  return Object.freeze({ invalid, containsCredential, containsRawContext });
 }
 
 async function publish(
@@ -93,6 +142,17 @@ async function publish(
   port: ResourceCommandPort,
 ): Promise<InstantResult> {
   const receipt = await port.execute(request);
+  if (
+    !receipt ||
+    !['completed', 'queued', 'rejected'].includes(receipt.status) ||
+    !boundedBinding(receipt.receiptId)
+  ) {
+    return {
+      ok: false,
+      code: 'queue_failed',
+      message: 'Resource authority receipt is unavailable.',
+    };
+  }
   if (receipt.status === 'rejected') {
     return {
       ok: false,
@@ -116,21 +176,33 @@ export async function executeResourceCommand(
   port: ResourceCommandPort,
 ): Promise<InstantResult> {
   try {
-    if (!ALLOWED_COMMANDS[request.family].has(request.id)) {
+    if (
+      !Object.prototype.hasOwnProperty.call(ALLOWED_COMMANDS, request.family) ||
+      typeof request.id !== 'string' ||
+      !ALLOWED_COMMANDS[request.family]?.has(request.id)
+    ) {
       return {
         ok: false,
         code: 'queue_failed',
         message: 'That resource command is not allowed.',
       };
     }
-    if (containsCredentialMaterial(request.args)) {
+    const argumentInspection = inspectArguments(request.args ?? {});
+    if (argumentInspection.invalid) {
+      return {
+        ok: false,
+        code: 'queue_failed',
+        message: 'Resource arguments are invalid.',
+      };
+    }
+    if (argumentInspection.containsCredential) {
       return {
         ok: false,
         code: 'queue_failed',
         message: 'Credentials must use the existing secure connection surface.',
       };
     }
-    if (request.family === 'context' && containsRawContext(request.args)) {
+    if (request.family === 'context' && argumentInspection.containsRawContext) {
       return {
         ok: false,
         code: 'queue_failed',
