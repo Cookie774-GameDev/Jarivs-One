@@ -734,4 +734,150 @@ describe('CAO explicit target authority', () => {
       expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
     },
   );
+
+  it('persists an explicit target set in requested order when the atomic registry returns rows reordered', async () => {
+    const h = harness([
+      target(),
+      target({ kind: 'terminal', targetId: 'terminal-a', revision: 3 }),
+    ]);
+    vi.mocked(h.registry.claimExact).mockImplementationOnce(async (request) => {
+      const claimed = request.targets.map((requested) => ({
+        ...h.targets.get(`${requested.kind}:${requested.targetId}`)!,
+        ownerLeaseId: request.leaseId,
+      }));
+      for (const row of claimed) h.targets.set(`${row.kind}:${row.targetId}`, row);
+      return { applied: true, targets: claimed.reverse() };
+    });
+
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: {
+        mode: 'explicit_set',
+        targets: [
+          { kind: 'chat', targetId: 'chat-a' },
+          { kind: 'terminal', targetId: 'terminal-a' },
+        ],
+      },
+    });
+
+    expect(acquired.targets).toEqual([
+      { kind: 'chat', targetId: 'chat-a', revision: 7 },
+      { kind: 'terminal', targetId: 'terminal-a', revision: 3 },
+    ]);
+  });
+
+  it('recovers the exact durable target set when registry reads return rows reordered', async () => {
+    const h = harness([
+      target(),
+      target({ kind: 'terminal', targetId: 'terminal-a', revision: 3 }),
+    ]);
+    const authority = createCaoTargetAuthority(h.deps);
+    const acquired = await authority.acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: {
+        mode: 'explicit_set',
+        targets: [
+          { kind: 'chat', targetId: 'chat-a' },
+          { kind: 'terminal', targetId: 'terminal-a' },
+        ],
+      },
+    });
+    vi.mocked(h.registry.readExact).mockImplementation(async (request) =>
+      request.targets
+        .flatMap((requested) => {
+          const row = h.targets.get(`${requested.kind}:${requested.targetId}`);
+          return row ? [{ ...row }] : [];
+        })
+        .reverse(),
+    );
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).resolves.toEqual(acquired);
+  });
+
+  it('finishes a partially applied same-lease release after restart', async () => {
+    const h = harness([
+      target(),
+      target({ kind: 'terminal', targetId: 'terminal-a', revision: 3 }),
+    ]);
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: {
+        mode: 'explicit_set',
+        targets: [
+          { kind: 'chat', targetId: 'chat-a' },
+          { kind: 'terminal', targetId: 'terminal-a' },
+        ],
+      },
+    });
+    h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: undefined });
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).release({ ...scope, leaseId: acquired.leaseId }),
+    ).resolves.toBeUndefined();
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+    expect(h.targets.get('terminal:terminal-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('never completes partial recovery by releasing a target now owned by another lease', async () => {
+    const h = harness([
+      target(),
+      target({ kind: 'terminal', targetId: 'terminal-a', revision: 3 }),
+    ]);
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: {
+        mode: 'explicit_set',
+        targets: [
+          { kind: 'chat', targetId: 'chat-a' },
+          { kind: 'terminal', targetId: 'terminal-a' },
+        ],
+      },
+    });
+    h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: undefined });
+    h.targets.set('terminal:terminal-a', {
+      ...target({ kind: 'terminal', targetId: 'terminal-a', revision: 3 }),
+      ownerLeaseId: 'cao_lease_other',
+    });
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).release({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow('cao_target_lease_conflict');
+    expect(h.registry.releaseExact).not.toHaveBeenCalled();
+    expect(h.targets.get('terminal:terminal-a')?.ownerLeaseId).toBe('cao_lease_other');
+  });
+
+  it('rejects duplicate live registry identities before recovering durable set authority', async () => {
+    const h = harness([
+      target(),
+      target({ kind: 'terminal', targetId: 'terminal-a', revision: 3 }),
+    ]);
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: {
+        mode: 'explicit_set',
+        targets: [
+          { kind: 'chat', targetId: 'chat-a' },
+          { kind: 'terminal', targetId: 'terminal-a' },
+        ],
+      },
+    });
+    vi.mocked(h.registry.readExact).mockResolvedValue([
+      { ...h.targets.get('chat:chat-a')! },
+      { ...h.targets.get('chat:chat-a')! },
+    ]);
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow('cao_target_identity_mismatch');
+  });
 });

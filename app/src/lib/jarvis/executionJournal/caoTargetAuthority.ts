@@ -161,10 +161,21 @@ function assertLiveTargets(
   scope: LeaseScope,
   leaseId: string,
   expectedRevisions?: readonly number[],
-): void {
+): readonly CaoLiveTarget[] {
   if (rows.length !== requested.length) fail('cao_target_missing');
+  const byIdentity = new Map<string, CaoLiveTarget>();
+  for (const row of rows) {
+    const identity = `${row.kind}\u0000${row.targetId}`;
+    if (byIdentity.has(identity)) fail('cao_target_identity_mismatch');
+    byIdentity.set(identity, row);
+  }
+  const ordered = requested.map((target) => {
+    const row = byIdentity.get(`${target.kind}\u0000${target.targetId}`);
+    if (!row) fail('cao_target_identity_mismatch');
+    return row;
+  });
   for (let index = 0; index < requested.length; index += 1) {
-    const row = rows[index];
+    const row = ordered[index];
     const target = requested[index];
     if (!row || !target || row.kind !== target.kind || row.targetId !== target.targetId) {
       fail('cao_target_identity_mismatch');
@@ -185,6 +196,7 @@ function assertLiveTargets(
       fail('cao_target_revision_stale');
     }
   }
+  return ordered;
 }
 
 function releaseRequest(scope: LeaseScope, lease: CaoTargetLeaseV1) {
@@ -289,7 +301,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
   async function readReleaseState(
     input: VerifyInput,
     lease: CaoTargetLeaseV1,
-  ): Promise<'owned' | 'released'> {
+  ): Promise<'owned' | 'partially_released' | 'released'> {
     const request = releaseRequest(input, lease);
     let rows: readonly CaoLiveTarget[];
     try {
@@ -298,14 +310,18 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       fail('cao_target_registry_unavailable');
     }
     if (rows.length !== lease.targets.length) fail('cao_target_missing');
+    const byIdentity = new Map<string, CaoLiveTarget>();
+    for (const row of rows) {
+      const identity = `${row.kind}\u0000${row.targetId}`;
+      if (byIdentity.has(identity)) fail('cao_target_identity_mismatch');
+      byIdentity.set(identity, row);
+    }
     let owned = 0;
     let released = 0;
     for (let index = 0; index < lease.targets.length; index += 1) {
       const expected = lease.targets[index];
-      const row = rows[index];
-      if (!expected || !row || row.kind !== expected.kind || row.targetId !== expected.targetId) {
-        fail('cao_target_identity_mismatch');
-      }
+      const row = expected && byIdentity.get(`${expected.kind}\u0000${expected.targetId}`);
+      if (!expected || !row) fail('cao_target_identity_mismatch');
       if (
         row.accountId !== input.accountId ||
         row.workspaceId !== input.workspaceId ||
@@ -319,6 +335,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     }
     if (released === rows.length) return 'released';
     if (owned === rows.length) return 'owned';
+    if (owned + released === rows.length) return 'partially_released';
     fail('cao_target_lease_conflict');
   }
 
@@ -408,8 +425,9 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       fail('cao_target_registry_unavailable');
     }
     if (!claim.applied) registryFailure(claim.reason);
+    let exactClaimTargets: readonly CaoLiveTarget[];
     try {
-      assertLiveTargets(claim.targets, requested, input, leaseId);
+      exactClaimTargets = assertLiveTargets(claim.targets, requested, input, leaseId);
     } catch (error) {
       await dependencies.registry.releaseExact(registryRequest).catch(() => undefined);
       throw error;
@@ -423,7 +441,11 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       projectId: input.projectId,
       runId: input.runId,
       selectionMode: input.selection.mode,
-      targets: claim.targets.map(({ kind, targetId, revision }) => ({ kind, targetId, revision })),
+      targets: exactClaimTargets.map(({ kind, targetId, revision }) => ({
+        kind,
+        targetId,
+        revision,
+      })),
       acquiredAt,
       expiresAt,
     };
