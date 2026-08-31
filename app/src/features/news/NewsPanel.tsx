@@ -38,7 +38,12 @@ import {
   type NewsKind,
   type NewsSectionId,
 } from './newsCatalog';
-import { countNewsBySection, formatNewsDate, getNewsFeed } from './newsSections';
+import {
+  countNewsBySection,
+  formatNewsDate,
+  getNewsFeed,
+  groupNewsBySection,
+} from './newsSections';
 import {
   configuredNewsApiUrl,
   fetchLiveNews,
@@ -72,6 +77,50 @@ const KIND_FILTERS: ReadonlyArray<{ id: KindFilter; label: string }> = [
 
 const SECTIONS: readonly NewsSectionId[] = ['today', 'last_week', 'more'];
 const NEWS_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
+
+function mergeRetainedById<T extends { id: string }>(
+  current: readonly T[],
+  retained: readonly T[],
+): T[] {
+  const merged = new Map<string, T>();
+  for (const item of current) merged.set(item.id, item);
+  for (const item of retained) {
+    if (!merged.has(item.id)) merged.set(item.id, item);
+  }
+  return [...merged.values()];
+}
+
+export function reconcileLiveNews(
+  previous: LiveNewsResponse | null,
+  incoming: LiveNewsResponse,
+): LiveNewsResponse {
+  if (!previous || incoming.freshness?.state === 'fresh') return incoming;
+  if (!['degraded', 'stale', 'failed', 'never'].includes(incoming.freshness?.state ?? '')) {
+    return incoming;
+  }
+  const repositories = mergeRetainedById(incoming.repositories ?? [], previous.repositories ?? []);
+  return {
+    ...incoming,
+    items: mergeRetainedById(incoming.items, previous.items),
+    ...(repositories.length ? { repositories } : {}),
+  };
+}
+
+function liveFeedStatus(live: LiveNewsResponse | null, liveError: string | null): string {
+  if (liveError) {
+    return live
+      ? 'Last verified feed while live news reconnects.'
+      : 'Saved snapshot while live news reconnects.';
+  }
+  if (!live) return 'Saved snapshot with original-source credits.';
+  if (live.freshness?.state === 'degraded') {
+    return 'Partial-source feed with last verified items retained.';
+  }
+  if (['stale', 'failed', 'never'].includes(live.freshness?.state ?? '')) {
+    return 'Last verified feed while live news reconnects.';
+  }
+  return 'Free hourly AI headlines from verified sources.';
+}
 
 function KindIcon({ kind, className }: { kind: NewsKind; className?: string }) {
   if (kind === 'github') return <Github className={className} />;
@@ -253,7 +302,7 @@ export function NewsPanel({
     setRefreshing(true);
     try {
       const response = await fetchLiveNews(endpoint);
-      setLive(response);
+      setLive((current) => reconcileLiveNews(current, response));
       setLiveError(null);
       if (cloudAccountId) {
         try {
@@ -379,16 +428,7 @@ export function NewsPanel({
   const offlineCounts = React.useMemo(() => countNewsBySection({ now }), [now]);
   const liveBySection = React.useMemo(() => {
     if (!live) return null;
-    const clock = (now ?? new Date()).getTime();
-    return live.items.reduce<Record<NewsSectionId, LiveNewsItem[]>>(
-      (grouped, item) => {
-        const ageDays = Math.max(0, (clock - Date.parse(item.publishedAt)) / 86_400_000);
-        const target: NewsSectionId = ageDays < 1 ? 'today' : ageDays <= 7 ? 'last_week' : 'more';
-        grouped[target].push(item);
-        return grouped;
-      },
-      { today: [], last_week: [], more: [] },
-    );
+    return groupNewsBySection(live.items, now ?? new Date());
   }, [live, now]);
   const counts = liveBySection
     ? {
@@ -445,11 +485,7 @@ export function NewsPanel({
                 News
               </h2>
               <p className="mt-0.5 text-metadata text-muted-foreground">
-                {live
-                  ? 'Free hourly AI headlines from verified sources.'
-                  : liveError
-                    ? 'Saved snapshot while live news reconnects.'
-                    : 'Saved snapshot with original-source credits.'}
+                {liveFeedStatus(live, liveError)}
               </p>
             </div>
             <Button

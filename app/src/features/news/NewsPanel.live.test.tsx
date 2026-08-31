@@ -142,6 +142,85 @@ describe('NewsPanel live cards', () => {
     expect(screen.getByText('Official model launch')).toBeTruthy();
   });
 
+  it('retains verified items when a completed hourly response is failed and empty', async () => {
+    api.fetchLiveNews.mockResolvedValueOnce(liveResponse()).mockResolvedValueOnce(
+      liveResponse({
+        freshness: {
+          state: 'failed',
+          ageMs: 90_000,
+          warning: 'The latest hourly run failed after all sources were attempted.',
+        },
+        items: [],
+      }),
+    );
+    render(<NewsPanel open onOpenChange={vi.fn()} now={now} runtimeEffectsEnabled />);
+    expect(await screen.findByText('Official model launch')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh AI news' }));
+
+    expect(await screen.findByText('Last verified feed while live news reconnects.')).toBeTruthy();
+    expect(screen.getByText('Official model launch')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /Today\s+1/i })).toBeTruthy();
+  });
+
+  it('merges partial-source results with last verified items without duplicating ids', async () => {
+    const retained = {
+      ...liveResponse().items[0]!,
+      id: 'story-retained',
+      title: 'Retained verified launch',
+    };
+    const current = {
+      ...liveResponse().items[0]!,
+      id: 'story-current',
+      title: 'Current partial-source launch',
+    };
+    api.fetchLiveNews
+      .mockResolvedValueOnce(liveResponse({ items: [retained] }))
+      .mockResolvedValueOnce(
+        liveResponse({
+          freshness: {
+            state: 'degraded',
+            ageMs: 45_000,
+            warning: 'One official source did not complete.',
+          },
+          items: [current],
+        }),
+      );
+    render(<NewsPanel open onOpenChange={vi.fn()} now={now} runtimeEffectsEnabled />);
+    expect(await screen.findByText('Retained verified launch')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh AI news' }));
+
+    expect(
+      await screen.findByText('Partial-source feed with last verified items retained.'),
+    ).toBeTruthy();
+    expect(screen.getByText('Retained verified launch')).toBeTruthy();
+    expect(screen.getByText('Current partial-source launch')).toBeTruthy();
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('classifies Today by the local calendar instead of a rolling 24-hour window', async () => {
+    const afterMidnight = new Date(2026, 7, 14, 0, 30, 0);
+    const lateYesterday = new Date(2026, 7, 13, 23, 45, 0).toISOString();
+    api.fetchLiveNews.mockResolvedValueOnce(
+      liveResponse({
+        items: [
+          {
+            ...liveResponse().items[0],
+            id: 'late-yesterday',
+            title: 'Late yesterday launch',
+            publishedAt: lateYesterday,
+          },
+        ],
+      }),
+    );
+    render(<NewsPanel open onOpenChange={vi.fn()} now={afterMidnight} runtimeEffectsEnabled />);
+
+    expect(await screen.findByRole('tab', { name: /Today\s+0/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: /Last week\s+1/i }));
+    expect(screen.getByText('Late yesterday launch')).toBeTruthy();
+  });
+
   it('describes a failed live request as a reconnecting service, not user offline status', async () => {
     api.fetchLiveNews.mockRejectedValueOnce(
       new Error('Live AI News could not reach https://news.example.'),
