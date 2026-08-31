@@ -197,6 +197,17 @@ function validDependencyEntry(value: unknown): value is object {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function validRunSnapshot(value: unknown): value is JarvisRun {
+  if (!validDependencyEntry(value)) return false;
+  const run = value as Partial<JarvisRun>;
+  return (
+    validIdentifier(run.id) &&
+    validIdentifier(run.accountId) &&
+    validIdentifier(run.agentId) &&
+    typeof run.status === 'string'
+  );
+}
+
 function canonicalDependencyValue<T>(value: T): T | undefined {
   try {
     return structuredClone(value);
@@ -366,6 +377,18 @@ function acknowledgesExactLease(
 }
 
 export function createCaoTargetAuthority(dependencies: Dependencies) {
+  async function readRun(accountId: string, runId: string): Promise<JarvisRun | undefined> {
+    try {
+      const observed = await dependencies.runs.getRun(accountId, runId);
+      if (observed === undefined) return undefined;
+      const canonical = canonicalDependencyValue(observed);
+      if (!validRunSnapshot(canonical)) fail('cao_run_unavailable');
+      return canonical;
+    } catch {
+      fail('cao_run_unavailable');
+    }
+  }
+
   function readNow(): number {
     try {
       return dependencies.now();
@@ -445,12 +468,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     if (!hasExactKeys(input, VERIFY_INPUT_KEYS)) fail('cao_target_input_invalid');
     assertScope(input);
     if (!validIdentifier(input.leaseId)) fail('cao_target_lease_id_invalid');
-    let run: JarvisRun | undefined;
-    try {
-      run = await dependencies.runs.getRun(input.accountId, input.runId);
-    } catch {
-      fail('cao_run_unavailable');
-    }
+    const run = await readRun(input.accountId, input.runId);
     assertRun(run, input);
     const lease = await findLease(dependencies.events, input, input.leaseId);
     if (!lease) fail('cao_target_lease_missing');
@@ -492,13 +510,8 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       await releaseVerifiedLease(input, lease).catch(() => undefined);
       throw error;
     }
-    let currentRun: JarvisRun | undefined;
     try {
-      currentRun = await dependencies.runs.getRun(input.accountId, input.runId);
-    } catch {
-      fail('cao_run_unavailable');
-    }
-    try {
+      const currentRun = await readRun(input.accountId, input.runId);
       assertRun(currentRun, input);
     } catch (error) {
       await releaseVerifiedLease(input, lease);
@@ -527,12 +540,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     ) {
       fail('cao_target_lease_duration_invalid');
     }
-    let run: JarvisRun | undefined;
-    try {
-      run = await dependencies.runs.getRun(input.accountId, input.runId);
-    } catch {
-      fail('cao_run_unavailable');
-    }
+    const run = await readRun(input.accountId, input.runId);
     assertRun(run, input);
     const acquiredAt = readNow();
     if (!Number.isSafeInteger(acquiredAt) || acquiredAt < 0) fail('cao_target_clock_invalid');
@@ -618,7 +626,11 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
       fail('cao_target_lease_persistence_failed');
     }
-    if (!acknowledgesExactLease(appended, input, lease)) {
+    const canonicalAcknowledgement = canonicalDependencyValue(appended);
+    if (
+      !validDependencyEntry(canonicalAcknowledgement) ||
+      !acknowledgesExactLease(canonicalAcknowledgement as JarvisEvent, input, lease)
+    ) {
       await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
       fail('cao_target_lease_persistence_failed');
     }

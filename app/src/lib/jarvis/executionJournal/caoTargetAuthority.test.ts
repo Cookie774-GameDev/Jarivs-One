@@ -853,6 +853,103 @@ describe('CAO explicit target authority', () => {
     expect(h.rows).toEqual([]);
   });
 
+  it('redacts a throwing acquisition run snapshot before target claim', async () => {
+    const h = harness();
+    const poisonedRun = {};
+    Object.defineProperty(poisonedRun, 'workspaceId', {
+      enumerable: true,
+      get: () => {
+        throw new Error('private run adapter payload');
+      },
+    });
+    h.deps.runs.getRun.mockResolvedValueOnce(poisonedRun as never);
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_run_unavailable$/);
+    expect(h.registry.claimExact).not.toHaveBeenCalled();
+    expect(h.rows).toEqual([]);
+  });
+
+  it('redacts a throwing initial recovery run snapshot before journal access', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    const poisonedRun = {};
+    Object.defineProperty(poisonedRun, 'status', {
+      enumerable: true,
+      get: () => {
+        throw new Error('private recovery run payload');
+      },
+    });
+    h.deps.runs.getRun.mockReset();
+    h.deps.runs.getRun.mockResolvedValueOnce(poisonedRun as never);
+    h.deps.events.listByRun.mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_run_unavailable$/);
+    expect(h.deps.events.listByRun).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
+  it('releases exact ownership when the post-registry run snapshot is malformed', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    const poisonedRun = {};
+    Object.defineProperty(poisonedRun, 'agentId', {
+      enumerable: true,
+      get: () => {
+        throw new Error('private post-registry run payload');
+      },
+    });
+    h.deps.runs.getRun.mockReset();
+    h.deps.runs.getRun.mockResolvedValueOnce(run()).mockResolvedValueOnce(poisonedRun as never);
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_run_unavailable$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('rolls back ownership when a journal acknowledgement accessor throws', async () => {
+    const h = harness();
+    h.deps.journal.appendEvent.mockImplementationOnce(async () => {
+      const poisonedAcknowledgement = {};
+      Object.defineProperty(poisonedAcknowledgement, 'runId', {
+        enumerable: true,
+        get: () => {
+          throw new Error('private journal acknowledgement payload');
+        },
+      });
+      return poisonedAcknowledgement as never;
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_lease_persistence_failed$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+    expect(h.rows).toEqual([]);
+  });
+
   it('requires an explicit set for multiple targets and preserves exact chat/terminal isolation', async () => {
     const h = harness([
       target(),
