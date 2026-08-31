@@ -1,58 +1,74 @@
+import {
+  terminalPeerFabricCommandPort,
+  type FabricPeerRef,
+  type TerminalPeerFabricCommandPort,
+  type TerminalPeerFabricOperation,
+} from '@/features/tools/terminal-peer-fabric/terminalPeerFabricTool';
 import type { InstantResult } from '../types';
 
-export type FabricReceipt = Readonly<{
-  status: 'completed' | 'queued' | 'stored' | 'rejected';
-  receiptId: string;
-}>;
-
-export type FabricCommandRequest = Readonly<{
+export type FabricAuthorityRequest = Readonly<{
   id: string;
+  correlationId: string;
   teamId?: string;
   payload?: string;
-  terminalRefs?: readonly Readonly<{
-    paneId: string;
-    sessionId: string;
-    projectId: string;
-    runtimeGeneration: string;
-  }>[];
+  targetIds?: readonly string[];
+  terminalRefs?: readonly FabricPeerRef[];
 }>;
 
-export interface TerminalPeerFabricCommandPort {
-  capability(): Promise<{ available: boolean; version?: string }>;
-  connect(request: FabricCommandRequest): Promise<FabricReceipt>;
-  command(request: FabricCommandRequest): Promise<FabricReceipt>;
+function compatible(version: string | undefined): boolean {
+  return typeof version === 'string' && /^2\.\d+\.\d+(?:[-+][a-z0-9.-]+)?$/iu.test(version);
 }
 
-function compatible(version: string | undefined): boolean {
-  const major = Number(version?.split('.', 1)[0]);
-  return Number.isInteger(major) && major >= 2;
+function requiredOperation(id: string): TerminalPeerFabricOperation | null {
+  if (id === 'team.connect') return 'connect';
+  if (id === 'team.status') return 'team.status';
+  return null;
+}
+
+function unavailable(message: string): InstantResult {
+  return { ok: false, code: 'queue_failed', message };
 }
 
 export async function executeFabricCommand(
-  request: FabricCommandRequest,
-  port: TerminalPeerFabricCommandPort,
+  request: FabricAuthorityRequest,
+  port: TerminalPeerFabricCommandPort = terminalPeerFabricCommandPort,
 ): Promise<InstantResult> {
+  const operation = requiredOperation(request.id);
+  if (!operation) {
+    return unavailable(`Team command ${request.id} is not available in this Fabric capability.`);
+  }
   const capability = await port.capability();
-  if (!capability.available || !compatible(capability.version)) {
-    return {
-      ok: false,
-      code: 'queue_failed',
-      message: 'Terminal Peer Fabric requires the compatible bundled native capability.',
-    };
+  if (
+    !capability.available ||
+    !compatible(capability.version) ||
+    !capability.operations?.includes(operation)
+  ) {
+    return unavailable('Terminal Peer Fabric requires the compatible bundled native capability.');
   }
-  const receipt =
-    request.id === 'team.connect' ? await port.connect(request) : await port.command(request);
-  if (receipt.status === 'rejected') {
+
+  try {
+    const receipt =
+      operation === 'connect'
+        ? await port.connect({
+            correlationId: request.correlationId,
+            peerRefs: request.terminalRefs ?? [],
+          })
+        : await port.command({
+            commandId: operation,
+            correlationId: request.correlationId,
+            targetIds: request.targetIds ?? [],
+          });
+    if (receipt.status === 'rejected') {
+      return unavailable(`Team command rejected (${receipt.correlationId}).`);
+    }
     return {
-      ok: false,
-      code: 'queue_failed',
-      message: `Team command rejected (${receipt.receiptId}).`,
+      ok: true,
+      code: receipt.status === 'completed' ? 'opened' : 'queued',
+      message: `Team command ${receipt.status} (${receipt.correlationId}).`,
     };
+  } catch {
+    return unavailable(`Team command failed (${request.correlationId}).`);
   }
-  const code = receipt.status === 'completed' ? 'opened' : 'queued';
-  return {
-    ok: true,
-    code,
-    message: `Team command ${receipt.status} (${receipt.receiptId}).`,
-  };
 }
+
+export type { TerminalPeerFabricCommandPort };
