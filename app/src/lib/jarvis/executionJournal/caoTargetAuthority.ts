@@ -673,6 +673,18 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
       throw error;
     }
+    try {
+      const currentRun = await readRun(input.accountId, input.runId);
+      assertRun(currentRun, input);
+      const authorizationAt = readNow();
+      if (!Number.isSafeInteger(authorizationAt) || authorizationAt < persistenceAt) {
+        fail('cao_target_clock_invalid');
+      }
+      if (authorizationAt >= expiresAt) fail('cao_target_lease_stale');
+    } catch (error) {
+      await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
+      throw error;
+    }
     let appended: JarvisEvent;
     try {
       appended = await dependencies.journal.appendEvent(input.accountId, input.runId, {

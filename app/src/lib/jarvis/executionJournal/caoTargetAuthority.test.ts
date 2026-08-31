@@ -1128,6 +1128,66 @@ describe('CAO explicit target authority', () => {
     expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
   });
 
+  it('does not persist when the run becomes terminal during final live-target verification', async () => {
+    const h = harness();
+    vi.mocked(h.registry.readExact).mockImplementationOnce(async (input) => {
+      const rows = input.targets.map((requested) => ({
+        ...h.targets.get(`${requested.kind}:${requested.targetId}`)!,
+      }));
+      h.setRun(run({ status: 'completed' }));
+      return rows;
+    });
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_run_inactive$/);
+    expect(h.deps.journal.appendEvent).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('does not persist when run identity drifts during final live-target verification', async () => {
+    const h = harness();
+    vi.mocked(h.registry.readExact).mockImplementationOnce(async (input) => {
+      const rows = input.targets.map((requested) => ({
+        ...h.targets.get(`${requested.kind}:${requested.targetId}`)!,
+      }));
+      h.setRun(run({ id: 'jrun-other' }));
+      return rows;
+    });
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_run_not_authorized$/);
+    expect(h.deps.journal.appendEvent).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('does not persist when the lease expires during final live-target verification', async () => {
+    const h = harness();
+    vi.mocked(h.registry.readExact).mockImplementationOnce(async (input) => {
+      const rows = input.targets.map((requested) => ({
+        ...h.targets.get(`${requested.kind}:${requested.targetId}`)!,
+      }));
+      h.deps.now.mockReturnValue(NOW + 5_000);
+      return rows;
+    });
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_lease_stale$/);
+    expect(h.deps.journal.appendEvent).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
   it('rolls back ownership when a journal acknowledgement accessor throws', async () => {
     const h = harness();
     h.deps.journal.appendEvent.mockImplementationOnce(async () => {
