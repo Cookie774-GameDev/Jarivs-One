@@ -6,16 +6,14 @@
       "platform": "windows",
       "architecture": "x86_64",
       "version": "0.151.0",
-      "package": "@openai/codex",
-      "asset": "codex-0.151.0-win32-x64.tgz",
-      "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.151.0-win32-x64.tgz",
-      "compressedBytes": 147584554,
-      "sha256": "9044e64402bf6a92774fe35a8cb86010d254c0d3390d5a7ee9047024588d7355",
-      "npmIntegrity": "sha512-sLT7xvID3jhU6tkzcwRPnMEclKRwUPbpo0mtfxIF9KpdZH3VJV7sM2/kXWXyvUM7Zt/YeyOaeATTEysbRz8Yog==",
-      "entrypoint": "package/vendor/x86_64-pc-windows-msvc/bin/codex.exe",
+      "asset": "codex-x86_64-pc-windows-msvc.exe.zip",
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.151.0/codex-x86_64-pc-windows-msvc.exe.zip",
+      "compressedBytes": 109921864,
+      "sha256": "7c3bb1585c7148642e7d5df9208b52abd5ce732ec36d04d66949d5d821eb062c",
+      "entrypoint": "codex-x86_64-pc-windows-msvc.exe",
       "license": "Apache-2.0",
       "maximumExpandedBytes": 536870912,
-      "maximumEntries": 128
+      "maximumEntries": 8
     }
   ]
 }

@@ -30,12 +30,14 @@ pub struct ManagedCliRelease {
     pub platform: String,
     pub architecture: String,
     pub version: String,
-    pub package: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package: Option<String>,
     pub asset: String,
     pub url: String,
     pub compressed_bytes: u64,
     pub sha256: String,
-    pub npm_integrity: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub npm_integrity: Option<String>,
     pub entrypoint: String,
     pub license: String,
     pub maximum_expanded_bytes: u64,
@@ -76,35 +78,6 @@ fn is_sha512_integrity(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'='))
 }
 
-fn expected_identity(
-    release: &ManagedCliRelease,
-) -> (&'static str, String, String, &'static str, &'static str) {
-    match release.kind {
-        ManagedCliKind::Codex => {
-            let asset = format!("codex-{}-win32-x64.tgz", release.version);
-            let url = format!("https://registry.npmjs.org/@openai/codex/-/{asset}");
-            (
-                "@openai/codex",
-                asset,
-                url,
-                "package/vendor/x86_64-pc-windows-msvc/bin/codex.exe",
-                "Apache-2.0",
-            )
-        }
-        ManagedCliKind::OpenCodex => {
-            let asset = format!("opencodex-{}.tgz", release.version);
-            let url = format!("https://registry.npmjs.org/@bitkyc08/opencodex/-/{asset}");
-            (
-                "@bitkyc08/opencodex",
-                asset,
-                url,
-                "package/bin/ocx.mjs",
-                "MIT",
-            )
-        }
-    }
-}
-
 fn validate_release(release: &ManagedCliRelease) -> Result<(), String> {
     if !is_numeric_version(&release.version) {
         return Err("Managed CLI release version is invalid.".to_string());
@@ -112,13 +85,15 @@ fn validate_release(release: &ManagedCliRelease) -> Result<(), String> {
     if release.platform != "windows" || release.architecture != "x86_64" {
         return Err("Managed CLI platform is unsupported.".to_string());
     }
-    if !is_safe_relative_path(&release.asset) || !release.asset.ends_with(".tgz") {
+    if !is_safe_relative_path(&release.asset)
+        || !(release.asset.ends_with(".tgz") || release.asset.ends_with(".zip"))
+    {
         return Err("Managed CLI asset name is unsafe.".to_string());
     }
     if !is_safe_relative_path(&release.entrypoint) {
         return Err("Managed CLI entrypoint is unsafe.".to_string());
     }
-    if !is_sha256(&release.sha256) || !is_sha512_integrity(&release.npm_integrity) {
+    if !is_sha256(&release.sha256) {
         return Err("Managed CLI artifact integrity is invalid.".to_string());
     }
     if release.compressed_bytes == 0 || release.compressed_bytes > MAX_COMPRESSED_BYTES {
@@ -133,24 +108,45 @@ fn validate_release(release: &ManagedCliRelease) -> Result<(), String> {
         return Err("Managed CLI entry limit is invalid.".to_string());
     }
 
-    let (package, asset, url, entrypoint, license) = expected_identity(release);
-    if release.package != package
-        || release.asset != asset
-        || release.url != url
-        || release.entrypoint != entrypoint
-        || release.license != license
-    {
-        return Err("Managed CLI artifact identity is invalid.".to_string());
-    }
-
     let parsed =
         Url::parse(&release.url).map_err(|_| "Managed CLI release URL is invalid.".to_string())?;
+    let identity_matches = match release.kind {
+        ManagedCliKind::Codex => {
+            let asset = "codex-x86_64-pc-windows-msvc.exe.zip";
+            let expected_path = format!(
+                "/openai/codex/releases/download/rust-v{}/{}",
+                release.version, asset
+            );
+            release.package.is_none()
+                && release.npm_integrity.is_none()
+                && release.asset == asset
+                && release.entrypoint == "codex-x86_64-pc-windows-msvc.exe"
+                && release.license == "Apache-2.0"
+                && parsed.host_str() == Some("github.com")
+                && parsed.path() == expected_path
+        }
+        ManagedCliKind::OpenCodex => {
+            let asset = format!("opencodex-{}.tgz", release.version);
+            let expected_path = format!("/@bitkyc08/opencodex/-/{asset}");
+            release.package.as_deref() == Some("@bitkyc08/opencodex")
+                && release
+                    .npm_integrity
+                    .as_deref()
+                    .map(is_sha512_integrity)
+                    .unwrap_or(false)
+                && release.asset == asset
+                && release.entrypoint == "package/bin/ocx.mjs"
+                && release.license == "MIT"
+                && parsed.host_str() == Some("registry.npmjs.org")
+                && parsed.path() == expected_path
+        }
+    };
     if parsed.scheme() != "https"
-        || parsed.host_str() != Some("registry.npmjs.org")
         || parsed.username() != ""
         || parsed.password().is_some()
         || parsed.query().is_some()
         || parsed.fragment().is_some()
+        || !identity_matches
     {
         return Err("Managed CLI release URL is not an approved official source.".to_string());
     }
@@ -212,16 +208,14 @@ mod tests {
                 "platform": "windows",
                 "architecture": "x86_64",
                 "version": "0.151.0",
-                "package": "@openai/codex",
-                "asset": "codex-0.151.0-win32-x64.tgz",
-                "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.151.0-win32-x64.tgz",
-                "compressedBytes": 147584554,
-                "sha256": "9044e64402bf6a92774fe35a8cb86010d254c0d3390d5a7ee9047024588d7355",
-                "npmIntegrity": "sha512-sLT7xvID3jhU6tkzcwRPnMEclKRwUPbpo0mtfxIF9KpdZH3VJV7sM2/kXWXyvUM7Zt/YeyOaeATTEysbRz8Yog==",
-                "entrypoint": "package/vendor/x86_64-pc-windows-msvc/bin/codex.exe",
+                "asset": "codex-x86_64-pc-windows-msvc.exe.zip",
+                "url": "https://github.com/openai/codex/releases/download/rust-v0.151.0/codex-x86_64-pc-windows-msvc.exe.zip",
+                "compressedBytes": 109921864,
+                "sha256": "7c3bb1585c7148642e7d5df9208b52abd5ce732ec36d04d66949d5d821eb062c",
+                "entrypoint": "codex-x86_64-pc-windows-msvc.exe",
                 "license": "Apache-2.0",
                 "maximumExpandedBytes": 536870912,
-                "maximumEntries": 128
+                "maximumEntries": 8
             }]
         })
     }
@@ -231,11 +225,13 @@ mod tests {
         let codex = embedded_managed_release(ManagedCliKind::Codex, "windows", "x86_64")
             .expect("Codex release");
         assert_eq!(codex.version, "0.151.0");
-        assert_eq!(codex.compressed_bytes, 147_584_554);
+        assert_eq!(codex.compressed_bytes, 109_921_864);
         assert_eq!(
             codex.sha256,
-            "9044e64402bf6a92774fe35a8cb86010d254c0d3390d5a7ee9047024588d7355"
+            "7c3bb1585c7148642e7d5df9208b52abd5ce732ec36d04d66949d5d821eb062c"
         );
+        assert_eq!(codex.asset, "codex-x86_64-pc-windows-msvc.exe.zip");
+        assert_eq!(codex.entrypoint, "codex-x86_64-pc-windows-msvc.exe");
 
         let opencodex = embedded_managed_release(ManagedCliKind::OpenCodex, "windows", "x86_64")
             .expect("OpenCodex release");
