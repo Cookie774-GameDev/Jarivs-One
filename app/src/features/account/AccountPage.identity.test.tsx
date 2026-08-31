@@ -167,6 +167,32 @@ describe('AccountPage account ownership', () => {
     ).toBe('20');
   });
 
+  it('keeps the newer same-account usage receipt when an older request resolves last', async () => {
+    window.history.replaceState({}, '', '/?tab=status');
+    const olderRequest = deferred<CombinedUsage | null>();
+    const newerRequest = deferred<CombinedUsage | null>();
+    mocks.getCombinedUsage
+      .mockReturnValueOnce(olderRequest.promise)
+      .mockReturnValueOnce(newerRequest.promise);
+    setAccount('account-a');
+    render(<AccountPage />);
+
+    await waitFor(() => expect(mocks.getCombinedUsage).toHaveBeenCalledTimes(2));
+    await act(async () => newerRequest.resolve(usage('starter', 100, 40)));
+    expect(
+      (
+        await screen.findByRole('progressbar', { name: 'Shared company credit usage' })
+      ).getAttribute('aria-valuenow'),
+    ).toBe('40');
+
+    await act(async () => olderRequest.resolve(usage('starter', 100, 10)));
+    expect(
+      screen
+        .getByRole('progressbar', { name: 'Shared company credit usage' })
+        .getAttribute('aria-valuenow'),
+    ).toBe('40');
+  });
+
   it('keeps the last verified receipt and marks it stale when refresh fails', async () => {
     window.history.replaceState({}, '', '/?tab=status');
     mocks.getCombinedUsage.mockResolvedValue(usage('starter', 100, 25));

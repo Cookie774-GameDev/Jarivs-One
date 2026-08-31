@@ -109,6 +109,7 @@ export function AccountPage() {
   const [usageError, setUsageError] = React.useState<string | null>(null);
   const accountRef = React.useRef(cloudUserId?.trim() ?? '');
   const accountGeneration = React.useRef(0);
+  const usageRequestSequence = React.useRef(0);
 
   React.useLayoutEffect(() => {
     accountRef.current = cloudUserId?.trim() ?? '';
@@ -120,6 +121,7 @@ export function AccountPage() {
   }, [cloudUserId]);
 
   const loadUsage = React.useCallback(async () => {
+    const operationRequest = ++usageRequestSequence.current;
     const operationAccount = cloudUserId?.trim() ?? '';
     if (!operationAccount) {
       setUsage(null);
@@ -132,6 +134,7 @@ export function AccountPage() {
     const isCurrentOperation = () =>
       accountRef.current === operationAccount &&
       accountGeneration.current === operationGeneration &&
+      usageRequestSequence.current === operationRequest &&
       (useAuthStore.getState().cloudSession?.user_id.trim() ?? '') === operationAccount;
     setUsageLoading(true);
     setUsageError(null);
