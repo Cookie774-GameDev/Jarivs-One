@@ -4,10 +4,10 @@ const HANDOFF_POLICY_VERSION = 1 as const;
 const SECTION_CHUNK_SIZE = 8_000;
 const OLDER_DIGEST_LIMIT = 12_000;
 const SECRET_ASSIGNMENT =
-  /\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|credential)\s*[:=]\s*[^\s,;]+/gi;
+  /\b(?:(?:openai|anthropic|google|github|gitlab|aws|azure|stripe|slack)[_-])?(?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|credential)\s*[:=]\s*[^\s,;]+/gi;
 const BEARER_TOKEN = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi;
 const STANDALONE_CREDENTIAL =
-  /(?<![A-Za-z0-9])(?:sk_(?:live|test|prod)_[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{20,}|pypi-[A-Za-z0-9_-]{20,}|SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|(?:AKIA|ASIA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[0-9A-Za-z-]{10,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,})(?![A-Za-z0-9])/g;
+  /(?<![A-Za-z0-9])(?:sk_(?:live|test|prod)_[A-Za-z0-9_-]{8,}|sk-(?:(?:proj|svcacct|admin)-|ant-api\d+-)?[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{20,}|pypi-[A-Za-z0-9_-]{20,}|SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|(?:AKIA|ASIA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[0-9A-Za-z-]{10,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,})(?![A-Za-z0-9])/g;
 const SIGNED_QUERY_VALUE =
   /([?&](?:x-amz-(?:signature|credential|security-token)|signature|sig|token|access_token|refresh_token|client_secret|password|code|key|api_key)=)[^&#\s]+/gi;
 const URI_USERINFO = /([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+(?::[^\s/@]*)?@/gi;
@@ -75,10 +75,6 @@ export function sanitizeChatHandoffText(value: string): string {
 }
 
 function safeOutcomeSummary(value: unknown): string | null {
-  if (typeof value === 'string') {
-    const safe = sanitizeChatHandoffText(value).trim();
-    return safe ? safe.slice(0, 500) : null;
-  }
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   for (const key of ['summary', 'message', 'status', 'path'] as const) {
@@ -129,7 +125,7 @@ function safeVisibleParts(parts: readonly Part[]): {
       const safe = sanitizeChatHandoffText(part.text).trim();
       if (safe && !seenText.has(safe)) {
         seenText.add(safe);
-        text.push(`${part.label} — ${part.status}: ${safe}`);
+        text.push(`${sanitizeChatHandoffText(part.label)} — ${part.status}: ${safe}`);
       }
     } else if (part.kind === 'tool_call') {
       const toolName = sanitizeChatHandoffText(part.tool);

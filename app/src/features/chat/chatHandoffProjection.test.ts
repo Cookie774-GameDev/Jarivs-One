@@ -147,6 +147,38 @@ describe('safe chat handoff projection', () => {
     expect(serialized).toContain('[REDACTED]');
   });
 
+  it('redacts namespaced OpenAI/Anthropic keys and stack labels', () => {
+    const openAiFixture = `sk-proj-${'abcdefghijklmnopqrstuvwx'}`;
+    const anthropicFixture = `sk-ant-api03-${'abcdefghijklmnopqrstuvwx'}`;
+    const projection = projectChatHandoff({
+      sourceChat,
+      now,
+      messages: [
+        message('provider-credentials', now - 1_500, 'assistant', [
+          {
+            kind: 'text',
+            text: `OPENAI_API_KEY=${openAiFixture}\nANTHROPIC_API_KEY=${anthropicFixture}`,
+          },
+          {
+            kind: 'stack_step',
+            step_id: 'step-1',
+            label: `deploy ${anthropicFixture}`,
+            provider: 'openai',
+            model: 'test-model',
+            text: 'Safe progress',
+            status: 'done',
+          },
+        ]),
+      ],
+    });
+
+    const serialized = JSON.stringify(projection);
+    expect(serialized).not.toContain(openAiFixture);
+    expect(serialized).not.toContain(anthropicFixture);
+    expect(serialized).not.toContain('OPENAI_API_KEY');
+    expect(serialized).not.toContain('ANTHROPIC_API_KEY');
+  });
+
   it('reports tool and action outcomes truthfully without raw payloads', () => {
     const projection = projectChatHandoff({
       sourceChat,
@@ -158,6 +190,12 @@ describe('safe chat handoff projection', () => {
             kind: 'tool_result',
             call_id: 'tool-error',
             error: 'Deployment failed: bearer abcdefghijklmnop',
+          },
+          { kind: 'tool_call', tool: 'echo_secret', call_id: 'tool-string', args: {} },
+          {
+            kind: 'tool_result',
+            call_id: 'tool-string',
+            result: 'raw string payload must never enter the handoff',
           },
           {
             kind: 'action_proposal',
@@ -179,7 +217,10 @@ describe('safe chat handoff projection', () => {
       ],
     });
 
-    expect(projection.summaries.tools).toEqual(['deploy — error: Deployment failed: [REDACTED]']);
+    expect(projection.summaries.tools).toEqual([
+      'deploy — error: Deployment failed: [REDACTED]',
+      'echo_secret — completed',
+    ]);
     expect(projection.summaries.actions).toContain('nav.goto — error: Blocked by policy');
     expect(projection.summaries.actions).toContain('files.write — success: Wrote src/app.ts');
     expect(projection.summaries.blockers).toContain(
@@ -187,6 +228,7 @@ describe('safe chat handoff projection', () => {
     );
     expect(projection.summaries.results).toContain('files.write — success: Wrote src/app.ts');
     expect(JSON.stringify(projection)).not.toContain('must-not-leak');
+    expect(JSON.stringify(projection)).not.toContain('raw string payload');
   });
 
   it('renders the exact snapshot and three-day boundary metadata', () => {

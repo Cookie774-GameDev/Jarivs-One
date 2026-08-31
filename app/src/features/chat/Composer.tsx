@@ -679,16 +679,64 @@ export function buildQueuedComposerChatHandoff(
   return Object.freeze({ text: payload.text, payload: Object.freeze(payload) });
 }
 
+export function createComposerQueuedMessage(
+  input: Readonly<{
+    draft: string;
+    flushMode: QueueFlushMode;
+    handoff: Readonly<{
+      projection: ChatHandoffProjectionV1;
+      instruction: string;
+    }> | null;
+    now?: number;
+    id?: string;
+  }>,
+): Readonly<{
+  message: QueuedChatMessage;
+  payload: ReturnType<typeof buildComposerChatHandoffPayload> | null;
+  visibleHandoffKey: string | null;
+}> | null {
+  const snapshot = input.handoff
+    ? buildQueuedComposerChatHandoff({
+        projection: input.handoff.projection,
+        instruction: input.handoff.instruction,
+        draftText: input.draft,
+      })
+    : null;
+  const queueText =
+    input.draft.trim() ||
+    (snapshot ? `Handoff from ${snapshot.payload.part.handoff.sourceTitle}` : '');
+  const message = createQueuedMessage(queueText, input.flushMode, input.now, input.id);
+  const visibleHandoffKey = input.handoff
+    ? composerChatHandoffDeliveryKey(
+        buildComposerChatHandoffPayload({
+          projection: input.handoff.projection,
+          instruction: input.handoff.instruction,
+          draftText: '',
+        }),
+      )
+    : null;
+  return message
+    ? Object.freeze({ message, payload: snapshot?.payload ?? null, visibleHandoffKey })
+    : null;
+}
+
 export function composerChatHandoffDeliveryKey(
   payload: ReturnType<typeof buildComposerChatHandoffPayload>,
 ): string {
-  const handoff = payload.part.handoff;
-  return [
-    handoff.sourceChatId,
-    handoff.snapshotAt,
-    handoff.boundaryMessageId ?? '',
-    handoff.instruction,
-  ].join('\u001f');
+  return JSON.stringify(payload.part.handoff);
+}
+
+export function shouldClearComposerHandoff(
+  input: Readonly<{
+    submittedHandoffKey: string | null;
+    currentVisibleHandoffKey: string | null;
+    handoffPayloadProvided: boolean;
+  }>,
+): boolean {
+  if (input.submittedHandoffKey) {
+    return input.currentVisibleHandoffKey === input.submittedHandoffKey;
+  }
+  return !input.handoffPayloadProvided;
 }
 
 export type ComposerChatHandoffDeliveryReceipt<T> = Readonly<{ key: string; value: T }>;
@@ -744,8 +792,11 @@ export function dispatchComposerSendWithAcceptance(
       else resolve();
     };
     const onRunState = (event: Event) => {
-      const state = (event as CustomEvent<{ chatId?: string; status?: string }>).detail;
+      const state = (
+        event as CustomEvent<{ chatId?: string; cancellationKey?: string; status?: string }>
+      ).detail;
       if (String(state?.chatId) !== String(detail.chatId)) return;
+      if (String(state?.cancellationKey ?? '') !== String(detail.cancellationKey)) return;
       if (state?.status === 'running') finish();
       else if (state?.status === 'error' || state?.status === 'cancelled') {
         finish(new Error(`Chat handoff dispatch rejected before acceptance (${state.status}).`));
@@ -1176,6 +1227,8 @@ export function Composer({
   disableRouteSlashCommands = false,
 }: ComposerProps) {
   const [text, setText] = useState('');
+  const textRef = useRef(text);
+  textRef.current = text;
   const [mentionCtx, setMentionCtx] = useState<MentionContext | null>(null);
   const [selectedReferenceKey, setSelectedReferenceKey] = useState<string>('');
   const [slashCtx, setSlashCtx] = useState<SlashContext | null>(null);
@@ -1215,12 +1268,14 @@ export function Composer({
   const [dragOver, setDragOver] = useState(false);
   const [pendingHandoff, setPendingHandoff] = useState<ChatHandoffProjectionV1 | null>(null);
   const pendingHandoffRef = useRef<ChatHandoffProjectionV1 | null>(null);
-  const pendingHandoffDeliveryRef = useRef<ComposerChatHandoffDeliveryReceipt<Message> | null>(
-    null,
+  const pendingHandoffDeliveriesRef = useRef(
+    new Map<string, ComposerChatHandoffDeliveryReceipt<Message>>(),
   );
   const [handoffInstruction, setHandoffInstruction] = useState(
     'Review this context and continue from the latest truthful state.',
   );
+  const handoffInstructionRef = useRef(handoffInstruction);
+  handoffInstructionRef.current = handoffInstruction;
   // V2 — speech-to-text in the composer.
   const [sttListening, setSttListening] = useState(false);
   const [sttAwaitingFinal, setSttAwaitingFinal] = useState(false);
@@ -1281,7 +1336,13 @@ export function Composer({
   const queuedMessagesRef = useRef(queuedMessages);
   queuedMessagesRef.current = queuedMessages;
   const queuedHandoffsRef = useRef(
-    new Map<string, ReturnType<typeof buildComposerChatHandoffPayload>>(),
+    new Map<
+      string,
+      Readonly<{
+        payload: ReturnType<typeof buildComposerChatHandoffPayload>;
+        visibleHandoffKey: string;
+      }>
+    >(),
   );
   const sendingRef = useRef(sending);
   sendingRef.current = sending;
@@ -1395,22 +1456,26 @@ export function Composer({
   );
 
   const enqueueCurrentMessage = (draft: string, flushMode: QueueFlushMode = 'after-run') => {
-    const item = createQueuedMessage(draft, flushMode);
-    if (!item) return;
-    if (pendingHandoff) {
-      queuedHandoffsRef.current.set(
-        item.id,
-        buildQueuedComposerChatHandoff({
-          projection: pendingHandoff,
-          instruction: handoffInstruction,
-          draftText: draft,
-        }).payload,
-      );
+    const queued = createComposerQueuedMessage({
+      draft,
+      flushMode,
+      handoff: pendingHandoff
+        ? { projection: pendingHandoff, instruction: handoffInstruction }
+        : null,
+    });
+    if (!queued) return false;
+    const item = queued.message;
+    if (queued.payload && queued.visibleHandoffKey) {
+      queuedHandoffsRef.current.set(item.id, {
+        payload: queued.payload,
+        visibleHandoffKey: queued.visibleHandoffKey,
+      });
     }
     setQueuedMessages((current) => [...current, item]);
     setText('');
     const notice = getQueuedMessageNotice(item.text, flushMode);
     toast.info(notice.title, notice.body);
+    return true;
   };
 
   const editQueuedMessage = (id: string) => {
@@ -3268,6 +3333,7 @@ export function Composer({
       flushMode?: QueueFlushMode;
       promptForgeApproved?: boolean;
       handoffPayload?: ReturnType<typeof buildComposerChatHandoffPayload> | null;
+      submittedVisibleHandoffKey?: string | null;
     } = {},
   ): Promise<boolean> => {
     if (harnessBlocked) return false;
@@ -3293,7 +3359,7 @@ export function Composer({
       return false;
     if (jarvisRunning && !options.bypassQueue && (!overrideText || options.promptForgeApproved)) {
       // Send button defaults to after-run; Enter passes after-tool explicitly.
-      enqueueCurrentMessage(trimmed, options.flushMode ?? 'after-run');
+      if (!enqueueCurrentMessage(trimmed, options.flushMode ?? 'after-run')) return false;
       playUiSound('chat_message_send');
       return true;
     }
@@ -3757,17 +3823,22 @@ export function Composer({
         else window.dispatchEvent(new CustomEvent('jarvis:send', { detail }));
       };
       let userMessage: Message;
+      const submittedHandoffKey = handoffPayload
+        ? composerChatHandoffDeliveryKey(handoffPayload)
+        : null;
       if (handoffPayload) {
         const delivery = await deliverComposerChatHandoff({
-          key: composerChatHandoffDeliveryKey(handoffPayload),
-          previousReceipt: pendingHandoffDeliveryRef.current,
+          key: submittedHandoffKey!,
+          previousReceipt: pendingHandoffDeliveriesRef.current.get(submittedHandoffKey!),
           persist: persistUserMessage,
           dispatch: (message) => dispatchUserMessage(message, true),
         });
-        pendingHandoffDeliveryRef.current = delivery.receipt;
+        if (delivery.receipt) {
+          pendingHandoffDeliveriesRef.current.set(submittedHandoffKey!, delivery.receipt);
+        }
         if (!delivery.ok) throw delivery.error;
         userMessage = delivery.receipt.value;
-        pendingHandoffDeliveryRef.current = null;
+        pendingHandoffDeliveriesRef.current.delete(submittedHandoffKey!);
       } else {
         userMessage = await persistUserMessage();
         await dispatchUserMessage(userMessage, false);
@@ -3783,7 +3854,25 @@ export function Composer({
       setAttachedTerminals([]);
       setAttachedPlugins([]);
       setAttachedContexts([]);
-      if (options.handoffPayload === undefined) {
+      const currentVisibleHandoffKey = pendingHandoffRef.current
+        ? composerChatHandoffDeliveryKey(
+            buildComposerChatHandoffPayload({
+              projection: pendingHandoffRef.current,
+              instruction: handoffInstructionRef.current,
+              draftText: textRef.current,
+            }),
+          )
+        : null;
+      const submittedVisibleHandoffKey = handoffPayload
+        ? (options.submittedVisibleHandoffKey ?? submittedHandoffKey)
+        : null;
+      if (
+        shouldClearComposerHandoff({
+          submittedHandoffKey: submittedVisibleHandoffKey,
+          currentVisibleHandoffKey,
+          handoffPayloadProvided: options.handoffPayload !== undefined,
+        })
+      ) {
         pendingHandoffRef.current = null;
         setPendingHandoff(null);
       }
@@ -3814,11 +3903,14 @@ export function Composer({
     void dispatchQueuedMessageAfterAcceptance(
       queued,
       payload,
-      (nextPayload) =>
-        handleSend(nextPayload, {
+      (nextPayload) => {
+        const queuedHandoff = queuedHandoffsRef.current.get(queued.id);
+        return handleSend(nextPayload, {
           bypassQueue: true,
-          handoffPayload: queuedHandoffsRef.current.get(queued.id) ?? null,
-        }),
+          handoffPayload: queuedHandoff?.payload ?? null,
+          submittedVisibleHandoffKey: queuedHandoff?.visibleHandoffKey ?? null,
+        });
+      },
       (acceptedId) => {
         queuedHandoffsRef.current.delete(acceptedId);
         setQueuedMessages((current) => {

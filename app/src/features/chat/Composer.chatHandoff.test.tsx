@@ -1,14 +1,43 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Chat, Message } from '@/types/chat';
+import { chatRepo, messageRepo } from '@/lib/db';
+import { TooltipProvider } from '@/components/ui';
+import { toast } from '@/components/ui/toast';
+import { GROQ_API_CONNECTION } from '@/lib/ai/adapters/nativeCatalog';
 import {
+  resetDiscoveredConnectionModelsForTests,
+  setDiscoveredConnectionModels,
+} from '@/lib/ai/connectionCatalog';
+import { selectionFromOption } from '@/lib/ai/modelSelection';
+import { useAuthStore } from '@/stores/auth';
+import { useUIStore } from '@/stores/ui';
+import { VIBESPACE_CHAT_MIME } from './chatDragPayload';
+import {
+  Composer,
   buildComposerChatHandoffPayload,
   buildQueuedComposerChatHandoff,
+  composerChatHandoffDeliveryKey,
+  createComposerQueuedMessage,
   deliverComposerChatHandoff,
   dispatchComposerSendWithAcceptance,
   resolveComposerChatHandoffDraft,
   resolveComposerPersistedText,
+  shouldClearComposerHandoff,
 } from './Composer';
 import type { ChatHandoffProjectionV1 } from './chatHandoffProjection';
+
+vi.mock('./HarnessReadinessGate', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./HarnessReadinessGate')>();
+  return {
+    ...actual,
+    useHarnessRuntimeState: () => ({
+      kind: 'ready' as const,
+      source: 'managed' as const,
+      version: 'test-runtime',
+    }),
+  };
+});
 
 const sourceChat: Chat = {
   id: 'chat-source' as Chat['id'],
@@ -60,8 +89,41 @@ const projection: ChatHandoffProjectionV1 = {
   olderDigest: 'No older visible history.',
   summaries: { files: [], tools: [], actions: [], decisions: [], blockers: [], results: [] },
 };
+const originalAuth = useAuthStore.getState();
 
-afterEach(() => vi.useRealTimers());
+function enableTestModel() {
+  setDiscoveredConnectionModels(GROQ_API_CONNECTION.id, [
+    {
+      id: 'llama-3.3-70b-versatile',
+      label: 'Llama 3.3 70B Versatile',
+      source: 'provider_list',
+      lastVerifiedAt: 1,
+    },
+  ]);
+  useAuthStore.setState({
+    apiKeys: { groq: 'test-provider-key' },
+    offlineMode: false,
+    stackPreset: 'off',
+    chatModelSelection: selectionFromOption('groq', 'llama-3.3-70b-versatile', GROQ_API_CONNECTION),
+  });
+}
+
+beforeEach(() => {
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  cleanup();
+  resetDiscoveredConnectionModelsForTests();
+  useAuthStore.setState({
+    apiKeys: originalAuth.apiKeys,
+    offlineMode: originalAuth.offlineMode,
+    stackPreset: originalAuth.stackPreset,
+    chatModelSelection: originalAuth.chatModelSelection,
+  });
+});
 
 describe('Composer chat handoff integration', () => {
   it('re-resolves canonical source/messages, rejects self/stale drops, replaces without sending', async () => {
@@ -128,6 +190,74 @@ describe('Composer chat handoff integration', () => {
     expect(later.part.handoff.sourceTitle).toBe('Replacement');
   });
 
+  it('creates a real queue item for a handoff-only draft and rejects an ordinary empty draft', () => {
+    const handoffOnly = createComposerQueuedMessage({
+      draft: '',
+      flushMode: 'after-run',
+      handoff: {
+        projection,
+        instruction: 'Use the default instruction.',
+      },
+      now: 100,
+      id: 'queued-handoff',
+    });
+    const ordinaryEmpty = createComposerQueuedMessage({
+      draft: '',
+      flushMode: 'after-run',
+      handoff: null,
+      now: 100,
+      id: 'queued-empty',
+    });
+
+    expect(handoffOnly?.message).toMatchObject({
+      id: 'queued-handoff',
+      text: 'Handoff from Source chat',
+    });
+    expect(handoffOnly?.payload?.part.kind).toBe('chat_handoff');
+    expect(handoffOnly?.visibleHandoffKey).toBe(
+      composerChatHandoffDeliveryKey(
+        buildComposerChatHandoffPayload({
+          projection,
+          instruction: 'Use the default instruction.',
+          draftText: '',
+        }),
+      ),
+    );
+    expect(ordinaryEmpty).toBeNull();
+  });
+
+  it('uses the complete canonical handoff as the delivery idempotency key', () => {
+    const first = buildComposerChatHandoffPayload({
+      projection,
+      instruction: 'Continue.',
+      draftText: '',
+    });
+    const changed = buildComposerChatHandoffPayload({
+      projection: { ...projection, status: 'Different canonical status' },
+      instruction: 'Continue.',
+      draftText: '',
+    });
+
+    expect(composerChatHandoffDeliveryKey(first)).not.toBe(composerChatHandoffDeliveryKey(changed));
+  });
+
+  it('clears an exact submitted queued handoff but preserves a newer visible card', () => {
+    expect(
+      shouldClearComposerHandoff({
+        submittedHandoffKey: 'queued-handoff',
+        currentVisibleHandoffKey: 'queued-handoff',
+        handoffPayloadProvided: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldClearComposerHandoff({
+        submittedHandoffKey: 'queued-handoff',
+        currentVisibleHandoffKey: 'replacement-handoff',
+        handoffPayloadProvided: true,
+      }),
+    ).toBe(false);
+  });
+
   it('redacts credentials typed into the editable instruction before persistence', () => {
     const stripeFixture = ['sk', 'live', '1234567890abcdefghijklmnop'].join('_');
     const githubFixture = `ghp_${'1234567890abcdefghijklmnopqrstuv'}`;
@@ -191,7 +321,18 @@ describe('Composer chat handoff integration', () => {
     );
     window.dispatchEvent(
       new CustomEvent('jarvis:run-state', {
-        detail: { chatId: 'chat-target', status: 'running' },
+        detail: { chatId: 'chat-target', cancellationKey: 'other-message', status: 'running' },
+      }),
+    );
+    let settled = false;
+    void accepted.finally(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    window.dispatchEvent(
+      new CustomEvent('jarvis:run-state', {
+        detail: { chatId: 'chat-target', cancellationKey: 'message-1', status: 'running' },
       }),
     );
     await expect(accepted).resolves.toBeUndefined();
@@ -202,7 +343,7 @@ describe('Composer chat handoff integration', () => {
     );
     window.dispatchEvent(
       new CustomEvent('jarvis:run-state', {
-        detail: { chatId: 'chat-target', status: 'error' },
+        detail: { chatId: 'chat-target', cancellationKey: 'message-2', status: 'error' },
       }),
     );
     await expect(rejected).rejects.toThrow('rejected before acceptance');
@@ -214,5 +355,228 @@ describe('Composer chat handoff integration', () => {
     const missingExpectation = expect(missing).rejects.toThrow('did not acknowledge');
     await vi.advanceTimersByTimeAsync(100);
     await missingExpectation;
+  });
+
+  it('renders Composer, resolves a real drop, replaces the card, and never auto-sends', async () => {
+    useUIStore.setState({ activeChatId: 'chat-target' });
+    const create = vi.spyOn(messageRepo, 'create');
+    vi.spyOn(chatRepo, 'getById').mockImplementation(async (id) =>
+      String(id) === 'chat-source' ? sourceChat : targetChat,
+    );
+    vi.spyOn(messageRepo, 'listByChat')
+      .mockResolvedValueOnce([message('First rendered snapshot')])
+      .mockResolvedValueOnce([message('Replacement rendered snapshot', 100)]);
+    const send = vi.fn();
+    const warning = vi.spyOn(toast, 'warning');
+    window.addEventListener('jarvis:send', send);
+    const payload = JSON.stringify({
+      version: 1,
+      chatId: 'chat-source',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      title: 'Untrusted display title',
+    });
+    const dataTransfer = {
+      types: [VIBESPACE_CHAT_MIME],
+      files: [],
+      getData: (type: string) => (type === VIBESPACE_CHAT_MIME ? payload : ''),
+    };
+
+    const { container } = render(
+      <TooltipProvider>
+        <Composer chatId="chat-target" />
+      </TooltipProvider>,
+    );
+    const dropZone = container.querySelector('[data-composer-drop-zone="true"]');
+    expect(dropZone).not.toBeNull();
+    const selfPayload = JSON.stringify({
+      version: 1,
+      chatId: 'chat-target',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      title: 'Target',
+    });
+    fireEvent.drop(dropZone!, {
+      dataTransfer: {
+        ...dataTransfer,
+        getData: (type: string) => (type === VIBESPACE_CHAT_MIME ? selfPayload : ''),
+      },
+    });
+    await waitFor(() =>
+      expect(warning).toHaveBeenCalledWith(
+        'That chat is already here',
+        'Choose a different source chat.',
+      ),
+    );
+    expect(screen.queryByLabelText('Pending handoff from Target')).toBeNull();
+
+    fireEvent.drop(dropZone!, { dataTransfer });
+    expect(await screen.findByText(/First rendered snapshot/)).not.toBeNull();
+    expect(screen.getByText('Canonical source title')).not.toBeNull();
+    expect(create).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+
+    fireEvent.drop(dropZone!, { dataTransfer });
+    await waitFor(() => expect(screen.getByText(/Replacement rendered snapshot/)).not.toBeNull());
+    expect(screen.queryByText(/First rendered snapshot/)).toBeNull();
+    expect(create).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+    window.removeEventListener('jarvis:send', send);
+  });
+
+  it('persists one canonical handoff part, preserves the rendered card on dispatch failure, and retries without duplicate persistence', async () => {
+    enableTestModel();
+    useUIStore.setState({ activeChatId: 'chat-target' });
+    vi.spyOn(chatRepo, 'getById').mockImplementation(async (id) =>
+      String(id) === 'chat-source' ? sourceChat : targetChat,
+    );
+    vi.spyOn(messageRepo, 'listByChat').mockResolvedValue([
+      message('Rendered persistence snapshot'),
+    ]);
+    const persisted: Message = {
+      id: 'persisted-handoff' as Message['id'],
+      chat_id: targetChat.id,
+      role: 'user',
+      parts: [],
+      created_at: 200,
+      updated_at: 200,
+    };
+    const create = vi.spyOn(messageRepo, 'create').mockImplementation(async (input) => ({
+      ...persisted,
+      parts: input.parts,
+    }));
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const sent: Array<{ chatId: string; cancellationKey: string; text: string }> = [];
+    const onSend = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ chatId: string; cancellationKey: string; text: string }>
+      ).detail;
+      sent.push(detail);
+      window.dispatchEvent(
+        new CustomEvent('jarvis:run-state', {
+          detail: {
+            chatId: detail.chatId,
+            cancellationKey: detail.cancellationKey,
+            status: sent.length === 1 ? 'error' : 'running',
+          },
+        }),
+      );
+    };
+    window.addEventListener('jarvis:send', onSend);
+    const payload = JSON.stringify({
+      version: 1,
+      chatId: 'chat-source',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      title: 'Untrusted display title',
+    });
+    const dataTransfer = {
+      types: [VIBESPACE_CHAT_MIME],
+      files: [],
+      getData: (type: string) => (type === VIBESPACE_CHAT_MIME ? payload : ''),
+    };
+
+    const { container } = render(
+      <TooltipProvider>
+        <Composer chatId="chat-target" />
+      </TooltipProvider>,
+    );
+    const dropZone = container.querySelector('[data-composer-drop-zone="true"]');
+    fireEvent.drop(dropZone!, { dataTransfer });
+    await screen.findByText(/Rendered persistence snapshot/);
+    fireEvent.change(screen.getByLabelText('Instruction for Canonical source title'), {
+      target: { value: 'Continue with the rendered editable instruction.' },
+    });
+    const sendButton = screen.getByRole('button', { name: 'Send message' });
+    expect((sendButton as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(sendButton);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    await waitFor(() => expect((sendButton as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.queryByLabelText('Pending handoff from Canonical source title')).not.toBeNull();
+    expect(create).toHaveBeenCalledTimes(1);
+    const firstParts = create.mock.calls[0]?.[0].parts ?? [];
+    expect(firstParts.filter((part) => part.kind === 'chat_handoff')).toHaveLength(1);
+    expect(firstParts[0]).toMatchObject({ kind: 'text' });
+    expect(JSON.stringify(firstParts)).toContain('Rendered persistence snapshot');
+    expect(JSON.stringify(firstParts)).toContain(
+      'Continue with the rendered editable instruction.',
+    );
+
+    fireEvent.click(sendButton);
+    await waitFor(() => expect(sent).toHaveLength(2));
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Pending handoff from Canonical source title')).toBeNull(),
+    );
+    expect(create).toHaveBeenCalledTimes(1);
+    window.removeEventListener('jarvis:send', onSend);
+  });
+
+  it('clears only the exact submitted rendered card after acceptance', async () => {
+    enableTestModel();
+    useUIStore.setState({ activeChatId: 'chat-target' });
+    vi.spyOn(chatRepo, 'getById').mockImplementation(async (id) =>
+      String(id) === 'chat-source' ? sourceChat : targetChat,
+    );
+    vi.spyOn(messageRepo, 'listByChat')
+      .mockResolvedValueOnce([message('Original submitted card')])
+      .mockResolvedValueOnce([message('Newer replacement card', 100)]);
+    let persistedId = 0;
+    const create = vi.spyOn(messageRepo, 'create').mockImplementation(async (input) => {
+      persistedId += 1;
+      return {
+        id: `persisted-${persistedId}` as Message['id'],
+        chat_id: targetChat.id,
+        role: 'user',
+        parts: input.parts,
+        created_at: 200 + persistedId,
+        updated_at: 200 + persistedId,
+      };
+    });
+    const sent: Array<{ chatId: string; cancellationKey: string }> = [];
+    const onSend = (event: Event) => {
+      sent.push((event as CustomEvent<{ chatId: string; cancellationKey: string }>).detail);
+    };
+    window.addEventListener('jarvis:send', onSend);
+    const payload = JSON.stringify({
+      version: 1,
+      chatId: 'chat-source',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      title: 'Untrusted display title',
+    });
+    const dataTransfer = {
+      types: [VIBESPACE_CHAT_MIME],
+      files: [],
+      getData: (type: string) => (type === VIBESPACE_CHAT_MIME ? payload : ''),
+    };
+
+    const { container } = render(
+      <TooltipProvider>
+        <Composer chatId="chat-target" />
+      </TooltipProvider>,
+    );
+    const dropZone = container.querySelector('[data-composer-drop-zone="true"]');
+    fireEvent.drop(dropZone!, { dataTransfer });
+    await screen.findByText(/Original submitted card/);
+    const sendButton = screen.getByRole('button', { name: 'Send message' });
+    expect((sendButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(sendButton);
+    await waitFor(() => expect(sent).toHaveLength(1));
+
+    fireEvent.drop(dropZone!, { dataTransfer });
+    await screen.findByText(/Newer replacement card/);
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('jarvis:run-state', {
+          detail: { ...sent[0], status: 'running' },
+        }),
+      );
+    });
+    await waitFor(() => expect((sendButton as HTMLButtonElement).disabled).toBe(false));
+    expect(screen.queryByText(/Newer replacement card/)).not.toBeNull();
+    expect(screen.queryByLabelText('Pending handoff from Canonical source title')).not.toBeNull();
+    expect(create).toHaveBeenCalledTimes(1);
+    window.removeEventListener('jarvis:send', onSend);
   });
 });
