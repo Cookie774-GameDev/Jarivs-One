@@ -11,6 +11,8 @@ describe('Instant Command catalog suggestions', () => {
       expect.objectContaining({
         id: 'team.connect',
         disabled: false,
+        confirmationRequired: false,
+        approvalRequired: true,
         detail: expect.stringContaining('approval · capability-gated'),
       }),
     ]);
@@ -19,6 +21,15 @@ describe('Instant Command catalog suggestions', () => {
   it('keeps blocked commands visible but disabled and respects the local result limit', () => {
     expect(suggestInstantCommands(help, 'rename terminal', 1)).toEqual([
       expect.objectContaining({ id: 'terminal.rename', disabled: true }),
+    ]);
+    expect(suggestInstantCommands(help, 'close terminal', 1)).toEqual([
+      expect.objectContaining({
+        id: 'terminal.close',
+        disabled: true,
+        confirmationRequired: true,
+        approvalRequired: false,
+        preview: 'Action terminal.close · target required · confirmation required',
+      }),
     ]);
     expect(suggestInstantCommands(help, 'team', 2)).toHaveLength(2);
   });
