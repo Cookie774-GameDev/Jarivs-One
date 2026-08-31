@@ -10,6 +10,66 @@ pub const CODEX_APP_SERVER_INITIALIZED: &str = "initialized";
 /// Public progress may use `item/reasoning/summaryTextDelta` instead.
 pub const CODEX_APP_SERVER_PRIVATE_REASONING_METHODS: &[&str] = &["item/reasoning/textDelta"];
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodexAppServerHandshake {
+    pub initialize: Vec<u8>,
+    pub initialized: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodexAppServerHandshakeError {
+    InvalidRequestId,
+    InvalidClientVersion,
+    Serialization,
+}
+
+fn json_line(value: &serde_json::Value) -> Result<Vec<u8>, CodexAppServerHandshakeError> {
+    let mut bytes =
+        serde_json::to_vec(value).map_err(|_| CodexAppServerHandshakeError::Serialization)?;
+    bytes.push(b'\n');
+    Ok(bytes)
+}
+
+/// Creates the schema-derived app-server initialize exchange. The private raw-reasoning
+/// notification is suppressed at transport negotiation before a thread or turn can exist.
+pub fn codex_app_server_handshake(
+    request_id: u64,
+    client_version: &str,
+) -> Result<CodexAppServerHandshake, CodexAppServerHandshakeError> {
+    if request_id == 0 {
+        return Err(CodexAppServerHandshakeError::InvalidRequestId);
+    }
+    if client_version.is_empty()
+        || client_version.len() > 64
+        || !client_version
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'+'))
+    {
+        return Err(CodexAppServerHandshakeError::InvalidClientVersion);
+    }
+    let initialize = serde_json::json!({
+        "method": CODEX_APP_SERVER_INITIALIZE,
+        "id": request_id,
+        "params": {
+            "clientInfo": {
+                "name": "vibespace",
+                "title": "VibeSpace",
+                "version": client_version,
+            },
+            "capabilities": {
+                "experimentalApi": false,
+                "requestAttestation": false,
+                "optOutNotificationMethods": CODEX_APP_SERVER_PRIVATE_REASONING_METHODS,
+            },
+        },
+    });
+    let initialized = serde_json::json!({ "method": CODEX_APP_SERVER_INITIALIZED });
+    Ok(CodexAppServerHandshake {
+        initialize: json_line(&initialize)?,
+        initialized: json_line(&initialized)?,
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppServerStdio {
     Piped,
@@ -82,8 +142,9 @@ pub fn managed_codex_app_server_launch(
 #[cfg(test)]
 mod tests {
     use super::{
-        managed_codex_app_server_launch, AppServerStdio, CODEX_APP_SERVER_INITIALIZE,
-        CODEX_APP_SERVER_INITIALIZED, CODEX_APP_SERVER_PRIVATE_REASONING_METHODS,
+        codex_app_server_handshake, managed_codex_app_server_launch, AppServerStdio,
+        CODEX_APP_SERVER_INITIALIZE, CODEX_APP_SERVER_INITIALIZED,
+        CODEX_APP_SERVER_PRIVATE_REASONING_METHODS,
     };
     use crate::harness::managed_cli_manifest::{embedded_managed_release, ManagedCliKind};
     use crate::harness::managed_cli_runtime::{ManagedCliLaunch, ManagedCliReadiness};
@@ -132,6 +193,46 @@ mod tests {
             CODEX_APP_SERVER_PRIVATE_REASONING_METHODS,
             &["item/reasoning/textDelta"]
         );
+    }
+
+    #[test]
+    fn handshake_opts_out_private_reasoning_before_any_thread_or_turn() {
+        let handshake = codex_app_server_handshake(1, "1.5.0").expect("handshake");
+        assert!(handshake.initialize.ends_with(b"\n"));
+        assert!(handshake.initialized.ends_with(b"\n"));
+        let initialize: serde_json::Value =
+            serde_json::from_slice(&handshake.initialize).expect("initialize JSON");
+        assert_eq!(initialize["method"], "initialize");
+        assert_eq!(initialize["id"], 1);
+        assert_eq!(initialize["params"]["clientInfo"]["name"], "vibespace");
+        assert_eq!(initialize["params"]["clientInfo"]["title"], "VibeSpace");
+        assert_eq!(initialize["params"]["clientInfo"]["version"], "1.5.0");
+        assert_eq!(
+            initialize["params"]["capabilities"]["experimentalApi"],
+            false
+        );
+        assert_eq!(
+            initialize["params"]["capabilities"]["requestAttestation"],
+            false
+        );
+        assert_eq!(
+            initialize["params"]["capabilities"]["optOutNotificationMethods"],
+            serde_json::json!(["item/reasoning/textDelta"])
+        );
+        assert!(initialize.get("jsonrpc").is_none());
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&handshake.initialized)
+                .expect("initialized JSON"),
+            serde_json::json!({ "method": "initialized" })
+        );
+    }
+
+    #[test]
+    fn handshake_rejects_invalid_request_identity_and_client_version() {
+        assert!(codex_app_server_handshake(0, "1.5.0").is_err());
+        for invalid in ["", "1.5.0 secret", "1.5.0\n{}", &"x".repeat(65)] {
+            assert!(codex_app_server_handshake(1, invalid).is_err());
+        }
     }
 
     #[test]
