@@ -1300,7 +1300,11 @@ fn build_pet_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
         .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
-        .visible(false)
+        // A hidden WebViewWindow can be registered before WebView2 creates its
+        // native host. Materialize the detached host during the main-thread
+        // build; the bounded configure path immediately applies final geometry
+        // and visibility, and later hide/show calls reuse the same surface.
+        .visible(true)
         .focused(false)
         .shadow(false)
         .background_color(tauri::window::Color(0, 0, 0, 0))
@@ -1334,7 +1338,7 @@ fn get_or_create_pet_panel(app: &AppHandle) -> Result<(WebviewWindow, bool), Str
     #[cfg(debug_assertions)]
     eprintln!("[pets] creating pet-mini-panel window");
 
-    build_pet_panel_on_main_thread(app, false)?;
+    build_pet_panel_on_main_thread(app, true)?;
     app.get_webview_window(PET_MINI_PANEL_LABEL)
         .map(|window| (window, true))
         .ok_or_else(|| "pet-mini-panel registration missing after creation".to_string())
@@ -2158,8 +2162,11 @@ mod tests {
             assert!(!builder.contains("host.add_child("));
         }
         let overlay_builder = &source[overlay_start..overlay_end];
-        assert!(overlay_builder.contains(".visible(false)"));
-        assert!(!overlay_builder.contains(".visible(true)"));
+        assert!(overlay_builder.contains(".visible(true)"));
+        assert!(!overlay_builder.contains(".visible(false)"));
+        let panel_builder = &source[panel_start..panel_end];
+        assert!(panel_builder.contains(".visible(visible)"));
+        assert!(source.contains("build_pet_panel_on_main_thread(app, true)?"));
     }
 
     #[test]
@@ -2218,7 +2225,7 @@ mod tests {
             .map(|offset| panel_start + offset)
             .expect("panel acquire has a bounded source slice");
         assert!(production[panel_start..panel_end]
-            .contains("build_pet_panel_on_main_thread(app, false)?"));
+            .contains("build_pet_panel_on_main_thread(app, true)?"));
     }
 
     #[test]
@@ -2295,7 +2302,7 @@ mod tests {
         assert!(acquire.contains("PetRegistrationAction::Reuse"));
         assert!(acquire.contains("false,"));
         assert!(acquire.contains("retire_pet_registration(app, PET_MINI_PANEL_LABEL)?;"));
-        assert!(acquire.contains("build_pet_panel_on_main_thread(app, false)?;"));
+        assert!(acquire.contains("build_pet_panel_on_main_thread(app, true)?;"));
         assert!(acquire.contains(".map(|window| (window, true))"));
         assert!(source.contains("let (win, created) = match get_or_create_pet_panel(&app)"));
     }
