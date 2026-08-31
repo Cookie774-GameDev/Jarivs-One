@@ -6,6 +6,8 @@ import { useWorkbenchStore } from './store';
 import { usePluginStore } from '@/features/plugins';
 import { useAuthStore } from '@/stores/auth';
 import type { ProjectId } from '@/types/common';
+import { jarvisArtifactRepo } from '@/lib/db/jarvisRepositories';
+import type { JarvisArtifactV1 } from '@/features/jarvis-command-center/types';
 
 const PROJECT_A = 'project-a' as ProjectId;
 const PROJECT_B = 'project-b' as ProjectId;
@@ -87,6 +89,45 @@ describe('WorkbenchPage', () => {
     expect(useWorkbenchStore.getState().panels.at(-1)?.settings.command).toBeUndefined();
     fireEvent.click(screen.getAllByRole('button', { name: /Close Terminal/i }).at(-1)!);
     expect(screen.getAllByTestId('live-terminal')).toHaveLength(before);
+  });
+
+  it('opens a canonical account artifact through the production digest-validating provider', async () => {
+    const artifact: JarvisArtifactV1 = {
+      schemaVersion: 1,
+      id: 'jart_design-md',
+      runId: 'jrun_design-md',
+      requestId: 'jreq_design-md',
+      attemptNumber: 1,
+      state: 'ready',
+      kind: 'document',
+      title: 'Design MD',
+      sourceRefs: [],
+      createdAt: 100,
+      contentHash: 'a'.repeat(64),
+      safeSummary: 'Canonical Markdown artifact.',
+      preview: { kind: 'text', text: '# Design MD', truncated: false, sizeBytes: 11 },
+    };
+    vi.spyOn(jarvisArtifactRepo, 'listByAccount').mockResolvedValue([artifact]);
+    vi.spyOn(jarvisArtifactRepo, 'getById').mockResolvedValue(artifact);
+
+    render(<WorkbenchPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Artifact' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Open Design MD/i }));
+
+    expect(await screen.findByRole('heading', { name: 'Design MD' })).toBeTruthy();
+    expect(screen.getByText('# Design MD')).toBeTruthy();
+    expect(jarvisArtifactRepo.listByAccount).toHaveBeenCalledWith('local-account', 100);
+    expect(jarvisArtifactRepo.getById).toHaveBeenCalledWith('local-account', 'jart_design-md');
+    expect(useWorkbenchStore.getState().panels.at(-1)).toEqual(
+      expect.objectContaining({
+        kind: 'artifact-reference',
+        title: 'Design MD',
+        settings: {
+          artifactId: 'jart_design-md',
+          artifactDigest: 'a'.repeat(64),
+        },
+      }),
+    );
   });
 
   it('supports keyboard zoom and undo on the spatial canvas', () => {

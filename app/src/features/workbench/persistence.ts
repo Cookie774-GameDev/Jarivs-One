@@ -39,6 +39,8 @@ const kindSet = new Set<string>(WORKBENCH_PANEL_KINDS);
 const wallpaperSet = new Set<string>(BUILT_IN_WALLPAPERS.map((entry) => entry.id));
 const SECRET_LIKE =
   /(?:sk-[a-z0-9_-]{8,}|gh[pousr]_[a-z0-9_]{8,}|aiza[a-z0-9_-]{12,}|sb_(?:secret|publishable)_[a-z0-9_-]{8,}|bearer\s+[a-z0-9._-]{8,}|(?:api[-_]?key|access[-_]?token|secret|password)\s*[:=])/i;
+const ARTIFACT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/u;
+const ARTIFACT_DIGEST = /^[a-f0-9]{64}$/u;
 
 const finite = (value: unknown, fallback: number, min: number, max: number): number => {
   const parsed = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -70,6 +72,16 @@ function safeSettings(value: unknown, forTemplate = false): WorkbenchPanelSettin
   }
   if (input.previewEnabled === true) settings.previewEnabled = true;
   if (input.previewEnabled === false) settings.previewEnabled = false;
+  if (
+    !forTemplate &&
+    typeof input.artifactId === 'string' &&
+    typeof input.artifactDigest === 'string' &&
+    ARTIFACT_ID.test(input.artifactId) &&
+    ARTIFACT_DIGEST.test(input.artifactDigest)
+  ) {
+    settings.artifactId = input.artifactId;
+    settings.artifactDigest = input.artifactDigest;
+  }
   return settings;
 }
 
@@ -229,6 +241,8 @@ export function documentToTemplatePanels(panels: WorkbenchPanel[]): WorkbenchTem
     settings: {
       ...panel.settings,
       resourceId: undefined,
+      artifactId: undefined,
+      artifactDigest: undefined,
     },
   }));
 }

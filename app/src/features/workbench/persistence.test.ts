@@ -5,6 +5,7 @@ import {
   loadWorkbenchDocument,
   saveWorkbenchDocument,
   serializeContentFingerprint,
+  documentToTemplatePanels,
 } from './persistence';
 import { createDefaultWorkbenchDocument } from './store';
 
@@ -49,6 +50,72 @@ describe('Workbench persistence', () => {
       expect.objectContaining({ id: 'ade-1', kind: 'ade', title: 'ChatGPT ADE' }),
     );
     expect(window.localStorage.getItem(WORKBENCH_STORAGE_KEY)).not.toContain('executionIdentity');
+  });
+
+  it('persists only an opaque artifact identity and exact digest for reload revalidation', () => {
+    const document = createDefaultWorkbenchDocument();
+    document.panels.push({
+      id: 'artifact-1',
+      kind: 'artifact-reference',
+      title: 'Verified design',
+      x: 120,
+      y: 80,
+      width: 440,
+      height: 360,
+      z: 4,
+      minimized: false,
+      status: 'ready',
+      settings: {
+        artifactId: 'jart_verified-design',
+        artifactDigest: 'a'.repeat(64),
+      },
+    });
+
+    expect(saveWorkbenchDocument(document, window.localStorage).ok).toBe(true);
+    const restored = loadWorkbenchDocument(window.localStorage).document.panels.find(
+      (panel) => panel.id === 'artifact-1',
+    );
+    expect(restored?.settings).toEqual({
+      artifactId: 'jart_verified-design',
+      artifactDigest: 'a'.repeat(64),
+    });
+  });
+
+  it('drops malformed artifact references and strips valid account references from templates', () => {
+    const document = createDefaultWorkbenchDocument();
+    document.panels.push({
+      id: 'artifact-unsafe',
+      kind: 'artifact-reference',
+      title: 'Artifact reference',
+      x: 120,
+      y: 80,
+      width: 440,
+      height: 360,
+      z: 4,
+      minimized: false,
+      status: 'idle',
+      settings: {
+        artifactId: '../foreign',
+        artifactDigest: 'not-a-digest',
+      },
+    });
+
+    expect(saveWorkbenchDocument(document, window.localStorage).ok).toBe(true);
+    const restored = loadWorkbenchDocument(window.localStorage).document.panels.find(
+      (panel) => panel.id === 'artifact-unsafe',
+    );
+    expect(restored?.settings.artifactId).toBeUndefined();
+    expect(restored?.settings.artifactDigest).toBeUndefined();
+
+    const safePanel = {
+      ...document.panels.at(-1)!,
+      settings: { artifactId: 'jart_safe', artifactDigest: 'b'.repeat(64) },
+    };
+    expect(documentToTemplatePanels([safePanel])[0]?.settings).toEqual({
+      artifactId: undefined,
+      artifactDigest: undefined,
+      resourceId: undefined,
+    });
   });
 
   it('recovers from a corrupt primary document without persisting terminal output', () => {

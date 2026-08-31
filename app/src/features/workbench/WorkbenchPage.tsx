@@ -13,6 +13,13 @@ import {
   Wallpaper,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { useUIStore } from '@/stores/ui';
 import { useFullscreenStore } from '@/features/fullscreen';
@@ -32,14 +39,24 @@ import { WallpaperHost } from './WallpaperHost';
 import { WallpaperPicker } from './WallpaperPicker';
 import { WorkbenchCanvas } from './WorkbenchCanvas';
 import { WorkbenchContextMenu } from './WorkbenchContextMenu';
+import { ArtifactReferenceResolverProvider } from './ReferencePanel';
 import { useWorkbenchStore } from './store';
 import { setWorkbenchNativeWindowTitle } from './window';
 import type { WorkbenchPanelKind } from './types';
 import type { PluginManifest } from '@/features/plugins';
 import { DEFAULT_WORKBENCH_NAME } from './workbenchName';
+import { jarvisArtifactRepo } from '@/lib/db/jarvisRepositories';
+import { projectJarvisArtifactReference } from '@/features/jarvis-command-center/artifactAccess';
 import './workbench.css';
 
 const WORKBENCH_PALETTE_REVEAL_PX = 72;
+const ARTIFACT_DIGEST = /^[a-f0-9]{64}$/u;
+
+type ArtifactChoice = Readonly<{
+  artifactId: string;
+  artifactDigest: string;
+  title: string;
+}>;
 
 export function WorkbenchPage() {
   const setRoute = useUIStore((state) => state.setRoute);
@@ -68,6 +85,7 @@ export function WorkbenchPage() {
   const wallpaper = useWorkbenchStore((state) => state.wallpaper);
   const configureWallpaper = useWorkbenchStore((state) => state.configureWallpaper);
   const addPanel = useWorkbenchStore((state) => state.addPanel);
+  const updatePanel = useWorkbenchStore((state) => state.updatePanel);
   const fitView = useWorkbenchStore((state) => state.fitView);
   const undo = useWorkbenchStore((state) => state.undo);
   const redo = useWorkbenchStore((state) => state.redo);
@@ -84,6 +102,19 @@ export function WorkbenchPage() {
   const [paletteOpen, setPaletteOpen] = React.useState(true);
   const [paletteReveal, setPaletteReveal] = React.useState(false);
   const [nameDraft, setNameDraft] = React.useState(name);
+  const [artifactPickerOpen, setArtifactPickerOpen] = React.useState(false);
+  const [artifactChoices, setArtifactChoices] = React.useState<readonly ArtifactChoice[]>([]);
+  const [artifactPickerState, setArtifactPickerState] = React.useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >('idle');
+  const artifactRequestGeneration = React.useRef(0);
+
+  React.useEffect(() => {
+    artifactRequestGeneration.current += 1;
+    setArtifactPickerOpen(false);
+    setArtifactChoices([]);
+    setArtifactPickerState('idle');
+  }, [accountId]);
 
   React.useEffect(() => {
     setNameDraft(name);
@@ -128,7 +159,61 @@ export function WorkbenchPage() {
     flushPersistence();
   };
 
+  const openArtifactPicker = () => {
+    const generation = ++artifactRequestGeneration.current;
+    setArtifactPickerOpen(true);
+    setArtifactChoices([]);
+    if (!accountId) {
+      setArtifactPickerState('error');
+      return;
+    }
+    setArtifactPickerState('loading');
+    void jarvisArtifactRepo
+      .listByAccount(accountId, 100)
+      .then((artifacts) => {
+        if (generation !== artifactRequestGeneration.current) return;
+        const choices = artifacts.flatMap((artifact): ArtifactChoice[] => {
+          const reference = projectJarvisArtifactReference(artifact);
+          return reference &&
+            typeof artifact.contentHash === 'string' &&
+            ARTIFACT_DIGEST.test(artifact.contentHash)
+            ? [
+                {
+                  artifactId: reference.artifactId,
+                  artifactDigest: artifact.contentHash,
+                  title: reference.title,
+                },
+              ]
+            : [];
+        });
+        setArtifactChoices(choices);
+        setArtifactPickerState('ready');
+      })
+      .catch(() => {
+        if (generation !== artifactRequestGeneration.current) return;
+        setArtifactPickerState('error');
+      });
+  };
+
+  const addArtifact = (choice: ArtifactChoice) => {
+    const id = addPanel('artifact-reference', undefined, {
+      artifactId: choice.artifactId,
+      artifactDigest: choice.artifactDigest,
+    });
+    if (!id) {
+      toast.warning('Could not add artifact', 'Panel limit reached.');
+      return;
+    }
+    updatePanel(id, { title: choice.title, status: 'ready' });
+    flushPersistence();
+    setArtifactPickerOpen(false);
+  };
+
   const add = (kind: WorkbenchPanelKind, pluginId?: string) => {
+    if (kind === 'artifact-reference') {
+      openArtifactPicker();
+      return;
+    }
     const id = addPanel(kind, undefined, pluginId ? { pluginId } : undefined);
     if (!id) toast.warning('Could not add panel', 'Panel limit reached.');
   };
@@ -299,7 +384,9 @@ export function WorkbenchPage() {
           onClose={() => setPaletteOpen(false)}
           onOpen={() => setPaletteOpen(true)}
         />
-        <WorkbenchCanvas />
+        <ArtifactReferenceResolverProvider accountId={accountId} repository={jarvisArtifactRepo}>
+          <WorkbenchCanvas />
+        </ArtifactReferenceResolverProvider>
       </div>
       {systemActive && (
         <Button
@@ -316,6 +403,44 @@ export function WorkbenchPage() {
       )}
       <TemplatePicker open={templatesOpen} focusSave={saveFocus} onClose={closeTemplates} />
       <WallpaperPicker open={wallpapersOpen} onClose={() => setWallpapersOpen(false)} />
+      <Dialog
+        open={artifactPickerOpen}
+        onOpenChange={(open) => {
+          if (!open) artifactRequestGeneration.current += 1;
+          setArtifactPickerOpen(open);
+        }}
+      >
+        <DialogContent aria-label="Open artifact">
+          <DialogHeader>
+            <DialogTitle>Open artifact</DialogTitle>
+            <DialogDescription>
+              Choose a canonical account artifact. Workbench stores only its opaque identity and
+              digest, then revalidates the preview whenever it opens.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-80 space-y-2 overflow-y-auto" role="list">
+            {artifactPickerState === 'loading' ? <p role="status">Loading artifacts…</p> : null}
+            {artifactPickerState === 'error' ? (
+              <p role="alert">Artifact catalog unavailable for this account.</p>
+            ) : null}
+            {artifactPickerState === 'ready' && artifactChoices.length === 0 ? (
+              <p role="status">No verified artifacts are available yet.</p>
+            ) : null}
+            {artifactChoices.map((choice) => (
+              <Button
+                key={choice.artifactId}
+                type="button"
+                variant="outline"
+                className="w-full justify-start"
+                aria-label={`Open ${choice.title}`}
+                onClick={() => addArtifact(choice)}
+              >
+                {choice.title}
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
