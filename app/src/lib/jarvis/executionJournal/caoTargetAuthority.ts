@@ -20,6 +20,16 @@ const ACQUIRE_INPUT_KEYS = new Set([
 const VERIFY_INPUT_KEYS = new Set(['accountId', 'workspaceId', 'projectId', 'runId', 'leaseId']);
 const SELECTION_KEYS = new Set(['mode', 'targets']);
 const TARGET_IDENTITY_KEYS = new Set(['kind', 'targetId']);
+const APPLIED_CLAIM_KEYS = new Set(['applied', 'targets']);
+const REJECTED_CLAIM_KEYS = new Set(['applied', 'reason']);
+const REGISTRY_REJECTION_REASONS = new Set<string>([
+  'missing',
+  'scope_mismatch',
+  'unselected',
+  'locked',
+  'owned',
+  'revision_conflict',
+]);
 const EVENT_PAGE_SIZE = 500;
 const MAX_EVENT_PAGES = 20;
 const ACTIVE_RUN_STATUSES = new Set<JarvisRun['status']>([
@@ -196,9 +206,18 @@ function validRegistryClaim(
 ): value is Awaited<ReturnType<CaoTargetRegistry['claimExact']>> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const claim = value as { applied?: unknown; targets?: unknown; reason?: unknown };
-  return claim.applied === true
-    ? validDependencyArray<CaoLiveTarget>(claim.targets, 32)
-    : claim.applied === false && typeof claim.reason === 'string';
+  if (claim.applied === true) {
+    return (
+      hasExactKeys(value, APPLIED_CLAIM_KEYS) &&
+      validDependencyArray<CaoLiveTarget>(claim.targets, 32)
+    );
+  }
+  return (
+    claim.applied === false &&
+    hasExactKeys(value, REJECTED_CLAIM_KEYS) &&
+    typeof claim.reason === 'string' &&
+    REGISTRY_REJECTION_REASONS.has(claim.reason)
+  );
 }
 
 function validDependencyEntry(value: unknown): value is object {

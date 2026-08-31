@@ -2540,4 +2540,74 @@ describe('CAO explicit target authority', () => {
     expect(h.registry.releaseExact).not.toHaveBeenCalled();
     expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
   });
+
+  it('rejects an unknown claim rejection reason and clears ambiguous ownership', async () => {
+    const h = harness();
+    vi.mocked(h.registry.claimExact).mockImplementationOnce(async (request) => {
+      h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: request.leaseId });
+      return { applied: false, reason: 'private-provider-reason' } as never;
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_registry_invalid$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('rejects extra fields on a rejected claim and clears ambiguous ownership', async () => {
+    const h = harness();
+    vi.mocked(h.registry.claimExact).mockImplementationOnce(async (request) => {
+      h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: request.leaseId });
+      return { applied: false, reason: 'missing', targets: [] } as never;
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_registry_invalid$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('rejects extra fields on an applied claim and clears its exact ownership', async () => {
+    const h = harness();
+    vi.mocked(h.registry.claimExact).mockImplementationOnce(async (request) => {
+      const owned = { ...target(), ownerLeaseId: request.leaseId };
+      h.targets.set('chat:chat-a', owned);
+      return { applied: true, targets: [owned], reason: 'missing' } as never;
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_registry_invalid$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('preserves a canonical known registry rejection without cleanup mutation', async () => {
+    const h = harness();
+    vi.mocked(h.registry.claimExact).mockResolvedValueOnce({ applied: false, reason: 'missing' });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_missing$/);
+    expect(h.registry.releaseExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
 });
