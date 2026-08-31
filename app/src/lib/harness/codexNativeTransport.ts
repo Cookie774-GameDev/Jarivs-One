@@ -63,6 +63,7 @@ function streamId(): string {
 export async function startNativeCodexAppServer(
   executableId: string,
   ownerId: string,
+  modelId: string,
   bridgeFactory: CodexNativeBridgeFactory = defaultBridge,
 ): Promise<Readonly<{ generation: string }>> {
   const bridge = await bridgeFactory();
@@ -71,6 +72,7 @@ export async function startNativeCodexAppServer(
       request: {
         executableId: requireIdentifier(executableId, 'executable identity'),
         ownerId: requireIdentifier(ownerId, 'owner identity'),
+        modelId: requireIdentifier(modelId, 'model identity'),
       },
     }),
   );

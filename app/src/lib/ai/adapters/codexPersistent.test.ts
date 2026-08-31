@@ -103,8 +103,9 @@ describe('persistent Codex app-server adapter', () => {
     const writes: Array<Record<string, unknown>> = [];
     const adapter = createCodexPersistentAdapter({
       findExecutable: async () => ({ executableId: 'trusted-codex', executablePath: 'codex.exe' }),
-      start: async () => {
+      start: async (_executableId, _ownerId, modelId) => {
         calls.push('start');
+        expect(modelId).toBe('opencode-go/deepseek-v4-flash-vision-exp');
         return { generation: 'codex-generation-1' };
       },
       frames: () => {

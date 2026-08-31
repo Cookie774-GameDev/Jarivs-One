@@ -27,7 +27,11 @@ type NativeFrame = Record<string, unknown>;
 
 export interface CodexPersistentDependencies {
   findExecutable(): Promise<DetectedExecutable | undefined>;
-  start(executableId: string, ownerId: string): Promise<Readonly<{ generation: string }>>;
+  start(
+    executableId: string,
+    ownerId: string,
+    modelId: string,
+  ): Promise<Readonly<{ generation: string }>>;
   frames(generation: string): Readonly<{
     stream: AsyncIterable<NativeFrame>;
     ready: Promise<void>;
@@ -164,7 +168,12 @@ async function* sendCodexRequest(
   const executable = await dependencies.findExecutable();
   if (!executable) throw new Error('Codex CLI is not installed.');
   const ownerId = request.chatId ?? request.requestId;
-  const { generation } = await dependencies.start(executable.executableId, ownerId);
+  if (!request.modelId) throw new Error('Codex requires an exact selected model.');
+  const { generation } = await dependencies.start(
+    executable.executableId,
+    ownerId,
+    request.modelId,
+  );
   const subscription = dependencies.frames(generation);
   const iterator = subscription.stream[Symbol.asyncIterator]();
   let prefetched: Promise<IteratorResult<NativeFrame>> | undefined = iterator.next();

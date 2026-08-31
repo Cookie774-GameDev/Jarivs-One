@@ -9,14 +9,23 @@ import {
 describe('native Codex app-server transport', () => {
   it('starts only an existing trusted executable identity and returns an opaque generation', async () => {
     const invoke = vi.fn(async () => ({ generation: 'codex-generation-1' }));
-    const result = await startNativeCodexAppServer('trusted-codex-1', 'chat-1', async () => ({
-      invoke,
-      channel: vi.fn() as never,
-    }));
+    const result = await startNativeCodexAppServer(
+      'trusted-codex-1',
+      'chat-1',
+      'opencode-go/deepseek-v4-flash-vision-exp',
+      async () => ({
+        invoke,
+        channel: vi.fn() as never,
+      }),
+    );
 
     expect(result).toEqual({ generation: 'codex-generation-1' });
     expect(invoke).toHaveBeenCalledWith('codex_app_server_start', {
-      request: { executableId: 'trusted-codex-1', ownerId: 'chat-1' },
+      request: {
+        executableId: 'trusted-codex-1',
+        ownerId: 'chat-1',
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+      },
     });
   });
 

@@ -2,28 +2,37 @@ use crate::cli_bridge::CliBridgeState;
 use crate::harness::managed_codex_app_server::{
     codex_app_server_handshake, CodexAppServerFrameDecoder, CODEX_APP_SERVER_MAX_FRAME_BYTES,
 };
+use crate::harness::managed_codex_proxy_profile::build_managed_codex_proxy_profile;
+use crate::harness::managed_codex_proxy_runtime::{
+    materialize_isolated_profile, resolve_reviewed_opencodex_runtime,
+};
+use crate::harness::opencode_go_auth::{default_auth_store_path, read_opencode_go_credential};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::VecDeque;
 use std::io::{BufReader, Read, Write};
-use std::path::PathBuf;
+use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, Webview};
 
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 const READER_CHANNEL_CAPACITY: usize = 256;
 const READER_CHUNK_BYTES: usize = 64 * 1024;
+const OPENCODEX_PORT: u16 = 10_101;
+const OPENCODEX_READY_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CodexAppServerStartRequest {
     executable_id: String,
     owner_id: String,
+    model_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -71,6 +80,9 @@ fn validate_start_request(
     }
     if !valid_identifier(&request.owner_id, 256) {
         return Err("Codex owner identity is invalid.".to_string());
+    }
+    if !request.model_id.starts_with("opencode-go/") || !valid_identifier(&request.model_id, 256) {
+        return Err("Codex model identity is invalid.".to_string());
     }
     Ok(())
 }
@@ -272,6 +284,7 @@ struct ActiveStream {
 
 pub struct RunningCodexServer {
     executable_id: String,
+    model_id: String,
     caller_label: String,
     owner_id: String,
     generation: String,
@@ -282,6 +295,7 @@ pub struct RunningCodexServer {
     stderr_task: Option<thread::JoinHandle<()>>,
     active_stream: Option<ActiveStream>,
     process: OwnedProcessGuard,
+    proxy_process: Option<OwnedProcessGuard>,
     stopped: bool,
 }
 
@@ -296,6 +310,7 @@ impl RunningCodexServer {
     ) -> Self {
         Self {
             executable_id: executable_id.to_string(),
+            model_id: "opencode-go/deepseek-v4-flash-vision-exp".to_string(),
             caller_label: caller_label.to_string(),
             owner_id: owner_id.to_string(),
             generation: generation.to_string(),
@@ -306,6 +321,7 @@ impl RunningCodexServer {
             stderr_task: None,
             active_stream: None,
             process: OwnedProcessGuard::new(process),
+            proxy_process: None,
             stopped: false,
         }
     }
@@ -322,6 +338,10 @@ impl RunningCodexServer {
         self.receiver.take();
         self.stdin.take();
         let result = self.process.stop();
+        if let Some(proxy) = self.proxy_process.as_mut() {
+            let _ = proxy.stop();
+        }
+        self.proxy_process = None;
         self.reader_task.take();
         self.stderr_task.take();
         self.stopped = true;
@@ -416,8 +436,11 @@ fn spawn_stderr_drain<R: Read + Send + 'static>(mut stderr: R) -> thread::JoinHa
 fn launch_server(
     launch: CodexLaunchRequest,
     executable_id: String,
+    model_id: String,
     caller_label: String,
     owner_id: String,
+    codex_home: &Path,
+    proxy_process: OwnedProcessGuard,
 ) -> Result<RunningCodexServer, String> {
     let mut command = Command::new(&launch.executable);
     command
@@ -425,6 +448,7 @@ fn launch_server(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    command.env("CODEX_HOME", codex_home).env("NO_COLOR", "1");
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -492,6 +516,7 @@ fn launch_server(
     let reader_task = spawn_stdout_reader(reader, handshake.decoder, sender);
     Ok(RunningCodexServer {
         executable_id,
+        model_id,
         caller_label,
         owner_id,
         generation: format!("codex-generation-{}", nanoid::nanoid!(20)),
@@ -502,8 +527,125 @@ fn launch_server(
         stderr_task: Some(stderr_task),
         active_stream: None,
         process,
+        proxy_process: Some(proxy_process),
         stopped: false,
     })
+}
+
+fn spawn_owned_child(
+    mut command: Command,
+    label: &'static str,
+) -> Result<OwnedProcessGuard, String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let child = command
+        .spawn()
+        .map_err(|_| format!("{label} process could not be started."))?;
+    Ok(OwnedProcessGuard::new(Box::new(ProductionProcess {
+        child: Arc::new(Mutex::new(child)),
+        terminated: false,
+    })))
+}
+
+fn run_bounded_ready_probe(mut command: Command) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    let Ok(mut child) = command.spawn() else {
+        return false;
+    };
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(25)),
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+        }
+    }
+}
+
+fn start_owned_opencodex(
+    app: &AppHandle,
+    model_id: &str,
+) -> Result<(OwnedProcessGuard, PathBuf), String> {
+    let endpoint = SocketAddrV4::new(Ipv4Addr::LOCALHOST, OPENCODEX_PORT);
+    if TcpStream::connect_timeout(&endpoint.into(), Duration::from_millis(150)).is_ok() {
+        return Err("The VibeSpace OpenCodex loopback endpoint is already occupied.".to_string());
+    }
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| "VibeSpace app data is unavailable.".to_string())?;
+    let profile = build_managed_codex_proxy_profile(Ipv4Addr::LOCALHOST, OPENCODEX_PORT, model_id)
+        .map_err(|_| "The managed Codex proxy profile is invalid.".to_string())?;
+    let paths = materialize_isolated_profile(&app_data, &profile)
+        .map_err(|_| "The isolated Codex proxy profile could not be prepared.".to_string())?;
+    let managed_base = app_data.join("managed-runtime");
+    let roaming = std::env::var_os("APPDATA").map(PathBuf::from);
+    let runtime =
+        resolve_reviewed_opencodex_runtime(&managed_base, roaming.as_deref()).map_err(|_| {
+            "Reviewed OpenCodex 2.36.0 is unavailable; run VibeSpace Doctor.".to_string()
+        })?;
+    let credential_path = default_auth_store_path()
+        .map_err(|_| "The OpenCode credential store is unavailable.".to_string())?;
+    let credential = read_opencode_go_credential(&credential_path)
+        .map_err(|_| "OpenCode Go is not connected; connect it in OpenCode first.".to_string())?;
+
+    let configure = |command: &mut Command| {
+        command
+            .env("OPENCODEX_HOME", &paths.opencodex_home)
+            .env("CODEX_HOME", &paths.codex_home)
+            .env(
+                profile.provider_environment_name,
+                credential.expose_to_child_environment(),
+            )
+            .env("NO_COLOR", "1")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+    };
+    let mut start = Command::new(&runtime.bun_executable);
+    start
+        .arg(&runtime.source_entrypoint)
+        .arg("start")
+        .arg("--port")
+        .arg(OPENCODEX_PORT.to_string());
+    configure(&mut start);
+    let mut proxy = spawn_owned_child(start, "OpenCodex")?;
+
+    let deadline = Instant::now() + OPENCODEX_READY_TIMEOUT;
+    loop {
+        if proxy.has_exited()? {
+            return Err("OpenCodex ended before becoming ready.".to_string());
+        }
+        let mut ready = Command::new(&runtime.bun_executable);
+        ready
+            .arg(&runtime.source_entrypoint)
+            .arg("ready")
+            .arg("--json");
+        configure(&mut ready);
+        let ready = run_bounded_ready_probe(ready);
+        if ready {
+            break;
+        }
+        if Instant::now() >= deadline {
+            let _ = proxy.stop();
+            return Err("OpenCodex did not prove readiness within 30 seconds.".to_string());
+        }
+        thread::sleep(Duration::from_millis(250));
+    }
+    Ok((proxy, paths.codex_home))
 }
 
 fn start_internal(
@@ -520,6 +662,7 @@ fn start_internal(
     if let Some(running) = inner.running.as_mut() {
         if !running.process.has_exited()? {
             if running.executable_id == request.executable_id
+                && running.model_id == request.model_id
                 && running.caller_label == caller_label
                 && running.owner_id == request.owner_id
             {
@@ -536,11 +679,15 @@ fn start_internal(
     let launch = resolve_launch_request(&request.executable_id, |executable_id| {
         cli_state.resolve_trusted_executable(executable_id)
     })?;
+    let (proxy_process, codex_home) = start_owned_opencodex(app, &request.model_id)?;
     let running = launch_server(
         launch,
         request.executable_id,
+        request.model_id,
         caller_label.to_string(),
         request.owner_id,
+        &codex_home,
+        proxy_process,
     )?;
     let generation = running.generation.clone();
     inner.running = Some(running);
@@ -759,6 +906,7 @@ mod tests {
         let request: CodexAppServerStartRequest = serde_json::from_value(json!({
             "executableId": "cli-executable-0000000000000001",
             "ownerId": "chat_session-01",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
         }))
         .expect("valid start request");
         assert_eq!(request.executable_id, "cli-executable-0000000000000001");
@@ -768,6 +916,7 @@ mod tests {
         assert!(serde_json::from_value::<CodexAppServerStartRequest>(json!({
             "executableId": "cli-executable-0000000000000001",
             "ownerId": "chat_session-01",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
             "executablePath": "C:\\untrusted\\codex.exe",
         }))
         .is_err());
@@ -786,6 +935,7 @@ mod tests {
                 &CodexAppServerStartRequest {
                     executable_id: executable_id.to_string(),
                     owner_id: owner_id.to_string(),
+                    model_id: "opencode-go/deepseek-v4-flash-vision-exp".to_string(),
                 },
             )
             .is_err());
