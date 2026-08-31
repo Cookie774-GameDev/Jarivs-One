@@ -297,6 +297,40 @@ function renderInstantPreview(command: InstantCommand): React.ReactNode {
           : <span className="text-foreground">{command.payload}</span>.
         </>
       );
+    case 'catalog': {
+      const action = command.id.replace(/[._]+/gu, ' ');
+      const boundedSlots = Object.entries(command.slots)
+        .filter(
+          ([key, value]) =>
+            !/(?:api.?key|secret|token|credential|password|billing)/iu.test(key) &&
+            (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'),
+        )
+        .map(([, value]) => String(value).trim().slice(0, 120))
+        .filter(Boolean)
+        .slice(0, 3);
+      return (
+        <>
+          → Will {verb(action)}
+          {boundedSlots.length > 0 ? (
+            <>
+              {' for '}
+              <span className="text-foreground">{boundedSlots.join(' · ')}</span>
+            </>
+          ) : null}
+          .{' '}
+          {command.safety === 'approval' ? (
+            <span className="text-muted-foreground">Approval required before execution. </span>
+          ) : command.safety === 'confirm' ? (
+            <span className="text-muted-foreground">Confirmation required before execution. </span>
+          ) : null}
+          {command.family === 'team' ? (
+            <span className="text-muted-foreground">
+              Bundled Terminal Peer Fabric capability required.
+            </span>
+          ) : null}
+        </>
+      );
+    }
   }
 }
 

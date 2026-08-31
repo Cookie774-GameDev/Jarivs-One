@@ -186,4 +186,28 @@ describe('AssistantBar instant fast lane', () => {
     expect(mocks.executeIntent).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalled();
   });
+
+  it('previews the canonical catalog action, bounded target, safety, and capability before execution', () => {
+    const command = {
+      kind: 'catalog',
+      id: 'team.message',
+      family: 'team',
+      authority: 'terminal-peer-fabric',
+      safety: 'approval',
+      slots: { remainder: 'alpha release audit' },
+    };
+    mocks.classifyInstantCommandInput.mockReturnValue({ status: 'matched', command });
+    render(<AssistantBar open onOpenChange={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Jarvis Assistant command' }), {
+      target: { value: 'tell team alpha release audit' },
+    });
+
+    expect(screen.getByText(/team message/i)).toBeTruthy();
+    expect(screen.getByText(/alpha release audit/i)).toBeTruthy();
+    expect(screen.getByText(/Approval required before execution/i)).toBeTruthy();
+    expect(screen.getByText(/Bundled Terminal Peer Fabric capability required/i)).toBeTruthy();
+    expect(mocks.submitInstantCommand).not.toHaveBeenCalled();
+    expect(mocks.executeIntent).not.toHaveBeenCalled();
+  });
 });
