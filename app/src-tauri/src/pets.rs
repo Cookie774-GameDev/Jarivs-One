@@ -1046,10 +1046,9 @@ fn hide_pet_window(win: &WebviewWindow) -> Result<(), &'static str> {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{IsWindowVisible, ShowWindow, SW_HIDE};
 
-    // Tauri's dispatcher hide may return success before WebView2 applies native
-    // HWND visibility. Keep it as the portable request, then make the Windows
-    // HWND the truthful completion boundary.
-    let _tauri_hide_result = win.hide();
+    // This helper can run while the WebView is awaiting its invoke response.
+    // A nested Tauri dispatcher hide can then block the event loop and stall all
+    // native IPC, so Windows uses its already-owned HWND directly.
     let raw = win.hwnd().map_err(|_| "native_handle_unavailable")?;
     let hwnd = HWND(raw.0 as *mut _);
     unsafe {
@@ -1849,18 +1848,22 @@ pub async fn pet_hide_overlay(app: AppHandle) -> Result<(), String> {
     eprintln!("[pets] pet_hide_overlay invoked");
 
     let intent_generation = record_pet_visibility_intent(&app, PET_OVERLAY_LABEL);
-    let state = app.state::<PetWindowState>();
-    let _lifecycle = state
-        .overlay_lifecycle
-        .lock()
-        .map_err(|_| "overlay_lifecycle_unavailable".to_string())?;
-    if !pet_visibility_intent_is_current(&state, PET_OVERLAY_LABEL, intent_generation) {
-        return Ok(());
-    }
-    if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
-        hide_pet_window(&win).map_err(str::to_string)?;
-    }
-    Ok(())
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<PetWindowState>();
+        let _lifecycle = state
+            .overlay_lifecycle
+            .lock()
+            .map_err(|_| "overlay_lifecycle_unavailable".to_string())?;
+        if !pet_visibility_intent_is_current(&state, PET_OVERLAY_LABEL, intent_generation) {
+            return Ok(());
+        }
+        if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
+            hide_pet_window(&win).map_err(str::to_string)?;
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| "pet overlay hide worker failed".to_string())?
 }
 
 /// Whether the pet overlay is currently visible.
@@ -2505,6 +2508,18 @@ mod tests {
 
         assert!(command.contains("hide_pet_window(&win)"));
         assert!(!command.contains("let _ = win.hide()"));
+        assert!(command.contains("spawn_blocking"));
+
+        let windows_helper_start = source
+            .find("#[cfg(target_os = \"windows\")]\nfn hide_pet_window")
+            .expect("Windows overlay hide helper exists");
+        let windows_helper_end = source[windows_helper_start..]
+            .find("#[cfg(not(target_os = \"windows\"))]\nfn hide_pet_window")
+            .map(|offset| windows_helper_start + offset)
+            .expect("Windows overlay hide helper is bounded");
+        let windows_helper = &source[windows_helper_start..windows_helper_end];
+        assert!(windows_helper.contains("ShowWindow(hwnd, SW_HIDE)"));
+        assert!(!windows_helper.contains("win.hide()"));
 
         let setup_hide_start = source
             .find("fn schedule_setup_pet_hide")
