@@ -349,7 +349,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       return structuredClone(lease);
     } catch {
       const committed = await findLease(dependencies.events, input, leaseId).catch(() => undefined);
-      if (committed) return committed;
+      if (committed) return verify({ ...input, leaseId });
       await dependencies.registry.releaseExact(registryRequest).catch(() => undefined);
       fail('cao_target_lease_persistence_failed');
     }

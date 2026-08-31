@@ -115,6 +115,18 @@ function harness(initialTargets: CaoLiveTarget[] = [target()]) {
   };
 }
 
+function ambiguouslyCommit(
+  h: ReturnType<typeof harness>,
+  mutate?: (row: JarvisEvent) => void,
+): void {
+  h.deps.journal.appendEvent.mockImplementationOnce(async (_accountId, runId, event) => {
+    const row = { ...structuredClone(event), runId, seq: h.rows.length + 1 } as JarvisEvent;
+    h.rows.push(row);
+    mutate?.(row);
+    throw new Error('ambiguous append transport failure');
+  });
+}
+
 const scope = {
   accountId: 'account-a',
   workspaceId: 'workspace-a',
@@ -227,6 +239,86 @@ describe('CAO explicit target authority', () => {
         selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
       }),
     ).rejects.toThrow('cao_target_lease_persistence_failed');
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('revalidates a valid ambiguously committed lease against the live registry', async () => {
+    const h = harness();
+    ambiguouslyCommit(h);
+    vi.mocked(h.registry.readExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).resolves.toMatchObject({ leaseId: 'cao_lease_1', targets: [{ revision: 7 }] });
+    expect(h.registry.readExact).toHaveBeenCalledOnce();
+    expect(h.registry.claimExact).toHaveBeenCalledOnce();
+  });
+
+  it('rejects revision drift after an ambiguous durable commit without reacquiring', async () => {
+    const h = harness();
+    ambiguouslyCommit(h, (row) => {
+      h.targets.set('chat:chat-a', {
+        ...target(),
+        revision: 8,
+        ownerLeaseId: row.caoTargetLease!.leaseId,
+      });
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow('cao_target_revision_stale');
+    expect(h.registry.claimExact).toHaveBeenCalledOnce();
+  });
+
+  it('rejects ownership and run drift after an ambiguous durable commit', async () => {
+    const ownerDrift = harness();
+    ambiguouslyCommit(ownerDrift, () => {
+      ownerDrift.targets.set('chat:chat-a', {
+        ...target(),
+        ownerLeaseId: 'cao_lease_other',
+      });
+    });
+    await expect(
+      createCaoTargetAuthority(ownerDrift.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow('cao_target_lease_conflict');
+    expect(ownerDrift.registry.claimExact).toHaveBeenCalledOnce();
+
+    const runDrift = harness();
+    ambiguouslyCommit(runDrift, () => runDrift.setRun(run({ status: 'completed' })));
+    await expect(
+      createCaoTargetAuthority(runDrift.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow('cao_run_inactive');
+    expect(runDrift.registry.claimExact).toHaveBeenCalledOnce();
+  });
+
+  it('rejects expiry after an ambiguous durable commit and releases exact ownership', async () => {
+    const h = harness();
+    ambiguouslyCommit(h, () => h.deps.now.mockReturnValue(NOW + 5_000));
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow('cao_target_lease_stale');
     expect(h.registry.releaseExact).toHaveBeenCalledOnce();
     expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
   });
