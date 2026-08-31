@@ -21,6 +21,7 @@ const target: LiveTerminalTarget = {
 function authority(): TerminalCommandAuthorityPort {
   return {
     readTargets: vi.fn(async () => [target]),
+    consumeConfirmation: vi.fn(async () => true),
     dispatch: vi.fn(async () => ({
       ok: true as const,
       code: 'queued' as const,
@@ -73,5 +74,73 @@ describe('executeTerminalCommand', () => {
       executeTerminalCommand({ id: 'terminal.close', slots: { selector: { ordinal: 2 } } }, port),
     ).resolves.toMatchObject({ ok: false, code: 'confirmation_required' });
     expect(port.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('consumes an exact nonce-bound lifecycle confirmation once', async () => {
+    const port = authority();
+    vi.mocked(port.consumeConfirmation!).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const request = {
+      id: 'terminal.close',
+      slots: { selector: { ordinal: 2 } },
+      confirmation: { commandId: 'terminal.close', targetId: 'sess_2', nonce: 'close_once' },
+    };
+
+    await expect(executeTerminalCommand(request, port)).resolves.toMatchObject({ ok: true });
+    await expect(executeTerminalCommand(request, port)).resolves.toEqual({
+      ok: false,
+      code: 'confirmation_required',
+      message: 'That terminal confirmation is expired or already used.',
+    });
+    expect(port.dispatch).toHaveBeenCalledOnce();
+  });
+
+  it('fails closed when confirmation consumption crosses the deadline', async () => {
+    const port = authority();
+    const deadline = new AbortController();
+    vi.mocked(port.consumeConfirmation!).mockImplementationOnce(async () => {
+      deadline.abort();
+      return true;
+    });
+
+    await expect(
+      executeTerminalCommand(
+        {
+          id: 'terminal.stop',
+          slots: { selector: { ordinal: 2 } },
+          confirmation: { commandId: 'terminal.stop', targetId: 'sess_2', nonce: 'stop_once' },
+        },
+        port,
+        deadline.signal,
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'The instant command deadline elapsed.',
+    });
+    expect(port.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('redacts snapshot and dispatch authority exceptions', async () => {
+    const port = authority();
+    vi.mocked(port.readTargets).mockRejectedValueOnce(new Error('private snapshot detail'));
+    const snapshotFailure = await executeTerminalCommand({ id: 'terminal.list', slots: {} }, port);
+    expect(snapshotFailure).toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Terminal command failed.',
+    });
+    expect(JSON.stringify(snapshotFailure)).not.toContain('private snapshot detail');
+
+    vi.mocked(port.dispatch).mockRejectedValueOnce(new Error('private dispatch detail'));
+    const dispatchFailure = await executeTerminalCommand(
+      { id: 'terminal.clear', slots: { selector: { ordinal: 2 } } },
+      port,
+    );
+    expect(dispatchFailure).toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Terminal command failed.',
+    });
+    expect(JSON.stringify(dispatchFailure)).not.toContain('private dispatch detail');
   });
 });
