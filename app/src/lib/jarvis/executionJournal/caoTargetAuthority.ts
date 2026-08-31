@@ -324,6 +324,14 @@ async function findLease(
       const validated = validateCaoTargetLease(event.caoTargetLease);
       if (!validated.ok) fail('cao_target_journal_invalid');
       const lease = validated.value;
+      if (
+        event.type !== 'context' ||
+        event.idempotencyKey !== `cao-target-lease:${lease.leaseId}` ||
+        !Number.isSafeInteger(event.createdAt) ||
+        event.createdAt !== lease.acquiredAt
+      ) {
+        fail('cao_target_journal_invalid');
+      }
       if (lease.leaseId === leaseId) {
         if (match) fail('cao_target_journal_invalid');
         match = structuredClone(lease);

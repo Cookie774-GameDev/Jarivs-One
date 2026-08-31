@@ -492,6 +492,29 @@ describe('CAO explicit target authority', () => {
     expect(h.registry.readExact).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['mismatched idempotency lineage', { idempotencyKey: 'cao-target-lease:other' }],
+    ['wrong event type', { type: 'tool' as const }],
+    ['earlier persistence timestamp', { createdAt: NOW - 1 }],
+    ['later persistence timestamp', { createdAt: NOW + 1 }],
+  ])('rejects a recovered lease with %s before registry reuse', async (_label, mutation) => {
+    const h = harness();
+    const authority = createCaoTargetAuthority(h.deps);
+    const acquired = await authority.acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.rows[0] = { ...h.rows[0]!, ...mutation } as JarvisEvent;
+    vi.mocked(h.registry.readExact).mockClear();
+
+    await expect(authority.recover({ ...scope, leaseId: acquired.leaseId })).rejects.toThrow(
+      /^cao_target_journal_invalid$/,
+    );
+    expect(h.registry.readExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
   it('rejects non-monotonic durable event order before lease recovery', async () => {
     const h = harness();
     const authority = createCaoTargetAuthority(h.deps);
