@@ -940,7 +940,7 @@ fn native_show_pet_window(win: &WebviewWindow, title: &str, focus: bool) -> bool
 }
 
 fn configure_pet_surface_until_ready<F>(
-    created: bool,
+    _created: bool,
     retry_attempts: usize,
     retry_delay: std::time::Duration,
     mut configure: F,
@@ -948,7 +948,7 @@ fn configure_pet_surface_until_ready<F>(
 where
     F: FnMut() -> bool,
 {
-    let attempts = if created { retry_attempts.max(1) } else { 1 };
+    let attempts = retry_attempts.max(1);
     for attempt in 0..attempts {
         if configure() {
             return true;
@@ -2724,15 +2724,15 @@ mod tests {
     }
 
     #[test]
-    fn reused_pet_surface_keeps_single_checked_visibility_attempt() {
+    fn reused_pet_surface_waits_for_async_show_dispatch() {
         let mut attempts = 0;
         let ready = configure_pet_surface_until_ready(false, 3, std::time::Duration::ZERO, || {
             attempts += 1;
-            false
+            attempts == 3
         });
 
-        assert!(!ready);
-        assert_eq!(attempts, 1);
+        assert!(ready);
+        assert_eq!(attempts, 3);
     }
 
     #[test]
