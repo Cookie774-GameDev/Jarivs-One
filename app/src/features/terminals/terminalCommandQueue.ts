@@ -175,6 +175,7 @@ type DurableCanonicalTerminalQueueStateV1 = Readonly<{
   runId: string;
   queueItemId: string;
   executionId: string;
+  argumentDigest?: string;
 }>;
 
 function durableQueueStateKey(accountId: string, executionId: string): string {
@@ -194,6 +195,7 @@ function durableQueueState(
     'accountId' | 'runId' | 'queueItemId' | 'executionId'
   >,
   state: DurableCanonicalTerminalQueueStateV1['state'],
+  argumentDigest?: string,
 ): DurableCanonicalTerminalQueueStateV1 {
   return Object.freeze({
     schemaVersion: 1,
@@ -204,7 +206,22 @@ function durableQueueState(
     runId: identity.runId,
     queueItemId: identity.queueItemId,
     executionId: identity.executionId,
+    ...(argumentDigest ? { argumentDigest } : {}),
   });
+}
+
+function terminalCommandDigest(
+  command: string,
+  refs: readonly TerminalRef[],
+  identity: Readonly<{ accountId: string; runId: string; executionId: string }>,
+): string {
+  const source = JSON.stringify({ command, refs, ...identity });
+  let hash = 2_166_136_261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
 function readDurableQueueState(
@@ -414,7 +431,11 @@ export const useTerminalCommandQueue = create<TerminalCommandQueueState>((set, g
       canonical: Object.freeze({ accountId, runId, executionId, ownerId, cancellationToken }),
     };
     writeDurableQueueState(
-      durableQueueState({ accountId, runId, queueItemId: executionId, executionId }, 'runnable'),
+      durableQueueState(
+        { accountId, runId, queueItemId: executionId, executionId },
+        'runnable',
+        terminalCommandDigest(cmd.command, cmd.refs ?? [], { accountId, runId, executionId }),
+      ),
     );
     set((state) => ({ queue: [...state.queue, next] }));
     return executionId;
@@ -520,6 +541,92 @@ export function enqueueCanonicalTerminalCommand(
   return useTerminalCommandQueue.getState().enqueueCanonical(cmd);
 }
 
+export type FabricTerminalDeliveryInput = Readonly<{
+  accountId: string;
+  runId: string;
+  executionId: string;
+  command: string;
+  refs: readonly TerminalRef[];
+}>;
+
+export type FabricTerminalDeliveryState = 'queued' | 'stored' | 'rejected';
+
+/**
+ * Exactly-once adapter for Fabric prompt delivery. A reload can restore only
+ * an identical command bound to the same verified terminal generations.
+ */
+export function enqueueFabricTerminalDelivery(
+  input: FabricTerminalDeliveryInput,
+): FabricTerminalDeliveryState {
+  let accountId: string;
+  let runId: string;
+  let executionId: string;
+  try {
+    accountId = stableIdentifier(input.accountId, 'accountId');
+    runId = stableIdentifier(input.runId, 'runId');
+    executionId = stableIdentifier(input.executionId, 'executionId');
+  } catch {
+    return 'rejected';
+  }
+  if (!input.command.trim() || input.refs.length === 0) return 'rejected';
+  const digest = terminalCommandDigest(input.command, input.refs, {
+    accountId,
+    runId,
+    executionId,
+  });
+  const existing = useTerminalCommandQueue.getState().queue.find((item) => item.id === executionId);
+  if (existing) {
+    if (existing.kind !== 'shell' || !existing.canonical) return 'rejected';
+    const existingDigest = terminalCommandDigest(existing.command, existing.refs ?? [], {
+      accountId: existing.canonical.accountId,
+      runId: existing.canonical.runId,
+      executionId: existing.canonical.executionId,
+    });
+    return existingDigest === digest ? 'stored' : 'rejected';
+  }
+  const durable = readDurableQueueState(accountId, executionId);
+  if (!durable) {
+    try {
+      enqueueCanonicalTerminalCommand({
+        accountId,
+        runId,
+        executionId,
+        ownerId: `fabric:${executionId}`,
+        cancellationToken: `fabric-cancel:${executionId}`,
+        command: input.command,
+        target: 'refs',
+        refs: [...input.refs],
+      });
+      return 'queued';
+    } catch {
+      return 'rejected';
+    }
+  }
+  if (durable.argumentDigest !== digest) return 'rejected';
+  if (durable.state === 'claimed') return 'stored';
+  if (durable.state !== 'runnable') return 'rejected';
+  useTerminalCommandQueue.setState((state) => ({
+    queue: [
+      ...state.queue,
+      {
+        kind: 'shell',
+        id: executionId,
+        command: input.command,
+        target: 'refs',
+        refs: [...input.refs],
+        canonical: Object.freeze({
+          accountId,
+          runId,
+          executionId,
+          ownerId: `fabric:${executionId}`,
+          cancellationToken: `fabric-cancel:${executionId}`,
+        }),
+      },
+    ],
+  }));
+  return 'queued';
+}
+
 /**
  * Claim every currently visible item in arrival order. Canonical items remain
  * runnable until their private controller handoff succeeds under the same
@@ -567,7 +674,8 @@ export async function claimTerminalCommands(
         return null;
       }
       try {
-        writeDurableQueueState(durableQueueState(identity, 'claimed'));
+        const durable = readDurableQueueState(identity.accountId, identity.executionId);
+        writeDurableQueueState(durableQueueState(identity, 'claimed', durable?.argumentDigest));
       } catch {
         blocked = true;
         return null;
@@ -617,7 +725,7 @@ export const jarvisTerminalCommandQueueAuthority: JarvisQueuedCancellationQueueA
     if (!exactDurableQueueState(durable, identity, 'runnable')) {
       return { applied: false, reason: 'exact_item_mismatch', handoffProven: false };
     }
-    writeDurableQueueState(durableQueueState(identity, 'tombstone'));
+    writeDurableQueueState(durableQueueState(identity, 'tombstone', durable?.argumentDigest));
     cancellationTombstones.set(identity.queueItemId, { tombstone, original });
     return { applied: true, tombstone };
   },
@@ -636,6 +744,7 @@ export const jarvisTerminalCommandQueueAuthority: JarvisQueuedCancellationQueueA
             executionId: tombstone.executionId,
           },
           'runnable',
+          readDurableQueueState(tombstone.accountId, tombstone.executionId)?.argumentDigest,
         ),
       );
     } catch {

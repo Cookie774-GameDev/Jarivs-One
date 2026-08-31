@@ -107,6 +107,64 @@ describe('Terminal Peer Fabric command seam', () => {
     expect(commandPort.connect).not.toHaveBeenCalled();
   });
 
+  it('approval-gates message delivery, blocks live prompts, and preserves queue truth', async () => {
+    const commandPort = port({
+      available: true,
+      version: '2.0.0',
+      operations: ['connect', 'team.status'],
+    });
+    const deliver = vi.fn(() => 'queued' as const);
+    const terminalRefs = [
+      {
+        paneId: 'pane-1',
+        sessionId: 'sess-1',
+        projectId: 'proj',
+        runtimeGeneration: 'gen-1',
+        processInstanceId: 'process-1',
+        pid: 41,
+        processStartedAt: 100,
+      },
+    ];
+    const base = {
+      id: 'team.message',
+      correlationId: 'corr-message',
+      accountId: 'account-a',
+      payload: 'Run the audit.',
+      terminalRefs,
+    } as const;
+    await expect(executeFabricCommand(base, commandPort, deliver)).resolves.toMatchObject({
+      ok: false,
+      code: 'confirmation_required',
+    });
+    await expect(
+      executeFabricCommand(
+        {
+          ...base,
+          approval: { commandId: 'team.message', correlationId: 'corr-message' },
+          promptStates: { 'sess-1': 'password' },
+        },
+        commandPort,
+        deliver,
+      ),
+    ).resolves.toMatchObject({ ok: false, code: 'target_not_ready' });
+    await expect(
+      executeFabricCommand(
+        {
+          ...base,
+          approval: { commandId: 'team.message', correlationId: 'corr-message' },
+          promptStates: { 'sess-1': 'ready' },
+        },
+        commandPort,
+        deliver,
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      code: 'queued',
+      message: 'Team command queued (corr-message).',
+    });
+    expect(deliver).toHaveBeenCalledOnce();
+  });
+
   it.each(['stored', 'rejected'] as const)('preserves %s receipt truth', async (status) => {
     const commandPort = port({
       available: true,

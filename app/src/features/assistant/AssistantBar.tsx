@@ -25,7 +25,12 @@ import { Dialog, DialogPortal, DialogOverlay } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import { formatUserDateTime } from '@/lib/timeFormat';
-import { classifyInstantCommandInput, executeInstantCommand } from '@/features/instant-command';
+import { getActiveAccountIdentity } from '@/lib/accountIdentity';
+import { useAuthStore } from '@/stores/auth';
+import {
+  classifyInstantCommandInput,
+  InstantCommandEntryBoundary,
+} from '@/features/instant-command';
 import type { InstantCommand } from '@/features/instant-command';
 import { parseAssistantInput } from './parse';
 import { executeIntent } from './execute';
@@ -44,6 +49,7 @@ const RECENT_KEY = 'jarvis-assistant-recent';
 
 /** Cap on how many recent commands we remember. */
 const RECENT_CAP = 5;
+const assistantInstantBoundary = new InstantCommandEntryBoundary();
 
 /** Static example list shown in the footer. Kept here so it stays close
  * to the parser's vocabulary — easy to refresh when we add new verbs. */
@@ -348,16 +354,35 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
     if (executionInFlightRef.current) return;
     const raw = value.trim();
     if (!raw) return;
-    if (instantClassification.status === 'rejected') {
-      toast.warning('Invalid command', instantClassification.reason);
-      return;
-    }
     executionInFlightRef.current = true;
     setExecutionInFlight(true);
     try {
-      const result = instantCommand
-        ? await executeInstantCommand(instantCommand)
-        : await executeIntent(intent ?? parseAssistantInput(raw));
+      const interactionId = `assistant-${crypto.randomUUID()}`;
+      const auth = useAuthStore.getState();
+      const outcome = await assistantInstantBoundary.submit({
+        interactionId,
+        trigger: 'typed',
+        source: raw,
+        context: {
+          correlationId: interactionId,
+          accountId: getActiveAccountIdentity()?.accountId ?? 'local-account',
+          workspaceId: String(auth.workspaceId ?? 'local-workspace'),
+          projectId: String(auth.projectId ?? 'local-project'),
+        },
+      });
+      if (outcome.kind === 'rejected') {
+        toast.warning('Invalid command', outcome.reason);
+        return;
+      }
+      const result =
+        outcome.kind === 'command'
+          ? {
+              ok: outcome.receipt.status === 'completed' || outcome.receipt.status === 'queued',
+              message:
+                outcome.receipt.followUp?.prompt ??
+                `Instant command ${outcome.receipt.status} (${outcome.receipt.commandId}).`,
+            }
+          : await executeIntent(intent ?? parseAssistantInput(raw));
       if (result.ok) {
         setRecent(pushRecent(raw));
         toast.success('Done', result.message);
@@ -366,7 +391,7 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
       } else {
         // For unknown commands we DON'T persist into recents — there's no
         // point letting the user re-run a misspelt verb.
-        if (instantCommand || intent?.kind !== 'unknown') {
+        if (outcome.kind === 'command' || intent?.kind !== 'unknown') {
           setRecent(pushRecent(raw));
         }
         toast.warning('Hmm', result.message);
@@ -375,7 +400,7 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
       executionInFlightRef.current = false;
       setExecutionInFlight(false);
     }
-  }, [instantClassification, instantCommand, intent, onOpenChange, value]);
+  }, [intent, onOpenChange, value]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

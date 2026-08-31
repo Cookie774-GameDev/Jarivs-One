@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   classifyInstantCommandInput: vi.fn(),
   parseInstantCommand: vi.fn(),
   executeInstantCommand: vi.fn(),
+  submitInstantCommand: vi.fn(),
   parseAssistantInput: vi.fn(() => ({ kind: 'unknown', raw: '' })),
   executeIntent: vi.fn(),
 }));
@@ -14,6 +15,9 @@ vi.mock('@/features/instant-command', () => ({
   classifyInstantCommandInput: mocks.classifyInstantCommandInput,
   parseInstantCommand: mocks.parseInstantCommand,
   executeInstantCommand: mocks.executeInstantCommand,
+  InstantCommandEntryBoundary: class {
+    submit = mocks.submitInstantCommand;
+  },
 }));
 vi.mock('./parse', () => ({ parseAssistantInput: mocks.parseAssistantInput }));
 vi.mock('./execute', () => ({ executeIntent: mocks.executeIntent }));
@@ -30,6 +34,24 @@ describe('AssistantBar instant fast lane', () => {
       message: 'Queued command.',
     });
     mocks.executeIntent.mockResolvedValue({ ok: true, message: 'Legacy command.' });
+    mocks.submitInstantCommand.mockImplementation(async (input: { source: string }) => {
+      const classification = mocks.classifyInstantCommandInput(input.source);
+      if (classification.status === 'rejected') {
+        return { kind: 'rejected', reason: classification.reason };
+      }
+      if (classification.status === 'unmatched') return { kind: 'unmatched' };
+      const result = await mocks.executeInstantCommand(classification.command);
+      return {
+        kind: 'command',
+        receipt: {
+          commandId: 'test.command',
+          correlationId: 'test-correlation',
+          status: result.ok ? (result.code === 'queued' ? 'queued' : 'completed') : 'rejected',
+          acceptedAtMs: 1,
+          targetIds: [],
+        },
+      };
+    });
   });
 
   it('executes an instant command before legacy fallback', async () => {
@@ -51,6 +73,9 @@ describe('AssistantBar instant fast lane', () => {
     });
 
     await waitFor(() => expect(mocks.executeInstantCommand).toHaveBeenCalledWith(command));
+    expect(mocks.submitInstantCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'open codex', trigger: 'typed' }),
+    );
     expect(mocks.executeIntent).not.toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });

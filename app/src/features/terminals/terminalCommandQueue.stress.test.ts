@@ -3,6 +3,7 @@ import {
   broadcastTerminalCommand,
   claimTerminalCommands,
   enqueueCanonicalTerminalCommand,
+  enqueueFabricTerminalDelivery,
   enqueueTerminalClose,
   enqueueTerminalCommand,
   enqueueTerminalCommandBatch,
@@ -210,6 +211,56 @@ describe('terminal command queue stress', () => {
 
     expect(claimed.map((item) => item.id)).toEqual(['jterm_1']);
     expect(useTerminalCommandQueue.getState().queue).toHaveLength(0);
+  });
+
+  it('delivers Fabric prompts exactly once and recovers only the same stable generation after restart', () => {
+    const delivery = {
+      accountId: 'account-a',
+      runId: 'fabric-run-1',
+      executionId: 'fabric-run-1',
+      command: 'Run the release audit.',
+      refs: [
+        {
+          paneId: 'pane-1',
+          sessionId: 'sess-1',
+          projectId: 'project-a',
+          expectedProcess: {
+            projectId: 'project-a',
+            processInstanceId: 'process-1',
+            pid: 41,
+            processStartedAt: 100,
+            runtimeGeneration: 'generation-1',
+          },
+        },
+      ],
+    } as const;
+
+    expect(enqueueFabricTerminalDelivery(delivery)).toBe('queued');
+    expect(enqueueFabricTerminalDelivery(delivery)).toBe('stored');
+    expect(useTerminalCommandQueue.getState().queue).toHaveLength(1);
+
+    useTerminalCommandQueue.setState({ queue: [] });
+    expect(enqueueFabricTerminalDelivery(delivery)).toBe('queued');
+    expect(useTerminalCommandQueue.getState().queue).toEqual([
+      expect.objectContaining({ id: 'fabric-run-1', target: 'refs', refs: delivery.refs }),
+    ]);
+
+    useTerminalCommandQueue.setState({ queue: [] });
+    expect(
+      enqueueFabricTerminalDelivery({
+        ...delivery,
+        refs: [
+          {
+            ...delivery.refs[0],
+            expectedProcess: {
+              ...delivery.refs[0].expectedProcess,
+              runtimeGeneration: 'generation-2',
+            },
+          },
+        ],
+      }),
+    ).toBe('rejected');
+    expect(useTerminalCommandQueue.getState().queue).toEqual([]);
   });
 
   it('serializes cancellation tombstoning against claim and restores the exact item', async () => {
