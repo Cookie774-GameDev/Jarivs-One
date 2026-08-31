@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -43,12 +44,46 @@ const commandIds = new Set(
     .filter((value) => /\./u.test(value)),
 );
 
+const testFiles = [
+  'src/features/instant-command/acceptanceCorpus.test.ts',
+  'src/features/instant-command/performance.test.ts',
+];
+const npmCli =
+  process.env.npm_execpath ??
+  path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+const startedAt = performance.now();
+const testResult = spawnSync(
+  process.execPath,
+  [npmCli, '--prefix', 'app', 'run', 'test', '--', '--run', ...testFiles, '--reporter=dot'],
+  {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    env: { ...process.env, NO_COLOR: '1' },
+    timeout: 120_000,
+  },
+);
+const durationMs = Math.max(1, Math.round(performance.now() - startedAt));
+const verificationPassed = testResult.status === 0 && !testResult.error;
+
 const report = {
   commandIds: commandIds.size,
-  corpus: { positive: 300, negative: 300, ambiguity: 100, authorization: 100 },
+  corpusMinimum: { positive: 300, closeNegative: 300, ambiguity: 100, authorization: 100 },
   latencyBudgetMs: 500,
   forbiddenPreReceiptImports,
+  verification: {
+    status: verificationPassed ? 'passed' : 'failed',
+    testFiles,
+    durationMs,
+    freshProcess: true,
+    warmP95Gate: verificationPassed,
+    ...(testResult.error ? { failure: 'test_process_error' } : {}),
+    ...(testResult.status !== null && testResult.status !== 0
+      ? { failure: 'test_process_rejected' }
+      : {}),
+  },
 };
 
-if (forbiddenPreReceiptImports.length > 0 || commandIds.size < 90) process.exitCode = 1;
+if (forbiddenPreReceiptImports.length > 0 || commandIds.size < 90 || !verificationPassed) {
+  process.exitCode = 1;
+}
 process.stdout.write(`${JSON.stringify(report)}\n`);
