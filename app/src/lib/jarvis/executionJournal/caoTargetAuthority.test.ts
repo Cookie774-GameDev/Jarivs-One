@@ -284,6 +284,87 @@ describe('CAO explicit target authority', () => {
     expect(h.registry.readExact).not.toHaveBeenCalled();
   });
 
+  it('maps restart run lookup failure to safe unavailable truth before journal access', async () => {
+    const h = harness();
+    const authority = createCaoTargetAuthority(h.deps);
+    const acquired = await authority.acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.deps.events.listByRun.mockClear();
+    h.deps.runs.getRun.mockRejectedValueOnce(new Error('private database path unavailable'));
+
+    await expect(authority.verify({ ...scope, leaseId: acquired.leaseId })).rejects.toThrow(
+      /^cao_run_unavailable$/,
+    );
+    expect(h.deps.events.listByRun).not.toHaveBeenCalled();
+    expect(h.registry.readExact).not.toHaveBeenCalled();
+  });
+
+  it('maps restart journal failure to safe unavailable truth before registry access', async () => {
+    const h = harness();
+    const authority = createCaoTargetAuthority(h.deps);
+    const acquired = await authority.acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    vi.mocked(h.registry.readExact).mockClear();
+    h.deps.events.listByRun.mockRejectedValueOnce(new Error('raw journal payload unavailable'));
+
+    await expect(authority.verify({ ...scope, leaseId: acquired.leaseId })).rejects.toThrow(
+      /^cao_target_journal_unavailable$/,
+    );
+    expect(h.registry.readExact).not.toHaveBeenCalled();
+  });
+
+  it('maps restart registry failure to safe unavailable truth without releasing authority', async () => {
+    const h = harness();
+    const authority = createCaoTargetAuthority(h.deps);
+    const acquired = await authority.acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    vi.mocked(h.registry.releaseExact).mockClear();
+    vi.mocked(h.registry.readExact).mockRejectedValueOnce(
+      new Error('raw registry owner row unavailable'),
+    );
+
+    await expect(authority.verify({ ...scope, leaseId: acquired.leaseId })).rejects.toThrow(
+      /^cao_target_registry_unavailable$/,
+    );
+    expect(h.registry.releaseExact).not.toHaveBeenCalled();
+  });
+
+  it('maps acquire dependency failures safely and creates no durable authority', async () => {
+    const input = {
+      ...scope,
+      leaseMs: 5_000,
+      selection: {
+        mode: 'explicit_single' as const,
+        targets: [{ kind: 'chat' as const, targetId: 'chat-a' }],
+      },
+    };
+    const runFailure = harness();
+    runFailure.deps.runs.getRun.mockRejectedValueOnce(new Error('private run lookup failure'));
+    await expect(createCaoTargetAuthority(runFailure.deps).acquire(input)).rejects.toThrow(
+      /^cao_run_unavailable$/,
+    );
+    expect(runFailure.registry.claimExact).not.toHaveBeenCalled();
+    expect(runFailure.rows).toEqual([]);
+
+    const registryFailure = harness();
+    vi.mocked(registryFailure.registry.claimExact).mockRejectedValueOnce(
+      new Error('private registry transaction failure'),
+    );
+    await expect(createCaoTargetAuthority(registryFailure.deps).acquire(input)).rejects.toThrow(
+      /^cao_target_registry_unavailable$/,
+    );
+    expect(registryFailure.rows).toEqual([]);
+  });
+
   it('requires an explicit set for multiple targets and preserves exact chat/terminal isolation', async () => {
     const h = harness([
       target(),

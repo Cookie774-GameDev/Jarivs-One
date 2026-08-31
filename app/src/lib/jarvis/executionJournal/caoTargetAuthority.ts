@@ -203,10 +203,15 @@ async function findLease(
   let afterSeq = 0;
   let match: CaoTargetLeaseV1 | undefined;
   for (let pageNumber = 0; pageNumber < MAX_EVENT_PAGES; pageNumber += 1) {
-    const page = await events.listByRun(scope.accountId, scope.runId, {
-      afterSeq,
-      limit: EVENT_PAGE_SIZE,
-    });
+    let page: readonly JarvisEvent[];
+    try {
+      page = await events.listByRun(scope.accountId, scope.runId, {
+        afterSeq,
+        limit: EVENT_PAGE_SIZE,
+      });
+    } catch {
+      fail('cao_target_journal_unavailable');
+    }
     for (const event of page) {
       if (
         event.runId !== scope.runId ||
@@ -245,7 +250,12 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
   async function verify(input: VerifyInput): Promise<CaoTargetLeaseV1> {
     assertScope(input);
     if (!validIdentifier(input.leaseId)) fail('cao_target_lease_id_invalid');
-    const run = await dependencies.runs.getRun(input.accountId, input.runId);
+    let run: JarvisRun | undefined;
+    try {
+      run = await dependencies.runs.getRun(input.accountId, input.runId);
+    } catch {
+      fail('cao_run_unavailable');
+    }
     assertRun(run, input);
     const lease = await findLease(dependencies.events, input, input.leaseId);
     if (!lease) fail('cao_target_lease_missing');
@@ -255,11 +265,16 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       fail('cao_target_lease_stale');
     }
     const targets = lease.targets.map(({ kind, targetId }) => ({ kind, targetId }));
-    const liveRows = await dependencies.registry.readExact({
-      ...input,
-      leaseId: lease.leaseId,
-      targets,
-    });
+    let liveRows: readonly CaoLiveTarget[];
+    try {
+      liveRows = await dependencies.registry.readExact({
+        ...input,
+        leaseId: lease.leaseId,
+        targets,
+      });
+    } catch {
+      fail('cao_target_registry_unavailable');
+    }
     assertLiveTargets(
       liveRows,
       targets,
@@ -280,7 +295,12 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     ) {
       fail('cao_target_lease_duration_invalid');
     }
-    const run = await dependencies.runs.getRun(input.accountId, input.runId);
+    let run: JarvisRun | undefined;
+    try {
+      run = await dependencies.runs.getRun(input.accountId, input.runId);
+    } catch {
+      fail('cao_run_unavailable');
+    }
     assertRun(run, input);
     const acquiredAt = dependencies.now();
     if (!Number.isFinite(acquiredAt) || acquiredAt < 0) fail('cao_target_clock_invalid');
@@ -289,7 +309,12 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     const requested = input.selection.targets.map(({ kind, targetId }) => ({ kind, targetId }));
     const expiresAt = acquiredAt + input.leaseMs;
     const registryRequest = { ...input, leaseId, expiresAt, targets: requested };
-    const claim = await dependencies.registry.claimExact(registryRequest);
+    let claim: Awaited<ReturnType<CaoTargetRegistry['claimExact']>>;
+    try {
+      claim = await dependencies.registry.claimExact(registryRequest);
+    } catch {
+      fail('cao_target_registry_unavailable');
+    }
     if (!claim.applied) registryFailure(claim.reason);
     try {
       assertLiveTargets(claim.targets, requested, input, leaseId);
