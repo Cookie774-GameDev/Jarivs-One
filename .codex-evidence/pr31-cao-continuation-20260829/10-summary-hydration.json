@@ -1,0 +1,88 @@
+{
+  "status": "passed",
+  "capturedAt": "2026-08-30T06:13:35.223Z",
+  "identity": {
+    "jarvisPid": 33732,
+    "webViewPid": 23264,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-30T01:13:32.8657938-05:00"
+  },
+  "fixtureRoot": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-cao-continuation-20260829\\phase0-context-fixture",
+  "result": {
+    "projectId": "prj_leBT3oqNPBtoSMmf",
+    "mapId": "map-1d0fhy8-c-users-viper-vibespace-unifiedchungus-final-codex-evidence-pr31-cao-continuatio-1788065716038",
+    "nodeId": "path:official-native-acceptance.md",
+    "relativePath": "official-native-acceptance.md",
+    "rootDocumentId": "20260829235518-nzlf9e3",
+    "bindingId": "20260830001145-odbzdel",
+    "rootPath": "/20260823111108-g8hllha/20260829235518-nzlf9e3.sy",
+    "documentPath": "/20260823111108-g8hllha/20260829235518-nzlf9e3/20260830001145-odbzdel.sy",
+    "summaryState": "completed",
+    "summaryLength": 420,
+    "summarySha256": "5b5db481072dcdba8715474d44577dd945f95b15e8daaf23a7fb33c3db17911b",
+    "documentMarkdownLength": 1512,
+    "documentMarkdownHead": "<!-- vibespace-context-node:v1 map=map-1d0fhy8-c-users-viper-vibespace-unifiedchungus-final-codex-evidence-pr31-cao-continuatio-1788065716038 node=path%3Aofficial-native-acceptance.md -->\n{: id=\"20260830011007-cdliptt\" updated=\"20260830011007\"}\n\n# official-native-acceptance.md\n{: id=\"20260830011007-fb851p8\" updated=\"20260830011007\"}\n\n> Read-only VibeSpace source index · file\n> {: id=\"2026083001100",
+    "usage": [
+      {
+        "batchId": "siyuan-summary-370e8a56-f7c2fc963b5bba45",
+        "requestId": "1aa228ae-0e88-4ac9-b7e6-031105480110",
+        "sessionId": "ses_faeb61232ffek1du6vwMR08yWC",
+        "nodeCount": 1,
+        "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/vibespace-unifiedchungus-final/.codex-evidence/pr31-cao-continuation-20260829/phase0-context-fixture\",\"summaryMode\":\"selected\",\"selectedExtensions\":[],\"selectedPaths\":[\".\"],\"excludedPaths\":[]}",
+        "lane": 0,
+        "attempt": 0,
+        "nodeId": "batch:siyuan-summary-370e8a56-f7c2fc963b5bba45",
+        "sourceModifiedAt": null,
+        "sourceSizeBytes": null,
+        "providerId": "opencode",
+        "connectionId": "opencode-cli",
+        "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+        "effort": "high",
+        "effortProvenance": "requested",
+        "inputTokens": "[redacted]",
+        "outputTokens": "[redacted]",
+        "totalTokens": "[redacted]",
+        "provenance": "reported",
+        "cacheReadTokens": "[redacted]",
+        "cacheWriteTokens": "[redacted]",
+        "cacheProvenance": "reported",
+        "costUsd": 0.0019888,
+        "costProvenance": "reported",
+        "dispatchedAt": 1788070193613,
+        "durationMs": 13327,
+        "completedAt": 1788070206940
+      }
+    ],
+    "assertions": {
+      "jobCompleted": true,
+      "summarizedExactlyOne": true,
+      "summaryRouteExact": true,
+      "manifestRouteExact": true,
+      "bindingMatchesDocument": true,
+      "documentNestedUnderRoot": true,
+      "sourceMarkerPersisted": true,
+      "summaryHeadingPersisted": true,
+      "exactSummaryPersisted": true,
+      "noCleanupReceipts": true
+    }
+  },
+  "safety": [
+    {
+      "label": "phase0:hydration:before",
+      "capturedAt": "2026-08-30T01:13:28.3491593-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "phase0:hydration:after",
+      "capturedAt": "2026-08-30T01:13:35.1425917-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ]
+}

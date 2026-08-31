@@ -1,0 +1,794 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-CORRECTIVE-NATIVE-ACCEPTANCE",
+  "agent": "VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828",
+  "startedAt": "2026-08-28T12:04:06.783Z",
+  "cdpUrl": "http://127.0.0.1:9223",
+  "expectedModel": "opencode-go/deepseek-v4-flash-vision-exp",
+  "selectedScenarios": [
+    "official-native-identity",
+    "workbench-browser",
+    "chat-whole-app-states",
+    "schedule-kanban-milestones",
+    "five-plugin-flows"
+  ],
+  "safety": {
+    "officialNativeOnly": true,
+    "credentialsEntered": false,
+    "oauthCompleted": false,
+    "externalAccountCompleted": false,
+    "productionMutation": false,
+    "standaloneBrowserControlled": false,
+    "computerUseUsed": false,
+    "browserMcpUsed": false,
+    "ollamaTouched": false
+  },
+  "scenarios": [
+    {
+      "name": "official-native-identity",
+      "status": "passed",
+      "startedAt": "2026-08-28T12:04:07.448Z",
+      "completedAt": "2026-08-28T12:04:15.007Z",
+      "evidence": {
+        "title": "VibeSpace",
+        "url": "http://localhost:5173/?route=chat",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0",
+        "isTauri": true,
+        "pageCount": 1,
+        "targetPages": [
+          {
+            "url": "http://localhost:5173/?route=chat",
+            "title": "VibeSpace"
+          }
+        ],
+        "processes": {
+          "Processes": [
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18280,
+              "ParentProcessId": 16916,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18396,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18460,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18480,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18572,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18976,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 3416,
+              "ParentProcessId": 23772,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 14768,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25044,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25048,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 17920,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25064,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26392,
+              "ParentProcessId": 17080,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26608,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26744,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26752,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26892,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 27112,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "jarvis.exe",
+              "ProcessId": 7932,
+              "ParentProcessId": 7972,
+              "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 10728,
+              "ParentProcessId": 7932,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": true
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26404,
+              "ParentProcessId": 10728,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 17236,
+              "ParentProcessId": 10728,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 2120,
+              "ParentProcessId": 10728,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 17460,
+              "ParentProcessId": 10728,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 22608,
+              "ParentProcessId": 10728,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": true
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25236,
+              "ParentProcessId": 10728,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            }
+          ],
+          "CdpListener": [
+            {
+              "LocalAddress": "127.0.0.1",
+              "LocalPort": 9223,
+              "OwningProcess": 10728,
+              "State": 2
+            }
+          ]
+        },
+        "git": {
+          "worktree": "C:/Users/viper/VibeSpace-UnifiedChungus-Final",
+          "branch": "integration/UnifiedChungus-final",
+          "head": "46da1567a097b6c10a68b89a43e6bcdb7340b42b",
+          "upstream": "origin/UnifiedChungus",
+          "finalHead": "46da1567a097b6c10a68b89a43e6bcdb7340b42b"
+        }
+      }
+    },
+    {
+      "name": "workbench-browser",
+      "status": "failed",
+      "startedAt": "2026-08-28T12:04:15.013Z",
+      "completedAt": "2026-08-28T12:04:48.605Z",
+      "error": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByTestId('workbench-browser-panel').getByRole('button', { name: 'Back' })\u001b[22m\n\u001b[2m    - locator resolved to <button type=\"button\" aria-label=\"Back\" class=\"inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 hover:bg-muted hover:text-foreground text-muted-foreground h-6 w-6 [&_svg]:size-3.5\">…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    - waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m    - element is visible, enabled and stable\u001b[22m\n\u001b[2m    - scrolling into view if needed\u001b[22m\n\u001b[2m    - done scrolling\u001b[22m\n\u001b[2m    - <header data-sakura-surface=\"workbench-toolbar\" data-monochrome-surface=\"workbench-toolbar\" class=\"workbench-toolbar [html[data-theme=monochrome]_&]:rounded-none [html[data-theme=monochrome]_&]:border-b [html[data-theme=monochrome]_&]:border-border-mid [html[data-theme=monochrome]_&]:bg-panel [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&]:backdrop-blur-none\">…</header> intercepts pointer eve"
+    },
+    {
+      "name": "chat-whole-app-states",
+      "status": "failed",
+      "startedAt": "2026-08-28T12:04:49.278Z",
+      "completedAt": "2026-08-28T12:04:57.245Z",
+      "error": "Error: Exact DeepSeek OpenCode route absent from model picker.\n    at chatAcceptance (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:706:11)\n    at async scenario (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:194:22)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:1014:5"
+    },
+    {
+      "name": "schedule-kanban-milestones",
+      "status": "passed",
+      "startedAt": "2026-08-28T12:04:57.856Z",
+      "completedAt": "2026-08-28T12:04:59.855Z",
+      "evidence": {
+        "schedule": "Workspace\n/\nProject\n/\nSchedule\nV\nWORKSPACE\nChat\nWorkbench\nCanvas\nTerminals\nKanban\nSchedule\nBenchmarks\nHistory\nChatGPT ADE\nAgents\nSkills\nTools\nFiles\nPINNED\n\nPin chats to keep them close.\n\nPROJECTS\n\nNo projects yet. Hit + to create one.\n\nCHATS\nPR31 Native Acceptance Fixture\nhi'\nAGENTS\nContext\n1/5 active maps\nvibespace-pr31-context-fixture-20260827 Context Map\nACTIVE\nFILES\nLocal · uC_B\nPR31 Native Acceptance Fixture\nhi'\nLoading…",
+        "kanban": "Workspace\n/\nProject\n/\nKanban\nV\nWORKSPACE\nChat\nWorkbench\nCanvas\nTerminals\nKanban\nSchedule\nBenchmarks\nHistory\nChatGPT ADE\nAgents\nSkills\nTools\nFiles\nPINNED\n\nPin chats to keep them close.\n\nPROJECTS\n\nNo projects yet. Hit + to create one.\n\nCHATS\nPR31 Native Acceptance Fixture\nhi'\nAGENTS\nContext\n1/5 active maps\nvibespace-pr31-context-fixture-20260827 Context Map\nACTIVE\nFILES\nLocal · uC_B\nPR31 Native Acceptance Fixture\nhi'\nTRACE · DAILY FOCUS & LONG-RUN GOALS\nKanban\n\nKnock out today's to-dos and track milestones that run for weeks. Everything syncs live with the Inspector Trace panel.\n\nTO-DO\n1\nopen today\nDONE\n—\ntoday\nMILESTONES\n0%\ncomplete\nSESSION\n—\ndone (rollup)\nToday's to-do\n\n0/1 done\n\n6 days ago\nMilestones\n\nGoals that run for weeks or months\n\nNo milestones yet. Track the big goals here — they persist across days."
+      }
+    },
+    {
+      "name": "five-plugin-flows",
+      "status": "passed",
+      "startedAt": "2026-08-28T12:04:59.863Z",
+      "completedAt": "2026-08-28T12:05:07.663Z",
+      "evidence": {
+        "flows": [
+          {
+            "id": "github",
+            "status": "error",
+            "credentialsEntered": false
+          },
+          {
+            "id": "supabase",
+            "status": "not-connected",
+            "credentialsEntered": false
+          },
+          {
+            "id": "gmail",
+            "status": "error",
+            "credentialsEntered": false
+          },
+          {
+            "id": "stripe",
+            "status": "not-connected",
+            "credentialsEntered": false
+          },
+          {
+            "id": "cloudflare",
+            "status": "not-connected",
+            "credentialsEntered": false
+          }
+        ]
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "official-native-webview-identity.json",
+      "kind": "json"
+    },
+    {
+      "name": "official-native-initial.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "workbench-ordinary-example-policy.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 751.163818359375,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-ordinary-wikipedia-policy.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 751.163818359375,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "FAIL-workbench-browser.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-existing-populated-exact-model.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-empty-fixture.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-question-state.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 345.20001220703125,
+        "y": 304.1750183105469,
+        "width": 305.51251220703125,
+        "height": 20
+      }
+    },
+    {
+      "name": "chat-plan-review-state.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 345.20001220703125,
+        "y": 658.5750122070312,
+        "width": 409.5,
+        "height": 20
+      }
+    },
+    {
+      "name": "chat-streaming-question-plan-tool.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 268.8000183105469,
+        "y": 388.57501220703125,
+        "width": 972.7999572753906,
+        "height": 24.074981689453125
+      }
+    },
+    {
+      "name": "chat-populated-complete.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-activity-ledger-expanded.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-subagent-state.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "FAIL-chat-whole-app-states.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-schedule-whole-app.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=schedule",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-kanban-milestones-whole-app.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=kanban",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "plugin-github-catalog-flow.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 64,
+        "y": 41,
+        "width": 1152,
+        "height": 738
+      }
+    },
+    {
+      "name": "plugin-supabase-catalog-flow.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 64,
+        "y": 41,
+        "width": 1152,
+        "height": 738
+      }
+    },
+    {
+      "name": "plugin-supabase-manual-setup.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 352,
+        "y": 25.600000381469727,
+        "width": 576,
+        "height": 768.8000240325928
+      }
+    },
+    {
+      "name": "plugin-gmail-catalog-flow.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 64,
+        "y": 41,
+        "width": 1152,
+        "height": 738
+      }
+    },
+    {
+      "name": "plugin-stripe-catalog-flow.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 64,
+        "y": 41,
+        "width": 1152,
+        "height": 738
+      }
+    },
+    {
+      "name": "plugin-stripe-manual-setup.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 352,
+        "y": 57.10000228881836,
+        "width": 576,
+        "height": 705.8000221252441
+      }
+    },
+    {
+      "name": "plugin-cloudflare-catalog-flow.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 64,
+        "y": 41,
+        "width": 1152,
+        "height": 738
+      }
+    },
+    {
+      "name": "plugin-cloudflare-manual-setup.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 352,
+        "y": 67.0999984741211,
+        "width": 576,
+        "height": 685.8000259399414
+      }
+    },
+    {
+      "name": "plugin-five-flow-evidence.json",
+      "kind": "json"
+    },
+    {
+      "name": "official-native-final-running.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "activity-ledger-visual-boundary.json",
+      "kind": "json"
+    }
+  ],
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 ()",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "http://localhost:5173/?route=chat"
+    }
+  ],
+  "pageErrors": [],
+  "git": {
+    "worktree": "C:/Users/viper/VibeSpace-UnifiedChungus-Final",
+    "branch": "integration/UnifiedChungus-final",
+    "head": "46da1567a097b6c10a68b89a43e6bcdb7340b42b",
+    "upstream": "origin/UnifiedChungus",
+    "finalHead": "46da1567a097b6c10a68b89a43e6bcdb7340b42b"
+  },
+  "finalState": {
+    "url": "http://localhost:5173/?route=chat",
+    "exactModelVisible": true,
+    "fixtureRemoved": true
+  },
+  "completedAt": "2026-08-28T12:05:09.998Z",
+  "summary": {
+    "passed": 3,
+    "failed": 2,
+    "fatal": false
+  }
+}

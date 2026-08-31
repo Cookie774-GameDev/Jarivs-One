@@ -1,0 +1,19 @@
+{
+  "status": "failed",
+  "stage": "search-deepseek",
+  "capturedAt": "2026-08-30T04:45:42.823Z",
+  "error": "Error: deepseek_v4_flash_vision_exp_not_available",
+  "safety": [
+    {
+      "label": "route:failure",
+      "capturedAt": "2026-08-29T23:45:42.7186623-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "events": [],
+  "screenshots": [
+    "01-model-picker-open.png",
+    "02-deepseek-live-catalog.png"
+  ]
+}

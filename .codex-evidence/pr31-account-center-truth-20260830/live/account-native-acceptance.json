@@ -1,0 +1,20 @@
+{
+  "status": "passed",
+  "endpoint": "http://127.0.0.1:9223",
+  "initialUrl": "http://tauri.localhost/?route=account&tab=profile",
+  "acceptedUrl": "http://tauri.localhost/?route=account&tab=profile",
+  "title": "VibeSpace",
+  "signedIn": false,
+  "sessionHeadingOrder": "signed-out",
+  "passwordFormBoundary": "signed-out",
+  "usageProjection": "signed-out",
+  "containment": {
+    "clientWidth": 470,
+    "scrollWidth": 470,
+    "bodyClientWidth": 720,
+    "bodyScrollWidth": 720
+  },
+  "consoleErrors": [],
+  "pageErrors": [],
+  "capturedAt": "2026-08-31T03:53:40.564Z"
+}

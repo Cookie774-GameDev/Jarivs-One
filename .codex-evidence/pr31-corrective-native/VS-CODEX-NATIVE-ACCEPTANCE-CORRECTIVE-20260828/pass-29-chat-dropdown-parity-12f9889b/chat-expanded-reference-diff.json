@@ -1,0 +1,15 @@
+{
+  "status": "failed",
+  "referencePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\docs\\operations\\PR31_CHAT_ACTIVITY_LEDGER_HANDOFF\\vibespace-chat-activity-ledger\\assets\\02-expanded-activity-inspector.png",
+  "actualPath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\pass-29-chat-dropdown-parity-12f9889b\\chat-activity-ledger-expanded-1586x992.png",
+  "diffPath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\pass-29-chat-dropdown-parity-12f9889b\\chat-expanded-reference-diff.png",
+  "width": 1586,
+  "height": 992,
+  "totalPixels": 1573312,
+  "mismatchedPixels": 370749,
+  "mismatchRatio": 0.23564874608469266,
+  "pixelThreshold": 0.12,
+  "maxMismatchRatio": 0.12,
+  "referenceSha256": "5aa55176cdb8adc79dabeaf218f99e9e1beb29923abf992b885443a487885bc0",
+  "actualSha256": "9d8181bb106c79031cf3ee9e467392e2860082ad3a3974a030ea58e9e54f6786"
+}

@@ -1,0 +1,337 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-CORRECTIVE-NATIVE-ACCEPTANCE",
+  "agent": "VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828",
+  "startedAt": "2026-08-29T00:44:26.230Z",
+  "cdpUrl": "http://127.0.0.1:9223",
+  "expectedModel": "opencode-go/deepseek-v4-flash-vision-exp",
+  "selectedScenarios": [
+    "chat-whole-app-states"
+  ],
+  "safety": {
+    "officialNativeOnly": true,
+    "credentialsEntered": false,
+    "oauthCompleted": false,
+    "externalAccountCompleted": false,
+    "productionMutation": false,
+    "standaloneBrowserControlled": false,
+    "computerUseUsed": false,
+    "browserMcpUsed": false,
+    "ollamaTouched": false
+  },
+  "scenarios": [
+    {
+      "name": "chat-whole-app-states",
+      "status": "passed",
+      "startedAt": "2026-08-29T00:44:26.861Z",
+      "completedAt": "2026-08-29T00:46:22.567Z",
+      "evidence": {
+        "exactModel": "opencode-go/deepseek-v4-flash-vision-exp",
+        "states": [
+          "empty",
+          "populated",
+          "streaming",
+          "questions",
+          "commands",
+          "mode",
+          "model",
+          "connection-disclosure",
+          "activity-ledger",
+          "subagent",
+          "tool",
+          "narrow",
+          "normal",
+          "expanded",
+          "a11y",
+          "animation"
+        ],
+        "axeViolations": 0
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "chat-existing-populated-exact-model.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-empty-fixture.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-question-state.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 345.20001220703125,
+        "y": 304.1750183105469,
+        "width": 305.51251220703125,
+        "height": 20
+      }
+    },
+    {
+      "name": "chat-plan-review-state.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 345.20001220703125,
+        "y": 658.5750122070312,
+        "width": 409.5,
+        "height": 20
+      }
+    },
+    {
+      "name": "chat-streaming-question-plan-tool.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 268.8000183105469,
+        "y": 388.57501220703125,
+        "width": 972.7999572753906,
+        "height": 24.074981689453125
+      }
+    },
+    {
+      "name": "chat-populated-complete.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-activity-ledger-expanded.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-subagent-state.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-exact-model-picker.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-mode-ask-plan-agent-menu.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-slash-command-catalog.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-tool-command-mcp.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-provider-connection-reconnect-baseline.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-layout-narrow.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 720,
+        "height": 900
+      },
+      "dimensions": {
+        "width": 720,
+        "height": 900
+      },
+      "target": null
+    },
+    {
+      "name": "chat-layout-normal.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "dimensions": {
+        "width": 1280,
+        "height": 900
+      },
+      "target": null
+    },
+    {
+      "name": "chat-layout-expanded.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1000
+      },
+      "target": null
+    },
+    {
+      "name": "chat-reduced-motion-animation.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-accessibility-axe.json",
+      "kind": "json"
+    },
+    {
+      "name": "chat-whole-app-evidence.json",
+      "kind": "json"
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "ollamaSafety": [
+    {
+      "label": "chat-whole-app-states:before",
+      "capturedAt": "2026-08-29T00:44:30.424Z",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "chat-whole-app-states:after",
+      "capturedAt": "2026-08-29T00:46:22.567Z",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "git": {
+    "worktree": "C:/Users/viper/VibeSpace-UnifiedChungus-Final",
+    "branch": "integration/UnifiedChungus-final",
+    "head": "d8f8e86d16a7de1c6b2077aabc2a925412a9bb80",
+    "upstream": "origin/UnifiedChungus"
+  }
+}

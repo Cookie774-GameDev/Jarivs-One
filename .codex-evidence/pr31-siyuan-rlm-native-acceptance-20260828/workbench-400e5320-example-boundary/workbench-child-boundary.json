@@ -1,0 +1,217 @@
+{
+  "status": "failed",
+  "head": "400e5320b782d50ed938a8835c59b81596c109a4",
+  "startedAt": "2026-08-29T05:31:43.237Z",
+  "console": [
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+    },
+    {
+      "type": "info",
+      "text": "[STORAGE MEASUREMENT] Stage: BOOT"
+    },
+    {
+      "type": "info",
+      "text": "- Approx Total LocalStorage Size: 640.28 KB"
+    },
+    {
+      "type": "info",
+      "text": "  * Key 'jarvis-ui': 0.97 KB"
+    },
+    {
+      "type": "info",
+      "text": "  * Key 'jarvis-terminal-transcripts': 48.72 KB"
+    },
+    {
+      "type": "info",
+      "text": "  * Key 'jarvis-auth': 1.93 KB"
+    },
+    {
+      "type": "info",
+      "text": "  * Key 'jarvis-tools': 0.36 KB"
+    },
+    {
+      "type": "info",
+      "text": "  * Key 'jarvis-terminal-scheduler-v1': not found"
+    },
+    {
+      "type": "info",
+      "text": "[STORAGE MEASUREMENT] 'jarvis-ui' field analysis:"
+    },
+    {
+      "type": "info",
+      "text": "    - navSectionsCollapsed: 0.12 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - doneNotifications: 0.12 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - activeChatId: 0.02 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - activeAgentId: 0.02 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - density: 0.01 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - ambientTrack: 0.01 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - sakuraPetalSpeed: 0.01 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - clockFormat: 0.01 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - lastSeenWhatsNewVersion: 0.01 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - chatMode: 0.01 KB"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2492450444. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1179819244. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_KLe17ckhD07C"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_WEhOS57TQdUN"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_Cl8XPKfGlgoJ"
+    }
+  ],
+  "pageErrors": [
+    "TypeError: Cannot read properties of undefined (reading 'handlerId')"
+  ],
+  "assertions": [
+    {
+      "name": "example navigation uses bounded native surface",
+      "passed": true
+    },
+    {
+      "name": "example navigation is stable without app error",
+      "passed": false,
+      "details": {
+        "address": "https://example.com/",
+        "text": "Page could not open\nThe page could not open.\n\nREMOTE PAGES STAY INSIDE A CAPABILITY-FREE VIBESPACE CHILD WEBVIEW.",
+        "surfaceCount": 1
+      }
+    },
+    {
+      "name": "single official CDP listener remains authoritative",
+      "passed": false,
+      "details": [
+        {
+          "LocalAddress": "::1",
+          "OwningProcess": 36704
+        },
+        {
+          "LocalAddress": "127.0.0.1",
+          "OwningProcess": 37672
+        }
+      ]
+    },
+    {
+      "name": "zero Ollama and 11434",
+      "passed": true
+    }
+  ],
+  "panel": {
+    "address": "https://example.com/",
+    "text": "Page could not open\nThe page could not open.\n\nREMOTE PAGES STAY INSIDE A CAPABILITY-FREE VIBESPACE CHILD WEBVIEW.",
+    "surfaceCount": 1
+  },
+  "processes": {
+    "tree": [
+      {
+        "Name": "jarvis.exe",
+        "ProcessId": 11932,
+        "ParentProcessId": 24528,
+        "CommandLine": "\"D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe\""
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 37672,
+        "ParentProcessId": 11932,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --js-flags=--max-old-space-size=1536 --remote-debugging-address=127.0.0.1 --remote-debugging-port=9223 --lang=en-US --mojo-named-platform-channel-pipe=11932.7388.2196540736151682175 /pfhostedapp:46c5fc76a556ed1b85e162257f1e47cd7fbc7c40"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 36704,
+        "ParentProcessId": 11932,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-e6727cc0-96aa-4a5d-9ca0-11f0ceb50a6c\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-address=127.0.0.1 --remote-debugging-port=9223 --lang=en-US --mojo-named-platform-channel-pipe=11932.7388.10302467433480781345 /pfhostedapp:3c2b3f602f66b470aa06478ffaea88d5842ab963"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 30332,
+        "ParentProcessId": 11932,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-13618e87-29cd-470b-aae3-48a84d255610\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-address=127.0.0.1 --remote-debugging-port=9223 --lang=en-US --mojo-named-platform-channel-pipe=11932.7388.6086691539663079304 /pfhostedapp:192a2e8b561e08e4b4412e110746cebb05610a4c"
+      }
+    ],
+    "listeners": [
+      {
+        "LocalAddress": "::1",
+        "OwningProcess": 36704
+      },
+      {
+        "LocalAddress": "127.0.0.1",
+        "OwningProcess": 37672
+      }
+    ],
+    "ollama": 0,
+    "port11434": 0
+  },
+  "completedAt": "2026-08-29T05:32:14.498Z"
+}

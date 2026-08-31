@@ -1,0 +1,50 @@
+{
+  "status": "failed",
+  "head": "f612182470e7984285e47dce30ec98e10d2866ef",
+  "startedAt": "2026-08-29T09:14:16.282Z",
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 740062427. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2236499171. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3934130785. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3660749451. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3024874500. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_U8W1tgtAvCug"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_KPAH8rZiCu8M"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_FRxTCggr7K0p"
+    }
+  ],
+  "pageErrors": [
+    "TypeError: Cannot read properties of undefined (reading 'handlerId')",
+    "TypeError: Cannot read properties of undefined (reading 'handlerId')"
+  ],
+  "assertions": [],
+  "failure": "page.waitForFunction: Timeout 30000ms exceeded.\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\workbench-child-boundary.mjs:31:16",
+  "completedAt": "2026-08-29T09:14:54.328Z"
+}

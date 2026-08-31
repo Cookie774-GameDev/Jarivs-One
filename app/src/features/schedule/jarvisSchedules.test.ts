@@ -11,6 +11,19 @@ import {
   serializeJarvisScheduleMetadata,
   type JarvisScheduleMetadata,
 } from './jarvisSchedules';
+import type { ChatSupervisionBindingV1 } from './chatSupervision';
+
+const chatSupervision: ChatSupervisionBindingV1 = {
+  version: 1,
+  sourceChatId: 'chat-source',
+  supervisingChatId: 'chat-supervisor',
+  originatingMessageId: 'message-origin',
+  originatingCardMessageId: 'message-card',
+  handoffPolicyVersion: 1,
+  instruction: 'Review current progress and report blockers.',
+  allowReplyToSource: false,
+  endsAt: 1_788_200_000_000,
+};
 
 describe('Jarvis schedules', () => {
   it('builds a real event row input with Jarvis schedule metadata', () => {
@@ -67,6 +80,147 @@ describe('Jarvis schedules', () => {
       targetId: 'learning-md',
       projectId: 'project_1',
     });
+  });
+
+  it('round-trips a valid chat supervision binding through the existing metadata prefix', () => {
+    const input = buildJarvisScheduleEventInput({
+      workspaceId: 'workspace_1' as WorkspaceId,
+      projectId: 'project_1',
+      createdBy: 'usr_local',
+      title: 'Chat supervision',
+      prompt: chatSupervision.instruction,
+      startAt: 1_788_000_000_000,
+      recurrence: 'custom_interval',
+      intervalMs: 30 * 60 * 1000,
+      timezone: 'UTC',
+      modelSelection: { mode: 'single', providerId: 'openai', modelId: 'gpt-test' },
+      agentId: 'agent_jarvis',
+      chatSupervision,
+    });
+
+    expect(parseJarvisScheduleMetadata({ source_ref: input.source_ref } as EventRow)).toMatchObject(
+      {
+        intervalMs: 30 * 60 * 1000,
+        chatSupervision,
+      },
+    );
+  });
+
+  it('continues to enforce the existing minimum custom interval for supervision schedules', () => {
+    const input = buildJarvisScheduleEventInput({
+      workspaceId: 'workspace_1' as WorkspaceId,
+      createdBy: 'usr_local',
+      title: 'Too frequent supervision',
+      prompt: chatSupervision.instruction,
+      startAt: 1_788_000_000_000,
+      recurrence: 'custom_interval',
+      intervalMs: 4 * 60 * 1000,
+      timezone: 'UTC',
+      modelSelection: { mode: 'single', providerId: 'openai', modelId: 'gpt-test' },
+      agentId: 'agent_jarvis',
+      chatSupervision,
+    });
+
+    expect(
+      parseJarvisScheduleMetadata({ source_ref: input.source_ref } as EventRow)?.intervalMs,
+    ).toBe(undefined);
+  });
+
+  it('updates an explicitly supplied supervision binding through the existing event update path', () => {
+    const created = buildJarvisScheduleEventInput({
+      workspaceId: 'workspace_1' as WorkspaceId,
+      createdBy: 'usr_local',
+      title: 'Chat supervision',
+      prompt: chatSupervision.instruction,
+      startAt: 1_788_000_000_000,
+      recurrence: 'daily',
+      timezone: 'UTC',
+      modelSelection: { mode: 'single', providerId: 'openai', modelId: 'gpt-test' },
+      agentId: 'agent_jarvis',
+      chatSupervision,
+    });
+    const event = {
+      id: 'event-supervision',
+      attendees: [],
+      created_at: 1,
+      updated_at: 1,
+      ...created,
+    } as EventRow;
+    const updatedBinding: ChatSupervisionBindingV1 = {
+      ...chatSupervision,
+      instruction: 'Review progress and send visible guidance.',
+      allowReplyToSource: true,
+    };
+
+    const patch = buildJarvisScheduleEventUpdate(event, {
+      title: 'Updated supervision',
+      prompt: updatedBinding.instruction,
+      startAt: 1_788_086_400_000,
+      recurrence: 'daily',
+      timezone: 'UTC',
+      modelSelection: { mode: 'single', providerId: 'openai', modelId: 'gpt-test' },
+      chatSupervision: updatedBinding,
+    });
+
+    expect(
+      parseJarvisScheduleMetadata({ ...event, ...patch } as EventRow)?.chatSupervision,
+    ).toEqual(updatedBinding);
+  });
+
+  it.each([
+    { ...chatSupervision, version: 2 },
+    { ...chatSupervision, allowReplyToSource: 'yes' },
+    { ...chatSupervision, instruction: '' },
+    { ...chatSupervision, extra: true },
+  ])('fails the whole schedule closed for malformed chat supervision metadata %#', (binding) => {
+    const metadata: JarvisScheduleMetadata = {
+      kind: 'jarvis_schedule',
+      prompt: 'unsafe partial extension',
+      recurrence: 'once',
+      modelSelection: { mode: 'single', providerId: 'openai', modelId: 'gpt-test' },
+      agentId: 'agent_jarvis',
+      createdBy: 'jarvis',
+      runHistory: [],
+      errorHistory: [],
+      chatSupervision: binding as never,
+    };
+    const event = {
+      source_ref: { context: { id: `jarvis_schedule:${JSON.stringify(metadata)}` } },
+    } as EventRow;
+    expect(parseJarvisScheduleMetadata(event)).toBeNull();
+  });
+
+  it('does not change ordinary or CAO metadata serialization while adding chat supervision', () => {
+    const ordinary: JarvisScheduleMetadata = {
+      kind: 'jarvis_schedule',
+      prompt: 'ordinary',
+      recurrence: 'daily',
+      modelSelection: { mode: 'single', providerId: 'openai', modelId: 'gpt-test' },
+      agentId: 'agent_jarvis',
+      createdBy: 'jarvis',
+      runHistory: [],
+      errorHistory: [],
+    };
+    const cao: JarvisScheduleMetadata = {
+      ...ordinary,
+      prompt: 'cao',
+      caoSupervision: {
+        schemaVersion: 1,
+        mode: 'cao_supervision',
+        scheduleId: 'cao-schedule-1',
+        policyId: 'quarter-hour-v1',
+        targetId: 'learning-md',
+        projectId: 'project-1',
+      },
+    };
+
+    for (const metadata of [ordinary, cao]) {
+      const serialized = serializeJarvisScheduleMetadata(metadata);
+      const parsed = parseJarvisScheduleMetadata({
+        source_ref: { context: { id: serialized } },
+      } as EventRow);
+      expect(serializeJarvisScheduleMetadata(parsed!)).toBe(serialized);
+    }
   });
 
   it.each([

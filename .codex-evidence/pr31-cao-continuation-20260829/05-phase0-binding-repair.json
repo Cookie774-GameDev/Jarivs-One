@@ -1,0 +1,46 @@
+{
+  "status": "passed",
+  "identity": {
+    "jarvisPid": 25708,
+    "webViewPid": 29660,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-30T00:11:40.5335541-05:00"
+  },
+  "expectedRoot": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-cao-continuation-20260829\\phase0-context-fixture",
+  "expectedNodeId": "path:official-native-acceptance.md",
+  "beforeSafety": {
+    "label": "binding-repair:before",
+    "capturedAt": "2026-08-30T00:11:43.9526855-05:00",
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  },
+  "repair": {
+    "projectId": "prj_leBT3oqNPBtoSMmf",
+    "mapId": "map-1d0fhy8-c-users-viper-vibespace-unifiedchungus-final-codex-evidence-pr31-cao-continuatio-1788065716038",
+    "staleBindingId": "20260829235519-tex7nvx",
+    "replacementBindingId": "20260830001145-odbzdel",
+    "rootDocumentId": "20260829235518-nzlf9e3",
+    "outcome": "rejected",
+    "reason": "siyuan_cloud_summary_scope_ready",
+    "job": {
+      "status": "paused",
+      "phase": "summarizing",
+      "pauseReason": "cloud_approval_required",
+      "indexed": 1,
+      "createdNodes": 1,
+      "summaryEligible": 0
+    }
+  },
+  "afterSafety": {
+    "label": "binding-repair:after",
+    "capturedAt": "2026-08-30T00:11:49.7265984-05:00",
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  },
+  "failure": null
+}

@@ -1,0 +1,65 @@
+{
+  "capturedAt": "2026-08-30T04:42:34.956Z",
+  "identity": {
+    "jarvisPid": 25708,
+    "webViewPid": 29660,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-29T23:42:32.3956171-05:00"
+  },
+  "readiness": {
+    "ready": true,
+    "reason": "official_ready",
+    "url": "http://localhost:5173/?route=chat",
+    "title": "VibeSpace",
+    "readyState": "complete",
+    "hasRoot": true,
+    "hasTauri": true,
+    "hasPublicSurface": true
+  },
+  "publicState": {
+    "title": "VibeSpace",
+    "url": "http://localhost:5173/?route=chat",
+    "readyState": "complete",
+    "hasRoot": true,
+    "hasTauri": true,
+    "viewport": {
+      "width": 1280,
+      "height": 820
+    },
+    "selectors": {
+      "buttons": 64,
+      "textareas": 1,
+      "navigation": 0,
+      "main": 1,
+      "dialogs": 0,
+      "testIds": [
+        "chat-activity-slot",
+        "chat-activity-slot",
+        "chat-activity-slot",
+        "thought-bloom-stage",
+        "thought-bloom-stage",
+        "thought-bloom-stage"
+      ]
+    }
+  },
+  "safety": [
+    {
+      "label": "identity:before",
+      "capturedAt": "2026-08-29T23:42:27.7387099-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "identity:after",
+      "capturedAt": "2026-08-29T23:42:34.8833090-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "events": []
+}

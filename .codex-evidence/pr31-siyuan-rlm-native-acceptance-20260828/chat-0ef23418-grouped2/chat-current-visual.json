@@ -1,0 +1,74 @@
+{
+  "status": "failed",
+  "head": "0ef23418a8e0191ee3bc7b2bc6d5c1726ada0c41",
+  "startedAt": "2026-08-29T03:45:02.588Z",
+  "assertions": [
+    {
+      "name": "one official jarvis process",
+      "passed": true,
+      "jarvis": [
+        {
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "official native page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "name": "canonical successful GitHub action renders one truthful plugin-use card",
+      "passed": true,
+      "text": "GH\nPLUGIN\nGitHub\nRepositories · Issues · Pull Requests\nConnected\n1"
+    },
+    {
+      "name": "FAIL-chat-current-visual.png direct 1586x992",
+      "passed": true,
+      "width": 1586,
+      "height": 992
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-0ef23418-grouped2\\FAIL-chat-current-visual.png",
+      "width": 1586,
+      "height": 992,
+      "state": {
+        "failure": "page.screenshot: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n\u001b[2m    - disabled all CSS animations\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\n    at shot (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-current-visual.mjs:51:14)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/chat-current-visual.mjs:144:3"
+      }
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe"
+        }
+      ]
+    }
+  ],
+  "failure": "page.screenshot: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n\u001b[2m    - disabled all CSS animations\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\n    at shot (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-current-visual.mjs:51:14)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/chat-current-visual.mjs:144:3",
+  "completedAt": "2026-08-29T03:45:50.651Z"
+}

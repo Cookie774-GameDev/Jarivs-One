@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-SIYUAN-PRESERVED-RECOVERY",
+  "startedAt": "2026-08-29T10:00:50.389Z",
+  "status": "failed",
+  "captureHead": "00ae0fad4107c37b62fd723df590ba74426489cf",
+  "identity": {
+    "jarvisPid": 1932,
+    "webViewPid": 20624,
+    "executablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-siyuan-57a\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-29T05:00:50.2794958-05:00"
+  },
+  "safety": [
+    {
+      "label": "attach:before",
+      "capturedAt": "2026-08-29T05:00:45.0198916-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attach:after",
+      "capturedAt": "2026-08-29T05:00:50.2794958-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [],
+  "artifacts": [
+    {
+      "name": "FAIL-siyuan-preserved-recovery.png",
+      "width": 1600,
+      "height": 1025,
+      "byteCount": 1447551,
+      "sha256": "4709b6b8b3fb05eed93a322cd96f03a846f5400f783713403570b9fb3a4adde0"
+    }
+  ],
+  "events": [],
+  "firstFailure": {
+    "code": "native_acceptance_unexpected_failure",
+    "stage": "siyuan_preserved_recovery",
+    "name": "Error",
+    "details": null
+  },
+  "metadata": {
+    "expectedHead": "00ae0fad4107c37b62fd723df590ba74426489cf",
+    "binaryCommit": "d965543ee5d54a4db708b5c3d6aa88bfab9e99e2",
+    "excludedDirtyScope": "all shared-checkout dirty files; scenario executes immutable native binary and reads frozen renderer state only",
+    "retryClicks": 0,
+    "modelDispatched": false,
+    "recycledMapMutated": false,
+    "productionMutated": false
+  },
+  "completedAt": "2026-08-29T10:01:21.484Z"
+}

@@ -1,0 +1,231 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-CORRECTIVE-NATIVE-ACCEPTANCE",
+  "agent": "VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828",
+  "startedAt": "2026-08-29T00:05:11.631Z",
+  "cdpUrl": "http://127.0.0.1:9223",
+  "expectedModel": "opencode-go/deepseek-v4-flash-vision-exp",
+  "selectedScenarios": [
+    "chat-whole-app-states"
+  ],
+  "safety": {
+    "officialNativeOnly": true,
+    "credentialsEntered": false,
+    "oauthCompleted": false,
+    "externalAccountCompleted": false,
+    "productionMutation": false,
+    "standaloneBrowserControlled": false,
+    "computerUseUsed": false,
+    "browserMcpUsed": false,
+    "ollamaTouched": false
+  },
+  "scenarios": [
+    {
+      "name": "chat-whole-app-states",
+      "status": "failed",
+      "startedAt": "2026-08-29T00:05:12.568Z",
+      "completedAt": "2026-08-29T00:06:35.839Z",
+      "error": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /^Collapse OPENCODE GO MODELS$/i }) to be visible\u001b[22m\n\n    at chatAcceptance (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:762:8)\n    at async scenario (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:227:22)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:1139:5"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "chat-existing-populated-exact-model.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-empty-fixture.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-question-state.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 345.20001220703125,
+        "y": 304.1750183105469,
+        "width": 305.51251220703125,
+        "height": 20
+      }
+    },
+    {
+      "name": "chat-plan-review-state.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 345.20001220703125,
+        "y": 658.5750122070312,
+        "width": 409.5,
+        "height": 20
+      }
+    },
+    {
+      "name": "chat-streaming-question-plan-tool.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 268.8000183105469,
+        "y": 388.57501220703125,
+        "width": 972.7999572753906,
+        "height": 24.074981689453125
+      }
+    },
+    {
+      "name": "chat-populated-complete.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-activity-ledger-expanded.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-subagent-state.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "FAIL-chat-whole-app-states.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "official-native-final-running.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "activity-ledger-visual-boundary.json",
+      "kind": "json"
+    }
+  ],
+  "console": [],
+  "pageErrors": [
+    "SubTransactionError: DexieError2",
+    "SubTransactionError: DexieError2",
+    "SubTransactionError: DexieError2",
+    "SubTransactionError: DexieError2"
+  ],
+  "ollamaSafety": [
+    {
+      "label": "chat-whole-app-states:before",
+      "capturedAt": "2026-08-29T00:05:15.364Z",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "chat-whole-app-states:failed-after",
+      "capturedAt": "2026-08-29T00:06:38.328Z",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "git": {
+    "worktree": "C:/Users/viper/VibeSpace-UnifiedChungus-Final",
+    "branch": "integration/UnifiedChungus-final",
+    "head": "aa1635870ccf9da150d7b38fad16f2b8f0435540",
+    "upstream": "origin/UnifiedChungus",
+    "finalHead": "aa1635870ccf9da150d7b38fad16f2b8f0435540"
+  },
+  "finalState": {
+    "url": "http://localhost:5173/?route=chat",
+    "exactModelVisible": true,
+    "fixtureRemoved": true
+  },
+  "completedAt": "2026-08-29T00:06:49.421Z",
+  "summary": {
+    "passed": 0,
+    "failed": 1,
+    "fatal": false
+  }
+}

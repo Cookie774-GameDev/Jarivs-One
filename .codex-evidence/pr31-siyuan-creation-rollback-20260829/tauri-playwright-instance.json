@@ -1,0 +1,6 @@
+{
+  "build": {
+    "beforeDevCommand": "cmd /c exit 0",
+    "devUrl": "http://127.0.0.1:5175"
+  }
+}

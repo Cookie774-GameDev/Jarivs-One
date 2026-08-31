@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-DEEPSEEK-NATIVE-ATTEMPT-09-POST-CLICK-PACKET",
+  "capturedAt": "2026-08-28T20:01:11.095Z",
+  "captureHead": "7e47b3143f4684c881727e3c4626a59d745d84b9",
+  "classification": "product_failure_expired_stale_denial_not_reconciled_after_8fa3ad3a",
+  "observed": {
+    "chatIdSha256": "bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e",
+    "messageIdSha256": "ccab367f73976e8253b7bb627cbace740e0908352b2e8129dc2af50a1ac0feef",
+    "callIdSha256": "da56a4766929b4bfd4469d15dd353585be8a7be98579b4bc1d72c0c09a940a6b",
+    "actionId": "files.create",
+    "persistedStatus": "pending",
+    "params": {
+      "wrongPathMatches": true,
+      "contentCharCount": 214,
+      "rootPresent": true
+    },
+    "card": {
+      "visible": true,
+      "actionId": "files.create",
+      "approvalKind": "canonical",
+      "status": "pending",
+      "buttons": [
+        {
+          "name": "Approve fixed action",
+          "disabled": false,
+          "submitState": "failed"
+        },
+        {
+          "name": "Deny action",
+          "disabled": false,
+          "submitState": null
+        }
+      ],
+      "alertText": "Approval decision could not be verified. Refresh protected state before retrying.",
+      "alertTextSha256": "3573ab2157e41067144af09172a219904ecf6eddbea0159006dc09512341dce8"
+    }
+  },
+  "observability": {
+    "kernelStatus": {
+      "kind": "approval_state",
+      "status": "pending",
+      "accountMatches": true,
+      "approvalMatches": true,
+      "unavailableReason": null,
+      "unavailableRequestKind": null
+    },
+    "loadedModule": {
+      "status": 200,
+      "charCount": 48240,
+      "containsPersistVerifiedDenial": true,
+      "containsApprovalStatusFallback": true,
+      "containsDeniedStatusRequirement": true,
+      "containsPersistBeforeRelease": true,
+      "sha256": "ee2ef42659b839b4bc1d3334b4b1035d6887b998b06a673a459f93b50c9ca437"
+    },
+    "localSourceSha256": "b7231fd3580b5295240a3a48fe70ac85d9022d55eac2d86f2ffcfb3b7829cee0",
+    "localSourceContainsPersistVerifiedDenial": true,
+    "repositoryUpdateError": "No raw repository exception is exposed by the card. The public fail-closed alert is the only observable persistence error.",
+    "consoleErrorObservedByAttempt06": false
+  },
+  "files": {
+    "requestedOutput": {
+      "exists": false,
+      "size": 0,
+      "sha256": null
+    },
+    "wrongTarget": {
+      "exists": false,
+      "size": 0,
+      "sha256": null
+    }
+  },
+  "artifact": {
+    "name": "12-stale-wrong-approval-post-click-packet-attempt-09.png",
+    "width": 1600,
+    "height": 1025
+  },
+  "safety": {
+    "before": {
+      "label": "attempt09-post-click:before",
+      "capturedAt": "2026-08-28T15:01:07.7245096-05:00",
+      "jarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 5076,
+          "ParentProcessId": 6324,
+          "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe"
+        }
+      ],
+      "cdp": [
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 16336,
+          "ParentProcessId": 5076
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 7116,
+          "ParentProcessId": 16336
+        }
+      ],
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    "after": {
+      "label": "attempt09-post-click:after",
+      "capturedAt": "2026-08-28T15:01:11.0287180-05:00",
+      "jarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 5076,
+          "ParentProcessId": 6324,
+          "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe"
+        }
+      ],
+      "cdp": [
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 16336,
+          "ParentProcessId": 5076
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 7116,
+          "ParentProcessId": 16336
+        }
+      ],
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  },
+  "interactionBoundary": "Read-only post-click capture. Attempt-09 issued one Deny action; this packet issued no click, approval, model dispatch, restart, or developer-state mutation.",
+  "counts": {
+    "modelDispatch": 0,
+    "approvalClick": 0,
+    "postClickPacketClicks": 0
+  },
+  "rawBodyStored": false,
+  "credentialsStored": false
+}

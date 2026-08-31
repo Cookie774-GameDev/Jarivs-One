@@ -1,0 +1,30 @@
+{
+  "status": "failed",
+  "head": "400e5320b782d50ed938a8835c59b81596c109a4",
+  "startedAt": "2026-08-29T05:21:12.209Z",
+  "providers": [],
+  "assertions": [
+    {
+      "name": "official VibeSpace page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=workbench"
+    }
+  ],
+  "artifacts": [],
+  "console": [],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0
+    }
+  ],
+  "failure": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: 'Settings', exact: true })\u001b[22m\n\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\plugin-hosted-boundary.mjs:32:69",
+  "completedAt": "2026-08-29T05:21:49.024Z"
+}

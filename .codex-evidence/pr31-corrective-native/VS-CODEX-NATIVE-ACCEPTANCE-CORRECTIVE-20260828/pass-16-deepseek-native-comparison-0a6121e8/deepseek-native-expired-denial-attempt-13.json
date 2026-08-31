@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-DEEPSEEK-NATIVE-EXPIRED-DENIAL-ATTEMPT-13",
+  "captureHead": "eb52d15ebb534a38695f57de6c91798f8cf8857c",
+  "startedAt": "2026-08-28T21:38:23.319Z",
+  "status": "failed",
+  "constraints": {
+    "officialTauriCdpOnly": true,
+    "exactModelRouteOnly": {
+      "providerId": "opencode",
+      "connectionId": "opencode-cli",
+      "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+    },
+    "modelDispatchLimit": 1,
+    "denyClickLimit": 1,
+    "approveClicks": 0,
+    "reloads": 0,
+    "databaseWritesByDriver": 0,
+    "expiryMutationByDriver": 0,
+    "ollamaAllowed": false
+  },
+  "authority": null,
+  "openCode": null,
+  "chat": null,
+  "modelIdentity": null,
+  "dispatch": null,
+  "proposal": null,
+  "naturalExpiry": null,
+  "denial": null,
+  "cleanup": null,
+  "nativeLogs": {
+    "available": false,
+    "reason": "official jarvis process is detached from this evidence driver; renderer console/page events are captured by CDP"
+  },
+  "assertions": [
+    {
+      "name": "frozen native proof HEAD is exact",
+      "passed": false,
+      "details": {
+        "gitHead": "f54b01ad2781434332b0414e1acaa0250152ea59"
+      }
+    }
+  ],
+  "safety": [
+    {
+      "label": "finally-after-cdp-detach",
+      "capturedAt": "2026-08-28T16:38:28.3820510-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "checkpoints": [
+    {
+      "stage": "preflight",
+      "elapsedMs": 298,
+      "code": "semantic_assertion_failed",
+      "name": "NativeAcceptanceHarnessError",
+      "details": {
+        "name": "frozen native proof HEAD is exact",
+        "details": {
+          "gitHead": "f54b01ad2781434332b0414e1acaa0250152ea59"
+        }
+      }
+    }
+  ],
+  "artifacts": [],
+  "events": [],
+  "firstFailure": {
+    "stage": "preflight",
+    "code": "semantic_assertion_failed",
+    "name": "NativeAcceptanceHarnessError",
+    "details": {
+      "name": "frozen native proof HEAD is exact",
+      "details": {
+        "gitHead": "f54b01ad2781434332b0414e1acaa0250152ea59"
+      }
+    }
+  },
+  "filesAtFailure": {
+    "requestedTarget": null,
+    "historicalWrongTarget": {
+      "identitySha256": "c36b6078728ca9b1d43739d22631ae9a4051f5f5cd121e8787aa4a1e888bdd22",
+      "exists": false,
+      "size": 0
+    }
+  },
+  "filesFinal": {
+    "requestedTarget": null,
+    "historicalWrongTarget": {
+      "identitySha256": "c36b6078728ca9b1d43739d22631ae9a4051f5f5cd121e8787aa4a1e888bdd22",
+      "exists": false,
+      "size": 0
+    }
+  },
+  "logSummary": {
+    "totalCapturedEvents": 0,
+    "consoleErrorCount": 0,
+    "pageErrorCount": 0,
+    "jarvisKernelFailureCount": 0,
+    "valuesAreHashedAndBounded": true
+  },
+  "counts": {
+    "modelDispatches": 0,
+    "denyClicks": 0,
+    "approveClicks": 0,
+    "reloads": 0,
+    "publicCleanupClicks": 0
+  },
+  "completedAt": "2026-08-28T21:38:23.654Z",
+  "durationMs": 332
+}

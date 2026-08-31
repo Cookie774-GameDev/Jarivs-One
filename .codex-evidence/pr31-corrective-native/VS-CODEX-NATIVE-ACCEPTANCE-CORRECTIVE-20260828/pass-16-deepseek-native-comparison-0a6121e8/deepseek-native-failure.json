@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-DEEPSEEK-NATIVE-COMPARISON-EVIDENCE",
+  "startedAt": "2026-08-28T17:03:04.849Z",
+  "failedAt": "2026-08-28T17:03:37.258Z",
+  "status": "failed",
+  "captureHead": "33614b56bea608c0651631dd29024d34e41e7275",
+  "failure": "locator.waitFor: Timeout 20000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('textbox', { name: 'Message' }) to be visible\u001b[22m\n\n    at seedFixtureChat (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\pass-16-deepseek-native-comparison-0a6121e8\\deepseek-native-comparison-driver.mjs:183:56)\n    at async guarded (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\pass-16-deepseek-native-comparison-0a6121e8\\deepseek-native-comparison-driver.mjs:111:12)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-16-deepseek-native-comparison-0a6121e8/deepseek-native-comparison-driver.mjs:455:21",
+  "completedPromptReports": [],
+  "assertions": [
+    {
+      "name": "contract commit is an ancestor and committed contract files are unchanged",
+      "passed": true,
+      "contractCommit": "0a6121e81fcdcbbc1b1a03212ad21a321fbf2015",
+      "captureHead": "33614b56bea608c0651631dd29024d34e41e7275"
+    },
+    {
+      "name": "native disposable input matches terminal bytes",
+      "passed": true,
+      "inputSha256": "51ef1fb954f9943798b2c7fe07373cdf36a25d8c7c1023fe460fe2742f17ba11",
+      "inputCharCount": 17
+    },
+    {
+      "name": "one official jarvis process is running",
+      "passed": true,
+      "jarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 19612,
+          "ParentProcessId": 12924,
+          "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+          "CommandLine": "\"C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe\""
+        }
+      ]
+    },
+    {
+      "name": "CDP root is the official jarvis WebView child",
+      "passed": true,
+      "rootWebView": {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 9688,
+        "ParentProcessId": 19612,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      "listeners9223": [
+        {
+          "LocalAddress": "127.0.0.1",
+          "LocalPort": 9223,
+          "OwningProcess": 9688
+        }
+      ]
+    },
+    {
+      "name": "official VibeSpace page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=schedule"
+    },
+    {
+      "name": "official Chat project root is the claimed disposable root",
+      "passed": true,
+      "projectEvidence": {
+        "workspaceId": "wks_SIY0XpxdDdLY4ndp",
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "projectRoot": "\\\\?\\C:\\Users\\viper\\Documents\\Codex\\2026-08-21"
+      }
+    }
+  ],
+  "artifacts": [],
+  "safety": [
+    {
+      "label": "deepseek-native:start",
+      "capturedAt": "2026-08-28T12:03:09.4270557-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "seed-chat:bounded-reasoning:before",
+      "capturedAt": "2026-08-28T12:03:13.2906145-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "seed-chat:bounded-reasoning:after",
+      "capturedAt": "2026-08-28T12:03:37.1736319-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "console": [],
+  "pageErrors": []
+}

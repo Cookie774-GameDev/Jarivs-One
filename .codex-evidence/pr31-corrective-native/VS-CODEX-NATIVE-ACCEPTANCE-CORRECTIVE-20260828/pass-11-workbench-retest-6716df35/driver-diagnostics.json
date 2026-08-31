@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "classification": "evidence-driver diagnostics; not product acceptance",
+  "attempts": [
+    {
+      "attempt": 1,
+      "failure": "Direct dynamic import of useUIStore changed a post-HMR duplicate store instance. That instance reported route workbench while the rendered app and URL remained Chat.",
+      "rootCauseProof": "The live semantic sidebar Workbench button immediately produced ?route=workbench and the real browser panel with zero Ollama/11434.",
+      "driverCorrection": "Use only the rendered app's semantic Workbench button."
+    },
+    {
+      "attempt": 2,
+      "failure": "The native shell-open spy observed zero calls even though ordinary remote policy/UI reached the system-browser handoff state.",
+      "rootCauseProof": "Object.getOwnPropertyDescriptor(window.__TAURI_INTERNALS__, 'invoke') reports writable=false and configurable=false; assigning a wrapper was silently ignored.",
+      "driverCorrection": "Do not attempt to replace the native invoke bridge. Prove ordinary delivery through the pure policy and visible zero-iframe handoff state without another external launch; exercise navigation history with approved YouTube and loopback embeds."
+    },
+    {
+      "attempt": 3,
+      "failure": "The first public-semantics pass treated Locator.contentFrame() as a Playwright Frame, but this installed Playwright returns a FrameLocator from that API; waitForURL was therefore unavailable.",
+      "rootCauseProof": "The prior native harness already used page.frames() successfully, and the official CDP page exposes the expected youtube-nocookie and chrome-error child frames there.",
+      "driverCorrection": "Use only page.frames()/framenavigated URL matching for child-frame identity, while retaining locators for visible iframe screenshots."
+    },
+    {
+      "attempt": 4,
+      "failure": "The public-frame pass inherited a YouTube browser panel after earlier diagnostics and therefore had no visible ordinary-remote handoff state at its initial assertion.",
+      "rootCauseProof": "The Back button was disabled because responsive Workbench remounts intentionally reinitialize BrowserPanel local history from the current persisted URL.",
+      "driverCorrection": "Use the matching public Workbench store updatePanel action to seed example.com without submitting the form/native shell launch, then semantically remount Workbench so fresh history begins at the visible system-browser handoff state."
+    },
+    {
+      "attempt": 5,
+      "failure": "At the deterministic Workbench viewport the global sidebar is intentionally unmounted, so no rendered Chat button exists for the proposed route-away remount.",
+      "rootCauseProof": "The live document contained zero Chat/Workbench navigation buttons while the Workbench browser panel remained visible. Dispatching the app's public popstate boundary changed Chat -> Workbench and remounted the exact persisted example.com handoff state.",
+      "driverCorrection": "Use history.pushState plus PopStateEvent for the documented NavigationHistoryBoundary remount when the sidebar is not mounted."
+    }
+  ],
+  "safety": "Both failed attempts terminated with zero ollama.exe processes and zero listeners on 11434. No model/provider request, credential, account action, or product file edit occurred."
+}

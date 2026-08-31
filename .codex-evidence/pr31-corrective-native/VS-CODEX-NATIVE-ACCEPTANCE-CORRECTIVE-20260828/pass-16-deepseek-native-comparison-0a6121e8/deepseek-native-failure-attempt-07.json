@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-DEEPSEEK-NATIVE-COMPARISON-EVIDENCE-ATTEMPT-06",
+  "startedAt": "2026-08-28T19:53:17.919Z",
+  "failedAt": "2026-08-28T19:53:51.948Z",
+  "status": "failed",
+  "captureHead": "8fa3ad3aeda901fe2e34b4b061d9f0b92eb2ca09",
+  "failure": "locator.waitFor: Timeout 20000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('textbox', { name: 'Message' }) to be visible\u001b[22m\n\n    at reconcileStaleWrongApproval (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\pass-16-deepseek-native-comparison-0a6121e8\\deepseek-native-comparison-driver-attempt-07.mjs:228:56)\n    at async guarded (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\pass-16-deepseek-native-comparison-0a6121e8\\deepseek-native-comparison-driver-attempt-07.mjs:167:12)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-16-deepseek-native-comparison-0a6121e8/deepseek-native-comparison-driver-attempt-07.mjs:759:17",
+  "completedPromptReports": [],
+  "approvals": [],
+  "assertions": [
+    {
+      "name": "required contract and both repairs are capture-head ancestors",
+      "passed": true,
+      "captureHead": "8fa3ad3aeda901fe2e34b4b061d9f0b92eb2ca09",
+      "contractCommit": "0a6121e81fcdcbbc1b1a03212ad21a321fbf2015",
+      "routingCommit": "d808806c35e7bdd5833978e7ae43f55e55da7091",
+      "denialCommit": "226cd09e2c909c77d815ce83556e9db38acf9cac",
+      "expiredDenialCommit": "8fa3ad3aeda901fe2e34b4b061d9f0b92eb2ca09"
+    },
+    {
+      "name": "committed latency contract is unchanged",
+      "passed": true
+    },
+    {
+      "name": "claimed output is absent before model work",
+      "passed": true,
+      "outputBefore": {
+        "exists": false,
+        "size": 0,
+        "sha256": null
+      }
+    },
+    {
+      "name": "native disposable input matches terminal bytes",
+      "passed": true,
+      "inputSha256": "51ef1fb954f9943798b2c7fe07373cdf36a25d8c7c1023fe460fe2742f17ba11",
+      "inputCharCount": 17
+    },
+    {
+      "name": "one official jarvis process is running",
+      "passed": true,
+      "jarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 5076,
+          "ParentProcessId": 6324,
+          "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "CDP belongs to the official jarvis WebView root",
+      "passed": true,
+      "rootWebView": {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 16336,
+        "ParentProcessId": 5076,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true,
+        "OfficialProfile": true
+      },
+      "listeners9223": [
+        {
+          "LocalAddress": "127.0.0.1",
+          "LocalPort": 9223,
+          "OwningProcess": 16336
+        }
+      ]
+    },
+    {
+      "name": "official VibeSpace page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=context"
+    },
+    {
+      "name": "live official renderer includes the 8fa3ad3a expired-denial repair",
+      "passed": true,
+      "ok": true,
+      "status": 200,
+      "charCount": 596513,
+      "markerFound": true,
+      "redundantExpiryGuardPresent": false
+    },
+    {
+      "name": "official project root is the claimed disposable root",
+      "passed": true,
+      "projectRootSha256": "5fc5d568df65d5964129f54a6c6dd2a3f4ae40919df39f1756ebd49e44d1eeed"
+    }
+  ],
+  "artifacts": [],
+  "safety": [
+    {
+      "label": "attempt07:start",
+      "capturedAt": "2026-08-28T14:53:22.1720238-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "stale-denial-regression:before",
+      "capturedAt": "2026-08-28T14:53:26.2483584-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "stale-denial-regression:after",
+      "capturedAt": "2026-08-28T14:53:51.8746242-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": []
+}

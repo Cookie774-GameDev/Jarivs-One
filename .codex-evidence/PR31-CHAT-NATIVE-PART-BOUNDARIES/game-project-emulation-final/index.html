@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orb Hunter 3D</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #game-canvas { display: block; }
+  #hud {
+    position: fixed; top: 16px; left: 16px; z-index: 10;
+    color: #eaf6ff; text-shadow: 0 2px 6px rgba(0,0,0,.8);
+    font-size: 18px; line-height: 1.7; pointer-events: none; user-select: none;
+  }
+  #hud .label { opacity: .7; font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
+  #hud .val { font-weight: 700; font-size: 24px; }
+  #crosshair {
+    position: fixed; top: 50%; left: 50%; width: 8px; height: 8px; z-index: 10;
+    margin: -4px 0 0 -4px; border-radius: 50%; border: 2px solid rgba(255,255,255,.7);
+    box-shadow: 0 0 6px rgba(0,0,0,.6); display: none; pointer-events: none;
+  }
+  #center-msg {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 20;
+    color: #fff; text-align: center; user-select: none;
+  }
+  #center-msg.big { font-size: 48px; font-weight: 800; text-shadow: 0 4px 20px rgba(0,0,0,.9); }
+  #center-msg.sub { font-size: 18px; opacity: .9; margin-top: 10px; }
+  #overlay {
+    position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: radial-gradient(circle at 50% 40%, rgba(30,60,120,.9), rgba(0,0,0,.96));
+    color: #eaf6ff; user-select: none;
+  }
+  #overlay h1 { font-size: 54px; letter-spacing: 3px; text-shadow: 0 0 30px rgba(90,180,255,.8); }
+  #overlay p { max-width: 620px; line-height: 1.8; font-size: 17px; margin-top: 18px; color: #cfe4ff; }
+  #overlay .keys { margin-top: 24px; background: rgba(255,255,255,.06); border-radius: 12px; padding: 16px 26px; }
+  #overlay .keys b { color: #9ed0ff; }
+  .btn {
+    margin-top: 30px; padding: 14px 40px; font-size: 19px; font-weight: 700;
+    border: none; border-radius: 40px; cursor: pointer;
+    background: linear-gradient(135deg,#4f9cff,#7c5bff);
+    color: #fff; box-shadow: 0 8px 24px rgba(80,120,255,.5); letter-spacing: 1px;
+  }
+  .btn:hover { filter: brightness(1.1); transform: translateY(-2px); }
+  #loading { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 22px; background: #000; letter-spacing: 2px; }
+</style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+  <div id="hud">
+    <div class="label">Orbs</div><div class="val" id="orb-count">0 / 10</div>
+    <div class="label" style="margin-top:8px;">Score</div><div class="val" id="score">0</div>
+    <div class="label" style="margin-top:8px;">Health</div>
+    <div id="hp-bar" style="width:150px;height:10px;background:rgba(255,255,255,.2);border-radius:6px;overflow:hidden;margin-top:4px;">
+      <div id="hp-fill" style="height:100%;width:100%;background:linear-gradient(90deg,#4f9cff,#7c5bff);"></div>
+    </div>
+  </div>
+  <div id="crosshair"></div>
+  <div id="center-msg"></div>
+
+  <div id="overlay">
+    <h1>ORB HUNTER 3D</h1>
+    <p>Collect all <b>10 glowing orbs</b> scattered across the floating island before time runs out. Watch out for the roaming drones — they drain your health. Reach 100% HP and rip through the world in first-person.</p>
+    <div class="keys">
+      <div><b>W A S D</b> — move &nbsp;&nbsp; <b>Mouse</b> — look &nbsp;&nbsp; <b>Space</b> — jump</div>
+      <div style="margin-top:6px;"><b>Shift</b> — sprint &nbsp;&nbsp; <b>E</b> — inter&amp;grab (near orbs) &nbsp;&nbsp; <b>Esc</b> — pause</div>
+    </div>
+    <button class="btn" id="start-btn">START GAME</button>
+  </div>
+
+  <div id="loading">LOADING WORLD…</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ---- CONFIG ----
+  const TOTAL_ORBS = 10;
+  const START_HP = 100;
+  const GAME_TIME = 120; // seconds
+  const WORLD_SIZE = 260;
+  const PLAYER_SPEED = 10.5;
+  const SPRINT_MULT = 1.7;
+  const JUMP_FORCE = 9.0;
+  const GRAVITY = -22;
+
+  // ---- THREE SETUP ----
+  const canvas = document.getElementById("game-canvas");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x87b5e0);
+  scene.fog = new THREE.FogExp2(0x6aa3d8, 0.004);
+
+  const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 1200);
+  const player = {
+    pos: new THREE.Vector3(0, 5, 0),
+    vel: new THREE.Vector3(0, 0, 0),
+    yaw: 0,
+    pitch: 0,
+    hp: START_HP,
+    onGround: false,
+  };
+
+  // ---- LIGHTS ----
+  const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+  scene.add(ambient);
+
+  const sun = new THREE.DirectionalLight(0xfff2d9, 1.15);
+  sun.position.set(80, 130, 60);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 400;
+  const sc = 160;
+  sun.shadow.camera.left = -sc; sun.shadow.camera.right = sc;
+  sun.shadow.camera.top = sc; sun.shadow.camera.bottom = -sc;
+  scene.add(sun);
+
+  const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x3a5a3a, 0.5);
+  scene.add(hemi);
+
+  // ---- TERRAIN (floating island worth of hills) ----
+  function terrainHeight(x, z) {
+    let h = 0;
+    h += Math.sin(x * 0.045) * Math.cos(z * 0.05) * 6;
+    h += Math.sin(x * 0.10 + 1.3) * Math.cos(z * 0.09) * 3;
+    h += Math.cos(x * 0.02) * Math.sin(z * 0.028) * 8;
+    return h + 3;
+  }
+
+  const terrainGeo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, 180, 180);
+  terrainGeo.rotateX(-Math.PI / 2);
+  const posAttr = terrainGeo.attributes.position;
+  for (let i = 0; i < posAttr.count; i++) {
+    const x = posAttr.getX(i);
+    const z = posAttr.getZ(i);
+    posAttr.setY(i, terrainHeight(x, z));
+  }
+  terrainGeo.computeVertexNormals();
+  const terrainMat = new THREE.MeshStandardMaterial({ color: 0x4a8a4a, roughness: 0.95, metalness: 0.05, flatShading: false });
+  const terrain = new THREE.Mesh(terrainGeo, terrainMat);
+  terrain.receiveShadow = true;
+  scene.add(terrain);
+
+  // Water plane below the island
+  const water = new THREE.Mesh(
+    new THREE.PlaneGeometry(2000, 2000),
+    new THREE.MeshStandardMaterial({ color: 0x1b4a7a, roughness: 0.3, metalness: 0.4 })
+  );
+  water.rotation.x = -Math.PI / 2;
+  water.position.y = -18;
+  scene.add(water);
+
+  // ---- DECOR: rocks & trees ----
+  const treeGroup = new THREE.Group();
+  const rockGeo = new THREE.DodecahedronGeometry(1, 0);
+  const trunkGeo = new THREE.CylinderGeometry(0.4, 0.55, 3, 6);
+  const leafGeo = new THREE.ConeGeometry(1.6, 3.5, 8);
+  const rockMat = new THREE.MeshStandardMaterial({ color: 0x7d7d85, roughness: 0.9 });
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 0.9 });
+  const leafMat = new THREE.MeshStandardMaterial({ color: 0x2f7a33, roughness: 0.85 });
+
+  for (let i = 0; i < 60; i++) {
+    const x = (Math.random() - 0.5) * (WORLD_SIZE - 20);
+    const z = (Math.random() - 0.5) * (WORLD_SIZE - 20);
+    const y = terrainHeight(x, z);
+    if (Math.random() < 0.5) {
+      const rock = new THREE.Mesh(rockGeo, rockMat);
+      const s = 0.8 + Math.random() * 2.2;
+      rock.scale.set(s, s * 0.8, s);
+      rock.position.set(x, y + s * 0.3, z);
+      rock.rotation.set(Math.random(), Math.random(), Math.random());
+      rock.castShadow = true; rock.receiveShadow = true;
+      treeGroup.add(rock);
+    } else {
+      const tree = new THREE.Group();
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+      trunk.position.y = 1.5; trunk.castShadow = true;
+      const leaf = new THREE.Mesh(leafGeo, leafMat);
+      leaf.position.y = 4; leaf.castShadow = true;
+      tree.add(trunk, leaf);
+      tree.position.set(x, y, z);
+      treeGroup.add(tree);
+    }
+  }
+  scene.add(treeGroup);
+
+  // Cloud billboards
+  const clouds = [];
+  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: 0.85 });
+  for (let i = 0; i < 12; i++) {
+    const c = new THREE.Group();
+    for (let j = 0; j < 4; j++) {
+      const puff = new THREE.Mesh(new THREE.SphereGeometry(4 + Math.random() * 4, 10, 10), cloudMat);
+      puff.position.set((Math.random()-0.5)*14, (Math.random()-0.5)*2, (Math.random()-0.5)*10);
+      c.add(puff);
+    }
+    c.position.set((Math.random()-0.5)*600, 55 + Math.random()*30, (Math.random()-0.5)*600);
+    clouds.push(c);
+    scene.add(c);
+  }
+
+  // ---- ORBS ----
+  const orbs = [];
+  const orbGeo = new THREE.IcosahedronGeometry(0.9, 1);
+  const orbMat = new THREE.MeshStandardMaterial({ color: 0x00e5ff, emissive: 0x0099ff, emissiveIntensity: 1.2, roughness: 0.2, metalness: 0.3 });
+  for (let i = 0; i < TOTAL_ORBS; i++) {
+    const x = (Math.random() - 0.5) * (WORLD_SIZE - 30);
+    const z = (Math.random() - 0.5) * (WORLD_SIZE - 30);
+    const y = terrainHeight(x, z) + 2;
+    const orb = new THREE.Mesh(orbGeo, orbMat.clone());
+    orb.position.set(x, y, z);
+    orb.castShadow = true;
+    orb.userData.collected = false;
+    orb.userData.baseY = y;
+    scene.add(orb);
+    orbs.push(orb);
+    const glow = new THREE.PointLight(0x00d9ff, 0.8, 14);
+    glow.position.copy(orb.position);
+    scene.add(glow);
+    orb.userData.glow = glow;
+  }
+
+  // ---- DRONES (enemies) ----
+  const drones = [];
+  const droneBody = new THREE.SphereGeometry(0.8, 12, 12);
+  const droneMat = new THREE.MeshStandardMaterial({ color: 0xff3355, emissive: 0x881111, roughness: 0.4, metalness: 0.5 });
+  for (let i = 0; i < 4; i++) {
+    const d = new THREE.Group();
+    const body = new THREE.Mesh(droneBody, droneMat);
+    body.castShadow = true;
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xff2200, emissiveIntensity: 1.5 }));
+    eye.position.set(0, 0.2, 0.7);
+    d.add(body, eye);
+    d.position.set((Math.random()-0.5)*200, 8, (Math.random()-0.5)*200);
+    d.userData.dir = Math.random() * Math.PI * 2;
+    d.userData.speed = 0.6 + Math.random() * 0.6;
+    scene.add(d);
+    drones.push(d);
+  }
+
+  // ---- INPUT ----
+  const keys = {};
+  let mouseDown = false;
+  window.addEventListener("keydown", (e) => { keys[e.code] = true; if (["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.code)) e.preventDefault(); });
+  window.addEventListener("keyup", (e) => { keys[e.code] = false; });
+
+  canvas.addEventListener("mousedown", (e) => { if (e.button === 0) { mouseDown = true; pointerLock(); } });
+  window.addEventListener("mouseup", (e) => { if (e.button === 0) mouseDown = false; });
+
+  document.addEventListener("mousemove", (e) => {
+    if (document.pointerLockElement === canvas) {
+      player.yaw -= e.movementX * 0.0022;
+      player.pitch -= e.movementY * 0.0022;
+      player.pitch = Math.max(-1.45, Math.min(1.45, player.pitch));
+    }
+  });
+
+  function pointerLock() {
+    if (document.pointerLockElement !== canvas) {
+      canvas.requestPointerLock && canvas.requestPointerLock();
+    }
+  }
+  document.addEventListener("pointerlockchange", () => {
+    const locked = document.pointerLockElement === canvas;
+    document.getElementById("crosshair").style.display = locked ? "block" : "none";
+  });
+
+  // ---- HUD helpers ----
+  const orbCountEl = document.getElementById("orb-count");
+  const scoreEl = document.getElementById("score");
+  const hpFill = document.getElementById("hp-fill");
+  const centerMsg = document.getElementById("center-msg");
+
+  let score = 0;
+  let collected = 0;
+  let timeLeft = GAME_TIME;
+  let playing = false;
+  let gameOver = false;
+
+  function updateHud() {
+    orbCountEl.textContent = collected + " / " + TOTAL_ORBS;
+    scoreEl.textContent = Math.floor(score);
+    const hpPct = Math.max(0, player.hp) / START_HP * 100;
+    hpFill.style.width = hpPct + "%";
+    hpFill.style.background = hpPct > 50 ? "linear-gradient(90deg,#4f9cff,#7c5bff)" : (hpPct > 25 ? "linear-gradient(90deg,#f0a500,#ff5c00)" : "linear-gradient(90deg,#ff3333,#ff0066)");
+  }
+  updateHud();
+
+  function flashCenter(text, sub, ms) {
+    centerMsg.innerHTML = '<div class="big">' + text + "</div>" + (sub ? '<div class="sub">' + sub + "</div>" : "");
+    centerMsg.style.opacity = 1;
+    setTimeout(() => { centerMsg.style.opacity = 0; }, ms);
+  }
+
+  // ---- SOUND (simple WebAudio bleeps, no assets) ----
+  let audioCtx = null;
+  function beep(freq, dur, type, vol) {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = type || "sine";
+      o.frequency.value = freq;
+      g.gain.value = vol || 0.12;
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + (dur || 0.2));
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(); o.stop(audioCtx.currentTime + (dur || 0.2));
+    } catch (e) { /* audio not available */ }
+  }
+
+  // ---- GAME FLOW ----
+  function startGame() {
+    document.getElementById("overlay").style.display = "none";
+    playing = true;
+    gameOver = false;
+    player.hp = START_HP;
+    score = 0; collected = 0; timeLeft = GAME_TIME;
+    for (const o of orbs) { o.visible = true; o.userData.collected = false; o.userData.glow.visible = true; }
+    player.pos.set(0, terrainHeight(0,0) + 2, 0);
+    player.yaw = 0; player.pitch = 0;
+    updateHud();
+    flashCenter("GO!", "Collect all " + TOTAL_ORBS + " orbs", 1600);
+    beep(520, 0.15, "square", 0.1);
+    pointerLock();
+    lastT = performance.now();
+  }
+
+  function endGame(win) {
+    playing = false; gameOver = true;
+    document.exitPointerLock && document.exitPointerLock();
+    const go = document.getElementById("overlay");
+    go.style.display = "flex";
+    if (win) {
+      document.getElementById("overlay").innerHTML =
+        '<h1>YOU WIN!</h1><p>You collected all ' + TOTAL_ORBS + ' orbs! Final score: <b>' + Math.floor(score) + '</b><br>' + (winText()) + "</p>" +
+        '<button class="btn" id="start-btn">PLAY AGAIN</button>';
+      beep(880, 0.3, "triangle", 0.15);
+      setTimeout(()=>beep(1100,0.4,"triangle",0.15),200);
+    } else {
+      document.getElementById("overlay").innerHTML =
+        '<h1>GAME OVER</h1><p>Collected ' + collected + ' / ' + TOTAL_ORBS + ' orbs &middot; Score: <b>' + Math.floor(score) + '</b><br>Reason: ' + loseReason() + "</p>" +
+        '<button class="btn" id="start-btn">TRY AGAIN</button>';
+    }
+    document.getElementById("start-btn").addEventListener("click", startGame);
+  }
+
+  function winText() { return "Time remaining: " + Math.max(0, Math.ceil(timeLeft)) + "s &middot; Health: " + Math.max(0, Math.round(player.hp)) + "%"; }
+  function loseReason() { return player.hp <= 0 ? "Your health reached zero." : "Time ran out."; }
+
+  document.getElementById("start-btn").addEventListener("click", startGame);
+
+  // ---- GAME LOOP ----
+  const clock = new THREE.Clock();
+  let lastT = performance.now();
+  let hpTick = 0;
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - lastT) / 1000);
+    // world anims (clouds, orbs) run always
+    for (const o of orbs) {
+      if (!o.userData.collected) {
+        o.rotation.y += dt * 2;
+        o.position.y = o.userData.baseY + Math.sin(now * 0.002 + o.userData.baseY) * 0.4;
+        o.userData.glow.position.copy(o.position);
+      }
+    }
+    for (const c of clouds) c.position.x += dt * 2.2;
+
+    if (playing && !gameOver) {
+      timeLeft -= dt;
+      // drone idle spin
+      for (const d of drones) {
+        d.rotation.y += dt * 1.5;
+        const dx = d.userData.dir;
+        const slow = 0.2;
+        d.position.x += Math.cos(dx) * d.userData.speed * dt;
+        d.position.z += Math.sin(dx) * d.userData.speed * dt;
+        d.position.y = 8 + Math.sin(now * 0.002 + dx) * 1.5;
+        if (Math.abs(d.position.x) > WORLD_SIZE/2 || Math.abs(d.position.z) > WORLD_SIZE/2) d.userData.dir += Math.PI * 0.8;
+      }
+
+      // movement
+      const sprint = keys["ShiftLeft"] || keys["ShiftRight"];
+      const speed = PLAYER_SPEED * (sprint ? SPRINT_MULT : 1);
+      const forwardX = -Math.sin(player.yaw);
+      const forwardZ = -Math.cos(player.yaw);
+      const rightX = Math.cos(player.yaw);
+      const rightZ = -Math.sin(player.yaw);
+      let mx = 0, mz = 0;
+      if (keys["KeyW"]) { mx += forwardX; mz += forwardZ; }
+      if (keys["KeyS"]) { mx -= forwardX; mz -= forwardZ; }
+      if (keys["KeyD"]) { mx += rightX; mz += rightZ; }
+      if (keys["KeyA"]) { mx -= rightX; mz -= rightZ; }
+      const mlen = Math.hypot(mx, mz) || 1;
+      player.vel.x = (mx / mlen) * speed;
+      player.vel.z = (mz / mlen) * speed;
+
+      // gravity & jump
+      player.vel.y += GRAVITY * dt;
+      const groundY = terrainHeight(player.pos.x, player.pos.z);
+      if ((keys["Space"]) && player.onGround) {
+        player.vel.y = JUMP_FORCE;
+        player.onGround = false;
+        beep(320, 0.1, "square", 0.08);
+      }
+      player.pos.addScaledVector(player.vel, dt);
+      if (player.pos.y <= groundY) { player.pos.y = groundY; player.vel.y = 0; player.onGround = true; }
+
+      // keep in bounds
+      const bound = WORLD_SIZE / 2 - 6;
+      player.pos.x = Math.max(-bound, Math.min(bound, player.pos.x));
+      player.pos.z = Math.max(-bound, Math.min(bound, player.pos.z));
+
+      // camera from player
+      camera.position.copy(player.pos);
+      camera.position.y += 1.7;
+      const look = new THREE.Vector3(
+        player.pos.x - Math.sin(player.yaw) * 2,
+        camera.position.y + Math.tan(player.pitch) * 2,
+        player.pos.z - Math.cos(player.yaw) * 2
+      );
+      camera.lookAt(look);
+
+      // collect orbs
+      for (const o of orbs) {
+        if (!o.userData.collected) {
+          const d = o.position.clone().sub(player.pos);
+          if (d.length() < 3.2) {
+            o.userData.collected = true;
+            o.visible = false;
+            o.userData.glow.visible = false;
+            collected++;
+            score += 100;
+            beep(700 + collected * 40, 0.18, "sine", 0.15);
+            flashCenter(collected + " / " + TOTAL_ORBS, "", 900);
+            if (collected >= TOTAL_ORBS) endGame(true);
+          }
+        }
+      }
+
+      // drones damage
+      for (const d of drones) {
+        const dist = d.position.clone().sub(player.pos);
+        if (dist.length() < 2.6) {
+          player.hp -= 40 * dt;
+          score -= 10 * dt;
+          beep(160, 0.15, "sawtooth", 0.1);
+        }
+        if (player.hp <= 0) endGame(false);
+      }
+
+      // passive score for survival
+      score += dt * 4;
+
+      // timer
+      if (timeLeft <= 0) endGame(false);
+
+      // hp pulse red flash
+      hpTick += dt;
+    }
+
+    updateHud();
+    renderer.render(scene, camera);
+    lastT = now;
+  }
+
+  // ---- RESIZE ----
+  function onResize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener("resize", onResize);
+  onResize();
+
+  // hide loading screen once compiled
+  document.getElementById("loading").style.display = "none";
+
+  animate();
+})();
+</script>
+</body>
+</html>

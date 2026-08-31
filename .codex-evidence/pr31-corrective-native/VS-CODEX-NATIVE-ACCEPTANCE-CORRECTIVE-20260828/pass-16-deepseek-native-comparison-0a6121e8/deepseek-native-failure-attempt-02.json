@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-DEEPSEEK-NATIVE-COMPARISON-EVIDENCE",
+  "startedAt": "2026-08-28T17:04:59.564Z",
+  "failedAt": "2026-08-28T17:05:51.911Z",
+  "status": "failed",
+  "captureHead": "33614b56bea608c0651631dd29024d34e41e7275",
+  "failure": "Error: bounded-reasoning/cold: assistant output missing\n    at runSample (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-16-deepseek-native-comparison-0a6121e8/deepseek-native-comparison-driver.mjs:328:29)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-16-deepseek-native-comparison-0a6121e8/deepseek-native-comparison-driver.mjs:472:18",
+  "completedPromptReports": [],
+  "assertions": [
+    {
+      "name": "contract commit is an ancestor and committed contract files are unchanged",
+      "passed": true,
+      "contractCommit": "0a6121e81fcdcbbc1b1a03212ad21a321fbf2015",
+      "captureHead": "33614b56bea608c0651631dd29024d34e41e7275"
+    },
+    {
+      "name": "native disposable input matches terminal bytes",
+      "passed": true,
+      "inputSha256": "51ef1fb954f9943798b2c7fe07373cdf36a25d8c7c1023fe460fe2742f17ba11",
+      "inputCharCount": 17
+    },
+    {
+      "name": "one official jarvis process is running",
+      "passed": true,
+      "jarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 19612,
+          "ParentProcessId": 12924,
+          "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+          "CommandLine": "\"C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe\""
+        }
+      ]
+    },
+    {
+      "name": "CDP root is the official jarvis WebView child",
+      "passed": true,
+      "rootWebView": {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 9688,
+        "ParentProcessId": 19612,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      "listeners9223": [
+        {
+          "LocalAddress": "127.0.0.1",
+          "LocalPort": 9223,
+          "OwningProcess": 9688
+        }
+      ]
+    },
+    {
+      "name": "official VibeSpace page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=schedule"
+    },
+    {
+      "name": "official Chat project root is the claimed disposable root",
+      "passed": true,
+      "projectEvidence": {
+        "workspaceId": "wks_SIY0XpxdDdLY4ndp",
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "projectRoot": "\\\\?\\C:\\Users\\viper\\Documents\\Codex\\2026-08-21"
+      }
+    },
+    {
+      "name": "bounded-reasoning chat exposes exact native route before dispatch",
+      "passed": true,
+      "identity": {
+        "selection": {
+          "mode": "single",
+          "providerId": "opencode",
+          "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+          "connectionId": "opencode-cli",
+          "connectionMode": "external-cli",
+          "authSource": "opencode-provider-session",
+          "capabilities": {
+            "text": true,
+            "images": false,
+            "files": false,
+            "tools": false,
+            "modelSelection": true,
+            "structuredOutput": true,
+            "streaming": true,
+            "cancellation": true,
+            "resumeSession": false,
+            "systemPrompt": false,
+            "workingDirectory": true,
+            "usage": true,
+            "subscriptionQuota": false,
+            "localOnly": false
+          }
+        }
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "01-deepseek-native-exact-route.png",
+      "width": 1983,
+      "height": 1240
+    }
+  ],
+  "safety": [
+    {
+      "label": "deepseek-native:start",
+      "capturedAt": "2026-08-28T12:05:03.1690747-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "public-route-to-chat:before",
+      "capturedAt": "2026-08-28T12:05:06.4883599-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "public-route-to-chat:after",
+      "capturedAt": "2026-08-28T12:05:10.2854528-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "seed-chat:bounded-reasoning:before",
+      "capturedAt": "2026-08-28T12:05:13.2770459-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "seed-chat:bounded-reasoning:after",
+      "capturedAt": "2026-08-28T12:05:16.5354878-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "agent-write-mode:bounded-reasoning:before",
+      "capturedAt": "2026-08-28T12:05:19.7559315-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "agent-write-mode:bounded-reasoning:after",
+      "capturedAt": "2026-08-28T12:05:23.4509272-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "exact-route:bounded-reasoning:before",
+      "capturedAt": "2026-08-28T12:05:26.5127428-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "exact-route:bounded-reasoning:after",
+      "capturedAt": "2026-08-28T12:05:30.1944998-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:01-deepseek-native-exact-route.png:before",
+      "capturedAt": "2026-08-28T12:05:33.4460946-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:01-deepseek-native-exact-route.png:after",
+      "capturedAt": "2026-08-28T12:05:38.1181787-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "bounded-reasoning:cold:before",
+      "capturedAt": "2026-08-28T12:05:41.7296862-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "console": [],
+  "pageErrors": []
+}

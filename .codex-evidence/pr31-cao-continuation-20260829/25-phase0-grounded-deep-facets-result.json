@@ -1,0 +1,126 @@
+{
+  "capturedAt": "2026-08-30T06:56:56.956Z",
+  "identity": {
+    "jarvisPid": 34752,
+    "webViewPid": 18496,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-30T01:56:54.2005495-05:00"
+  },
+  "state": {
+    "activeChatId": "cht_cYTTNBJshvGFhjKq",
+    "selection": {
+      "providerId": "opencode",
+      "connectionId": "opencode-cli",
+      "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+    },
+    "runtime": {
+      "settings": {
+        "effort": "high",
+        "fastMode": "off",
+        "performance": "balanced",
+        "rlmEnabled": true
+      },
+      "access": "full",
+      "approveAllForRun": false
+    },
+    "probe": {
+      "sends": [
+        {
+          "at": 1788072966712,
+          "chatId": "cht_cYTTNBJshvGFhjKq",
+          "modelSelectionOverride": {
+            "mode": "single",
+            "providerId": "opencode",
+            "connectionId": "opencode-cli",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "reasoningPreference": {
+            "effortOverride": "high"
+          },
+          "runtimeSettings": {
+            "effort": "high",
+            "performance": "balanced",
+            "fastMode": "off",
+            "rlmEnabled": true
+          },
+          "approveAllForRun": false
+        }
+      ],
+      "runs": [
+        {
+          "at": 1788072966802,
+          "chatId": "cht_cYTTNBJshvGFhjKq",
+          "status": "running",
+          "errorCode": null
+        },
+        {
+          "at": 1788072987477,
+          "chatId": "cht_cYTTNBJshvGFhjKq",
+          "status": "done",
+          "errorCode": null
+        }
+      ]
+    },
+    "finalAnswers": [
+      "Investigation returned, but the grounded evidence does not substantiate the four requested facts. **What the runtime exposed (single grounded handle):** - Receipt ID: `[redacted:high_entropy_candidate]` - Pointer handle: `[unverified link omitted]` - Source ID: `[unverified link omitted]` - Content hash / revision: `[unverified link omitted]` - Byte range: `1263-1345` - Route: `deep` · decision: `required-deep` · cache state: `miss` **The only returned inert source [unverified link omitted] \"SiYuan child document before the grounded Chat acceptance is considered complete. \" **Evidence [unverified link omitted] - Official native process / WebView identity — **unavailable. ** No returned excerpt describes the Tauri/native process or WebView identity. - Exact ports — **unavailable. ** No port numbers were returned in any excerpt. - Zero-Ollama invariant — **unavailable. ** No excerpt asserts or restates the zero-Ollama rule. - Revision canary — **unavailable. ** No canary value was present in the returned eviden"
+    ],
+    "finalAnswerMetrics": [
+      {
+        "length": 1928,
+        "containsFixtureName": false,
+        "containsContextGateway": false,
+        "containsJarvisExecutable": false,
+        "containsOllamaInvariant": false,
+        "ending": "carries source IDs and a content hash but no user-visible relative path or filename. - SiYuan document/block ID — **not exposed. ** No SiYuan document or block identifier appeared in the receipt; the reference is the RLM source pointer only. The retrieval returned a single short fragment that is unrelated to the four questions, so I cannot ground the requested explanation in it. No Markdown link was reconstructed and no low-level pointer beyond the returned handle was invented, per your instruction. To get the actual process identity, ports, zero-Ollama invariant, and revision canary, this source needs another retrieval pass that reaches the relevant SiYuan block, or the target needs to be indexed/scoped so the RLM path surfaces it. Confirm the exact block and I'll rerun the investigation."
+      }
+    ],
+    "finalAnswerLinks": [],
+    "checkpoints": [
+      {
+        "kind": "final",
+        "text": "Investigation returned, but the grounded evidence does not substantiate the four requested facts. **What the runtime exposed (single grounded handle):** - Receipt ID: `[redacted:high_entropy_candidate]` - Pointer handle: `[unverified link omitted]` - Source ID: `[unverified link omitted]` - Content hash / revision: `[unverified link omitted]` - Byte range: `1263-1345` - Route: `deep` · decision: `required-deep` · cache state: `miss` **The only returned inert source [unverified link omitted] \"SiYuan child document before the grounded Chat acceptance is considered complete. \" **Evidence [unverified link omitted] - Official native process / WebView identity — **unavailable. ** No returned excerpt describes the Tauri/native process or WebView identity. - Exact ports — **unavailable. ** No port numbers were returned in any excerpt. - Zero-Ollama invariant — **unavailable. ** No excerpt asserts or restates the zero-Ollama rule. - Revision canary — **unavailable. ** No canary value was present in the returned eviden"
+      }
+    ],
+    "activity": [
+      "Show activity details 1 action"
+    ],
+    "context": [],
+    "approvals": [],
+    "visibleControls": [
+      "Open session details",
+      "0 subagents",
+      "Chat console settings",
+      "Show full prompt",
+      "Collapse completed work details",
+      "Show activity details 1 action",
+      "Choose model",
+      "Connection details for Opencode Go",
+      "Agent Mode. Open permissions panel.",
+      "Upgrade prompt with Prompt Forge",
+      "Configure Prompt Forge",
+      "Start dictation",
+      "Send message"
+    ],
+    "counts": {
+      "finalAnswers": 1,
+      "checkpoints": 1,
+      "activity": 1,
+      "context": 0,
+      "approvals": 0,
+      "send": 1,
+      "stop": 0
+    }
+  },
+  "safety": {
+    "label": "phase0:result",
+    "capturedAt": "2026-08-30T01:56:56.8799119-05:00",
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  },
+  "events": []
+}

@@ -50,6 +50,7 @@ const expected = {
   commands: ['vibespace-ui', 'local'],
   help: ['vibespace-ui', 'local'],
   connect: ['vibespace-ui', 'local'],
+  cli: ['vibespace-ui', 'local'],
   settings: ['vibespace-ui', 'local'],
   palette: ['vibespace-ui', 'local'],
   launcher: ['vibespace-ui', 'local'],
@@ -107,6 +108,11 @@ describe('Section 20 slash command routing', () => {
     expect(classifySlashCommand('/approve-all on')).toMatchObject({ command: 'approveall' });
     expect(classifySlashCommand('/connect openrouter')).toMatchObject({
       command: 'connect',
+      owner: 'vibespace-ui',
+      execution: 'local',
+    });
+    expect(classifySlashCommand('/cli codex')).toMatchObject({
+      command: 'cli',
       owner: 'vibespace-ui',
       execution: 'local',
     });

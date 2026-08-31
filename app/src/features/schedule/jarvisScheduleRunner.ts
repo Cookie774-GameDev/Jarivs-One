@@ -3,15 +3,25 @@
  * scheduled-kernel dispatcher. The runner owns polling and schedule metadata;
  * the runtime owns canonical run/model/identity/profile selection and effects.
  */
-import { chatRepo as realChatRepo, eventRepo as realEventRepo } from '@/lib/db/repositories';
+import {
+  chatRepo as realChatRepo,
+  eventRepo as realEventRepo,
+  messageRepo as realMessageRepo,
+} from '@/lib/db/repositories';
 import { dispatchScheduledJarvisOccurrenceWithKernel } from '@/lib/ai/runtime';
+import { dispatchChatToChat } from '@/features/chat/chatToChatDispatch';
 import { getActiveAccountIdentity } from '@/lib/accountIdentity';
 import type { JarvisRunStatus } from '@/lib/jarvis/contracts/execution';
 import { newChatId } from '@/lib/ids';
 import { useAuthStore } from '@/stores/auth';
 import type { EventRow } from '@/types/event';
 import type { ChatId, WorkspaceId } from '@/types/common';
-import type { ScheduledJarvisAttemptResult } from './jarvisScheduleDispatch';
+import {
+  runChatSupervisionOccurrence as runCanonicalChatSupervisionOccurrence,
+  type ChatSupervisionOccurrenceInput,
+  type ChatSupervisionOccurrenceReceipt,
+  type ScheduledJarvisAttemptResult,
+} from './jarvisScheduleDispatch';
 import { expandRecurrence } from './recurrence';
 import {
   isJarvisScheduleEvent,
@@ -52,6 +62,9 @@ export interface JarvisScheduleRunnerDeps {
     eventId: string;
     dueAt: number;
   }) => Promise<ScheduledJarvisAttemptResult>;
+  runChatSupervisionOccurrence?: (
+    input: ChatSupervisionOccurrenceInput,
+  ) => Promise<ChatSupervisionOccurrenceReceipt>;
   recoverCaoScheduledLearning?: (
     scope: CaoScheduledLearningScope,
   ) => Promise<{ status: 'completed' | 'failed' | 'cancelled' } | null>;
@@ -70,6 +83,15 @@ function defaultDeps(): JarvisScheduleRunnerDeps {
     updateEvent: (id, patch) => realEventRepo.update(id, patch),
     createChat: (input) => realChatRepo.create(input),
     dispatchScheduledOccurrence: dispatchScheduledJarvisOccurrenceWithKernel,
+    runChatSupervisionOccurrence: (input) =>
+      runCanonicalChatSupervisionOccurrence(input, {
+        getChat: (id) => realChatRepo.getById(id as ChatId),
+        listMessages: (chatId) => realMessageRepo.listByChat(chatId as ChatId),
+        canAccess: (source, target) =>
+          source.id !== target.id && !Boolean(source.archived) && !Boolean(target.archived),
+        dispatchChat: (dispatchInput) => dispatchChatToChat(dispatchInput),
+        now: () => Date.now(),
+      }),
     recoverCaoScheduledLearning,
     runCaoScheduledLearning,
     now: () => Date.now(),
@@ -292,6 +314,40 @@ function historyEntryForOutcome(
   }
 }
 
+function historyEntryForChatSupervision(
+  receipt: ChatSupervisionOccurrenceReceipt,
+): JarvisScheduleRunHistoryEntryV1 {
+  const status =
+    receipt.status === 'dispatched' || receipt.status === 'pending' ? 'dispatched' : 'failed';
+  const summary =
+    receipt.status === 'dispatched'
+      ? `Chat supervision dispatched to ${receipt.targetChatId}.`
+      : receipt.status === 'pending'
+        ? `Chat supervision pending in ${receipt.targetChatId}.`
+        : `Chat supervision failed: ${receipt.reason ?? receipt.status}.`;
+  return {
+    schemaVersion: 1,
+    at: receipt.completedAt,
+    runId: `chat-supervision:${receipt.scheduleId}:${receipt.occurrenceId}`,
+    requestId: receipt.messageId?.trim() || receipt.dispatchKey,
+    status,
+    summary,
+  };
+}
+
+function previousChatSupervisionReceipt(
+  eventId: EventRow['id'],
+  metadata: JarvisScheduleMetadata,
+): JarvisScheduleRunHistoryEntryV1 | undefined {
+  const runPrefix = `chat-supervision:${eventId}:`;
+  return [...metadata.runHistory]
+    .reverse()
+    .find(
+      (entry): entry is JarvisScheduleRunHistoryEntryV1 =>
+        entry.schemaVersion === 1 && entry.runId.startsWith(runPrefix),
+    );
+}
+
 async function recordRetryableRunnerFailure(
   event: EventRow,
   metadata: JarvisScheduleMetadata,
@@ -376,6 +432,24 @@ export async function runDueJarvisSchedules(
       }
     }
 
+    if (
+      parsedMetadata.chatSupervision?.endsAt !== undefined &&
+      parsedMetadata.chatSupervision.endsAt <= now
+    ) {
+      try {
+        await deps.updateEvent(event.id, {
+          ...withJarvisScheduleMetadata(event, {
+            ...parsedMetadata,
+            nextRunAt: undefined,
+          }),
+          status: 'cancelled',
+        });
+      } catch {
+        // End conditions fail closed even when cancellation persistence is unavailable.
+      }
+      continue;
+    }
+
     const dueAt = parsedMetadata.nextRunAt ?? event.start_at;
     if (dueAt > now) {
       if (recoveryChanged) {
@@ -418,6 +492,34 @@ export async function runDueJarvisSchedules(
 
     let dispatchMetadata = parsedMetadata;
     try {
+      if (parsedMetadata.chatSupervision) {
+        options.onStage?.('kernel_dispatch');
+        if (!deps.runChatSupervisionOccurrence) {
+          throw new Error('Chat supervision dispatch is unavailable.');
+        }
+        const supervisionReceipt = await deps.runChatSupervisionOccurrence({
+          scheduleId: String(event.id),
+          occurrenceId: String(dueAt),
+          binding: parsedMetadata.chatSupervision,
+          previousReceipt: previousChatSupervisionReceipt(event.id, parsedMetadata),
+        });
+        const runHistoryEntry = historyEntryForChatSupervision(supervisionReceipt);
+        options.onStage?.('settling');
+        const ranMetadata: JarvisScheduleMetadata = {
+          ...parsedMetadata,
+          lastRunAt: supervisionReceipt.completedAt,
+          nextRunAt: nextRunAt ?? undefined,
+          runHistory: [...parsedMetadata.runHistory, runHistoryEntry],
+        };
+        await deps.updateEvent(event.id, {
+          ...withJarvisScheduleMetadata(event, ranMetadata),
+          ...(nextRunAt === null ? { status: 'done' as const } : {}),
+        });
+        result.ran.push(String(event.id));
+        options.onStage?.('completed');
+        continue;
+      }
+
       options.onStage?.('output_chat');
       dispatchMetadata = await ensureOutputChat(event, parsedMetadata, deps);
       options.onStage?.('kernel_dispatch');

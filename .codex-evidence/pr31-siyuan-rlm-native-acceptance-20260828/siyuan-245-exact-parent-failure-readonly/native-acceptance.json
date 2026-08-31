@@ -1,0 +1,5271 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-SIYUAN-00AE-CONSUMED-RETRY-READONLY",
+  "startedAt": "2026-08-29T11:31:40.281Z",
+  "status": "failed",
+  "captureHead": "24572dc41b7b1a93317dbf85005dfcff2dfc3259",
+  "identity": {
+    "jarvisPid": 30148,
+    "webViewPid": 17472,
+    "executablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-641\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-29T06:31:40.0329821-05:00"
+  },
+  "safety": [
+    {
+      "label": "attach:before",
+      "capturedAt": "2026-08-29T06:31:37.5170703-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attach:after",
+      "capturedAt": "2026-08-29T06:31:40.0329821-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "single Retry was consumed before this read-only packet",
+      "passed": true,
+      "details": {
+        "retryClicksByThisPacket": 0,
+        "priorAuthorizedRetryConsumed": true
+      }
+    },
+    {
+      "name": "active recovery remains failed at 13 indexed with six pending",
+      "passed": true,
+      "details": {
+        "schemaVersion": 1,
+        "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+        "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+        "canonicalRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+        "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"selected\",\"selectedExtensions\":[],\"selectedPaths\":[\"c:/users/viper/plugins\"],\"excludedPaths\":[]}",
+        "phase": "creating_nodes",
+        "status": "failed",
+        "pauseReason": null,
+        "cursor": 8,
+        "frontierLength": 8,
+        "indexed": 13,
+        "excluded": 1,
+        "unreadable": 0,
+        "summarized": 0,
+        "summaryEligible": 0,
+        "createdNodes": 0,
+        "failed": 0,
+        "skipped": 0,
+        "inputTokens": "[redacted]",
+        "outputTokens": "[redacted]",
+        "totalTokens": "[redacted]",
+        "tokenProvenance": "[redacted]",
+        "summaryProviderId": null,
+        "summaryConnectionId": null,
+        "summaryModelId": null,
+        "phaseStartedAt": 1787959741985,
+        "rateSamples": [
+          {
+            "at": 1787959741985,
+            "processed": 0
+          },
+          {
+            "at": 1787997830953,
+            "processed": 4
+          },
+          {
+            "at": 1787997832602,
+            "processed": 7
+          },
+          {
+            "at": 1788002986448,
+            "processed": 0
+          }
+        ],
+        "discoverySamples": [
+          {
+            "at": 1787959741838,
+            "processed": 1,
+            "frontierRemaining": 6,
+            "discovered": 7
+          },
+          {
+            "at": 1787959741903,
+            "processed": 7,
+            "frontierRemaining": 1,
+            "discovered": 12
+          },
+          {
+            "at": 1787959741956,
+            "processed": 8,
+            "frontierRemaining": 0,
+            "discovered": 13
+          }
+        ],
+        "estimatedPercent": 60,
+        "estimatedEtaSeconds": null,
+        "reconciledAt": null,
+        "pendingNativeNodeIds": [
+          "path:README.txt",
+          "path:assets/photo.png.meta.json",
+          "path:binary/sample.bin",
+          "path:nested/deeper/info.md",
+          "path:src/app.ts",
+          "path:web/index.html"
+        ],
+        "startupDisposition": null,
+        "startupDispositionAt": null,
+        "pausedMs": 6976621,
+        "startedAt": 1787959741471,
+        "updatedAt": 1788002986450,
+        "completedAt": null,
+        "summaryEffort": null
+      }
+    },
+    {
+      "name": "stale binding reconciliation executed before batch failure",
+      "passed": true,
+      "details": [
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_start → 200",
+          "detail": {
+            "operationId": "fetch-113",
+            "url": "http://ipc.localhost/siyuan_start",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-201",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "ai",
+          "message": "SiYuan Context vault ready",
+          "detail": null
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-206",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-207",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-211",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-212",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-213",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-214",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-215",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-216",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-218",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-219",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-220",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-221",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-222",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-223",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-224",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-225",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-226",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-227",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-228",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-229",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-234",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-235",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-236",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-237",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-238",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-239",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-240",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-242",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-243",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-244",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-245",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-246",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-247",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-248",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-249",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_update_block → 200",
+          "detail": {
+            "operationId": "fetch-250",
+            "url": "http://ipc.localhost/siyuan_update_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-251",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-252",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-253",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-255",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-256",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-257",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-258",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-259",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "warn",
+          "channel": "ai",
+          "message": "SiYuan stale node bindings detached from the active map root",
+          "detail": {
+            "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+            "detached": 7
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-261",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-262",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-263",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-265",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-264",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-266",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-275",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-277",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-278",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-279",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-280",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-281",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-283",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-284",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-661",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-663",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-664",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-665",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-666",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-668",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-669",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "batch append failed after successful directory recreation",
+      "passed": false,
+      "details": [
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_start → 200",
+          "detail": {
+            "operationId": "fetch-113",
+            "url": "http://ipc.localhost/siyuan_start",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-201",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "ai",
+          "message": "SiYuan Context vault ready",
+          "detail": null
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-206",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-207",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-211",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-212",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-213",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-214",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-215",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-216",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-218",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-219",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-220",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-221",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-222",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-223",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-224",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-225",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-226",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-227",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-228",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-229",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-234",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-235",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-236",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-237",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-238",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-239",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-240",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-242",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-243",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-244",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-245",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-246",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-247",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-248",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-249",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_update_block → 200",
+          "detail": {
+            "operationId": "fetch-250",
+            "url": "http://ipc.localhost/siyuan_update_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-251",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-252",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-253",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-255",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-256",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-257",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-258",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-259",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "warn",
+          "channel": "ai",
+          "message": "SiYuan stale node bindings detached from the active map root",
+          "detail": {
+            "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+            "detached": 7
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-261",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-262",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-263",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-265",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-264",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-266",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-275",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-277",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-278",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-279",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-280",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-281",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-283",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-284",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-661",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-663",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-664",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-665",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-666",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-668",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-669",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "01-siyuan-00ae-failed-after-detach.png",
+      "width": 1600,
+      "height": 1025,
+      "byteCount": 1357515,
+      "sha256": "8dab9d4c2917b6deb0aa27ed229547406fcd95da18485ee5c549c14b073ce1c2",
+      "semanticState": {
+        "job": {
+          "schemaVersion": 1,
+          "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "canonicalRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"selected\",\"selectedExtensions\":[],\"selectedPaths\":[\"c:/users/viper/plugins\"],\"excludedPaths\":[]}",
+          "phase": "creating_nodes",
+          "status": "failed",
+          "pauseReason": null,
+          "cursor": 8,
+          "frontierLength": 8,
+          "indexed": 13,
+          "excluded": 1,
+          "unreadable": 0,
+          "summarized": 0,
+          "summaryEligible": 0,
+          "createdNodes": 0,
+          "failed": 0,
+          "skipped": 0,
+          "inputTokens": "[redacted]",
+          "outputTokens": "[redacted]",
+          "totalTokens": "[redacted]",
+          "tokenProvenance": "[redacted]",
+          "summaryProviderId": null,
+          "summaryConnectionId": null,
+          "summaryModelId": null,
+          "phaseStartedAt": 1787959741985,
+          "rateSamples": [
+            {
+              "at": 1787959741985,
+              "processed": 0
+            },
+            {
+              "at": 1787997830953,
+              "processed": 4
+            },
+            {
+              "at": 1787997832602,
+              "processed": 7
+            },
+            {
+              "at": 1788002986448,
+              "processed": 0
+            }
+          ],
+          "discoverySamples": [
+            {
+              "at": 1787959741838,
+              "processed": 1,
+              "frontierRemaining": 6,
+              "discovered": 7
+            },
+            {
+              "at": 1787959741903,
+              "processed": 7,
+              "frontierRemaining": 1,
+              "discovered": 12
+            },
+            {
+              "at": 1787959741956,
+              "processed": 8,
+              "frontierRemaining": 0,
+              "discovered": 13
+            }
+          ],
+          "estimatedPercent": 60,
+          "estimatedEtaSeconds": null,
+          "reconciledAt": null,
+          "pendingNativeNodeIds": [
+            "path:README.txt",
+            "path:assets/photo.png.meta.json",
+            "path:binary/sample.bin",
+            "path:nested/deeper/info.md",
+            "path:src/app.ts",
+            "path:web/index.html"
+          ],
+          "startupDisposition": null,
+          "startupDispositionAt": null,
+          "pausedMs": 6976621,
+          "startedAt": 1787959741471,
+          "updatedAt": 1788002986450,
+          "completedAt": null,
+          "summaryEffort": null
+        },
+        "manifest": {
+          "version": 1,
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "sourceRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "notebookId": "20260823111107-czbgf4r",
+          "rootDocumentId": "20260828182841-tbwq3n7",
+          "revision": 47,
+          "status": "error",
+          "sourcePolicy": {
+            "readOnly": true,
+            "excludedPaths": []
+          },
+          "summaryPolicy": {
+            "mode": "selected",
+            "selectedExtensions": [],
+            "selectedPaths": [
+              "C:\\Users\\viper\\plugins"
+            ]
+          },
+          "summaryModel": {
+            "kind": "none"
+          },
+          "cloudSummaryApproval": null,
+          "counts": {
+            "indexed": 0,
+            "excluded": 0,
+            "unreadable": 0,
+            "summarized": 0
+          },
+          "nodeBindings": {},
+          "updatedAt": 1788002986455
+        }
+      }
+    }
+  ],
+  "events": [],
+  "firstFailure": {
+    "code": "semantic_assertion_failed",
+    "stage": "assertion",
+    "name": "NativeAcceptanceHarnessError",
+    "details": {
+      "name": "batch append failed after successful directory recreation",
+      "details": [
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_start → 200",
+          "detail": {
+            "operationId": "fetch-113",
+            "url": "http://ipc.localhost/siyuan_start",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-201",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "ai",
+          "message": "SiYuan Context vault ready",
+          "detail": null
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-206",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-207",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-211",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-212",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-213",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-214",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-215",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-216",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-218",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-219",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-220",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-221",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-222",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-223",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-224",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-225",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-226",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-227",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-228",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-229",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-234",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-235",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-236",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-237",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-238",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-239",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-240",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-242",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-243",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-244",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-245",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-246",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-247",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-248",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-249",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_update_block → 200",
+          "detail": {
+            "operationId": "fetch-250",
+            "url": "http://ipc.localhost/siyuan_update_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-251",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-252",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-253",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-255",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-256",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-257",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-258",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-259",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "warn",
+          "channel": "ai",
+          "message": "SiYuan stale node bindings detached from the active map root",
+          "detail": {
+            "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+            "detached": 7
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-261",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-262",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-263",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-265",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-264",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-266",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-275",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-277",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-278",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-279",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-280",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-281",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-283",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-284",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-661",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-663",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-664",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-665",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-666",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-668",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-669",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "metadata": {
+    "mutationPerformedByThisPacket": false,
+    "retryClicksByThisPacket": 0,
+    "priorAuthorizedRetryConsumed": true,
+    "expectedProductCommit": "24572dc41b7b1a93317dbf85005dfcff2dfc3259",
+    "binaryCommit": "24572dc41b7b1a93317dbf85005dfcff2dfc3259",
+    "note": "Read-only capture after the single 00ae recovery Retry; no further product mutation.",
+    "snapshot": {
+      "projectId": "prj_leBT3oqNPBtoSMmf",
+      "selectedMapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+      "activeMap": {
+        "id": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "rootDir": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+        "name": "vibespace-pr31-context-fixture-20260827 Context Map",
+        "status": "active",
+        "createdAt": 1787959713298,
+        "updatedAt": 1787959713434,
+        "sourceType": "local_folder",
+        "sourceLabel": "Local folder",
+        "sourceStatus": "ready",
+        "branchRef": null,
+        "github": null,
+        "lastIndexedAt": 1787959713298,
+        "tree": {
+          "version": 1,
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "rootDir": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "generatedAt": 1787959713298,
+          "model": "context-map-v2",
+          "fileCount": 0,
+          "totalBytes": 0,
+          "summary": "The complete allowed structure and any approved summaries are indexed directly in SiYuan.",
+          "nodes": [],
+          "recommendedEntryPoints": []
+        }
+      },
+      "job": {
+        "schemaVersion": 1,
+        "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+        "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+        "canonicalRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+        "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"selected\",\"selectedExtensions\":[],\"selectedPaths\":[\"c:/users/viper/plugins\"],\"excludedPaths\":[]}",
+        "phase": "creating_nodes",
+        "status": "failed",
+        "pauseReason": null,
+        "cursor": 8,
+        "frontierLength": 8,
+        "indexed": 13,
+        "excluded": 1,
+        "unreadable": 0,
+        "summarized": 0,
+        "summaryEligible": 0,
+        "createdNodes": 0,
+        "failed": 0,
+        "skipped": 0,
+        "inputTokens": "[redacted]",
+        "outputTokens": "[redacted]",
+        "totalTokens": "[redacted]",
+        "tokenProvenance": "[redacted]",
+        "summaryProviderId": null,
+        "summaryConnectionId": null,
+        "summaryModelId": null,
+        "phaseStartedAt": 1787959741985,
+        "rateSamples": [
+          {
+            "at": 1787959741985,
+            "processed": 0
+          },
+          {
+            "at": 1787997830953,
+            "processed": 4
+          },
+          {
+            "at": 1787997832602,
+            "processed": 7
+          },
+          {
+            "at": 1788002986448,
+            "processed": 0
+          }
+        ],
+        "discoverySamples": [
+          {
+            "at": 1787959741838,
+            "processed": 1,
+            "frontierRemaining": 6,
+            "discovered": 7
+          },
+          {
+            "at": 1787959741903,
+            "processed": 7,
+            "frontierRemaining": 1,
+            "discovered": 12
+          },
+          {
+            "at": 1787959741956,
+            "processed": 8,
+            "frontierRemaining": 0,
+            "discovered": 13
+          }
+        ],
+        "estimatedPercent": 60,
+        "estimatedEtaSeconds": null,
+        "reconciledAt": null,
+        "pendingNativeNodeIds": [
+          "path:README.txt",
+          "path:assets/photo.png.meta.json",
+          "path:binary/sample.bin",
+          "path:nested/deeper/info.md",
+          "path:src/app.ts",
+          "path:web/index.html"
+        ],
+        "startupDisposition": null,
+        "startupDispositionAt": null,
+        "pausedMs": 6976621,
+        "startedAt": 1787959741471,
+        "updatedAt": 1788002986450,
+        "completedAt": null,
+        "summaryEffort": null
+      },
+      "manifest": {
+        "version": 1,
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+        "sourceRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+        "notebookId": "20260823111107-czbgf4r",
+        "rootDocumentId": "20260828182841-tbwq3n7",
+        "revision": 47,
+        "status": "error",
+        "sourcePolicy": {
+          "readOnly": true,
+          "excludedPaths": []
+        },
+        "summaryPolicy": {
+          "mode": "selected",
+          "selectedExtensions": [],
+          "selectedPaths": [
+            "C:\\Users\\viper\\plugins"
+          ]
+        },
+        "summaryModel": {
+          "kind": "none"
+        },
+        "cloudSummaryApproval": null,
+        "counts": {
+          "indexed": 0,
+          "excluded": 0,
+          "unreadable": 0,
+          "summarized": 0
+        },
+        "nodeBindings": {},
+        "updatedAt": 1788002986455
+      },
+      "searches": [
+        {
+          "marker": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "response": {
+            "blocks": [
+              {
+                "id": "20260829062945-h8wye8t",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260829062944-gtk2m3x/20260829062944-eqhdg5h/20260829062945-1cnt5pp.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Abinary --&gt;"
+              },
+              {
+                "id": "20260829062945-8gczjqu",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260829062944-gtk2m3x/20260829062944-eqhdg5h/20260829062945-4atvtm5.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Anested --&gt;"
+              },
+              {
+                "id": "20260829062944-25cw7le",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260829062944-gtk2m3x/20260829062944-eqhdg5h/20260829062944-n0baqk1.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Aexcluded --&gt;"
+              },
+              {
+                "id": "20260829062943-7dwas3s",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260829062944-gtk2m3x/20260829062944-eqhdg5h/20260829062943-e7i0tzw.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Aassets --&gt;"
+              },
+              {
+                "id": "20260829062942-o0i2l29",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260828182841-tbwq3n7.sy",
+                "content": "&lt;!-- vibespace-context-map:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> payload=eyJ2ZXJzaW9uIjoxLCJwcm9qZWN0SWQiOiJwcmpfbGVCVDNvcU5QQnRvU01tZiIsInJvb3REaXIiOiJDOlxcVXNlcnNcXHZpcGVyXFxBcHBEYXRhXFxMb2NhbFxcVGVtcFxcdmliZXNwYWNlLXByMzEtY29udGV4dC1maXh0dXJlLTIwMjYwODI3IiwiZ2VuZXJhdGVkQXQiOjE3ODc5NTk3MTMyOTgsIm1vZGVsIjoiY29udGV4dC1tYXAtdjIiLCJmaWxlQ291bnQiOjAsInRvdGFsQnl0ZXMiOjAsInN1bW1hcnkiOiJUaGUgY29tcGxldGUgYWxsb3dlZCBzdHJ1Y3R1cmUgYW5kIGFueSBhcHByb3Z..."
+              },
+              {
+                "id": "20260829050352-pnid6i9",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260829050351-jn3s1u8.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Aweb --&gt;"
+              },
+              {
+                "id": "20260829050351-hhwpj5b",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260829050351-1f0cr6j.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Anested%2Fdeeper --&gt;"
+              },
+              {
+                "id": "20260829050351-dulqsa8",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260829050351-o876pnu.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Asrc --&gt;"
+              },
+              {
+                "id": "20260829050350-mcjl6u5",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260829050350-esf3l2z.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Aassets --&gt;"
+              },
+              {
+                "id": "20260829050349-f9cds0k",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260829050349-ptlprcv.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Abinary --&gt;"
+              },
+              {
+                "id": "20260829050349-o121prm",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260829050349-9fdx4mb.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Aexcluded --&gt;"
+              },
+              {
+                "id": "20260829050348-0mfv8lo",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260829050348-8twpss7.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Anested --&gt;"
+              },
+              {
+                "id": "20260828182844-j7obthm",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260828182844-xmmqr6k.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Aweb --&gt;"
+              },
+              {
+                "id": "20260828182843-1dssew8",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260828182843-rs8fj82.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Asrc --&gt;"
+              },
+              {
+                "id": "20260828182843-djvd6v7",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260828182843-35wti7b.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Anested%2Fdeeper --&gt;"
+              },
+              {
+                "id": "20260828182842-diwhewj",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260828182842-8ioty1q.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Abinary --&gt;"
+              },
+              {
+                "id": "20260828182842-bvtz0qj",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260828182842-ozrn8sb.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Aexcluded --&gt;"
+              },
+              {
+                "id": "20260828182842-djtz24k",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260828182842-59ppbpz.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Anested --&gt;"
+              },
+              {
+                "id": "20260828182841-4o7kddk",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260828182841-kqutnsy.sy",
+                "content": "&lt;!-- vibespace-context-node:v1 map=<mark>map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298</mark> node=path%3Aassets --&gt;"
+              }
+            ]
+          }
+        },
+        {
+          "marker": "README.txt",
+          "response": {
+            "blocks": []
+          }
+        },
+        {
+          "marker": "photo.png.meta.json",
+          "response": {
+            "blocks": [
+              {
+                "id": "20260827220258-4runlez",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260827200805-jautdig.sy",
+                "content": "<mark>photo.png.meta.json</mark> · Read-only VibeSpace source index · file · Parent: Parent · Path: assets/<mark>photo.png.meta.json</mark> · Evidence pointer: C:/Users/viper/AppData/Local/Temp/vibespace-pr31-context-fixture-20260827\\assets\\<mark>photo.png.meta.json</mark> · Size: 129 bytes · Modified: 1787878983101 · vibespace-context-node:v1 map=map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455 node=path%3Aassets%2F<mark>photo.png.meta.json</mark>"
+              }
+            ]
+          }
+        },
+        {
+          "marker": "sample.bin",
+          "response": {
+            "blocks": [
+              {
+                "id": "20260827220258-xi9aosc",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260827200806-xmk74fc.sy",
+                "content": "<mark>sample.bin</mark> · Read-only VibeSpace source index · file · Parent: Parent · Path: binary/<mark>sample.bin</mark> · Evidence pointer: C:/Users/viper/AppData/Local/Temp/vibespace-pr31-context-fixture-20260827\\binary\\<mark>sample.bin</mark> · Size: 30 bytes · Modified: 1787878983106 · vibespace-context-node:v1 map=map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455 node=path%3Abinary%2F<mark>sample.bin</mark>"
+              }
+            ]
+          }
+        },
+        {
+          "marker": "info.md",
+          "response": {
+            "blocks": [
+              {
+                "id": "20260827220258-s9pl05u",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260827200810-m6r1r7q.sy",
+                "content": "<mark>info.md</mark> · Read-only VibeSpace source index · file · Parent: Parent · Path: nested/deeper/<mark>info.md</mark> · Evidence pointer: C:/Users/viper/AppData/Local/Temp/vibespace-pr31-context-fixture-20260827\\nested\\deeper\\<mark>info.md</mark> · Size: 88 bytes · Modified: 1787878983111 · vibespace-context-node:v1 map=map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455 node=path%3Anested%2Fdeeper%2F<mark>info.md</mark>"
+              }
+            ]
+          }
+        },
+        {
+          "marker": "src/app.ts",
+          "response": {
+            "blocks": [
+              {
+                "id": "20260827220258-x17zupr",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260827200810-zbjdpho.sy",
+                "content": "app.ts · Read-only VibeSpace source index · file · Parent: Parent · Path: <mark>src/app.ts</mark> · Evidence pointer: C:/Users/viper/AppData/Local/Temp/vibespace-pr31-context-fixture-20260827\\src\\app.ts · Size: 133 bytes · Modified: 1787878983082 · vibespace-context-node:v1 map=map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455 node=path%3Asrc%2Fapp.ts"
+              },
+              {
+                "id": "20260825081242-lkekpwe",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260823214949-szodl4x/20260823215132-khty8cp/20260824063402-cq5s8i7.sy",
+                "content": "Parent: Parent\nPath: app/<mark>src/App.ts</mark>x\nEvidence pointer: C:/Users/viper/VibeSpace-UnifiedChungus-Final\\app\\src\\App.tsx\nSize: 131243 bytes\nModified: 1787571139320"
+              }
+            ]
+          }
+        },
+        {
+          "marker": "web/index.html",
+          "response": {
+            "blocks": [
+              {
+                "id": "20260827220258-ms2usaj",
+                "notebookId": "20260823111107-czbgf4r",
+                "path": "/20260823111108-g8hllha/20260827200803-5gqj8rz/20260827200805-v5vbmhu/20260827200809-uglsoam.sy",
+                "content": "index.html · Read-only VibeSpace source index · file · Parent: Parent · Path: <mark>web/index.html</mark> · Evidence pointer: C:/Users/viper/AppData/Local/Temp/vibespace-pr31-context-fixture-20260827\\web\\index.html · Size: 199 bytes · Modified: 1787878983089 · vibespace-context-node:v1 map=map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455 node=path%3Aweb%2Findex.html"
+              }
+            ]
+          }
+        }
+      ],
+      "relevantEntries": [
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_start → 200",
+          "detail": {
+            "operationId": "fetch-113",
+            "url": "http://ipc.localhost/siyuan_start",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-201",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "ai",
+          "message": "SiYuan Context vault ready",
+          "detail": null
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-206",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-207",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-211",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-212",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-213",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-214",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-215",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-216",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-218",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-219",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-220",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-221",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-222",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-223",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-224",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-225",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-226",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-227",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-228",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-229",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-234",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-235",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-236",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-237",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-238",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-239",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-240",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-242",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-243",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-244",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-245",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-246",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-247",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-248",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-249",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_update_block → 200",
+          "detail": {
+            "operationId": "fetch-250",
+            "url": "http://ipc.localhost/siyuan_update_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-251",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-252",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-253",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-255",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-256",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-257",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-258",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-259",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "warn",
+          "channel": "ai",
+          "message": "SiYuan stale node bindings detached from the active map root",
+          "detail": {
+            "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+            "detached": 7
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-261",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_get_block → 200",
+          "detail": {
+            "operationId": "fetch-262",
+            "url": "http://ipc.localhost/siyuan_get_block",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-263",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-265",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-264",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_create_document_under_parent → 200",
+          "detail": {
+            "operationId": "fetch-266",
+            "url": "http://ipc.localhost/siyuan_create_document_under_parent",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "error"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-275",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-277",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-278",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-279",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-280",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-281",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_list_notebooks → 200",
+          "detail": {
+            "operationId": "fetch-283",
+            "url": "http://ipc.localhost/siyuan_list_notebooks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-284",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-661",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-663",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-664",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-665",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-666",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-668",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        },
+        {
+          "timestamp": null,
+          "level": "info",
+          "channel": "fetch",
+          "message": "POST ipc.localhost/siyuan_search_blocks → 200",
+          "detail": {
+            "operationId": "fetch-669",
+            "url": "http://ipc.localhost/siyuan_search_blocks",
+            "method": "POST",
+            "status": 200,
+            "statusText": "OK",
+            "responseHeaders": {
+              "content-type": "application/json",
+              "tauri-response": "ok"
+            }
+          }
+        }
+      ],
+      "bodyText": "Workspace / Project / Context V WORKSPACE Chat Workbench Canvas Terminals Kanban Schedule Benchmarks History ChatGPT ADE Agents Skills Tools Files PINNED Pin chats to keep them close. PROJECTS No projects yet. Hit + to create one. CHATS Hello, vipersel2 Hi there AGENTS Context 1/5 active maps vibespace-pr31-context-fixture-20260827 Context Map DELETED vibespace-pr31-context-fixture-20260827 Context Map ACTIVE FILES Local · uC_B Hello, vipersel2 Hi there CONTEXT Project Context Map Create a cozy draggable map for every AI chat and terminal. Create map Maps Sources Notes Views Templates Workspaces CONTEXT SOURCE FOLDER Choose SiYuan Context Map · local, project-scoped, and no provider credential required Review privacy and exclusions 1 SOURCE 2 PRIVACY 3 SUMMARIES 4 CREATE Summaries Every eligible item discovered by the safe scan is indexed either way. Summaries use the registered local model first; cloud use always asks before sending anything. No summaries Selected folders / file types (recommended) Everythin"
+    }
+  },
+  "completedAt": "2026-08-29T11:31:41.794Z"
+}

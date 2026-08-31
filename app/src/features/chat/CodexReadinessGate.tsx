@@ -2,12 +2,16 @@ import { useSyncExternalStore } from 'react';
 import { Button } from '@/components/ui';
 import { codexRuntimeManager, type CodexRuntimeManager } from '@/lib/harness/codexRuntimeManager';
 
+export function useCodexRuntimeState(manager: CodexRuntimeManager = codexRuntimeManager) {
+  return useSyncExternalStore(manager.subscribe, manager.getSnapshot, manager.getSnapshot);
+}
+
 export function CodexReadinessGate({
   manager = codexRuntimeManager,
 }: {
   manager?: CodexRuntimeManager;
 }) {
-  const state = useSyncExternalStore(manager.subscribe, manager.getSnapshot, manager.getSnapshot);
+  const state = useCodexRuntimeState(manager);
   if (state.kind === 'ready') return null;
   const install = () => void manager.install();
 

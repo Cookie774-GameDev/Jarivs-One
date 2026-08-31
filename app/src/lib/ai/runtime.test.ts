@@ -54,6 +54,7 @@ import { getPreview } from '@/features/chat/streamingPreviewStore';
 
 const mocks = vi.hoisted(() => ({
   runAgent: vi.fn(),
+  lockChatBackendForDispatch: vi.fn(),
   chatGetById: vi.fn(),
   chatUpdate: vi.fn(),
   getProjectContextBlock: vi.fn(),
@@ -123,6 +124,11 @@ vi.mock('./router', () => ({
   jarvisProviderAttemptEvidenceRevalidator: Object.freeze({
     revalidateFailure: vi.fn(async () => null),
   }),
+}));
+
+vi.mock('./backend/chatBackendPersistence', () => ({
+  dexieChatBackendPersistence: {},
+  lockChatBackendForDispatch: mocks.lockChatBackendForDispatch,
 }));
 
 vi.mock('@/lib/db', async (importOriginal) => {
@@ -1870,6 +1876,14 @@ describe('startRuntimeListener agent routing', () => {
     ]);
     rememberLiveOpenCodeProviders([]);
     mocks.runAgent.mockReset();
+    mocks.lockChatBackendForDispatch.mockReset();
+    mocks.lockChatBackendForDispatch.mockResolvedValue({
+      version: 1,
+      backend: 'opencode',
+      locked: true,
+      selectedAt: 1,
+      lockedAt: 1,
+    });
     mocks.nativeFetch.mockReset();
     mocks.buildRoutedMcpTaskContext.mockReset();
     mocks.bindPersistentOpenCodeQuestionRoute.mockReset();
@@ -1935,6 +1949,64 @@ describe('startRuntimeListener agent routing', () => {
     mocks.retrieveApprovedLocalKnowledge.mockResolvedValue([]);
     mocks.chatGetById.mockResolvedValue(undefined);
     useAllAboutMeStore.setState(useAllAboutMeStore.getInitialState(), true);
+  });
+
+  it('routes a locked Codex chat through the exact Codex connection without changing its model', async () => {
+    mocks.lockChatBackendForDispatch.mockResolvedValueOnce({
+      version: 1,
+      backend: 'codex',
+      locked: true,
+      selectedAt: 1,
+      lockedAt: 2,
+    });
+    const selectedAgent = agent('agent_codex_affinity', 'apple', 'You are Apple.');
+    const chatId = 'chat_codex_affinity' as ChatId;
+    const userMessage: Message = {
+      id: 'msg_codex_affinity_user' as MessageId,
+      chat_id: chatId,
+      role: 'user',
+      parts: [{ kind: 'text', text: 'Use this exact model.' }],
+      created_at: 2,
+      updated_at: 2,
+    };
+    const stop = trackListener(
+      startRuntimeListener({
+        getAgentById: () => selectedAgent,
+        getAgentBySlug: () => selectedAgent,
+        getAgentForChat: vi.fn(async () => selectedAgent),
+        getMessages: vi.fn(async () => [userMessage]),
+        appendMessage: vi.fn(async (message) => ({
+          ...message,
+          id: 'msg_codex_affinity_reply' as MessageId,
+          created_at: 3,
+          updated_at: 3,
+        })),
+        updateMessage: vi.fn(async () => undefined),
+      }),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: {
+          chatId,
+          cancellationKey: userMessage.id,
+          text: 'Use this exact model.',
+        },
+      }),
+    );
+
+    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+    expect(mocks.runAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        backend: 'codex',
+        connectionId: 'openai-codex',
+        agent: expect.objectContaining({
+          model: selectedAgent.model,
+        }),
+      }),
+    );
+    stop();
+    await stop.whenIdle();
   });
 
   it('does not advertise tools for an ordinary short Ask Mode chat', () => {

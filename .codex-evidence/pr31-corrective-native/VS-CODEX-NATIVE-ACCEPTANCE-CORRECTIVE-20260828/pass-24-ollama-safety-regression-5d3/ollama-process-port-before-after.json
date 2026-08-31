@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "head": "5d3faa82454fac728c1e100292ade46c6bacc4ff",
+  "exactModel": "opencode-go/deepseek-v4-flash-vision-exp",
+  "rootCause": {
+    "trigger": "Opening Chat ModelPicker runs bootstrapOllamaConnection({ force: true }).",
+    "rendererPath": [
+      "app/src/features/chat/Composer.tsx ModelPicker open effect",
+      "app/src/lib/ai/ollamaBootstrap.ts bootstrapOllamaConnection/runBootstrap",
+      "app/src/lib/ai/providers/ollama.ts ensureOllamaReadySilent"
+    ],
+    "nativePath": [
+      "app/src-tauri/src/local_ai.rs ensure_ollama_ready_internal",
+      "app/src-tauri/src/local_ai.rs start_ollama_serve_silent"
+    ],
+    "observedBeforeContainment": {
+      "jarvisPid": 8480,
+      "ollamaTreePids": [
+        20904,
+        19848
+      ],
+      "commandLine": "\"ollama\" serve",
+      "listener": {
+        "address": "127.0.0.1",
+        "port": 11434,
+        "ownerPid": 20904
+      },
+      "retryAfterOwnedChildTermination": {
+        "ownerPid": 19848,
+        "parentPid": 8480,
+        "parentAlreadyExited": true,
+        "explanation": "The in-flight native ensure path waits, clears a stopped child, then starts one final serve attempt. The app must be stopped or allowed to exit before terminating the retry child."
+      }
+    }
+  },
+  "prevention": {
+    "configuration": "VITE_DISABLE_OLLAMA_BOOTSTRAP=true",
+    "productFilesEdited": false,
+    "isOllamaBootstrapDisabled": true,
+    "directBootstrapResult": {
+      "ready": false,
+      "status": {
+        "ready": false,
+        "apiReachable": false,
+        "installed": false,
+        "phase": "disabled",
+        "detail": "Automatic Ollama startup is disabled for this VibeSpace runtime.",
+        "statusMsg": "Ollama bootstrap disabled"
+      },
+      "modelCount": 0
+    },
+    "pickerBootstrapResult": {
+      "ready": false,
+      "status": {
+        "ready": false,
+        "apiReachable": false,
+        "installed": false,
+        "phase": "disabled",
+        "detail": "Automatic Ollama startup is disabled for this VibeSpace runtime.",
+        "statusMsg": "Ollama bootstrap disabled"
+      },
+      "modelCount": 0
+    }
+  },
+  "modelPicker": {
+    "textLength": 118,
+    "exactModelIndex": -1,
+    "opencodeIndex": -1,
+    "exactModelPresent": false,
+    "text": "No models available yet.\n\nAdd an API key, use your subscription, or download a local model in Settings → Local Models."
+  },
+  "before": {
+    "CapturedAt": "2026-08-29T07:17:52.4806810-05:00",
+    "Jarvis": [
+      {
+        "Name": "jarvis.exe",
+        "ProcessId": 32752,
+        "ParentProcessId": 18956,
+        "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-641\\debug\\jarvis.exe"
+      }
+    ],
+    "Ollama": [],
+    "Listeners11434": []
+  },
+  "after": {
+    "CapturedAt": "2026-08-29T07:18:02.4230791-05:00",
+    "Jarvis": [
+      {
+        "Name": "jarvis.exe",
+        "ProcessId": 32752,
+        "ParentProcessId": 18956,
+        "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-641\\debug\\jarvis.exe"
+      }
+    ],
+    "Ollama": [],
+    "Listeners11434": []
+  },
+  "providerRequestSent": false,
+  "modelSelectionChanged": false,
+  "credentialsEntered": false,
+  "screenshot": {
+    "name": "model-picker-ollama-disabled.png",
+    "width": 1600,
+    "height": 1025
+  }
+}

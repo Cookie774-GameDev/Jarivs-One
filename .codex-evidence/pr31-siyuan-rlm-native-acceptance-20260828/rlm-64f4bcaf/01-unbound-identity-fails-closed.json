@@ -1,0 +1,19 @@
+{
+  "status": "passed",
+  "capturedAt": "2026-08-29T08:07:06.604Z",
+  "commit": "64f4bcaf213cb8bd64c976ff9622fa394740bd46",
+  "scenario": "Authorized low-level Context investigate without observed OpenCode execution identity",
+  "result": {
+    "sessionAuthorityBound": true,
+    "observedExecutionIdentityPresent": false,
+    "directError": "gateway_execution_identity_unavailable",
+    "response": {
+      "requestId": "native-unbound-runtime",
+      "ok": false,
+      "code": "tool_failed",
+      "message": "The semantic tool could not be completed."
+    }
+  },
+  "childDispatchExpected": false,
+  "screenshotPath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\rlm-64f4bcaf\\01-unbound-identity-fails-closed.png"
+}

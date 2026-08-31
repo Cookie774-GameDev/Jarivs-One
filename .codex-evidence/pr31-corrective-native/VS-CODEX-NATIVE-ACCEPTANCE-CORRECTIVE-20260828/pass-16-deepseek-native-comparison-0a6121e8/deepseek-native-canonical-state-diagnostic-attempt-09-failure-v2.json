@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-DEEPSEEK-ATTEMPT-09-CANONICAL-STATE-DIAGNOSTIC",
+  "startedAt": "2026-08-28T20:07:12.023Z",
+  "status": "failed",
+  "captureHead": "7e47b3143f4684c881727e3c4626a59d745d84b9",
+  "identity": {
+    "jarvisPid": 5076,
+    "webViewPid": 16336,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-28T15:07:11.9338588-05:00"
+  },
+  "safety": [
+    {
+      "label": "attach:before",
+      "capturedAt": "2026-08-28T15:07:09.1636235-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attach:after",
+      "capturedAt": "2026-08-28T15:07:11.9338588-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [],
+  "artifacts": [],
+  "events": [],
+  "firstFailure": {
+    "code": "native_acceptance_unexpected_failure",
+    "stage": "canonical_state_diagnostic",
+    "name": "Error",
+    "details": null
+  },
+  "metadata": {
+    "repairCommit": "8fa3ad3aeda901fe2e34b4b061d9f0b92eb2ca09",
+    "interactionBoundary": "read-only official page and IndexedDB/repository inspection",
+    "clickCount": 0,
+    "reloadCount": 0,
+    "processActionCount": 0,
+    "modelDispatchCount": 0,
+    "mutationCount": 0,
+    "rawParamsStored": false,
+    "rawContentStored": false,
+    "credentialsStored": "[redacted]",
+    "fullCanonicalIdsStored": false
+  },
+  "completedAt": "2026-08-28T20:07:12.403Z"
+}

@@ -1,0 +1,255 @@
+{
+  "title": "VibeSpace",
+  "url": "http://localhost:5173/?route=chat",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0",
+  "isTauri": true,
+  "pageCount": 1,
+  "targetPages": [
+    {
+      "url": "http://localhost:5173/?route=chat",
+      "title": "VibeSpace"
+    }
+  ],
+  "processes": {
+    "Processes": [
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 18280,
+        "ParentProcessId": 16916,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 18396,
+        "ParentProcessId": 18280,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 18460,
+        "ParentProcessId": 18280,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 18480,
+        "ParentProcessId": 18280,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 18572,
+        "ParentProcessId": 18280,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 18976,
+        "ParentProcessId": 18280,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 3416,
+        "ParentProcessId": 23772,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 14768,
+        "ParentProcessId": 3416,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 25044,
+        "ParentProcessId": 3416,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 25048,
+        "ParentProcessId": 3416,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 17920,
+        "ParentProcessId": 3416,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 25064,
+        "ParentProcessId": 3416,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 26392,
+        "ParentProcessId": 17080,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 26608,
+        "ParentProcessId": 26392,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 26744,
+        "ParentProcessId": 26392,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 26752,
+        "ParentProcessId": 26392,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 26892,
+        "ParentProcessId": 26392,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 27112,
+        "ParentProcessId": 26392,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "jarvis.exe",
+        "ProcessId": 38252,
+        "ParentProcessId": 34552,
+        "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 17528,
+        "ParentProcessId": 38252,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": true,
+        "CdpPort9223": true
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 36644,
+        "ParentProcessId": 17528,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 10588,
+        "ParentProcessId": 17528,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": true,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 30704,
+        "ParentProcessId": 17528,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": true,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 38584,
+        "ParentProcessId": 17528,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": true,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 31780,
+        "ParentProcessId": 17528,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": true,
+        "CdpPort9223": true
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 1620,
+        "ParentProcessId": 17528,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "JarvisWebViewOwner": true,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "opencode.exe",
+        "ProcessId": 29328,
+        "ParentProcessId": 38252,
+        "ExecutablePath": "C:\\Users\\viper\\AppData\\Roaming\\npm\\node_modules\\opencode-ai\\bin\\opencode.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      },
+      {
+        "Name": "opencode.exe",
+        "ProcessId": 36316,
+        "ParentProcessId": 29456,
+        "ExecutablePath": "C:\\Users\\viper\\AppData\\Roaming\\npm\\node_modules\\opencode-ai\\bin\\opencode.exe",
+        "JarvisWebViewOwner": false,
+        "CdpPort9223": false
+      }
+    ],
+    "CdpListener": [
+      {
+        "LocalAddress": "127.0.0.1",
+        "LocalPort": 9223,
+        "OwningProcess": 17528,
+        "State": 2
+      }
+    ]
+  },
+  "git": {
+    "worktree": "C:/Users/viper/VibeSpace-UnifiedChungus-Final",
+    "branch": "integration/UnifiedChungus-final",
+    "head": "12f9889bcbd261a7120961cd93e794b7d2712646",
+    "upstream": "origin/UnifiedChungus"
+  }
+}

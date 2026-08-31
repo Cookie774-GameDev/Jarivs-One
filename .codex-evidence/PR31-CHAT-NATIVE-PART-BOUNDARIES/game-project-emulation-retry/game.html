@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbit Runner 3D</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0b1a; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #hud {
+    position: absolute; top: 0; left: 0; right: 0; padding: 16px 20px;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    color: #eaf6ff; text-shadow: 0 2px 8px rgba(0,0,0,.6); pointer-events: none; z-index: 10;
+  }
+  .stat { font-size: 22px; font-weight: 700; letter-spacing: 1px; }
+  .stat span { color: #7ce0ff; }
+  #overlay {
+    position: absolute; inset: 0; background: rgba(8,8,20,.82);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #eaf6ff; text-align: center; z-index: 20; transition: opacity .4s;
+  }
+  #overlay.hidden { opacity: 0; pointer-events: none; }
+  h1 { font-size: 54px; letter-spacing: 3px; margin-bottom: 6px; color: #7ce0ff; }
+  .subtitle { color: #9fb6cc; margin-bottom: 8px; font-size: 15px; }
+  .controls { margin: 14px 0 22px; font-size: 14px; color: #cfdff0; line-height: 1.7; }
+  .controls b { color: #7ce0ff; }
+  button {
+    background: linear-gradient(135deg, #22a6f0, #5a5af0); border: none; color: #fff;
+    font-size: 20px; font-weight: 700; letter-spacing: 1px; padding: 14px 46px;
+    border-radius: 40px; cursor: pointer; box-shadow: 0 8px 30px rgba(34,166,240,.45);
+    transition: transform .12s, box-shadow .12s; font-family: inherit;
+  }
+  button:hover { transform: translateY(-2px) scale(1.03); box-shadow: 0 12px 40px rgba(34,166,240,.6); }
+  .hint { margin-top: 22px; font-size: 12px; color: #6a7c92; max-width: 420px; }
+  #flash { position: absolute; inset: 0; pointer-events: none; z-index: 5; background: #fff; opacity: 0; }
+  #flash.hit { animation: flashAnim .12s ease-out; }
+  @keyframes flashAnim { 0% { opacity: .5; } 100% { opacity: 0; } }
+  .combo { position: absolute; z-index: 15; color: #ffe86b; font-weight: 800; font-size: 28px;
+    text-shadow: 0 2px 10px rgba(0,0,0,.7); pointer-events: none; transition: all .6s; }
+</style>
+</head>
+<body>
+  <div id="hud">
+    <div class="stat">SCORE <span id="score">0</span></div>
+    <div class="stat">HIGH <span id="high">0</span></div>
+  </div>
+  <div id="flash"></div>
+  <div id="overlay">
+    <h1>ORBIT RUNNER 3D</h1>
+    <div class="subtitle">A 3D survival runner in space</div>
+    <div class="controls">
+      <b>WASD / Arrows</b> — move<br>
+      <b>Mouse</b> — steer camera<br>
+      <b>Shift</b> — boost<br>
+      <b>R</b> — restart
+    </div>
+    <button id="startBtn">START RUN</button>
+    <div class="hint">Collect glowing orbs to score. Dodge the red mines. You get stunned on impact — stay sharp.</div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+  (function () {
+    const THREE_ = window.THREE;
+
+    // ---- Core scene ----
+    const scene = new THREE_.Scene();
+    scene.fog = new THREE_.FogExp2(0x0b0b1a, 0.028);
+
+    const camera = new THREE_.PerspectiveCamera(70, innerWidth / innerHeight, 0.1, 400);
+    camera.position.set(0, 6, 14);
+
+    const renderer = new THREE_.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE_.PCFSoftShadowMap;
+    document.body.appendChild(renderer.domElement);
+
+    // ---- Lights ----
+    scene.add(new THREE_.HemisphereLight(0x8fb6ff, 0x20283a, 0.9));
+    const dir = new THREE_.DirectionalLight(0xffffff, 0.95);
+    dir.position.set(8, 20, 6);
+    dir.castShadow = true;
+    dir.shadow.mapSize.set(1024, 1024);
+    scene.add(dir);
+    const point = new THREE_.PointLight(0x7ce0ff, 1.2, 40);
+    point.position.set(0, 5, -10);
+    scene.add(point);
+
+    // ---- Starfield background ----
+    (function stars() {
+      const geo = new THREE_.BufferGeometry();
+      const pos = [];
+      for (let i = 0; i < 1600; i++) {
+        pos.push((Math.random() - .5) * 200, (Math.random() - .5) * 200, (Math.random() - .5) * 200);
+      }
+      geo.setAttribute('position', new THREE_.Float32BufferAttribute(pos, 3));
+      const mat = new THREE_.PointsMaterial({ color: 0xffffff, size: 0.18, transparent: true, opacity: 0.9 });
+      scene.add(new THREE_.Points(geo, mat));
+    })();
+
+    // ---- Ground / track ----
+    const grid = new THREE_.GridHelper(120, 60, 0x22406a, 0x16283f);
+    grid.position.y = 0;
+    grid.material.opacity = 0.5;
+    grid.material.transparent = true;
+    scene.add(grid);
+    const ground = new THREE_.Mesh(
+      new THREE_.PlaneGeometry(160, 160),
+      new THREE_.MeshStandardMaterial({ color: 0x0d1226, roughness: 1, metalness: 0 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.05;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // ---- Player ----
+    const player = new THREE_.Mesh(
+      new THREE_.OctahedronGeometry(0.9, 0),
+      new THREE_.MeshStandardMaterial({ color: 0x7ce0ff, emissive: 0x1a6a9a, metalness: 0.6, roughness: 0.2 })
+    );
+    player.castShadow = true;
+    scene.add(player);
+    const playerLight = new THREE_.PointLight(0x7ce0ff, 1.5, 8);
+    scene.add(playerLight);
+
+    // ---- Game state ----
+    const state = {
+      playing: false,
+      over: false,
+      score: 0,
+      high: +(localStorage.getItem('orbitHigh') || 0),
+      posX: 0,
+      posZ: 0,
+      velX: 0,
+      velZ: 0,
+      speed: 14,
+      boost: 1,
+      stun: 0,
+      minZ: -100,
+      spawnZ: -140,
+    };
+    const obstacles = [];   // mines { mesh, stun }
+    const orbs = [];        // collectibles { mesh, spin }
+    const comboPops = [];
+
+    // ---- Input ----
+    const keys = {};
+    const K = {
+      up: ['KeyW', 'ArrowUp'], down: ['KeyS', 'ArrowDown'],
+      left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'],
+      boost: ['ShiftLeft', 'ShiftRight']
+    };
+    addEventListener('keydown', (e) => { keys[e.code] = true; if (e.code === 'KeyR') restart(); });
+    addEventListener('keyup', (e) => { keys[e.code] = false; });
+    function down(list) { return list.some((c) => keys[c]); }
+
+    let mouseX = 0, mouseY = 0;
+    addEventListener('mousemove', (e) => {
+      mouseX = (e.clientX / innerWidth - .5) * 2;
+      mouseY = (e.clientY / innerHeight - .5) * 2;
+    });
+
+    // ---- Spawning ----
+    const mineMat = new THREE_.MeshStandardMaterial({ color: 0xff4d5e, emissive: 0x8a1018, metalness: 0.5, roughness: 0.3 });
+    const orbMat = new THREE_.MeshStandardMaterial({ color: 0xffe86b, emissive: 0x8a7a10, metalness: 0.4, roughness: 0.1 });
+
+    function spawnRow() {
+      const laneChoice = Math.floor(Math.random() * 3) - 1;
+      const avoidLane = laneChoice;
+      const nOrbs = 1 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < nOrbs; i++) {
+        const orb = new THREE_.Mesh(new THREE_.IcosahedronGeometry(0.45, 0), orbMat.clone());
+        orb.position.set((Math.random() * 5 - 2.5), 1.2, state.spawnZ);
+        scene.add(orb);
+        orbs.push({ mesh: orb, spin: Math.random() * 4 + 2 });
+      }
+      const nOb = 2 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < nOb; i++) {
+        const m = new THREE_.Mesh(new THREE_.IcosahedronGeometry(0.7 + Math.random() * 0.4, 0), mineMat.clone());
+        m.position.set((Math.random() * 6 - 3), 1.1, state.spawnZ);
+        scene.add(m);
+        obstacles.push({ mesh: m, stun: true });
+      }
+      state.spawnZ -= (14 + Math.random() * 8);
+      state.minZ = state.spawnZ + 60;
+    }
+
+    function spawnConveyor() {
+      while (state.spawnZ > state.minZ - 20) spawnRow();
+    }
+
+    // ---- Scoring pops ----
+    function popScore(x, z, txt) {
+      const el = document.createElement('div');
+      el.className = 'combo';
+      el.textContent = txt;
+      document.body.appendChild(el);
+      const p = project(x, z);
+      el.style.left = (p.x || innerWidth / 2) + 'px';
+      el.style.top = (p.y || innerHeight / 2) + 'px';
+      el.style.opacity = 1;
+      comboPops.push({ el, life: 1 });
+    }
+    function project(x, z) {
+      const v = new THREE_.Vector3(x, 2, z);
+      v.project(camera);
+      return { x: (v.x * .5 + .5) * innerWidth, y: (-v.y * .5 + .5) * innerHeight };
+    }
+
+    // ---- HUD helpers ----
+    const scoreEl = document.getElementById('score');
+    const highEl = document.getElementById('high');
+    highEl.textContent = state.high;
+
+    function updateScore() {
+      scoreEl.textContent = state.score;
+      if (state.score > state.high) { state.high = state.score; highEl.textContent = state.high; }
+    }
+
+    // ---- Game flow ----
+    const overlay = document.getElementById('overlay');
+    document.getElementById('startBtn').addEventListener('click', () => {
+      overlay.classList.add('hidden');
+      start();
+    });
+
+    function reset() {
+      state.score = 0; state.posX = 0; state.posZ = 0;
+      state.velX = 0; state.velZ = 0; state.speed = 14; state.boost = 1; state.stun = 0;
+      obstacles.forEach(o => scene.remove(o.mesh));
+      orbs.forEach(o => scene.remove(o.mesh));
+      obstacles.length = 0; orbs.length = 0;
+      comboPops.forEach(c => c.el.remove()); comboPops.length = 0;
+      state.spawnZ = -140; state.minZ = -100;
+      for (let i = 0; i < 6; i++) spawnRow();
+      player.material.color.set(0x7ce0ff);
+    }
+
+    function start() { reset(); state.playing = true; state.over = false; }
+    function restart() {
+      if (!state.playing && state.over) {
+        start();
+      } else { reset(); }
+    }
+
+    function endGame() {
+      state.playing = false; state.over = true;
+      localStorage.setItem('orbitHigh', state.high);
+      document.getElementById('overlay').classList.remove('hidden');
+      document.querySelector('#overlay h1').textContent = 'WRECKED!';
+      document.querySelector('#overlay .subtitle').textContent = 'You crashed into the mines.';
+      document.querySelector('#overlay .controls').style.display = 'none';
+      document.getElementById('startBtn').textContent = 'RIDE AGAIN';
+    }
+
+    // ---- Collision ----
+    const flashEl = document.getElementById('flash');
+    let hitCooldown = 0;
+
+    function collide() {
+      const p = player.position;
+      for (const o of obstacles) {
+        const d = p.distanceTo(o.mesh.position);
+        if (d < 1.25) {
+          scene.remove(o.mesh);
+          obstacles.splice(obstacles.indexOf(o), 1);
+          state.stun = 2.2; state.boost = 1; state.speed = 9;
+          state.score -= 50; if (state.score < 0) state.score = 0;
+          flashEl.className = ''; void flashEl.offsetWidth; flashEl.className = 'hit';
+          popScore(p.x, p.z, '-50');
+          if (state.stun >= 2) endGame();
+          return;
+        }
+      }
+      for (let i = orbs.length - 1; i >= 0; i--) {
+        const o = orbs[i];
+        const d = p.distanceTo(o.mesh.position);
+        if (d < 1.3) {
+          scene.remove(o.mesh);
+          orbs.splice(i, 1);
+          state.score += 250;
+          popScore(o.mesh.position.x, o.mesh.position.z, '+250');
+        }
+      }
+    }
+
+    // ---- Main loop ----
+    const clock = new THREE_.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.05);
+
+      if (state.playing) {
+        // stun handling
+        if (state.stun > 0) state.stun -= dt;
+        else state.stun = 0;
+
+        const control = state.stun > 0 ? 0.2 : 1;
+        const accel = 42 * dt * control;
+        if (down(K.left)) state.velX -= accel;
+        if (down(K.right)) state.velX += accel;
+        if (down(K.up)) state.velZ -= accel;
+        if (down(K.down)) state.velZ += accel;
+        state.velX *= 0.9;
+        state.velZ *= 0.9;
+
+        state.posX += state.velX * dt;
+        state.posZ += state.velZ * dt;
+        state.posX = Math.max(-8, Math.min(8, state.posX));
+        state.posZ = Math.max(-70, Math.min(10, state.posZ));
+
+        state.boost = (down(K.boost)) ? 1.7 : 1;
+        state.speed += (14 - state.speed) * 0.02;
+        state.posZ -= state.speed * state.boost * dt;
+
+        // scroll world: move obstacles/orbs toward camera
+        const move = state.speed * state.boost * dt;
+        for (const o of obstacles) o.mesh.position.z += move;
+        for (const o of orbs) { o.mesh.position.z += move; o.mesh.rotation.y += o.spin * dt; }
+
+        // run conveyor to keep density
+        spawnConveyor();
+
+        // remove passed
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+          if (obstacles[i].mesh.position.z > 20) { scene.remove(obstacles[i].mesh); obstacles.splice(i, 1); }
+        }
+        for (let i = orbs.length - 1; i >= 0; i--) {
+          if (orbs[i].mesh.position.z > 20) { scene.remove(orbs[i].mesh); orbs.splice(i, 1); }
+        }
+
+        // player mesh position + spin
+        player.position.set(state.posX, 1.2, state.posZ);
+        player.rotation.y = state.velX * 0.1;
+        player.rotation.x = state.velZ * 0.05;
+        player.material.emissive.setHex(state.stun > 0 ? 0x8a1018 : 0x1a6a9a);
+        playerLight.position.copy(player.position);
+
+        // passive score for distance
+        state.score += state.speed * state.boost * dt * 2;
+        updateScore();
+
+        // collisions
+        collide();
+      }
+
+      // camera follows with mouse tilt
+      camera.position.x += (state.posX * 0.5 + mouseX * 3 - camera.position.x) * 0.08;
+      camera.position.y += ((state.posZ > -10 ? 6 : 3.5) - camera.position.y) * 0.06;
+      camera.position.z += (state.posZ + 13 - camera.position.z) * 0.1;
+      camera.lookAt(player.position.x, 1, player.position.z - 8);
+
+      // combo pops fade
+      for (let i = comboPops.length - 1; i >= 0; i--) {
+        const c = comboPops[i];
+        c.life -= dt * 2;
+        c.el.style.bottom = (44 + (1 - c.life) * 70) + 'px';
+        c.el.style.opacity = Math.max(0, c.life);
+        if (c.life <= 0) { c.el.remove(); comboPops.splice(i, 1); }
+      }
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    reset();
+  })();
+  </script>
+</body>
+</html>

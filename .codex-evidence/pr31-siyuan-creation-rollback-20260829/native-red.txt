@@ -1,0 +1,69 @@
+   Compiling jarvis v1.5.0 (C:\Users\viper\VibeSpace-UnifiedChungus-Final\app\src-tauri)
+warning: function `schedule_cold_start_intro_fail_open` is never used
+   --> src\lib.rs:222:4
+    |
+222 | fn schedule_cold_start_intro_fail_open(app: &tauri::AppHandle) {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `start_cold_start_intro` is never used
+   --> src\lib.rs:263:4
+    |
+263 | fn start_cold_start_intro(app: &tauri::AppHandle) {
+    |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `resolve_manifest` is never used
+   --> src\faster_whisper.rs:351:4
+    |
+351 | fn resolve_manifest(model: &str) -> Result<Manifest, String> {
+    |    ^^^^^^^^^^^^^^^^
+
+warning: variant `Unsupported` is never constructed
+   --> src\monochrome_evidence.rs:153:5
+    |
+151 | enum CommitFailure {
+    |      ------------- variant in this enum
+152 |     Unavailable,
+153 |     Unsupported,
+    |     ^^^^^^^^^^^
+    |
+    = note: `CommitFailure` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: function `native_show_pet_window` is never used
+   --> src\pets.rs:924:4
+    |
+924 | fn native_show_pet_window(win: &WebviewWindow, title: &str, focus: bool) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `log_pet_window_metrics` is never used
+    --> src\pets.rs:1137:4
+     |
+1137 | fn log_pet_window_metrics(label: &str, win: &WebviewWindow) {
+     |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `init_pet_state` is never used
+    --> src\pets.rs:2532:8
+     |
+2532 | pub fn init_pet_state(app: &AppHandle) -> PetWindowState {
+     |        ^^^^^^^^^^^^^^
+
+warning: `jarvis` (lib test) generated 7 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 09s
+     Running unittests src\lib.rs (V:\cargo-target\debug\deps\jarvis_lib-4a486dbb38008bd3.exe)
+
+running 1 test
+
+thread 'siyuan::client::tests::exact_parent_create_accepts_marker_bound_kramdown_normalization' (11748) panicked at src\siyuan\client.rs:2367:18:
+called `Result::unwrap()` on an `Err` value: TransportUnavailable
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test siyuan::client::tests::exact_parent_create_accepts_marker_bound_kramdown_normalization ... FAILED
+
+failures:
+
+failures:
+    siyuan::client::tests::exact_parent_create_accepts_marker_bound_kramdown_normalization
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 555 filtered out; finished in 2.12s
+
+error: test failed, to rerun pass `--lib`

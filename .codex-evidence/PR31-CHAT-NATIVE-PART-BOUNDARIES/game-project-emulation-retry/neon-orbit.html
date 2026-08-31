@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NEON ORBIT — 3D Collect Run</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #05060f; font-family: "Segoe UI", system-ui, sans-serif; color: #eaf6ff; }
+  #game { position: fixed; inset: 0; }
+  .hud { position: fixed; z-index: 10; pointer-events: none; user-select: none; }
+  #hud-top { top: 16px; left: 0; width: 100%; display: flex; justify-content: space-between; padding: 0 24px; }
+  .panel { background: rgba(8, 12, 30, 0.55); border: 1px solid rgba(0, 229, 255, 0.4); backdrop-filter: blur(6px); border-radius: 10px; padding: 8px 16px; font-variant-numeric: tabular-nums; box-shadow: 0 0 18px rgba(0,229,255,0.18); }
+  .panel .label { font-size: 11px; letter-spacing: 2px; color: #7fe9ff; opacity: 0.8; }
+  .panel .value { font-size: 26px; font-weight: 700; color: #fff; text-shadow: 0 0 10px rgba(0,229,255,0.6); }
+  #crosshair { top: 50%; left: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); }
+  #crosshair::before, #crosshair::after { content: ""; position: absolute; background: rgba(255,255,255,0.85); box-shadow: 0 0 6px #00e5ff; }
+  #crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+  #crosshair::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+  #help { bottom: 18px; left: 50%; transform: translateX(-50%); text-align: center; font-size: 13px; letter-spacing: 1px; color: #b9d9ff; text-shadow: 0 0 8px rgba(0,0,0,0.8); }
+  #help b { color: #00e5ff; }
+  .toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 20; font-size: 34px; font-weight: 800; letter-spacing: 2px; text-shadow: 0 0 24px rgba(0,229,255,0.9); opacity: 0; transition: opacity 0.25s; pointer-events: none; }
+  #overlay { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: radial-gradient(circle at 50% 35%, rgba(20,30,70,0.85), rgba(3,4,14,0.96)); text-align: center; padding: 24px; }
+  #overlay h1 { font-size: 52px; letter-spacing: 6px; font-weight: 900; color: #00e5ff; text-shadow: 0 0 30px rgba(0,229,255,0.8); }
+  #overlay h1 span { color: #ff3df0; text-shadow: 0 0 30px rgba(255,61,240,0.8); }
+  #overlay p { font-size: 16px; color: #b9d9ff; max-width: 620px; line-height: 1.6; }
+  .btn { pointer-events: auto; cursor: pointer; font-size: 18px; font-weight: 700; letter-spacing: 1px; padding: 14px 38px; border-radius: 40px; border: 2px solid #00e5ff; background: rgba(0,229,255,0.12); color: #fff; transition: all 0.2s; text-transform: uppercase; }
+  .btn:hover { background: rgba(0,229,255,0.3); box-shadow: 0 0 30px rgba(0,229,255,0.7); transform: scale(1.05); }
+  .small { font-size: 12px; color: #7fe9ff; opacity: 0.8; }
+  #score-pop { display: none; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div class="hud" id="hud-top">
+  <div class="panel"><div class="label">SCORE</div><div class="value" id="score">0</div></div>
+  <div class="panel"><div class="label">TIME</div><div class="value" id="time">60</div></div>
+  <div class="panel"><div class="label">COLLECTED</div><div class="value" id="collect">0/20</div></div>
+</div>
+
+<div class="hud" id="crosshair"></div>
+<div class="hud" id="help">Move: <b>W A S D</b> &nbsp;•&nbsp; Look: <b>Mouse</b> &nbsp;•&nbsp; Sprint: <b>Shift</b> &nbsp;•&nbsp; Restart: <b>R</b></div>
+
+<div class="toast" id="toast"></div>
+
+<div id="overlay">
+  <h1>NEON <span>ORBIT</span></h1>
+  <p>Pilot your energy ship through the neon void. Collect all <b>20 orbs</b> before the timer runs out. Avoid the red hazard cores — they drain your time. Dash through the cyan shock rings for a speed boost.</p>
+  <div class="btn" id="start">▶ &nbsp;LAUNCH</div>
+  <div class="small">Best played in a full-screen window. Click to lock your mouse.</div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ---------- Setup ----------
+const container = document.getElementById('game');
+let renderer, scene, camera;
+let ships = [], orbs = [], hazards = [], rings = [];
+
+let startTime = 0;
+let runStarted = false;
+let score = 0;
+let collected = 0;
+const MAX_ORBS = 20;
+const TIME_LIMIT = 60;
+
+const worldR = 90;          // arena radius
+const arenaCenter = new THREE.Vector3(0, 0, 0);
+
+init();
+animate();
+
+function init() {
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(renderer.domElement);
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x05060f);
+  scene.fog = new THREE.FogExp2(0x05060f, 0.014);
+
+  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 600);
+  camera.position.set(0, 3, 8);
+
+  // Lights
+  const ambient = new THREE.AmbientLight(0x404f7a, 0.9);
+  scene.add(ambient);
+  const dir = new THREE.DirectionalLight(0xffffff, 1.1);
+  dir.position.set(20, 40, 20);
+  dir.castShadow = true;
+  scene.add(dir);
+  const point = new THREE.PointLight(0x00e5ff, 1.4, 60);
+  point.position.set(0, 6, 0);
+  scene.add(point);
+
+  // Ground grid
+  const grid = new THREE.GridHelper(worldR * 2.4, 60, 0x00e5ff, 0x1b2c66);
+  grid.material.opacity = 0.5;
+  grid.material.transparent = true;
+  scene.add(grid);
+
+  // Ground plane (dark reflective)
+  const ground = new THREE.Mesh(
+    new THREE.CircleGeometry(worldR * 1.2, 64),
+    new THREE.MeshStandardMaterial({ color: 0x0a1030, roughness: 0.4, metalness: 0.7 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.02;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // Arena boundary rings
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, wireframe: true, transparent: true, opacity: 0.5 });
+  for (let i = 0; i < 3; i++) {
+    const rg = new THREE.Mesh(new THREE.TorusGeometry(worldR + i * 2, 0.08, 6, 80), ringMat);
+    rg.rotation.x = Math.PI / 2;
+    rg.position.y = 0.05;
+    scene.add(rg);
+  }
+
+  // Background star particles
+  const starGeo = new THREE.BufferGeometry();
+  const starCount = 1600;
+  const pos = new Float32Array(starCount * 3);
+  for (let i = 0; i < starCount * 3; i++) pos[i] = (Math.random() - 0.5) * 400;
+  starGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x9fd8ff, size: 0.5, transparent: true, opacity: 0.85 }));
+  scene.add(stars);
+
+  // Ship
+  const ship = createShip();
+  scene.add(ship.group);
+  ships.push(ship);
+
+  spawnOrbs();
+  spawnHazards();
+  spawnRings();
+
+  // Controls
+  const startBtn = document.getElementById('start');
+  startBtn.addEventListener('click', lockPointer);
+  renderer.domElement.addEventListener('click', lockPointer);
+  document.addEventListener('pointerlockchange', () => {
+    document.getElementById('overlay').style.display = document.pointerLockElement ? 'none' : 'flex';
+    if (document.pointerLockElement && !runStarted) startRun();
+  });
+  window.addEventListener('resize', onResize);
+
+  // Audio (procedural WebAudio)
+  initAudio();
+}
+
+function createShip() {
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.ConeGeometry(0.6, 2.2, 8),
+    new THREE.MeshStandardMaterial({ color: 0x00e5ff, emissive: 0x004a66, metalness: 0.9, roughness: 0.2 })
+  );
+  body.rotation.x = Math.PI / 2;
+  body.castShadow = true;
+  group.add(body);
+
+  const cockpit = new THREE.Mesh(
+    new THREE.SphereGeometry(0.32, 16, 16),
+    new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x2b6d99, metalness: 0.6, roughness: 0.3 })
+  );
+  cockpit.position.z = 0.4;
+  group.add(cockpit);
+
+  const wingMat = new THREE.MeshStandardMaterial({ color: 0x9ff2ff, emissive: 0x00293a, metalness: 0.8, roughness: 0.3 });
+  const wl = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.06, 1.3), wingMat);
+  wl.position.set(-0.6, 0, -0.3); group.add(wl);
+  const wr = wl.clone(); wr.position.x = 0.6; group.add(wr);
+
+  const engine = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.7, 8), new THREE.MeshBasicMaterial({ color: 0xff5df0 }));
+  engine.rotation.x = -Math.PI / 2;
+  engine.position.z = -1.2;
+  group.add(engine);
+  group.userData.engine = engine;
+
+  return { group, vel: new THREE.Vector3(), heading: 0 };
+}
+
+function spawnOrbs() {
+  const orbGeo = new THREE.IcosahedronGeometry(0.55, 1);
+  const orbMat = new THREE.MeshStandardMaterial({ color: 0xffd23e, emissive: 0x6b4c00, metalness: 0.8, roughness: 0.2 });
+  for (let i = 0; i < MAX_ORBS; i++) {
+    const orb = new THREE.Group();
+    const mesh = new THREE.Mesh(orbGeo, orbMat.clone());
+    mesh.castShadow = true;
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.8, 0.04, 6, 24),
+      new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.7 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    orb.add(mesh); orb.add(ring);
+    placeOnField(orb, 0.9);
+    scene.add(orb);
+    orbs.push({ group: orb, ring, collected: false, phase: Math.random() * Math.PI * 2 });
+  }
+}
+
+function spawnHazards() {
+  const hzGeo = new THREE.IcosahedronGeometry(1.1, 0);
+  const hzMat = new THREE.MeshStandardMaterial({ color: 0xff3d3d, emissive: 0x5c0000, metalness: 0.8, roughness: 0.4 });
+  for (let i = 0; i < 8; i++) {
+    const hz = new THREE.Group();
+    const core = new THREE.Mesh(hzGeo, hzMat.clone());
+    const shell = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(1.6, 0),
+      new THREE.MeshBasicMaterial({ color: 0xff3d3d, wireframe: true, transparent: true, opacity: 0.5 })
+    );
+    hz.add(core); hz.add(shell);
+    placeOnField(hz, 3);
+    scene.add(hz);
+    hazards.push({ group: hz, core, phase: Math.random() * Math.PI * 2 });
+  }
+}
+
+function spawnRings() {
+  const rr = new THREE.TorusGeometry(2.2, 0.15, 8, 40);
+  const rMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff });
+  for (let i = 0; i < 6; i++) {
+    const ring = new THREE.Mesh(rr, rMat.clone());
+    ring.rotation.x = Math.PI / 2;
+    placeOnField(ring, 2);
+    ring.position.y = 0.4;
+    ring.userData.used = false;
+    ring.userData.born = performance.now();
+    scene.add(ring);
+    rings.push(ring);
+  }
+}
+
+function placeOnField(obj, minDistFromCenter) {
+  // Keep objects within arena, away from center spawn
+  let x, z;
+  do {
+    const a = Math.random() * Math.PI * 2;
+    const r = minDistFromCenter + Math.random() * (worldR - 4 - minDistFromCenter);
+    x = Math.cos(a) * r; z = Math.sin(a) * r;
+  } while (Math.abs(x) < 6 && Math.abs(z) < 6);
+  obj.position.set(x, 0.8, z);
+  obj.userData.baseY = 0.8;
+}
+
+// ---------- Input ----------
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'KeyR' && runStarted) resetRun();
+});
+window.addEventListener('keyup', e => keys[e.code] = false);
+let mouseX = 0, mouseY = 0;
+document.addEventListener('mousemove', e => {
+  if (document.pointerLockElement) { mouseX = e.movementX; mouseY = e.movementY; }
+});
+
+// ---------- Audio ----------
+let actx;
+function initAudio() {
+  try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+}
+function beep(freq, dur, type = 'sine', vol = 0.15) {
+  if (!actx) return;
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.value = freq;
+  o.connect(g); g.connect(actx.destination);
+  const t = actx.currentTime;
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.start(t); o.stop(t + dur);
+}
+function playCollect() { beep(880, 0.08, 'square'); setTimeout(() => beep(1320, 0.12, 'square'), 60); }
+function playDamage() { beep(180, 0.25, 'sawtooth', 0.18); }
+function playRing() { beep(520, 0.2, 'triangle'); setTimeout(() => beep(780, 0.25, 'triangle'), 80); }
+function playEnd() { beep(440, 0.4, 'sawtooth', 0.2); setTimeout(() => beep(220, 0.6, 'sawtooth', 0.2), 200); }
+
+// ---------- Run control ----------
+const overlay = document.getElementById('overlay');
+function lockPointer() { renderer.domElement.requestPointerLock(); }
+function startRun() {
+  runStarted = true;
+  score = 0; collected = 0;
+  startTime = performance.now();
+  updateScoreUI();
+  hideToast();
+}
+function resetRun() {
+  score = 0; collected = 0;
+  orbs.forEach(o => o.collected = false);
+  for (const r of rings) { r.userData.used = false; r.visible = true; }
+  ships[0].group.position.set(0, 0.8, 0);
+  ships[0].vel.set(0,0,0);
+  updateScoreUI();
+  hideToast();
+  startRun();
+  const label = document.getElementById('time').textContent = TIME_LIMIT;
+}
+
+function endRun(won) {
+  runStarted = false;
+  playEnd();
+  setToast(won ? 'CLEARED!' : 'TIME UP', 1600);
+  setTimeout(() => {
+    overlay.style.display = 'flex';
+    overlay.querySelector('h1').innerHTML = won ? 'RUN <span>CLEARED</span>' : 'TIME <span>UP</span>';
+    const p = overlay.querySelector('p');
+    p.textContent = won
+      ? `You collected all ${MAX_ORBS} orbs with ${timeLeft().toFixed(0)}s remaining and scored ${score}.`
+      : `You collected ${collected}/${MAX_ORBS} orbs and scored ${score}. Click to launch again.`;
+  }, 1500);
+}
+
+function timeLeft() { return Math.max(0, TIME_LIMIT - (performance.now() - startTime) / 1000); }
+
+function setToast(text, ms) {
+  const t = document.getElementById('toast');
+  t.textContent = text; t.style.opacity = 1;
+  clearTimeout(setToast.t);
+  setToast.t = setTimeout(() => { t.style.opacity = 0; }, ms);
+}
+function hideToast() { document.getElementById('toast').style.opacity = 0; }
+
+function updateScoreUI() {
+  document.getElementById('score').textContent = score;
+  document.getElementById('collect').textContent = `${collected}/${MAX_ORBS}`;
+}
+
+// ---------- Main loop ----------
+function animate() {
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - (animate.last || now)) / 1000);
+  animate.last = now;
+
+  if (runStarted) {
+    updatePlayer(dt);
+    updateTimer(now);
+  }
+
+  // Ambient animation always
+  const t = now / 1000;
+  // Spin orbs + bob
+  for (const o of orbs) {
+    if (o.collected) continue;
+    const baseY = o.group.userData.baseY || 0.8;
+    o.group.position.y = baseY + Math.sin(t * 2 + o.phase) * 0.25;
+    o.group.rotation.y += dt * 1.5;
+    o.ring.rotation.z += dt * 2;
+  }
+  for (const h of hazards) {
+    h.group.position.y = (h.group.userData.baseY || 0.8) + Math.sin(t * 1.5 + h.phase) * 0.4;
+    h.group.rotation.y += dt * 0.8;
+    h.core.rotation.x += dt * 1.2;
+  }
+  for (const r of rings) {
+    if (!r.userData.used && now - r.userData.born > 200) {
+      r.userData.age = (r.userData.age || 0);
+      r.position.y = 0.4 + Math.sin(t * 3) * 0.1;
+      r.rotation.z += dt * 0.5;
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+
+function updateTimer(now) {
+  const tl = timeLeft();
+  document.getElementById('time').textContent = Math.ceil(tl);
+  if (tl <= 0) { endRun(false); }
+}
+
+function updatePlayer(dt) {
+  const ship = ships[0];
+  const speed = 14;
+  const sprint = keys['ShiftLeft'] || keys['ShiftRight'] ? 1.6 : 1;
+  const move = new THREE.Vector3();
+  const forward = new THREE.Vector3(-Math.sin(ship.heading), 0, -Math.cos(ship.heading));
+  const right = new THREE.Vector3(Math.cos(ship.heading), 0, -Math.sin(ship.heading));
+  if (keys['KeyW']) move.add(forward);
+  if (keys['KeyS']) move.sub(forward);
+  if (keys['KeyA']) move.sub(right);
+  if (keys['KeyD']) move.add(right);
+  move.normalize().multiplyScalar(speed * sprint);
+  ship.vel.lerp(move, 1 - Math.pow(0.001, dt));
+
+  // heading follows movement
+  if (move.lengthSq() > 0.1) ship.heading = Math.atan2(-move.x, -move.z);
+
+  // mouse look yaw
+  ship.heading -= mouseX * 0.0028;
+  mouseX = 0; mouseY = 0;
+
+  ship.group.position.add(ship.vel.clone().multiplyScalar(dt));
+  ship.group.position.y = 0.8;
+
+  // clamp to arena
+  const horiz = new THREE.Vector2(ship.group.position.x, ship.group.position.z);
+  if (horiz.length() > worldR) {
+    horiz.setLength(worldR);
+    ship.group.position.x = horiz.x;
+    ship.group.position.z = horiz.y;
+  }
+
+  ship.group.rotation.y = ship.heading;
+  ship.group.rotation.z = THREE.MathUtils.lerp(ship.group.rotation.z, -ship.vel.x * 0.02, 0.2);
+  ship.group.rotation.x = THREE.MathUtils.lerp(ship.group.rotation.x, ship.vel.z * 0.02, 0.2);
+
+  // engine flicker
+  const en = ship.group.userData.engine;
+  en.scale.setScalar(0.8 + Math.random() * 0.5);
+  en.material.opacity = 0.7 + Math.random() * 0.3;
+
+  // camera follow with yaw behind ship
+  camFollow(ship, dt);
+
+  // collision checks
+  checkCollisions(ship);
+}
+
+function camFollow(ship, dt) {
+  const behind = 9, height = 4.5;
+  const tx = ship.group.position.x + Math.sin(ship.heading) * behind;
+  const tz = ship.group.position.z + Math.cos(ship.heading) * behind;
+  const ty = ship.group.position.y + height;
+  const target = new THREE.Vector3(tx, ty, tz);
+  camera.position.lerp(target, 1 - Math.pow(0.001, dt));
+  const look = ship.group.position.clone();
+  look.y += 0.6;
+  camera.lookAt(look);
+}
+
+function checkCollisions(ship) {
+  const sp = ship.group.position;
+  // Orbs
+  for (const o of orbs) {
+    if (o.collected) continue;
+    if (sp.distanceTo(o.group.position) < 1.3) {
+      o.collected = true;
+      collected++;
+      score += 100;
+      playCollect();
+      updateScoreUI();
+      setToast('+' + 100, 500);
+      o.group.visible = false;
+      if (collected >= MAX_ORBS) endRun(true);
+    }
+  }
+  // Hazards — lose time
+  for (const h of hazards) {
+    if (sp.distanceTo(h.group.position) < 2.0) {
+      // push away
+      const push = sp.clone().sub(h.group.position).normalize().multiplyScalar(6);
+      ship.group.position.add(push);
+      if (performance.now() - (checkCollisions.lastHurt || 0) > 900) {
+        checkCollisions.lastHurt = performance.now();
+        startTime -= 4000; // lose 4 seconds
+        score = Math.max(0, score - 50);
+        playDamage();
+        updateScoreUI();
+        setToast('-50', 500);
+      }
+    }
+  }
+  // Boost rings
+  for (const r of rings) {
+    if (r.userData.used || !r.visible) continue;
+    if (sp.distanceTo(r.position) < 2.2) {
+      r.userData.used = true;
+      r.visible = false;
+      ship.vel.multiplyScalar(1.5);
+      score += 25;
+      playRing();
+      updateScoreUI();
+      setToast('BOOST +25', 600);
+    }
+  }
+}
+
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-NATIVE-ACCEPTANCE-HARNESS-SMOKE",
+  "startedAt": "2026-08-28T23:20:08.179Z",
+  "status": "passed",
+  "captureHead": "ec2b2c10f030b5794e19bcbb3e9085bf26a65a21",
+  "identity": {
+    "jarvisPid": 4632,
+    "webViewPid": 32000,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-28T18:20:07.7694699-05:00"
+  },
+  "safety": [
+    {
+      "label": "smoke:before",
+      "capturedAt": "2026-08-28T18:20:07.7694699-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "smoke:after",
+      "capturedAt": "2026-08-28T18:20:15.9036128-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "official current page is publicly ready",
+      "passed": true,
+      "details": {
+        "title": "VibeSpace",
+        "route": "chat",
+        "readyState": "complete",
+        "hasRoot": true,
+        "hasTauri": true,
+        "viewport": {
+          "width": 1280,
+          "height": 820
+        }
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "00-native-harness-smoke.png",
+      "width": 1600,
+      "height": 1025,
+      "byteCount": 1166122,
+      "sha256": "9bc09c9dd05beff73cd4fb24168aae52333a3dfa2046b048a3c52c49d31fcddd"
+    }
+  ],
+  "events": [],
+  "firstFailure": null,
+  "metadata": {
+    "boundary": "read-only current official public identity; no navigation or dispatch",
+    "publicIdentity": {
+      "title": "VibeSpace",
+      "route": "chat",
+      "readyState": "complete",
+      "hasRoot": true,
+      "hasTauri": true,
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      }
+    }
+  },
+  "completedAt": "2026-08-28T23:20:16.010Z"
+}

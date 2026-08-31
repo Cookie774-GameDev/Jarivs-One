@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-WORKBENCH-TRUSTED-MEDIA-NATIVE-RETEST",
+  "targetCommit": "6716df3556fbeecea676cc41e66395bf4d974a0d",
+  "descendantHeadAtCapture": "cbdcec5dd3ff893cae4c73c0db2a5d4993b750f6",
+  "workbenchSourceDiffFromTarget": [],
+  "classification": "verification_failed",
+  "failureDomain": "product-approved-media-referrer-policy",
+  "driverBoundary": {
+    "productFailureInferredFromDriverInternals": false,
+    "selectorTimeoutAloneUsedAsProductEvidence": false,
+    "officialNativeVisualEvidence": "FAIL-workbench-retest-v2.png",
+    "officialNativeOutcome": "The approved YouTube privacy frame visibly rendered the player error surface with Error 153."
+  },
+  "passed": [
+    "youtube watch URL rewrote to the allowlisted youtube-nocookie embed",
+    "trusted-media sandbox includes allow-same-origin",
+    "ordinary remote sites remain system-browser-only with no iframe",
+    "old Cache Storage disabled sandbox error absent",
+    "old writeEmbed sandbox error absent",
+    "zero ollama.exe and zero listeners on 11434 throughout"
+  ],
+  "failed": [
+    "approved YouTube privacy embed did not render playable video content",
+    "official WebView player returned Error 153",
+    "YouTube QOE reported embedder.identity.missing.referrer"
+  ],
+  "consoleBoundary": {
+    "trackingPreventionWarningsObserved": true,
+    "embedderIdentityMissingReferrerObserved": true,
+    "cacheStorageDisabledObserved": false,
+    "writeEmbedObserved": false
+  },
+  "recommendation": "Apply a security-reviewed referrer policy only to allowlisted trusted-media embeds while keeping generic remote content no-referrer, then rerun official-native acceptance requiring visible player content and absence of Error 153/embedder.identity.missing.referrer.",
+  "prohibitions": {
+    "productFilesEdited": false,
+    "standaloneBrowserControlled": false,
+    "computerUseUsed": false,
+    "credentialsEntered": false,
+    "externalAccountActionCompleted": false,
+    "productionMutation": false,
+    "modelDispatch": false
+  }
+}

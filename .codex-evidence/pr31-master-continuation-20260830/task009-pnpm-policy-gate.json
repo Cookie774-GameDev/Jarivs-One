@@ -1,0 +1,24 @@
+{
+  "task": "TASK-009-PNPM-DEPENDENCY-BUILD-POLICY",
+  "commit": "8ee61e7b361e847e4e31167ca6d018713c2fe42d",
+  "disposableWorktree": "D:/CodexTemp/pr31-pnpm-policy-20260830-0448",
+  "pnpmVersion": "11.19.0",
+  "install": {
+    "offline": true,
+    "frozenLockfile": true,
+    "downloadedPackages": 0,
+    "esbuildPostinstalls": ["0.21.5", "0.28.1"],
+    "automaticallyIgnoredBuilds": [],
+    "explicitlyIgnoredBuilds": ["tree-sitter-json"],
+    "packageAndLockInputsChanged": false
+  },
+  "supportedWorkspaceGates": {
+    "repositoryIntelligence": "13/13",
+    "typecheckExit": 0,
+    "productionBuildExit": 0,
+    "ossMetadata": "PASS",
+    "formatAndDiff": "PASS",
+    "independentReview": "PASS"
+  },
+  "note": "An app-only disposable TypeScript attempt stopped on pre-existing root/app dependency-ownership gaps (fflate, sharp, playwright-core); the supported root npm-workspace build passed and the pnpm lifecycle policy itself was fully exercised."
+}

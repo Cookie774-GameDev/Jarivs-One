@@ -1,0 +1,614 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-CORRECTIVE-NATIVE-ACCEPTANCE",
+  "agent": "VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828",
+  "startedAt": "2026-08-28T12:50:51.794Z",
+  "cdpUrl": "http://127.0.0.1:9223",
+  "expectedModel": "opencode-go/deepseek-v4-flash-vision-exp",
+  "selectedScenarios": [
+    "official-native-identity",
+    "chat-whole-app-states"
+  ],
+  "safety": {
+    "officialNativeOnly": true,
+    "credentialsEntered": false,
+    "oauthCompleted": false,
+    "externalAccountCompleted": false,
+    "productionMutation": false,
+    "standaloneBrowserControlled": false,
+    "computerUseUsed": false,
+    "browserMcpUsed": false,
+    "ollamaTouched": false
+  },
+  "scenarios": [
+    {
+      "name": "official-native-identity",
+      "status": "passed",
+      "startedAt": "2026-08-28T12:50:52.733Z",
+      "completedAt": "2026-08-28T12:51:09.952Z",
+      "evidence": {
+        "title": "VibeSpace",
+        "url": "http://localhost:5173/?route=chat",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0",
+        "isTauri": true,
+        "pageCount": 1,
+        "targetPages": [
+          {
+            "url": "http://localhost:5173/?route=chat",
+            "title": "VibeSpace"
+          }
+        ],
+        "processes": {
+          "Processes": [
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18280,
+              "ParentProcessId": 16916,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18396,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18460,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18480,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18572,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18976,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 3416,
+              "ParentProcessId": 23772,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 14768,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25044,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25048,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 17920,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25064,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26392,
+              "ParentProcessId": 17080,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26608,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26744,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26752,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26892,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 27112,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "jarvis.exe",
+              "ProcessId": 19612,
+              "ParentProcessId": 12924,
+              "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 9688,
+              "ParentProcessId": 19612,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": true
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 7124,
+              "ParentProcessId": 9688,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 4916,
+              "ParentProcessId": 9688,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 100,
+              "ParentProcessId": 9688,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 20148,
+              "ParentProcessId": 9688,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 7372,
+              "ParentProcessId": 9688,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": true
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 17940,
+              "ParentProcessId": 9688,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "opencode.exe",
+              "ProcessId": 29336,
+              "ParentProcessId": 19612,
+              "ExecutablePath": "C:\\Users\\viper\\AppData\\Roaming\\npm\\node_modules\\opencode-ai\\bin\\opencode.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            }
+          ],
+          "CdpListener": [
+            {
+              "LocalAddress": "127.0.0.1",
+              "LocalPort": 9223,
+              "OwningProcess": 9688,
+              "State": 2
+            }
+          ]
+        },
+        "git": {
+          "worktree": "C:/Users/viper/VibeSpace-UnifiedChungus-Final",
+          "branch": "integration/UnifiedChungus-final",
+          "head": "b698b064a19b2a7ae9337318a041a842541a840b",
+          "upstream": "origin/UnifiedChungus"
+        }
+      }
+    },
+    {
+      "name": "chat-whole-app-states",
+      "status": "failed",
+      "startedAt": "2026-08-28T12:51:10.015Z",
+      "completedAt": "2026-08-28T12:51:39.811Z",
+      "error": "Error: Stable native regression: active model opencode-go/deepseek-v4-flash-vision-exp is visible in Chat but absent from the model picker; no substitute was selected.\n    at chatAcceptance (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:861:11)\n    at async scenario (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:227:22)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:1127:5"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "official-native-webview-identity.json",
+      "kind": "json"
+    },
+    {
+      "name": "official-native-initial.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-existing-populated-exact-model.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-empty-fixture.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-question-state.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 345.20001220703125,
+        "y": 304.1750183105469,
+        "width": 305.51251220703125,
+        "height": 20
+      }
+    },
+    {
+      "name": "chat-plan-review-state.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 345.20001220703125,
+        "y": 658.5750122070312,
+        "width": 409.5,
+        "height": 20
+      }
+    },
+    {
+      "name": "chat-streaming-question-plan-tool.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 268.8000183105469,
+        "y": 388.57501220703125,
+        "width": 972.7999572753906,
+        "height": 24.074981689453125
+      }
+    },
+    {
+      "name": "chat-populated-complete.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-activity-ledger-expanded.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-subagent-state.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-exact-model-picker.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-mode-ask-plan-agent-menu.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-slash-command-catalog.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-tool-command-mcp.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-provider-connection-reconnect-baseline.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-layout-narrow.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 720,
+        "height": 900
+      },
+      "dimensions": {
+        "width": 720,
+        "height": 900
+      },
+      "target": null
+    },
+    {
+      "name": "chat-layout-normal.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "dimensions": {
+        "width": 1280,
+        "height": 900
+      },
+      "target": null
+    },
+    {
+      "name": "chat-layout-expanded.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1000
+      },
+      "target": null
+    },
+    {
+      "name": "chat-reduced-motion-animation.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-accessibility-axe.json",
+      "kind": "json"
+    },
+    {
+      "name": "chat-whole-app-evidence.json",
+      "kind": "json"
+    },
+    {
+      "name": "FAIL-chat-whole-app-states.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "ollamaSafety": [
+    {
+      "label": "official-native-identity:before",
+      "capturedAt": "2026-08-28T12:51:00.349Z",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "official-native-identity:after",
+      "capturedAt": "2026-08-28T12:51:09.952Z",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "chat-whole-app-states:before",
+      "capturedAt": "2026-08-28T12:51:14.843Z",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "chat-whole-app-states:failed-after",
+      "capturedAt": "2026-08-28T12:51:43.895Z",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "git": {
+    "worktree": "C:/Users/viper/VibeSpace-UnifiedChungus-Final",
+    "branch": "integration/UnifiedChungus-final",
+    "head": "b698b064a19b2a7ae9337318a041a842541a840b",
+    "upstream": "origin/UnifiedChungus"
+  }
+}

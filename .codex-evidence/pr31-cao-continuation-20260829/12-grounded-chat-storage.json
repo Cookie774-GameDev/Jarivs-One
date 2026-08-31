@@ -1,0 +1,388 @@
+{
+  "status": "captured",
+  "capturedAt": "2026-08-30T06:19:01.949Z",
+  "identity": {
+    "jarvisPid": 33732,
+    "webViewPid": 23264,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-30T01:19:01.5872551-05:00"
+  },
+  "state": {
+    "chatId": "cht_vnAxzrYzNrbqop44",
+    "messages": [
+      {
+        "id": "msg_cyMwA3Qph7I54f_n",
+        "role": "system",
+        "createdAt": 1788070457911,
+        "usage": null,
+        "parts": [
+          {
+            "kind": "text",
+            "length": 19,
+            "ending": "Effort set to high."
+          }
+        ]
+      },
+      {
+        "id": "msg_CzeQBAaUdzfUhyFA",
+        "role": "system",
+        "createdAt": 1788070458181,
+        "usage": null,
+        "parts": [
+          {
+            "kind": "text",
+            "length": 89,
+            "ending": "Performance profile set to balanced; model, effort, and provider Fast mode are unchanged."
+          }
+        ]
+      },
+      {
+        "id": "msg_syIdlYPeFC6fbPZR",
+        "role": "system",
+        "createdAt": 1788070459166,
+        "usage": null,
+        "parts": [
+          {
+            "kind": "text",
+            "length": 21,
+            "ending": "Fast mode set to off."
+          }
+        ]
+      },
+      {
+        "id": "msg_Htp-DtHHNyK3p85N",
+        "role": "system",
+        "createdAt": 1788070459405,
+        "usage": null,
+        "parts": [
+          {
+            "kind": "text",
+            "length": 14,
+            "ending": "RLM turned on."
+          }
+        ]
+      },
+      {
+        "id": "msg_b7qtnvO04bCXKNpY",
+        "role": "user",
+        "createdAt": 1788070460059,
+        "usage": null,
+        "parts": [
+          {
+            "kind": "text",
+            "length": 798,
+            "ending": "Use the active project Context Gateway and RLM retrieval path to answer from the already indexed SiYuan Context Map source `official-native-acceptance.md`.\n\nExplain the official native process/WebView identity, the exact ports, the zero-Ollama invariant, and the revision canary. Do not browse the public web and do not read the source directly from the filesystem. Retrieve it through the product's Context/SiYuan path.\n\nInclude the exact indexed relative path and every real user-visible retrieval citation, receipt ID, Context Gateway reference, SiYuan document/block ID, or source link that the product makes available. Never invent provenance. If the runtime does not expose a requested citation or receipt, say exactly which evidence is unavailable. Keep the answer between 250 and 450 words."
+          }
+        ]
+      },
+      {
+        "id": "msg_jreq_85847ee5-b315-4390-b480-881539972b52",
+        "role": "assistant",
+        "createdAt": 1788070552247,
+        "usage": {
+          "input_tokens": "[redacted]",
+          "output_tokens": "[redacted]",
+          "cost_usd": 0.001133968,
+          "provider": "opencode",
+          "model": "opencode-go/deepseek-v4-flash-vision-exp"
+        },
+        "parts": [
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-1",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-1",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-2",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-2",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-3",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-3",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "text",
+            "length": 118,
+            "ending": "The exact search pointer failed to open with `invalid_request`. Let me expand the byte range to cover the full record."
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-4",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-4",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-5",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-5",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "text",
+            "length": 82,
+            "ending": "The `open` operation is erroring. Let me try a full-range pointer into the record."
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-6",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-6",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-7",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-7",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "text",
+            "length": 177,
+            "ending": "The `open` operation is failing with `invalid_request` for every pointer form. Let me use the product's `expand` path to pull the record content through the Context Map instead."
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-8",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-8",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "text",
+            "length": 209,
+            "ending": "The `open` operation fails regardless of pointer form, so the full record cannot be expanded through the product path. Let me run targeted searches to extract the specific facts via their in-document previews."
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-9",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-9",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-10",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-10",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "text",
+            "length": 157,
+            "ending": "I have the two core sections via their previews. Let me pull the remaining details — the WebView identity process, CDP verification, and the revision canary."
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-11",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-11",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-12",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-12",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "text",
+            "length": 156,
+            "ending": "I have the key sections. The previews cut off mid-sentence at byte 862; let me capture the transition between the WebView identity and the Ollama invariant."
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-13",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-13",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "text",
+            "length": 2655,
+            "ending": "plete. The canary is framed against the native acceptance harness, Tauri CDP configuration, and an architecture map. **Provenance / citations [unverified link omitted] Search operation returned `requestId 76763b23-2739-41c3-86ec-e483a901f592` (and follow-up searches) with `[unverified link omitted]`, `[unverified link omitted]`, `[unverified link omitted]`, single matching record. RLM source ID: `[unverified link omitted]`; record ID `[unverified link omitted]`; content/source hash `726fad04dc7a0eed19476cfa4b4be103f9d8a823c5e19e39fc1482bbfb4725b0`; project `prj_leBT3oqNPBtoSMmf`, workspace `wks_SIY0XpxdDdLY4ndp`, account `usr_uC_BDHkQsSNV_Jd9`, sourceKind `file_version`, trust `app_verified`, sensitivity `private`. **Evidence [unverified link omitted] The `open` operation returned `invalid_request` for every pointer form (including the exact search pointer), so the full record body and the exact native process executable name (e. g., the `msedgewebview2. exe` program-name string) could not be expanded through"
+          },
+          {
+            "kind": "jarvis_source_ref",
+            "source": {
+              "id": "jsource_jreq_85847ee5-b315-4390-b480-881539972b52_user_identity",
+              "kind": "memory",
+              "label": "User-selected identity",
+              "trust": "user_direct",
+              "sensitivity": "private",
+              "observedAt": 1788070460612
+            }
+          },
+          {
+            "kind": "jarvis_source_ref",
+            "source": {
+              "id": "jsource_jreq_85847ee5-b315-4390-b480-881539972b52_model_skill_inventory",
+              "kind": "tool_result",
+              "label": "Model and skill availability inventory",
+              "trust": "app_verified",
+              "sensitivity": "private",
+              "observedAt": 1788070460612
+            }
+          },
+          {
+            "kind": "jarvis_source_ref",
+            "source": {
+              "id": "jsource_jreq_85847ee5-b315-4390-b480-881539972b52_resolved_context",
+              "kind": "context_node",
+              "label": "Resolved app context",
+              "trust": "app_verified",
+              "sensitivity": "private",
+              "observedAt": 1788070460612
+            }
+          },
+          {
+            "kind": "jarvis_source_ref",
+            "source": {
+              "id": "jsource_jreq_85847ee5-b315-4390-b480-881539972b52_intent_policy",
+              "kind": "tool_result",
+              "label": "Request policy classification",
+              "trust": "app_verified",
+              "sensitivity": "private",
+              "observedAt": 1788070460612
+            }
+          },
+          {
+            "kind": "jarvis_source_ref",
+            "source": {
+              "id": "jsource_jreq_85847ee5-b315-4390-b480-881539972b52_interaction_mode",
+              "kind": "tool_result",
+              "label": "Interaction mode policy",
+              "trust": "app_verified",
+              "sensitivity": "private",
+              "observedAt": 1788070460612
+            }
+          },
+          {
+            "kind": "jarvis_source_ref",
+            "source": {
+              "id": "jsource_jreq_85847ee5-b315-4390-b480-881539972b52_terminal_operating",
+              "kind": "terminal",
+              "label": "Terminal operating state",
+              "trust": "app_verified",
+              "sensitivity": "private",
+              "observedAt": 1788070460612
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "safety": {
+    "label": "phase0:chat-storage",
+    "capturedAt": "2026-08-30T01:19:04.1249969-05:00",
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  }
+}

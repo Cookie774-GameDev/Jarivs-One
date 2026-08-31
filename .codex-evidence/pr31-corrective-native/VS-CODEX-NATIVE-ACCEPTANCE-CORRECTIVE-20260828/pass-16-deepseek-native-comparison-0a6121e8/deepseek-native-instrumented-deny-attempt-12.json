@@ -1,0 +1,430 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-DEEPSEEK-ATTEMPT-12-EXPIRED-DENIAL-PROOF",
+  "startedAt": "2026-08-28T21:12:19.863Z",
+  "status": "failed",
+  "captureHead": "eb52d15ebb534a38695f57de6c91798f8cf8857c",
+  "identity": {
+    "jarvisPid": 5076,
+    "webViewPid": 16336,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-28T16:12:19.7531390-05:00"
+  },
+  "safety": [
+    {
+      "label": "attach:before",
+      "capturedAt": "2026-08-28T16:12:16.8218877-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attach:after",
+      "capturedAt": "2026-08-28T16:12:19.7531390-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attempt12:before",
+      "capturedAt": "2026-08-28T16:12:22.5322017-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attempt12:after-reload",
+      "capturedAt": "2026-08-28T16:12:33.2224935-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attempt12:failure-after",
+      "capturedAt": "2026-08-28T16:12:35.4346320-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attempt12:failure-final",
+      "capturedAt": "2026-08-28T16:12:57.4455014-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "one full WebView reload preserved exact official process ownership",
+      "passed": true,
+      "details": {
+        "processBefore": {
+          "label": "attempt12:before",
+          "capturedAt": "2026-08-28T16:12:22.5322017-05:00",
+          "jarvisPid": 5076,
+          "jarvisParentPid": 6324,
+          "jarvisParentAlive": false,
+          "webViewPid": 16336,
+          "webViewParentPid": 5076,
+          "webViewOwnedByJarvis": true,
+          "cdpPort": 9223,
+          "cdpOwnerExact": true,
+          "openCodePid": 20688,
+          "openCodeParentPid": 5076,
+          "openCodeOwnedByJarvis": true,
+          "openCodeLoopbackPort": 59856,
+          "openCodeLoopbackExact": true,
+          "ollamaProcessCount": 0,
+          "listener11434Count": 0
+        },
+        "processAfterReload": {
+          "label": "attempt12:after-reload",
+          "capturedAt": "2026-08-28T16:12:33.2224935-05:00",
+          "jarvisPid": 5076,
+          "jarvisParentPid": 6324,
+          "jarvisParentAlive": false,
+          "webViewPid": 16336,
+          "webViewParentPid": 5076,
+          "webViewOwnedByJarvis": true,
+          "cdpPort": 9223,
+          "cdpOwnerExact": true,
+          "openCodePid": 20688,
+          "openCodeParentPid": 5076,
+          "openCodeOwnedByJarvis": true,
+          "openCodeLoopbackPort": 59856,
+          "openCodeLoopbackExact": true,
+          "ollamaProcessCount": 0,
+          "listener11434Count": 0
+        }
+      }
+    },
+    {
+      "name": "kernelHost and 13c expired-denial approvalEngine sources were stable before and after boot refresh",
+      "passed": true,
+      "details": {
+        "stableModuleBefore": {
+          "value": {
+            "ok": true,
+            "digest": "afa85eb69a39cb5e3defbb6e538a336ab9ba56d5dfcb0cc9da803a79668b53a6",
+            "kernelHost": {
+              "digest": "6493415c560ff683f1505319a6793f06c0a168fe00326b486eefb8e5506c4b26",
+              "hasSanitizer": true,
+              "hasDiagnostic": true,
+              "hasApprovalConflictCode": true,
+              "hasStageCodes": true
+            },
+            "approvalEngine": {
+              "digest": "9aa6ca2c5d6a8bde9d34a85c38d1d020a2926aac279e0623767126a8b44eab7d",
+              "hasAllowExpiredOption": true,
+              "hasDecisionSpecificDenial": true
+            },
+            "stableObservations": 2
+          },
+          "attempts": 2,
+          "elapsedMs": 155
+        },
+        "stableModuleAfter": {
+          "value": {
+            "ok": true,
+            "digest": "afa85eb69a39cb5e3defbb6e538a336ab9ba56d5dfcb0cc9da803a79668b53a6",
+            "kernelHost": {
+              "digest": "6493415c560ff683f1505319a6793f06c0a168fe00326b486eefb8e5506c4b26",
+              "hasSanitizer": true,
+              "hasDiagnostic": true,
+              "hasApprovalConflictCode": true,
+              "hasStageCodes": true
+            },
+            "approvalEngine": {
+              "digest": "9aa6ca2c5d6a8bde9d34a85c38d1d020a2926aac279e0623767126a8b44eab7d",
+              "hasAllowExpiredOption": true,
+              "hasDecisionSpecificDenial": true
+            },
+            "stableObservations": 2
+          },
+          "attempts": 2,
+          "elapsedMs": 507
+        },
+        "viteConnectedObserved": true
+      }
+    }
+  ],
+  "artifacts": [],
+  "events": [
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "af1885a87d9dc26134a5c35237ab2c54e1c0f56748b99eb60c372c33fdfed02d",
+      "charCount": 709
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "3f9a016ec5e90449fc8cb9139d867dca8a7187fa2eb6f06eb7c0eb516d5a71ee",
+      "charCount": 764
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "30af3df2b64aa586308db6055b96590561eabd7d77636cbe4011953a75c7e4b5",
+      "charCount": 603
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "af1885a87d9dc26134a5c35237ab2c54e1c0f56748b99eb60c372c33fdfed02d",
+      "charCount": 709
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "bc3deca31b9e9a7ad304b762bff08102c8cb9eeb521c59f58f8891f1b63d736b",
+      "charCount": 690
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "af1885a87d9dc26134a5c35237ab2c54e1c0f56748b99eb60c372c33fdfed02d",
+      "charCount": 709
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "bf9d8286faab992d6d6055cde51775f607e1720012798ea90239ae6832518f7a",
+      "charCount": 594
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "af1885a87d9dc26134a5c35237ab2c54e1c0f56748b99eb60c372c33fdfed02d",
+      "charCount": 709
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "af1885a87d9dc26134a5c35237ab2c54e1c0f56748b99eb60c372c33fdfed02d",
+      "charCount": 709
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "a364a3e2402ed7be6afb31ccf5d1ecdcfb2752c8a44b666066500c1195932550",
+      "charCount": 136
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "cc13b1c55743a50786a06240bfd10607bd83eb2333b7d7cc7ff3e776aa3904fe",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "8846bf91ca083112345c7ebf061b2d54394d9794171fa1cf70d7441ae5b8fcbd",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "7ad4ecb48c67c714716c842bb34b7201666397b35a9629354f8814df55116a59",
+      "charCount": 136
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "6b29a5e9af8f287f24fda1c3c0ddc18fcbac3c70c81748306ba561c1a0786150",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "3a2645cc5ff9518d485e31043449db5049bc8041473430407c976e2c1f8c33c6",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "56b890a8b7b92cbd22aa5381636c3c798462e1cff0756561e88f77df1e9c9665",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "a7d02a1fba931896caf3dde778a03b6980cd18229549e0eb8d7b8214abdc3552",
+      "charCount": 136
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "6415f2f443f1b641077237e1f372676c248a1408c24da957d77f3a23a0c10b50",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "error",
+      "textSha256": "be3180416310eb750f5ff396974c2445881cabb1073f8851f9e3562cf6a387de",
+      "charCount": 69
+    }
+  ],
+  "firstFailure": {
+    "code": "native_acceptance_unexpected_failure",
+    "stage": "instrumented_deny",
+    "name": "Error",
+    "details": null
+  },
+  "metadata": {
+    "scenario": "one eb52 descendant-of-13c boot-refreshed Deny of the exact stale wrong-file approval",
+    "reloadCount": 0,
+    "denialClickCount": 0,
+    "modelDispatchCount": 0,
+    "approvalClickCount": 0,
+    "fileMutationCount": 0,
+    "processMutationCount": 0,
+    "rawPathsInReport": false,
+    "rawContentInReport": false,
+    "rawAccountIdsInReport": false,
+    "fixCommit": "13c0b4249feb167b75f2c72edf09269092d6f813",
+    "captureParent": "13c0b4249feb167b75f2c72edf09269092d6f813",
+    "approvalEngineDiffFromFix": ""
+  },
+  "instrumentedDenyFailure": {
+    "kernelDiagnostics": [],
+    "target": null,
+    "beforeDecision": null,
+    "lastCanonical": null,
+    "filesBefore": {
+      "requestedTarget": {
+        "exists": false,
+        "byteCount": 0,
+        "sha256": null
+      },
+      "wrongTarget": {
+        "exists": false,
+        "byteCount": 0,
+        "sha256": null
+      }
+    },
+    "filesAfter": {
+      "requestedTarget": {
+        "exists": false,
+        "byteCount": 0,
+        "sha256": null
+      },
+      "wrongTarget": {
+        "exists": false,
+        "byteCount": 0,
+        "sha256": null
+      }
+    },
+    "processBefore": {
+      "label": "attempt12:before",
+      "capturedAt": "2026-08-28T16:12:22.5322017-05:00",
+      "jarvisPid": 5076,
+      "jarvisParentPid": 6324,
+      "jarvisParentAlive": false,
+      "webViewPid": 16336,
+      "webViewParentPid": 5076,
+      "webViewOwnedByJarvis": true,
+      "cdpPort": 9223,
+      "cdpOwnerExact": true,
+      "openCodePid": 20688,
+      "openCodeParentPid": 5076,
+      "openCodeOwnedByJarvis": true,
+      "openCodeLoopbackPort": 59856,
+      "openCodeLoopbackExact": true,
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    "processAfterReload": {
+      "label": "attempt12:after-reload",
+      "capturedAt": "2026-08-28T16:12:33.2224935-05:00",
+      "jarvisPid": 5076,
+      "jarvisParentPid": 6324,
+      "jarvisParentAlive": false,
+      "webViewPid": 16336,
+      "webViewParentPid": 5076,
+      "webViewOwnedByJarvis": true,
+      "cdpPort": 9223,
+      "cdpOwnerExact": true,
+      "openCodePid": 20688,
+      "openCodeParentPid": 5076,
+      "openCodeOwnedByJarvis": true,
+      "openCodeLoopbackPort": 59856,
+      "openCodeLoopbackExact": true,
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    "processAfterDecision": {
+      "label": "attempt12:failure-after",
+      "capturedAt": "2026-08-28T16:12:35.4346320-05:00",
+      "jarvisPid": 5076,
+      "jarvisParentPid": 6324,
+      "jarvisParentAlive": false,
+      "webViewPid": 16336,
+      "webViewParentPid": 5076,
+      "webViewOwnedByJarvis": true,
+      "cdpPort": 9223,
+      "cdpOwnerExact": true,
+      "openCodePid": 20688,
+      "openCodeParentPid": 5076,
+      "openCodeOwnedByJarvis": true,
+      "openCodeLoopbackPort": 59856,
+      "openCodeLoopbackExact": true,
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    "interactionCounts": {
+      "reloadCount": 1,
+      "denialClickCount": 0,
+      "approvalClickCount": 0,
+      "modelDispatchCount": 0,
+      "fileMutationCount": 0,
+      "processMutationCount": 0
+    }
+  },
+  "completedAt": "2026-08-28T21:12:57.572Z"
+}

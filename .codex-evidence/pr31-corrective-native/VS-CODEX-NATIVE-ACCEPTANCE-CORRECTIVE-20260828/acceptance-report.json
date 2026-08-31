@@ -1,0 +1,1143 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-CORRECTIVE-NATIVE-ACCEPTANCE",
+  "agent": "VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828",
+  "startedAt": "2026-08-28T11:40:42.000Z",
+  "cdpUrl": "http://127.0.0.1:9223",
+  "expectedModel": "opencode-go/deepseek-v4-flash-vision-exp",
+  "safety": {
+    "officialNativeOnly": true,
+    "credentialsEntered": false,
+    "oauthCompleted": false,
+    "externalAccountCompleted": false,
+    "productionMutation": false,
+    "standaloneBrowserControlled": false,
+    "computerUseUsed": false,
+    "browserMcpUsed": false,
+    "ollamaTouched": false
+  },
+  "scenarios": [
+    {
+      "name": "official-native-identity",
+      "status": "failed",
+      "startedAt": "2026-08-28T11:40:43.079Z",
+      "completedAt": "2026-08-28T11:40:45.100Z",
+      "error": "page.evaluate: Execution context was destroyed, most likely because of a navigation\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:855:29\n    at async scenario (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:92:22)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:851:3"
+    },
+    {
+      "name": "workbench-browser",
+      "status": "failed",
+      "startedAt": "2026-08-28T11:41:15.139Z",
+      "completedAt": "2026-08-28T11:41:37.486Z",
+      "error": "page.waitForFunction: Timeout 20000ms exceeded.\n    at setAppRoute (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:113:14)\n    at async workbenchBrowser (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:135:3)\n    at async scenario (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:92:22)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:871:3"
+    },
+    {
+      "name": "chat-whole-app-states",
+      "status": "failed",
+      "startedAt": "2026-08-28T11:42:07.504Z",
+      "completedAt": "2026-08-28T11:43:03.150Z",
+      "error": "page.screenshot: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n\u001b[2m    - disabled all CSS animations\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\n    at screenshot (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:80:16)\n    at chatAcceptance (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:571:9)\n    at async scenario (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:92:22)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:872:3"
+    },
+    {
+      "name": "schedule-kanban-milestones",
+      "status": "failed",
+      "startedAt": "2026-08-28T11:43:05.979Z",
+      "completedAt": "2026-08-28T11:43:10.654Z",
+      "error": "locator.waitFor: Error: strict mode violation: getByText('Milestones', { exact: true }) resolved to 2 elements:\n    1) <span class=\"eyebrow\">Milestones</span> aka locator('span').filter({ hasText: 'Milestones' })\n    2) <h2 class=\"font-display text-page-title text-foreground\">Milestones</h2> aka getByRole('heading', { name: 'Milestones' })\n\nCall log:\n\u001b[2m  - waiting for getByText('Milestones', { exact: true }) to be visible\u001b[22m\n\n    at scheduleAndKanban (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:727:55)\n    at async scenario (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:92:22)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:873:3"
+    },
+    {
+      "name": "five-plugin-flows",
+      "status": "failed",
+      "startedAt": "2026-08-28T11:43:40.675Z",
+      "completedAt": "2026-08-28T11:45:14.863Z",
+      "error": "locator.screenshot: Timeout 29987.813999999955ms exceeded.\nCall log:\n\u001b[2m  - taking element screenshot\u001b[22m\n\u001b[2m    - disabled all CSS animations\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\u001b[2m  - attempting scroll into view action\u001b[22m\n\u001b[2m    - waiting for element to be stable\u001b[22m\n\n    at screenshot (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:78:19)\n    at pluginAcceptance (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:812:15)\n    at async scenario (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:92:22)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:874:3"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "chat-existing-populated-exact-model.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      }
+    },
+    {
+      "name": "chat-empty-fixture.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      }
+    },
+    {
+      "name": "chat-streaming-question-plan-tool.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      }
+    },
+    {
+      "name": "chat-populated-complete.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      }
+    },
+    {
+      "name": "FAIL-chat-whole-app-states.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      }
+    },
+    {
+      "name": "chat-schedule-whole-app.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=schedule",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      }
+    },
+    {
+      "name": "plugin-github-catalog-flow.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      }
+    },
+    {
+      "name": "plugin-supabase-catalog-flow.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      }
+    },
+    {
+      "name": "plugin-supabase-manual-setup.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      }
+    },
+    {
+      "name": "plugin-gmail-catalog-flow.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      }
+    },
+    {
+      "name": "plugin-stripe-catalog-flow.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      }
+    },
+    {
+      "name": "FAIL-five-plugin-flows.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      }
+    }
+  ],
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 401 ()",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at Object.stop (http://localhost:5173/src/features/taskbar-usage/taskbarUsageController.ts?t=1787888104475:100:43)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:231:7",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at http://localhost:5173/src/lib/jarvis/kernelHost.ts:166:15",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at Object.stop (http://localhost:5173/src/features/taskbar-usage/taskbarUsageController.ts?t=1787888104475:100:43)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at http://localhost:5173/src/App.tsx?t=1787916907079:1486:103",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at Object.serverStatus (http://localhost:5173/src/lib/harness/runtimeManager.ts:86:12)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at scanCliBridge (http://localhost:5173/src/lib/ai/adapters/cliBridge.ts:83:10)\n    at async findCliExecutable (http://localhost:5173/src/lib/ai/adapters/cliBridge.ts:383:18)\n    at async detectProvider (http://localhost:5173/src/lib/ai/adapters/cliBridge.ts:392:24)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:232:7",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at Object.stop (http://localhost:5173/src/features/taskbar-usage/taskbarUsageController.ts?t=1787888104475:100:43)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at nativeInvoke (http://localhost:5173/src/features/browser-chat/providerSurface.ts:269:43)\n    at Object.hideAllSurfaces (http://localhost:5173/src/features/browser-chat/providerSurface.ts:298:13)\n    at http://localhost:5173/src/features/browser-chat/providerSurface.ts:216:26",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at Object.stop (http://localhost:5173/src/features/taskbar-usage/taskbarUsageController.ts?t=1787888104475:100:43)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at scanCliBridge (http://localhost:5173/src/lib/ai/adapters/cliBridge.ts:83:10)\n    at async findCliExecutable (http://localhost:5173/src/lib/ai/adapters/cliBridge.ts:383:18)\n    at async detectProvider (http://localhost:5173/src/lib/ai/adapters/cliBridge.ts:392:24)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at scanCliBridge (http://localhost:5173/src/lib/ai/adapters/cliBridge.ts:83:10)\n    at async findCliExecutable (http://localhost:5173/src/lib/ai/adapters/cliBridge.ts:383:18)\n    at async detectProvider (http://localhost:5173/src/lib/ai/adapters/cliBridge.ts:392:24)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at http://localhost:5173/src/lib/harness/runtimeManager.ts:289:23",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2987410456. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2677826910. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1650194895. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3850908067. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3413817062. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1494389807. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2169008564. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1977138542. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 310462411. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 4056237654. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 151422629. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2557115999. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2249133893. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1316713780. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1716726166. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2116093977. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1780284180. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1518883941. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2414088024. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 464854369. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2073268662. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1850441137. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3482962818. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3003890948. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3296059934. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1979635444. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2958533271. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2926561467. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 956098327. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 76107195. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3285198251. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 907439981. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2887011119. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 ()",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:194:41",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2155831012. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1601011144. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3648992509. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 4171328116. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 4264641518. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 4071968634. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 ()",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:232:7",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at http://localhost:5173/src/lib/jarvis/kernelHost.ts:166:15",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/lib/harness/ToolGatewayHost.tsx?t=1787917458187:64:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/terminals/TerminalCliRuntimeHost.tsx?t=1787917458187:63:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:231:7",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/lib/harness/ToolGatewayHost.tsx?t=1787917458187:64:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/terminals/TerminalCliRuntimeHost.tsx?t=1787917458187:63:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at nativeInvoke (http://localhost:5173/src/features/browser-chat/providerSurface.ts:269:43)\n    at Object.hideAllSurfaces (http://localhost:5173/src/features/browser-chat/providerSurface.ts:298:13)\n    at http://localhost:5173/src/features/browser-chat/providerSurface.ts:216:26",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/terminals/TerminalCliRuntimeHost.tsx?t=1787917458187:63:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/lib/harness/ToolGatewayHost.tsx?t=1787917458187:64:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at http://localhost:5173/src/lib/harness/runtimeManager.ts:289:23",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/lib/harness/ToolGatewayHost.tsx?t=1787917458187:64:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/terminals/TerminalCliRuntimeHost.tsx?t=1787917458187:63:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at defaultInvoke (http://localhost:5173/src/lib/runtimeProfile.ts:1146:10)\n    at async http://localhost:5173/src/lib/runtimeProfile.ts:1110:20",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at emitTo (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:58:9)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:55:23",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:190:43",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at readChunk (http://localhost:5173/node_modules/.vite/deps/@tauri-apps_plugin-http.js?v=1653b000:69:21)\n    at Object.pull (http://localhost:5173/node_modules/.vite/deps/@tauri-apps_plugin-http.js?v=1653b000:93:27)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at http://localhost:5173/src/features/pets/petTauriBridge.ts:25:113\n    at async invokeWithStatus (http://localhost:5173/src/features/pets/petTauriBridge.ts:37:19)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at emitTo (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:58:9)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:55:23",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at emitTo (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:58:9)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:55:23",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at Module.invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at Object.invoke (http://localhost:5173/src/lib/harness/openCodeNativeTransport.ts?t=1787888104475:4:37)\n    at nativeOpenCodeRequest (http://localhost:5173/src/lib/harness/openCodeNativeTransport.ts?t=1787888104475:104:31)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:190:43",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:190:43",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at readChunk (http://localhost:5173/node_modules/.vite/deps/@tauri-apps_plugin-http.js?v=1653b000:69:21)\n    at Object.pull (http://localhost:5173/node_modules/.vite/deps/@tauri-apps_plugin-http.js?v=1653b000:93:27)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at defaultInvoke (http://localhost:5173/src/lib/runtimeProfile.ts:1146:10)\n    at async http://localhost:5173/src/lib/runtimeProfile.ts:1110:20",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at Module.invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at Object.invoke (http://localhost:5173/src/lib/harness/openCodeNativeTransport.ts?t=1787888104475:4:37)\n    at nativeOpenCodeRequest (http://localhost:5173/src/lib/harness/openCodeNativeTransport.ts?t=1787888104475:104:31)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at scanCliBridge (http://localhost:5173/src/lib/ai/adapters/cliBridge.ts:83:10)\n    at async findCliExecutable (http://localhost:5173/src/lib/ai/adapters/cliBridge.ts:383:18)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at emitTo (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:58:9)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:55:23",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at emit (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:51:9)\n    at beat (http://localhost:5173/src/rendererHeartbeat.ts:28:18)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at Module.fetch (http://localhost:5173/node_modules/.vite/deps/@tauri-apps_plugin-http.js?v=1653b000:42:21)\n    at async nativeFetch (http://localhost:5173/src/lib/nativeFetch.ts:53:22)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:190:43",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at http://localhost:5173/src/features/pets/petTauriBridge.ts:25:113\n    at async invokeWithStatus (http://localhost:5173/src/features/pets/petTauriBridge.ts:37:19)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1021129523. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2747543669. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 151850859. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1342872975. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2256285640. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3938765618. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1772189095. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 588869717. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1407671713. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 190046312. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1637216822. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2802058364. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3650593986. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1734969660. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1025856433. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3900789334. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1201349034. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1415362240. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1891909232. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3957504223. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 993585075. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1861602447. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1860532306. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2794082780. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1500182448. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3927940085. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2670156092. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2459084382. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 648890157. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1735818873. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3556494198. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 4288491875. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2634154078. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3854685452. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1022798346. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3927878584. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2888012648. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 450099768. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3722887141. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 4262655321. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1697693228. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 4125277148. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3488694423. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2482877622. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2615840100. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2573227091. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 560880782. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3306063844. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3975433051. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 318163760. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3838277628. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3787930194. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 289531622. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 ()",
+      "url": "http://localhost:5173/?route=chat"
+    }
+  ],
+  "pageErrors": [],
+  "git": {
+    "worktree": "C:/Users/viper/VibeSpace-UnifiedChungus-Final",
+    "branch": "integration/UnifiedChungus-final",
+    "head": "99a3c38af0d7d382d590e83a42aec44fc7ea656e",
+    "upstream": "origin/UnifiedChungus",
+    "finalHead": "99a3c38af0d7d382d590e83a42aec44fc7ea656e"
+  },
+  "finalState": {
+    "url": "http://localhost:5173/?route=chat",
+    "exactModelVisible": true,
+    "fixtureRemoved": true
+  },
+  "finalStateError": "page.screenshot: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n\u001b[2m    - disabled all CSS animations\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\n    at screenshot (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:80:16)\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:900:13",
+  "completedAt": "2026-08-28T11:45:51.302Z",
+  "summary": {
+    "passed": 0,
+    "failed": 5,
+    "fatal": false
+  }
+}

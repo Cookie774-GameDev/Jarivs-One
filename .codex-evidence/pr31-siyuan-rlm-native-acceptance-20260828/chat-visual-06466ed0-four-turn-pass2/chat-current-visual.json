@@ -1,0 +1,222 @@
+{
+  "status": "passed",
+  "head": "64f4bcaf213cb8bd64c976ff9622fa394740bd46",
+  "startedAt": "2026-08-29T07:53:02.869Z",
+  "assertions": [
+    {
+      "name": "one official jarvis process",
+      "passed": true,
+      "jarvis": [
+        {
+          "ProcessId": 39864,
+          "ParentProcessId": 30552,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-siyuan-02243c1e\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "official native page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "name": "exactly one durable activity disclosure per user turn",
+      "passed": true,
+      "disclosureCount": 4,
+      "ownership": [
+        {
+          "sourceMessageId": "chat_pr31_current_visual_0828_tool_0",
+          "summary": "I completed 1 recorded action: read 1 file. No next action is recorded for this response.",
+          "disclosureText": "Show activity detailsWorked for 3s · 1 actionRead 1In 2,048Out 640",
+          "active": "false"
+        },
+        {
+          "sourceMessageId": "chat_pr31_current_visual_0828_tool_1",
+          "summary": "I completed 1 recorded action: edited 1 file. No next action is recorded for this response.",
+          "disclosureText": "Show activity detailsWorked for 3s · 1 actionEdited 1In 2,048Out 640",
+          "active": "false"
+        },
+        {
+          "sourceMessageId": "chat_pr31_current_visual_0828_tool_2",
+          "summary": "I completed 1 recorded action: edited 1 file. No next action is recorded for this response.",
+          "disclosureText": "Show activity detailsWorked for 3s · 1 actionEdited 1In 2,048Out 640",
+          "active": "false"
+        },
+        {
+          "sourceMessageId": "chat_pr31_current_visual_0828_tool_3",
+          "summary": "I completed 1 recorded action: verified 1 check. No next action is recorded for this response.",
+          "disclosureText": "Show activity detailsWorked for 3s · 1 actionVerified 1In 2,048Out 640",
+          "active": "false"
+        }
+      ]
+    },
+    {
+      "name": "all four ledgers map to tool-bearing assistant messages",
+      "passed": true,
+      "ownership": [
+        {
+          "sourceMessageId": "chat_pr31_current_visual_0828_tool_0",
+          "summary": "I completed 1 recorded action: read 1 file. No next action is recorded for this response.",
+          "disclosureText": "Show activity detailsWorked for 3s · 1 actionRead 1In 2,048Out 640",
+          "active": "false"
+        },
+        {
+          "sourceMessageId": "chat_pr31_current_visual_0828_tool_1",
+          "summary": "I completed 1 recorded action: edited 1 file. No next action is recorded for this response.",
+          "disclosureText": "Show activity detailsWorked for 3s · 1 actionEdited 1In 2,048Out 640",
+          "active": "false"
+        },
+        {
+          "sourceMessageId": "chat_pr31_current_visual_0828_tool_2",
+          "summary": "I completed 1 recorded action: edited 1 file. No next action is recorded for this response.",
+          "disclosureText": "Show activity detailsWorked for 3s · 1 actionEdited 1In 2,048Out 640",
+          "active": "false"
+        },
+        {
+          "sourceMessageId": "chat_pr31_current_visual_0828_tool_3",
+          "summary": "I completed 1 recorded action: verified 1 check. No next action is recorded for this response.",
+          "disclosureText": "Show activity detailsWorked for 3s · 1 actionVerified 1In 2,048Out 640",
+          "active": "false"
+        }
+      ]
+    },
+    {
+      "name": "01-chat-collapsed-four-turn.png direct 1586x992",
+      "passed": true,
+      "width": 1586,
+      "height": 992
+    },
+    {
+      "name": "expanded activity contains Read file",
+      "passed": true,
+      "details": "Read file\nbrief.md\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata\nEdited file\nbrief.md\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata\nEdited file\nbrief.md\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata\nVerified check\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata"
+    },
+    {
+      "name": "expanded activity contains Edited file",
+      "passed": true,
+      "details": "Read file\nbrief.md\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata\nEdited file\nbrief.md\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata\nEdited file\nbrief.md\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata\nVerified check\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata"
+    },
+    {
+      "name": "expanded activity contains Verified check",
+      "passed": true,
+      "details": "Read file\nbrief.md\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata\nEdited file\nbrief.md\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata\nEdited file\nbrief.md\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata\nVerified check\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata"
+    },
+    {
+      "name": "activity dropdown shows safe basenames rather than absolute paths",
+      "passed": true,
+      "details": "Read file\nbrief.md\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata\nEdited file\nbrief.md\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata\nEdited file\nbrief.md\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata\nVerified check\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata"
+    },
+    {
+      "name": "02-chat-expanded-ordered-activity.png direct 1586x992",
+      "passed": true,
+      "width": 1586,
+      "height": 992
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-visual-06466ed0-four-turn-pass2\\01-chat-collapsed-four-turn.png",
+      "width": 1586,
+      "height": 992,
+      "state": {
+        "ledger": "collapsed",
+        "eventCount": 0,
+        "ownership": [
+          {
+            "sourceMessageId": "chat_pr31_current_visual_0828_tool_0",
+            "summary": "I completed 1 recorded action: read 1 file. No next action is recorded for this response.",
+            "disclosureText": "Show activity detailsWorked for 3s · 1 actionRead 1In 2,048Out 640",
+            "active": "false"
+          },
+          {
+            "sourceMessageId": "chat_pr31_current_visual_0828_tool_1",
+            "summary": "I completed 1 recorded action: edited 1 file. No next action is recorded for this response.",
+            "disclosureText": "Show activity detailsWorked for 3s · 1 actionEdited 1In 2,048Out 640",
+            "active": "false"
+          },
+          {
+            "sourceMessageId": "chat_pr31_current_visual_0828_tool_2",
+            "summary": "I completed 1 recorded action: edited 1 file. No next action is recorded for this response.",
+            "disclosureText": "Show activity detailsWorked for 3s · 1 actionEdited 1In 2,048Out 640",
+            "active": "false"
+          },
+          {
+            "sourceMessageId": "chat_pr31_current_visual_0828_tool_3",
+            "summary": "I completed 1 recorded action: verified 1 check. No next action is recorded for this response.",
+            "disclosureText": "Show activity detailsWorked for 3s · 1 actionVerified 1In 2,048Out 640",
+            "active": "false"
+          }
+        ]
+      }
+    },
+    {
+      "path": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-visual-06466ed0-four-turn-pass2\\02-chat-expanded-ordered-activity.png",
+      "width": 1586,
+      "height": 992,
+      "state": {
+        "ledger": "expanded",
+        "order": [
+          "Read file",
+          "Edited file",
+          "Verified check"
+        ],
+        "details": "Read file\nbrief.md\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata\nEdited file\nbrief.md\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata\nEdited file\nbrief.md\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata\nVerified check\n\nInput\n2,048\nExact response metadata\n\nOutput\n640\nExact response metadata"
+      }
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 39864,
+          "ParentProcessId": 30552,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-siyuan-02243c1e\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 39864,
+          "ParentProcessId": 30552,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-siyuan-02243c1e\\debug\\jarvis.exe"
+        }
+      ]
+    }
+  ],
+  "ledgerOwnership": [
+    {
+      "sourceMessageId": "chat_pr31_current_visual_0828_tool_0",
+      "summary": "I completed 1 recorded action: read 1 file. No next action is recorded for this response.",
+      "disclosureText": "Show activity detailsWorked for 3s · 1 actionRead 1In 2,048Out 640",
+      "active": "false"
+    },
+    {
+      "sourceMessageId": "chat_pr31_current_visual_0828_tool_1",
+      "summary": "I completed 1 recorded action: edited 1 file. No next action is recorded for this response.",
+      "disclosureText": "Show activity detailsWorked for 3s · 1 actionEdited 1In 2,048Out 640",
+      "active": "false"
+    },
+    {
+      "sourceMessageId": "chat_pr31_current_visual_0828_tool_2",
+      "summary": "I completed 1 recorded action: edited 1 file. No next action is recorded for this response.",
+      "disclosureText": "Show activity detailsWorked for 3s · 1 actionEdited 1In 2,048Out 640",
+      "active": "false"
+    },
+    {
+      "sourceMessageId": "chat_pr31_current_visual_0828_tool_3",
+      "summary": "I completed 1 recorded action: verified 1 check. No next action is recorded for this response.",
+      "disclosureText": "Show activity detailsWorked for 3s · 1 actionVerified 1In 2,048Out 640",
+      "active": "false"
+    }
+  ],
+  "completedAt": "2026-08-29T07:53:11.645Z"
+}

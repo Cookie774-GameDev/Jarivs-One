@@ -1,0 +1,63 @@
+[
+  {
+    "id": "github",
+    "name": "GitHub",
+    "status": "error",
+    "catalogText": "GH\nGitHub\n\nDeveloper Tools\n\nError\n\nRepositories, issues, pull requests, actions, and authenticated account context.\n\nGitHub authorization requires a registered VibeSpace OAuth client.\n\n7 tools declared\nConnect",
+    "authorizationActionClicked": false
+  },
+  {
+    "id": "supabase",
+    "name": "Supabase",
+    "status": "unknown",
+    "catalogText": "SU\nSupabase\n\nDatabases\n\nExternal blocker\n\nDatabase, authentication, storage, edge functions, and project API context.\n\n2 tools declared\nView requirements",
+    "authorizationActionClicked": false,
+    "detailText": "SU\nConnect Supabase\n\nSupabase offers provider-hosted browser sign-in for its remote MCP server, but VibeSpace has not implemented the MCP OAuth discovery, callback, or token lifecycle required to connect it safely.\n\nWHAT THIS PLUGIN DOES\n\nDatabase, authentication, storage, edge functions, and project API context.\n\nProvider: Supabase · Auth: api key\n\nAuthorization capability: external blocker\n\nExternal authorization prerequisite\n\nSupabase offers provider-hosted browser sign-in for its remote MCP server, but VibeSpace has not implemented the MCP OAuth discovery, callback, or token lifecycle required to connect it safely.\n\nOpen Supabase configuration\n\nSETUP STEPS\n\nIntegrate the official hosted Supabase MCP endpoint through OAuth discovery; never substitute a project API-key page for sign-in.\nImplement and verify the exact redirect callback, PKCE/state validation, secure token storage and refresh, cancellation, reconnect, revocation, and error recovery.\nComplete native provider-owned login and consent verification without exposing project credentials.\n\nThe existing bounded REST probe can validate a publishable project key, but it does not satisfy provider-hosted authorization and is not exposed as a replacement for Supabase MCP OAuth.\n\nDECLARED TOOLS\n\nconnection_info · read-only\nschema_context · read-only\nOpen connection documentation\nClose\nClose",
+    "credentialFields": [],
+    "requirementsViewed": true,
+    "credentialsEntered": false
+  },
+  {
+    "id": "gmail",
+    "name": "Gmail",
+    "status": "error",
+    "catalogText": "GM\nGmail\n\nGoogle Workspace\n\nError\n\nSearch and read bounded Gmail context, create drafts, prepare replies, and send an existing draft only after explicit approval.\n\nProvider authorization is not registered for this plugin.\n\n6 tools declared\nConnect",
+    "authorizationActionClicked": false
+  },
+  {
+    "id": "stripe",
+    "name": "Stripe",
+    "status": "not-connected",
+    "catalogText": "ST\nStripe\n\nPayments\n\nNot connected\n\nStripe integration for payments workflows, agent context, and MCP-style tools.\n\n1 tools declared\nConnect",
+    "authorizationActionClicked": false,
+    "detailText": "ST\nConnect Stripe\n\nOpen the official provider page, create the narrowest credential available, then test the connection.\n\nWHAT THIS PLUGIN DOES\n\nStripe integration for payments workflows, agent context, and MCP-style tools.\n\nProvider: Stripe · Auth: api key\n\nAuthorization capability: manual fallback\n\nOfficial provider account page\n\nSign in or create your Stripe account on the provider-owned page. Keep this panel open to finish the supported credential fallback.\n\nOpen Stripe account page\n\nSETUP STEPS\n\nOpen Stripe Dashboard → Developers → API keys.\nCopy the secret key (test or live).\nPaste and test.\n\nSecure credential storage\n\nValues saved here go to the OS keychain on desktop (session-only memory in browser preview). VibeSpace does not print them in logs or terminal context.\n\nSecret key\n\nUse a restricted key when possible.\n\nDECLARED TOOLS\n\nbilling_context · read-only\nOpen connection documentation\nClose\nConnect\nClose",
+    "credentialFields": [
+      {
+        "type": "password",
+        "aria": null,
+        "placeholder": "<stripe-restricted-key>",
+        "valueLength": 0
+      }
+    ],
+    "requirementsViewed": false,
+    "credentialsEntered": false
+  },
+  {
+    "id": "cloudflare",
+    "name": "Cloudflare",
+    "status": "not-connected",
+    "catalogText": "CL\nCloudflare\n\nCloud & Hosting\n\nNot connected\n\nCloudflare integration for cloud & hosting workflows, agent context, and MCP-style tools.\n\n1 tools declared\nConnect",
+    "authorizationActionClicked": false,
+    "detailText": "CL\nConnect Cloudflare\n\nOpen the official provider page, create the narrowest credential available, then test the connection.\n\nWHAT THIS PLUGIN DOES\n\nCloudflare integration for cloud & hosting workflows, agent context, and MCP-style tools.\n\nProvider: Cloudflare · Auth: token\n\nAuthorization capability: manual fallback\n\nOfficial provider account page\n\nSign in or create your Cloudflare account on the provider-owned page. Keep this panel open to finish the supported credential fallback.\n\nOpen Cloudflare account page\n\nSETUP STEPS\n\nCreate a Cloudflare API token.\nPaste and test.\n\nSecure credential storage\n\nValues saved here go to the OS keychain on desktop (session-only memory in browser preview). VibeSpace does not print them in logs or terminal context.\n\nAPI token\n\nCreate a token with Account read access.\n\nDECLARED TOOLS\n\ncloud_context · read-only\nOpen connection documentation\nClose\nConnect\nClose",
+    "credentialFields": [
+      {
+        "type": "password",
+        "aria": null,
+        "placeholder": "...",
+        "valueLength": 0
+      }
+    ],
+    "requirementsViewed": false,
+    "credentialsEntered": false
+  }
+]

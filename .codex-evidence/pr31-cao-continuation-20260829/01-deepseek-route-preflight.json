@@ -1,0 +1,57 @@
+{
+  "status": "passed",
+  "capturedAt": "2026-08-30T04:46:15.845Z",
+  "identity": {
+    "jarvisPid": 25708,
+    "webViewPid": 29660,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-29T23:46:09.9249640-05:00"
+  },
+  "beforeLabel": "opencode · opencode-go/deepseek-v4-flash-vision-exp",
+  "afterLabel": "opencode · opencode-go/deepseek-v4-flash-vision-exp HIGH",
+  "selectedEffort": "high",
+  "discoveredModels": [
+    {
+      "value": "opencode-cli:opencode-go/deepseek-v4-flash-vision-exp",
+      "ariaDisabled": "false",
+      "text": "DeepSeek V4 Flash Vision Exp · Opencode Go provider connectionOpencode Go provider connection · Readyactive>"
+    },
+    {
+      "value": "opencode-cli:openrouter/deepseek/deepseek-v4-flash-vision-exp",
+      "ariaDisabled": "false",
+      "text": "DeepSeek V4 Flash Vision Exp · OpenRouter provider connectionOpenRouter provider connection · Ready"
+    },
+    {
+      "value": "opencode-cli:orcarouter/deepseek/deepseek-v4-flash-vision-exp",
+      "ariaDisabled": "false",
+      "text": "DeepSeek V4 Flash Vision Exp · Orcarouter provider connectionOrcarouter provider connection · Ready"
+    }
+  ],
+  "routeOptions": [],
+  "safety": [
+    {
+      "label": "route:before",
+      "capturedAt": "2026-08-29T23:46:05.1370184-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "route:after",
+      "capturedAt": "2026-08-29T23:46:15.2709729-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "events": [],
+  "screenshots": [
+    "01-model-picker-open.png",
+    "02-deepseek-live-catalog.png",
+    "03-deepseek-high-effort.png",
+    "04-deepseek-selected.png"
+  ]
+}

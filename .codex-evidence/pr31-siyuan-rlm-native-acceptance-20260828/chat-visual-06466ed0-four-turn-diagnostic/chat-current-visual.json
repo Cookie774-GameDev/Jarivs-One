@@ -1,0 +1,138 @@
+{
+  "status": "failed",
+  "head": "64f4bcaf213cb8bd64c976ff9622fa394740bd46",
+  "startedAt": "2026-08-29T07:50:12.922Z",
+  "assertions": [
+    {
+      "name": "one official jarvis process",
+      "passed": true,
+      "jarvis": [
+        {
+          "ProcessId": 39864,
+          "ParentProcessId": 30552,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-siyuan-02243c1e\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "official native page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "name": "exactly one durable activity disclosure per user turn",
+      "passed": false,
+      "disclosureCount": 5,
+      "ownership": [
+        {
+          "sourceMessageId": null,
+          "summary": "I read 1 file to gather context. Next, I used the recorded project tools.",
+          "disclosureText": "Show activity detailsContext · 1 actionRead 1",
+          "active": "false"
+        },
+        {
+          "sourceMessageId": null,
+          "summary": "I recorded 1 action. No next action is recorded for this response.",
+          "disclosureText": "Show activity detailsTools · 1 actionIn 2,048Out 640",
+          "active": "false"
+        },
+        {
+          "sourceMessageId": "chat_pr31_current_visual_0828_tool_1",
+          "summary": "I completed 1 recorded action: edited 1 file. No next action is recorded for this response.",
+          "disclosureText": "Show activity detailsWorked for 3s · 1 actionEdited 1In 2,048Out 640",
+          "active": "false"
+        },
+        {
+          "sourceMessageId": "chat_pr31_current_visual_0828_tool_2",
+          "summary": "I completed 1 recorded action: edited 1 file. No next action is recorded for this response.",
+          "disclosureText": "Show activity detailsWorked for 3s · 1 actionEdited 1In 2,048Out 640",
+          "active": "false"
+        },
+        {
+          "sourceMessageId": "chat_pr31_current_visual_0828_tool_3",
+          "summary": "I completed 1 recorded action: verified 1 check. No next action is recorded for this response.",
+          "disclosureText": "Show activity detailsWorked for 3s · 1 actionVerified 1In 2,048Out 640",
+          "active": "false"
+        }
+      ]
+    },
+    {
+      "name": "FAIL-chat-current-visual.png direct 1586x992",
+      "passed": true,
+      "width": 1586,
+      "height": 992
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-visual-06466ed0-four-turn-diagnostic\\FAIL-chat-current-visual.png",
+      "width": 1586,
+      "height": 992,
+      "state": {
+        "failure": "Error: assertion_failed:exactly one durable activity disclosure per user turn\n    at check (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/chat-current-visual.mjs:33:22)\n    at file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/chat-current-visual.mjs:168:3"
+      }
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 39864,
+          "ParentProcessId": 30552,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-siyuan-02243c1e\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 39864,
+          "ParentProcessId": 30552,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-siyuan-02243c1e\\debug\\jarvis.exe"
+        }
+      ]
+    }
+  ],
+  "ledgerOwnership": [
+    {
+      "sourceMessageId": null,
+      "summary": "I read 1 file to gather context. Next, I used the recorded project tools.",
+      "disclosureText": "Show activity detailsContext · 1 actionRead 1",
+      "active": "false"
+    },
+    {
+      "sourceMessageId": null,
+      "summary": "I recorded 1 action. No next action is recorded for this response.",
+      "disclosureText": "Show activity detailsTools · 1 actionIn 2,048Out 640",
+      "active": "false"
+    },
+    {
+      "sourceMessageId": "chat_pr31_current_visual_0828_tool_1",
+      "summary": "I completed 1 recorded action: edited 1 file. No next action is recorded for this response.",
+      "disclosureText": "Show activity detailsWorked for 3s · 1 actionEdited 1In 2,048Out 640",
+      "active": "false"
+    },
+    {
+      "sourceMessageId": "chat_pr31_current_visual_0828_tool_2",
+      "summary": "I completed 1 recorded action: edited 1 file. No next action is recorded for this response.",
+      "disclosureText": "Show activity detailsWorked for 3s · 1 actionEdited 1In 2,048Out 640",
+      "active": "false"
+    },
+    {
+      "sourceMessageId": "chat_pr31_current_visual_0828_tool_3",
+      "summary": "I completed 1 recorded action: verified 1 check. No next action is recorded for this response.",
+      "disclosureText": "Show activity detailsWorked for 3s · 1 actionVerified 1In 2,048Out 640",
+      "active": "false"
+    }
+  ],
+  "failure": "Error: assertion_failed:exactly one durable activity disclosure per user turn\n    at check (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/chat-current-visual.mjs:33:22)\n    at file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/chat-current-visual.mjs:168:3",
+  "completedAt": "2026-08-29T07:50:20.873Z"
+}

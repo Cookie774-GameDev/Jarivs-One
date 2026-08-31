@@ -1,0 +1,42 @@
+{
+  "originalWorkbenchUrl": "https://www.wikipedia.org/",
+  "firstPolicy": {
+    "address": "https://example.com/",
+    "externalStatus": "Ready in your normal browser\nRemote sites open with your normal signed-in browser profile so saved sessions and site credentials keep working. Localhost and approved media embeds stay interactive here.\nOpen in my browser",
+    "iframeCount": 0
+  },
+  "secondPolicy": {
+    "address": "https://www.wikipedia.org/",
+    "externalStatus": "Ready in your normal browser\nRemote sites open with your normal signed-in browser profile so saved sessions and site credentials keep working. Localhost and approved media embeds stay interactive here.\nOpen in my browser",
+    "iframeCount": 0
+  },
+  "history": {
+    "backAddress": "https://example.com/",
+    "forwardAddress": "https://www.wikipedia.org/"
+  },
+  "youtube": {
+    "address": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "src": "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+    "sandbox": "allow-forms allow-modals allow-popups allow-scripts",
+    "allow": "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture",
+    "childFrameUrl": "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+    "childFrameTitle": "YouTube",
+    "childFrameText": "",
+    "classification": "YouTube watch URLs are intentionally rewritten to the privacy-enhanced youtube-nocookie.com embed; this is the approved remote iframe path."
+  },
+  "reload": {
+    "loadingText": "Loading embed…"
+  },
+  "blocked": "Address blocked\nOnly HTTP and HTTPS pages can open in the Workbench browser.",
+  "recovered": "Ready in your normal browser\nRemote sites open with your normal signed-in browser profile so saved sessions and site credentials keep working. Localhost and approved media embeds stay interactive here.\nOpen in my browser",
+  "refused": {
+    "address": "http://127.0.0.1:65534/",
+    "iframeSrc": "http://127.0.0.1:65534/",
+    "childFrameUrls": [
+      "http://localhost:5173/?route=workbench",
+      "chrome-error://chromewebdata/"
+    ],
+    "classification": "Loopback is intentionally embedded; a browser-generated connection refusal is transport failure, not remote iframe policy."
+  },
+  "policyBoundary": "Ordinary remote sites are intentionally externalized with no iframe, approved YouTube media is rewritten into a privacy embed, blocked non-HTTP(S) input is an app validation state, and loopback chrome-error://chromewebdata is a transport refusal rather than iframe policy."
+}

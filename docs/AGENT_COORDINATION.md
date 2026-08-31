@@ -1,5 +1,23 @@
 # VibeSpace â€” Agent Coordination Ledger
 
+### 2026-08-30T22:54:00-05:00 — PR31 Account official-native acceptance complete
+- Exact tracked-clean source `3d32febe8ca7e0b13ea2f9910772704764f5f784` contains all seven Account commits through `143fcea2` and built successfully. The live official artifact is PID 2740 at `C:\Users\viper\VibeSpace-UnifiedChungus-Verify\app\src-tauri\target-native-2caa0ff3\debug\jarvis.exe`, 155,426,816 bytes, SHA-256 `5473C46BC1B3CFC79F700BA49181FBED7F77B1BAEE4983756F18C8B919A0570A`; its WebView owns loopback CDP 9223 as PID 24060, uses embedded `http://tauri.localhost/`, and no 5173/11434 listener exists.
+- Bounded official-native Account acceptance passed with no console or page errors: Profile/local ownership copy and non-secret explanation; signed-out Account Security fail-closed boundary; honest signed-out Usage projection; purposeful Support copy/docs/license actions; keyboard focus under forced colors/reduced motion; and 720 px containment (`470/470` Account client/scroll width, `720/720` body client/scroll width). Evidence is under `.codex-evidence/pr31-account-center-truth-20260830/live/`.
+- Queue rows 33, 35, 36, 38, and 40 are checked once in exact one-file commit `4c15339d`. Automated evidence remains 13 Account files / 54 tests, security 8/8, usage/support 13/13, full TypeScript, release manifest 45/45, exact Prettier/diff checks, and scoped Gitleaks. Independent final review found no remaining Critical/Important/Minor findings and marked the slice ready to merge. Both Account owners recorded final provenance and released only their own locks; no Account blocker remains.
+
+### 2026-08-30T21:53:55-05:00 — PR31 Account final review repaired; native/build evidence still gated
+- Final review found one Important same-account usage completion race and one Minor security-heading order issue. TDD repairs are exact commits `143fcea2` and `1add2ad6`: the usage regression first reproduced an older 10% response overwriting a newer 40% receipt, then monotonic request authority prevented any stale success/error/loading publication; the heading regression first reproduced `h4` before `h3`, then established semantic `h2 → h3 → h4` order. Focused fix evidence is 13/13 usage/support and 8/8 security; independent re-review marks both findings addressed with no new issues and `Ready to merge: Yes`.
+- Fresh combined Account evidence after both repairs is 13/13 files and 54/54 tests; full TypeScript, exact Prettier, exact commit diff checks, last-two-commit Gitleaks (7.21 KB/no leaks), and release-manifest 45/45 pass. A fresh production build was attempted but stopped only on concurrent locked Model Foundry test edits (`BuildYourOwnAIHub.test.tsx`, `localOnly: boolean` versus literal `true`); Account files are clean and that scope was not touched. The running official app remains detached build `2caa0ff3`, predating every Account commit, with CDP 9223 under active sole-controller ownership. Queue rows 33/35/36/38/40 remain unchecked until an Account-containing immutable build receives official-native acceptance; neither Account lock is released.
+
+### 2026-08-30T19:34:00-05:00 — PR31 Account combined-matrix RED and bounded scope expansion
+- The fresh 13-file Account matrix reached 12/13 files and 51/52 tests. The sole failure is an adjacent MonoChrome appearance assertion that still searches for removed text `Local user ID`; the rendered Task 1 product correctly exposes the approved `Local data ownership` heading. `VS-CODEX-PR31-ACCOUNT-TRUTH-20260830-40` expands only to `app/src/features/settings/sections/Account.monochromeAppearance.test.tsx` for the stale assertion and focused/full-matrix rerun. No production scope expands.
+
+### 2026-08-30T19:23:30-05:00 — PR31 Account Center Task 1 reviewed and repaired
+- Commits `68ad798f` and `2eba0847` contain the exact profile/security slice. Independent review found session-only A→B→A state/race invalidation and missing clipboard-behavior coverage; fix round 1 addressed both, and scoped re-review returned clean with no new Critical/Important breakage. Fresh consolidated evidence is 24/24 across profile, security, and portable backup with exact Prettier/diff checks passing. The helper Account route/style scope and every unrelated dirty/staged path remain untouched by this lane.
+
+### 2026-08-30T19:00:18-05:00 — PR31 Account Center Task 1 verification checkpoint
+- `VS-CODEX-PR31-ACCOUNT-TRUTH-20260830-40` verified the exact four-file profile/security scope on `integration/UnifiedChungus-final` at `2deb7fe232e021f42e575037206f18464196c7d9`. Fresh focused evidence is 22/22 across profile, Account security, and portable backup; exact Prettier and `git diff --check` pass; the cached index is empty. Next action is an exact `git commit --only` followed by independent task review. No helper-owned Account route/style file, native process, provider/model, credential, production service, or unrelated dirty path was touched.
+
 2026-08-28T14:23:30-05:00 | VS-CODEX-COMMAND-CENTER-EVENT-PAGINATION-20260828 | PR31-CHAT-COMMAND-CENTER-DATA-PORT-PAGINATION | integration/UnifiedChungus-final @ a17eba3c | Root explicitly transferred the clean `ChatThread.tsx` hunk from its historical lock plus clean command-center types/data-port source/test pagination hunks and one focused ChatThread test only if required. The sole protected failure is architectural: ChatThread receives an account-bound minimal `dataPort` but bypasses it for checklist backfill through raw `jarvisEventRepo.listByRun`. TDD will extend only `getEventsForRun` with bounded optional `afterSeq`, prove exact account/run isolation in the adapter, and route backfill through the injected port. No raw execution/live-authority expansion or App/runtime/native/process/provider/model/credential/Ollama change is authorized. Native acceptance was asked to wait for the stable renderer commit before a model turn.
 
 2026-08-28T14:35:14-05:00 | VS-CODEX-PLAYWRIGHT-NATIVE-FEATURE-PACK-20260828 | PR31-PLAYWRIGHT-NATIVE-FEATURE-PACK-LIFECYCLE | integration/UnifiedChungus-final @ 170a7e7b | Claimed only new `app/src-tauri/src/playwright_feature_pack.rs` plus in-file tests. The released `26c510b8` repository-only signed lifecycle is complete, but product shipping remains blocked because no reparse-safe native app-data bridge or product command exists. This slice will translate the same fail-closed trust/platform/hash/size contract into diagnose, caller-selected local signed install/update, same-manifest repair, rollback, measurement, and tamper-safe uninstall with no network/browser launch/download. `lib.rs` registration and dirty `capabilities/default.json` remain unclaimed until native acceptance reports a safe boundary and exact live ownership is reconciled; renderer/Doctor/package/updater/process/provider/model/Ollama/production signing remain excluded.
@@ -4994,3 +5012,4144 @@ completed_pr31_deferred_updates_intro_scope_2026-08-25: Product commit 3b5bc466 
 - Verification: Context Vitest `122/122` files and `1331/1331` tests passed; TypeScript passed; production build passed with existing warnings; Rust SiYuan client `30/30` passed; staged Gitleaks found no leaks; Ollama/11434 remained absent.
 - Official native WebView loaded the repaired UI and Create Map produced a durable fixture job without the former immediate creation error. Completion evidence was non-isolatable because a pre-existing 130-item Downloads SiYuan index already occupied the shared mutation lane; it was preserved, not canceled. Evidence and diagnostics are under `.codex-evidence/pr31-siyuan-create-ux-20260829/`.
 - Commits: `8fe19eb2082a1a7d2db66abc4e8c239a01e7e7dd`, `ad2a5dffb02c023b14d05894183db49edc8fa2b4`. No push, deployment, production service, credential, billing, Supabase, or Stripe mutation.
+
+### 2026-08-29T09:21:17-05:00 — VS-CODEX-ROOT-OPENCODE-PLUGIN-MCP-AUTO-BRIDGE-20260829 claim
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `dd5c2af9dae5e0cd50b777e521d831e4ceb6c94f`, upstream `origin/UnifiedChungus` (ahead 4, behind 0); no merge/rebase/cherry-pick/revert.
+- Exact scope: `toolGatewayProtocol.ts` + test, `toolGatewayRuntime.ts` + test, `toolGatewayProduction.ts` + test, generated Tool Gateway plugin declarations/assertions only in `app/src-tauri/src/harness/server.rs`, this append-only checkpoint, and the agent-scoped lock.
+- Root cause: generated `plugins_run` sends structured object input while production reparses it as a JSON string; connected plugin discovery does not enforce canonical account/project activation; approved custom VibeSpace MCP profiles restore only when Settings mounts; and OpenCode has no semantic `mcp.list`/`mcp.run` bridge.
+- Intent: TDD one automatic fail-closed reconciliation path for connected project plugins and approved/exposed project MCP tools, including list-before-run guidance, exact identity/scope, schema drift, approvals, and no credential exposure. All unrelated dirty work and processes remain protected.
+
+### 2026-08-29T10:08:00-05:00 — OpenCode plugin/MCP automatic bridge checkpoint
+
+- Exact seven-file product/test implementation is complete. Plugin discovery/execution now follows canonical local-or-cloud account identity plus exact project activation, rejects stale/disconnected/undeclared operations, and accepts the structured object emitted by the generated OpenCode tool.
+- Added semantic `mcp.list`/`mcp.run`: the existing VibeSpace MCP Gateway restores approved profiles lazily/idempotently, lists only connected durable-approved explicitly exposed tools with secret-bearing schema fields removed, and revalidates exact classification/account/project/task/tool allowlist plus approval at invocation.
+- Verification: focused `141/141`; affected Tool Gateway/runtime/plugin/MCP matrix `313/313`; Rust generated-plugin contract `1/1`; formatting/diff checks pass; direct Vite production build succeeded with `5,008` modules and existing warnings. Repository TypeScript/full npm build remains blocked by unowned pre-existing `BrowserPanel.test.tsx:393 TS2683`. Port `11434` has no listener.
+- Next: exact stage + staged secret scan + coherent commit. Official-native Playwright remains pending the user's requested explicit confirmation.
+
+### 2026-08-29T10:06:00-05:00 — OpenCode plugin/MCP bridge committed; native permission gate
+
+- Commit `56dc33be` contains exactly the seven owned product/test files. Exact staged and commit-scoped Gitleaks scans found zero leaks; fresh post-format focused verification is `141/141`.
+- No push, deployment, production mutation, provider credential use, or Ollama/11434 activity occurred. The active lock remains held only for official-native acceptance.
+- Per the user's instruction, native Playwright control is paused pending explicit confirmation to test a connected plugin and approved custom MCP through the official local VibeSpace app.
+
+### 2026-08-29T10:18:00-05:00 — durable terminal scrollback + database-paged Chat claim
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `56dc33be754c48936fe80f86072fc069805caca6`, upstream `origin/UnifiedChungus` (ahead 7, behind 0); no merge/rebase/cherry-pick/revert.
+- Exact clean scope: transcript store + focused test, new terminal scrollback durability/codec source + test, Nightly Second Brain scrollback decode hunk, Chat hooks + performance test, ChatThread database-paging integration hunk, chatMessageWindow source/test, this append-only checkpoint, and the task lock.
+- Root cause: the normal PTY output path stopped at the bounded localStorage hot cache and never appended to the existing IndexedDB scrollback authority; active Chat queried the full compound-index range with `toArray()` before renderer windowing.
+- Design: serial bounded UTF-8/base64 durable append behind the existing `appendOutput` acceptance point, failure-isolated from rendering; newest 400 + one sentinel message at the DB boundary, 100-message bounded growth on top-scroll, live updates within the active range, existing DOM cap/anchor behavior preserved.
+- All active TerminalView/native PTY, Chat runtime/activity/provider, credentials, production, unrelated dirty files, processes, and Ollama/11434 remain excluded.
+### 2026-08-29 — VS-CODEX-PET-GLOBAL-OVERLAY-20260829 final
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `fbc2a638` (base `ffedc77e`; live branch advanced by other agents during work).
+- Exact commit: `fbc2a638 fix(pets): restore frameless efficient desktop overlay`.
+- Exact files: `app/src-tauri/src/pets.rs`, `app/src/features/pets/pixiAtlasPlayer.ts`, `app/src/features/pets/atlasPlayer.test.ts`.
+- Result: repaired the detached Pet/Pet Panel native HWND chrome by removing only Windows caption/frame/edge bits while preserving the existing topmost watchdog; capped transparent Pixi rendering at 24 FPS without changing the 12 FPS sprite cadence or any visual UI.
+- Verification: focused Pet Vitest `22/22` passed; isolated native Rust regression `1/1` passed; `cargo fmt --check` and `git diff --check` passed. Repository-wide typecheck reported only unrelated active BrowserPanel/MCP harness test errors and no Pet diagnostics.
+- Safety: preserved the live `jarvis.exe` owned by another task, compiled in an isolated target directory, staged/committed only the three owned paths, and released only this agent's ownership.
+
+### 2026-08-29 — VS-CODEX-ROOT-SIYUAN-VERBATIM-ROOT-20260829 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `fbc2a63896e64f6eb6558a26d158b0c26d655083`; no merge/rebase/cherry-pick state.
+- Exact scope: Context search indexing source/test, the selected-summary-path row hunk in `ContextPage.tsx`, a new isolated summary-path row component/test, this lock, and append-only checkpoints.
+- Screenshot/root trace: the picker returns Windows verbatim paths such as `\\?\C:\...`, while `contextSearchIndexing` accepts only drive-letter or POSIX roots and therefore throws the observed `context_search_index_snapshot_invalid` before source indexing. Long unbroken path text also contributes fieldset min-content width despite the inner truncate span.
+- Intent: TDD the exact creation failure; narrowly accept valid verbatim drive roots without weakening path/source safety; bound the row/panel width, use smaller ellipsized text, and retain full-path hover text. No Computer Use, provider dispatch, production service, credential, deployment, push, or unrelated dirty-file authority.
+
+## 2026-08-29T09:49:59-05:00 — VS-CODEX-CHAT-NATIVE-PART-BOUNDARIES-20260829 native acceptance claim
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `fbc2a63896e64f6eb6558a26d158b0c26d655083`; upstream `origin/UnifiedChungus`.
+- Implementation boundary: commit `8fe19eb2082a1a7d2db66abc4e8c239a01e7e7dd`; all ten owned Chat source/test files remain byte-identical at current HEAD.
+- Native target: official Tauri `jarvis.exe` PID 31192, WebView/CDP owner PID 29096, loopback CDP `127.0.0.1:9223`, target title `VibeSpace`; process was launched by this task with Ollama bootstrap disabled.
+- Acceptance scope: Playwright-only attachment; exact `opencode-go/deepseek-v4-flash-vision-exp` prompt `MAKE ME A FULL HTML GAME OKAY`; diagnose the failed run, verify native assistant checkpoint/receipt chronology and final inspector state, capture bounded evidence, and keep Ollama/11434 absent.
+- Guardrails: Computer Use banned; no standalone browser/Vite page as product evidence; no credentials, approval, production, deployment, push, or unrelated file/process mutation.
+- Blocker: none at claim. Next action is read-only Playwright inspection of the failed native turn and renderer/provider diagnostics before any new write scope is considered.
+
+## 2026-08-29T10:35:00-05:00 — VS-CODEX-CHAT-NATIVE-PART-BOUNDARIES-20260829 question transport extension
+
+- Official Tauri Playwright reruns with OpenCode 1.18.23 reproduced two live failures after the text-boundary commit: the v2 stream omitted `question.asked` while the model durably entered a running `question` tool, and heartbeat frames starved the adapter's recreated 500 ms reconciliation timeout.
+- The first endpoint-recovery repair is RED/GREEN in the adapter suite, including EOF recovery and immediate running-tool recovery. Native proof then found the Tauri transport allowlist rejects every `/question` list/reply/reject route before authenticated HTTP dispatch, so the live UI still ended before canonical completion.
+- Exact scope extends to `openCodeNativeTransport.ts` + test and only question route hunks/tests in native `harness/server.rs`; the same /root controller's active plugin/MCP lock owns only non-overlapping generated Tool Gateway declarations in that Rust file. Next: TDD persistent polling plus native question route allowlisting, focused renderer/Rust gates, rebuilt official app, then repeat the exact DeepSeek prompt with Playwright and zero Ollama/11434.
+
+## 2026-08-29T09:50:34-05:00 — VS-CODEX-PREVIEW-DEVICE-EMULATION-20260829 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `fbc2a63896e64f6eb6558a26d158b0c26d655083`; upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state.
+- Exact scope: preview device catalog/tests, Preview Studio/bridge/tests, native `preview.rs`, Workbench `DevicePreviewPanel`/`EditorPanel` and a focused preview test, approved design/plan docs, this agent lock, and append-only checkpoints.
+- Root cause: native Preview Studio sizes its child WebView to the visually scaled rectangle, so page media queries see display dimensions; DPR/touch/orientation are not applied. Workbench separately hardcodes a smaller picker catalog.
+- Intent: preserve persisted IDs, add truthful generation-specific presets, keep zoom visual-only via WebView2 device metrics, share the catalog with Workbench, and verify locally with TDD. No live app control, Computer Use, Firebase/production, credentials, deployment, or unrelated dirty-file mutation.
+
+## 2026-08-29T10:23:00-05:00 — VS-CODEX-PREVIEW-DEVICE-EMULATION-20260829 final
+
+- Commit: `74f6ca7a fix(preview): emulate accurate device viewports` on `integration/UnifiedChungus-final`.
+- Result: added generation-specific iPhone 13/16, iPad Air/Pro, and MacBook layout presets while preserving saved IDs; centralized the Workbench picker; kept iframe CSS viewports exact under fractional display zoom; and applied validated logical viewport, screen, DPR, mobile, touch, orientation, and display-scale metrics through WebView2 CDP for Preview Studio.
+- Verification: frontend preview/Workbench matrix `10/10` passed; Rust preview tests `4/4` passed; `cargo fmt --check`, diff check, exact staged scope, and staged Gitleaks passed. Repository TypeScript reached only an unrelated active `BrowserPanel.test.tsx` implicit-`this` diagnostic and no owned diagnostic.
+- Safety: no live VibeSpace control, Computer Use, Firebase/production mutation, credentials, deployment, push, or unrelated file/process changes. Exact ownership released at `74f6ca7a`.
+### 2026-08-29T09:55:13-05:00 — VS-CODEX-PET-GLOBAL-OVERLAY-20260829 reactivated
+
+- Task: `PR31-PET-AUXILIARY-RENDER-BOOT-RECOVERY`; branch `integration/UnifiedChungus-final`; base `fbc2a638`.
+- Exact owned scope: `app/src/main.tsx`; new `app/src/bootstrapPet.tsx`, `app/src/bootstrapRoute.ts`, `app/src/bootstrapRoute.test.ts`; native `pets.rs` only if later official-app evidence requires it; this agent's lock and append-only ledger only.
+- Reproduction: the detached Pet route leaves `#root` empty while importing the complete workspace bootstrap and eventually mounts the exact Pet only after about 10–15 seconds. The live native host/WRY child therefore appears as a white/blank topmost block during a heavyweight, unstable boot.
+- Intent: TDD a dedicated lightweight Pet/mini-panel bootstrap that retains the existing Pet and panel components, styling, auth behavior, settings, native bridge, animation, controls, and global topmost architecture while excluding unrelated full-workspace effects.
+
+### 2026-08-29T11:01:10-05:00 — VS-CODEX-PET-GLOBAL-OVERLAY-20260829 native child-bounds checkpoint
+
+- Live HEAD is `52d30ea5`; claimed base `fbc2a638` remains an ancestor. User evidence shows the Pet host as a tiny native caption/title strip with a transparent empty client, while direct auxiliary-route proof renders the real Axo and full panel.
+- Exact repair remains inside owned `pets.rs`: create both hosts hidden, explicitly size/position/show the attached WebView, and reassert borderless host size/decorations after attachment. This prevents a slow/blank host from being exposed before WebView2 owns the client area.
+- Focused frontend Pet bootstrap/overlay/panel verification is 8/8 green. Single-job Rust contract/build is still compiling; final native visual proof, exact-scope commit, and release remain pending.
+### 2026-08-29 10:31 CDT — VS-CODEX-ROOT-DURABLE-TERMINAL-CHAT-PAGING-20260829 scope checkpoint
+- Expanded the clean test-only scope to `ChatThread.agentPanel.test.tsx`, `ChatThread.commandCenter.test.tsx`, and `ChatThread.creatorScope.test.tsx` solely to keep their mocked Chat message hook contract aligned with the new bounded paging hook. No product ownership changed and no unrelated files are included.
+### 2026-08-29 10:40 CDT — VS-CODEX-ROOT-DURABLE-TERMINAL-CHAT-PAGING-20260829 released
+- Commit `52d30ea5` adds the live PTY → IndexedDB durability bridge with ordered Unicode-safe bounded chunks, correct Nightly decoding, and active Chat DB-boundary paging (newest 400 + sentinel, older 100 on top-scroll with anchor preservation). Focused verification: 72/72 data/runtime tests and 20/20 affected ChatThread tests passed; staged diff check and Gitleaks passed. Repository typecheck remains blocked only by separately owned `BrowserPanel.test.tsx:393` TS2683. Exact product scope is clean and released; unrelated work was preserved.
+### 2026-08-29 10:59 CDT — VS-CODEX-ROOT-DURABLE-TERMINAL-CHAT-PAGING-20260829 verification extension
+- Reopened only for a clean new `terminalScrollbackDurability.integration.test.ts` proving the committed bridge against the actual Dexie repository using fake IndexedDB. No product files or native processes are in scope; user explicitly requested no active-app testing.
+
+## 2026-08-29T10:59:56-05:00 — VS-CODEX-ANDROID-DEVICE-PRESETS-20260829 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `52d30ea5b01391a4b340734c429fc10c873e0d25`; upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state.
+- Exact scope: shared preview catalog/tests, Preview Studio device picker, Workbench device preview/picker/test, this agent lock, and append-only coordination checkpoint.
+- Intent: add source-verified Google Pixel/Samsung presets, clearly labeled Google adaptive window-class probes, grouped pickers, and truthful CSS size/DPR/touch/class metadata while preserving existing IDs and native emulation behavior.
+- Safety: no live app control, Computer Use, Firebase/production mutation, Android Studio integration, credentials, deployment, or unrelated dirty-file/process changes.
+
+## 2026-08-29T11:13:59-05:00 — VS-CODEX-ANDROID-DEVICE-PRESETS-20260829 final
+
+- Commit: `afe0d720 feat(preview): add verified Android device presets` on `integration/UnifiedChungus-final`.
+- Result: added source-verified Pixel 5, Pixel 7/8, Pixel 8 Pro, Pixel 9, Pixel 9 Pro XL, and Galaxy S20 presets; added clearly labeled Google compact/medium/expanded boundary canvases; grouped both device selectors; and exposed exact CSS viewport, DPR, touch, orientation, Android width/height class, and verification authority in Workbench.
+- Verification: focused preview/Workbench matrix `19/19`, Prettier, exact diff checks, staged Gitleaks, and direct Vite production build (`5,010` modules) passed. The normal TypeScript/build wrapper reaches only the unrelated active `BrowserPanel.test.tsx:393` TS2683 diagnostic.
+- Safety: VibeSpace was not started; no live app, Computer Use, Firebase/production, Android Studio, credential, deployment, push, or unrelated process/file mutation occurred. Exact ownership released at `afe0d720`.
+### 2026-08-29 11:08 CDT — VS-CODEX-ROOT-DURABLE-TERMINAL-CHAT-PAGING-20260829 verification extension released
+- Added commit `6b04405b` with a real fake-IndexedDB integration test for ordered Unicode terminal scrollback and retention pruning. Broad non-native evidence: terminal 582/582; Chat 593 functional tests passed, with one aggregate CPU-contention threshold miss that passed twice isolated at 602ms/644ms under its 750ms contract; Nightly/DB boundary 44/44; staged diff/Gitleaks clean. TypeScript has no owned-scope errors and remains blocked only by unrelated `BrowserPanel.test.tsx:393`. The app was not launched or controlled.
+### 2026-08-29 11:34 CDT — VS-CODEX-WORKBENCH-RENDER-PERF-20260829 claim/design checkpoint
+
+- Claimed only `WorkbenchCanvas.tsx`, `WorkbenchPanel.tsx`, a new focused performance test, `workbenchMinimap.ts` and its test, approved design/plan docs, this agent lock, and append-only coordination entries at base `0ea5b92e` on `integration/UnifiedChungus-final`.
+- Approved design: memoized panel render boundary, frame-coalesced camera writes with exact final-input flush, and allocation-light equivalent minimap geometry. No UI, functionality, persistence, wallpaper, BrowserPanel, CSS, native runtime, process, or unrelated dirty-file changes.
+- Verification will be TDD and offline only; VibeSpace will not be started.
+
+### 2026-08-29 11:46 CDT — VS-CODEX-WORKBENCH-RENDER-PERF-20260829 bounded scope expansion
+
+- Full Workbench testing reproduced `BrowserPanel.test.tsx` native terminal-link reconciliation failure, then the exact BrowserPanel test failed again in isolation. Root cause is a render-time reset of the desired native URL from a temporarily stale parent prop, which invalidates the just-requested terminal-state reconciliation.
+- Added only clean, previously released `BrowserPanel.tsx` and `BrowserPanel.test.tsx` to this task. The smallest fix will remove the render-time ref reset; the existing prop-sync effect remains authoritative. No routing, UI, security policy, native command, or unrelated scope changes.
+### 2026-08-29T11:20:00-05:00 — VS-CODEX-ROOT-SIYUAN-SIDEBAR-ROUTING-20260829 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `0ea5b92e5b1a62e412296800dcdebe3bf7277288`; upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick conflict.
+- Exact scope: `SidebarContextTree.tsx`, new focused sidebar-navigation test, new context navigation intent source/test, only the matching intent-listener hunk in `ContextPage.tsx`, this lock, and append-only checkpoints.
+- Root cause: aggregate-map and exact-map sidebar clicks both collapse into `onOpenContext`; exact selection is persisted but no focus/open intent reaches `ContextPage`, so a selected active map still shows the overview.
+- Intent: aggregate count always opens the existing Project Context Map management overview; an exact active map opens the existing official `SiyuanVaultSurface`. Preserve all map data, repair/update/summary controls, graph implementation, native services, and unrelated work.
+### 2026-08-29T11:56:00-05:00 — VS-CODEX-ROOT-SIYUAN-SIDEBAR-ROUTING-20260829 released
+
+- Commit `e8a9954c` fixes the lasting sidebar routing split without replacing the SiYuan system: the aggregate active-map row opens the Project Context Map management overview, while a specific active map persists its exact ID and opens the existing official `SiyuanVaultSurface` through `ContextPage.openFocusedMap`.
+- Verification: new navigation tests 4/4; focused Context/SiYuan UI and creation contracts 22/22; full `app/src/features/context` suite 124 files and 1337/1337 tests; exact staged diff check and Gitleaks passed. Repository typecheck reached only the separately owned pre-existing `app/src/features/workbench/BrowserPanel.test.tsx:393` TS2683 diagnostic.
+- Safety: no map data/schema, summary/RLM pipeline, provider dispatch, native services, Supabase/Stripe, deployment, unrelated dirty files, or other agents' processes were changed. Native app control was intentionally not performed under this task's no-Computer-Use boundary and because another active owner currently controls the official desktop acceptance process. Product scope is clean and ownership released at `e8a9954c`.
+2026-08-29T11:50:00-05:00 — VS-CODEX-CHAT-NATIVE-PART-BOUNDARIES-20260829 scope extended for the user-replaced OpenCode continuous-work UI spec. Added exact ownership of OpenCodeTextAccumulator + test, activity-ledger source/test/CSS/projection, agentic-console CSS, AgentChecklistBar + test, and the implementation plan. Existing adapter/router/runtime/AgenticConsole/question-route ownership remains; all unrelated dirty files and other agents' processes are preserved. Next: RED delta/chronology tests, minimal pipeline implementation, focused gates, then official native Playwright acceptance with the replacement 3D-game prompt.
+
+### 2026-08-29T12:09:05-05:00 — VS-CODEX-ROOT-SIYUAN-ROOT-FOLDER-ESCAPE-20260829 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `fdb7749880709359b7dfbefab8ee22b8bbfb1b98`; upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state.
+- Exact scope: native `context_search.rs` canonical trusted-descendant comparison/tests, only the summary-folder picker handler/control in `ContextPage.tsx`, its focused existing UI test hunk, this lock, and append-only coordination checkpoints.
+- Root cause: the observed `context_search_root_component_escape` is emitted by strict textual `PathBuf` parent equality after separate Windows canonicalization. Equivalent Windows identities can differ by verbatim prefix/casing; the chain is already reparse-checked. The existing summary UI supports pasted paths and multi-file selection but exposes no folder selection.
+- Intent: retain the official SiYuan/OpenCode architecture and every traversal/reparse safety gate, accept only an equivalent immediate canonical parent on Windows, and merge user-picked folder roots into the existing selected summary paths. No standalone browser, Computer Use, production/provider/credential mutation, deployment, push, Ollama/11434, or unrelated dirty/process scope.
+
+### 2026-08-29T13:27:00-05:00 — VS-CODEX-ROOT-SIYUAN-ROOT-FOLDER-ESCAPE-20260829 TDD checkpoint
+
+- Shared HEAD moved from recorded base `fdb77498` to `d57a761f` through unrelated commits; the three claimed product/test files had no intervening committed change.
+- RED evidence: rendered Context could not find `Add folders`; native Rust could not resolve the required canonical-parent identity predicate. GREEN evidence: exact native Windows regression 1/1 and focused rendered Context/SiYuan summary creation-selection-batch-pipeline matrix 48/48.
+- Implementation remains narrow: compare separately canonicalized Windows parents after verbatim-prefix/slash/case normalization while keeping the existing component-by-component creation and reparse checks; merge one chosen folder root per picker invocation into the existing deduplicated selected summary paths. Broad verification and exact commit remain pending.
+
+### 2026-08-29 12:06 CDT — VS-CODEX-CHAT-NATIVE-PART-BOUNDARIES-20260829 native acceptance blocker
+
+- Exact Playwright prompt ran on `opencode-go/deepseek-v4-flash-vision-exp` in the isolated official Tauri instance and wrote `index.html`, `three.module.js`, then `main.js`.
+- VibeSpace failed at 44 seconds with no receipts or answer while native status still reported the exact OpenCode session busy.
+- Root cause: the managed Rust bridge rejects a raw SSE frame over 1 MiB before privacy-safe projection; the provider `write` event carried the entire 1.3 MiB module in `state.input.content`.
+- Ownership extends only to managed SSE event bounding/projection in `app/src-tauri/src/harness/server.rs`; unrelated native server behavior remains preserved.
+- Next: add an oversized-tool-event regression, omit bulky raw tool payload fields before the Tauri channel, rebuild the isolated app, rerun the exact prompt, and verify the generated game with Playwright.
+
+### 2026-08-29 12:00 CDT — VS-CODEX-WORKBENCH-RENDER-PERF-20260829 completed/released
+
+- Commit `b9596c25` frame-coalesces Workbench pan/wheel camera writes with exact pointer-up flush and sequential zoom clamping, stops translation-only renders at unchanged non-native panel boundaries, preserves Browser native-child bounds reconciliation, and replaces allocation-heavy minimap bounds aggregation with an equivalent single pass.
+- The full matrix also proved and fixed a pre-existing Browser desired-URL race caused by a temporarily stale parent prop, plus its pre-existing implicit-`this` TypeScript diagnostic. No UI, feature, routing policy, persistence schema, wallpaper, CSS, native command/runtime, or unrelated file changed.
+- Verification: TDD RED; focused canvas/panel/minimap `18/18`; affected Browser/performance `20/20`; full Workbench `32/32` files and `115/115` tests; TypeScript exit 0; production build exit 0 with 5,011 modules; exact formatting/diff/stage review and staged Gitleaks passed. VibeSpace was not started. Exact ownership released at `b9596c25`; all unrelated dirty work remains preserved.
+### 2026-08-29 11:16 CDT — VS-CODEX-ROOT-WARM-COMPOSER-RADIUS-20260829 claimed
+- Base `34b48694` on `integration/UnifiedChungus-final`. Exclusive clean scope: the Warm Chat composer inner-surface selector in `app/src/styles/warm-theme.css` and one focused contract in `app/src/features/appearance/warmTheme.test.ts`. Intent: replace the screenshot-reported sharp inner corners with a 16px clipped radius without touching protected `Composer.tsx`, sizing, controls, behavior, other themes, or unrelated work.
+
+### 2026-08-29 — VS-CODEX-PET-GLOBAL-OVERLAY-20260829 released
+
+- Branch/commit: `integration/UnifiedChungus-final` at `d57a761f` (`fix(pets): boot detached native surfaces reliably`).
+- Scope: `app/src-tauri/src/pets.rs`, `app/src/main.tsx`, `app/src/bootstrapPet.tsx`, `app/src/bootstrapRoute.test.ts`.
+- Result: detached Pet child WebViews no longer inherit the main WebView2 remote-debugging environment; auxiliary Pet routes bypass the full workspace bootstrap and retain visible Axo/panel fallbacks while loading.
+- Verification: focused Pet/bootstrap Vitest 35/35, Prettier, `cargo fmt --check`, and diff check passed. Full Rust compilation remains blocked by unrelated dirty harness code and Windows paging pressure. No replacement VibeSpace instance was launched after the sole live diagnostic PID exited, so post-commit native runtime proof remains intentionally unclaimed.
+
+### 2026-08-29T13:56:29-05:00 — VS-CODEX-ROOT-SIYUAN-ROOT-FOLDER-ESCAPE-20260829 released
+
+- Commit `41ddc50f` fixes the persistent native `context_search_root_component_escape` without replacing SiYuan: separately canonicalized Windows immediate-parent paths now compare by equivalent verbatim-prefix/slash/case identity while the existing component-by-component traversal and reparse-point safety checks remain authoritative.
+- Context summary selection now exposes `Add folders` through the existing native folder explorer and merges repeated picks into the same deduplicated official SiYuan/OpenCode `selectedPaths` policy used by pasted paths and multi-file selection. The stacked/wrapping controls keep the panel bounded; selected long paths retain ellipsis plus full hover text.
+- Verification: TDD RED/GREEN; full native `context_search` 20 passed, 0 failed, 1 ignored benchmark; full Context 124 files/1338 tests; focused rendered creation/path-selection/batch/pipeline matrix 48/48; typecheck, `cargo fmt --check`, Prettier, and production Vite build exit 0; staged diff/Gitleaks clean; postcommit rendered UI 4/4 and native Windows regression 1/1. The first postcommit pnpm wrapper invocation was an environment-policy non-test failure because it attempted an unnecessary install with ignored build scripts; the installed local Vitest binary then passed.
+- Official native interactive acceptance remains intentionally unclaimed because `VS-CODEX-CHAT-NATIVE-PART-BOUNDARIES-20260829` owns the live official Tauri/Playwright process. No live process, provider, production service, credential, deployment, push, or unrelated dirty file was changed. Exact product scope is clean and ownership released at `41ddc50f`.
+
+### 2026-08-29T14:07:28-05:00 — VS-CODEX-ROOT-SIYUAN-CREATION-ROLLBACK-20260829 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `41ddc50f`; upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. Exact product scope is the local creation persistence/search-population orchestration hunk, one existing lifecycle assertion, and a new focused lifecycle module/test.
+- Root cause: after persisting a new active map, `ContextPage` handles a physical search-index failure by calling the normal user `deletePersistedContextMap` API. That operation correctly creates a tombstone, so an internal creation failure is incorrectly surfaced as a user-deleted Recycling Bin entry; repeated timestamped map IDs accumulate deleted attempts.
+- Intent: retain a failed new map as active and repairable, never convert internal failure into deletion, and leave explicit recycle/restore, official Context Search, SiYuan/OpenCode summaries, file counts, and security behavior unchanged. After automated gates, create `C:\Users\viper\projects` through Playwright attached to a freshly owned official Tauri WebView and verify active status, graph, counts, and content. The currently building Chat-owned native lane remains untouched until released/exited.
+
+### 2026-08-29T14:25:00-05:00 — VS-CODEX-ROOT-SIYUAN-CREATION-ROLLBACK-20260829 focused scope extension
+
+- Full Context verification reached 1,338 passing tests; its sole failure was the existing fresh-ingestion source-location contract expecting the generated-map projection inline in `ContextPage.tsx`. The projection remains byte-equivalent in the new lifecycle boundary, so ownership expands only to that one assertion hunk in `ContextPage.siyuanCreateContract.test.ts` and no other SiYuan creation behavior.
+
+### 2026-08-29 15:42 CDT — PR31-SIYUAN-CREATION-ROLLBACK native conflict extension
+
+- Agent/task: `VS-CODEX-ROOT-SIYUAN-CREATION-ROLLBACK-20260829` / `PR31-SIYUAN-CREATION-ROLLBACK-ACTIVE-MAP`; branch `integration/UnifiedChungus-final`; base `41ddc50fce96f20cfb2d778f5215824309c7e763`.
+- Official Tauri/WebView Playwright created the `C:\Users\viper\projects` map far enough to prove the rollback repair: the new map remained active and absent from Recycling Bin. The durable SiYuan job then failed at `creating_nodes` after 5 safe-index items; native logs isolated `siyuan_conflict` on `siyuan_create_document_under_parent`.
+- Scope extends only to the exact receipt-normalization predicate plus focused in-file regression in `app/src-tauri/src/siyuan/client.rs`. SiYuan normalizes stored Kramdown, so recovery must accept a unique marker-bound document with verified notebook/root/parent or exact staging path and leave renderer reconciliation authoritative for content differences. Historical native claims are completed/released; no live conflicting agent exists.
+- Existing green gates: Context `125/125` files and `1339/1339` tests, production app build, release manifest `45/45`, Prettier, diff, and staged Gitleaks. Next: native RED/GREEN, rebuild, exact same Projects-folder Playwright rerun, commit.
+
+### 2026-08-29T15:56:16-05:00 — PR31-CHAT-NATIVE-PART-BOUNDARIES current-turn recovery checkpoint
+
+- Agent/task: `VS-CODEX-CHAT-NATIVE-PART-BOUNDARIES-20260829` / `PR31-CHAT-NATIVE-PART-BOUNDARIES`; branch `integration/UnifiedChungus-final`; HEAD `41ddc50fce96f20cfb2d778f5215824309c7e763`; upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state.
+- First broken boundary confirmed by RED: persisted OpenCode recovery replayed a prior assistant answer/tool and could settle the new request from historical identity/completion. `app/src/lib/ai/adapters/opencodePersistent.ts` now captures a bounded canonical `info.id` baseline before dispatch, rejects an unsafe baseline, and filters reconciliation, public text, observed identity, settlement, checklist, and final suffix authority to newly created current-turn messages only. Public canonical text is ordered across every current assistant record; reasoning no longer crosses this adapter boundary.
+- Exact owned test update: `app/src/lib/ai/adapters/opencodePersistent.test.ts` adds reused-session history isolation, multi-message public text/tool chronology, reasoning exclusion, and missing-identity filtering. Focused direct Vitest: `node node_modules/vitest/vitest.mjs run src/lib/ai/adapters/opencodePersistent.test.ts` — exit `0`, `55/55` passed. Current combined task diff for these already-dirty files: 2 files, 825 insertions / 93 deletions. Next: accumulator/router/runtime gates, then the selected-reference-only checkpoint/activity presentation mode; no shell/composer/theme change.
+
+### 2026-08-29T16:10:07-05:00 — VS-CODEX-JARVIS-INSTANT-POLISH-20260829 claim
+
+- Agent/task: `VS-CODEX-JARVIS-INSTANT-POLISH-20260829` / `PR31-JARVIS-INSTANT-COMMAND-UI-AUDIT-POLISH`; branch `integration/UnifiedChungus-final`; base `41ddc50fce96f20cfb2d778f5215824309c7e763`; upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state.
+- Exact intent: audit and repair the existing Jarvis/Jarvis High module, add a deterministic no-LLM command fast lane targeting under 500 ms, and refine the compact/expanded voice presentation without new dependencies, downloaded models, installer payloads, or more than roughly 1–2 MB of source delta.
+- Exact clean ownership: new `app/src/features/instant-command/**`; Assistant Bar source/focused test and command catalog; unclaimed Jarvis header/waveform/orb/transcript/model-selector source/focused tests and `voice-module.css`/`voice.sakura.css`; required no-model design addendum; this append-only ledger and the agent-scoped lock.
+- Protected boundaries: `VoiceModal.tsx` and `JarvisVoiceInputService.ts` remain under active `VS-CODEX-JARVIS-COMMS-VOICE-20260822`; `TerminalView.tsx` remains under active Context Gateway ownership. Those paths are read-only unless their owners explicitly release/handoff them. Normal chat/provider/model/effort/Fast/RLM, permissions, credentials, production services, and unrelated dirty work remain unchanged.
+- Ruling: the user's explicit no-download/no-model instruction defines this implementation slice, so Moonshine/Parakeet tasks in the older plan are excluded. Cost if wrong: offline Smart EOU is deferred, while phrase/fixed-pause and already-selected streaming STT remain intact.
+- Verification state: focused Jarvis/Assistant baseline is running; three read-only subagents are auditing voice runtime, deterministic command/terminal routing, and UI/accessibility. No production file has been changed.
+
+### 2026-08-29T16:09:42-05:00 — VS-SOL-APP-OPT-20260829-B audit/claim checkpoint
+
+- Branch/base: `integration/UnifiedChungus-final` at `41ddc50fce96f20cfb2d778f5215824309c7e763`; upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. Exact History source is clean, the two focused query files are new, and no active lock/dirty scope references these paths.
+- Ranked audit: (1) `HistoryList.tsx` count/search each call `db.messages.each`, scanning the entire database for an at-most-200-chat render — high cost, low risk, unlocked, measurable by callback count and same synthetic corpus; (2) `schedule/hooks.ts` independently scans/sorts the workspace event table for three feeds — medium-high cost, higher recurrence/time risk, unlocked but deferred; (3) `canvas/performance.ts` allocates/sorts candidate indices per virtual-index query — medium cost, low-medium order-equivalence risk, unlocked but deferred; (4) `workbench/workbenchLocalFiles.ts` repeats catalog parse/sort/filter work — medium cost but overlaps active Workbench ownership, blocked; (5) Settings render-time filters are low-cost/speculative and rejected.
+- Chosen hypothesis: for 250,000 messages with 2,000 belonging to the 200 rendered chats, chat-id-indexed count plus active-search scans reduce row callbacks from 500,000 to 4,000 (125x) while returning identical counts/matches. Baseline exact-current loop: median `162.450 ms` over 15 runs (min `103.788`, max `377.124`), 500,000 callbacks; existing focused History test `12/12` exit 0.
+- Exact scope: `HistoryList.tsx`, new `historyMessageQueries.ts`, new `historyMessageQueries.test.ts`, append-only coordination, and this agent lock. UI/API/schema/persistence/security/error behavior, protected Chat/RLM/SiYuan/Context/Jarvis/native paths, processes, and all unrelated dirty work remain excluded.
+
+### 2026-08-29T16:16:04-05:00 — VS-SOL-APP-OPT-20260829-B retasked/released
+
+- Root replaced the optimization task with the Deepgram/provider-credentials repair lane before implementation. Removed only this task's new uncommitted `historyMessageQueries.test.ts`; `HistoryList.tsx` was never edited and no product optimization remains. The optimization lock is released while its audit and baseline evidence remain historical.
+
+### 2026-08-29T16:48:44-05:00 — VS-CODEX-WORKBENCH-AUDIT-20260829 claim
+
+- Controller `/root` claims only `app/src/features/workbench/store.ts`, `app/src/features/workbench/integration.test.ts`, this agent-scoped lock, and append-only coordination at base `41ddc50f` on `integration/UnifiedChungus-final`. All prior Workbench browser/render locks are completed/released and both product files are clean.
+- Fresh baseline: full Workbench Vitest `32/32` files and `115/115` tests passed with exit 0; repository TypeScript passed with exit 0. Expected jsdom media/canvas limitations and existing React `act(...)` warnings remain test-environment evidence noise, not failures.
+- Root cause found by source audit: `openDevicePreview` rejects whenever the Workbench is at `MAX_WORKBENCH_PANELS` before it checks for the existing same-source/same-device preview. Refreshing that existing preview requires no allocation, so capacity incorrectly leaves its document/model state stale. TDD next: reproduce that exact user-visible store behavior, then move only the allocation guard after existing-preview reconciliation.
+- User-authoritative runtime boundary: do not start, restart, rebuild-launch, or terminate VibeSpace. Native launch evidence is not authorized for this slice; offline code/test/build verification continues.
+
+### 2026-08-29T17:10:00-05:00 — VS-CODEX-PET-RUNTIME-AUDIT-20260829 takeover
+
+- The delegated Pet worker is no longer live, so controller `/root` resumes only the transferred `app/src-tauri/src/pets.rs` runtime scope and focused Pet tests without spawning a replacement. The inherited WebView2-environment diff remains uncommitted and will be accepted only if logs/source/tests support it.
+- VibeSpace will not be started, restarted, rebuild-launched, or terminated. Work is limited to offline tests/builds, local logs, and non-mutating inspection of any already-running process; Chat, Workbench, Plugin/MCP, providers, RLM/Context/Jarvis, credentials, and unrelated dirty work remain excluded.
+
+### 2026-08-29T17:15:00-05:00 — VS-CODEX-PET-RUNTIME-AUDIT-20260829 completed/released
+
+- Commit `bee8a04a` fixes the invisible detached Pet boundary: overlay and mini-panel child WebViews no longer remove the main controller's WebView2 browser arguments or add child-only options while sharing the same user-data profile. The existing transparent/no-focus/always-on-top/skip-taskbar host and hidden-until-sized child lifecycle remain unchanged.
+- Evidence: Rust Pet module `31/31`, frontend Pet/bootstrap `46/46` files and `222/222` tests, exact rustfmt/diff, and exact-file Gitleaks all exited 0. Historical stderr stopped immediately after `creating pet-overlay window`, consistent with child creation never completing. The broader Rust-source Gitleaks scan found one unrelated existing finding outside `pets.rs`; exact owned-file scan was clean.
+- No VibeSpace process was running and launch/restart is user-forbidden, so native visual visibility/topmost/no-focus proof remains intentionally unclaimed. Exact product scope is clean and ownership is released; unrelated staged/dirty work is preserved.
+
+### 2026-08-29T17:19:00-05:00 — VS-CODEX-ROOT-OPENCODE-PLUGIN-MCP-AUTO-BRIDGE-20260829 QA completed/released
+
+- Fresh audit confirms existing commit `56dc33be` remains correctly scoped: connected plugins require the exact active account/project and declared operation; managed custom MCP discovery restores approved profiles idempotently, exposes only connected + approved + durable + explicitly exposed tools, strips secret-like schema fields, and revalidates connection/tool/classification plus mutation approval before invocation.
+- Fresh evidence: bridge `3 files / 141 tests`; authority/host/MCP `15 files / 137 tests`; complete Plugin manager + MCP lifecycle/registry/restore/Settings/Jarvis capability matrix `48 files / 358 tests`; generated native Tool Gateway plugin contract `1/1`. Every command exited 0.
+- No product edit was needed. No app process is running and the user forbids launch/restart, so live connected-service Playwright proof remains intentionally unclaimed. No Chat file, credential, provider, production service, billing, deployment, push, or unrelated state changed. The stale QA-only lock is released at existing product commit `56dc33be`.
+
+### 2026-08-29T17:23:00-05:00 — VS-CODEX-DEEPGRAM-CREDENTIAL-20260829 claim
+
+- Fresh Deepgram key/model/settings tests pass, and official WebSocket docs confirm the selected v1/v2 endpoints, Flux model IDs, browser subprotocol authentication, and WebM/Opus transport are correct. The first evidenced product defect is credential policy: the optional `GET /v1/projects` metadata probe treats HTTP 403 as an invalid key and refuses to persist it, although a role-limited key may still authorize Listen/Speak and the project endpoint is not the service transport.
+- Root claims only the clean Deepgram credential service/card source/tests. TDD will preserve 401 rejection while securely saving a 403-limited key as configured with truthful limited-metadata status, add Enter-to-save proof, and leave model selection, Chat/Composer, Jarvis behavior, provider architecture, credentials, production services, and unrelated work unchanged. VibeSpace will not be started/restarted/terminated.
+
+### 2026-08-29T17:07:29-05:00 — VS-CODEX-WORKBENCH-AUDIT-20260829 completed/released
+
+- Commit `565658dc` fixes the reproduced Workbench device-preview capacity bug without changing UI or allocation limits: an existing same-source/same-device preview reconciles and refreshes before the allocation-only `MAX_WORKBENCH_PANELS` guard, while a genuinely new preview still fails closed at capacity.
+- Verification: TDD RED reproduced the `null` refresh; focused integration `5/5`, full Workbench `32/32` files and `116/116` tests, direct TypeScript `tsc -b`, production Vite build (5,012 modules), exact Prettier, diff check, and scoped Gitleaks all exited 0. Build output retained only pre-existing repository-wide chunk/import warnings.
+- VibeSpace was not started, restarted, rebuild-launched, or terminated. Exclusive product ownership is released at `565658dc`; all unrelated dirty/staged work and other agents' locks remain preserved.
+
+### 2026-08-29T16:53:13-05:00 — VS-CODEX-JARVIS-INSTANT-POLISH-20260829 audit/design checkpoint
+
+- Branch/HEAD remain `integration/UnifiedChungus-final` / `41ddc50fce96f20cfb2d778f5215824309c7e763`; no app or native process was started, stopped, restarted, or replaced.
+- Fresh focused baselines passed: Assistant parser/executor/navigation/Workbench/Sakura `6 files / 43 tests`; unlocked Jarvis header/waveform/orb/transcript/model/appearance `6 files / 17 tests`. Read-only audit matrices additionally passed targeted command/terminal queue `4 files / 40 tests`, voice service/router/conversation/TTS `7 files / 65 tests`, and VoiceModal turn/stop/smoke `3 files / 43 tests`.
+- Root cause: deterministic targeted grammars are absent; `ask_provider` opens a new terminal rather than messaging a live pane; terminal success is currently queue acceptance, not native delivery; verified terminal readiness is component-local inside actively locked `TerminalView.tsx`; every voice final is model-gated/persisted/emitted inside actively locked `VoiceModal.tsx`. No unlocked downstream hook can truthfully suppress that model path.
+- Added the required approved design addendum `docs/superpowers/specs/2026-08-29-jarvis-instant-no-model-polish-design.md`. It limits this pass to no-model parser/resolver/queue acceptance plus the warm voice-instrument presentation, forbids unsafe direct terminal writes or downstream voice interception hacks, preserves existing chat/voice/model behavior, and documents the exact narrow lock handoffs required for true route-independent delivery and voice-first execution.
+- UI audit: the current hard-coded cyan HUD, `--jv: 2.55px` scale, duplicate talk controls, continuous idle ring/frame motion, narrow transcript grid, and unlabeled model pill are the primary refinement defects. The unlocked implementation target is one calm energy-reactive orb, readable warm VibeSpace tokens, a single primary talk control, keyboard-scrollable transcript cards, visible model identity, reduced-motion/visibility cleanup, and no new assets/dependencies.
+- Diff at checkpoint is limited to the new owned design file plus this append-only ledger and the task lock. Next: sequential TDD implementation of the Instant Command core/AssistantBar, review, then sequential TDD voice-presentation refinement/review.
+
+### 2026-08-29T17:22:00-05:00 — VS-CODEX-JARVIS-INSTANT-POLISH-20260829 command slice checkpoint
+
+- Task A implemented only within owned `app/src/features/instant-command/**`, `app/src/features/assistant/AssistantBar.tsx`, `app/src/features/assistant/AssistantBar.test.tsx`, and `app/src/features/assistant/commands.ts`; no locked voice/terminal/native file or app process was touched.
+- TDD evidence: initial focused RED was 5 failing files because the new modules were absent and AssistantBar never called the fast lane. Final focused command matrix is `5 files / 43 tests passed`; existing Assistant/parser/navigation/executor, TerminalsPage exact-ref consumer, and queue-stress regressions are `6 files / 53 tests passed`.
+- Full app typecheck passed with zero diagnostics before the final alias/snapshot hardening; the post-hardening run produced no diagnostics during its bounded observation and was stopped before the long command could block the task. `git diff --check` passed, and a forbidden-source scan found no AI runtime, network/fetch, normal Composer, direct `terminal_write`, VoiceModal, JarvisVoiceInputService, or TerminalView imports. New command source/tests total approximately 31.5 KB.
+- Behavior now includes explicit local parser-before-legacy grammar, numeric/word ordinals, supported CLI aliases, open-model-picker routing, exact visual-order target snapshots with native staleness/duplicate rejection, ambiguity/missing fail-closed results, exact-ref/new-pane queueing, truthful `queued` receipts, and AssistantBar fast-lane/toast/recents/error preservation.
+- Explicit remaining lock-bound gaps: VoiceModal still sends every voice final through chat/model persistence before any bus call; native readiness/direct `terminal_write` delivery receipts require handoff from the active VoiceModal/TerminalView owners. No claim of actual sub-500 ms native delivery is made.
+- Next action: second and final delegated worker will implement and self-review the unlocked warm Jarvis presentation pass only; controller will then run full verification, native Playwright attach-only QA if the existing app is available, exact owned diff review, and commit.
+
+### 2026-08-29T17:38:00-05:00 — VS-CODEX-ROOT-SIYUAN-CREATION-ROLLBACK-20260829 implementation/verification checkpoint
+
+- Branch/base remain `integration/UnifiedChungus-final` / `41ddc50fce96f20cfb2d778f5215824309c7e763`; no merge/rebase/cherry-pick state. Exact owned product scope is six staged Context/SiYuan files; every unrelated dirty/staged file, live lock, and process is preserved.
+- Root causes fixed test-first: a physical search-index exception no longer calls the user soft-delete API, so the durable map stays active instead of becoming a Recycling Bin tombstone; the creation lifecycle now invokes the existing `repairEmptyMap` port once against the same persisted map identity before failing. Native exact-parent recovery accepts SiYuan Kramdown normalization only when both requested and observed content contain the exact managed HTML comment, preventing marker-prefix collisions.
+- Fresh automated evidence, with no VibeSpace launch/manual UI testing: Context `125/125` files and `1340/1340` tests; focused lifecycle `2/2`; native exact-parent `3/3` plus prefix-collision `1/1`; production app build `5017` modules; release manifest `45/45`; exact Prettier/rustfmt, staged diff check, and staged Gitleaks all exit `0`. Build retains existing repository-wide circular/dynamic-import and large-chunk warnings.
+- Sol-high read-only AI-system audit completed. It found broader, out-of-scope product-truth/performance gaps in hosted entitlement claims, mock onboarding, Hive streaming persistence, provider authority duplication, Phone Jarvis telemetry, placeholder voice IDs, and large chunks; no audit edit touched product code. Final corrected-diff review is pending before commit.
+- Next: receive the final read-only audit, commit only the six owned files, append exact commit/final status, and release only this task's lock. Native/manual Projects-folder DeepSeek summary verification remains explicitly deferred by the user's current instruction.
+
+### 2026-08-29T17:46:10-05:00 — VS-CODEX-DEEPGRAM-CREDENTIAL-20260829 completed/released
+
+- Commit `2bb17691` repairs Deepgram credential persistence without changing model/provider architecture: HTTP 401 remains invalid and is not stored, while HTTP 403 from the optional projects metadata probe now preserves a service-scoped key in the secure vault as configured with truthful permission-limited health. The Settings card also submits on Enter and explains that usage metadata can be unavailable while speech services may still work under the key's role.
+- Verification: focused credential/card `2 files / 12 tests`; broader Deepgram/STT/Settings/Voice/Secure API-key matrix `11 files / 55 tests`; Composer STT `1/1`; repository TypeScript; production build (`5017` modules); release manifest `45/45`; exact Prettier, diff check, and scoped Gitleaks all exited `0`. Build retained only existing repository-wide bundling warnings.
+- VibeSpace was not started, restarted, or terminated, and no real user credential or production service was exercised. The four owned product files are clean at `2bb17691`; all unrelated staged/dirty files remain preserved and this task's exclusive ownership is released.
+
+### 2026-08-29T17:41:00-05:00 — VS-CODEX-ROOT-SIYUAN-CREATION-ROLLBACK-20260829 completed/released
+
+- Commit `3606f1d5` contains only the six owned Context/SiYuan product and regression files (`267` insertions / `31` deletions). It prevents internal index failures from soft-deleting newly created maps, retries the existing empty-index repair against the same persisted map identity, and uses exact managed-comment matching for normalized SiYuan Kramdown without prefix collisions.
+- Final fresh evidence: Context `125/125` files and `1340/1340` tests; focused lifecycle `2/2`; native exact-parent `3/3` and prefix-collision `1/1`; production build (`5017` modules); release manifest `45/45`; exact Prettier/rustfmt, cached diff check, and staged Gitleaks all passed. Final Sol-high corrected-diff review reports no Critical or Important finding.
+- VibeSpace was not launched and no manual/native UI test was performed in this final pass, exactly per the user's instruction. The earlier official Projects-folder/SiYuan run is historical evidence only; a fresh DeepSeek V4 Flash Vision Exp summary/graph run remains deferred until manual app testing is authorized.
+- Ownership is released at `3606f1d5`. All unrelated dirty/staged work, locks, logs, branches, files, and processes are preserved; no Supabase, Stripe, billing, deployment, credentials, production services, Ollama, push, or app lifecycle action occurred.
+### 2026-08-29T18:02:00-05:00 — VS-CODEX-ROOT-SIYUAN-SAFE-VERBATIM-ROOT-20260829 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `0bae7fe88da7060b8d34e3a98a3b55488caf7b35`; upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. The four claimed scanner/path-authority source/test files are clean.
+- Live evidence: two 17:48 creation attempts successfully produced official SiYuan map-root documents, but no child documents. Their roots retained `Files: 0`, proving the failure occurs after root creation and before native node creation. The selected source is a picker-authoritative Windows verbatim drive root.
+- Root cause: `siyuanSafeIndex` converts `\\?\C:\...` to `/?/C:/...`; `fs_list_dirs_strict` intentionally rejects that malformed/device namespace at its strict read-only root capability. This explains the new post-root failure after the earlier physical Context-search repair.
+- Exact scope: `siyuanSafeIndex.ts/test`, `siyuanPathAuthority.ts/test`, this lock, and append-only coordination only. Native app/CDP remains under the existing process owner; no live attachment or click occurs until that lane is released.
+- Next: TDD the verbatim-root scanner boundary, implement a drive-root-only normalization plus safe legacy authority recognition, run focused/broad Context checks, then official-native Playwright creation QA when the lane is free.
+
+### 2026-08-29T18:05:30-05:00 — VS-CODEX-ROOT-SIYUAN-SAFE-VERBATIM-ROOT-20260829 implementation checkpoint
+
+- TDD RED: path authority returned `/?/c:/...`; the safe scanner passed `/?/C:/...` as both requested path and strict root; a prior empty durable checkpoint rejected as `siyuan_index_not_resumable:running`.
+- GREEN: only exact Windows picker verbatim drive prefixes are converted to ordinary drive paths. Device and verbatim-UNC namespaces remain unexpanded/rejected. The prior malformed authority form compares equal only for recovery, and replacement is permitted solely when discovery has zero cursor/index/node/summary/token/pending progress.
+- Focused verification: `siyuanPathAuthority.test.ts` + `siyuanSafeIndex.test.ts` pass `27/27`; scoped Prettier and `git diff --check` pass. Next: broader Context/type/build gates, then official-native Playwright creation QA once the existing process owner releases the lane.
+### 2026-08-29T18:05:10-05:00 — VS-CODEX-CHAT-NATIVE-PART-BOUNDARIES-20260829 released for reassignment
+
+- User explicitly reassigned the PR31 Chat repair to another task. This controller stopped implementation/testing and released only this Chat lock; all current dirty product/test/evidence changes remain uncommitted and untouched on `integration/UnifiedChungus-final` at HEAD `0bae7fe88da7060b8d34e3a98a3b55488caf7b35`.
+- Latest green verification before stop: focused OpenCode/transport/router/runtime/ledger/AgenticConsole matrix `7 files / 315 tests`, app TypeScript, and production build all exited `0`; earlier focused Rust oversized tool projection and fail-closed tests both exited `0`.
+- Unfinished official-native finding: the exact prompt's bound OpenCode session persisted `11` public text parts and `10` tool parts in native order (plus internal reasoning/step parts), but VibeSpace durable Chat stored one `2,373`-character assistant text part, zero tool parts, and rendered it through `agentic-legacy`; the session header remained stale `Running`. The acceptance JSON and required `01`–`06` screenshots do not exist. This proves the remaining first loss is between persisted adapter reconciliation and runtime durable `Message.parts`, not CSS.
+- Active official app was deliberately left untouched: `jarvis.exe` PID `26192`, Vite `5173` PID `28192`, official WebView CDP `9223` PID `33644`. No acceptance driver process remained active at release.
+### 2026-08-29T18:07:19-05:00 — VS-CODEX-CHAT-THIN-PROJECTION-20260829 takeover claim
+
+- User explicitly reassigned the PR31 Chat fix from `VS-CODEX-CHAT-NATIVE-PART-BOUNDARIES-20260829` to this task and prohibited subagents. The prior task is idle and its lock is released; all existing product/test/evidence/native-process state is preserved without revert, reset, cleanup, commit, launch, or termination.
+- Branch/base: `integration/UnifiedChungus-final` at `0bae7fe88da7060b8d34e3a98a3b55488caf7b35`, upstream `origin/UnifiedChungus`, no merge/rebase/cherry-pick state. Legacy `owner.txt` remains unchanged. Older overlapping Chat/RLM locks are same-controller historical lanes; this claim supersedes only the released 2026-08-29 Chat projection scope.
+- Strict boundary: RLM, SiYuan, Context routing, Jarvis prompts/personality/normal response behavior, provider architecture, Composer, ChatThread, sidebar/tabs/header/text box, and unrelated systems are read-only. The change is limited to `OpenCode public events -> ordered durable Message.parts -> existing reference-aligned transcript/activity disclosure`.
+- Preserved evidence: lazy SSE consumption now begins before dispatch; focused adapter/runtime/UI matrix and build previously passed. Newest native evidence found a completed 2,373-character assistant response persisted without request-local text-part identity or ordered tool parts, so runtime fell back to flattened final text. Next action is TDD at persisted-history recovery to retain every public text/tool part in exact native order when SSE is incomplete, then focused gates and one official-native acceptance run.
+
+### 2026-08-29T18:15:00-05:00 — VS-CODEX-ROOT-SIYUAN-SAFE-VERBATIM-ROOT-20260829 committed checkpoint
+
+- Commit `eb62978c` contains only the four owned SiYuan scanner/path-authority source and regression files (`172` insertions / `4` deletions). It converts picker-authoritative Windows verbatim drive roots to ordinary drive paths before strict read-only traversal and safely repairs only the zero-progress malformed durable discovery checkpoint left by the failed attempts.
+- Fresh verification passed: focused path/scanner `27/27`; complete Context `125/125` files and `1343/1343` tests; repository TypeScript; production build (`5017` modules); isolated release manifest `45/45`; exact cached diff check and staged Gitleaks. Build retained only existing repository-wide warnings.
+- Official native Playwright creation QA is still pending. `VS-CODEX-ROOT-NATIVE-RECOVERY-20260828` remains the active sole owner of the official app, Vite `5173`, and CDP `9223`, so this task has not attached or clicked. Next action is to claim that lane after release, create/repair a real Projects-folder map in the official app, and iterate again on any observed failure.
+
+### 2026-08-29T18:18:00-05:00 — VS-CODEX-ROOT-SIYUAN-SAFE-VERBATIM-ROOT-20260829 summary scope extension
+
+- While the native lane remains occupied, root claims the clean released `siyuanSummaryPipeline.ts/test` only. The post-discovery audit found the same picker root would otherwise fail one stage later: strict summary reads still receive the verbatim root, and cloud request-scope comparison does not recognize its ordinary drive equivalent.
+- TDD will reuse the narrow drive-only normalization for summary containment, exact request-scope authority, and the strict read root. Selected OpenCode provider/connection/model/effort, approval, batching, source privacy, and unrelated work remain unchanged.
+
+### 2026-08-29T18:28:00-05:00 — VS-CODEX-ROOT-SIYUAN-SAFE-VERBATIM-ROOT-20260829 summary commit checkpoint
+
+- Commit `14166612` contains only `siyuanSummaryPipeline.ts/test` (`41` insertions / `4` deletions). The RED case proved a picker verbatim drive root produced zero eligible selected files; GREEN recognizes its ordinary drive equivalent for containment and request scope and passes only the ordinary root to strict summary reads.
+- Fresh verification passed: focused scanner/path/summary `50/50`; complete Context `125/125` files and `1344/1344` tests; repository TypeScript; production build (`5017` modules); release manifest `45/45`; exact cached diff check and staged Gitleaks. Existing build warnings remain unrelated.
+- No new CDP test process began during the final build window, but `VS-CODEX-CHAT-THIN-PROJECTION-20260829` and the official process-owner lock remain active. This task continues to defer live clicks until that ownership is explicitly released.
+
+### 2026-08-29T18:38:00-05:00 — VS-CODEX-ROOT-SIYUAN-SAFE-VERBATIM-ROOT-20260829 native lane claim
+
+- The user explicitly prioritized a real Context Map retry after other automation finishes. Collaboration reports only `/root`; the prior Chat CDP client detached, and a 55-second observation ended with zero CDP clients.
+- Exact existing official identity: repository `jarvis.exe` PID `28168`, Vite `5173` PID `22024`, official WebView CDP `9223` PID `13892`, and zero listener on forbidden port `11434`. This task temporarily claims the existing UI/CDP lane for one Projects-folder Context Map create/repair/summary/graph acceptance only; it will not start, restart, stop, or replace any process.
+
+### 2026-08-29T18:48:30-05:00 — VS-CODEX-ROOT-SIYUAN-SAFE-VERBATIM-ROOT-20260829 live selected-route failure
+
+- The former creation error is fixed in the official app: one click created a fourth active, non-recycled map with `52` indexed source items and `52` native SiYuan nodes, with no creation toast or console error.
+- A second live defect blocked acceptance: the exact selected `opencode / opencode-cli / opencode-go/deepseek-v4-flash-vision-exp / high` choice was saved against the previously selected failed map, while new-map sync defaulted to `ollama / llama3.2:latest` and launched Ollama. The run was stopped at the first safe UI boundary (`7` summarized, `1` skipped, `15` failed); exact newly spawned Ollama PIDs `3972` and `23648` were identity-checked and terminated. Zero Ollama process/listener remains and official `jarvis.exe` PID `28168` stayed responsive.
+- Root claims only the clean ContextPage new-map route-handoff hunk and matching creation-contract regression. TDD will snapshot the selected route at click, bind it to the newly persisted map, require cloud approval preflight before any inference, recover the expected structural snapshot after the preflight sentinel, and preserve local-first behavior when no route is selected.
+
+### 2026-08-29T19:06:00-05:00 — VS-CODEX-ROOT-SIYUAN-SAFE-VERBATIM-ROOT-20260829 missing-tree repair scope
+
+- The newest fifth map remains active with `52` indexed items, `52` created SiYuan nodes, zero summaries/tokens, and zero Ollama process/listener. Its exact DeepSeek route reached the required cloud-approval preflight before any inference.
+- Approval failed during the read-only reconciliation. A wrapped official SiYuan port isolated `siyuan_response_type_mismatch` to `getBlock(20260829185638-zb7y4ex)`; the official workspace `siyuan.log` records `tree not found on filesystem` for that same ID on every attempt. The saved binding is stale, but the native client currently reports a null missing-tree payload as a generic response-type mismatch, so the renderer aborts instead of detaching/recreating the stale binding.
+- Historical native/integration claims are completed/released and collaboration contains only `/root`. Scope extends only to typed missing-block classification in `app/src-tauri/src/siyuan/client.rs` plus its in-file test, and the verified containment sweep in `siyuanContextMapIntegration.ts/test` so the already-running HMR renderer can detach an unreadable saved binding without deleting or trusting it, then recreate only the exact managed node below the authoritative map root.
+- Next: TDD both boundaries, run focused/native/Context gates, retry the same fifth map into cloud preflight, approve exact DeepSeek V4 Flash Vision Exp/high, verify summaries/batches/counts/official graph, then commit exact owned files.
+
+### 2026-08-29 19:10 CDT — VS-CODEX-CHAT-THIN-PROJECTION-20260829 rebuild checkpoint
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `1416661277e334a5b63bcd24df3101604ebd2166` (upstream `origin/UnifiedChungus`).
+- Scope: Chat presentation projection only. Added ownership for `app/src/lib/ai/openCodePublicTimeline.ts` and its focused test; all existing claimed files remain unchanged in authority.
+- Backup: `D:\VibeSpace-Backups\2026-08-29-chat-ui-projection-pre-rebuild-20260829-190920` verified at 35 files / 1,225,135 bytes with SHA-256 spot checks.
+- Architecture reset: remove the failed strict-equality reconstruction. Persisted OpenCode assistant messages become one authoritative public timeline snapshot; the last public text alone enters unchanged Jarvis response policy, while preceding public text and safe request-local tool lifecycle parts remain UI chronology.
+- Guardrails: no RLM, SiYuan, backend, Jarvis personality/policy, provider-routing, Composer, ChatThread, shell, credentials, production, deployment, or unrelated dirty-file changes.
+- Tests: pending RED/GREEN projector boundary.
+
+### 2026-08-29T19:46:30-05:00 — VS-CODEX-ROOT-SIYUAN-SAFE-VERBATIM-ROOT-20260829 missing-tree + durable RLM checkpoint
+
+- The exact native failure is classified now: official `getBlockInfo` returns success with `data:null` when a saved `.sy` tree disappeared. Rust maps that to `siyuan_block_not_found`; the verified native containment sweep also recognizes the historical `siyuan_response_type_mismatch`, detaches only the unreadable saved binding, never deletes/trusts the unknown target, and recreates the exact managed node beneath the already-verified map root.
+- A second live truth gap is repaired: initial SiYuan creation persisted only an empty metadata seed, so active maps reloaded with zero Context entities/files and an empty physical RLM index despite 52 durable SiYuan entries. Completed creation now builds the exact hierarchy/count from durable safe-index entries, updates the same active map with optimistic identity, verifies the persisted count, and physically populates Context Search. Older paused/completed maps auto-hydrate idempotently through the confirmed-empty repair port.
+- Verification: focused renderer Context/SiYuan matrix `5 files / 114 tests` passed; TypeScript, exact Prettier/rustfmt, and diff check passed. The isolated native missing-tree test passed before the current live app rebuild; a fresh rerun hit shared-target `LNK1318` while another Rust build owned the PDB and did not alter product or process state.
+- Existing official app PID `31720` and WebView CDP `9223` are available, but foreign Codex automation PID `33564` currently holds two CDP connections. This task will not attach until that client releases, and will not start/restart/stop VibeSpace or use Ollama.
+- Next: complete Context/build/security gates, wait for the shared Playwright lane, retry the fifth Projects-folder map through approval with exact `opencode/opencode-cli/opencode-go/deepseek-v4-flash-vision-exp/high`, verify summaries/counts/RLM/official graph, then commit only owned files.
+
+### 2026-08-29T19:59:30-05:00 — VS-CODEX-ROOT-SIYUAN-SAFE-VERBATIM-ROOT-20260829 verified commit checkpoint
+
+- Commit `c0c3f648` contains exactly the seven owned native/Context/SiYuan source and regression files (`423` insertions / `35` deletions). It binds a newly selected cloud route to the newly persisted map before preflight, classifies/recovers missing official SiYuan trees safely, persists the exact durable hierarchy/file count, physically populates the new RLM index, and hydrates older paused/completed maps without changing their active identity.
+- Fresh verification: focused `114/114`; complete Context `125/125` files and `1348/1348` tests; TypeScript; isolated production Vite build (`5018` modules); runtime-manifest `10/10`; exact Prettier/rustfmt and diff check; commit-scoped Gitleaks over `27.41 KB` with no leaks. The first broad run was infrastructure-only `ENOSPC`; the clean rerun used a task-owned D: temp directory with one worker and had zero failures. Existing bundling warnings remain unrelated.
+- Official app PID `31720` is responsive and was built after the Rust change, but foreign Codex automation PID `33564` still holds the two CDP connections. This task has not attached, clicked, started, restarted, stopped, or replaced the app and continues waiting for a quiet lane. Zero Ollama process/listener remains.
+- Next: after the foreign CDP client releases, observe a quiet window, attach to the existing app, repair/retry the same fifth Projects-folder map, approve the exact DeepSeek V4 Flash Vision Exp/high route, verify summaries/counts/RLM/official graph, refine/commit any follow-up, then release only this task's coordination state.
+
+### 2026-08-29T20:25:14-05:00 — VS-CODEX-CHAT-THIN-PROJECTION-20260829 verified pre-commit checkpoint
+
+- Replaced the failed strict live-event/equality reconstruction with one deterministic persisted-current-turn OpenCode public timeline snapshot. The last public text alone remains the normal Jarvis-policy input; preceding public text and privacy-safe request-local tool lifecycle are display chronology. Duplicate native tool updates collapse to one terminal lifecycle, and inferred response-envelope reasoning/tool/action parts cannot duplicate the authoritative provider timeline.
+- Protected boundary remains unchanged: no RLM, SiYuan, Context routing, Jarvis personality/system prompt or response-policy, provider architecture, Composer, ChatThread, shell, or renderer-style edit belongs to this task.
+- Fresh verification: focused projector/adapter/router/runtime/ledger `6 files / 276 tests`; repository TypeScript; exact Prettier; production build (`5018` modules); release manifest `45/45`; exact diff check all exit `0`. Prior current-code Rust `cargo check` exited `0` with existing dead-code warnings.
+- Official native Playwright acceptance on this repository's `jarvis.exe`: exact DeepSeek model/prompt produced `17` ordered transcript items, `8` collapsed activity groups covering `10` unique tool calls, one expanded `Edited nebula-runner.html` row, no stale active receipt, identical chronology after reload, zero page errors, and real generated-game HTTP/gameplay evidence. Screenshots are under `D:\VibeSpace-Evidence\2026-08-29-chat-thin-projection`.
+- Environmental note: the first native attempt exhausted C: during a shared relink and Chromium reported `FILE_ERROR_NO_SPACE`; prior localhost chat rows were no longer visible after that reload. No database reset/delete was performed. Task-generated build/link artifacts were moved recoverably to D:, and the corrected fresh run persisted and reloaded identically.
+- Next: stage only exact owned Chat projection code/tests plus the task plan, inspect cached diff, commit, append the exact SHA, and release only this lock.
+
+### 2026-08-29T20:26:24-05:00 — VS-CODEX-CHAT-THIN-PROJECTION-20260829 completed/released
+
+- Commit `b949bb35956e151ab69ec052c9261f3885831c6a` contains exactly the 11 owned Chat projection implementation/test/plan files (`2325` insertions / `117` deletions). It makes persisted OpenCode public output the sole chronology source, collapses repeated native tool updates, preserves only leaf filenames and request-local IDs, keeps final text under unchanged Jarvis policy, and suppresses duplicate inferred reasoning/tool/action envelope parts.
+- Final gates: focused `6 files / 276 tests`; TypeScript; exact Prettier; release manifest `45/45`; production Vite build (`5018` modules); cached diff check; scoped credential scan; prior current-code Rust `cargo check`; and official native Playwright collapsed/expanded/reload/game acceptance all passed. Existing build/dead-code warnings remain unrelated.
+- Protected systems remained untouched: RLM, SiYuan, Context routing, Jarvis personality/system prompts and normal response policy, provider architecture, Composer, ChatThread, shell, and renderer styling. Owned product paths are clean after commit.
+- Environmental disclosure: the first shared native relink exhausted C: and Chromium reported `FILE_ERROR_NO_SPACE`; older localhost chat rows were no longer visible after reload. No database reset/delete was performed. Task-generated artifacts were moved recoverably to D:, and the corrected fresh run then persisted/reloaded identically.
+- Exact ownership and the official CDP/native lane are released at `b949bb35`; all unrelated dirty files, locks, logs, processes, branches, worktrees, and production systems remain untouched. No push or deployment occurred.
+
+### 2026-08-29T20:35:30-05:00 — VS-CODEX-ROOT-SIYUAN-SAFE-VERBATIM-ROOT-20260829 live binary/RLM + child-update RED checkpoint
+
+- User supplied the exact live creation error `context_search_index_source_invalid:Authored-Refinement-REV10/after-built-open-1440x900.png:undecodable`. The recursive SiYuan discovery already retains every folder/subfolder/file identity, but the durable-tree projection incorrectly marks every discovered file as physical full-text eligible; the Context Search reader then treats replacement-character PNG content as fatal and aborts the otherwise-active map.
+- Scope extends only to `contextSearchIndexing.ts/.test.ts`: undecodable/native-not-UTF8 content will remain graph metadata and be omitted from RLM text documents, while traversal, credential/secret policy, outside-root/access failure, hash/metadata races, mutation/count/cleanup failures, and other errors remain fail-closed.
+- Live dev-log evidence after exact DeepSeek approval separately shows provider completion/usage followed by failed `siyuan_update_block`. Native TDD RED proves a child document created below the exact map root is rejected during update authorization with `ResponseTypeMismatch` before kramdown/update. The production correction will reuse the already-verified exact-parent containment predicate and retain cross-map rejection.
+- Branch/HEAD: `integration/UnifiedChungus-final` at `b949bb35956e151ab69ec052c9261f3885831c6a`. No app restart/start, Ollama, production service, deployment, or unrelated source mutation.
+### 2026-08-29T20:57:58-05:00 — VS-CODEX-ROOT-CHAT-AUDIT-DISCLOSURE-20260829 claim
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `b949bb35956e151ab69ec052c9261f3885831c6a`; upstream `origin/UnifiedChungus`; no merge/rebase in progress.
+- The user reassigned the Chat fix to this current `/root` task. The prior native-part task is released and its inherited dirty work is preserved. This unique same-controller claim resumes only the activity-ledger/AgenticConsole UI, existing plugin card, compact input token, their focused tests/styles, this append-only ledger, and its lock.
+- Intent: completed-turn expanded-by-default disclosure with truthful duration/nonzero counts and collapsible public chronology; remove the invented Done/Doing now/Next/Blockers strip; refine safe plugin details and the skill chip. Preserve the final answer, Chat shell/composer geometry, plugin execution, RLM, SiYuan, providers, prompts, backend behavior, unrelated dirty files, and all other locks.
+- Verification: TDD/focused tests, required repository gates, then Playwright against the already-running official Unified Chungus Tauri WebView with expanded/collapsed/reload/plugin/skill evidence.
+
+#### 2026-08-29T21:09:30-05:00 — native evidence scope
+
+- Added only `.codex-evidence/pr31-chat-audit-disclosure-20260829/` for the task-owned Playwright driver, JSON observations, and screenshots against the already-running official `jarvis.exe` WebView. No mock DOM injection, standalone browser, app restart, credential mutation, or unrelated process authority.
+
+
+### 2026-08-29T21:06:00-05:00 — VS-CODEX-ROOT-SIYUAN-SAFE-VERBATIM-ROOT-20260829 verified follow-up commit checkpoint
+
+- Commit `cf2959cb` contains exactly seven owned Context/SiYuan implementation and regression files (`144` insertions / `20` deletions). It keeps recursively discovered binary/media nodes in the official graph while omitting undecodable bytes from physical RLM text, authorizes summary updates only for exact nested child documents under the verified map root, projects picker-verbatim roots to strict physical readers, and exposes the exact first-map summary route before creation.
+- Fresh verification: complete Context `125/125` files and `1351/1351` tests; native SiYuan client `34/34`; TypeScript; isolated production Vite build (`5018` modules); exact Prettier/rustfmt; cached diff check; scoped Gitleaks. The requested SOL-high audit reported no Critical/Important blocker. Existing bundle/dead-code warnings remain unrelated.
+- Live boundary: existing `jarvis.exe` PID `31720` and CDP `9223` remain alive, but renderer `5173` is not listening and the app has no reachable test tab. This task did not start, restart, stop, or replace VibeSpace and confirmed zero Ollama process/listener.
+- Next: retain ownership only for the pending live acceptance; attach when the existing renderer returns, create the remaining map with exact `opencode/opencode-cli/opencode-go/deepseek-v4-flash-vision-exp/high`, and verify active-not-recycled state, recursive counts, summaries, physical RLM count, and official SiYuan graph.
+
+### 2026-08-29 — VS-CODEX-BENCHMARK-FILTER-OVERFLOW-20260829 claim
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `cf2959cbb4ea228fa403e6337d06eb327e3270ad`; upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick in progress.
+- Exact scope: `BenchmarkIntelligencePage.tsx`, its focused test, this append-only ledger, and the task lock. Existing dirty Warm-theme and all unrelated work remain protected.
+- Root cause from the supplied native screenshot and source: four `w-full` native selects sit in a fixed four-column grid, but the controls/grid cells do not explicitly opt into border-box/min-width containment; their padding/intrinsic width therefore overlaps adjacent tracks and pushes the final Sort control beyond the card.
+- Next: add a focused RED containment contract, implement only the minimum sizing constraints, run focused verification, then verify the official native VibeSpace WebView without starting a standalone browser.
+
+### 2026-08-29T22:21:37-05:00 — VS-CODEX-BENCHMARK-FILTER-OVERFLOW-20260829 completed/released
+
+- Final root cause: the Warm Benchmarks surface forces every select to `min-width: 180px`; that higher-specificity theme rule overrode a normal `min-w-0` utility, so the four fixed grid tracks overlapped and Sort crossed the card edge. The component now gives its grid/labels explicit shrink containment and applies a local important zero minimum, full-width maximum, and border-box sizing to each select without modifying the shared Warm theme.
+- Owned diff: `BenchmarkIntelligencePage.tsx` and its focused test only (`26` insertions / `9` deletions against HEAD). TDD was observed RED then GREEN; fresh focused Vitest passed `5/5`, repository `npm run typecheck` exited `0`, and exact `git diff --check` exited `0`. Exact whole-file Prettier still reports the file's two pre-existing formatting locations; they were deliberately preserved to avoid unrelated churn.
+- Official native Playwright acceptance attached only to the already-running VibeSpace Tauri WebView at `1280x820`: all four controls measure `151.0625px`, computed `min-width: 0px`, `contained=true`, and `nonOverlapping=true`. Final visual evidence: `.codex-evidence/benchmark-filter-overflow-20260829/native-benchmarks-contained.png`.
+- No app start/restart, standalone browser, shared theme edit, process mutation, deployment, commit, push, or unrelated file change occurred. Branch remains `integration/UnifiedChungus-final` at `cf2959cbb4ea228fa403e6337d06eb327e3270ad`; this task's exact ownership is released.
+### 2026-08-29T22:36:32-05:00 — VS-CODEX-ROOT-CHAT-AUDIT-DISCLOSURE-20260829 latency/live-motion extension
+
+- Branch/base: `integration/UnifiedChungus-final` at `cf2959cbb4ea228fa403e6337d06eb327e3270ad`; upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. Existing dirty Chat disclosure work remains owned by this same task and is preserved.
+- Exact added scope: `opencodePersistent.ts/test`, `chatListActivity.tsx/test`, and `chat-list-activity.css`; existing AgenticConsole/CSS/test and evidence ownership continues. Released historical transport/completion-dot locks were inspected and no other active agent owns these paths.
+- Root cause/evidence: native OpenCode status and health are currently fast, but the supervisor still forces a refresh before reusing its already-validated generation. More importantly, the runtime emits a canonical pending/running activity immediately while AgenticConsole intentionally returns `null` for activity blocks, leaving a perceived blank turn until public text or a tool receipt arrives. The completion audit is already truthful but mounted after the transcript.
+- Intended minimum change: reuse a validated warm runtime, overlap only independent baseline/catalog reads while preserving diagnostic stage truth, mount the existing motion vocabulary plus public activity title directly after the latest prompt, move the existing completion audit to that same top-of-turn boundary, and make the existing completion dot a slow soft-blue signal. RLM, SiYuan, Context, models, Fast/2x quality, prompts, permissions, tools, native backend, Composer, and private reasoning remain untouched.
+- Next: executable RED tests for all four boundaries, smallest GREEN implementation, focused/full gates, then official-native Playwright long `/rlm on` task evidence with screenshots/video and reload proof.
+### 2026-08-29T23:30:26.1230114-05:00 — VS-CODEX-ROOT-PR31-CAO-CONTINUATION-20260829-001 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `d1a012e1473a3e843eb1da2ca05b01e8fa3f2b57`, upstream `origin/UnifiedChungus`, 36 commits ahead; no merge/rebase/cherry-pick state. Current worktree contains 1,039 distinct changed paths, with 1,039 staged entries, three paths also unstaged, and zero untracked paths; all are preserved.
+- All prior official native/Chat ownership is explicitly released, and current process truth is zero `jarvis.exe`, Vite `5173`, CDP `9223`, Ollama process, and `11434` listener. Root claims only the official native process lane, task-owned evidence/logs, required execution-state documents, append-only coordination, and exact generated build targets listed in the task lock.
+- Storage preflight found only 2.70 GB free on C: and 1.69 GB on D:. With no VibeSpace/Cargo/Rust process alive, the exact reproducible targets `app/src-tauri/target` (18.08 GB) and `D:\cargo-target` (5.54 GB) are approved for generated-artifact cleanup; source, evidence, dependencies, user data, Git state, and unrelated worktrees remain protected.
+- Two user-authorized Sol-medium read-only lanes completed: the requirements audit confirms Phase 0 and all 32 Major Queue rows remain incomplete at the current worktree, with missing CAO control-plane/Operations Floor/hour/soak work plus Ollama and `/md` contract violations; the native audit established the CDP-overlay launch and exact `jarvis.exe`/WebView identity contract. No subagent changed files, locks, staging, or processes.
+- Backend access truth: Supabase MCP is connected to one `ACTIVE_HEALTHY` project; Stripe MCP is installed but its OAuth grant requires reauthentication. No production data, schema, settings, credentials, or billing state was read or changed.
+- Next: remove only the two verified generated targets, create the execution-state/architecture refresh, start `npm --prefix app run tauri:dev -- --config src-tauri/tauri.cdp.conf.json` with `VITE_DISABLE_OLLAMA_BOOTSTRAP=true`, pin native identity, and run the first official-native Phase 0 reproduction before claiming product code.
+### 2026-08-29T23:41:20.3811875-05:00 — VS-CODEX-ROOT-PR31-CAO-CONTINUATION-20260829-001 native launch checkpoint
+
+- Exact generated cleanup completed through Cargo: 18.1 GiB removed from `app/src-tauri/target` and 5.5 GiB from `D:\cargo-target`; both are reproducible build outputs. No source, evidence, dependencies, Git data, user data, or unrelated process was removed. Post-clean free space was C: 17.15 GiB / D: 6.06 GiB.
+- Required pre-implementation documents now exist at `docs/PR31_EXECUTION_CURRENT_STATE.md` and `docs/PR31_EXECUTION_ARCHITECTURE_MAP.md`, recording the live 32-row disposition, first dependency gates, existing authorities, missing CAO authority, and official native acceptance boundary.
+- The full app launched from this worktree with `VITE_DISABLE_OLLAMA_BOOTSTRAP=true`, `CARGO_INCREMENTAL=0`, `RUST_BACKTRACE=1`, `RUST_LOG=info`, and `npm --prefix app run tauri:dev -- --config src-tauri/tauri.cdp.conf.json`. The clean Rust build finished `703/703` in 6m03s with warnings only; stdout/stderr remain under `.codex-evidence/pr31-cao-continuation-20260829/`.
+- Pinned identity: `jarvis.exe` PID 25708 at the exact worktree path, SHA-256 `008E28F24089A93404A60518B12EC1A493572794F09CC0E1F02F597EAA0A37AB`; root WebView2 PID 29660 is its direct child, owns `127.0.0.1:9223`, and uses `%LOCALAPPDATA%\ai.jarvis.desktop\EBWebView`; Vite PID 16764 owns `[::1]:5173`. Ollama process count and `11434` listener are both zero.
+- The dedicated read-only tester is granted one exclusive 10-second CDP observation before the controller writes the task-owned official-native identity packet. No user data, credentials, provider state, production service, or remote state has been touched.
+
+### 2026-08-30T00:05:00-05:00 — VS-CODEX-ROOT-PR31-CAO-CONTINUATION-20260829-001 Phase 0 SiYuan defect claim
+
+- Official-native Phase 0 reproduced a durable one-file map with one indexed entry, one created node, and a real SiYuan notebook/root document, followed by a terminal `creating_nodes` failure. A direct in-renderer retry captured the raw Tauri rejection as the primitive string `siyuan_transport_unavailable`; Ollama and listener `11434` remained absent.
+- The supervised SiYuan kernel is healthy at PID `12284` on loopback ports `61162` and `6806`. Its log repeatedly searches for missing binding ID `20260829235519-tex7nvx`; no matching `.sy` exists. The map root document survives, but its current five children are only refreshed root metadata.
+- Root cause under test: root-level file entries are appended as blocks inside the map root; the next authoritative root metadata update replaces the document markdown and invalidates those block IDs while IndexedDB retains them. Real transport outages must remain fail-closed and must never be reclassified as stale bindings.
+- Exact added product ownership: `app/src/features/context/siyuanContextMapIntegration.ts` and `.test.ts`, both clean at claim time with no overlapping active lock. Intent is a focused RED regression and the minimum stable document-backed representation for root-level files; nested file block batching remains unchanged.
+- Branch/HEAD remains `integration/UnifiedChungus-final` at `d1a012e1473a3e843eb1da2ca05b01e8fa3f2b57`. All inherited staged/unstaged work, production systems, credentials, other locks/processes, and `server.rs` remain protected.
+
+### 2026-08-30T00:39:00-05:00 — VS-CODEX-ROOT-PR31-CAO-CONTINUATION-20260829-001 native missing-block extension
+
+- Focused renderer TDD is green at `46/46`, and the complete pre-extension Context suite passed `125/125` files / `1352/1352` tests. The patch now keeps new root-level files document-backed, migrates live legacy root blocks with create/checkpoint/retire ordering, uses verified under-root creation in later recovery paths, accepts primitive exact not-found codes, and leaves response-shape/transport failures fail-closed.
+- A stricter official-native fixture deliberately replaced only the task-created fixture's saved node binding with one syntactically valid missing SiYuan ID, then invoked the normal product sync without clearing the binding. The healthy bundled SiYuan 3.8.1 kernel searched the missing tree and returned the renderer-visible primitive `siyuan_transport_unavailable`; product correctly refused to detach it. Before/during safety snapshots remained zero Ollama / zero listener `11434`.
+- Native root cause: `HttpSiyuanTransport::read_envelope` maps every nonzero SiYuan envelope code to `TransportUnavailable`, even for `/api/block/getBlockInfo`'s real missing-tree response. Exact added ownership is clean `app/src-tauri/src/siyuan/client.rs` plus its in-file tests. The correction will classify missing only at the fixed getBlockInfo endpoint, retain generic nonzero-envelope transport failure everywhere else, and be proven RED/GREEN before rebuilding the official binary. `server.rs` and all unrelated native files remain protected.
+
+### 2026-08-30T00:53:00-05:00 — VS-CODEX-ROOT-PR31-CAO-CONTINUATION-20260829-001 cleanup-journal extension
+
+- Native missing classification is RED/GREEN and official-native verified: exact `code=-1`, `data:null`, ID-bearing getBlockInfo not-found is typed as missing; wrong-message/nonzero envelopes remain transport failures. The rebuilt app recovered the injected missing binding through normal product sync to readable child document `20260830001145-odbzdel` beneath root `20260829235518-nzlf9e3`; no manual clear occurred and before/during/after Ollama checks were zero.
+- Independent review found a remaining crash boundary after binding swap and before legacy-block retirement, plus an unsafe generic-create fallback when a native root lacks under-parent capability. Exact added ownership is clean `siyuanBindingStore.ts/.test.ts` for an atomic binding-swap + cleanup receipt in the existing scoped IndexedDB store. Integration will reconcile receipts before normal bindings and fail closed on missing native under-parent authority. No other Context storage or native file enters scope.
+
+### 2026-08-30T01:24:33-05:00 — VS-CODEX-ROOT-PR31-CAO-CONTINUATION-20260829-001 Gateway/RLM query claim
+
+- Commit `c2bdcdbbe535953b9e13b445b818d3c83571ad2b` contains exactly the five prior Context/SiYuan durability files. Focused renderer `49/49`, complete Context `125/125` files / `1354/1354` tests, TypeScript, native client `36/36`, exact formatting, and diff checks passed before commit.
+- Official-native physical hydration now passes all ten assertions: the exact OpenCode DeepSeek/high route persisted a 420-character summary in child document `20260830001145-odbzdel` beneath map root `20260829235518-nzlf9e3`, with zero cleanup receipts and zero Ollama process/listener before and after.
+- The fresh grounded Chat turn still fails Phase 0 citation acceptance. Raw provider evidence shows thirteen real `vibespace_context` calls: search returns a span-complete canonical pointer, but the model repeatedly omits its required bounds from `open`; fail-closed pointer validation rejects the malformed requests, and the public answer consequently has no real receipt/source ID and receives an unverified-link omission.
+- Exact root cause is the native MCP descriptor hiding the already-implemented production `query` operation, while the default single-question prompt directs the provider into low-level search/open. Added ownership is limited to `app/src-tauri/src/harness/tool_gateway.rs`, `app/src/lib/harness/toolGatewayProtocol.ts` and its test, and `app/src/lib/jarvis/promptCompiler.ts` and its test. The existing strict pointer validator remains protected; explicit low-level operations remain supported.
+- Next: add focused RED contracts for descriptor/query guidance and incomplete-pointer rejection, expose the receipt-bearing high-level Gateway/RLM route, run focused and repository verification, rebuild the official native binary, and repeat the same zero-Ollama Phase 0 acceptance.
+
+#### 2026-08-30T01:42:00-05:00 — generated-schema compatibility extension
+
+- The rebuilt official app and fresh OpenCode sessions proved that the active generated plugin schema in inherited staged `app/src-tauri/src/harness/server.rs` exposes `investigate` but not `query`; both native reruns therefore stayed on search/open even after the protected compiler preferred query. The second run did produce several exact span-complete successful opens, confirming pointer authority remains correct, but public receipts/citations and the inspector still failed.
+- `server.rs` contains substantial inherited staged transport/question/SSE work and remains protected. Exact clean ownership therefore extends only to released `toolGatewayProduction.ts/.test.ts`: its existing observed-identity Gateway branch will accept the schema-compatible high-level `investigate` alias as well as `query`. The prompt will prefer exactly one `investigate` call for ordinary non-numbered requests; direct search, direct address, prior-pointer evidence, and numbered search remain unchanged.
+- Official PID `34752`, WebView CDP `9223`, Vite `5173`, and zero Ollama/zero `11434` remained pinned throughout. Next: RED/GREEN the alias, rerun focused gates, and execute a third fresh official-native turn.
+
+#### 2026-08-30T01:47:00-05:00 — provider-turn directive extension
+
+- The third fresh native session still began with exact search despite the protected compiler change. Source inspection found the later and authoritative provider-turn rewrite in clean `app/src/lib/ai/runtime.ts`: every ordinary Context request is currently replaced with an exact `operation="search"`/`limit=5` directive after prompt compilation.
+- Exact clean ownership extends to `runtime.ts/.test.ts` only. The ordinary one-query branch will emit one generated-schema `operation="investigate"` call and require the real Gateway/RLM prompt block and receipt; numbered, mandatory physical-evidence, direct address, and retained prior-pointer branches remain byte-for-byte unchanged. No inherited staged file enters scope.
+
+#### 2026-08-30T01:54:00-05:00 — deep-query facet extension
+
+- Official native Chat now performs exactly one `investigate` call and the Gateway returns a real `required-deep` receipt, but all three current deep searches repeat the whole question with generic suffixes and collapse to the same final-sentence pointer. The answer correctly reports the process/path/ports/invariant facts as unavailable.
+- Exact clean ownership extends to released `gateway/siyuanContextGatewayQuery.ts/.test.ts`. Deep retrieval will retain the original whole question plus two deterministic evidence facets: identity/path/identifier/port details and invariant/revision/canary/acceptance details. Existing three-call bound, concurrency, exact pointer validation, five-item/48-KiB evidence budgets, scoped authority, and focused/exact routes remain unchanged.
+
+#### 2026-08-30T02:10:00-05:00 — VS-CODEX-ROOT-PR31-CAO-CONTINUATION-20260829-001 negated-mutation classifier extension
+
+- The first keyword-facet native run proved a real one-call `investigate` path with a `required-deep` Gateway receipt, three bounded child searches, three hydrated spans, exact OpenCode/DeepSeek execution identity, CDP/renderer ports, zero-Ollama invariant, and revision canary. Its identity span began after the process/profile lines, so the clean deep identity facet was extended with exact worktree-binary, descendant ownership, `msedgewebview2.exe`, and user-data-profile vocabulary; focused query tests remain `9/9` green.
+- Two follow-up native turns retrieved the complete identity and invariant facts, but unexpectedly reverted to low-level search/open. The exact trigger is now reproduced: `requestsReadOnlyContextTool` treats negated safety text such as `Do not write, edit, delete...` as an affirmative mutation, so the authoritative one-call provider rewrite is skipped even though the request is read-only.
+- Exact clean ownership extends to `app/src/lib/jarvis/contextToolIntent.ts/.test.ts`. The fix will recognize only affirmative mutation authority while keeping every real mixed read/write request on the full catalog. No protected generated server, pointer validator, inherited staged file, credential, or production system enters scope; official PID `34752` and zero Ollama/zero `11434` remain pinned.
+
+#### 2026-08-30T02:40:58-05:00 — VS-CODEX-ROOT-PR31-CAO-CONTINUATION-20260829-001 grounded deep-query acceptance
+
+- HEAD remains `c2bdcdbbe535953b9e13b445b818d3c83571ad2b` on `integration/UnifiedChungus-final`; all inherited staged/unstaged work remains preserved. The owned slice now exposes the generated-schema `investigate` alias through the shared Gateway/RLM path, keeps direct/numbered low-level routes intact, strips negated mutation clauses before read-only intent classification, adds deterministic identity/invariant deep facets, hydrates the deduplicated winning span through exact bounded `expand`, and attaches app-verified canonical receipt/source/evidence citations to the provider response through the authoritative OpenCode session identity.
+- Focused RED/GREEN contracts and the combined matrix pass: `6` files, `479/479` tests. Official-native evidence `46-phase0-grounded-canonical-session-result.json` plus `47-grounded-canonical-session-tools.json` records exactly one completed `operation=investigate`, route `deep`, decision `required-deep`, three child searches, one hydrated expansion covering bytes `0-1345`, the exact `jarvis.exe`/descendant WebView/profile/CDP/renderer/page/zero-Ollama facts, and all three preserved canonical `vibespace:context/...` provenance URIs. PID `34752`, descendant WebView PID `18496`, CDP `9223`, Vite PID `16764`/port `5173`, Ollama process count `0`, and listener `11434` count `0` remained pinned.
+- The native driver still reports its known post-completion UI collection race after successful dispatch; direct authoritative chat/tool inspectors independently captured the completed final answer and tool receipt. Raw provider-authored handles are still filtered by the output-reference policy, while the newly correlated app-verified canonical URIs are admitted exactly. Next: exact formatting/type/Rust/diff gates, final owned-path audit, commit only the owned slice, append final provenance, and release only this agent's lock.
+
+#### 2026-08-30T02:51:03-05:00 — VS-CODEX-ROOT-PR31-CAO-CONTINUATION-20260829-001 completed/released
+
+- Exact commit `d990773f` (`feat(context): ground ordinary research through Gateway`) contains only the 12 claimed product/test files: 597 insertions and 108 deletions. Final branch is `integration/UnifiedChungus-final`, HEAD `d990773f`, 38 commits ahead of `origin/UnifiedChungus`; every inherited staged/unstaged file and protected `app/src-tauri/src/harness/server.rs` remains untouched by this commit.
+- Fresh verification passed: TypeScript project build/typecheck exit 0; six-module contract matrix 479/479; production Gateway 19/19; full Context feature suite 1,355/1,355 across 125 files; response pipeline/reference policy 92/92; exact Rust MCP descriptor test 1/1 with 559 filtered; exact-file rustfmt check; owned-path `git diff --check`; commit manifest audit; official-native assertions for one deep required `investigate`, three child calls, one hydrated whole-source expansion, all three canonical provenance URIs, exact process/profile/CDP/renderer/Ollama facts; final live Ollama process and port-11434 listener counts both 0.
+- Evidence authority: `.codex-evidence/pr31-cao-continuation-20260829/46-phase0-grounded-canonical-session-result.json` and `47-grounded-canonical-session-tools.json`; live official identity remained repository `jarvis.exe` PID 34752, descendant WebView PID 18496 with CDP 9223, and Vite PID 16764. The known UI driver post-completion collection race remains documented but does not invalidate the independently captured authoritative completed chat/tool state. This agent's exact product scope is clean; its lock is released after this entry.
+
+#### 2026-08-30T03:00:00-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 claim
+
+- The active goal continues beyond the verified `d990773f` Phase 0 grounded-query slice. Current authority is `integration/UnifiedChungus-final` at `d990773fcebbf688612b3970ca204386e1344dd4`, 38 commits ahead of `origin/UnifiedChungus`, with no merge/rebase/cherry-pick state. The worktree has 1,153 unique uncommitted paths (1,039 staged, four unstaged tracked, 114 untracked); all are preserved. The repository is already a linked worktree and remains the user-mandated isolated execution workspace.
+- The immutable 16-hour run `VS-CODEX-ROOT-PR31-CAO-CONTINUATION-20260829-001` continues with deadline `2026-08-30T15:30:26-05:00`. Two fresh GPT-5.6 Sol Medium/non-Fast lanes are active: a read-only master-requirements completion auditor and a sole official-native Playwright tester. Neither owns product code. Root claims only the two execution-state documents, append-only ledger, isolated SDD/evidence workspace, and this task lock until the next first broken product boundary is proven.
+- Live official identity remains exact worktree `jarvis.exe` PID 34752, direct-child WebView root PID 18496 on CDP 9223 using `%LOCALAPPDATA%\ai.jarvis.desktop\EBWebView`, and Vite PID 16764. Ollama process and listener-11434 counts are both zero. Storage is constrained but usable (C: 8.87 GiB free, D: 6.06 GiB); no cleanup is authorized without a verified exact reproducible target, and all source/Git/evidence/user state remains protected.
+- Next: refresh the current-state/architecture documents from live evidence, merge both parallel reports, inventory every remaining Phase 0/master requirement, extend ownership only to the smallest dependency-ready product/test scope, then execute TDD and grouped native verification without stopping at another partial slice.
+
+#### 2026-08-30T03:18:00-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 scope extension
+
+- Task: `PR31-MASTER-CONTINUATION-AUDIT-AND-NEXT-SLICE`; branch/base HEAD `integration/UnifiedChungus-final` / `d990773fcebbf688612b3970ca204386e1344dd4`.
+- Newly claimed exact product/test files: `app/src/features/chat/markdownCommand.ts` and `app/src/features/chat/markdownCommand.test.ts`.
+- Intent: correct the dependency-ready `/md` mismatch required by the master package: durable creation remains canonical while `attachToChat` defaults false; preserve all nine current MD kinds.
+- Method: focused TDD; add the behavior regression first, observe the expected failure, then apply the smallest production correction and run focused plus adjacent gates.
+- Protected: every other product file, all inherited staged/unstaged/untracked work, live native processes/evidence, credentials, and all scopes owned by other agents.
+- Current dirty truth immediately before extension: 1,154 unique paths; 1,039 staged; four unstaged tracked; 115 untracked. Counts overlap by category.
+- Backend read-only check: Supabase project `tipeobvisjqvpbzcpckh` is `ACTIVE_HEALTHY`; Stripe connector is installed but returns `UNAUTHORIZED` / `oauth_token_invalid_grant` and requires external reauthentication.
+- Next action: RED regression for the generated `/md` file-action payload and post-create instruction, then GREEN minimal change.
+
+#### 2026-08-30T03:03:00-05:00 — `/md` default-attachment slice committed
+
+- Commit `45e6af059726ead3a00b539d48ba6d0e4776a71e` (`fix(md): default generated artifacts to detached`) contains only `app/src/features/chat/markdownCommand.ts` and `.test.ts`: 18 insertions, three deletions.
+- TDD evidence: the new focused test first failed because the generated action still contained `"attachToChat":true`; after the minimal correction, `markdownCommand.test.ts` passed 3/3. Adjacent slash-command coverage passed 30/30 across two files, full TypeScript `tsc -b --pretty false` exited 0, and exact-path `git diff --check` exited 0.
+- Result: `/md` now instructs canonical `files.create` with `attachToChat:false`, reports the absolute path, and permits attachment only when the user explicitly requests it in that turn. All nine existing MD kinds remain unchanged. This closes one contradiction only; Q22 remains `Partial or failing` pending typed/versioned metadata, index transaction, preview/history/rollback, Context MD library/reindex, and native acceptance.
+- Current post-commit state: HEAD `45e6af05`, 39 ahead; 1,154 unique uncommitted paths (1,039 staged, four unstaged tracked, 115 untracked) remain preserved; zero Ollama processes and zero listener on `11434`.
+- Native tester boundary: the official process identity stayed pinned, but the executable predates current HEAD and Vite HMR reloaded during an in-flight Context turn. The turn remained truthfully Running rather than falsely completing; IPC callbacks were invalidated. No HMR-affected run is accepted as immutable current-HEAD evidence.
+- Next: extend the clean Phase 0 acceptance-contract/scripts with the complete saved-failure matrix, commit it, then rebuild/relaunch once and run grouped official-native Playwright on that immutable SHA.
+
+#### 2026-08-30T03:07:00-05:00 — Phase 0 acceptance evaluator/schema scope extension
+
+- Base HEAD: `45e6af059726ead3a00b539d48ba6d0e4776a71e`. Exact clean ownership extends to `contextGatewayAcceptanceSuite.ts/.test.ts` and `contextGatewayAcceptanceSchema.ts/.test.ts`; all four paths were tracked, clean, and unstaged at claim.
+- Plan authority: `.superpowers/sdd/01-MASTER-IMPLEMENTATION-ROADMAP/TASK-001-PHASE0-ACCEPTANCE-CONTRACT.md`. This slice adds a metadata-only proof contract; it does not dispatch providers, change production routing, edit native Rust/transport, restart the official app, or infer proof from screenshots/final-answer prose.
+- Required evaluator coverage: immutable build/runtime binding and no in-flight reload; automatic and explicit RLM parity; empty-first continuation; exact-file/external denial/binary safety; cancel/retry/reconnect/reload/isolation; approved artifact readback; resolvable receipt/source/evidence; exact primary and materially different secondary requested/observed identity; zero Ollama before/during/after.
+- TDD next: add evaluator RED cases first, then minimal types/evaluation; add schema RED cases second, then exact bounded parsing; focused and adjacent verification before exact-file commit.
+
+#### 2026-08-30T03:32:00-05:00 — Phase 0 acceptance evaluator/schema committed
+
+- Exact commit `adaed64b91f92a95465c2bc24686715a1c670553` (`test(context): encode the complete Phase 0 gate`) contains only the four claimed evaluator/schema files: 1,823 insertions and six deletions. The post-commit worktree returned to exactly 1,154 inherited uncommitted paths: 1,039 staged, four unstaged tracked, and 115 untracked.
+- The metadata-only contract fail-closes one immutable official-native run across exact requested/observed primary and materially different authenticated secondary routes, automatic versus explicit `/rlm on`, empty-first continuation, exact-file and denied-directory boundary identity, binary metadata, lifecycle recovery, isolation, artifact readback, canonical citation resolution, and zero Ollama before/during/after. Nested schema parsing rejects unknown or secret-bearing fields.
+- Fresh verification passed: focused/adjacent acceptance matrix 96/96 across four files, TypeScript `tsc -b --pretty false` exit 0, Prettier check, exact-path `git diff --check`, and independent read-only review PASS with no Critical or Important fail-open findings. The intentionally incomplete CLI fixture exited 1 with `status=incomplete`, exact missing gates including `phase0Proof`, and zero failures/blockers.
+- Native monitor windows one through six preserved the pinned official app identity and zero Ollama/listener-11434 state. The pre-commit/HMR-invalidated turn remains truthfully Running and is not accepted as current-HEAD native evidence.
+
+#### 2026-08-30T03:33:00-05:00 — Task 002 native evidence-driver scope extension
+
+- Base HEAD: `adaed64b91f92a95465c2bc24686715a1c670553`. The following four paths were tracked, clean, and unstaged at claim: `scripts/pr31-native-acceptance-harness.mjs/.test.mjs` and `scripts/pr31-native-question-a.mjs/.test.mjs`.
+- Intent: make the existing official-Tauri-only Playwright drivers emit and validate the new bounded Phase 0 proof contract while preserving the production dispatcher, exact native identity, canonical receipts, safety snapshots, and one-logical-dispatch semantics. No Rust/server, product routing, app lifecycle, credentials, or inherited staged scope is claimed.
+- Method: read-only architecture mapping plus TDD; commit exact scripts only after focused tests, contract CLI parsing/evaluation, formatting, syntax/type-adjacent checks, independent review, and immutable manifest audit.
+
+#### 2026-08-30T03:49:00-05:00 — Task 002 native evidence driver committed
+
+- Exact commit `9daf12fdaeb8626e42f63c7c883a124a951233a9` (`test(native): bind Phase 0 evidence to observed runs`) contains only the four claimed driver/test scripts: 1,652 insertions. Post-commit dirty truth returned to exactly 1,154 inherited paths: 1,039 staged, four unstaged tracked, and 115 untracked.
+- The shared harness now assembles and create-once writes a Phase 0 proof only after exact route/scenario/safety sets, one native-run binding, requested/observed identity equality, scenario outcome/lifecycle semantics, the approved D: artifact root and bounded manifest, canonical citation equality, canonical timestamps/URIs, duplicate rejection, and zero Ollama all pass. Secret-bearing values and raw-content keys fail closed.
+- Question A remains backward-compatible by default. Its opt-in Phase 0 path reads production observed authority from the in-page `readToolGatewayObservedExecutionAuthority`, requires observer-supplied catalog/completion/receipt/fallback facts, binds actual terminal state to the claimed outcome, validates canonical/sanitized metadata before JSONL persistence, and never infers upstream identity from UI state.
+- Fresh verification passed: Node driver matrix 37/37, canonical Task 001 evaluator/schema matrix 48/48, both script syntax checks, Prettier, exact-path `git diff --check`, and independent read-only review PASS with no Critical or Important findings. Continuous official-native passive monitoring reached 2,489 seconds / 290 observations with exact PID/profile/CDP identity, zero alert windows, zero new errors, and zero Ollama/11434 violations; the old HMR-invalidated turn remains excluded.
+- Next: inventory and commit the remaining inherited build-affecting PR state in ownership-safe groups before any purported immutable rebuild. A native binary built from the still-dirty worktree cannot honestly be labeled as the exact `9daf12fd` source tree.
+
+#### 2026-08-30T03:52:00-05:00 — Task 003 OpenCode transport/stream group claimed
+
+- Base HEAD: `9daf12fdaeb8626e42f63c7c883a124a951233a9`. No other live lock files remain; the only active lock is this root task. The five inherited staged paths claimed for verification are `app/src-tauri/src/harness/server.rs`, `app/src/lib/harness/OpenCodeTextAccumulator.ts`, its focused test, and `openCodeNativeTransport.ts/.test.ts`.
+- Intent: preserve bounded native SSE transport, safely project oversized tool events, expose exact OpenCode question list/reply/reject routes, reconcile delta-before-snapshot streams without leaking reasoning, and prevent duplicate/stale persisted text. No edits are presumed correct merely because they are staged.
+- Method: independent read-only review plus focused TypeScript/Rust tests, formatting, typecheck, and exact staged-diff audit. Fix only proven defects under TDD; commit only these five paths. All evidence, historical lock deletions, screenshots, unrelated product groups, docs, and user stages remain protected.
+
+#### 2026-08-30T04:01:00-05:00 — Task 003 OpenCode transport/stream committed
+
+- Exact commit `109e4aec451daaa236fe565215cf20728655267b` (`fix(opencode): reconcile native stream events`) contains only the five claimed OpenCode/Rust paths: 683 insertions and 46 deletions. All five paths are clean after commit; the remaining worktree contains exactly 1,149 unique paths (1,034 staged, four unstaged tracked, 115 untracked).
+- TDD closed two independent-review findings: authoritative empty persisted snapshots now discard buffered live deltas, and the renderer SSE queue has exact 256-event / 8 MiB bounds with fail-closed cancellation. Negative question-route tests reject wrong methods, actions, and query keys before native invocation.
+- Final verification passed: 35/35 focused TypeScript tests, 7/7 focused Rust tests, full TypeScript typecheck exit 0, rustfmt, Prettier, exact diff check, and independent review PASS with no Critical or Important findings. Oversized tool events remain safely projected; oversized non-tool/invalid JSON fail closed; reasoning remains excluded from public text.
+- Runtime event: the passively monitored official app exited at approximately `03:52:48-05:00` and auto-reappeared at `03:56:04-05:00` as `jarvis.exe` PID 31620 with direct-child official WebView PID 18188 on CDP 9223. No agent caused either lifecycle transition. Ollama and listener 11434 remained zero. This auto-restarted old build is not accepted as immutable `109e4aec` evidence.
+- Next: adopt and verify the dependency-safe Assistant Bar / instant-command product group. Continue leaving all evidence, screenshots, historical lock deletions, coordination docs, and unrelated staged groups outside product commits.
+
+#### 2026-08-30T04:03:00-05:00 — Task 004 Instant Command / Assistant Bar group adopted
+
+- Base HEAD: `109e4aec451daaa236fe565215cf20728655267b`. The former Instant/Jarvis implementation lock is absent and its ledger scope is no longer live, but it lacks a final completion entry; root explicitly adopts only the 14 currently staged Task A paths: `AssistantBar.tsx/.test.tsx`, `commands.ts`, and the complete 11-file `app/src/features/instant-command/**` set.
+- Intent: verify the inherited deterministic no-model command lane, exact visible terminal targeting, fail-closed ambiguity/staleness behavior, truthful queue receipts, and Assistant Bar integration without changing normal Composer/provider/model/RLM behavior or direct terminal/native authority.
+- Method: independent read-only diff review, focused and adjacent tests, full typecheck, formatting, forbidden-import/source checks, exact staged manifest, and test-first repair of any proven defect. No native dispatch, lifecycle action, provider call, credential access, or Ollama use is authorized by this claim.
+- Protected: all other staged product groups, evidence, screenshots, historical coordination deletions, docs/specs, native processes, voice/theme/benchmark/config paths, and every unrelated dirty/untracked path.
+
+#### 2026-08-30T04:09:00-05:00 — Task 004 corrective terminal-authority scope extension
+
+- Independent review found one Critical fail-open and three Important issues before commit: rejected instant syntax could fall through to legacy/provider execution; duplicate Enter could dispatch twice; multi-open queueing was not atomic; and live-target snapshots discarded native project/process identity.
+- Root extends exact ownership only to the existing terminal authority files needed for a complete fix: `terminalCommandQueue.ts` plus stress test; `terminalRefs.ts`; `paneTree.ts`; `terminalProjectMove.ts`; `TerminalsPage.tsx` plus command test; `TileGrid.tsx`; terminal `types.ts`; `TerminalView.tsx` plus execution test; and native `src-tauri/src/terminal.rs`.
+- Architecture: add one atomic batch queue mutation; classify matched/rejected/unmatched Instant input; guard Assistant execution synchronously; carry the exact native process binding through the queued ref and pane pending state; enforce that binding atomically in native `terminal_write` before any bytes reach the PTY. Existing unbound callers remain unchanged.
+- Method remains TDD: regressions first and observed RED, then minimal production changes, focused/adjacent TypeScript and Rust verification, formatting/typecheck, exact manifest, and final independent re-review. No app interaction, provider/model/network call, credential/production mutation, or Ollama use.
+
+#### 2026-08-30T04:27:00-05:00 — Task 004 Instant Command / terminal authority committed
+
+- Exact commit `ee882603767690707abeede7c592dbe99ab75e94` (`feat(assistant): add atomic instant terminal commands`) contains only the 26 claimed Assistant/Instant/terminal-authority paths: 1,687 insertions and 78 deletions. All 26 paths are clean after commit. Remaining dirty truth is exactly 1,135 unique paths: 1,020 staged, four unstaged tracked, and 115 untracked.
+- The Critical fail-open is closed by a matched/rejected/unmatched classifier: invalid command-shaped input never enters legacy/provider execution. A synchronous ref serializes Enter before the first await. Multi-open builds every queue record before one Zustand mutation, so construction failure leaves no partial queue.
+- Targeted delivery now carries exact native project, process instance, PID, process start, and runtime generation through live snapshot, terminal ref, pane pending state, TileGrid, and TerminalView. Rust `terminal_write` compares all five facts under the terminal-state lock before cloning the writer; a same-session replacement cannot receive stale bytes. Existing unbound callers remain compatible.
+- Final verification passed: focused/adjacent TypeScript 147/147, full typecheck exit 0, Rust terminal matrix 26/26, Prettier, rustfmt, exact diff check, Gitleaks over 87.13 KB with no findings, and independent PASS with no Critical/Important issues. `features/terminals/types.ts` references `WAVE4_CONTRACTS.md`, but no such file exists anywhere in this worktree; no fictional contract was created.
+- The already-running dev generation repeatedly exited and auto-reappeared under HMR/Cargo build contention, including one 78-warning reload/callback-loss window. No agent invoked lifecycle actions. Every such old/dirty-build observation remains non-authoritative; Ollama and listener 11434 stayed zero.
+- Next: adopt and verify the released Jarvis voice-presentation group, then warm theme, benchmark containment, and separate build configuration before one immutable rebuild/native acceptance run.
+
+#### 2026-08-30T04:28:00-05:00 — Task 005 Jarvis voice presentation adopted
+
+- Base HEAD: `ee882603767690707abeede7c592dbe99ab75e94`. The former Instant/Jarvis presentation lock is absent and the ledger transferred the unlocked warm presentation pass without a final completion entry. Root adopts exactly 11 staged paths: five source/test pairs (`JarvisVoiceHeader`, `JarvisVoiceTranscript`, `Orb`, `VoiceActivityWaveform`, `VoiceModelSelector`) plus `voice-module.css`.
+- Intent: verify compact/expanded Jarvis voice presentation, microphone/speaking-reactive waveform and orb semantics, readable transcript/status, truthful model display/selection, reduced-motion/accessibility behavior, and stylesheet containment without changing `VoiceModal`, `JarvisVoiceInputService`, speech capture/TTS, provider routing, model authority, or native lifecycle.
+- Method: independent read-only staged-diff review; focused and adjacent voice tests; full typecheck; exact Prettier/CSS/diff/source-boundary checks; test-first repair of proven defects; exact 11-file commit only after no Critical/Important findings.
+- Protected: voice service/modal/router/conversation/TTS, all other product groups, evidence, screenshots, historical coordination deletions, docs/specs, runtime processes, credentials, production/remote state, and Ollama/11434.
+
+#### 2026-08-30T04:35:00-05:00 — Task 005 Jarvis voice presentation committed
+
+- Exact commit `8b33fb9cf27a0400a8bf8ab0cd972ae41d757a40` (`feat(voice): refine warm Jarvis presentation`) contains only the 11 claimed source/test/CSS paths: 533 insertions and 422 deletions. No evidence, historical lock deletion, coordination document, or unrelated stage entered the commit.
+- Independent review found one Important regression before commit: the shared default/monochrome Orb activity predicate had been narrowed to speaking-only, freezing CallModal's listening/thinking states. A new regression first failed with listening reported idle; restoring the prior non-signal predicate made it green while signal-globe tests continue to prove listening idle/no RAF and speaking active.
+- Final verification passed: focused presentation 16/16, adjacent voice service/router/conversation/TTS authority 53/53, VoiceModal turn/stop/native-smoke 43/43, full TypeScript typecheck exit 0, exact Prettier and cached-diff checks clean, and independent re-review PASS with no Critical or Important findings. Existing jsdom canvas and React `act()` warnings remained non-failing harness output.
+- Passive official-native monitoring through this boundary kept exact old generation `jarvis.exe` PID 26708 / WebView PID 13536 on CDP 9223, the idle overlay untouched, the frozen turn truthful, console/page-error deltas zero, and Ollama/listener 11434 zero. This dev generation is not immutable evidence for current HEAD.
+
+#### 2026-08-30T04:35:30-05:00 — Task 006 warm-theme composer containment adopted
+
+- Base HEAD: `8b33fb9cf27a0400a8bf8ab0cd972ae41d757a40`. Root claims exactly two inherited staged files: `app/src/styles/warm-theme.css` and `app/src/features/appearance/warmTheme.test.ts`.
+- The pair adds one deeply scoped warm/chat/composer/terminal-drop containment rule and its source contract. Independent pre-review PASS confirms the required DOM attributes/nesting already exist at HEAD, no Composer or other product dependency must accompany it, and the pair is independently committable.
+- Required gates: focused warm-theme test, full typecheck, exact Prettier/diff check, immutable two-file manifest, and final review. All other appearance/Composer/theme files, benchmark/config groups, evidence, coordination state, runtime processes, and unrelated stages remain protected.
+
+#### 2026-08-30T04:38:00-05:00 — Task 006 warm-theme composer containment committed
+
+- Exact commit `a1761ea91e290072a90ca41e05800c55339ff05e` (`fix(theme): contain warm composer corners`) contains only `warm-theme.css` and `warmTheme.test.ts`: 14 insertions. No evidence, screenshot, historical lock deletion, docs, or unrelated stage entered the commit.
+- The deeply scoped rule applies only to the existing Warm theme → chat page → composer → terminal-drop nesting, setting the inner drop zone to a 16px radius with clipped paint. No Composer or other theme authority changed.
+- Verification passed: focused warm-theme contract 30/30, full TypeScript typecheck exit 0, exact Prettier and cached-diff checks clean, and independent final review PASS with no Critical or Important findings.
+
+#### 2026-08-30T04:38:30-05:00 — Task 007 benchmark filter containment adopted
+
+- Base HEAD: `a1761ea91e290072a90ca41e05800c55339ff05e`. Root claims exactly `BenchmarkIntelligencePage.tsx` and its test. The separately staged `.codex-evidence/benchmark-filter-overflow-20260829/native-benchmarks-contained.png` is evidence, not a product dependency, and remains protected outside this commit.
+- Independent pre-review PASS found the pair self-contained: min-width constraints cover the grid tracks, all four labels, and their native selects; width/max-width/border-box rules prevent narrow filter overflow without changing benchmark data or selection authority.
+- Required gates: focused test, full typecheck, production build/Tailwind emission, exact Prettier/diff/manifest audit, independent final review, and later official-native narrow/wide viewport verification on the immutable rebuilt SHA.
+
+#### 2026-08-30T04:44:00-05:00 — Task 007 benchmark filter containment committed
+
+- Exact commit `d557448a9b156935d468abbc22b748bcb11ca902` (`fix(benchmarks): contain filter controls`) contains only the benchmark page and its test: 30 insertions and 14 deletions. The separately staged native PNG and all other evidence/coordination/config paths stayed outside the commit.
+- Grid tracks, all four labels, and their native selects now carry bounded shrink/width/box-sizing classes. No provider, ownership, effort, sort, option, benchmark-record, or selection authority changed. Repository formatting added only independently reviewed semantic no-op wrapping.
+- Final verification passed: focused page 5/5 after formatting, full TypeScript typecheck exit 0, production build exit 0, exact Prettier/cached-diff checks clean, and independent final plus post-formatter reviews PASS with no Critical or Important findings. The build emitted existing circular-chunk/dynamic-import/eval/chunk-size warnings but completed successfully. Native narrow/wide visual proof remains deferred to one immutable rebuilt SHA.
+
+#### 2026-08-30T04:44:30-05:00 — Task 008 local-runtime ignore hygiene adopted
+
+- Base HEAD: `d557448a9b156935d468abbc22b748bcb11ca902`. Root claims exactly the staged `.gitignore` delta. Independent review confirms five exact machine-local evidence directory rules are safe and overlap no tracked file.
+- Two inherited runtime-state patterns are too broad: unanchored `context_map.json` and `.vibespace/` also hide nested project fixtures/namespaces. The intended/current artifacts are repository-root runtime state, so the minimal correction is `/context_map.json` and `/.vibespace/`.
+- Required gates: `git check-ignore --no-index -v` positive root/exact-evidence targets and negative nested/sibling controls, zero tracked overlap, exact diff/format/secret check, immutable one-file manifest, and final independent review. Package/CDP config, runtime state, and evidence contents remain protected.
+
+#### 2026-08-30T04:46:00-05:00 — Task 008 local-runtime ignore hygiene committed
+
+- Exact commit `eacfcf92775d49234326ed4caa99598e03b84860` (`chore(git): ignore local native QA state`) contains only `.gitignore`: 11 insertions. Root `/.vibespace/` and `/context_map.json` are ignored without hiding nested per-project namespaces; five exact machine-local native QA output directories are also ignored.
+- Verification passed: two root runtime and five exact evidence positive controls matched; nested runtime and evidence sibling controls did not; tracked overlap was zero; cached diff check was clean; independent final review PASS with no Critical or Important findings.
+
+#### 2026-08-30T04:46:30-05:00 — Task 009 pnpm dependency build policy adopted
+
+- Base HEAD: `eacfcf92775d49234326ed4caa99598e03b84860`. Root claims exactly staged `app/pnpm-workspace.yaml`. The inherited new tree-sitter-json value and pre-existing esbuild value are generated placeholders, not decisions, and cannot be committed as-is.
+- Local-only review proves VibeSpace consumes the shipped `tree-sitter-json.wasm` but never the package's native Node binding, so its install hook must be denied. Vite uses integrity-pinned esbuild 0.21.5 and 0.28.1 and requires their verification/preparation hooks, so only those exact versions are allowed.
+- Local pnpm 11.19.0 rejects a whitespace-bearing union key; the least-ambiguous policy uses explicit `'esbuild@0.21.5': true`, `'esbuild@0.28.1': true`, and `tree-sitter-json: false`. No manifest/lockfile change accompanies the one-file policy.
+- Required gates: local policy parse, focused repository-intelligence tests, typecheck, production build, OSS verification, formatting/diff/secret checks, exact manifest, and independent review. Frozen offline install is permitted only in a disposable clean checkout/worktree and must not mutate the shared dirty workspace.
+
+#### 2026-08-30T05:01:00-05:00 — Task 009 pnpm dependency build policy committed
+
+- Exact commit `8ee61e7b361e847e4e31167ca6d018713c2fe42d` (`chore(deps): constrain install build scripts`) contains only `app/pnpm-workspace.yaml`: three insertions and one deletion. Exact esbuild 0.21.5/0.28.1 hooks are allowed; the unused tree-sitter-json native binding hook is denied.
+- Disposable D: offline/frozen pnpm 11.19.0 install downloaded zero packages, ran both esbuild postinstalls, reported no automatically ignored builds and only tree-sitter-json explicitly ignored, preserved package/lock inputs, and exposed direct binaries reporting the locked versions. Evidence: `.codex-evidence/pr31-master-continuation-20260830/task009-pnpm-policy-gate.json`.
+- Supported root-workspace verification passed: repository-intelligence 13/13, typecheck exit 0, full production build exit 0, OSS metadata consistency PASS, Prettier/diff clean, and independent final review PASS. The app-only disposable compile attempt exposed pre-existing root/app dependency ownership gaps, not a pnpm policy defect; no root npm reinstall was needed to prove allowBuilds.
+
+#### 2026-08-30T05:01:30-05:00 — Task 010 QA-only loopback CDP configuration adopted
+
+- Base HEAD: `8ee61e7b361e847e4e31167ca6d018713c2fe42d`. Root claims the inherited staged `app/src-tauri/tauri.cdp.conf.json`, clean `app/package.json`, and new `scripts/tauri-cdp-config.test.mjs`.
+- Independent review found two Important defects before commit: Tauri's RFC 7396 merge replaces the staged one-entry `app.windows` array and would delete `cold-start-intro` plus `dictation`; port-only browser args do not encode the required loopback bind. Production defaults remain safe because no existing script references the nonstandard overlay.
+- TDD correction: dependency-free merge-contract test first; then repeat the exact base three-window array in the QA overlay, change only main browser args to add `--remote-debugging-address=127.0.0.1 --remote-debugging-port=9223`, and add one nondefault `tauri:dev:cdp` script. Default dev/build/release commands and base Tauri config remain unchanged.
+- Do not launch the QA script yet. Native listener/address/ownership proof belongs to the later immutable rebuilt acceptance window after every build-affecting source/config path is committed.
+
+#### 2026-08-30T05:06:00-05:00 — Task 010 QA-only loopback CDP configuration committed
+
+- Exact commit `765809978ebd6bc395f20a7d07a73cd762bcaaed` (`test(native): isolate loopback CDP QA config`) contains only `app/package.json`, new `tauri.cdp.conf.json`, and new dependency-free merge-contract test: 147 insertions.
+- TDD RED was 0/3: the staged overlay deleted two windows under RFC 7396, lacked an explicit loopback address, and had no named QA activation path. GREEN/final 3/3 preserves the exact base three-window array/order, changes only main browser args, requests `127.0.0.1:9223`, and permits activation only through nondefault `tauri:dev:cdp`.
+- Independent review added release-path coverage and full merged-config parity. Default app/root dev/build scripts, base Tauri config, and `release-windows.ps1` remain CDP-free; the release signing config stays pinned. Tauri CLI help confirms `--config` is merged with default config. Typecheck exit 0, Prettier/diff/source boundary clean, and independent final review PASS.
+- After commit, zero staged source/config paths remain. Exact dirty state is 1,124 unique paths: 1,002 staged, four unstaged tracked, 122 untracked. The staged index is only 970 evidence paths, 17 historical lock deletions, 13 root screenshots, and two docs paths; all remain protected outside product commits.
+- The old dev app auto-replaced itself during this boundary without agent lifecycle action. Current old/non-authoritative generation is repository `jarvis.exe` PID 34508 with official child WebView PID 27920/CDP 9223; it is healthy but not evidence for current HEAD. Ollama process and listener 11434 remain zero.
+- Next: remove only the owned disposable D: package-policy worktree after verifying its registration/path, then perform one immutable current-HEAD rebuild/relaunch and grouped official-native acceptance for CDP loopback ownership/teardown, benchmark narrow/wide containment, and the complete Phase 0 contract.
+
+#### 2026-08-30T05:52:00-05:00 — Task 011 native debug-CRT launch repair adopted
+
+- Immutable Task 010 build at HEAD `765809978ebd6bc395f20a7d07a73cd762bcaaed` completed with controller exit 0. Root and deps `jarvis.exe` are identical at 154,924,544 bytes, timestamp `2026-08-30T10:37:00.5140123Z`, and SHA-256 `98D82E78A23BF7B6AB52F85CC4FCBAF0823746931CFCB94643DE136F6A33464A`; regenerated dist/config/package/Git provenance and an independent build PASS are recorded in `.codex-evidence/pr31-master-continuation-20260830/task010-cdp-native-build-provenance.json`.
+- Exact direct launch PID 31164 failed before Tauri WebView initialization with `Microsoft Visual C++ Runtime Library`: `debug_heap.cpp:904`, `_CrtIsValidHeapPointer(block)`. The executable directly imports `ucrtbased.dll` symbols `_malloc_dbg`, `_free_dbg`, `_strdup`, `_stricmp`, and locale lookup. No WebView, port 9223, Vite/HMR, Ollama, or port 11434 appeared; the dialog remained untouched until evidence capture, then root terminated only PID 31164 and child conhost 32620. Failure evidence is in `task010-native-launch-crt-failure.json`.
+- Root cause is exact and local: locked `espeak-rs-sys 0.2.0` defaults its CMake native build to `Release` yet independently emits `cargo:rustc-link-lib=dylib=msvcrtd` whenever the Rust build has Windows debug assertions; the observed build output emits that line at 3978. Upstream `main` retains the same behavior, so a moving git pin is not a fix.
+- Root claims only `app/src-tauri/Cargo.toml`, `Cargo.lock`, exact vendored `vendor/espeak-rs-sys-0.2.0/**`, and `scripts/espeak-crt-link-contract.test.mjs`. TDD must prove the vendored source is exact 0.2.0 except for removing the erroneous debug-CRT emission, Cargo resolves the patch, release eSpeak/link authority remains unchanged, the rebuilt PE no longer imports `ucrtbased.dll`, and exact native launch creates the official loopback-owned WebView/CDP listener before Playwright attaches. All other source, evidence, historical stages, credentials, production services, and runtime state remain protected.
+### 2026-08-30T05:59:52-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 — Task 011 OSS scope claim
+
+- Branch / HEAD: `integration/UnifiedChungus-final` / `765809978ebd6bc395f20a7d07a73cd762bcaaed`.
+- Expanded exact write ownership to `docs/oss/ESPEAK_RS_SYS_VENDOR_DECISION.md`, `docs/oss/THIRD_PARTY_NOTICES.md`, `docs/oss/licenses/README.md`, `docs/oss/licenses/MIT-espeak-rs-sys.txt`, `docs/oss/licenses/GPL-3.0-or-later-espeak-ng.rtf`, and `scripts/pr31-oss-bundle.mjs`.
+- Intent: document the explicit source-vendoring/local-QA decision for `espeak-rs-sys` 0.2.0 and its embedded GPL-3.0-or-later eSpeak sources; preserve exact provenance and license materials; block production binary distribution until licensing-owner approval; extend the existing OSS gate.
+- Current product source remains uncommitted. No build, native launch, service mutation, cleanup, or production distribution was authorized by this checkpoint.
+- Next: strengthen the full-vendor integrity/clean-checkout contract, add the decision and license bundle, run focused and OSS verification, then request independent review before commit/rebuild.
+
+#### 2026-08-30T06:01:00-05:00 — Task 011 OSS scope correction
+
+- Independent read-only review identified `docs/oss/copied-code-inventory.md` and `docs/oss/sbom-pr31.cdx.json` as the existing authoritative copied-source/SBOM records; both are now claimed.
+- Corrected the planned packaged license path to `docs/oss/licenses/GPL-3.0-or-later-espeak-ng.txt`, byte-identical to the vendored upstream GPLv3 text. Removed the proposed MIT text file from scope because the pinned crate declares `MIT` in Cargo metadata but ships no authoritative standalone MIT notice; no attribution will be invented.
+- `docs/oss/dependency-lock.json` remains untouched because its schema and verifier intentionally model npm SHA512/package-lock entries only.
+- Claimed the existing `scripts/pr31-oss-bundle.test.mjs` alongside its verifier so fixture coverage can prove GPL license-text identity and reject release-policy drift.
+
+#### 2026-08-30T06:09:20-05:00 — Task 011 cross-platform integrity scope
+
+- Claimed new root `.gitattributes` for two exact raw-byte preservation rules: the audited `app/src-tauri/vendor/espeak-rs-sys-0.2.0/**` subtree and `docs/oss/licenses/GPL-3.0-or-later-espeak-ng.txt`.
+- Reason: system `core.autocrlf=true` could otherwise rewrite fixed-hash source/license bytes on a clean Windows checkout. The decision markdown remains normal text; only its semantic status comparison will normalize CRLF to LF and receive explicit CRLF fixture coverage.
+- Rebuild remains withheld pending focused tests and independent PASS.
+
+### 2026-08-30T06:12:10-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 — Task 011 committed
+
+- Commit: `274337ba81f6fe12034c3bbc9ed37f9b7215ab37` (`fix(native): align vendored espeak debug CRT linkage`), parent `765809978ebd6bc395f20a7d07a73cd762bcaaed`.
+- Exact commit: 2,204 paths — 2 config, 2,193 vendor, 3 scripts, 6 OSS records/license files. `app/src-tauri/Cargo.lock` remains ignored/untracked; only the archive-owned inner vendor lock and solution file were force-added.
+- Verification: isolated no-lock Cargo resolution; crates.io archive path parity 2,193/2,193 with zero drift; generated markers/native artifacts forbidden; 2,192 unmodified-file aggregate and exact patched `build.rs` hash; focused contract 5/5; OSS tests 9/9; OSS verifier PASS; Cargo format and non-vendor diff checks clean; GPL copies byte-identical at 35,147 bytes / SHA-256 `8CEB4B9EE5ADEDDE47B31E975C1D90C73AD27B6B165A1DCD80C7C545EB65B903`; exact source/vendor/docs Gitleaks clean; independent review PASS.
+- Release control: local non-distributed `--no-bundle` QA build is allowed. Production object-code distribution remains explicitly blocked pending licensing-owner approval of GPL/static-link obligations and an authoritative wrapper MIT notice.
+- Post-commit dirty state: 1,126 unique paths; 1,002 staged; 4 unstaged tracked; 124 untracked. Exact Task 011 product/OSS scope is clean; unrelated evidence/index state remains preserved.
+- Next: immutable debug/CDP no-bundle rebuild at this exact HEAD with C: fail-closed below 3 GiB, followed by PE import checks before any launch.
+
+### 2026-08-30T06:27:30-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 — Task 011 first rebuild aborted and exact outputs cleaned
+
+- Branch / HEAD remained `integration/UnifiedChungus-final` / `274337ba81f6fe12034c3bbc9ed37f9b7215ab37`; the exact Task 011 source/config/OSS scope stayed clean and its recorded hashes remained unchanged.
+- The immutable command `npm --prefix app run tauri:build -- --debug --no-bundle --config src-tauri/tauri.cdp.conf.json` reached final Jarvis Rust linking with release/static eSpeak search paths and no explicit debug-CRT emission, but C: crossed the fail-closed threshold (about 2.57–2.78 GiB free). Root immediately interrupted the exact build session; controller exit was 1 and no executable was accepted.
+- No app, WebView, loopback 9223 listener, Ollama process, or 11434 listener appeared. The aborted attempt produced no authoritative PE verdict.
+- After read-only path/size/hardlink audit, root removed only rebuildable incomplete outputs: six direct link/temp outputs, 257 matching deps object links, 261 incremental-tree files, eight fingerprint files, and their three now-empty directories. Completed eSpeak/Piper/build-script/dependency caches were preserved. These deleted build artifacts are recoverable only by rebuilding; their exact paths, sizes, timestamps, and key hashes were recorded before cleanup.
+- Independent cleanup audit PASS: all enumerated aborted/stale Jarvis targets absent; completed native caches retained; zero relevant processes/listeners; C: recovered from about 4.397 GiB to 8.895 GiB (9,551,216,640 bytes reported at audit); HEAD and Task 011 scope unchanged.
+- Next: retry the same immutable command under continuous independent C: monitoring and immediate `<3 GiB` abort; on success require root/deps executable parity plus no `ucrtbased.dll`, `_malloc_dbg`, `_free_dbg`, or other debug-allocator imports before any native launch.
+
+### 2026-08-30T06:33:15-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 — Task 011 immutable rebuild PASS
+
+- Exact command at immutable HEAD `274337ba81f6fe12034c3bbc9ed37f9b7215ab37`: `npm --prefix app run tauri:build -- --debug --no-bundle --config src-tauri/tauri.cdp.conf.json`; controller exit 0 after `2m 08s`. Exact npm → Tauri → Cargo/Rust ancestry and `jarvis-voice`, `--debug`, `--no-bundle`, and CDP overlay arguments were independently observed.
+- C: started at 8.895 GiB and never crossed the strict 3 GiB stop boundary; lowest root/independent observed sample was 3.618 GiB. No Jarvis app, WebView, 9223 listener, Ollama process, or 11434 listener existed during the build.
+- Fresh root and deps `jarvis.exe` have exact parity: 154,918,912 bytes; UTC mtime `2026-08-30T11:32:35.1834163Z`; SHA-256 `F4F6A25E269DDE5F721359307CA48C66982BA9A4E97CF720EC7E5BBB54BF7548`. HEAD, Task 011 scope, and source/config hashes remained exact.
+- Visual Studio 2022 Build Tools `dumpbin` dependents/import scan PASS: no `msvcrtd.dll`, `ucrtbased.dll`, debug MSVC runtime DLL, `_malloc_dbg`, `_free_dbg`, or `_CrtIsValidHeapPointer`; only normal release/runtime dependencies such as `api-ms-win-crt-*`, `MSVCP140.dll`, and `MSVCP140_1.dll`. The original debug-CRT launch root cause is absent from this artifact.
+- Next: launch only this exact hashed root executable, require stable official WebView descendant plus loopback-only 9223 ownership and zero Ollama before attaching official Playwright for native acceptance.
+
+### 2026-08-30T06:40:00-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 — Task 012 production Tauri acceptance origin committed
+
+- Exact launch PASS for rebuilt product HEAD `274337ba81f6fe12034c3bbc9ed37f9b7215ab37`: root PID 7608 at SHA-256 `F4F6A25E269DDE5F721359307CA48C66982BA9A4E97CF720EC7E5BBB54BF7548`; official WebView browser PID 616 is its direct child and sole owner of `127.0.0.1:9223`; page identity is `http://tauri.localhost/`, title `VibeSpace`; no CRT dialog/crash, Ollama, or 11434.
+- First official Playwright read-only smoke preserved an exact failure packet: `semantic_wait_timeout` because the harness admitted only `127.0.0.1`/`localhost` page hosts while the no-Vite production Tauri WebView correctly uses `tauri.localhost`.
+- TDD RED proved the exact production origin was rejected. Independent review then identified scheme/port/userinfo hardening; the requested six-case negative matrix failed on wrong scheme, nondefault port, and userinfo before implementation, while hostname prefix/suffix/trailing-dot deception already failed closed.
+- Commit `09e341166480c6c0520c40ee71e5b81472ca317d` (`fix(test): accept exact production Tauri origin`) contains only `scripts/pr31-native-acceptance-harness.mjs` and `.test.mjs`: 44 insertions, one deletion. Production Tauri readiness now requires exact normalized host `tauri.localhost`, protocol `http:`, default port, and empty credentials; existing 127/localhost development acceptance remains separate.
+- Verification: negative matrix 6/6; full harness 30/30; harness plus native-question driver 44/44; Prettier and diff checks PASS; hardened official Playwright smoke PASS against unchanged PID 7608; screenshot 1600×1025, 38,174 bytes, SHA-256 `37c62d22483557784cd095153ac60df2b1180eba60cbb322762281a27cc66931`; independent final review PASS with no Critical/Important findings. The pre-existing cached index remained exactly 1,002 paths before and after the exact commit.
+- Current native shell is at the installed production access sign-in gate with no active cloud session, so chat/benchmark selectors are intentionally absent. Continue only through a supported QA/authenticated path; do not invent credentials or mutate Supabase/Stripe production state.
+
+### 2026-08-30T06:47:00-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 — Task 013 exact OpenCode pointer schema claimed
+
+- Branch / HEAD: `integration/UnifiedChungus-final` / `09e341166480c6c0520c40ee71e5b81472ca317d`. The sole live repository lock remains this root task, and `app/src-tauri/src/harness/server.rs` was already in its exact claimed scope.
+- Preserved official-native evidence identifies a schema/authority mismatch: the generated OpenCode plugin has exposed all four pointer bounds as optional since `f9759e85`, but renderer authority accepts exactly one complete byte or line span. A search-produced pointer lost `byteStart`/`byteEnd` and `open` returned `invalid_request`; later calls preserving the exact byte span returned `ok`.
+- Task 013 will use focused TDD to make the model-visible plugin pointer an exclusive union of complete byte and complete line pointers. It will not change retrieval data, renderer validation, authentication, credentials, Supabase/Stripe state, or current PID 7608.
+- Next: prove the missing generator contract RED, implement the smallest one-file schema correction, then run focused Rust, formatting, diff, and independent review gates before any commit or rebuild decision.
+
+### 2026-08-30T06:56:00-05:00 — Task 013 low-disk verification scope
+
+- The focused Rust test compilation was stopped immediately when C: crossed below the strict 3 GiB floor. Its new executable was a zero-filled invalid PE, so no Rust result was accepted. Independent audit approved removal only of that exact aborted generation; 473 stale direct outputs, six aborted/empty directories, and the stale dep-info were removed, recovering about 1.33 GB while preserving the accepted app executable/PDB, library archives, prior completed tests, native/dependency caches, source, and evidence.
+- Root additionally claims `scripts/opencode-context-pointer-schema.test.mjs` as a dependency-free low-disk regression gate. It must extract only the generated OpenCode plugin raw string from `server.rs`, compare the entire pointer helper to the exact strict byte/line union, and reject every optional span declaration; it must not pass by matching the Rust test fixture copy.
+- The installed `@opencode-ai/plugin` 1.18.16 runtime/JSON-schema matrix already passes both valid variants and rejects no-span, half-span, both-span, and foreign-field inputs; provider JSON emits two exact `anyOf` branches with `additionalProperties: false`. Native replay remains deferred because the current production shell is correctly stopped at unauthenticated access authority.
+
+### 2026-08-30T06:59:00-05:00 — Task 013 exact OpenCode pointer schema committed
+
+- Commit `0f0a926c5e882201026b4dab1436ce81d484b55d` (`fix(opencode): require exact context pointer spans`) contains exactly `app/src-tauri/src/harness/server.rs` and new `scripts/opencode-context-pointer-schema.test.mjs`: 113 insertions, 13 deletions. The generated OpenCode plugin now exposes a strict union of one complete byte-span pointer or one complete line-span pointer, matching renderer authority and preventing the preserved four-field/no-span failure.
+- Verification PASS: dependency-free generated-source regression 1/1; exact installed `@opencode-ai/plugin` 1.18.16 runtime cases 7/7; provider JSON is exactly two strict `anyOf` variants with required byte or line pairs and `additionalProperties: false`; Cargo formatting, Prettier, and exact diff checks clean; independent code and test reviews found no Critical/Important issues. The focused Rust compile was not accepted because the strict C: floor forced an immediate stop before link completion.
+- Cleanup was limited to independently classified, reproducible aborted-test outputs: 473 stale direct files, stale dep-info, and six aborted/empty directories. Accepted `jarvis.exe`/PDB, library archives, prior completed tests, dependencies/native caches, source, and evidence were preserved; accepted executable SHA-256 remains `F4F6A25E269DDE5F721359307CA48C66982BA9A4E97CF720EC7E5BBB54BF7548`; C: recovered to 3.578 GiB.
+- The pre-existing cached index remained exactly 1,002 paths before and after the two-file commit. Native PID 7608, WebView PID 616, loopback-only 9223 ownership, and zero crash/Ollama/11434 state remained stable throughout.
+- Remaining boundary: an actual authenticated native OpenCode replay must prove the model preserves a search-returned pointer through `open`. The separate operation-discriminant schema mismatch is tracked but intentionally outside this pointer-only repair. The installed production access gate remains the correct blocker; no credentials or backend production state were invented or mutated.
+
+### 2026-08-30T07:21:45-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 — live intake and completion-boundary audit
+
+- Branch / HEAD / upstream: `integration/UnifiedChungus-final` / `0f0a926c5e882201026b4dab1436ce81d484b55d` / `origin/UnifiedChungus`; local is exactly 52 commits ahead and zero behind. No push, merge, rebase, cherry-pick, reset, unstage, or unrelated commit occurred.
+- Exact local inventory: 8,547 tracked paths plus 131 non-ignored untracked paths = 8,678 Git-visible paths. Working state is exactly 1,133 unique paths: 1,002 staged, four unstaged tracked, and 131 untracked. Staged scope is 970 evidence paths, 17 historical coordination-lock records, two docs, and 13 root native screenshots; untracked scope is 128 evidence paths, two docs, and this task lock. The four unstaged tracked paths are two evidence fixtures and two coordination/design docs. No loose product source exists outside commits.
+- Backend access recheck: Supabase project `tipeobvisjqvpbzcpckh` is read-only reachable and `ACTIVE_HEALTHY` in `us-east-1` on Postgres `17.6.1.127`. Stripe is installed but returns `UNAUTHORIZED` / `oauth_token_invalid_grant` / `TRIGGER_REAUTHENTICATION`; no Stripe read or write can proceed until external OAuth reauthentication. No credentials, billing state, production data, deployment, or remote service was mutated.
+- Official native state remained stable across repeated independent read-only cycles: exact accepted `jarvis.exe` PID 7608, SHA-256 `F4F6A25E269DDE5F721359307CA48C66982BA9A4E97CF720EC7E5BBB54BF7548`, seven-process official WebView tree/profile, sole `127.0.0.1:9223` owner PID 616, zero crash/dialog signals, zero Ollama process, and zero listener 11434. The binary is still the accepted `274337ba` generation; current HEAD additionally changes `server.rs`, so it is not current-HEAD native proof. C: is 3.572 GiB free and D: 0.252 GiB free; no rebuild was attempted below the strict 3 GiB safety boundary.
+- Phase 0/Q06 first product boundary is the observed execution-identity projection: named effort variants are correctly dispatched and provider-verified, but `opencodePersistent.ts` records `controls.effort ?? provider-default`, losing a variant-backed HIGH; variant-backed Fast similarly collapses to `standard`, and CWD is request-bound but absent from observed identity. Preserved DeepSeek evidence proves this failure; the strict acceptance evaluator does not close it.
+- Queue source corrections: Q05 database paging is implemented at `52d30ea5`; its remaining gate is 20k–100k scale/native acceptance and initial-page contract parity. Q18 durable IndexedDB append is implemented and tested, but bounded database readback and production terminal reload restoration are absent. Q22 `/md` closes only detached-by-default instruction behavior at `45e6af05`; no deterministic typed/versioned/provenance/index transaction, Markdown preview, history/rollback, or stable Chat/Files/Context binding exists. Q23 has only an agent `@` picker; other entity references use separate lossy/transient parsers without a canonical persisted scoped stable-ID contract.
+- Q24/Q25 source truth: durable execution-journal primitives, schedule result linkage, and bounded/private `learning.md` persistence are implemented. Missing is the CAO-specific ingress/parent-goal/dependency/lease/message/control authority, supervise/diagnose/restart/verify/grade loop, exactly-four-check hour gate, outcome-correlated ten-message >=90/100 learner, and truthful Operations Floor upstream state. Current automatic preference evaluation is every 20 meaningful messages.
+- Q31/Q32 remain fail-closed. Commit `274337ba` permits vendored eSpeak source and non-distributed no-bundle QA, but production object distribution remains blocked on licensing-owner GPL/static-link/Corresponding Source/notices approval and an authoritative wrapper MIT notice. CI/release entrypoints do not yet enforce that hold. No clean current-HEAD RC, production bundle, full current-HEAD gates, authenticated native replay, signed updater/Authenticode artifacts, or remote PR/CI delivery proof exists.
+- Documentation truth: `docs/PR31_EXECUTION_CURRENT_STATE.md` and `docs/PR31_EXECUTION_ARCHITECTURE_MAP.md` are materially stale in global HEAD/process/count data, although many row-level incomplete dispositions remain directionally accurate. This checkpoint is append-only factual provenance; no product change or completion claim is made.
+
+### 2026-08-30T07:26:30-05:00 — Task 014 variant-backed OpenCode effort receipt claimed
+
+- Claimed only `app/src/lib/ai/adapters/opencodePersistent.ts` and `.test.ts` at HEAD `0f0a926c5e882201026b4dab1436ce81d484b55d`; both were clean and last changed by `487b89cc` before this claim. No other active repository lock exists.
+- Root cause is evidence-backed: production OpenCode models expose reasoning effort through named variants, dispatch/provider observation verifies that exact variant, but Gateway projection serializes only `controls.effort` and reports `provider-default`.
+- TDD scope is one production-shape variant-only receipt test and the smallest projection correction. Dispatch, provider/model routing, authentication, credentials, backend state, Fast/CWD authority, native PID 7608, and the inherited 1,133-path working set remain protected.
+
+### 2026-08-30T07:34:30-05:00 — Task 014 committed; Task 015 canonical `/md` envelope claimed
+
+- Commit `05ed25b7f5af35e375a6804b413c6ba1f7b4d8c6` contains exactly `opencodePersistent.ts` and `.test.ts`; TDD RED reproduced `provider-default`, then focused 65/65, adjacent 47/47, TypeScript, Prettier, diff, and independent review passed. Inherited cached paths stayed exactly 1,002.
+- Task 015 is limited to clean `markdownCommand.ts` and `.test.ts`: replace the invalid `actionId` example with one canonical parser-compatible `files.create` action fence, serialize the free-form brief against fence injection, and preserve detached-by-default behavior. Typed artifacts/index/history/native acceptance remain later boundaries.
+
+### 2026-08-30T07:40:12-05:00 — Task 015 canonical `/md` envelope committed
+
+- Commit `87ee42337ddad0295e113ffbd3541769735f66e2` contains exactly `markdownCommand.ts` and `.test.ts`: `/md` now emits the canonical fenced `files.create` envelope using `id`, keeps `attachToChat:false`, and JSON-serializes the brief so embedded action fences remain inert.
+- Verification PASS: focused RED then GREEN 4/4; adjacent `/md`/typeahead/routing 34/34; TypeScript, Prettier, and diff check PASS; independent review reported zero Critical/Important/Minor findings. The inherited cached index remains exactly 1,002 paths.
+- Remaining Q22 boundary: this proves deterministic instruction/parser compatibility only; typed/versioned artifacts, index/history/rollback, Composer-to-runtime/model compliance, and current-HEAD native acceptance remain open.
+
+### 2026-08-30T07:42:00-05:00 — Task 016 RepoScope public-catalog privacy gate claimed
+
+- At HEAD `87ee42337ddad0295e113ffbd3541769735f66e2`, root claims only clean `workers/ai-news/src/repositoryTrends.ts` and `.test.ts`. Current refresh accepts authenticated GitHub metadata without requiring `private:false` plus `visibility:"public"`, then upserts it into publicly readable D1; a public-to-private transition can also leave the prior cached row readable.
+- TDD scope: fail closed on missing, inconsistent, internal, or private visibility before constructing/persisting repository details, and purge only an explicitly nonpublic allowlisted repository's cached row. Network/HTTP/JSON failures must retain prior public cache. No deployment, provider mutation, migration, credential, or unrelated worker behavior is in scope.
+
+### 2026-08-30T07:46:30-05:00 — Task 016 committed; Task 017 OpenCode MCP lifecycle claimed
+
+- Commit `b41d0fb859741a470e8fef87afab502ecd2c4aba` contains exactly `repositoryTrends.ts` and `.test.ts`. Explicit `private:false` plus `visibility:"public"` is now mandatory before public D1 upsert; coherent private/internal results purge the exact cached allowlisted ID, while contradictory, missing, malformed, or transport failures perform no write. Focused 14/14, full worker 57/57, worker TypeScript, Prettier, diff check, and corrected independent review PASS. Cached index remains 1,002.
+- Task 017 claims the seven clean OpenCode MCP client/native/UI files listed in the root lock: add exact update/remove lifecycle authority, bounded validation and redaction, explicit remove confirmation, authoritative refresh, and regression coverage. Hosted OAuth and native acceptance remain separate; no provider/service/deployment mutation is authorized.
+
+### 2026-08-30T07:48:00-05:00 — Task 017 released unsupported; Task 018 binary-text admission claimed
+
+- Task 017 made no edits and is released: installed OpenCode is `1.18.23`, and both its official server contract and current upstream route/SDK expose MCP status/add/connect/disconnect (plus OAuth lifecycle), but no server-definition update/remove route. VibeSpace will not invent an unsupported transport contract; Q12's update/remove requirement remains an upstream capability/product-design boundary.
+- Root now claims only clean `app/src/features/context/contextSearchIndexing.ts` and `.test.ts`. TDD will align physical RLM text admission with the existing bounded-tree unsafe-text policy: reject replacement characters, NUL/disallowed C0/C1 controls, DEL, and Unicode line/paragraph separators while preserving graph metadata and ordinary multilingual/tab/newline text. Native replay remains separate.
+
+### 2026-08-30T07:52:00-05:00 — Task 018 committed; Task 019 stale MCP projection claimed
+
+- Commit `63caf9beae497acb0d77070e9cf6a9d97363a68c` contains exactly `contextSearchIndexing.ts` and `.test.ts`. Physical RLM admission now matches the bounded-tree unsafe-text predicate while preserving graph-only nodes. TDD RED reproduced all seven unsafe-control leaks; focused/adjacent 57/57, TypeScript, Prettier, diff check, and independent review PASS. Cached index remains 1,002.
+- Task 019 claims only clean `OpenCodeMcpConnections.tsx` and `.test.tsx`: clear stale server/error/busy projection immediately when the authoritative client or project directory disappears/changes, while existing generation guards continue rejecting late old-runtime results. No transport/API/provider/native changes.
+
+### 2026-08-30T07:59:00-05:00 — Task 019 committed; Task 020 managed-map false file authority claimed
+
+- Commit `7426ff22af300d6438417d4d306d0c5b287793d1` contains exactly `OpenCodeMcpConnections.tsx` and `.test.tsx`. MCP projection is synchronously keyed by OpenCode generation plus exact directory; old rows/errors/actions are hidden before effects and late prior-generation results cannot reappear. TDD RED, focused 5/5, adjacent 56/56, TypeScript, Prettier, diff check, and corrected independent review PASS. Cached index remains 1,002.
+- Task 020 claims the six clean Context tree/page/sidebar files identified by Q15 audit. Scope: remove nonexistent `context_map.json` file/open/drag authority for `siyuan-managed-v1` maps, show truthful internal/official-SiYuan identity plus exact source root, preserve actual child-file behavior and legacy genuinely file-backed records. No source-file mutation, provider, service, or native process change.
+
+### 2026-08-30T08:03:23-05:00 — Task 020 paused cleanly; Task 021 temporary billing-access opt-in claimed
+
+- The user prioritized removing billing as an app-access prerequisite so official native manual testing can proceed. Task 020 is paused with zero product edits.
+- Task 021 claims only clean `app/src/features/access/AccessAppHost.tsx` and `.test.tsx`: change the installed billing/access gate from production-forced to explicit opt-in, preserving the separate authentication boundary, billing state/UI, backend authority, and reversible future enablement. No Stripe, Supabase, deployment, credential, or native-process mutation is authorized.
+
+### 2026-08-30T08:08:34-05:00 — Task 021 committed; Task 020 resumed
+
+- Commit `ad4c369ed7523faba916256a0fca9162dcf42880` contains exactly `AccessAppHost.tsx` and `.test.tsx`. Billing/access verification is now disabled by default in production and remains reversibly enabled only by explicit `VITE_ACCESS_GATE_ENABLED=true`; the separate local-first `AuthGate`, billing surfaces, hosted capability authority, and backend state are unchanged.
+- Verification PASS: focused TDD RED reproduced the production-forced gate; access suites 54/54, TypeScript, Prettier, diff check, and independent security/release review passed. Inherited cached paths remain exactly 1,002.
+- The running accepted PID 7608 predates this commit and cannot prove it. C: is about 3.48 GiB free versus the prior monitored build's 8.895 GiB start and strict 3 GiB abort floor, so no unsafe rebuild/process replacement was attempted. Task 020 resumes in its existing six-file claim.
+
+### 2026-08-30T08:12:45-05:00 — Task 021B live testing access authorized and preflighted
+
+- The user explicitly authorized live VibeSpace access for `vipersel2@gmail.com` with billing disabled for testing. Read-only Supabase preflight confirmed the account exists, is verified/unbanned, already has server-controlled `app_admins` membership, has no feature subscription row, and the deployed project lacks the app-access tables/RPC expected by the running client.
+- Remote scope is limited to applying the repository's exact additive/idempotent `0032_app_access.sql`. It seeds launch gating disabled, returns usable/no-checkout `admin` for this existing admin account (and usable/no-checkout `prelaunch` while disabled), and does not touch Stripe, feature subscriptions, `profiles.tier`, credentials, edge functions, or production files. Post-write verification must prove that exact state before any manual UI action.
+
+### 2026-08-30T08:14:29-05:00 — Task 021B live testing access verified; Task 020 authority scope completed
+
+- Exact local `0032_app_access.sql` applied successfully to Supabase. Verification: launch `enabled=false`; `vipersel2@gmail.com` resolves to `admin` with `canUseApp=true`, `canEdit=true`, `requiresCheckout=false`; zero app-access entitlement rows and zero feature-subscription rows. Stripe was not called and no charge/subscription was created. The intended authenticated security-definer RPC is the only new advisor warning; its self-only contract is explicit in the migration.
+- Official Playwright/CDP on the exact running Tauri page verified title `VibeSpace`, Tauri bridge present, and both access paywall and access-error absent. No screenshot, provider dispatch, credential action, or unrelated UI mutation occurred.
+- Task 020 expands to the clean Inspector and shared right-click helper files plus their focused tests because both independently synthesized virtual `context_map.json` authority outside the original six files. This closes one product-wide invariant in a single milestone rather than leaving a known open/file/drag bypass.
+
+### 2026-08-30T08:30:11-05:00 — Task 020 committed; queue execution continues
+
+- Commit `2b4878799cf1a7b3bb92ab818a1d892fa200aa09` contains exactly the ten claimed Context tree/page/sidebar, Inspector, and right-click implementation/test files. All three virtual SiYuan/V2 map models now fail closed for physical file/open/drag authority, while explicit legacy backing paths and real child-file behavior remain intact.
+- Verification PASS: targeted suites 51/51, corrected boundary suites 29/29, TypeScript, Prettier, diff check, and corrected independent review. Inherited cached paths remain exactly 1,002. Native rebuild remains blocked by proven disk headroom; independent Q24/Q27 audits continue while the next clean product slice is selected.
+
+### 2026-08-30T08:32:00-05:00 — Task 022 canonical plugin context claimed
+
+- Claims exactly clean `app/src/lib/ai/runtime.ts` and `app/src/lib/ai/featureOpenCodeParity.test.ts`. Runtime currently invokes both plugin-context builders through their deprecated fail-closed account-less overloads even though canonical identity is already available. TDD will bind both calls to `resolveAccountIdentity(authState)?.accountId`, preserving empty output when identity is unavailable and changing no credentials, connections, provider/model routing, native process, or backend state.
+
+### 2026-08-30T08:34:42-05:00 — Task 022 committed
+
+- Commit `cb047f2b66817051e4255db5bd8c366abfad42a8` changes exactly `runtime.ts` and `featureOpenCodeParity.test.ts`. Plugin descriptor and status prompt context now use the exact canonical account; missing identity remains empty/fail-closed, and both deprecated two-argument call shapes are forbidden by the boundary test.
+- Verification PASS: focused parity/context 7/7, TypeScript, Prettier, diff check, and corrected independent review. Inherited cached paths remain exactly 1,002; Q28/Q29 read-only audits continue.
+
+### 2026-08-30T08:36:00-05:00 — Task 023 device-preview isolation/lifecycle claimed
+
+- Claims exactly clean `DevicePreviewPanel.tsx` and `.test.tsx`. The scriptable `srcDoc` preview currently also receives same-origin capability and remains mounted while its Workbench panel is minimized. TDD will remove same-origin authority and unmount/recreate the preview on minimize/restore, without changing BrowserPanel native children, preview content, providers, native processes, or backend state.
+
+### 2026-08-30T08:38:15-05:00 — Task 023 committed; Task 024 voice mute claimed
+
+- Commit `c53a30e7613e4d6f3bbb9a41401133f6952bd80d` changes exactly `DevicePreviewPanel.tsx` and `.test.tsx`: scriptable `srcDoc` no longer has same-origin capability, and minimized panels unmount/recreate preview execution. Focused/adjacent Workbench 9/9, TypeScript, Prettier, diff check, and independent security review passed; inherited cached paths remain 1,002.
+- Task 024 claims exactly clean `VoiceModal.tsx` and `VoiceModal.stop.test.tsx`. The visible hands-free `Stop listening` control currently returns without stopping. TDD will disarm/cancel the microphone into explicit `paused`, block late automatic restart, and resume exactly once on user action. The voice lifecycle/privacy skill applies; its new-design-doc step is intentionally skipped because the user explicitly prohibited new planning documentation beyond mandatory coordination checkpoints.
+
+### 2026-08-30T08:52:14-05:00 — Voice hands-free lifecycle milestone committed; Jarvis Chat recovery started
+
+- Commit `2d327142c505513eab02d7928196d45e67ab89a7` changes exactly `VoiceModal.tsx` and `VoiceModal.stop.test.tsx`. The hands-free control now authoritatively pauses/disarms listening, cancels queued partial/silence/restart/cooldown work and pending utterance text, rejects late recognition/reply callbacks, preserves a visible paused state, and resumes exactly once on explicit user action.
+- Verification PASS: focused TDD; full voice `37 files / 299 tests`; TypeScript; production frontend build; Prettier/diff; exact-file Gitleaks; corrected independent voice/privacy review. The accepted native PID predates this commit and the current-head rebuild remains disk-blocked, so no current-SHA native voice claim is made.
+- Before the user-requested Jarvis Chat reproduction, the native lane detected accepted PID 7608 had unexpectedly spawned direct child `ollama.exe` PID 30836 owning `127.0.0.1:11434`. Root verified exact parent/executable/command identity, stopped only that child, preserved Jarvis, and verified 11434 absent. Source inspection identifies unconditional ModelPicker bootstrap as one in-scope Chat/Ollama defect; the next milestone bundles its removal with one official DeepSeek Chat failure packet and the actual Chat root-cause repair.
+
+### 2026-08-30T08:54:00-05:00 — Jarvis Chat recovery milestone claimed
+
+- Claims exactly clean `Composer.tsx` and `Composer.smokeContract.test.ts` initially. The milestone bundles removal of background Ollama startup when merely opening the model picker, preservation of explicit local-send startup, one official `opencode-go/deepseek-v4-flash-vision-exp` failure packet, and the proven Chat dispatch/persistence/cancel/error/recovery repair. Exact ownership will expand only if the captured root cause requires clean additional files. Ollama/11434 must remain absent; no billing, backend, credential, or accepted-process mutation is authorized.
+
+### 2026-08-30T09:18:00-05:00 — Jarvis Chat failure narrowed to optional event-stream recovery boundary
+
+- The exact native game turn reached the exact DeepSeek route and OpenCode persisted assistant text plus a running tool, but VibeSpace failed at `router_adapter_send` because the optional native event iterator rejected before the already-present authoritative status/message poll could reconcile the persisted turn. Task 025 therefore additionally claims the clean `opencodePersistent.ts` and `.test.ts` only: TDD will degrade that failed iterator to polling recovery while preserving dispatch, exact model identity, persistence, cancellation, timeout, approval, and completion gates. Native transport limits, OpenCode data, backend/billing/credentials, and the accepted process remain out of scope.
+
+### 2026-08-30T09:25:00-05:00 — Jarvis Chat recovery milestone committed; artifact-reference milestone started
+
+- Commit `45a9bb1bac6859ffc59116be4369f7f3926d10f9` changes exactly the four claimed Composer/OpenCode adapter product and regression files. Opening the picker cannot start Ollama; explicit local sends retain their bounded bootstrap. If the optional native event iterator fails, authoritative polling now recovers canonical persisted text/tool receipts and pending-question UI, while a polled provider error terminates truthfully rather than hanging or becoming completion.
+- Verification passed: the one exact pre-fix native DeepSeek game attempt captured truthful failed UI plus persisted assistant/question-tool evidence; TDD RED/GREEN; affected `72/72`; TypeScript; Prettier/diff; scoped Gitleaks; corrected independent review. Ollama and 11434 remain absent; cached index remains exactly 1,002. The accepted native PID predates the commit, and current-head build/native rerun is narrowly blocked at 2.805 GiB free on C:, below the established 3 GiB abort floor, with no cleanup authority.
+- Task 026 has started with the existing executable packet for `/md` command creation through canonical artifact persistence, unified `@` reference, and safe Workbench preview; exact clean ownership is being resolved before writes.
+
+### 2026-08-30T09:26:00-05:00 — Task 026 exact clean ownership claimed
+
+- Claims the existing clean Q21-Q23 packet in strict dependency order: `markdownCommand.ts/.test.ts`, `registryFiles.ts/.test.ts`, `artifactProducerAdapters.ts/.test.ts`, `jarvisRepositories.ts/.test.ts`; new `features/references/referenceCatalog.ts/.test.ts` plus `jarvis-command-center/artifactAccess.ts/.test.ts`; `MentionTypeahead.tsx`, new `MentionTypeahead.test.tsx`, `Composer.tsx`, `Composer.paths.test.ts`; and Workbench `types.ts`, `ReferencePanel.tsx`, `integration.test.ts`. Scope is one vertical `/md` success → canonical artifact/index → account-scoped mixed `@` reference → digest-revalidated safe preview/restore workflow. Provider/model dispatch, voice, native browser children, backend/billing/credentials, and filesystem writes beyond existing action authority are excluded.
+
+### 2026-08-30T09:32:00-05:00 — Task 026 non-overlapping parallel ownership split
+
+- Root retains the `/md` canonical file-action artifact/persistence layer. `release_gate_audit` receives only the clean reference-catalog and Chat typeahead/Composer subset. `master_completion_audit` is reserved for only the clean Workbench types/reference/integration subset after its composition handoff. `continuous_native_tester` remains the sole read-only Playwright/CDP controller. All lanes must preserve unrelated work and cannot stage or revert one another's files.
+
+### 2026-08-30T09:38:00-05:00 — Task 026 root scope expanded at the proven production seam
+
+- Bounded inspection confirmed `runtime.ts` still installs a deny-only file artifact authority and `finalizeActionResponse` accepts no artifacts, so the prior candidate manifest alone could never create or attach a canonical `/md` artifact. Root additionally claims the clean source-test pairs for `runtime`, `runner`, `approvalEngine`, `kernelRuntime`, and `kernelTurnCommit`. The required sequence is durable exact action-result projection/re-read, real production authority composition, verified file artifact materialization, then atomic artifact/event/message attachment. This expansion is limited to the proven seam and preserves the parallel Chat/reference and Workbench ownership split.
+
+### 2026-08-30T09:40:00-05:00 — Execution-order interruption applied; existing goal preserved
+
+- Root transfers the complete current Task 026 artifact-persistence diff and the existing Reference/Composer subset to `release_gate_audit` for one atomic `/md` → canonical artifact → mixed `@` workflow. `master_completion_audit` retains the already-green three-file Workbench digest-preview lane and then moves to a newly claimed non-overlapping scheduled-learning batch. `continuous_native_tester` remains the sole Playwright/CDP controller.
+- Root immediately owns only the real Jarvis Chat → exact authenticated OpenCode identity → RLM/Context Gateway → project-scoped SiYuan critical path, with clean-file claims determined after one bounded inspection. Existing HEAD `45a9bb1bac6859ffc59116be4369f7f3926d10f9`, all inherited edits/index entries/processes/evidence, and the zero-Ollama/11434 invariant remain preserved.
+
+### 2026-08-30T09:47:00-05:00 — Native Context failure boundary captured; root clean scope claimed
+
+- The sole native lane proved the exact DeepSeek OpenCode turn completed transport but `vibespace_context` returned `ok=false/code=tool_failed`; the current binary then projected that semantic failure as a completed tool result and completed run. Root claims only the clean Tool Gateway production pair, OpenCode public-timeline pair, and persistent-adapter pair to repair exact main-checkout scoping plus semantic failure truth. Task 026, Workbench, and scheduled-learning files remain exclusively in their implementation lanes.
+- The user-authorized recoverable move of ignored `app/src-tauri/target` build cache from C: to D: was interrupted after preserving about 665 MB at the exact D: destination; source and destination are both retained, and no product file changed. Root will not remove either copy without a separately verified safe boundary.
+
+### 2026-08-30T09:55:00-05:00 — Context scope/failure-truth repair committed; live-activity defect added
+
+- Commit `55f8eda322ad5b17e8ff494241552c97c91ba89d` changes exactly the six claimed Tool Gateway/OpenCode files. Main checkouts now use the exact OpenCode directory when its optional worktree field is absent, and a bounded `vibespace_context` `ok=false` response can no longer be projected as a completed tool receipt or completed protected turn.
+- Verification: TDD RED/GREEN; affected Gateway/OpenCode/router matrix `210/210`; post-format OpenCode boundary `76/76`; Prettier, diff check, and exact-file Gitleaks pass. Global typecheck reached only concurrent Agent A/B diagnostics, which were returned to their owners. The user's newly reported late-batch Chat activity defect is traced to the canonical kernel provider wiring only `onChunk` while storing public tool timeline until provider completion; Agent A already owns that exact runtime seam and is implementing the non-overlapping live projection regression/fix.
+### 2026-08-30T09:36:25-05:00 — VS-SOL-B CAO scheduled-learning contract claimed
+
+- Agent `VS-SOL-B-CAO-SCHEDULED-LEARNING-20260830` claims exactly two new files: `app/src/features/jarvis-memory/caoScheduledLearning.ts` and `.test.ts`, based on HEAD `675a8d4b28769680f17478145d77eeb151408a8e`.
+- Scope is a dependency-free, Schedule-invoked durable learning cursor/state-machine contract: account/schedule binding, immutable schedule anchor, scheduled-vs-manual-force semantics, success-only cursor advancement, idempotent pending recovery after restart, and fail-closed persistence. It introduces no timer/parallel scheduler and carries journal sequence metadata only, never transcript content.
+
+### 2026-08-30T09:54:00-05:00 — VS-SOL-B CAO scheduled-learning contract committed and released
+
+- Commit `f6ef535d621fd16b8ce85d4b5fe3c0f3ceba96ce` contains exactly the two claimed new `caoScheduledLearning.ts/.test.ts` files. The controller is keyed by exact account/workspace/project/schedule/target identity, persists a CAS revision and pending pass before execution, reuses the pass ID after restart, advances the journal cursor only after durable success, and keeps manual-force checks outside the anchored scheduled occurrence count.
+- Verification: TDD RED/GREEN; focused/adjacent `55/55`; scoped Gitleaks `34.52 KB / no leaks`; Prettier and diff check PASS. Full TypeScript reached only concurrent non-owned `runtime.ts` and `kernelRuntime.ts` diagnostics, with zero diagnostics in the committed CAO files. The inherited cached index returned exactly `1002`; the scoped lock is released.
+
+### 2026-08-30 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 preflight checkpoint
+
+- HEAD: `55f8eda322ad5b17e8ff494241552c97c91ba89d` on `integration/UnifiedChungus-final`.
+- Native safety: verified and stopped only legacy app child `ollama.exe` PID 32876; follow-up checks show no Ollama process or listener on port 11434.
+- Storage: recoverably moved the exact ignored `app/src-tauri/target/debug/incremental` cache (4.457 GiB) to `D:/VibeSpace-Testing/preserved-cache-20260830/UnifiedChungus-debug-incremental-remainder`; C: had 36.64 GiB free afterward.
+- Preservation: no product source, commit, cached index entry, legacy app process, or other agent edit changed. The legacy binary cannot identify the new source SHA, so native acceptance remains gated on one new immutable combined build.
+- Next: finish the two non-overlapping implementation lanes, run combined release gates, and hand the immutable build to the sole Playwright/CDP tester.
+
+### 2026-08-30T10:30:00-05:00 — OpenCode/RLM static recovery boundary claimed
+
+- HEAD `af42ccd6`; root claims exactly `scripts/verify-pr31-opencode-rlm-integration.mjs` after `npm run verify:pr31-opencode-rlm` failed on its stale pre-`45a9bb1b` direct `eventIterator.next()` spelling.
+- The product adapter already has focused rejection/recovery tests. This repair changes only the static invariant to require caught optional-stream rejection, the `nextEventOrEof` scheduling wrapper, and authoritative polling after iterator exhaustion. No product/runtime/provider/native/process/credential scope is added.
+
+### 2026-08-30T10:35:00-05:00 — OpenCode/RLM static recovery boundary committed
+
+- Commit `5e638a60` changes exactly `scripts/verify-pr31-opencode-rlm-integration.mjs`. The static release gate now asserts caught optional-stream rejection, `nextEventOrEof` scheduling, authoritative polling after iterator exhaustion, and the current high-level `vibespace_context` policy boundary.
+- Targeted gate passes after the two stale assertions were corrected. Prettier, diff check, and Gitleaks (2.86 KB, zero leaks) pass; the inherited cached index remained exactly 1002 paths.
+### 2026-08-30T10:00:08.5300455-05:00 — VS-SOL-NATIVE-CAO-SCHEDULED-INTEGRATION-20260830 claim
+
+- Task `TASK-CAO-SCHEDULED-INTEGRATION-20260830` begins on `integration/UnifiedChungus-final` at base HEAD `f6ef535d621fd16b8ce85d4b5fe3c0f3ceba96ce` with upstream `origin/UnifiedChungus`; no merge, rebase, or cherry-pick is active. The inherited index has exactly 1002 cached paths and must remain preserved outside the owned scope.
+- Exact scope is eight files: new `app/src/features/jarvis-memory/caoScheduledLearningRuntime.ts` and `.test.ts`; `jarvisSchedules.ts/.test.ts`; `jarvisScheduleRunner.ts/.test.ts`; and `JarvisLearningControls.tsx/.test.tsx`. The minimum metadata pair is required because Schedule serialization/parsing is the sole safe authority for the explicit versioned `mode: cao_supervision` discriminator and policy/target identity.
+- Approved intent: Dexie/CAS persistence keyed by exact account/workspace/project/schedule/target, process-wide exact-scope duplicate exclusion, pending-pass restart recovery, durable learning-journal high-water, dedicated CAO Schedule dispatch only, and a manual `Run check now` path that never changes the anchored scheduled occurrence count. Ordinary schedules remain behaviorally unchanged; malformed/partial CAO metadata fails closed.
+- Protected: committed `caoScheduledLearning.ts/.test.ts`, Workbench, Composer/runtime, every other agent-owned path, native lifecycle/UI, Ollama/11434, credentials/services, and all unrelated dirty/cached state. Next: RED-first focused contract tests, minimal implementation, focused/adjacent tests, TypeScript owned-file diagnostics, Prettier/diff/Gitleaks, independent review, and exact-scope commit.
+### 2026-08-30T10:07:43-05:00 — VS-SOL-B Workbench artifact provider composition claimed
+
+- Based on Agent A commit `af42ccd6b906ec0fe573ce31f3c45ce6e2044852`, agent `VS-SOL-B-WORKBENCH-ARTIFACT-PROVIDER-20260830` claims only `ReferencePanel.tsx` and `integration.test.ts` to bind `resolveAccountJarvisArtifactPreview` into the existing account/id/digest-revalidating provider. No artifact authority, repository, reference catalog, Chat, runtime, URI/navigation, or backing-content file is owned.
+
+### 2026-08-30T10:14:00-05:00 — VS-SOL-B Workbench artifact provider committed and released
+
+- Commit `5b472f0e143b9e30593962ee84eb3aa2cd1fdf54` changes exactly `ReferencePanel.tsx` and `integration.test.ts`. The provider now accepts either the existing explicit resolver seam or the canonical narrow repository port; repository mode calls Agent A's committed `resolveAccountJarvisArtifactPreview` and still revalidates exact account, opaque artifact ID, persisted digest, bounded display metadata, and preview before rendering. URI/path/backing/raw-content authority remains absent.
+- Verification: TDD RED reproduced the missing repository composition; focused boundary `46/46`; adjacent Workbench/artifact `60/60`; scoped Gitleaks `17.22 KB / no leaks`; Prettier and diff check PASS. Full TypeScript reached only the concurrent non-owned missing export in `caoScheduledLearningRuntime.test.ts`, with zero Workbench diagnostics. Cached index returned exactly `1002`; the scoped lock is released.
+### 2026-08-30T10:45:00-05:00 — Task 029 Chat lifecycle authority claimed
+
+- Agent `VS-CODEX-CHAT-LIFECYCLE-20260830` claims the exact clean Chat lifecycle, TabStrip, History, Pet chat, and voice-routing source/test paths listed in its scoped lock, plus six new focused authority/intent files, at base `5b472f0e143b9e30593962ee84eb3aa2cd1fdf54`.
+- Approved boundary: permanent chat deletion requires one single-use exact account/workspace/project/chat/operation receipt that expires and revokes across scope/session changes; History and Pet share that gateway, while TabStrip loses persistence deletion entirely. A versioned durable shared Jarvis chat intent and primary pointer resolve reuse/new/specific chat and reconcile confirmed deletion/recreation. Voice/wake inherit the shared resolver without VoiceModal edits.
+- Excluded: Composer, AI runtime, references/artifacts, Workbench, Schedule/CAO learning, native processes, credentials/services, and every unrelated cached or dirty path. Next: TDD RED for authority and intent contracts, minimal integration, focused/adjacent verification, exact-scope commit.
+### 2026-08-30T11:00:00-05:00 — Task 029 Chat lifecycle authority continuation claimed
+
+- Agent `VS-SOL-CHAT-LIFECYCLE-20260830-02` continues the explicitly transferred preserved uncommitted scope from `VS-CODEX-CHAT-LIFECYCLE-20260830` at HEAD `5a85657ae14767f60b431a8bda8c6f8812e25155`; the old lock remains untouched as provenance.
+- Exact product/test ownership remains the sixteen paths in the new scoped lock. `docs/AGENT_COORDINATION.md` is append-only coordination scope. Cached index, unrelated dirty paths, Composer/runtime/reference, Workbench, Schedule/CAO learning, native processes, credentials, and services remain excluded.
+- Next: recover recorded RED state from the preserved tests, complete minimal integration, run focused/adjacent/typecheck/format/security gates, exact-scope commit, and release only the new lock.
+#### 2026-08-30T11:00:00-05:00 checkpoint
+
+- `VS-SOL-CHAT-LIFECYCLE-20260830-02` completed the transferred implementation across thirteen exact source/test paths. The shared authority is opaque, exact-scope/resource/operation-bound, expiring, revocable, and single-use; History and Pet consume it before persistence deletion; TabStrip close/hotkey only hide the tab projection; durable v1 account/workspace/project intent drives main and voice routing and reconciles deletion/recreation.
+- RED/GREEN packets cover the two new contract modules plus History and Pet project drift, non-destructive tab projection, null-sentinel scope isolation, and unavailable-specific empty-scope fail-closed behavior. Focused verification is `7/7` files and `55/55` tests; adjacent VoiceModal is `31/31`; full TypeScript, Prettier, diff checks, and exact 48.15 KB Gitleaks pass. Cached index remains exactly 1002 paths.
+- Next: exact product/test commit, record SHA, then release only the continuation lock while preserving the original transferred lock.
+#### 2026-08-30T11:02:00-05:00 completion and release
+
+- Commit `9bb407f236d71b36239d1980c1ea91f8e3fcbc7d` (`feat(chat): enforce lifecycle authority`) contains exactly the thirteen owned product/test paths. It was committed with `--only` after shared HEAD advanced to `0395adc0`; no unrelated work was staged or committed.
+- Pre-commit verification: focused `7/7` files and `55/55` tests PASS; adjacent VoiceModal `31/31` PASS; full TypeScript PASS; Prettier and diff checks PASS; exact 48.15 KB Gitleaks reports no leaks. Cached index returned exactly to its inherited 1002 paths after the commit.
+- `VS-SOL-CHAT-LIFECYCLE-20260830-02` releases only its continuation lock. The original `VS-CODEX-CHAT-LIFECYCLE-20260830` lock is deliberately preserved untouched as requested. Remaining official-native combined-SHA acceptance belongs to the root/sole native controller.
+### 2026-08-30T10:20:00-05:00 — VS-SOL-B first-party CAO bootstrap claimed
+
+- Agent `VS-SOL-B-CAO-BOOTSTRAP-20260830` claims the exact clean eight-file scope recorded in its scoped lock at HEAD `5b472f0e143b9e30593962ee84eb3aa2cd1fdf54`. The milestone registers the built-in `jarvis-cao` skill/native identity, adds typed `@CAO`/`@Jarvis CAO` mixed-reference aliases, routes action-oriented natural-language intent through the same bootstrap, binds the learner to Codex CLI `gpt-5.6-terra` at `high`, and projects only compact public status. Existing provider observed-identity enforcement remains authoritative; `runtime.ts` is explicitly excluded.
+### 2026-08-30T10:29:51.1479314-05:00 — VS-SOL-CAO-CANCEL-NATIVE-20260830-02 repair transfer claimed
+
+- Task `TASK-CAO-CANCEL-NATIVE-20260830-02` resumes on `integration/UnifiedChungus-final` at HEAD `5a85657ae14767f60b431a8bda8c6f8812e25155`, upstream `origin/UnifiedChungus`, with no merge, rebase, or cherry-pick active. The inherited cached index is exactly 1002 paths and remains protected.
+- Root explicitly transfers only the preserved modified `caoScheduledLearningRuntime.ts/.test.ts` repair from the still-active `VS-SOL-NATIVE-CAO-SCHEDULED-INTEGRATION-20260830` lane; its lock is preserved untouched. Scope is cancellation ordering: cancel the executing same-scope pass and invalidate already-queued pre-cancel work so it cannot execute or fabricate completion.
+- Next: establish RED/GREEN evidence, run focused runtime/control/runner boundaries, stable full typecheck, Prettier/diff/Gitleaks, commit exactly the two transferred files, then release only this new lock and act as the sole Playwright/CDP controller after root supplies the immutable combined SHA/build. Native app, Ollama, and port 11434 remain untouched during code repair.
+
+### 2026-08-30T10:35:06.5539638-05:00 — VS-SOL-CAO-CANCEL-NATIVE-20260830-02 committed and released
+
+- Commit `836a32abd97270a3f197af167fd0380777a1e25d` (`fix(cao): cancel executing scheduled pass`) changes exactly `caoScheduledLearningRuntime.ts/.test.ts`, 143 insertions and 17 deletions. Exact-scope runtime serialization now owns an abort controller only while execution is active; per-scope cancellation generations invalidate queued pre-cancel operations before they can enter controller durability or fabricate completion.
+- Fresh postcommit evidence: affected runtime/controller/learning-controls/schedule runner/metadata matrix `63/63`; exact Prettier PASS; commit-scoped Gitleaks scanned 9.52 KB with zero leaks; owned worktree paths clean; commit tree contains exactly the two transferred files. Full TypeScript reached only concurrent non-owned `src/features/chat/jarvisChatIntent.ts(121,58)` TS2339 and no CAO diagnostic. The inherited cached index remains exactly 1002 paths.
+- Read-only process checks show no Ollama process and no listener on port 11434. Only this repair lock is released; the pre-existing `VS-SOL-NATIVE-CAO-SCHEDULED-INTEGRATION-20260830` lock remains untouched. Agent now waits for root's immutable combined SHA/build before controlling only the official native VibeSpace WebView through Playwright/CDP; no Computer Use or standalone browser is authorized.
+
+### 2026-08-30T10:38:30.4911089-05:00 — VS-SOL-CAO-SCHEDULE-INSPECTOR-20260830-01 claimed
+
+- Root approved the bounded CAO Schedule inspector design on `integration/UnifiedChungus-final` at HEAD `836a32abd97270a3f197af167fd0380777a1e25d`. Exact scope is `SchedulePage.tsx`, its existing Jarvis lifecycle and smoke tests, plus `scheduleDraftPersistence.ts/.test.ts`; all other Schedule/CAO/Chat/Composer/reference/bootstrap/Workbench files remain protected.
+- Required behavior: visible exact CAO identity/status/model/target/policy and categorical run-history grade; editable prompt/policy/cadence with immutable schedule/project/target identity and stale-save rejection; scoped draft save/restore; pause/resume; confirmed cancel/delete; and Run check now only through existing manual-force authority without changing anchor/count. The inherited cached index is exactly 1002 paths.
+- Next: RED-first draft/lifecycle/smoke regressions, minimal implementation, focused/adjacent tests, stable full typecheck, Prettier/diff/Gitleaks, exact-scope commit, release only this lock, then resume sole Playwright/CDP controller role after root supplies one immutable combined SHA/build.
+
+### 2026-08-30T11:04:31.6828891-05:00 — VS-SOL-CAO-SCHEDULE-INSPECTOR-20260830-01 committed and released
+
+- Commit `0e64f48a775d3e78147f348d431171985870e876` (`feat(schedule): add CAO inspector lifecycle`) changes exactly five owned Schedule inspector/draft files, 656 insertions and 16 deletions. Existing CAO schedules now expose exact status/model/schedule/project/target/policy identity, categorical run-history grade, immutable identity with policy/prompt/cadence editing, stale-revision rejection, workspace-scoped edit draft restore, pause/resume, confirmed edit cancellation/deletion, and Run check now solely through `runManualCaoLearningChecks`.
+- TDD RED proved missing CAO edit validation/equality, inspector UI, and manual-force binding. Fresh verification: focused postcommit `14/14`; affected Schedule/CAO/runtime/runner/appearance matrix `86/86`; full TypeScript PASS; exact Prettier and diff checks PASS; commit-scoped Gitleaks scanned 42.75 KB with zero leaks; commit tree contains exactly the five claimed files; owned worktree paths are clean.
+- The inherited cached index remains exactly 1002 paths. No protected Schedule runner/metadata/LearningControls, Chat, Composer/reference/bootstrap, Workbench, native lifecycle, or service file was edited. Only this inspector lock is released; all pre-existing locks remain untouched. Ollama and port 11434 remain absent. Agent resumes sole official-native Playwright/CDP controller role and awaits root's immutable combined SHA/build.
+
+
+
+### 2026-08-30T10:45:00-05:00 — VS-SOL-CAO-BOOTSTRAP-20260830-02 continuation claimed
+
+- Branch/base: `integration/UnifiedChungus-final` at `5a85657ae14767f60b431a8bda8c6f8812e25155`; upstream `origin/UnifiedChungus`; no merge, rebase, or cherry-pick in progress.
+- Root transferred the exact eight-file scope from `VS-SOL-B-CAO-BOOTSTRAP-20260830`; its old active lock is preserved untouched and this continuation uses its own agent-scoped lock.
+- Claim inspection found no staged or unstaged diff in the transferred scope, while the three promised new files (`cao/bootstrap.ts`, `cao/bootstrap.test.ts`, and `Composer.caoBootstrap.test.ts`) were absent. Work will reconstruct only the approved design in the exact transferred scope.
+- Approved boundary: built-in `jarvis-cao` skill/frozen native identity; distinct mixed-catalog CAO entity with `@CAO` and `@Jarvis CAO`; strict unambiguous action-intent classification; one bootstrap path; fixed `openai-codex/gpt-5.6-terra/high` learner authority with exact requested-vs-observed assertion and no fallback; compact public status without hidden reasoning.
+- Excluded: Schedule/runner, LearningControls, runtime, Chat lifecycle, providers/processes/backend, user-facing OpenCode DeepSeek student/chat identity, and all unrelated cached/staged paths. Next: inspect adjacent contracts, recover TDD intent, run focused RED/GREEN, then exact-scope verification and commit.
+
+### 2026-08-30T10:37:00-05:00 — VS-SOL-CAO-BOOTSTRAP-20260830-02 TDD checkpoint
+
+- Exact owned source/test scope now implements the reconstructed CAO bootstrap contract. RED was observed across all four focused files: missing bootstrap module/API, absent sixth built-in skill, absent mixed-catalog CAO entity/aliases, and absent Composer route override.
+- GREEN: `npm --prefix app run test -- src/features/cao/bootstrap.test.ts src/features/skills/skillCatalog.test.ts src/features/references/referenceCatalog.test.ts src/features/chat/Composer.caoBootstrap.test.ts` passed `4/4` files and `30/30` tests.
+- Composer resolves strict CAO intent before any local bootstrap/model validation, then pins `openai-codex` + `gpt-5.6-terra` + `high`, carries `jarvis-cao`, keeps automatic routing disabled, and emits only `{ identity: 'Jarvis CAO', status: 'queued' }`. Ordinary/ambiguous Chat remains unchanged. Next: adjacent tests, typecheck, formatting/security, exact diff audit, cached-index-safe commit.
+
+### 2026-08-30T10:50:00-05:00 — VS-SOL-CAO-BOOTSTRAP-20260830-02 verification checkpoint
+
+- Adjacent testing caught and corrected one compatibility issue before commit: `jarvis-cao` is now a frozen, directly resolvable native-only skill rather than a sixth editable preset, preserving the established five-preset registry/UI contract. The dedicated `@CAO` mixed-reference entity remains user-visible.
+- Fresh affected matrix passed `8/8` files and `69/69` tests, including bootstrap, catalog, embedded loader, mixed references/typeahead, Composer CAO dispatch, Composer path/reference helpers, and reasoning controls. Exact Prettier check and exact-owned-content Gitleaks (`247.59 KB`, no leaks) passed.
+- Two full TypeScript attempts cleared the owned scope. The latest ended only on concurrent excluded `scheduleDraftPersistence.test.ts:90` TS2353 (`editing` missing from `ScheduleDraft`); the earlier concurrent Chat-lifecycle diagnostic was returned to its owner and is no longer present. Next: retry typecheck after owner progress, audit exact diff/index fingerprint, commit only eight owned paths, then release this lock.
+
+### 2026-08-30T10:58:00-05:00 — VS-SOL-CAO-BOOTSTRAP-20260830-02 committed/released
+
+- Commit `0395adc07b4a8651b24b3d6ec353b8356d218b0a` (`feat(cao): bootstrap native learning authority`) changes exactly the eight transferred product/test paths: new CAO bootstrap contract/tests and Composer integration test, plus Composer, native skill, skill-catalog test, and mixed-reference catalog/test.
+- Result: frozen native `jarvis-cao` identity and native-only skill; distinct `@CAO` entity with `@Jarvis CAO` alias; strict fail-closed action classifier; one identical explicit-reference/natural-language bootstrap; fixed `openai-codex` / `gpt-5.6-terra` / `high` learner route; exact identity assertion contract with no fallback; compact public queued status only. The user-facing OpenCode DeepSeek selection remains unchanged outside the CAO turn.
+- Verification: TDD RED/GREEN observed; fresh affected/adjacent matrix `8/8` files and `69/69` tests PASS; full `npm run typecheck` PASS at shared HEAD immediately before commit; exact Prettier check PASS; exact-owned-content Gitleaks scanned `247.59 KB` with no leaks; `git diff --check` PASS; commit audit shows exactly eight files and owned status clean.
+- Cached-index preservation: before and after the commit, the inherited cached index is exactly `1002` paths with binary patch hash `cdeb8c85fcbd40a5b6ed3051b379a6edc26c20f7`. No unrelated cached/dirty file was staged, committed, reverted, or rewritten.
+- Native/runtime/process verification remains intentionally outside this code lane and is left to the root combined-SHA acceptance controller. Final branch/HEAD: `integration/UnifiedChungus-final` at `0395adc07b4a8651b24b3d6ec353b8356d218b0a`. This continuation releases only `VS-SOL-CAO-BOOTSTRAP-20260830-02`; the old `VS-SOL-B-CAO-BOOTSTRAP-20260830` lock remains untouched.
+
+### 2026-08-30T11:02:00-05:00 — VS-SOL-MD-LIBRARY-AUTHORITY-20260830-03 claimed
+
+- Queue selection: the highest dependency-ready unowned `/md` slice after default non-attachment is Markdown Library authority. Branch/base is `integration/UnifiedChungus-final` at `0395adc07b4a8651b24b3d6ec353b8356d218b0a`; upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick active.
+- Exact clean scope is four new files under `app/src/features/markdown-library/`: `contracts.ts/.test.ts` and `runtime.ts/.test.ts`. Five adjacent requirements are claimed: strict V1 metadata; account/project/root-scoped deterministic physical reindex; content-change-only immutable history; bounded scoped list/filter; and exact rollback with stale-file/index rejection plus compensating restore on lost index CAS.
+- Protected/excluded: root-owned `markdownCommand` and acceptance contracts, Schedule inspector/drafts, Chat lifecycle/delete, Composer/references, database schema/repositories, UI/navigation, runtime/provider/backend, native Playwright/CDP/processes, and all unrelated cached/dirty files. Next: RED-first contract/runtime tests, minimal implementation, focused/boundary/typecheck/format/security, exact four-file commit, cached-index proof, and release only this lock.
+
+### 2026-08-30T11:07:00-05:00 — VS-SOL-MD-LIBRARY-AUTHORITY-20260830-03 TDD checkpoint
+
+- RED was observed for both missing production modules. GREEN now passes `2/2` files and `19/19` tests across strict V1 document/revision parsing, deterministic safe reindex, unchanged-content deduplication, immutable revision append, bounded public list/history projection, exact rollback, stale-file rejection, and compensating restore after lost index CAS.
+- The implementation remains dependency-injected and isolated from root-owned `/md` command/acceptance files and every protected Schedule/Chat/native path. Next: add the repository-rejection/compensation-failure transaction edge, then run focused boundary/typecheck/format/security and exact commit gates.
+### 2026-08-30T11:10:55.6768691-05:00 — VS-SOL-B-CAO-BOOTSTRAP-20260830 partial release / P1 reviewer transfer
+
+- Branch / HEAD: `integration/UnifiedChungus-final` @ `0e64f48a775d3e78147f348d431171985870e876`.
+- Released only `app/src/features/cao/bootstrap.ts`, `app/src/features/cao/bootstrap.test.ts`, `app/src/features/chat/Composer.tsx`, and `app/src/features/chat/Composer.caoBootstrap.test.ts` from the historical CAO lock for the root-directed P1 reviewer lane.
+- The four files were already landed in `0395adc07b4a8651b24b3d6ec353b8356d218b0a`; this checkpoint changes coordination ownership only and does not edit their contents.
+- The historical lock remains active-partial for its other four catalog files. The independent `VS-SOL-MD-LIBRARY-AUTHORITY-20260830-03` lock and four-file Markdown Library scope are unchanged.
+
+### 2026-08-30T11:12:00-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 runtime transfer
+
+- Branch / HEAD: `integration/UnifiedChungus-final` @ `0e64f48a775d3e78147f348d431171985870e876`.
+- Root transfers only `app/src/lib/ai/runtime.ts` and `app/src/lib/ai/runtime.test.ts` to `VS-SOL-CAO-P1-REPAIR-20260830-04` for the reviewed CAO observed-identity fail-closed repair.
+
+### 2026-08-30T11:13:00-05:00 — CAO bootstrap P1 repair claimed
+
+- Agent `VS-SOL-CAO-P1-REPAIR-20260830-04` claims exactly `cao/bootstrap.ts/.test.ts`, `chat/Composer.tsx` with `Composer.caoBootstrap.test.ts`, and `lib/ai/runtime.ts/.test.ts` at base `0e64f48a775d3e78147f348d431171985870e876`, after explicit historical/bootstrap and root/runtime transfers.
+- Repair boundary: preserve the original user-text CAO decision before any Prompt Forge rewrite; carry typed requested CAO identity through the single Composer dispatch; fail closed before success publication unless observed provider/model/connection and resolved effort exactly match `openai-codex/gpt-5.6-terra/high`. Ordinary DeepSeek chat and all unrelated cached/dirty paths remain unchanged.
+- Next: focused RED cases for rewrite escalation and runtime identity mismatch, minimal implementation, focused/boundary/typecheck/format/diff/Gitleaks, exact six-file maximum commit, then release only this lock.
+
+#### 2026-08-30T11:25:00-05:00 — lifecycle P1 repair handoff
+
+- At root direction, historical lock `VS-CODEX-CHAT-LIFECYCLE-20260830` releases/transfers exactly ten clean lifecycle paths to `VS-SOL-CHAT-LIFECYCLE-P1-REPAIR-20260830-05`: `chatLifecycle.ts/.test.ts`, `voiceChatRouting.ts/.test.ts`, `HistoryList.tsx/.test.tsx`, `PetChatSurface.tsx/.test.tsx`, and `jarvisChatIntent.ts/.test.ts`.
+- No lifecycle product/test file was edited, staged, reverted, or committed during this handoff. The historical lock remains `active_partial` only for its six remaining permanent-delete/dialog and TabStrip paths. Current CAO P1 repair ownership and verification continue unchanged.
+
+#### 2026-08-30T11:29:00-05:00 — CAO P1 repair verification checkpoint
+
+- RED proved both reviewed defects: Composer reclassified the Prompt Forge output instead of retaining the original user decision, and runtime published a mismatched `gpt-5.6-sol` CAO response as done; a mismatched medium-effort CAO request also reached the provider.
+- GREEN preserves the original strict decision across rewriting, carries typed requested identity in the existing single send, rejects mismatched request controls before dispatch, and rejects mismatched provider/model/connection/effort before success publication in both legacy and kernel paths. Ordinary sends omit the authority and retain existing behavior.
+- Fresh post-format verification: affected CAO/Composer/reference/skill/reasoning/runtime matrix `8/8` files and `219/219` tests PASS; full TypeScript PASS; exact Prettier and diff checks PASS; exact diff Gitleaks scanned `19.80 KB` with no leaks. Product diff is four files (`Composer.tsx`, its CAO test, `runtime.ts`, and its test), `+257/-24`; bootstrap contract files remain unchanged.
+- Shared HEAD advanced concurrently to `c3fd52d4d9017e8ddc35822a44ea1c83ff5e4edc`; exact owned diff remains intact and the unrelated cached index remains 1002 paths. Next: exact-file commit with cached-index preservation, postcommit audit, then release only the CAO P1 repair lock.
+
+#### 2026-08-30T11:31:00-05:00 — CAO P1 repair committed and released
+
+- Commit `7088760e0dc3e249ea55e9105663b299199d356e` (`fix(cao): enforce bootstrap execution identity`) contains exactly four files: `Composer.tsx`, `Composer.caoBootstrap.test.ts`, `runtime.ts`, and `runtime.test.ts` (`+257/-24`). The transferred bootstrap source/test contract remained unchanged.
+- Result: strict CAO authority is derived once from original user text and exact confirmed references before Prompt Forge; a rejected/ambiguous turn cannot gain authority from rewritten text. Composer carries the frozen requested identity through its existing single `jarvis:send`. Runtime validates exact provider/model/connection/resolved-effort controls before dispatch and validates observed response identity before any done publication in legacy and canonical-kernel paths.
+- Verification: TDD RED/GREEN recorded for rewrite escalation, request mismatch, and response mismatch; fresh affected matrix `8/8` files and `219/219` tests PASS; full TypeScript PASS; exact Prettier/diff PASS; exact Gitleaks `19.80 KB`, no leaks. Exact commit audit PASS and owned files are clean.
+- Cached index remained exactly 1002 paths with binary patch hash `cdeb8c85fcbd40a5b6ed3051b379a6edc26c20f7` before and after the exact `--only` commit. No native Playwright/CDP, provider, service, credential, or unrelated dirty/cached state was touched. `VS-SOL-CAO-P1-REPAIR-20260830-04` is released.
+- The recipient may combine those two files with the four cleanly released CAO/Composer paths. Root will not edit the transferred runtime pair until exact-file commit/release or an explicit handback.
+- No product content, staging, cached index, or process changed at this coordination boundary.
+
+### 2026-08-30T11:14:57.7395232-05:00 — VS-SOL-MD-LIBRARY-AUTHORITY-20260830-03 completed / released
+
+- Exact commit `c3fd52d4d9017e8ddc35822a44ea1c83ff5e4edc` (`feat(markdown): add library reindex and rollback authority`) adds only the four claimed files: `app/src/features/markdown-library/contracts.ts/.test.ts` and `runtime.ts/.test.ts` (829 insertions).
+- Delivered strict exact-key V1 document/revision contracts; account/project/root-scoped deterministic physical reindex with containment, extension, size, duplicate, and index-CAS guards; content-change-only immutable history; bounded metadata-only list/filter plus content-free history projections; and exact rollback with stale-file checks and compensating physical restore on false or thrown repository CAS failure.
+- TDD evidence: missing-module RED; explicit list-limit RED; repository-rejection RED. Final post-commit focused plus `/md` command/file-policy boundary: `4/4` files and `30/30` tests. Full `npm run typecheck` passed. Exact four-file Prettier and cached diff checks passed. Gitleaks scanned 29.21 KB with zero findings.
+- Cached index was preserved byte-for-byte across the exact-file commit: 1002 paths and binary-diff hash `cdeb8c85fcbd40a5b6ed3051b379a6edc26c20f7` before and after. No Schedule, Chat lifecycle/delete, root-owned `/md` command/acceptance, DB/UI/runtime/provider/backend/native/Playwright/CDP/process, or unrelated dirty path was changed.
+- Final branch / HEAD: `integration/UnifiedChungus-final` @ `c3fd52d4d9017e8ddc35822a44ea1c83ff5e4edc`. Release only `VS-SOL-MD-LIBRARY-AUTHORITY-20260830-03`; the historical CAO lock remains active-partial for its four catalog files.
+## 2026-08-30 — Instant command catalog and Calyx seam planning claim
+
+- Agent `VS-CODEX-INSTANT-CATALOG-CALYX-PLAN-20260830` begins read-only source audit and one new implementation-plan document at branch `integration/UnifiedChungus-final`, base HEAD `c3fd52d4d9017e8ddc35822a44ea1c83ff5e4edc`, upstream `origin/UnifiedChungus`, with no merge/rebase/cherry-pick observed.
+- Exact write scope is `docs/superpowers/plans/2026-08-30-exhaustive-instant-command-catalog-and-calyx-seam.md`, this append-only ledger, and the agent-scoped lock. All product/test/runtime files and the external Calyx planning package are read-only.
+- The active root continuation owns the Instant Command implementation files; this planning lane will not edit them. The plan must preserve commit `ee882603`, current command behavior, model/provider selection, approvals, and existing Calyx/VibeSpace authorities.
+
+### 2026-08-30T11:26:00-05:00 — VS-SOL-CHAT-LIFECYCLE-P1-REPAIR-20260830-05 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ `c3fd52d4d9017e8ddc35822a44ea1c83ff5e4edc`, upstream `origin/UnifiedChungus`. Root confirmed and recorded the historical-lock transfer.
+- Exact ten-file scope: `chatLifecycle.ts/.test.ts`, `voiceChatRouting.ts/.test.ts`, `HistoryList.tsx/.test.tsx`, `PetChatSurface.tsx/.test.tsx`, and `jarvisChatIntent.ts/.test.ts`.
+- RED-first repair requirements: scope-valid active reuse plus scope/intent single-flight; exact target-keyed voice/wake creation; target-project-bound destructive authority and per-project reconciliation; absent-vs-malformed durable intent fail-closed distinction.
+- Protected: historical lock's remaining six files, receipt single-use behavior, TabStrip semantics, no duplicate dispatch, ordinary DeepSeek routing, Schedule, native control, all concurrent cached/dirty work and processes. Next: add the four missing failing cases before production edits.
+
+### 2026-08-30 — VS-CODEX-INSTANT-CATALOG-CALYX-PLAN-20260830 completed / released
+
+- Added only `docs/superpowers/plans/2026-08-30-exhaustive-instant-command-catalog-and-calyx-seam.md` (416 formatted lines, SHA-256 `CE27BC840896C5CA60BC198F68523D7EFC7CF1DE7A18218450CAC41091259866`) plus this append-only coordination record; no product, test, runtime, process, service, credential, external Calyx package, staged/cached, or other-agent file was edited.
+- The plan inventories the current `ee882603` foundation; defines a catalog-driven no-routing-LLM expansion across all 20 routes plus terminal, agent, schedule, settings, media, tool, skill, plugin, file, context, project, chat, task, and Workbench families; imposes a truthful under-500-ms receipt deadline; and adds a capability-gated seam to the existing Calyx-derived Terminal Peer Fabric plan.
+- Evidence: source/lock/coordination audit completed; Calyx package and frozen upstream adoption reviewed; official OpenAI multi-agent documentation checked; plan self-review completed; Prettier check PASS; `git diff --check` PASS. No implementation tests were required for this documentation-only task.
+- Honest planning estimates recorded: revised command milestone about 30–40% complete; exact VibeSpace Terminal Peer Fabric about 15–25% complete despite stronger existing prerequisites and an 85–95% upstream behavioral reference; command beta 4–6 weeks solo / 2–3 weeks with three lanes; Fabric production beta 16–24 weeks solo / 8–12 weeks with three lanes.
+### 2026-08-30T11:30:44.2610977-05:00 — VS-SOL-CAO-SCHEDULE-P1-20260830-06 claimed
+
+- Branch `integration/UnifiedChungus-final` at base `c3fd52d4d9017e8ddc35822a44ea1c83ff5e4edc`; upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state.
+- Exact clean scope is `SchedulePage.tsx`, its focused Jarvis lifecycle test, `repositories.ts`, and new `repositories.eventCas.test.ts`. The preserved active scheduled-integration lock and `caoScheduledLearningRuntime.ts/.test.ts` remain untouched.
+- Review repair: selected-row manual-force dispatch through the existing exact-scope runtime export with scheduled CAO/workspace/account identity validation; atomic event `updated_at` CAS for revision-safe mutable editor writes only. Next: focused RED tests, minimal implementation, boundary/typecheck/format/diff/Gitleaks, exact-file commit, release only this lock.
+
+### 2026-08-30T11:38:00-05:00 — VS-SOL-CAO-SCHEDULE-P1-20260830-06 scope checkpoint
+
+- Root approved one exact expansion to existing `SchedulePage.smokeContract.test.ts`; it will replace only the obsolete workspace-wide manual-helper source contract with `runCaoScheduledLearning` plus selected-row `manual_force` authority. Focused UI is 9/9 and two-connection repository CAS is 1/1 after RED/GREEN; full TypeScript exposed only branded-ID diagnostics in the new test, corrected before the fresh gate.
+
+### 2026-08-30T11:59:31.2280014-05:00 — VS-SOL-CAO-SCHEDULE-P1-20260830-06 committed / released
+
+- Commit `cb2516f9b1c359c33884e0ffdc134a3c9258bc1a` (`fix(schedule): bind CAO inspector authority`) contains exactly five files: `SchedulePage.tsx`, its Jarvis lifecycle and smoke-contract tests, `repositories.ts`, and new `repositories.eventCas.test.ts` (331 insertions / 73 deletions).
+- `Run check now` now rejects missing account/workspace, cross-workspace, malformed non-CAO, and paused rows; one valid click constructs the exact account/workspace/project/schedule/target/anchor scope and calls only `runCaoScheduledLearning` with `trigger: 'manual_force'`. Sibling schedules are never enumerated, and scheduled anchor/count authority is unchanged.
+- CAO editor saves now use one Dexie transaction to compare `updated_at`, derive a patch from the current row, and write only if the revision remains exact. Immutable CAO schedule/project/target identity is revalidated; the current saved model identity is preserved rather than restored from stale editor state.
+- TDD RED observed exact-row runtime never called, paused row completing through the workspace-wide helper, and missing repository CAS; GREEN/final affected boundary is 13 files / 96 tests, postcommit focused is 3 files / 12 tests, full TypeScript exits 0, exact Prettier/diff checks pass, and Gitleaks scanned 23.19 KB with no leaks. Owned/protected paths are clean; inherited cached index returned from 1007 to exactly 1002 after commit.
+- Concurrent Markdown Library commit advanced shared HEAD to `5f64f3a5bc81cfb5e268acd94195744a9ddd4159` after this exact commit; `cb2516f9` is an ancestor. Interim official native PID 32840 / WebView 25756 remains running untouched; Ollama process count and port 11434 listener count are zero. Final combined-SHA native acceptance remains pending root handoff.
+
+### 2026-08-30T11:36:08.4555868-05:00 — VS-SOL-MD-LIBRARY-P1-REPAIR-20260830-06 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ `7088760e0dc3e249ea55e9105663b299199d356e`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. No live lock overlaps the four clean Markdown Library source/test files.
+- Exact scope: `app/src/features/markdown-library/contracts.ts/.test.ts` and `runtime.ts/.test.ts`. Repair remove/re-add revision identity plus full-next validation; recover rollback across the file/index crash window and reconcile throw-after-commit truth; add clamped stable-cursor metadata-only history pagination.
+- Preserve scope/traversal/content-dedupe and false/throw-before-commit compensation. All adapters/schema, `/md` command/acceptance, UI, Schedule, Chat, native control, processes, and unrelated dirty/cached paths remain protected. Cached index baseline remains 1002 inherited paths. Next: RED-first regressions, minimal repair, focused/boundary/typecheck/format/diff/Gitleaks, exact-file commit, release only this lock.
+
+### 2026-08-30T11:46:43.6312984-05:00 — VS-SOL-CHAT-LIFECYCLE-P1-REPAIR-20260830-05 TDD / verification checkpoint
+
+- RED reproduced all four reviewed failures: cross-scope and intent-drift active/inflight reuse, duplicate concurrent voice creation, mixed-project History/Pet reconciliation, and malformed durable intent fallback. GREEN now keys lifecycle work by exact account/workspace/project/intent/options, invalidates stale work after scope or intent drift, verifies active row ownership and primary/specific identity, single-flights voice/specialist creation per exact target with a pre-create reread, and binds destructive receipts/reconciliation to actual target projects.
+- Final expanded lifecycle boundary is `8/8` files and `93/93` tests, including `VoiceModal.turn` 31/31, TabStrip 4/4, and permanent receipt authority 3/3. Exact Prettier and diff checks pass; Gitleaks scanned 118.88 KB with zero findings before the final intent-drift assertion, and a fresh exact scan is next.
+- Full TypeScript reported no diagnostics in the ten owned files. The fresh repository-wide gate is presently blocked only by concurrent Markdown Library work (`runtime.ts:564`, missing new `pendingRollback` field); that file is owned by `VS-SOL-MD-LIBRARY-P1-REPAIR-20260830-06` and remains untouched. Shared HEAD advanced to `7088760e0dc3e249ea55e9105663b299199d356e`; no intervening commit touches this lane's ten files.
+
+#### 2026-08-30T11:47:00-05:00 — Markdown Library P1 repair TDD checkpoint
+
+- RED reproduced the reviewed failures independently: remove/re-add committed duplicate revision identity and made the next read invalid; complete-next generation overflow reached repository CAS; history returned an unbounded array; repository acknowledgement loss compensated a committed rollback; and a reloaded authority left a prepared target file divergent from indexed truth.
+- GREEN retains deleted-path immutable revision truth and advances only on changed content, validates the complete replacement snapshot before CAS, exposes clamped document-bound cursor pages with metadata-only items, and adds a strict durable rollback preparation inside the repository snapshot.
+- Rollback now prepares before file mutation, validates all final records before mutation, aborts pending file state on reload, preserves false/throw-before-final compensation, and rereads authoritative state to accept a final CAS that committed before throwing. Fresh focused transaction and pagination slices pass; exact four-file scope remains isolated. Next: full focused/boundary/typecheck/format/diff/Gitleaks and exact-file commit.
+
+#### 2026-08-30T11:59:34.3298179-05:00 — Markdown Library P1 repair committed / released
+
+- Commit `5f64f3a5bc81cfb5e268acd94195744a9ddd4159` (`fix(markdown): harden history and rollback recovery`), rollback `5f64f3a5^`, contains exactly the four claimed Markdown Library source/test files (`+585/-60`). Parent `cb2516f9` includes the concurrent Schedule owner's completed commit; no unrelated path was staged or committed by this lane.
+- Result: physical delete/re-add retains deterministic immutable revision truth without duplicate keys and validates the complete candidate snapshot before repository CAS. Public history is metadata-only, descending, capped at 200, and paginated with strict document-bound stable cursors.
+- Rollback persists a strict prepared record before file mutation; reload/read aborts and clears incomplete file state; false and throw-before-final repository outcomes compensate to indexed truth; throw-after-final-commit is accepted only after authoritative repository plus physical digest reconciliation. Malformed preparation, stale external content, compensation failure, and unresolved recovery fail closed.
+- Verification: all required RED/GREEN cycles observed; fresh focused plus `/md`/file-policy boundary `4/4` files and `37/37` tests PASS; postcommit owned `2/2` files and `27/27` tests PASS; full TypeScript PASS after the concurrent Schedule owner corrected its own isolated diagnostic; exact Prettier/diff checks PASS; exact-diff Gitleaks scanned 33.62 KB with no leaks.
+- Exact commit audit lists only the four owned paths and owned status is clean. The cached index was preserved: it began at 1002 paths/hash `cdeb8c85fcbd40a5b6ed3051b379a6edc26c20f7`, transiently reached 1007 while the Schedule owner prepared its commit, and returned through that owner's commit to the same 1002/hash before and after this exact commit. No native control, adapter/schema, UI, Schedule, Chat, service, credential, or unrelated dirty path was touched. `VS-SOL-MD-LIBRARY-P1-REPAIR-20260830-06` is released.
+
+### 2026-08-30T11:50:34.4976863-05:00 — VS-SOL-CHAT-LIFECYCLE-P1-REPAIR-20260830-05 completed / released
+
+- Exact commit `5e1075dd7b4c4e488b97b2afa10a851502234dbb` (`fix(chat): bind lifecycle authority to exact scope`) contains only the ten transferred lifecycle source/test files, 673 insertions and 142 deletions.
+- Active chat reuse now verifies exact workspace/project and durable primary/specific intent; account/workspace/project/intent/options-keyed work invalidates after scope or intent drift. Jarvis and specialist voice creation is exact-scope/target single-flight with a pre-create repository reread. History and Pet bind receipts to actual target projects, revalidate target ownership, use authorized deletion, and reconcile every actual project in mixed batches. Absent intent defaults while malformed/unsupported persisted intent is an explicit fail-closed state.
+- TDD RED covered all four review findings. Final expanded boundary: `8/8` files and `93/93` tests; post-commit owned focused: `5/5` files and `55/55` tests. Exact Prettier and diff checks pass. Fresh Gitleaks scanned 120.98 KB with zero findings.
+- Full TypeScript was attempted twice after owned tests were green and reported no owned diagnostics; the final attempt stops only at concurrent `app/src/features/markdown-library/runtime.ts:564` because `pendingRollback` is temporarily missing during `VS-SOL-MD-LIBRARY-P1-REPAIR-20260830-06`. This lane did not touch that file. Root should rerun the repository-wide gate after the Markdown repair lands.
+- Cached index is byte-for-byte preserved across the exact commit: 1002 paths and hash `cdeb8c85fcbd40a5b6ed3051b379a6edc26c20f7`. Final branch / HEAD: `integration/UnifiedChungus-final` @ `5e1075dd7b4c4e488b97b2afa10a851502234dbb`. Release only this repair lock; historical permanent-delete/TabStrip ownership remains untouched.
+
+### 2026-08-30T11:55:00-05:00 — VS-SOL-CAO-OBSERVED-IDENTITY-P1-20260830-07 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ `5e1075dd7b4c4e488b97b2afa10a851502234dbb`, upstream `origin/UnifiedChungus`; no merge/rebase state. Prior CAO runtime ownership is completed/released and root explicitly transferred this repair.
+- Exact clean scope: `app/src/lib/ai/runtime.ts` and `app/src/lib/ai/runtime.test.ts`. Legacy CAO completion must consume the exact terminal request/session-bound provider completion receipt; request-selected connection/effort and synthesized response identity are not observation authority. Abort and canonical voice cancellation must win over late missing/mismatched receipts.
+- Router callback already carries provider, connection, model, effort, request, and session identity, so router files remain excluded unless TDD proves otherwise. Preserve ordinary DeepSeek routing, one accepted-send dispatch, all concurrent work/cached index, and no native control. Next: RED-first legacy/kernel/late-abort/voice-cancel regressions, minimal repair, focused/boundary/typecheck/format/diff/Gitleaks, exact-file commit.
+
+### 2026-08-30T12:17:00-05:00 — VS-SOL-CAO-OBSERVED-IDENTITY-P1-20260830-07 TDD / verification checkpoint
+
+- RED proved three independent authority failures: a mismatched terminal completion receipt still published legacy success; exact success lacked a stable runtime request/session binding; and a late mismatched response after abort published `error`. A separate mutation check restored the old kernel assertion order and reproduced canonical voice cancellation becoming `error` before restoring the cancellation-first fix.
+- GREEN gives every CAO legacy request the persisted assistant ID as request ID, binds exactly one stable observed provider session, freezes terminal completion evidence, and publishes only after exact provider/connection/model/effort assertion. Request-side connection/effort and synthesized `LLMResponse` identity are no longer observation authority. Abort state now wins catch classification, and kernel abort/canonical voice-cancel checks precede envelope identity assertion.
+- Post-format focused runtime CAO + ordinary DeepSeek boundary is 8/8; router/Composer/bootstrap terminal-evidence and classification boundary is 20/20; full TypeScript exits 0; exact Prettier, diff check, and Gitleaks pass (`25.95 KB`, no leaks). Diff is only `runtime.ts/.test.ts`; cached index baseline is 1002 paths, tree `c79376aa35cf95099c5cec54a0f9db9989835b9b`. Next: exact two-file commit, postcommit verification, final release checkpoint.
+
+### 2026-08-30T12:19:00-05:00 — VS-SOL-CAO-OBSERVED-IDENTITY-P1-20260830-07 completed / released
+
+- Exact commit `3b1a318c5007b16090629fbbc64e0ced607c55d7` (`fix(cao): bind terminal execution evidence`) contains only `app/src/lib/ai/runtime.ts` and `app/src/lib/ai/runtime.test.ts` (`510 insertions`, `24 deletions`).
+- Legacy CAO success now requires an exact terminal completion receipt bound to the persisted assistant request ID and stable observed provider session, with provider/connection/model/reasoning effort taken only from that receipt. Missing, stale, cross-request/session, or mismatched evidence fails closed before publication. Abort state wins catch classification, and kernel abort/canonical voice cancellation wins before envelope identity enforcement.
+- Verification: TDD RED/GREEN including the old-order voice mutation; post-format runtime CAO plus ordinary DeepSeek `8/8`; router/Composer/bootstrap boundary `20/20`; full TypeScript PASS; exact Prettier and diff checks PASS; Gitleaks scanned `25.95 KB` with no leaks; postcommit runtime CAO/DeepSeek `8/8` PASS. Cached index remains 1002 inherited paths with neither runtime file staged. Final branch/HEAD: `integration/UnifiedChungus-final` @ `3b1a318c5007b16090629fbbc64e0ced607c55d7`.
+
+### 2026-08-30T12:03:25.7183252-05:00 — VS-SOL-MD-ROLLBACK-SERIALIZATION-P1-20260830-08 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ `5f64f3a5bc81cfb5e268acd94195744a9ddd4159`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. Prior Markdown repair ownership is completed/released and no live lock overlaps the two clean files.
+- Exact scope: `app/src/features/markdown-library/runtime.ts` and `runtime.test.ts`. Repair exact-scope live-operation ownership so ordinary reads cannot recover or clear a prepared rollback still owned by its writer, and reject active documents whose revision is below the highest retained revision while preserving deleted-document orphan history.
+- Native app control remains paused. Next: RED-first concurrency and retained-revision regressions, minimal implementation, focused/boundary/typecheck/format/diff/Gitleaks, exact-file commit, then release only this lock.
+
+#### 2026-08-30T12:18:23.0745796-05:00 — Markdown rollback serialization TDD / verification checkpoint
+
+- RED reproduced both P1s: an active revision 1 document with valid retained revision 2 resolved through `list`, and deferred rollback file CAS allowed concurrent list/history/reindex/new-authority reads to race durable recovery into terminal divergence.
+- GREEN adds module-wide FIFO ownership keyed by normalized account/project/root around every complete public operation. A live prepared rollback cannot be recovered by same-scope reads, including a newly constructed authority, while a later authority with no live owner retains existing durable reload recovery. Snapshot validation now requires each active document to equal its highest retained revision; revisions for deleted documents remain valid orphan history.
+- Fresh boundary: `4/4` files and `39/39` tests PASS; full `npm run typecheck` PASS; exact Prettier and diff checks PASS; Gitleaks scanned both owned files (43.62 KB total) with no findings. Concurrent CAO commit advanced shared HEAD to `3b1a318c5007b16090629fbbc64e0ced607c55d7` without touching this lane; cached index remains exactly 1002 inherited paths. Next: exact two-file commit and postcommit verification.
+
+#### 2026-08-30T12:19:09.6286054-05:00 — Markdown rollback serialization committed / released
+
+- Exact commit `32c47d188f8c4f3595e4757af43db29d2e91d648` (`fix(markdown): serialize rollback authority`), parent `3b1a318c5007b16090629fbbc64e0ced607c55d7`, contains only `app/src/features/markdown-library/runtime.ts` and `runtime.test.ts` (`+144/-1`).
+- Same normalized account/project/root operations now execute FIFO across authority instances, preventing ordinary list/history/reindex calls from claiming recovery of a live prepared rollback. No-live-owner durable reload recovery, throw-after-commit reconciliation, cursor caps, document/path isolation, and deleted-path retained history remain covered. Active metadata below its highest retained revision fails closed.
+- Verification: final boundary `4/4` files / `39/39` tests PASS; full TypeScript PASS; exact Prettier/diff PASS; precommit file scans and postcommit Gitleaks PASS; postcommit focused `1/1` file / `13/13` tests PASS. Commit audit is exactly two files, both clean; cached index returned to exactly 1002 inherited paths. Native app was not controlled. This lock is released; sole native Playwright/CDP role remains pending root's final immutable binary handoff.
+
+### 2026-08-30T12:25:10.3844503-05:00 — VS-SOL-CAO-BUFFERED-PREVIEW-P1-20260830-11 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ `d8c83847490f5acb7a65a03acdf8fc808fa5482a`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. Prior CAO observed-identity ownership is completed/released and both exact runtime files are clean with no overlapping live lock.
+- Exact scope: `app/src/lib/ai/runtime.ts` and `runtime.test.ts`. Buffer/suppress CAO legacy chunks, placeholder/tool projection, speech, and kernel preview until exact terminal request/session receipt or canonical envelope identity passes; mismatched/missing/cancelled work publishes no untrusted content, valid completion publishes once, ordinary DeepSeek remains progressive.
+- Native app remains untouched. Next: RED-first streaming regressions, minimal implementation, focused/boundary/typecheck/format/diff/Gitleaks, exact-file commit, release only this lock.
+
+#### 2026-08-30T12:44:50.8123025-05:00 — CAO buffered preview TDD / verification checkpoint
+
+- RED proved mismatched and missing terminal receipts published provisional CAO chunks/tool parts and then embedded them again in the error stamp. GREEN treats CAO as a buffered exact-result route: legacy chunk/speech flush and provisional tool writes stay suppressed; failure/cancellation stamps contain only the runtime-owned suffix; exact receipt acceptance produces one trusted final text/tool write. Kernel provider preview/activity suppression is keyed by exact account/run ownership and released in `finally`, covering valid and mismatched/cancelled envelopes without touching ordinary runs.
+- Focused runtime is `9/9` PASS (eight CAO identity/cancel/kernel cases plus explicit progressive OpenCode Go DeepSeek), Composer/bootstrap is `18/18` PASS, and router terminal-evidence negative is PASS. Exact Prettier/diff checks PASS; Gitleaks scanned both owned files (680.10 KB total) with no findings.
+- Full TypeScript was attempted twice. The first saw unowned Instant/Fabric files mid-creation; the second stabilized to only two unowned `terminalPeerFabricTool.ts:73-74` implicit-any diagnostics and no owned/runtime diagnostic. Root directed exact commit with this blocker recorded and will run authoritative final-SHA typecheck. Shared HEAD advanced through pet-only `95d35e32` and Markdown-only `df27ba45`; neither touches this scope. Cached index remains exactly 1002 inherited paths. Next: exact two-file commit atop current HEAD, postcommit focused check, release only this lock.
+
+#### 2026-08-30T12:46:41.1586700-05:00 — CAO buffered preview committed / released
+
+- Exact commit `e800f40e0bf133970233521ecc5f35a1e818e314` (`fix(cao): buffer output until identity passes`), parent `df27ba456f3f72b8055c5acdedc2ae83f9ec9327`, contains only `app/src/lib/ai/runtime.ts` and `runtime.test.ts` (`+146/-3`).
+- Legacy CAO provisional text, tool chronology, and speech remain private until the exact terminal request/session evidence and four-field execution identity pass; valid completion publishes once, while mismatch/missing/cancel stamps never echo provider content. Canonical kernel previews and provisional tool activity are suppressed by exact account/run ownership until the envelope returns, with cleanup in all outcomes. Explicit OpenCode Go DeepSeek coverage proves ordinary progressive streaming remains unchanged.
+- Verification: affected runtime `9/9` PASS before and after commit; Composer/bootstrap `18/18` PASS; router completion-evidence negative PASS; exact Prettier/diff PASS; owned-file and postcommit Gitleaks PASS. Full typecheck has no owned diagnostics and remains externally blocked only by unowned Terminal Fabric `terminalPeerFabricTool.ts:73-74` implicit-any diagnostics; root owns final clean-SHA rerun. Exact commit audit is two files, both clean; cached index exactly 1002. Native app was not controlled. This lock is released and sole native Playwright/CDP role remains pending final immutable handoff.
+
+### 2026-08-30T12:05:55.6148185-05:00 — VS-SOL-SCHEDULE-MANUAL-CLAIM-P1-20260830-09 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ `5f64f3a5bc81cfb5e268acd94195744a9ddd4159`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state and no live overlap on the four clean repair files.
+- Exact scope: `SchedulePage.tsx`, `SchedulePage.jarvisLifecycle.test.tsx`, `repositories.ts`, and `repositories.eventCas.test.ts`. Manual force must atomically claim/validate the current persisted clicked CAO row and derive scope only from that current truth; pause/delete/retarget/metadata/revision drift after render must not run.
+- All event mutations must advance the CAS token monotonically, including identical wall-clock milliseconds, while CAO editor patches remain current-row-derived and preserve model/CAO identities. Smoke contract is excluded unless a behavior assertion must change. Cached index baseline is 1002 paths/hash `cdeb8c85fcbd40a5b6ed3051b379a6edc26c20f7`; no native control. Next: RED-first regressions, minimal repair, focused/boundary/typecheck/format/diff/Gitleaks, exact-file commit and own-lock release.
+
+### 2026-08-30T12:16:45-05:00 — VS-SOL-SCHEDULE-MANUAL-CLAIM-P1-20260830-09 scope checkpoint
+
+- RED/GREEN: four stale-row cases (pause, delete, retarget, and same-token metadata drift) now fail closed through an atomic current-row CAS claim; focused lifecycle plus event-CAS is 15/15. The same-millisecond repository regression first failed because no transactional ordinary-update method existed and now passes with a monotonic revision.
+- Boundary gate: Schedule + event CAS + reminder claims reached 134/135; the sole failure is the pre-approved conditional smoke contract asserting `scheduleAnchorAt: event.start_at`, the rendered-row authority deliberately removed by this repair. No active lock claims `SchedulePage.smokeContract.test.ts`, so exact scope expands only to that test and its assertion will require `claimed.start_at`; all other scope remains excluded.
+
+### 2026-08-30T12:22:30-05:00 — VS-SOL-SCHEDULE-MANUAL-CLAIM-P1-20260830-09 completed/released
+
+- Commit `d8c83847` (`fix(schedule): claim current row before manual run`) contains exactly five approved files: `SchedulePage.tsx`, its lifecycle and smoke-contract tests, `repositories.ts`, and `repositories.eventCas.test.ts` (170 insertions / 21 deletions). Manual force now atomically validates/claims the persisted clicked row and derives all runtime scope from that claimed truth; pause, delete, retarget, revision drift, same-token metadata drift, or account/workspace drift fail closed without dispatch.
+- Ordinary event updates now transact from current persisted truth and advance `updated_at` by at least one even when wall-clock time is unchanged, so stale CAO edits cannot pass a same-millisecond token. Exact clicked-row isolation, CAO/model identity, and ordinary Schedule behavior remain covered.
+- RED evidence: stale pause/delete/retarget cases initially dispatched and the same-millisecond repository case failed with `repository.update is not a function`. Final post-format gates: focused lifecycle + event CAS 15/15; full Schedule + event CAS + reminder boundary 18/18 files and 135/135 tests; full app TypeScript exit 0; exact Prettier, diff check, and Gitleaks (`12.37 KB`, no leaks) pass. Exact commit audit lists only the five files and they are clean.
+- Cached index remained byte-for-byte unchanged across the exact `--only` commit: 1002 paths and binary patch hash `cdeb8c85fcbd40a5b6ed3051b379a6edc26c20f7`. No unrelated dirty/cached file, native control, CAO runtime, provider/model identity, or external state was touched. Final owned commit/HEAD at audit: `d8c83847`; release only this lock.
+
+### 2026-08-30T12:30:30-05:00 — VS-SOL-LIFECYCLE-AUTHORITY-P1-20260830-12 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ `d8c83847490f5acb7a65a03acdf8fc808fa5482a`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. Root assigned the five independently proven lifecycle findings. Historical lock `VS-CODEX-CHAT-LIFECYCLE-20260830` explicitly released the ten lifecycle paths and remains untouched; no live lock claims clean `repositories.ts` or its clean chat-delete outcome test.
+- Exact scope: chat lifecycle, Jarvis intent, voice routing, History, and Pet source/test pairs plus `repositories.ts` and `repositories.chatDeleteOutcome.test.ts`. Repair exact active-ID validation, intent/version-keyed stale-flight rejection, transactional create rollback on scope/intent drift, transactional target project+revision deletion authority, actual-project reconciliation, and null-only absent intent parsing.
+- Protected: permanent-delete authority/dialog and one-shot semantics, historical lock's remaining files, TabStrip, Composer/runtime/ordinary DeepSeek dispatch, Schedule/CAO, native control, and all unrelated dirty/cached state. Cached baseline is 1002 paths / binary patch hash `cdeb8c85fcbd40a5b6ed3051b379a6edc26c20f7`. Next: one RED regression per finding before production edits, then focused/boundary/typecheck/format/diff/Gitleaks and exact-file commit.
+
+### 2026-08-30T12:24:00-05:00 — VS-SOL-MD-SCOPE-KEY-REENTRANCY-P1-20260830-10 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ `d8c83847490f5acb7a65a03acdf8fc808fa5482a`, upstream `origin/UnifiedChungus`; no merge/rebase state. Prior Markdown ownership is completed/released and both runtime files are clean.
+- Exact scope: `app/src/features/markdown-library/runtime.ts` and `runtime.test.ts`. Repair Windows drive/UNC root aliases so the serializer uses the same physical case-insensitive identity as document paths. Same-scope nested repository/file-port callback behavior will be deterministic and deadlock-free, with the outer lease always released.
+- Preserve FIFO, live prepared-rollback exclusion, no-live-owner reload recovery, cross-scope concurrency, active=max revision validation, orphan history, all unrelated dirty/cached state, and no native control. Cached index baseline is 1002 inherited paths. Next: RED-first mixed-case aliases plus nested list/history/reindex/rollback, minimal repair, gates, exact two-file commit.
+
+### 2026-08-30T12:34:31-05:00 — VS-SOL-MD-SCOPE-KEY-REENTRANCY-P1-20260830-10 completed/released
+
+- Result: commit `df27ba456f3f72b8055c5acdedc2ae83f9ec9327` on `integration/UnifiedChungus-final` (current HEAD; based after unrelated pet commit `95d35e32`). Exact commit contains only `app/src/features/markdown-library/runtime.ts` and `runtime.test.ts`; owned paths are clean.
+- Repair: scope FIFO and snapshot identity now use platform-aware physical `pathKey`, folding mixed-case Windows drive and UNC roots into one scope. Direct same-scope calls from repository/file-port callbacks deterministically reject with `markdown_library_scope_reentrant`, avoiding deadlock while preserving outer lease release and ordinary FIFO/cross-scope behavior.
+- TDD/verification: RED was 4 failures / 13 passes (drive alias, UNC alias, repository callback timeout, file-port callback timeout). Focused runtime suite passed 17/17 before and after commit; boundary contracts/runtime/command/reference suite passed 41/41; full TypeScript check passed; Prettier write/check and `git diff --check` passed; exact two-file Gitleaks scan reported no leaks.
+- Preservation: cached index remained 1002 inherited paths with name-list hash `1b98994d361da75026ec8bb05d328a75e9d1b1c7`; all unrelated staged/unstaged files, locks, processes, and native control were untouched. This agent-scoped lock is completed/released and retained for provenance.
+
+### 2026-08-30T12:42:00-05:00 — VS-SOL-PET-RENDERER-P1-20260830-13 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ `df27ba456f3f72b8055c5acdedc2ae83f9ec9327`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. External pet ownership is released, the four exact files are clean, and no live lock overlaps them.
+- Exact scope: `app/src-tauri/src/pets.rs`, `app/src/bootstrapPet.tsx`, `bootstrapPet.test.tsx`, and `bootstrapRoute.test.ts`. Repair hidden-until-configured native overlay truth and newly-created failure cleanup; restore overlay/panel module-evaluation isolation with no stranded fallback.
+- Preserve the single native window labels, animated Pixi renderer, panel reopen, current PetChatSurface lifecycle work, all unrelated dirty/cached state, and no native Playwright/CDP. Cached baseline is 1002 inherited paths / name-list hash `1b98994d361da75026ec8bb05d328a75e9d1b1c7`. Next: RED-first focused tests, minimal implementation, gates, exact commit, release only this lock.
+
+### 2026-08-30T12:53:22-05:00 — VS-SOL-PET-RENDERER-P1-20260830-13 completed/released
+
+- Exact commit `72ed3dd418251387d2268779298062012ebcdc6b` (`fix(pets): make native bootstrap truthful`) contains only `app/src-tauri/src/pets.rs`, `app/src/bootstrapPet.tsx`, `bootstrapPet.test.tsx`, and `bootstrapRoute.test.ts`, based after unrelated Instant Command/Terminal Fabric commit `a1a99e5b`. Owned paths are clean.
+- Native truth: the overlay WebviewWindow is born hidden, Windows success requires `SetWindowPos(HWND_TOPMOST, ...).is_ok()` plus observed visibility, and failures destroy a newly-created window or hide a reused one. Single labels, Pixi playback, panel reuse/reopen, geometry, and topmost behavior remain intact.
+- Route isolation: synchronous `mountPetSurface` now constructs only the selected lazy overlay or panel loader under a null transient Suspense boundary. Overlay never evaluates MiniPanel/AuthGate/PetChatSurface/Composer/Dexie and panel never evaluates overlay; no static/image bootstrap fallback is rendered.
+- TDD/gates: eager-import baseline failed all 3 routing tests and Rust assertions rejected visible-at-build/unchecked failure cleanup. `cargo test --lib pets::tests::` passed 32/32; frontend focused/boundary passed 6 files / 29 tests; postcommit Rust regression 1/1 and frontend focused 3 files / 15 tests passed. Prettier, cargo fmt, diff check, and exact-diff Gitleaks (`10.48 KB`, no leaks) passed.
+- External blockers: full app typecheck reached only unowned `terminal-peer-fabric/terminalPeerFabricTool.ts:73-74` implicit-any diagnostics, with no owned-file error; root will run the authoritative clean-final-SHA typecheck. An initial unfiltered Cargo test exhausted the Windows paging file while compiling unrelated `terminal_cli_contract`; the bounded `--lib pets::tests::` suite compiled and passed. Cached index remained 1002 paths / hash `1b98994d361da75026ec8bb05d328a75e9d1b1c7`; no native control or unrelated state was touched.
+
+### 2026-08-30T12:58:00-05:00 — VS-SOL-TERMINAL-PEER-TYPECHECK-20260830-15 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ `72ed3dd418251387d2268779298062012ebcdc6b`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. The integrated tool is at `app/src/features/tools/terminal-peer-fabric/terminalPeerFabricTool.ts` (the task's shorter terminals path was descriptive), is clean, and has no overlapping live owner.
+- Exact scope: the Terminal Peer Fabric command-port source and its focused test only. Diagnose the two strict implicit-any callbacks, preserve preloaded/capability fail-closed behavior and exact native request envelopes, then run focused tests, full typecheck, format/diff/Gitleaks, exact commit, and release this lock.
+- All UI/dialog/card, Instant Command, verifier/native lanes, unrelated dirty/cached state, and native control are excluded. Cached baseline remains 1002 inherited paths / hash `1b98994d361da75026ec8bb05d328a75e9d1b1c7`.
+
+### 2026-08-30T13:00:50-05:00 — VS-SOL-TERMINAL-PEER-TYPECHECK-20260830-15 completed/released
+
+- Exact commit `ac138463d94e75175eead0550a94eced338bd8e7` (`fix(tools): type terminal peer fabric port`) contains only `app/src/features/tools/terminal-peer-fabric/terminalPeerFabricTool.ts` (`+3/-2`); source and focused test are clean.
+- Root cause/fix: `Object.freeze` consumed the object literal before the factory return annotation could contextually type `connect` and `command`, so their implementation parameters were internal `any` despite typed consumers. A named `TerminalPeerFabricCommandPort` object now establishes exact `ConnectTeamRequest` / `FabricCommandRequest` context before freezing, with capability caching, fail-closed behavior, and native envelopes unchanged.
+- TDD/gates: RED full TypeScript reproduced exactly TS7006 at lines 73-74. Focused tool passed 3/3 before and after commit; adjacent setup-dialog/card boundary passed 3 files / 7 tests; full `npm run typecheck` passed with zero diagnostics; Prettier, diff check, and exact-diff Gitleaks (`860 bytes`, no leaks) passed.
+- Preservation: cached index stayed 1002 paths / hash `1b98994d361da75026ec8bb05d328a75e9d1b1c7`; no UI, Instant Command, native/verifier, unrelated dirty state, or native control was touched. This lock is completed/released and retained for provenance.
+
+### 2026-08-30T13:24:00-05:00 — VS-SOL-PET-NATIVE-WINDOW-CREATE-20260830-17 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ immutable native failure SHA `2c1abe97d775d38b3228aef19a040ba09df4a6ef`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. Prior Pet lock is completed/released and the exact files are clean with no overlapping live owner.
+- Failure evidence: official PID 30884 reports both Show Pet and Open mini panel as categorical `window_create_failed`, with overlay/panel visibility remaining false; native stderr reaches both creation attempts. The supplied evidence directory contains the immutable process identity but no underlying Tauri builder error string. History and the working Preview surface show combined `WebviewWindowBuilder::build` creation on the Tauri command/main thread, while both current Pet builders run inside `spawn_blocking` workers.
+- Exact scope: `app/src-tauri/src/pets.rs`, `app/src/features/pets/petTauriBridge.ts`, and `petPanelOpen.test.ts`. Repair native creation dispatch for both labels while preserving hidden-until-checked positioning/topmost, categorical recovery, no inline Tauri fallback, route isolation, Pixi animation, and panel reopen.
+- PID 30884/native tester, Playwright/CDP, all other product/test paths, and unrelated dirty/cached state remain untouched. Cached baseline is 1002 inherited paths / hash `1b98994d361da75026ec8bb05d328a75e9d1b1c7`.
+
+### 2026-08-30T12:48:47-05:00 — VS-SOL-LIFECYCLE-AUTHORITY-P1-20260830-12 completed/released
+
+- Exact commit `9b80216e92276408ff236d8caa62a9a34df9b708` (`fix(chat): close lifecycle authority races`), parent `e800f40e0bf133970233521ecc5f35a1e818e314`, contains only the 12 claimed chat lifecycle, Jarvis intent, voice routing, History, Pet, and repository source/test files (`+463/-73`). Exact active-chat reuse now returns only the ID actually validated; ordinary and voice creation use transactional authority bound to the captured account/workspace/project/intent/agent truth, so stale flights cannot persist or dispatch orphan chats.
+- Authorized deletion now validates expected project and row revision inside the Dexie transaction, returns the actual deleted project, and History/Pet reconcile that transactional truth while retaining single-use receipts. Empty/whitespace durable intent is malformed and fails closed; only a null storage value is absent. RED first reproduced all five assigned races: A-to-B active change, intent drift leaving an orphan, overlapping voice intent flights, project move during deletion, and empty intent accepted as default.
+- Fresh post-format verification: focused aggregate `9/9` files and `75/75` tests PASS; adjacent ChatView/TabStrip/VoiceModal boundary `7/7` files and `60/60` tests PASS (known canvas/ref/act warnings only); exact Prettier and `git diff --check` PASS; Gitleaks scanned 39.44 KB with no leaks. Full TypeScript was attempted before commit and had no owned diagnostics; it remains externally blocked by unowned Instant Command/Terminal Fabric partial files, and root directed the authoritative clean-final-SHA rerun.
+- Commit audit is exactly 12 files and all owned paths are clean. The inherited cached index is byte-for-byte preserved at 1002 paths / binary patch hash `cdeb8c85fcbd40a5b6ed3051b379a6edc26c20f7`. Concurrent pet/Markdown/CAO commits through parent `e800f40e` were preserved; no unrelated file, historical lock, cached entry, native control, or external state was touched. Release only this agent-scoped lock.
+
+### 2026-08-30T13:23:22-05:00 — VS-SOL-TERMINAL-PEER-NATIVE-CAPABILITY-20260830-18 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ immutable native-failure SHA `2c1abe97d775d38b3228aef19a040ba09df4a6ef`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. Evidence PID 30884 confirms the official app identity; native control remains exclusively root-owned and untouched.
+- Root cause: renderer port `a1a99e5b` invokes unified command `terminal_peer_fabric`, but the integrated Rust tree contains no module, managed capability state, or ordinary-builder handler registration. Tauri rejects the probe as unknown command; the port correctly maps it to unavailable and the card truthfully disables. The later `ac138463` typing repair did not alter this missing native seam.
+- Exact scope: new native Fabric capability module, its ordinary-only registration/frozen handler authority in `lib.rs`, and the existing renderer port/card source+focused tests. Pets, terminal runtime/controller, Setup dialog, Instant Command, root build/native lane, and all unrelated state are excluded. Cached baseline is 1002 paths / binary patch hash `cdeb8c85fcbd40a5b6ed3051b379a6edc26c20f7`. Next: RED-first registration/callability/probe/card tests, minimal implementation, focused/adjacent/typecheck/format/diff/Gitleaks, exact commit and own-lock release.
+
+### 2026-08-30T12:56:41-05:00 — VS-SOL-PR31-VERIFIER-20260830-14 claimed
+
+- Immutable clean verification worktree `C:\Users\viper\VibeSpace-UnifiedChungus-Verify`, detached at integrated SHA `72ed3dd418251387d2268779298062012ebcdc6b`; no merge/rebase/cherry-pick state and clean index/worktree. Exact scope is only `scripts/verify-pr31-opencode-rlm-integration.mjs`; Composer/runtime/native/build files remain protected.
+- Reproduction is deterministic: `npm run verify:pr31-opencode-rlm` fails only the pre-CAO literal `/runtimeSettings: runtimePolicy.settings/`. Composer still forwards `runtimePolicy.settings` on ordinary sends and now conditionally clones it with the fixed CAO learner effort, so product wiring is intact and the static verifier is stale after `0395adc0`/`7088760e`.
+- Next: replace the obsolete invariant with one that proves both conditional branches, demonstrate GREEN, then run verifier, full typecheck, exact format/diff/Gitleaks, exact one-file detached commit, and release only this lock. Verification worktree cached baseline is 0 paths / empty patch hash `e69de29bb2d1d6434b8b29ae775ad8c2e48c5391`.
+
+#### 2026-08-30T13:00:05-05:00 — PR31 OpenCode/RLM verifier committed/released
+
+- Root cause: product wiring did not regress. Composer ordinary sends still forward `runtimePolicy.settings`; CAO bootstrap sends inherit that policy while pinning only `CAO_LEARNER_IDENTITY.reasoningEffort`. The verifier retained the pre-CAO one-line literal and therefore rejected the intentional conditional introduced by `0395adc0` and hardened by `7088760e`.
+- Exact detached commit `0bd4dfe3636884956c3868f6f0e0b0dd8da1cbb3` (`test(pr31): update runtime policy verifier`), parent immutable integrated SHA `72ed3dd418251387d2268779298062012ebcdc6b`, changes only `scripts/verify-pr31-opencode-rlm-integration.mjs` (`+4/-1`). The focused invariant now requires both the inherited ordinary branch and the fixed-effort CAO branch; no product/runtime/native/build file changed.
+- RED/GREEN: the original verifier deterministically failed `/runtimeSettings: runtimePolicy.settings/`; the updated verifier passed before and after commit. Exact Prettier and diff checks PASS; Gitleaks scanned 899 bytes with no findings. Full typecheck was run and is externally blocked only by the already-owned Terminal Peer Fabric `terminalPeerFabricTool.ts:73-74` implicit-any diagnostics; no verifier/product seam diagnostic occurred.
+- Commit audit is exactly one file, verification worktree is clean, and its cached index remains 0 paths / empty patch hash `e69de29bb2d1d6434b8b29ae775ad8c2e48c5391`. Root native/build lane, official app, primary cached index, and all concurrent work were untouched. Release only this verifier lock.
+
+### 2026-08-30T13:22:52-05:00 — VS-CODEX-ROOT / TASK-029 Voice selected-STT stale ownership claimed
+
+- Branch `integration/UnifiedChungus-final` at native candidate `2c1abe97d775d38b3228aef19a040ba09df4a6ef`. Official PID 30884 reproduces a VibeSpace dictation-ownership error while the public voice lease owner is null, including after the normal close/reload/reopen recovery boundary.
+- Root exclusively owns `dictationSession.ts` + its focused test and `JarvisVoiceInputService.ts` + its focused test. Goal: explicit selected-STT supersession for Jarvis voice, including late pending-capture cancellation, while ordinary callers remain mutually exclusive and fail closed.
+- Pets, Terminal Peer Fabric, VoiceModal presentation, native control, provider/model, credentials, billing, and unrelated cached/dirty state are excluded. Next: RED reproduction, minimal repair, focused/boundary gates, exact commit, then immutable native rerun.
+
+#### 2026-08-30T13:30:20-05:00 — VS-CODEX-ROOT / TASK-029 committed
+
+- Exact commit `d20ed204b2c66f0d3db276a02bdb4b53e51118a7` (`fix(voice): recover stale dictation handoffs`) changes only the four claimed selected-STT/Jarvis voice source and test files. Jarvis voice may explicitly supersede an active or still-starting selected-STT reservation; late superseded capture is cancelled and cannot emit transcript. Ordinary callers remain mutually exclusive and fail closed.
+- RED reproduced both active and pending stale ownership. GREEN: focused 14/14, adjacent Voice/Global-STT/Terminal 62/62, full TypeScript, exact Prettier/diff, and scoped Gitleaks all pass. Cached index remains exactly 1002 paths. Native proof awaits the grouped immutable rebuild with Pets, Peer Fabric, and approval UI repairs.
+
+### 2026-08-30T13:36:00-05:00 — VS-SOL-CHAT-APPROVAL-UI-20260830-19 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ `d20ed204b2c66f0d3db276a02bdb4b53e51118a7`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. Root explicitly transferred the clean OpenCode approval transport/runtime/Chat-card seam after immutable native SHA `2c1abe97` rendered authorization prose but zero actionable approval cards. PID 30884 and native control remain untouched.
+- Root cause boundary: pending permissions currently become replyable only through the optional event iterator, while status/messages/questions already recover by polling. A dropped permission event therefore permits persisted assistant/tool activity without a `permission_request`. Even a previously persisted card cannot reply after reload because its exact server route lives only in `activeApprovalSessions` memory.
+- Exact scope: `opencodePersistent.ts/.test.ts`, `runtime.ts/.test.ts`, `PermissionRequestCard.tsx/.test.tsx`, and the Jarvis interaction permission route type. TDD will add exact pending-permission polling/rebinding, persisted scope/session/request authority, single-use decision handling, and truthful approve/deny/edit failure behavior. Voice, Pets, Peer Fabric, Schedule, Workbench, CAO, Composer, PID 30884, and all unrelated dirty/cached state are excluded.
+
+### 2026-08-30T13:47:00-05:00 — VS-SOL-CHAT-APPROVAL-UI-20260830-19 completed/released
+
+- Exact commit `edef6ce6` (`fix(chat): recover pending approval UI`) contains only the seven claimed approval transport/runtime/card/type files (`+530/-62`), based after the independently integrated Voice, Pets, and Terminal Peer Fabric commits through `507516df`. PID 30884 and all Playwright/CDP/native control remained untouched.
+- Repair: the persistent adapter now polls authoritative `GET /permission` alongside status/messages/questions, validates and deduplicates recovered exact session-bound permissions, and keeps a turn open while approval is pending. Persisted cards carry an exact versioned account/workspace/project/working-directory/chat/session/approval/capability route; after reload they rebind only when the durable session registry, runtime generation, live session, and server pending-permission truth all still match.
+- Decision authority: native replies are single-flight and single-use; opposite concurrent decisions fail closed. Cards re-read exact immutable pending authority, reply before persisting a terminal status, revoke provisional gateway mutation authority on reply failure, expose stable `data-approval-id`/status identity, and distinguish Approve once, approve-all, Deny, Edit, and Cancel without fabricating completion.
+- TDD/verification: RED reproduced omitted-event recovery, dead reload route, missing DOM identity/cancel, stale persisted authority, and approved-before-native-failure. Final focused/adjacent matrix passed 5 files / 271 tests; full TypeScript passed; exact Prettier and `git diff --check` passed; Gitleaks scanned 37.92 KB with no findings. Inherited cached index remained exactly 1002 paths / name-list hash `1b98994d361da75026ec8bb05d328a75e9d1b1c7`; only this scoped lock is released.
+
+### 2026-08-30T13:34:43-05:00 — VS-SOL-PET-NATIVE-WINDOW-CREATE-20260830-17 committed/released
+
+- Root cause: both combined `WebviewWindowBuilder` paths were invoked from `spawn_blocking`; the immutable native run therefore reached overlay/panel creation but both failed before a usable native host existed. Exact commit `19f043ed15dfcd8dae6cfae0f5053ad0749f1e38` (`fix(pets): create native windows on main thread`), parent `d20ed204b2c66f0d3db276a02bdb4b53e51118a7`, dispatches only overlay/panel acquisition and construction through Tauri's main-thread dispatcher. Existing worker-side geometry, checked `SetWindowPos`/topmost/visibility, failure hide/destroy, categorical reasons, renderer isolation, and single labels remain intact. Debug builds now retain the underlying native creation error in logs without exposing it publicly.
+- Exact commit scope is only `app/src-tauri/src/pets.rs` and `app/src/features/pets/petPanelOpen.test.ts` (`+139/-6`); claimed `petTauriBridge.ts` required no change because its exact observed `window_create_failed` recovery contract was already truthful. Evidence inspection was read-only and PID 30884/native control remained untouched.
+- TDD/gates: missing dispatcher helper first failed Rust compilation; focused bridge characterization passed before implementation. GREEN: Rust `pets::tests` 34/34 before and after commit; frontend `petPanelOpen` 17/17 before and after commit; six-file pet boundary 38/38; full TypeScript exit 0; owned Prettier and direct `rustfmt --check`, `git diff --check`, and scoped Gitleaks all pass. Global `cargo fmt --check` is blocked only by concurrent/unowned formatting drift in `lib.rs` and `terminal_peer_fabric.rs`; owned `pets.rs` is clean. Cached index remains exactly 1002 paths with name-list hash `1b98994d361da75026ec8bb05d328a75e9d1b1c7`. This lock is released and preserved historically.
+
+### 2026-08-30T14:11:32-05:00 — VS-SOL-PET-MAIN-CALLBACK-20260830-20 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ immutable native-failure SHA `44e02b2a858616d2b9936e9d0f800ead89b5990d`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. Exact evidence under `D:\VibeSpace-Testing\evidence\pr31-final-native-44e02b2a-pid34244` reports only the account target and the native categorical detail `native window creation callback failed` for both labels.
+- Exact scope is only `app/src-tauri/src/pets.rs` and its in-module focused tests. PID 34244, Playwright/CDP/native control, Pet frontend/bootstrap/bridge/renderer, all other files and processes, and the 1002 cached paths remain protected. Next: trace the callback/channel failure against Tauri's working main-thread patterns, prove RED, implement the minimum liveness-safe repair preserving hidden-until-positioned/topmost and route isolation, then focused/boundary/typecheck/format/diff/Gitleaks, exact commit, and own-lock release.
+
+### 2026-08-30T14:27:37-05:00 — VS-SOL-PET-MAIN-CALLBACK-20260830-20 committed/released
+
+- Root cause is confirmed in the pinned Tauri/Wry implementation: `RuntimeHandle::create_window` explicitly queues creation to the event loop and synchronously waits, with a source warning that it must be invoked from a separate thread to avoid channel deadlock. Commit `19f043ed` wrapped `WebviewWindowBuilder::build` in `AppHandle::run_on_main_thread`; the builder then synchronously queued back to the event loop that was executing it. Both labels stalled until the outer five-second receiver emitted the exact immutable error `native window creation callback failed`.
+- Exact commit `0d10c62b7c1bc2fdc799962d2d9a6b57fc396a84` (`fix(pets): avoid nested main-loop creation deadlock`), parent immutable SHA `44e02b2a858616d2b9936e9d0f800ead89b5990d`, changes only `app/src-tauri/src/pets.rs` (`+18/-78`). It removes the outer dispatcher/channel/timeout and routes overlay/panel acquisition directly within their existing `spawn_blocking` worker transactions, allowing Wry's internal synchronous event-loop dispatch to complete. Hidden builders, distinct labels/routes, checked `SetWindowPos`/topmost/visibility truth, failure cleanup, stale-label recovery, and categorical public errors are unchanged.
+- TDD/gates: the new worker-only regression failed against the main-thread wrapper and passes postcommit 1/1. Full Pet Rust suite passes 33/33; established six-file frontend Pet/bootstrap boundary passes 38/38; `cargo check --lib` and full TypeScript exit 0; direct owned `rustfmt --check`, `git diff --check`, and scoped Gitleaks pass. PID 34244 and native/CDP control were untouched, so immutable rebuilt native acceptance remains with root. Owned path is clean; cached index remains exactly 1002 paths with name-list hash `c7ed6ca0a8e0c776579be52967757a952aa4e66d`. This lock is released and preserved historically.
+
+### 2026-08-30T14:43:00-05:00 — VS-SOL-PET-LABEL-CONFLICT-20260830-22 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ immutable native-failure SHA `0d10c62b7c1bc2fdc799962d2d9a6b57fc396a84`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. Exact evidence under `D:\VibeSpace-Testing\evidence\pr31-final-native-0d10c62b-pid19168` shows the clean official binary logs first creation for both labels, while overlay returns `{created:false,visible:false,reason:'window_label_conflict'}`, overlay/panel visibility remain false, and the main route remains isolated.
+- Exact scope is only `app/src-tauri/src/pets.rs` and its in-module focused tests. PID 19168, Playwright/CDP/native control, frontend Pet/bootstrap/bridge/renderer, all other files/processes, and the 1002 cached paths remain protected. Next: trace Tauri window/webview manager label ownership and partial-creation cleanup, prove RED, implement bounded deterministic stale-label recovery without orphan/fallback lies, then Rust/frontend boundary, cargo check/typecheck/format/diff/Gitleaks, exact commit, and own-lock release.
+
+### 2026-08-30T14:56:00-05:00 — VS-SOL-PET-LABEL-CONFLICT-20260830-22 committed/released
+
+- Root cause: each native command used an independent `spawn_blocking` transaction, so concurrent first-open requests could both observe no complete `WebviewWindow` and race the same Tauri label. The existing precheck also queried only `get_webview_window`, leaving a window-only registration from partial creation/destruction invisible and permanently conflicting. Panel-triggered overlay restore additionally called the blocking builder path directly rather than re-entering its worker command.
+- Exact commit `d941306554ba5de70b73f1cbd74c50d80f624e1a` (`fix(pets): serialize stale label recovery`), parent immutable SHA `0d10c62b7c1bc2fdc799962d2d9a6b57fc396a84`, changes only `app/src-tauri/src/pets.rs` (`+170/-25`). Per-label lifecycle mutexes serialize overlay/panel transactions. Registration classification reuses only a complete live WebView/native host, retires dead WebViews and window-only registrations, waits up to 750ms for both manager registries to release, then rebuilds. Minimize/hide restore through async `pet_show_overlay` so creation remains on `spawn_blocking`. Distinct labels/routes, hidden builders, checked native positioning/topmost/visibility, failure cleanup, no-inline-fallback truth, and categorical public status remain intact.
+- TDD/gates: missing registration classifier failed compilation; retirement timeout categorization failed with expected `window_create_failed`; both became GREEN. The exact committed logic passed the full Pet Rust suite 35/35, the established six-file frontend Pet/bootstrap boundary 38/38, and `cargo check --lib` before concurrent unowned partials arrived. Fresh owned `rustfmt --check`, `git diff --check`, and scoped Gitleaks pass. Subsequent full TypeScript is blocked only by unowned `CallAnyonePanel.test.tsx` scheduling mocks and `OpenCodePermissionProfile.test.ts` partials; postcommit Rust compilation is blocked before Pet tests by unowned `harness/server.rs:601` JSON recursion. No Pet diagnostic occurred, and the unverified completeness experiment was removed before commit so the commit matches the earlier passing implementation. PID 19168/CDP/native control were untouched. Owned path is clean; cached index remains exactly 1002 paths with name-list hash `c7ed6ca0a8e0c776579be52967757a952aa4e66d`. Lock released; root clean-SHA verification/native rebuild remains.
+
+### 2026-08-30T15:18:59-05:00 — VS-SOL-INSTANT-CATALOG-CORE-20260830-23 claimed
+
+- Root explicitly handed off the authoritative 421-line Exhaustive Instant Command Catalog + Calyx Seam plan end-to-end. Branch/base is `integration/UnifiedChungus-final` @ `d7b7ff931ae060d3768805f016699126aefc60d2`, upstream `origin/UnifiedChungus`, no merge/rebase/cherry-pick state; cached baseline is 1014 paths / name-list hash `d7672c242b78adddbc1c2a0363c964cee0f3047e`.
+- Reconciliation: `ee882603` supplies the six-command atomic parser/executor baseline; `a1a99e5b` landed Task 1 authority metadata, initial Task 2 catalog/index metadata, and the preloaded Fabric Tools UI; `507516df`/`ac138463` landed the versioned native Fabric capability/typed port. This batch owns only authority inventory, catalog/index/types, and parser/performance source/tests to complete Tasks 1-2 without redoing landed work. Root's still-listed `execute.ts/.test.ts/index.ts` remain pending an explicit lock-record transfer; Assistant, OpenCode permission/harness, active Plan UI, Schedule runtime, and native/CDP control are excluded.
+- Next: audit canonical authority exports, add RED-first exhaustive inventory/slot/index/casing/fixture regressions, preserve all six existing parser behaviors, run focused/boundary/format/diff/Gitleaks, exact milestone commit, then incrementally extend ownership for Task 3 after handoff.
+
+#### 2026-08-30T15:20:00-05:00 — Instant core scope extended after exact root handoff
+
+- Root confirmed and logged transfer of `execute.ts`, `execute.test.ts`, and `index.ts` to `VS-SOL-INSTANT-CATALOG-CORE-20260830-23`. This batch also claims new unowned `receipt.ts/.test.ts`, `deadline.ts/.test.ts`, and `commandLedger.ts/.test.ts` for Task 3. AssistantBar/commands and all current OpenCode permission/harness surfaces remain excluded pending later explicit transfer.
+
+### 2026-08-30T13:42:37-05:00 — VS-SOL-TERMINAL-PEER-NATIVE-CAPABILITY-20260830-18 committed/released
+
+- Root cause: the renderer and preloaded Tools card invoked `terminal_peer_fabric`, but the official Tauri ordinary builder had no matching Rust command, state, or handler registration. The unknown-command rejection was correctly mapped to `Not available in this build.`
+- Exact commit `507516df4a10b0648cf42545755ca0f67f68bd71` (`fix(tools): register terminal peer fabric capability`) changes only the six claimed Fabric source/test paths. The ordinary builder now exposes a minimal in-memory, atomic connect plus `team.status` seam; the visual builder does not. Capability truth is versioned and operation-bound, identifiers/membership/targets fail closed, and the renderer/card reject malformed, incomplete, or rejected probes.
+- TDD/gates: renderer RED covered dropped operation metadata, version-only false availability, a missing `connect` operation, and rejected probe handling. GREEN: six focused/adjacent Tools files 14/14; Rust Fabric/registration tests 3/3; frozen ordinary command/lifecycle authority and cfg-mutation invariants 2/2; `cargo check --lib` exit 0 with existing warnings only; exact Prettier/rustfmt/diff checks pass; scoped Gitleaks scanned 18.11 KB with no findings.
+- Full TypeScript passed earlier within this lane. The fresh combined rerun after concurrent approval work is externally blocked only in that active lane's owned `PermissionRequestCard.test.tsx`, `opencodePersistent.test.ts`, and `runtime.test.ts`; no Fabric-owned diagnostic exists. Root explicitly assigned authoritative clean combined typecheck/build after approval lands.
+- Commit audit is exactly six files and all owned paths are clean. The inherited cached index remains exactly 1002 paths with binary patch hash `cdeb8c85fcbd40a5b6ed3051b379a6edc26c20f7`. Pets commit `19f043ed` and all approval/native-controller work were preserved. Release only this lock.
+
+### 2026-08-30T14:21:07-05:00 — VS-SOL-APPROVAL-NATIVE-P2-20260830-21 invalid acceptance setup / completed-released
+
+- Immutable evidence `D:\VibeSpace-Testing\evidence\pr31-final-native-44e02b2a-pid34244\approval-card-reload-failure.json` asked DeepSeek to create `D:\VibeSpace-Testing\temp\pr31-final-44e02b2a\opencode\*`, outside the chat's selected project root. The authoritative OpenCode log records at `2026-08-30T19:14:18.527Z`: `evaluated permission=external_directory ... action.permission=external_directory action.action=deny action.pattern=*`. There is no following `asking id=per_*` because a hard denial creates no pending approval authority.
+- Control evidence from the same immutable log at `2026-08-30T19:08:41.084Z` shows a real approvable boundary: `external_directory ... action.action=ask`, immediately followed by `asking id=per_05412eafc001nEj6lP1WYlyOLJ`. This distinguishes a true approval event from model prose such as `Awaiting your authorisation`.
+- Classification: invalid native acceptance setup, not a regression in commit `edef6ce6`. Repository authority intentionally keeps raw external-directory access hard-denied in generated OpenCode config and request profiles; no approval event/poll, persisted route, card, or reload binding can exist without a provider-issued approval ID. Root explicitly prohibited weakening that boundary or inventing a grant seam.
+- Disposition: no product, test, runtime, policy, or acceptance file changed; no test was warranted. Native retest must use a safe file inside the explicitly selected project root/CWD or another real `action=ask` operation, assert an emitted `per_*`, then verify exactly one card across reload, one decision dispatch, and approved readback. PID 34244 and native control were untouched. Cached index remains 1002 paths / binary hash `cdeb8c85fcbd40a5b6ed3051b379a6edc26c20f7`; release only this documentation claim.
+### 2026-08-30T15:04:00-05:00 — VS-SOL-CALL-SCHEDULE-20260830-24 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ `0d10c62b7c1bc2fdc799962d2d9a6b57fc396a84`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. Exact scope is the Call Anyone renderer client/panel/types and focused tests, the third-party-call Edge Function and focused test, plus new additive migration `0051_scheduled_outbound_calls.sql` and its contract test.
+- Design: one durable account-owned schedule row binds an exact already-approved outbound job fingerprint and immutable call material. Transactional RPCs create, CAS-claim due execution, and cancel exact rows while locking both schedule and job. Edge execution re-reads account/job/schedule/approval truth and only then reaches the existing provider seam; provider absence remains a truthful external blocker.
+- Active CAO schedule files (`jarvisSchedules.ts/.test.ts`, `jarvisScheduleRunner.ts/.test.ts`) and SchedulePage remain excluded, as do all native/process/deployment and unrelated cached/dirty state. Cached baseline is 1002 inherited paths. Next: RED-first reload, drift, cancellation, concurrency, duplicate-dispatch, and provider-unavailable coverage before production edits.
+
+### 2026-08-30T15:15:00-05:00 — VS-SOL-CALL-SCHEDULE-20260830-24 scope checkpoint
+
+- Focused renderer `19/19` and backend/migration `20/20` are green after the initial RED boundary. Audit proved `CallAnyonePanel` is mounted only inside Settings/PhoneVoice, so its safe local recovery loop cannot provide ordinary app-lifecycle due dispatch.
+- Root explicitly expanded exact scope to clean/unlocked `app/src/App.tsx` and new `scheduledCallRunner.ts/.test.ts`. The new runner will reuse the versioned Edge CAS, run once at boot/reconnect plus a bounded interval, serialize each refresh, and stop cleanly; App gets one adjacent start/stop seam. Existing Jarvis schedule runner, active CAO schedule files, and all other App behavior remain unchanged.
+- Full TypeScript currently reports only two external diagnostics in unowned `OpenCodeSdkSessionClient.ts/.test.ts` (`OpenCodeExecutionAgentId`); no owned diagnostic was reported. Next: RED runner recovery/duplicate tests, minimal boot wiring, then combined gates.
+
+### 2026-08-30T15:13:00-05:00 — VS-SOL-CALL-SCHEDULE-20260830-24 committed/released
+
+- Exact commit `f045889198ef342d3e3d31194a011d97ef8cb5e5` (`feat(calls): schedule approved outbound calls`) contains exactly 12 approved paths (`+1269/-14`): App's one lifecycle seam; Call Anyone types/client/panel/runner source and focused tests; Edge Function source/test; and additive migration `0051_scheduled_outbound_calls.sql` plus authority test. It is based after concurrent Pet commit `d9413065`; no Pet, CAO Schedule, approval, Voice, native, or other path changed.
+- Product result: future calls persist exact masked recipient, purpose, local/UTC time, status, and monotonic revision; reload restores them. Explicit approval precedes scheduling. Account-owned RPC transactions lock the exact schedule and job, bind the immutable approval fingerprint/call material, CAS-claim due work, use an expiring recovery lease, reconcile already-queued work, and cancel only the exact still-scheduled revision while invalidating its approval and bound job.
+- Dispatch result: one ordinary App boot start/stop runner serializes authoritative list reads and exact-revision dispatch attempts. The Edge Function revalidates live account/job/schedule/approval truth before reservation/provider access, accepts reserved-job crash recovery, uses a schedule-stable provider idempotency key, and never consumes a claim when Telnyx configuration is absent. Provider failure remains truthful and reconciles reservation/job/schedule failure; no fake success or raw phone projection is exposed.
+- TDD/verification: RED reproduced missing APIs/UI persistence/backend actions/migration/runner and malformed projections. Postcommit focused Call Anyone is `4/4` files and `24/24` tests PASS; Edge plus migration authority is `20/20` PASS. Precommit adjacent PhoneVoice plus Call Anyone was `5/5` files and `32/32` PASS with only established React `act` warnings. Exact Prettier and diff checks pass; Gitleaks scanned 63.12 KB with no leaks.
+- Full TypeScript and build were both attempted and are externally blocked only by the active unowned `OpenCodeSdkSessionClient.ts:286` and its test at line 68 (`OpenCodeExecutionAgentId`) diagnostics; no owned diagnostic appears. Exact 12-file commit manifest is audited, all 12 worktree blob hashes match HEAD, and the inherited real index SHA-256 remained byte-for-byte `CC665BCD4F486AAB378679F2D248DDE5E3B00EFFFD81CF6613C2D80DB38E47C1`. Release only this agent-scoped lock.
+2026-08-30T14:48:32-05:00 | VS-CODEX-ROOT-OPENCODE-EXECUTION-AGENT-PERMISSIONS-20260830-25 | claimed | Branch `integration/UnifiedChungus-final`, base `0d10c62b7c1bc2fdc799962d2d9a6b57fc396a84`, upstream `origin/UnifiedChungus`. Official native Agent/Full/Approve-All-off evidence proved a fail-open edit: OpenCode question `que_05432b608001sX5BGm16HplVHh` was answered, then `edit` resolved `allow` from `*` and wrote before any `per_*`. Bounded inspection found production relies on unsupported `PATCH /session/:id {permission}` while current OpenCode only supports session metadata there; generated agent rules therefore remain authoritative. Root claims only `harness/server.rs`, `OpenCodePermissionProfile.ts` + focused test, `OpenCodeTurnCoordinator.ts` + focused test, `OpenCodeSdkSessionClient.ts` + focused test, and `opencodePersistent.ts` + focused test. TDD will bind each prompt to a supported generated execution agent, enforce Ask/Plan no-write and Agent scoped asks/one-run auto approval, remove ignored session permission mutation, and preserve hard external/secret denies. Pets, Call Schedule, CAO, native control, credentials, billing, production, and unrelated dirty/cached state remain excluded.
+### 2026-08-30T15:24:00-05:00 — VS-SOL-PLAN-REVIEW-PROJECTION-20260830-26 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ `d941306554ba5de70b73f1cbd74c50d80f624e1a`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. Immutable native evidence proved Plan mode stayed read-only but projected approval-intent prose as plain text with no visible review actions.
+- Root cause: the canonical kernel response pipeline parses only explicit fenced `jarvis_plan` blocks, unlike the legacy projection's existing forced-plan fallback. Exact scope is clean/unlocked `app/src/lib/jarvis/response/pipeline.ts` and `.test.ts`; existing `PlanReviewCard` rendering/persistence authority requires no change unless the RED boundary disproves this hypothesis.
+- Protected: root OpenCode permission files, Pets, Call Schedule/App, `runtime.ts`, native PID/session/evidence, and all unrelated dirty/cached state. Next: RED for Plan prose ending in approval intent plus Ask/Agent isolation, minimal projection repair, focused/boundary gates, exact commit, release only this lock.
+
+### 2026-08-30T15:17:00-05:00 — VS-SOL-PLAN-REVIEW-PROJECTION-20260830-26 completed/released
+
+- Exact commit `d7b7ff931ae060d3768805f016699126aefc60d2` (`fix(chat): project Plan review intent`), based after independent Call Schedule commit `f0458891`, changes only `app/src/lib/jarvis/response/pipeline.ts` and `.test.ts`. The canonical response snapshot now retains `interactionMode`; terminal Plan approval-intent prose is forced through the existing validated parser into one stable request-bound pending `plan_review`, so the established `PlanReviewCard` supplies visible implementation/cancel review actions. Ask remains text-only and Agent retains its approval-gated action projection.
+- TDD/gates: RED returned one plain-text Plan part. Postcommit pipeline/parser/card boundary passes 107/107; full TypeScript exits 0; locked Prettier 3.8.3, commit diff check, and scoped Gitleaks pass. Formatter-only normalization remains confined to the same exact two owned files. Concurrent cached index is preserved exactly at 1014 paths / name hash `0e0e5bd43c4413b6b8b8e71b634062081186e31a38ac4647507a40cbe236919c`; root OpenCode, Pets, Call Schedule, PID/session/evidence, and all unrelated edits remain untouched. Lock released; next action is immutable native rebuild acceptance.
+2026-08-30T15:20:00-05:00 | VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 -> VS-SOL-INSTANT-CATALOG-CORE-20260830-23 | exact handoff | Root releases only `app/src/features/instant-command/execute.ts`, `execute.test.ts`, and `index.ts` to the delegated exhaustive Instant Command Catalog + Calyx seam lane. The recipient also claims its new/clean authority-inventory, catalog contract/index, receipt/deadline/ledger files and existing types/parse surfaces after live-lock inspection. Assistant surfaces and root's current OpenCode permission/native transport files remain excluded until a later clean handoff. Existing commits, cached index, native session, and all unrelated edits remain preserved.
+2026-08-30T15:27:00-05:00 | VS-CODEX-ROOT-OPENCODE-EXECUTION-AGENT-PERMISSIONS-20260830-25 | precommit checkpoint | The native fail-open root cause is repaired across exactly 10 claimed product files: unsupported `PATCH /session/:id {permission}` is removed; the scoped OpenCode config now declares read-only, write ask/auto, and full ask/auto execution agents; prompt and command dispatch require the exact effective agent; Ask and Plan stay non-mutating; Agent approval and one-run auto authority remain distinct; and question answers never elevate tool permissions. Fresh verification: focused TypeScript 124/124, Rust harness 23/23, cargo fmt, full TypeScript, PR31 OpenCode/RLM verifier, production build, exact Prettier/diff, and scoped Gitleaks all pass. Concurrent Instant Command, Call, Pets, Plan projection, CAO, shared cached state, credentials, production, billing, and deployments remain untouched. Next: exact-file commit and immutable native rerun of only failed/unproven boundaries.
+2026-08-30T15:30:00-05:00 | VS-CODEX-ROOT-OPENCODE-EXECUTION-AGENT-PERMISSIONS-20260830-25 | committed | Exact commit `0e4be758da92728b6fe543aca6128b030972c654` (`fix(opencode): bind supported execution permissions`) contains only the 10 claimed OpenCode/Rust harness product files (`+378/-273`). Commit manifest audited; focused TypeScript 124/124, Rust harness 23/23, cargo fmt, full TypeScript, PR31 OpenCode/RLM verifier, production build, exact Prettier/diff, and scoped Gitleaks remain green. The immutable native lane now owns only failed/unproven acceptance on this SHA while Instant Command/Calyx implementation proceeds independently.
+2026-08-30T15:44:00-05:00 | VS-CODEX-ROOT-CAO-OPERATIONS-FLOOR-PROJECTION-20260830-27 | claimed | User approved the architectural boundary: extend the existing Schedule-adjacent CAO inspector as a read-only projection of the sole existing schedule/runtime/durable-learning authorities. Exact scope is new `CaoOperationsFloorProjection.tsx/.test.tsx` plus `SchedulePage.tsx` and its Jarvis lifecycle test. It will show only scoped real identity/status/cursor/revision/occurrence/run/receipt/blocker truth, hydrate after reload, subscribe to live runtime state, and fail closed when snapshot truth is unavailable. Existing pause/resume/manual-force/delete APIs remain the only controls; no new scheduler, persistence, provider, synthetic progress, or Operations authority is introduced. The active CAO runtime/schedule-runner lock files, Instant Command/Calyx, native control, OpenCode, App, backend, credentials, billing, and unrelated cached/dirty state are excluded.
+2026-08-30T16:13:00-05:00 | VS-CODEX-ROOT-CAO-OPERATIONS-FLOOR-PROJECTION-20260830-27 | implementation checkpoint | The existing CAO inspector now embeds one read-only Operations Floor projection backed by the sole durable learning snapshot and live runtime status authorities. It hydrates exact account/workspace/project/schedule/target/anchor truth after load, ignores cross-scope runtime events, refreshes durable cursor/revision/occurrence/receipt state after matching terminal updates, exposes pending recovery without fabricated percentages, preserves a stable scope across parent rerenders, and distinguishes empty from invalid/unavailable state. Missing-module RED was captured; component tests are 4/4, full affected Schedule/CAO boundary is 58/58, post-polish component+inspector is 9 PASS, exact Prettier/diff pass, and scoped Gitleaks found no leaks. Initial full typecheck reported only concurrent progressive-activity `runtime.ts/.test.ts` diagnostics; that owner has corrected them and is running the single shared fresh gate. No locked CAO runtime/scheduler file or unrelated state changed.
+2026-08-30T16:19:00-05:00 | VS-CODEX-ROOT-CAO-OPERATIONS-FLOOR-PROJECTION-20260830-27 | committed | Exact commit `ce7e48db865d7cb6d3b144cebf2d63912d7bbe72` (`feat(cao): project truthful operations floor`) changes only the two new Operations Floor component/test files and existing Schedule inspector/lifecycle-test files (`+449`). The projection uses real scoped persisted snapshot and runtime truth for status, cursor, revision, scheduled occurrence count, receipt, and pending recovery; it never introduces synthetic progress or a second authority. Affected 58/58 and post-polish 9 tests pass; exact Prettier, diff, and Gitleaks pass. The fresh shared typecheck has no owned or progressive-activity diagnostics and is blocked only by the active Instant Command milestone's new incomplete files, already returned to that owner. Owned files are clean; native proof is queued for the next stable combined SHA after current immutable 0e4be758 Pet/Chat failure repair.
+### 2026-08-30T15:34:00-05:00 — VS-SOL-FINAL-NATIVE-0E4BE758-20260830-27 claimed
+
+- Sole native/Playwright controller for immutable source `0e4be758da92728b6fe543aca6128b030972c654` in clean verify worktree `C:\Users\viper\VibeSpace-UnifiedChungus-Verify`. Old owned session identity is confirmed as `jarvis.exe` PID 19168, official profile WebView PID 12600 owning 127.0.0.1:9223, plus its child OpenCode server; no 11434 listener.
+- Scope is build/launch and failed/unproven OpenCode permission/mode, Pets, CAO restart, and Call Schedule native acceptance. Product edits require a proven failure plus a fresh non-overlapping exact-file claim. Instant Command/Calyx, active CAO runtime owner paths, concurrent edits/cached index, and all unrelated services/processes remain excluded.
+### 2026-08-30T15:40:00-05:00 — VS-SOL-CHAT-PROGRESSIVE-RECOVERY-20260830-28 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ `0e4be758da92728b6fe543aca6128b030972c654`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. Existing live callbacks already persist individual text/tool activity, but the ordinary Chat runtime does not consume the router's authoritative `onPublicTimelineSnapshot`, so reconnect gaps remain invisible until terminal completion.
+- Exact clean scope: `app/src/lib/ai/runtime.ts` and `app/src/lib/ai/runtime.test.ts`. Protected: Instant Command/Calyx, native controller/session/evidence, OpenCode permission/harness files from `0e4be758`, and all unrelated cached/dirty state. Cached index baseline: 1014 paths, SHA-256 `474a1966a4a1d70c5501c54607ccf43b7b8c405a8eaf5a622ffea2aaa0f963a4`.
+- TDD plan: prove an authoritative snapshot is durably visible while the provider remains pending; reconcile missed text plus ordered tool call/result events by stable identities without duplication; prove abort rejects late snapshots and retains the partial cancelled chronology; then run focused/boundary/typecheck/build/format/security gates and exact-file commit.
+
+### 2026-08-30T16:20:00-05:00 — VS-SOL-CHAT-PROGRESSIVE-RECOVERY-20260830-28 completed/released
+
+- Exact commit `bac3de32` (`fix(chat): recover progressive activity snapshots`) changes only `app/src/lib/ai/runtime.ts` and `app/src/lib/ai/runtime.test.ts`. Ordinary Jarvis Chat now consumes authoritative OpenCode public snapshots while a turn is pending, replaces missed chronology in exact text/tool order, retains stream-part identity for resumed replacements, no-ops repeated snapshots, and publishes the latest truthful progress as at most two compact sentences. Abort remains authoritative: partial chronology receives the cancelled terminal marker and late recovery rejects without another write.
+- RED proved the ordinary runtime omitted `onPublicTimelineSnapshot`. Focused existing-progressive plus recovery tests PASS 2/2; affected runtime/router/public-timeline suite PASS 194/194 before the final type-only compatibility adjustment, and the focused recovery test passed afterward. Exact diff-check PASS; Gitleaks over `app/src/lib/ai` PASS. Owned TypeScript diagnostics are clear; the repository typecheck/build gate is externally blocked only by active Instant Command files (`navigationCommands.test.ts` missing its in-progress module and two `execute.test.ts` contract mismatches), which this lane preserved.
+- Cached index remained exactly 1014 inherited paths with SHA-256 `474a1966a4a1d70c5501c54607ccf43b7b8c405a8eaf5a622ffea2aaa0f963a4`. Runtime paths are clean at `bac3de32`; only this agent-scoped lock is released.
+
+
+### 2026-08-30T15:38:00-05:00 — VS-SOL-INSTANT-CATALOG-CORE-20260830-23 precommit checkpoint
+
+- Branch advanced independently from claimed base `d7b7ff931` to `0e4be758d`; the intervening Call, Plan projection, and OpenCode permission commits are preserved and do not overlap this exact Instant Command scope.
+- TDD batch now provides strict catalog alias reachability/original-source offsets, required per-command slot parsers, command-level authority projection, compact immutable receipts, a scope/target/argument-bound one-shot confirmation and exactly-once ledger, and a hard 500 ms abort-aware execution receipt boundary. Existing six-command behavior remains available through the unchanged compatibility API.
+- Verification: complete Instant Command feature `11/11` files and `76/76` tests PASS; full TypeScript exits 0; exact Prettier and diff checks pass; scoped Gitleaks scanned 91.17 KB with no leaks. Next: exact product-file commit while preserving the shared cached index, then extend the exhaustive catalog/authority batches from the written plan.
+
+### 2026-08-30T15:41:00-05:00 — VS-SOL-INSTANT-CATALOG-CORE-20260830-23 milestone 1 / scope extension
+
+- Exact commit `f9b63de08506545df4a05f86b485c335bb6fa211` (`feat(commands): add deterministic receipt core`) contains only 17 Instant Command source/test paths (`+724/-23`) and preserves the inherited 1,014 cached paths with name hash `764a1ca97a090434a7dc21d002edde3d1908c31f` byte-for-byte.
+- Continue Task 1/4 in existing owned authority/catalog paths plus new `catalog/navigation.ts` and `.test.ts`. Route schema, UI store, command palette, Assistant, OpenCode/harness, native controller/process, and every unrelated dirty/cached path remain read-only/excluded.
+
+### 2026-08-30T15:58:36-05:00 — VS-CODEX-JARVIS-AMBIENT-WINDOWS-20260830-29 design claimed
+
+- Branch/base: `integration/UnifiedChungus-final` at `f9b63de08506545df4a05f86b485c335bb6fa211`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick/bisect state. User approved a faithful Windows/Tauri port of the live Omarchy Ambient Agent website effects as new global Jarvis effects.
+- Exact owned scope is one new specification: `docs/superpowers/specs/2026-08-30-jarvis-ambient-windows-overlay-design.md`. All existing product source/tests and active native, Pet, Voice, CAO, Instant Command, OpenCode, Chat, and Schedule scopes remain excluded until a reviewed implementation plan and clean non-overlapping handoff.
+- Reference authority: live Playwright inspection of `https://fjalvarezdd.github.io/omarchy-ambient-agent/`, local `docs/index.html`, `Service.qml`, `ambient-agent.json`, and bundled demo media. Required fidelity states are working cyan snake 2.4 s, needs amber pulse 1.5 s, done solid blue then idle, error red pulse 1.1 s, and invisible idle, without added labels or altered choreography.
+
+### 2026-08-30T16:03:00-05:00 — VS-CODEX-JARVIS-AMBIENT-WINDOWS-20260830-29 design committed/released
+
+- Commit `94414d73` (`docs: design Jarvis ambient Windows overlay`) contains exactly the new 212-line specification `docs/superpowers/specs/2026-08-30-jarvis-ambient-windows-overlay-design.md`. Self-review found no placeholders, conflicting source authority, incomplete state timing, or ambiguous input-capture behavior.
+- The design freezes a deterministic priority selector, versioned native state snapshot, transparent click-through per-monitor Tauri supervisor, isolated packaged renderer, exact live-reference animation values, reduced-motion behavior, official-native acceptance, and paired 30 fps reference/implementation video plus contact-sheet/pixel-edge comparisons.
+- Existing product source/tests remain untouched. The inherited cached index stayed exactly 1,014 paths before and after the exact-file commit. This design-only lock is released; implementation awaits written-spec review and a separate plan with fresh non-overlapping ownership.
+### 2026-08-30T16:01:23-05:00 — VS-SOL-INSTANT-CALYX-CONTINUATION-20260830-30 claimed / prior lane transferred
+
+- Root delegated the complete 421-line Exhaustive Instant Command Catalog + Calyx Seam implementation and acceptance lane to `/root/instant_calyx_continuation`. The prior `VS-SOL-INSTANT-CATALOG-CORE-20260830-23` agent is no longer live after exact milestone `f9b63de08506545df4a05f86b485c335bb6fa211`; its lock is preserved and a separate continuation lock records the transfer.
+- Branch/base is `integration/UnifiedChungus-final` at `94414d73ba1d2c988a4f07c7908f07b01a71e0cb`, upstream `origin/UnifiedChungus`, in an existing linked worktree with no merge/rebase/cherry-pick/bisect state. The inherited cached index remains 1,014 paths with name hash `0e0e5bd43c4413b6b8b8e71b634062081186e31a38ac4647507a40cbe236919c`.
+- Preserved handoff state is exactly the four modified `authorityInventory*`/`catalog*` files and two new `catalog/navigation*` files. Current product scope is `app/src/features/instant-command/**` plus the plan's acceptance script and generated catalog documentation; Assistant/voice and native Fabric runtime surfaces require later explicit handoff.
+- Root CAO Operations Floor/Schedule, Call scheduling, OpenCode harness/permissions, Chat, Pets, Ambient Windows, native controller/evidence, production services, credentials, billing, and every other agent's files/processes remain excluded. Official-app Playwright/CDP control will be handed to `/root/native_acceptance` exclusively for immutable-SHA testing.
+- Next: bounded audit and focused tests of the inherited Task 4 batch, finish its missing navigation authority seams through TDD, run affected/typecheck/build/format/security gates, exact-file commit, then continue terminal and schedule milestones.
+
+### 2026-08-30T16:10:00-05:00 — VS-SOL-FINAL-NATIVE-0E4BE758-20260830-27 native Pet defect / exact repair claim
+
+- The clean detached verify worktree at immutable `0e4be758da92728b6fe543aca6128b030972c654` is running the official D-backed binary as `jarvis.exe` PID `32516`; WebView PID `34984` owns official profile `ai.jarvis.desktop/EBWebView` and CDP `9223`. Reusable harness smoke passed with the exact SHA/process/profile identity and zero Ollama processes or `11434` listeners.
+- Fresh native evidence contradicts the prior Pet acceptance expectation: the first hidden overlay build is synchronously checked before the WebView HWND becomes ready, failed visibility destroys the just-created surface, and subsequent serialized retries time out retiring the stranded same-label Tauri registration. A direct official-app invoke returned `stale_window_retire_failed` in `1272 ms`, with no Pet WebView target; native stdout repeats the same causal sequence.
+- Historical Pet locks are completed/released and `app/src-tauri/src/pets.rs` is clean at HEAD blob `44627af3`. This native lane claims only that exact Rust source for a RED-first bounded created-surface readiness/reuse repair, exact gates/commit, and immutable rebuild/retest. Frontend Pet files, Instant Command/Calyx, CAO, Chat/OpenCode, Ambient Windows, cached state, credentials, production/billing, and unrelated files/processes remain excluded.
+
+### 2026-08-30T16:23:00-05:00 — VS-CODEX-ROOT-CAO-OPERATIONS-FLOOR-VERIFIED-HISTORY-20260830-31 claimed
+
+- Root extends only `CaoOperationsFloorProjection.tsx/.test.tsx` at `bac3de322ad120e1256fcf4a46a398c1193b6e6b`. The slice projects a bounded newest-first list of real verified completions with exact trigger, receipt/pass/request identity, timestamps, and observed duration plus accessible live/recovery semantics. It reuses the existing exact-scope durable snapshot and runtime subscription; no synthetic progress/agents, second persistence authority, scheduler, or control is introduced. Instant Command/Calyx, native `pets.rs`/Playwright, CAO target-lease work, SchedulePage, Chat/OpenCode, Call, backend, and all unrelated cached/dirty paths remain excluded.
+
+### 2026-08-30T16:56:00-05:00 — VS-CODEX-ROOT-CAO-OPERATIONS-FLOOR-VERIFIED-HISTORY-20260830-31 precommit checkpoint
+
+- The truthful Operations Floor now renders at most the five newest durable completions in newest-first order, with exact trigger, receipt/pass/request identifiers, completion timestamp, observed request-to-completion duration, and accessible live/recovery status. Focused RED proved the history and roles absent; the failed scenario rerun passes, component tests pass 6/6, the Schedule boundary passes 19/19, exact Prettier/diff checks pass, and Gitleaks scanned 9.10 KB with no leaks. The last shared typecheck reported only the concurrent CAO target-lease mapper partial and no owned diagnostic; that exact owner is completing it before the combined stable-SHA gate.
+
+### 2026-08-30T16:57:00-05:00 — VS-CODEX-ROOT-CAO-OPERATIONS-FLOOR-VERIFIED-HISTORY-20260830-31 committed
+
+- Exact commit `2424e1eae031bc02072732a186d5f08f72682852` (`feat(cao): show verified completion history`) contains only the two owned Operations Floor source/test paths (`+161/-3`); both are clean after commit. Combined typecheck/build and official-app Playwright proof remain queued behind the active target-lease, visible Chat activity, Instant/Calyx, and Pet repair milestones so one stable immutable SHA is tested.
+
+### 2026-08-30T16:27:37-05:00 — VS-CODEX-CHAT-HANDOFF-MULTIPANE-20260830-32 design claimed
+
+- Branch/base: `integration/UnifiedChungus-final` at `bac3de322ad120e1256fcf4a46a398c1193b6e6b`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. User approved extending the existing Chat and Schedule authorities with typed chat drag handoff, an up-to-four-pane native chat workspace, recurring chat supervision, and a durable in-chat Schedule card that opens the exact schedule command/time by ID.
+- Exact scope is the new specification `docs/superpowers/specs/2026-08-30-chat-handoff-multipane-supervision-design.md`. Recent three-day visible transcript remains complete; only older multi-day history is condensed, and hidden reasoning, secrets, raw tool payloads, and binary bytes are excluded. All product files and active Instant Command/Calyx, CAO, Pet/native, OpenCode, Call, Ambient Windows, cached/evidence/process state remain protected until written-spec review and a fresh non-overlapping implementation claim.
+
+### 2026-08-30T16:31:00-05:00 — VS-CODEX-CHAT-HANDOFF-MULTIPANE-20260830-32 design committed / review gate
+
+- Exact commit `c2ef6fc7` (`docs: design chat handoff supervision workspace`) contains only the 147-line approved design specification. It freezes typed sidebar chat drag, editable composer handoff, 50/50 then 2x2 layouts up to four independent chats, three-day complete visible history plus older digest, existing-Schedule recurring supervision, idempotent chat-to-chat dispatch, and a durable in-chat **Schedule made** card that opens the exact persisted schedule command/time by ID.
+- Prettier and exact diff checks pass; commit manifest contains one file. No product source, active Schedule/CAO/Chat runtime, native process, or unrelated staged/dirty path changed. Implementation remains blocked by the required written-spec review, after which a TDD plan and fresh exact-file claims will be created.
+### 2026-08-30T16:35:00-05:00 — VS-SOL-CAO-TARGET-LEASE-20260830-31 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` @ `c2ef6fc7870e18680cf9757fc9479459614a92b8`, upstream `origin/UnifiedChungus`; bounded CAO authority milestone. Exact clean scope is execution contract/validator pairs, event schema/mapper pairs, and new `executionJournal/caoTargetAuthority.ts` plus test.
+- Approved design: a versioned target lease is an existing Jarvis journal fact, not a parallel store. Issuance requires an explicit single target or explicit set and an atomic live-registry claim over exact account/workspace/project/kind/target/revision; use/reload rereads the exact run, lease event, and live target state, rejecting absence, scope drift, unselected/locked/other-owned targets, revision drift, expiry, duplicate IDs, or partial multi-target selection. No implicit renewal or fallback target exists.
+- Protected: Instant Command/Calyx, Pets/native controller, SchedulePage/CaoOperationsFloorProjection, `runtime.ts`, CAO scheduled-learning paths, and all unrelated cached/dirty state. TDD begins with contract persistence and issue/use/reload/expiry/drift/concurrency RED boundaries.
+
+### 2026-08-30T16:57:06-05:00 — VS-SOL-FINAL-NATIVE-0E4BE758-20260830-27 resumed
+
+- `/root/native_resume` resumed the existing sole native/Pet lane under the same active agent/task identity. Main is `integration/UnifiedChungus-final` at `2424e1eae031bc02072732a186d5f08f72682852`; detached verify remains `0e4be758da92728b6fe543aca6128b030972c654`; neither has merge/rebase/cherry-pick state.
+- Exact inherited write scope is only the uncommitted `app/src-tauri/src/pets.rs` repair (`+77/-16`). All historical overlapping Pet locks are completed/released. Instant Command/Calyx, CAO contracts/mapper/floor, Schedule projection, Chat implementation, frontend Pet files, cached index, evidence, and every other concurrent path remain protected.
+- The previous official native process/CDP endpoint is absent at resume, as are Ollama and listeners `9223`/`11434`. Next: fresh focused Rust verification and exact commit, followed by one immutable combined-SHA D-backed official rebuild and Playwright/CDP-only acceptance. Only the newly owned official process tree may be controlled; the accepted app will be left running.
+
+### 2026-08-30T17:11:00-05:00 — VS-SOL-FINAL-NATIVE-0E4BE758-20260830-27 Pet repair committed
+
+- Exact commit `2caa0ff3ff4e0eff7fec7f76eaad375b5fe362af` (`fix(pets): await native host readiness`) changes only `app/src-tauri/src/pets.rs` (`+77/-16`). Newly created Pet overlay/panel surfaces retry the existing checked native position/topmost/show/visibility transaction for at most `50 x 20 ms` while the WebView HWND becomes ready; reused surfaces keep one checked attempt. Existing truthful cleanup and safe failure categories are unchanged.
+- Fresh precommit and postcommit Pet Rust suites pass `36/36`; full `cargo check` exits 0 with inherited warnings; exact rustfmt, `git diff --check`, and scoped Gitleaks pass. The owned file is clean and unrelated staged/cached state is preserved.
+- This is not yet native acceptance. The next immutable combined build must include `2caa0ff3` and prove a visible detached Pet WebView plus queued Chat/OpenCode, CAO/Call, and later Instant packets through official-app Playwright/CDP only. Ollama/11434 stays forbidden, and the accepted official app remains running at handoff.
+### 2026-08-30T17:01:02-05:00 — VS-SOL-INSTANT-CALYX-CONTINUATION-20260830-30 Task 4 checkpoint
+
+- Branch `integration/UnifiedChungus-final` at `c2ef6fc7870e18680cf9757fc9479459614a92b8`; linked worktree and continuation lock revalidated, with no merge/rebase/cherry-pick conflict state.
+- Owned Task 4 batch covers only `app/src/features/instant-command/**`: generated all canonical route aliases, typed Settings-section/fullscreen/navigation commands, catalog-first local parsing, and dispatch through the navigation authority adapter. Concurrent native, CAO, Call, mapper/contracts, Chat/OpenCode, cached index, evidence, and service edits remain untouched.
+- Fresh focused verification: `npm --prefix app run test -- --run src/features/instant-command` PASS (13 files, 91 tests); owned Prettier check PASS; owned `git diff --check` PASS; scoped Gitleaks PASS (no leaks).
+- Full `npm run typecheck` is blocked only by three concurrent out-of-scope diagnostics in `src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts` (invalid `displayName`, implicit-any `requested`, and incomplete target object); zero diagnostics name an owned Instant Command path.
+- Next: exact-path Task 4 commit preserving the 1014-path cached index, then RED-first terminal/agent lifecycle vertical.
+### 2026-08-30T17:01:51-05:00 — VS-SOL-CHAT-HANDOFF-SYSTEM-20260830-33 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` at `878f12fc14e644009a08eb59a0fc9aaf0579303e`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state. Approved design commit is `c2ef6fc7`.
+- Exact ownership is recorded in `.agent-coordination.lock/VS-SOL-CHAT-HANDOFF-SYSTEM-20260830-33.txt`: one implementation plan, new chat handoff/workspace/supervision modules and focused tests, plus clean unlocked `ChatView.tsx`, `NavPane.tsx`, `MessagePart.tsx`, `types/chat.ts`, `jarvisScheduleDispatch.ts`, and `SchedulePage.tsx` integration seams.
+- Live conflicts are preserved: CAO bootstrap still owns `Composer.tsx`; scheduled CAO integration still owns `jarvisSchedules.ts` and `jarvisScheduleRunner.ts`; concurrent lanes own dirty `App.tsx` and `lib/db/schema.ts`/`jarvisMappers*`. This lane will use an adjacent editable draft surface and the unlocked canonical schedule-dispatch boundary, never a second runtime/store/runner.
+- First TDD boundary is typed `application/x-vibespace-chat` payload validation and accepted-drop revalidation; transcript content is forbidden in DataTransfer. Next: write/self-review the exact plan, capture RED, implement minimal contracts, and checkpoint each coherent test/commit boundary.
+
+### 2026-08-30T17:04:29-05:00 — VS-SOL-CHAT-HANDOFF-SYSTEM-20260830-33 handed off / released
+
+- Root ended this implementation lane before plan or product work began. The exact claim is released to `/root/chat_handoff_delivery`, which must create a fresh owner/claim before writing.
+- Uncommitted state owned by this lane is coordination-only: `.agent-coordination.lock/VS-SOL-CHAT-HANDOFF-SYSTEM-20260830-33.txt` plus this append-only claim/handoff audit. `docs/superpowers/plans/2026-08-30-chat-handoff-multipane-supervision-implementation.md` is absent; no product file was changed, no RED test was created or run, and no commit was made.
+- Last observed branch/HEAD is `integration/UnifiedChungus-final` at `878f12fc14e644009a08eb59a0fc9aaf0579303e`. The previously identified live exclusions remain `Composer.tsx`, `jarvisSchedules.ts`, `jarvisScheduleRunner.ts`, dirty `App.tsx`, and dirty `lib/db/schema.ts`/`jarvisMappers*`; the successor must re-audit locks and worktree truth because shared state can advance.
+
+### 2026-08-30T17:08:00-05:00 — VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34 claimed
+
+- Explicit continuation of handed-off `VS-SOL-CHAT-HANDOFF-SYSTEM-20260830-33` on existing linked worktree `C:\Users\viper\VibeSpace-UnifiedChungus-Final`, branch/base `integration/UnifiedChungus-final` at `878f12fc14e644009a08eb59a0fc9aaf0579303e`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick/revert/bisect state.
+- Exact ownership is recorded in `.agent-coordination.lock/VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34.txt`: the implementation plan; new drag, projection, workspace, dispatch, supervision, card, and navigation modules/tests; plus clean Composer, ChatView, MessagePart, NavPane, chat type, canonical schedule-dispatch, and SchedulePage seams. The earlier Composer owner explicitly released that file in its lock; no other active exact claim was found.
+- Live exclusion remains the active CAO schedule owner over `jarvisSchedules.ts` and `jarvisScheduleRunner.ts` plus tests. Dirty/owned `App.tsx`, `lib/db/schema.ts`, and `jarvisMappers*`, native control/evidence, Instant Command/Calyx, CAO, Pets, OpenCode, Call, Ambient Windows, credentials, services, and all unrelated cached/dirty state remain protected.
+- First RED: `chatDragPayload.test.ts` proves versioned `application/x-vibespace-chat` identifier-only serialization and accepted-drop revalidation, rejecting malformed, stale, inaccessible, and self payloads. Next: exact written implementation plan and plan-only commit, then strict TDD milestones without crossing protected ownership.
+
+### 2026-08-30T17:14:00-05:00 — VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34 plan checkpoint
+
+- Exact plan-only commit `f6f6b5ef` (`docs: plan chat handoff supervision workspace`) adds `docs/superpowers/plans/2026-08-30-chat-handoff-multipane-supervision-implementation.md` (`480` lines). Prettier, prohibited-placeholder scan, and `git diff --check` pass; commit manifest contains only the plan.
+- The plan divides seven strict TDD/commit milestones: typed identifier-only drag/sidebar actions; safe complete-three-day projection plus editable Composer card; persistent accessible max-four pane workspace; persisted canonical chat dispatch; supervision binding/existing runner extension; durable truthful Schedule card/exact-ID/back navigation; and end-to-end accessibility/full/native gates.
+- Intended product scope is the exact active lock plus, after explicit handoff only, `jarvisSchedules.ts/.test.ts` and `jarvisScheduleRunner.ts/.test.ts`. That active CAO schedule ownership is the sole load-bearing overlap; `App.tsx`, DB schema/mappers, native control, and every unrelated dirty path remain excluded.
+- Next RED command: `npm --prefix app run test -- --run src/features/chat/chatDragPayload.test.ts`; expected failure is unresolved `./chatDragPayload`. Then implement only the typed contract before sidebar integration.
+
+### 2026-08-30T17:18:00-05:00 — VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34 Task 1 scope refinement
+
+- Typed drag RED failed for the expected missing module and is now GREEN `4/4`. The first `NavPane.chatHandoff` RED could not collect within 60 seconds because importing the full navigation surface retains unrelated live-store/side-effect dependencies; the run was terminated without product state changes.
+- Exact scope adds only new `app/src/components/layout/ChatNavRow.tsx` so the existing exported row becomes an isolated, real component with focused drag/menu tests. `NavPane.tsx` will import/re-export it and remove its inline duplicate. No other navigation surface or active owner is affected.
+
+### 2026-08-30T17:27:00-05:00 — VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34 Task 1 committed
+
+- Exact commit `7eeb671a` (`feat(chat): add typed chat drag actions`) contains only `chatDragPayload.ts/.test.ts`, isolated `ChatNavRow.tsx`, `NavPane.chatHandoff.test.tsx`, and the `NavPane.tsx` import/re-export replacement. No unrelated staged/dirty path entered the commit.
+- RED proved both missing typed contract and missing isolated row. GREEN passes `2` files / `6` tests for identifier-only MIME serialization, exact parser rejection, canonical stale/self/scope/access revalidation, real sidebar drag, and keyboard menu events. Exact Prettier and diff-check pass.
+- Shared typecheck was attempted but remained CPU-active/silent beyond four minutes amid multiple concurrent TypeScript processes; only this lane's invocation was cancelled. Focused gates are clean and the shared gate remains queued for a stable combined lane. Next: RED-first safe three-calendar-day projection and editable Composer handoff.
+
+### 2026-08-30T17:44:00-05:00 — VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34 Task 2 typecheck diagnosis
+
+- Fresh shared typecheck completed after the focused `5` files / `12` tests passed. It reports one owned error: the intentionally exhaustive `MessagePart` switch rejects the new typed `chat_handoff` union member at line 546. Three separate `model-foundry/modelHub.test.ts` `computeDevice` diagnostics are concurrent and excluded.
+- Root cause is confirmed by reading the switch tail: every `Part.kind` requires an explicit render case before the `never` assertion. Exact scope adds only `MessagePart.chatHandoff.test.tsx`; RED will require a safe visible handoff summary, then the minimal `MessagePart.tsx` case will restore exhaustiveness. No broad renderer refactor is planned.
+### 2026-08-30T17:09:16-05:00 — VS-CODEX-BUILD-YOUR-OWN-AI-OFFLINE-20260830-33 — claimed
+- Branch/HEAD: `integration/UnifiedChungus-final` @ `878f12fc14e644009a08eb59a0fc9aaf0579303e` (upstream `origin/UnifiedChungus`).
+- Scope: offline-only Build Your Own AI repair; project identity across native training events and verified Hub artifact routing into the dedicated local Foundry provider.
+- Owned files: `app/src-tauri/src/model_foundry.rs`, `app/src/features/model-foundry/nativeBridge.ts`, its training-contract test, `modelHub.ts` + test, `app/src/features/agents/AgentManager.tsx`, Foundry provider + test, the task plan, and append-only coordination entries.
+- Baseline verification: Model Foundry frontend/provider 135 tests pass; Python worker 18 tests pass; Rust core 27 tests pass; Rust training runtime 19 tests pass. Fresh static trace found two integration defects not covered by those suites: native events erase `projectId`, and Agent editor activation saves `foundry:<job>` as an Ollama model even though current Ollama dispatch goes to OpenCode.
+- Constraint: user explicitly forbids live-app testing; no launch/restart/CDP/Playwright. Next: RED regressions, minimal repairs, complete offline gates.
+### 2026-08-30T17:10:32-05:00 — VS-SOL-CAO-TARGET-LEASE-20260830-31 verification checkpoint
+
+- Resumed the bounded journal-backed explicit target lease at branch HEAD `2caa0ff3` while preserving the original base `c2ef6fc7` and all concurrent work. Exact owned scope remains the six execution contract/schema/mapper files plus new `caoTargetAuthority.ts/.test.ts`; no Schedule, Operations Floor, Chat runtime, native, Instant Command, or unrelated product path was touched.
+- The authority grants no target by default; atomically claims only an explicit single/set selection; persists exact account/workspace/project/run and chat/terminal revisions; and revalidates live selection, unlocked state, same lease ownership, revision, active CAO run, and bounded expiry on verify/reload without renewal. Failed persistence releases only the attempted exact claim.
+- Fresh focused verification is `3/3` files and `500/500` tests PASS. Exact Prettier and `git diff --check` PASS; Gitleaks scanned the tracked patch plus both new source/test files with no findings. Full app typecheck has no owned diagnostics and is blocked only by concurrent `instant-command/authorities/terminalCommands.test.ts:24` widening `InstantResultCode` to `string`. Inherited cached index remains 1014 paths; its current observed binary-patch SHA-256 is `470ab2c552d813139aae2497b2d5b8c13b8fc721b296ba9c9be42933285ddf43` and will be preserved across the exact-only commit.
+
+### 2026-08-30T17:13:00-05:00 — VS-SOL-CAO-TARGET-LEASE-20260830-31 committed / released
+
+- Exact commit `978285836d2e7a19e6c7d8190feb4a135bb1d57a` (`feat(cao): require explicit target leases`) is based on concurrent parent `2caa0ff3` and contains exactly the eight claimed contract/schema/mapper/authority paths (`+814/-15`). All owned paths are clean after commit.
+- The inherited cached index is preserved byte-for-byte at 1014 paths and SHA-256 `470ab2c552d813139aae2497b2d5b8c13b8fc721b296ba9c9be42933285ddf43`. Verification evidence and the concurrent Instant Command-only typecheck blocker remain as recorded above. No native control or unrelated service/product state was touched; release only this agent-scoped target-lease lock.
+
+### 2026-08-30T17:18:00-05:00 — VS-SOL-JARVIS-PUBLIC-ACTIVITY-20260830-35 claimed
+
+- Branch/base `integration/UnifiedChungus-final` @ `ed60952e063e3fdfe36c5021190025c313784d48`. The latest user-priority correction is bounded to the existing activity projection/ledger seam: seven clean/unlocked source/test/style files under `activity-ledger` and `legacyActivityProjection`.
+- TDD will make every canonical Read/Search/Command/Edit/Verify/tool lifecycle event incrementally actionable, retain existing collapse/expand chronology, and show precise sanitized command/tool/file detail only inside the expanded inspector. Provider-public progress stays visible through existing live correlated events; hidden OpenCode/private chain-of-thought, secrets, private absolute paths, raw results, output, and environment remain excluded.
+- `runtime.ts` is explicitly protected because `bac3de32` already owns progressive public snapshots. AgenticConsole, ChatThread, ChatView, MessagePart, Composer, `types/chat.ts`, identity policy, modes/approvals/cancel/reconnect/dedupe, Schedule/CAO, native/Pets, and all concurrent dirty/cached work are unchanged.
+
+#### 2026-08-30T17:22:00-05:00 — public progress render seam added
+
+- Read-only trace confirmed `bac3de32` already writes the latest sanitized public snapshot into the live activity event `detail`, but `LiveTurnStatus` renders only `title`; this is the direct visible-public-progress loss. The clean/unlocked `AgenticConsole.tsx/.test.tsx` pair is added to exact ownership for one RED-first render assertion. All other AgenticConsole projection/style/preferences, hidden reasoning policy, and protected files remain unchanged.
+
+#### 2026-08-30T17:42:57-05:00 — public activity verification checkpoint
+
+- RED proved live public snapshot detail existed but rendered only the generic title, while canonical terminal/tool journal events reached Chat as non-actionable `thinking` rows. GREEN now shows the latest sanitized public detail inline during the active turn, preserves structured operation identity, classifies terminal/read/search/edit/check/custom-tool receipts, and reveals only sanitized commands, tool names, and file basenames after explicit expansion. Raw outputs, environments, secret values, private absolute paths, and private reasoning remain absent.
+- Fresh new-behavior matrix is 4/4 files and 5/5 selected tests PASS; the full adjacent matrix is 79/80 with all 79 functional tests green and only the pre-existing 250,000-event 750ms wall-clock assertion failing under current shared CPU load (it already failed in the initial RED run before production edits). Exact Prettier/diff PASS; Gitleaks scans 19.77 KB with no findings. Full typecheck and production build have no owned diagnostics and are externally blocked by concurrent missing `chatHandoffProjection`/Instant Command fixture typing, then Instant Command fixture typing alone. Current inherited cache is 4 paths / SHA-256 `d27ad6139e607e8ae0fbff304456bb4c9cd86a40443a5eb315d1184c9ffb415a`; preserve it across exact-only commit.
+
+#### 2026-08-30T17:45:00-05:00 — VS-SOL-JARVIS-PUBLIC-ACTIVITY-20260830-35 committed / released
+
+- Exact commit `2af7b5d48efd9bb49cbf520a2b1177b4b433f463` (`fix(chat): expose public activity details`) is based on concurrent parent `ed14689b` and changes exactly nine claimed projection/ledger/AgenticConsole source-test-style paths (`+271/-3`). Owned paths are clean; the inherited four-path cache is byte-for-byte preserved at SHA-256 `d27ad6139e607e8ae0fbff304456bb4c9cd86a40443a5eb315d1184c9ffb415a`.
+- Native acceptance should verify an official-app live turn visibly updating sanitized public progress text and incrementally adding Read/Search/Command/Edit/Verify/custom-tool receipts; each collapsed disclosure must expand to sanitized command/tool/file details, while raw secret/private-path/output/reasoning content remains absent. Preserve modes, approval cards, cancel/reconnect/dedupe, theme/background, Pets, Instant, Schedule, and native surfaces. Release only this lock.
+### 2026-08-30T17:13:00-05:00 — VS-SOL-INSTANT-CALYX-CONTINUATION-20260830-30 Task 5 checkpoint
+
+- Task 4 exact commit: `878f12fc` (`feat(instant-command): add catalog navigation authority`), 14 owned Instant Command files only (`+721/-77`); the pre-existing 1014-path cached index remained intact.
+- RED-first Task 5 adds one deterministic terminal selector grammar, exhaustive terminal/agent lifecycle catalog metadata, verified snapshot list/status authority, prompt-state interlocks, exact-target confirmation binding, and an injected dispatch seam. Unproven mutation authorities remain truthfully `blocked`; no terminal runtime, pane tree, queue, Chat/OpenCode, native controller, CAO/Schedule, or service file was edited.
+- Fresh verification: Task 5 RED observed both modules absent; GREEN focused integration PASS (5 files, 29 tests), complete Instant Command matrix PASS (15 files, 101 tests), `npm --prefix app run typecheck` PASS, exact Prettier PASS, owned `git diff --check` PASS, and scoped Gitleaks PASS.
+- Next: exact Task 5 commit, then catalog/authority verticals for schedules/settings/media/resources while preserving canonical authority boundaries.
+### 2026-08-30T17:33:09-05:00 — VS-CODEX-WARM-ANIMATED-SVG-PACK-20260830-36 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` at `7eeb671aad5c3f8e64d3bc784fb5d64c55628eeb`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state and no cached paths at claim time.
+- Exact scope is four new standalone files under `app/public/assets/themes/warm/animated/`: `agent-orbit.svg`, `chat-handoff.svg`, `schedule-loop.svg`, and `context-bloom.svg`. No active lock overlaps this new directory.
+- Approved design uses VibeSpace terracotta, honey, sage, and mauve; transparent backgrounds; compact infinite CSS loops; semantic title/description; and a static reduced-motion fallback. Existing manifests, UI/product code, native processes, and all concurrent dirty work remain protected.
+- Next: create only the four claimed assets, XML/static-check and raster-render them, then exact-file commit and release this lock.
+
+### 2026-08-30T17:44:59-05:00 — VS-CODEX-WARM-ANIMATED-SVG-PACK-20260830-36 completed/released
+
+- Exact commit `02cee069` (`feat(assets): add warm looping SVG animations`) adds only the four claimed warm-theme assets: agent orbit, chat handoff, recurring schedule loop, and context-map bloom. Existing UI/product source and the theme manifest remain unchanged.
+- Fresh verification PASS: cached/commit manifest exactly four paths; `git diff --check` clean; XML/static contract `48/48` checks; all four formatted SVGs rasterized successfully at `768x480`; explicit HTML-parser Prettier check PASS. Manual inspection of the four rendered PNGs found no clipping or composition defects.
+- Each asset is transparent and self-contained, uses the warm terracotta/honey/sage/mauve vocabulary, loops through internal CSS animation, resolves semantic `aria-labelledby` title/description IDs, has no script/external references, and disables motion under `prefers-reduced-motion: reduce`.
+- Final branch/HEAD after this scoped commit: `integration/UnifiedChungus-final` at `02cee069`. Released only this agent-scoped lock; all unrelated staged/dirty state and native processes remain preserved.
+### 2026-08-30 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 — claimed
+
+- Task: add Codex CLI plus OpenCodex as a second first-class Jarvis Chat backend while preserving OpenCode behavior.
+- Worktree/branch/base: `C:\Users\viper\VibeSpace-UnifiedChungus-Final`, `integration/UnifiedChungus-final`, `7eeb671aad5c3f8e64d3bc784fb5d64c55628eeb`, upstream `origin/UnifiedChungus`.
+- Preserved shared index before this task at `C:\Users\viper\AppData\Local\Temp\vibespace-shared-index-before-codex-opencodex-20260830.patch` (SHA-256 `4006170E46D3144DE701AFB447EE9095C60862D3FD00B5B3915B21E2697C576C`); working files were not changed.
+- Exact initial scope: new design/plan documents and new `app/src/lib/ai/backend/chatBackend{,.test}.ts` only, plus this append-only checkpoint and the agent lock.
+- Conflict matrix: Chat type/composer owned by `VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34`; OpenCode native transport owned by `VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002`; activity projection owned by `VS-SOL-JARVIS-PUBLIC-ACTIVITY-20260830-35`. Those surfaces are protected until explicit release/handoff.
+- Upstream verified: OpenCodex v2.36.0 (`c7d8407`) is an independent MIT local Responses proxy, not the Chat/event host; structured Codex transport remains required. Upstream lacks the milestone's checksum-pinned package rollback contract, so VibeSpace must own that lifecycle layer.
+- Next: review/commit architecture and implementation plan; then RED-first backend authority contract.
+
+### 2026-08-30 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 — milestone 1 contract GREEN
+
+- Design/plan commit: `90887c2a46d7f703da3c09c5cb68ecbbdf19e658`.
+- RED: `npm --prefix app test -- --run src/lib/ai/backend/chatBackend.test.ts` exited 1 because the new authority module did not exist.
+- GREEN: the same focused suite passed 8/8 (exit 0); standalone strict TypeScript for `chatBackend.ts` passed; exact diff check passed; scoped secret scan was clean.
+- Full repository typecheck reached an unrelated active-owner error at `app/src/features/chat/MessagePart.tsx:546` (`chat_handoff` not assignable to `never`). This task did not edit that file; the owned module independently typechecks.
+- Implemented scope: pure versioned affinity parsing, deterministic legacy OpenCode migration, pre-first-message backend selection, one-time lock, idempotence, and typed locked-switch rejection. No Chat UI/runtime/OpenCode behavior changed.
+- Next: exact-file contract commit; recheck active locks before repository persistence integration.
+
+### 2026-08-30 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 — scope extension
+
+- The Chat type remains actively owned/dirty, so persistence integration remains deferred without overlap.
+- Added clean unclaimed scope for separate Codex/OpenCodex resource manifests plus `harness/managed_cli_manifest.rs` and the one-line `harness/mod.rs` registration.
+- Audited exact npm registry artifacts: Codex `0.151.0-win32-x64`, 147,584,554 bytes, SHA-256 `9044e64402bf6a92774fe35a8cb86010d254c0d3390d5a7ee9047024588d7355`; OpenCodex `2.36.0`, 9,520,432 bytes, SHA-256 `95f2bab63125a94b5b53d5cc912a225812aed0a17b926cf556d6fc37651be915`.
+- Next: RED-first strict official-source/size/hash/integrity/entrypoint manifest parser. No install or configuration mutation in this slice.
+
+### 2026-08-30 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 — managed artifact identity GREEN
+
+- RED: `cargo test managed_cli_manifest --lib` exited 1 on intentionally absent parser/types.
+- GREEN: focused Rust tests passed 3/3 (exit 0); exact `rustfmt --check`, JSON parse, diff check, and scoped secret scan passed.
+- Added separate immutable Codex/OpenCodex manifests with exact official registry URLs, versions, sizes, SHA-256, npm SHA-512 integrity, entrypoints, licenses, and archive bounds. Parser rejects all mismatched identity/source/limit fields and does not change OpenCode.
+- No artifact was installed and no Codex/OpenCodex configuration was mutated. Next: exact commit, then managed review/known-good promotion contract.
+
+### 2026-08-30 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 — structured protocol scope
+
+- Added only new `codexAppServer.ts` and `.test.ts` scope after confirming no active lock overlap.
+- Generated the local Codex 0.151.0 app-server TypeScript protocol into `%TEMP%` read-only to verify real methods/items: structured thread/turn/text/reasoning-summary/tool/diff/usage/question/approval/cancel/error notifications and requests.
+- This slice normalizes into the existing `ProviderEvent` boundary plus typed control requests. It will suppress private reasoning text and unsafe/raw payloads; no terminal pixels, ANSI/TUI scraping, Chat runtime fork, or OpenCode edit.
+
+### 2026-08-30 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 — structured protocol GREEN
+
+- RED: focused `codexAppServer` Vitest exited 1 because the normalizer did not exist.
+- GREEN: parser 8/8 and adapter boundary 68/68 passed; full repository TypeScript passed exit 0; exact Prettier/diff and scoped secret scan passed.
+- Implemented structured thread binding, incremental text, protocol-public reasoning summaries, private-reasoning suppression, safe Read/Edit/MCP projection, typed questions/approval controls, provider usage, terminal completion/interruption/failure, ANSI/control stripping, and raw path/command/diff suppression.
+- Existing `ProviderEvent`, Chat runtime, router, activity UI, direct Codex adapter, and OpenCode behavior remain unchanged. Next: exact commit and read-only parallel review, then native structured transport/process generation.
+
+### 2026-08-30T17:39:58-05:00 — VS-CODEX-BUILD-YOUR-OWN-AI-OFFLINE-20260830-33 scope checkpoint
+
+- User expanded the offline-only Foundry task to automatic verified-worker setup, all four modes (Knowledge, LoRA, QLoRA, Full), truthful time/compute controls, and a bounded mini-model test stored only under `D:\` below 5 GiB.
+- User then selected GPU-only training for the mini test. The owned request path now adds an explicit GPU/CPU device contract; GPU-only must require CUDA and fail closed without CPU fallback. Minimal host orchestration is unavoidable, but CPU/RAM model training is prohibited for this evidence run.
+- Added exact ownership for `BuildYourOwnAIHub.tsx/.test.tsx`, `model_foundry_training.rs`, the canonical `worker.py`, and its request/label tests. No active lock overlaps these paths. Existing project identity/artifact routing repairs and all unrelated shared changes remain preserved.
+- Offline audit: RTX 4050 Laptop GPU is present, but the global PyTorch is CPU-only and the private verified worker install is incomplete. Next: RED device/setup contracts, minimal implementation, focused zero-exit gates, then one D-drive GPU-only worker run without launching VibeSpace.
+### 2026-08-30T17:42:16-05:00 — VS-SOL-INSTANT-CALYX-CONTINUATION-20260830-30 Tasks 6–12 + `/connect` checkpoint
+
+- Base advanced concurrently to `90887c2a46d7f703da3c09c5cb68ecbbdf19e658`; owned prior milestones remain `878f12fc` and `ed60952e`. This batch edits only the claimed Instant Command tree, acceptance scripts, and generated catalog doc.
+- RED-first batch adds stable-ID/unique-name and schedule revision resolution, bounded non-secret settings/media ports, version-gated Terminal Peer Fabric port with queued/stored truth, catalog-generated help/suggestions, 300/300/100/100 acceptance corpus, content-minimal rollout decision, generated documentation, and a fresh-process pre-receipt graph audit.
+- User-added `/connect` classifies locally, appears in help, and routes only to the existing Providers Settings surface. It accepts no key argument and stores/logs/renders no credential. Existing Providers/OpenCode transport owns truthful provider enumeration, secure keyring/secret-handle persistence, cancellation/retry/error/reload recovery, and post-connect model refresh; overlapping UI/transport files were not edited and Ask/Plan/Agent authority is unchanged.
+- Verification: complete Instant Command suite PASS (23 files, 120 tests); fresh-process acceptance verifier PASS; post-TypeScript-fixture Fabric test PASS (2/2); exact Prettier/diff/Gitleaks PASS. Full typecheck/build gate is blocked only by concurrent out-of-scope `app/src/features/chat/MessagePart.tsx:546` (`chat_handoff` not assignable to `never`); no owned diagnostic remains.
+- Native packet for `/root/native_resume`: official app only; verify Open Codex, Open OpenCode, real selected-model OpenCode message, `/connect` provider surface plus cancel/retry/reload/catalog discoverability without entering/exposing a secret, and two additional command families; capture truthful <=500 ms receipts, deadline/abort, ambiguity/confirmation/exactly-once behavior, zero routing LLM, and zero Ollama/11434.
+### 2026-08-30 17:08 CDT — VS-SOL-CAO-SCHEDULED-TARGET-BRIDGE-20260830-37 claim
+- Branch/HEAD: `integration/UnifiedChungus-final` @ `02cee0695263d957fb576ca36b4592a5830123b3`; upstream `origin/UnifiedChungus`.
+- Exact files: new `app/src/features/jarvis-memory/caoScheduledTargetAuthority.ts` and `.test.ts` only.
+- Scope: TDD a narrow execution bridge that requires and revalidates exact scheduled-learning target authority on every normal/recovery attempt, with no implicit lease acquire/renew. The durable runtime, scheduler, controls, and Operations Floor remain under active owners and are untouched.
+
+### 2026-08-30 18:02 CDT — VS-SOL-CAO-SCHEDULED-TARGET-BRIDGE-20260830-37 complete/released
+- Commit: `16c3a56a` (`feat(cao): bind scheduled target authority`), exactly the two new claimed source/test files, 235 insertions.
+- Result: scheduled/manual/recovery callers now have a fail-closed execution boundary that verifies exact account/workspace/project/run/lease scope plus target kind/id/revision immediately before every attempt. Missing, stale, cross-run, drifted, or unowned authority produces zero learning execution; the bridge exposes no acquire/renew path.
+- Verification: TDD missing-module RED; focused/adjacent CAO matrix 31/31 PASS; production Vite build PASS; exact Prettier/diff/Gitleaks PASS. Shared typecheck reported only concurrent Instant Command and Model Foundry fixture diagnostics, with no owned diagnostic.
+- Boundary: active runtime/scheduler/control and Operations Floor locks were preserved. Runtime wiring and native-visible exercise remain with the scheduled-integration owner; this lock is released.
+
+### 2026-08-30 18:05 CDT — VS-SOL-CAO-AUTHORIZED-RECOVERY-20260830-38 claim
+- Branch/HEAD: `integration/UnifiedChungus-final` @ `16c3a56a`; exact scope is new `caoScheduledLearningRecoveryAcceptance.test.ts` only.
+- The scheduled runtime/scheduler/UI lock remains active, so this batch composes the clean committed durable controller and target-authority bridge without editing protected seams. Acceptance covers durable cursor/pending ordering, manual-force restart idempotency, restart/failure recovery, and lease revalidation on every attempt.
+
+### 2026-08-30 18:08 CDT — VS-SOL-CAO-AUTHORIZED-RECOVERY-20260830-38 complete/released
+- Commit: `0801ca0a` (`test(cao): prove authorized recovery invariants`), exactly one new acceptance-test file, 244 insertions.
+- Result: composition proof covers durable pending-before-authority ordering; cursor advancement only after verified success; manual-force dedupe across controller reload without revalidation/recounting; same-pass restart recovery with a fresh lease verification; and stable cursor/zero provider execution on stale authority followed by a fresh verified retry.
+- Verification: initial acceptance RED exposed three absent-property matcher errors, corrected without product relaxation; focused 4/4 PASS; adjacent CAO 35/35 PASS; exact Prettier/diff/Gitleaks PASS. Shared typecheck has no owned diagnostics and is blocked only by concurrent Model Foundry and Codex backend paths. Production Vite build passed at immediately preceding product commit `16c3a56a`; this batch is test-only.
+- Remaining boundary: pause/resume and canonical runtime/projection wiring stay under the still-active scheduled-integration/UI locks. Lock released.
+### 2026-08-30T18:02:41-05:00 — VS-SOL-INSTANT-CALYX-CONTINUATION-20260830-30 Task 8/10 safe-boundary checkpoint
+
+- Branch HEAD advanced concurrently to `16c3a56ae905f6018f14d0aaa47fa9621e96a71f`; prior owned milestone `ed14689b` remains in ancestry. Exact new scope is only `instant-command/entryBoundary*`, `authorities/resourceCommands*`, and `instant-command/index.ts`.
+- RED-first implementation adds deterministic stable-ID/unique-name resource resolution across tool/skill/plugin/file/context/project/chat ports, exact tool-input validation, credential-argument rejection, read-only file limits, and queued/completed receipt truth. It also exports one command-first entry coordinator that deduplicates typed/phrase-commit/voice-final/retry triggers by exact interaction/correlation identity, creates no model turn for matched/rejected commands, and leaves unmatched input on the caller's existing selected-model route.
+- Active Assistant/Composer/Chat handoff, public-activity, and Codex/OpenCode backend owners prevent wiring those surfaces in this lane; clean handoff dependency is to replace their direct classify/execute call with `InstantCommandEntryBoundary.submit` after release. No overlapping file, provider/model/permission authority, native process, credential, or Ollama/11434 state was touched.
+- Verification: TDD RED observed both missing modules; focused GREEN/integration PASS (4 files, 21 tests); owned TypeScript diagnostics zero. Shared `npm run typecheck` and therefore scripted production build are blocked only by concurrent out-of-scope `app/src/features/model-foundry/FoundryPage.tsx:403` missing `computeDevice`; exact Prettier/diff and scoped Gitleaks PASS.
+- Native delta: on the final combined SHA, exercise typed + phrase/voice-final/retry dedupe for one interaction, unmatched selected-model preservation, resource ambiguity/no-dispatch, schema-invalid tool rejection, credential-argument rejection, and queued-vs-completed wording. Existing five-command `/connect` packet remains required; official app only and zero Ollama.
+### 2026-08-30T18:08:30-05:00 — VS-SOL-INSTANT-CALYX-CONTINUATION-20260830-30 guarded resource adapters checkpoint
+
+- Assistant/Composer/Chat locks remain active (`CHAT-LIFECYCLE`, Chat handoff delivery, root master Assistant ownership, and first-class Codex/OpenCodex backend); no entry-surface file was edited. Prior clean boundary is commit `96294db4`.
+- RED-first extension hardens the owned resource adapter with exact per-family command allowlists; targetless create/list handling; exact single-target confirmation for project archive/chat delete; exact approval binding for tool run/stop, plugin connect/disconnect, and context-to-terminal delivery; raw transcript/hidden-reasoning rejection; credential-field rejection; read-only file scope; and truthful authority receipt projection.
+- Focused GREEN PASS: resource + entry boundary 8/8. Exact Prettier/diff/Gitleaks PASS; zero owned TypeScript diagnostic. Shared typecheck/build is blocked only by concurrent out-of-scope missing `app/src/lib/ai/adapters/codexAppServer.ts` imported by its new test.
+- Clean handoff remains: active entry-surface owner wires `InstantCommandEntryBoundary.submit`; canonical resource UI/repository owners bind the guarded `ResourceCommandPort` without accepting secrets or bypassing existing confirmations/approvals.
+### 2026-08-30 18:16 CDT — VS-SOL-SIYUAN-RECEIPT-TRUTH-20260830-39 claim
+- Branch/HEAD: `integration/UnifiedChungus-final` @ `3586a292efcd1873e8f2f6b4ac9d382495594dd5`; exact files are `productionContextGateway.ts/.test.ts` only.
+- Product defect: the clean production adapter can issue a receipt after accepting fractional/unreconciled retrieval counts, silently replacing one revision with another for the same source ID, or omitting issued evidence handles from its grounded prompt citations. TDD will fail closed on those three boundaries without changing the existing project-scoped SiYuan query or creating a parallel context authority.
+
+### 2026-08-30 18:36 CDT — VS-SOL-SIYUAN-RECEIPT-TRUTH-20260830-39 complete/released
+- Commit: `2deb7fe2` (`fix(context): reconcile retrieval receipts`), exactly `productionContextGateway.ts/.test.ts`, `+119/-4`.
+- Result: the production Chat/OpenCode-to-Gateway adapter now issues retrieval receipts only when requested/result route identity, safe-integer candidate/hydration/evidence/child/depth counts, hydrated evidence length, source revisions, and exact `Citation: [handle]` lines reconcile. Conflicting revisions, fractional/over-reported counts, route drift, or ungrounded handles fail closed before receipt authority is stored.
+- Verification: focused RED reproduced five unsafe acceptances; Gateway boundary 52/52 PASS; complete Context suite 125 files / 1,397 tests PASS; repository TypeScript PASS; isolated production Vite build 5,042 modules PASS; exact Prettier/diff/Gitleaks PASS. The first shared-output build transformed all modules but could not empty another process's locked `app/dist/assets`; isolated task output proved the bundle and remains at `D:/VibeSpace-Testing/context-receipt-build-20260830-39` because policy rejected recursive cleanup. It is generated, outside Git, and recoverably replaceable.
+- Existing project isolation, SiYuan indexing/search, pause/restart recovery, cache/cancel authority, and provider-free query remain unchanged and covered by the full Context matrix. Lock released.
+
+### 2026-08-30T18:27:46-05:00 — PR31 Account Center truth milestone claimed
+
+- Primary `VS-CODEX-PR31-ACCOUNT-TRUTH-20260830-40` and sole helper `VS-SOL-PR31-ACCOUNT-PROJECTION-NATIVE-20260830-41` claimed clean, non-overlapping Account Center scopes at branch `integration/UnifiedChungus-final` / base `89aa46349b735012e5d734119c09ee2a28dd668f`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state.
+- Primary owns Account profile/security sources and tests plus the milestone plan and Queue rows 33/35/36. Helper owns AccountPage status/support/style sources and tests and Queue rows 38/40 evidence through the primary's one-time Queue update. Cached index baseline is 6 paths / name hash `01D1D370F643602F95CD7DF6E75FEC08418109BA326B06D848A50B5B75871F63`.
+- Pet, Benchmark/News, Inspector, Voice, Chat, SiYuan/RLM, CAO, Instant/Calyx, Model Foundry, Billing/Stripe mutation, Call scheduling, credentials, deployments, production, native processes, and all unrelated dirty/staged paths remain protected. The helper has no native control until an explicit clean handoff after the app opens.
+- Next: RED-first independent implementation, exact-file verification/commits, primary review, then one immutable-SHA official-native Account packet if the native controller is free.
+
+### 2026-08-30T18:32:40-05:00 — VS-SOL-INSTANT-CALYX-CONTINUATION-20260830-30 Terminal Peer Fabric milestone
+
+- Branch/HEAD: `integration/UnifiedChungus-final` @ `3bac4e5d`; product commit `3bac4e5d` from current shared HEAD, exact six files under `app/src/features/tools/terminal-peer-fabric/` plus `app/src-tauri/src/terminal_peer_fabric.rs`.
+- Upgraded the preloaded native seam to capability v2 with project/pane/session/runtime-generation membership, fail-closed version and receipt validation, explicit verified-ref restart recovery, atomic native membership, and truthful connect/status-only operations. No second bus, daemon, plugin runtime, or terminal queue/spawn edit.
+- Verification: focused Vitest 3 files/12 tests PASS; full app typecheck PASS; production Vite build PASS (existing chunk warnings only); exact Prettier/cargo fmt, diff check, and staged Gitleaks PASS. The single authoritative focused Cargo test compiled and exited, releasing the C target; its detached tail was not retained, so no Rust test-count claim is made and it was not rerun before native launch.
+- Clean dependency: the active canonical terminal owner must later bind any message/broadcast operation to the existing terminal command queue/spawn authority using these stable refs; this capability deliberately does not advertise or fabricate delivery for that unbound operation. Official native acceptance is handed to `VS-SOL-FINAL-NATIVE-0E4BE758-20260830-27` for the later combined immutable SHA.
+### 2026-08-30 18:43 CDT — VS-SOL-MD-REFERENCE-RESTORE-20260830-40 claim
+- Branch/HEAD `integration/UnifiedChungus-final` @ `2deb7fe2`; exact scope is mixed reference catalog and Workbench artifact reference source/tests only.
+- Existing canonical file-action artifact persistence, account-scoped repository reload, `/md` command, and Composer insertion authorities are reused read-only. Product gaps in the unlocked seam are ambiguous duplicate/unsafe mixed `@` entries and a Workbench preview that does not revalidate its digest after application focus/restore.
+
+### 2026-08-30 19:24 CDT — VS-SOL-MD-REFERENCE-RESTORE-20260830-40 complete/released
+- Commit: `d55ab347` (`fix(md): restore verified artifact references`), exactly five claimed files, `+177/-64`.
+- Result: mixed `@` discovery now rejects unsafe agent/plugin identities, reserves first-party aliases, suppresses duplicate key/mention authority across CAO/agents/plugins/artifacts, recognizes leading-`@` queries, and retains exact account-scoped opaque artifact references. Workbench now re-resolves the canonical account/artifact pair on focus or visible restore, revalidates the saved digest, ignores superseded async responses, and removes stale previews. The canonical file-action acceptance fixture now includes the production-required persisted `sha256:` and byte-count receipt fields.
+- Verification: TDD RED reproduced three mixed-catalog failures and missing focus revalidation; focused 20/20 PASS; affected vertical 91/92 PASS before correcting the stale canonical fixture, then exact file-evidence boundary 2/2 PASS; isolated production Vite build 5,042 modules PASS; exact Prettier/diff/Gitleaks PASS. Repository typecheck emitted no diagnostic but was stopped after repeated concurrent `tsc -b` contention; the immediately preceding `2deb7fe2` baseline typecheck was clean and all changed TypeScript compiled in focused tests/build.
+- Existing `/md` instruction/Composer and artifact kernel/repository authorities remained untouched under their active locks. Generated isolated build remains outside Git at `D:/VibeSpace-Testing/md-reference-build-20260830-40`; policy did not authorize recursive cleanup. Lock released.
+### 2026-08-30T18:50:00-05:00 — VS-CODEX-JARVIS-EDGE-AURA-20260830-42 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` at `68ad798fd76a11766f81235bbc687f6ad463bb2f`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state.
+- User-approved task: make the global screen-edge effects Jarvis's only visible voice interaction, preserve the existing voice/session/transcription/TTS engine, amplify real user/Jarvis speech reactivity, integrate into the official app, verify, and commit.
+- Exact scope is the approved ambient design/plan, new `jarvis-ambient` frontend/native files, clean `App.tsx`, `voiceSignal.ts/.test.ts`, transparent prepaint files, one new capability, `lib.rs`, this append-only ledger, and this agent-scoped lock.
+- Existing VoiceModal presentation files remain protected under `VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002`; this task will not edit them. Pet, Call, Chat, Instant Command/Calyx, CAO, Model Foundry, account, credentials, deployments, native-controller/evidence, and all unrelated dirty/cached state remain excluded.
+- Next: update the approved design for the user's edge-only override, write the implementation plan, then execute RED-first without launching a second VibeSpace instance.
+
+### 2026-08-30T19:32:00-05:00 — VS-CODEX-JARVIS-EDGE-AURA-20260830-42 scope checkpoint
+
+- RED/GREEN complete so far: ambient projection/energy 12/12, Canvas renderer/presets 4/4, root host/App boundary 4/4, and native overlay supervisor 3/3 PASS.
+- Exact clean scope expands only to the generated prepaint source/test and `app/src-tauri/tauri.conf.json`, required so the new ambient renderer capability is authoritative and generated transparency cannot drift. No active lock overlaps these clean files.
+- Native supervisor creates per-monitor transparent windows, applies physical bounds and Windows no-activate/click-through/topmost styles, hides until renderer readiness, and fails idle closed. Existing Pet/native code remains untouched.
+- Next: update the generator/capability list, run focused/type/build gates, then attach Playwright to the existing official app instance without launching another.
+
+### 2026-08-30T19:18:00-05:00 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 review-fix delegation
+
+- The active backend lock remains the sole authority for this task. Root delegated exactly `codexAppServer.ts/.test.ts` to `/root/backend_diff_review` for RED-first fixes to nonterminal error chronology, informed ephemeral approval presentation, reasoning-summary dedupe, and exact turn-start binding.
+- Root retains only `chatBackend.ts/.test.ts`, the owned design/plan documents, this lock, and append-only ledger writes during the delegation. All Chat UI/runtime/router/types, native app/processes, OpenCode transport, RLM/SiYuan/Jarvis behavior, and unrelated dirty/staged files remain protected.
+
+### 2026-08-30T19:13:24-05:00 — Root → Instant terminal-entry handoff
+
+- Root released exact write ownership to `/root/instant_resume` for `AssistantBar.tsx`, `AssistantBar.test.tsx`, `commands.ts`, `terminalCommandQueue.ts`, `terminalCommandQueue.stress.test.ts`, `terminalRefs.ts`, `TerminalsPage.tsx`, and `TerminalsPage.command.test.tsx`.
+- Scope: one vertical milestone binding verified Fabric message/broadcast authority to the canonical terminal queue and deterministic Instant entry through AssistantBar, with exactly-once delivery, prompt interlocks, truthful recovery, focused/shared gates, exact commit, and a native-test packet.
+- Composer and the external Chat/Codex handoff remain excluded; all unrelated root-master reservations and concurrent work remain preserved.
+
+### 2026-08-30T21:42:00-05:00 — Combined CAO + Instant immutable boundary
+
+- Commit `71db77da` was created during a shared-index race after both owners had staged their exact verified files: six CAO memory replay/status files and eight Instant/Fabric/Tools files. No product diff or test evidence was lost, and history was not rewritten.
+- CAO attribution/gates: memory replay/status recovery; 74 adjacent tests PASS, full typecheck PASS, 5,052-module Vite build PASS, exact format/diff/Gitleaks PASS.
+- Instant attribution/gates: guarded host-resource execution/catalog/Tools terminal handoff; 29 files/148 focused tests PASS, full typecheck PASS, 5,052-module Vite build PASS, exact format/diff/Gitleaks PASS.
+- Decision: preserve `71db77da` as the combined immutable native-test boundary; do not amend/reset/revert. Future owners must avoid the shared index and use path-limited commit commands or isolated indexes/worktrees.
+
+### 2026-08-30T22:20:01-05:00 — Runtime-profile ambient capability startup repair claimed
+
+- Agent/task: `VS-CODEX-ROOT` / `VS-CODEX-ROOT-RUNTIME-PROFILE-AMBIENT-CAPABILITY-20260830-46`; branch/base `integration/UnifiedChungus-final` at `ea1944147840dc13287426f21420799253b39cbb`.
+- Exact product scope: `app/src-tauri/src/runtime_profile.rs`. The immutable `45c6deaa` native build failed before WebView with `[runtime_profile] FATAL: ordinary capability policy is invalid` because shipped `jarvis-ambient-overlay` was absent from the hard-coded production capability list.
+- Next: focused RED, minimum fail-closed policy repair, focused/runtime-profile gate, exact path-only commit, release own lock, rebuild the failed native boundary.
+
+### 2026-08-30T22:24:07-05:00 — Runtime-profile ambient capability startup repair complete
+
+- Exact commit `8e1a32601f20ed1ee652c06519aa0bb658919b58` changes only `app/src-tauri/src/runtime_profile.rs`. Ordinary startup now accepts the shipped `jarvis-ambient-overlay` capability while exact-set equality, visual-test isolation, and fail-closed drift rejection remain intact.
+- Evidence: focused RED reproduced `ordinary capability policy is invalid`; ordinary startup 4/4 PASS; full runtime-profile 30/30 PASS; exact rustfmt/diff/Gitleaks PASS.
+- The exact file and agent lock are released. Next is an immutable C-drive rebuild and the previously blocked native Pet/Chat/Workbench/CAO/Instant acceptance batch.
+
+### 2026-08-30T19:11:00-05:00 — VS-SOL-INSTANT-CALYX-CONTINUATION-20260830-30 Fabric authority integration
+
+- Branch/HEAD: `integration/UnifiedChungus-final` @ exact product commit `3bbe3cbd`; files are `app/src/features/instant-command/authorities/terminalPeerFabric.ts` and `.test.ts` only.
+- Bound the Instant team authority to the real preloaded v2 port. Connect forwards only stable pane/session/project/runtime-generation refs; status maps to the native command request; version and individual operation advertisement are required. Unadvertised message/broadcast/lifecycle operations reject before dispatch, and completed/queued/stored/rejected wording remains truthful without payload echo.
+- Verification: Fabric authority + preloaded tool Vitest 4 files/18 tests PASS; full app typecheck PASS; Vite production build PASS (5,042 modules; inherited warnings only); exact Prettier, diff check, and staged Gitleaks PASS.
+- Blocker/handoff: canonical terminal queue/spawn and Assistant/Composer entry files remain actively locked. Message/broadcast remains deliberately unavailable until the terminal owner binds exactly-once delivery to the existing queue; official-app acceptance was queued to the sole native controller for the later combined immutable SHA.
+
+### 2026-08-30T19:15:00-05:00 — VS-SOL-INSTANT-FABRIC-DELIVERY-20260830-43 claim
+
+- Root explicitly released eight canonical Assistant/terminal files at the 19:13 handoff. This lane claimed those exact files plus its existing Instant Fabric authority and entry-boundary files at base `3bbe3cbd` on `integration/UnifiedChungus-final`.
+- One vertical milestone will bind Fabric message/broadcast through the existing terminal queue using stable refs, exactly-once identity, prompt interlocks, truthful delivery/restart behavior, and route Assistant deterministic submissions through `InstantCommandEntryBoundary.submit`.
+- Composer, external Chat/Codex, SiYuan, native control/evidence, `qeue.md`, credentials, production, billing, deployments, Ollama/11434, cached index, and unrelated dirty files remain excluded.
+
+### 2026-08-30T20:08:00-05:00 — VS-SOL-INSTANT-FABRIC-DELIVERY-20260830-43 milestone
+
+- Exact commit `ea90a4e9` changes six owned files: AssistantBar source/test, Instant Fabric authority source/test, and canonical terminal queue source/stress test. Typed Assistant commands now cross the shared EntryBoundary; Fabric delivery requires correlation-bound approval and all-ready prompt interlocks, maps full stable process identity, and uses the existing durable canonical queue for exactly-once queued/stored/rejected truth and identical-generation reload recovery.
+- Verification: focused/adjacent 5 files/42 tests PASS; post-nullability-fix queue/Fabric 2 files/19 tests PASS; direct production Vite build PASS (5,050 modules; inherited warnings); exact Prettier/diff/staged Gitleaks PASS. Full TypeScript has no owned diagnostic and stops only at concurrent `jarvis-memory/learningFile.test.ts:58,81` arity errors.
+- Official native packet is queued with the sole controller. No app/native process, Composer/Chat/Codex, SiYuan, external `qeue.md`, secret, billing, production, deployment, or Ollama/11434 state was touched.
+### 2026-08-30T18:50:00-05:00 — VS-CODEX-JARVIS-EDGE-AURA-20260830-42 claimed
+
+- Branch/base: `integration/UnifiedChungus-final` at `68ad798fd76a11766f81235bbc687f6ad463bb2f`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state.
+- User-approved task: make the global screen-edge effects Jarvis's only visible voice interaction, preserve the existing voice/session/transcription/TTS engine, amplify real user/Jarvis speech reactivity, integrate into the official app, verify, and commit.
+- Exact scope is the approved ambient design/plan, new `jarvis-ambient` frontend/native files, clean `App.tsx`, `voiceSignal.ts/.test.ts`, transparent prepaint files, one new capability, `lib.rs`, this append-only ledger, and this agent-scoped lock.
+- Existing VoiceModal presentation files remain protected under `VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002`; this task will not edit them. Pet, Call, Chat, Instant Command/Calyx, CAO, Model Foundry, account, credentials, deployments, native-controller/evidence, and all unrelated dirty/cached state remain excluded.
+- Next: update the approved design for the user's edge-only override, write the implementation plan, then execute RED-first without launching a second VibeSpace instance.
+## 2026-08-30 — VS-SOL-CAO-LEARNING-RECOVERY-20260830-41 claim
+
+- Agent/task: `VS-SOL-CAO-LEARNING-RECOVERY-20260830-41` / `TASK-CAO-LEARNING-RECOVERY-20260830-41`.
+- Branch/base: `integration/UnifiedChungus-final` at `d55ab34713631fc41b26c3c0409a5b2d3c801871`.
+- Exact files: `learningFile.ts/.test.ts`, `learningListener.ts/.test.ts`, and `JarvisMemoryStatus.tsx/.test.tsx` under `app/src/features/jarvis-memory/`.
+- Intent: durable read-back verification, fail-closed all-corrupt recovery, and chat-scoped recovery truth. Active scheduled-learning/runtime ownership and all unrelated dirty work remain excluded.
+- Next: RED focused recovery/status tests, minimal product implementation, affected/typecheck/build/format/security gates, exact commit, native packet, release.
+
+## 2026-08-30 — VS-SOL-CAO-LEARNING-RECOVERY-20260830-41 completion
+
+- Commit: `4d2c2480` (`fix(cao): verify learning recovery`), exactly six claimed Jarvis memory product/test files, `+244/-47`.
+- Product result: `learning.md` save and backup/temporary repair success require exact valid primary read-back; existing-but-all-corrupt candidates fail closed instead of silently hydrating an empty profile; recovered/unavailable states flow through the existing chat-scoped indicator without private source paths or memory content.
+- Verification: all Jarvis memory adjacent tests `9 files / 69 tests` PASS; post-format and postcommit focused recovery/status tests `3 files / 24 tests` PASS; full `tsc -b --pretty false` PASS after correcting the owned typed-spy diagnostics; isolated Vite build `5,051 modules` PASS; exact Prettier, `git diff --check`, and six-file Gitleaks PASS.
+- Native boundary: no app/controller attach occurred. Native acceptance is handed to the sole native lane. Isolated build output remains at `D:\VibeSpace-Testing\cao-learning-recovery-build-20260830-41` because recursive cleanup is outside this lane's safe evidence boundary.
+- Final branch/HEAD: `integration/UnifiedChungus-final` at `4d2c2480`; lock marked `completed_released`.
+
+## 2026-08-30 — VS-SOL-CAO-STATUS-REPLAY-20260830-42 claim
+
+- Agent/task: `VS-SOL-CAO-STATUS-REPLAY-20260830-42` / `TASK-CAO-STATUS-REPLAY-20260830-42`; branch/base `integration/UnifiedChungus-final` at `4d2c2480`.
+- Exact scope: new `memoryStatusRuntime.ts/.test.ts` plus existing `learningListener.ts/.test.ts` and `JarvisMemoryStatus.tsx/.test.tsx`.
+- Intent: safe short-lived late-mount status replay, expiry/account-change isolation, and truthful evidence-persistence failure projection. All active scheduled/runtime/UI locks remain excluded.
+- Next: RED tests, minimal product wiring, focused/adjacent/typecheck/build/format/security, exact commit, native packet, release.
+
+## 2026-08-30 — VS-SOL-CAO-STATUS-REPLAY-20260830-42 completion
+
+- Immutable boundary: `71db77da65d92d5cad58ee3b1c03907102ca4152`; root accepted it as a combined CAO+Instant boundary after the shared index already contained the Instant lane's independently gated eight files. This lane's exact attribution remains the six files claimed above; no amend/reset/revert occurred.
+- CAO result: safe short-lived replay makes hydration recovery/error visible when Chat mounts late, while expiry and account-boundary clearing prevent stale/cross-account status. Curated evidence repository failures now project through the same redacted unavailable indicator.
+- CAO verification: all adjacent Jarvis memory tests `10 files / 74 tests` PASS; postcommit focused `3 files / 22 tests` PASS; full TypeScript PASS; isolated Vite build `5,052 modules` PASS; exact Prettier, diff, and Gitleaks PASS.
+- Native boundary: no app attach. Sole-controller acceptance packet requested for late mount, expiry, account switch, and evidence failure. Isolated output remains at `D:\VibeSpace-Testing\cao-status-replay-build-20260830-42`.
+- Final branch/HEAD: `integration/UnifiedChungus-final` at `71db77da`; lock marked `completed_released`.
+
+## 2026-08-30 — VS-SOL-CAO-EVIDENCE-RECONCILE-20260830-43 claim
+
+- Agent/task: `VS-SOL-CAO-EVIDENCE-RECONCILE-20260830-43` / `TASK-CAO-EVIDENCE-RECONCILE-20260830-43`; branch/base `integration/UnifiedChungus-final` at `71db77da`.
+- Exact scope: new `evidencePersistenceRecovery.ts/.test.ts` plus `learningListener.ts/.test.ts`.
+- Intent: reconcile optimistic evidence to exact durable truth after partial failure, fail closed on foreign rows/stale account, and publish recovery only after reconciliation. Active scheduler/UI/native/Instant scopes remain excluded.
+- Next: RED-first recovery contracts, listener wiring, full gates, path-limited exact commit, native packet, release.
+
+## 2026-08-30 — VS-SOL-CAO-EVIDENCE-RECONCILE-20260830-43 completion
+
+- Commit: `880562a1d10666a9fd17f85c805a6e858b1cb5ec` (`fix(cao): reconcile durable evidence`), exactly four claimed files via path-limited commit, `+92/-1`.
+- Product result: after partial evidence create/replace/delete failure, the listener reloads and hydrates exact durable repository truth. It suppresses hydration if the account changed, rejects foreign-owner rows, preserves unavailable truth if reconciliation fails, and publishes recovered only after success.
+- Verification: focused recovery/listener `2 files / 18 tests` PASS; all adjacent Jarvis memory `11 files / 77 tests` PASS; postcommit focused `18/18` PASS; full TypeScript PASS; isolated Vite build `5,053 modules` PASS; exact Prettier/diff/Gitleaks PASS.
+- Native boundary: no app attach. Sole-controller acceptance requested for partial failure reconciliation, account switch, foreign-owner rejection, and safe status labels. Isolated output remains at `D:\VibeSpace-Testing\cao-evidence-reconcile-build-20260830-43`.
+- Final branch/HEAD: `integration/UnifiedChungus-final` at `880562a1`; lock marked `completed_released`.
+
+## 2026-08-30 — VS-SOL-CAO-PROFILE-RECONCILE-20260830-44 claim
+
+- Agent/task: `VS-SOL-CAO-PROFILE-RECONCILE-20260830-44` / `TASK-CAO-PROFILE-RECONCILE-20260830-44`; branch/base `integration/UnifiedChungus-final` at `880562a1`.
+- Exact scope: new `profilePersistenceRecovery.ts/.test.ts` plus `learningListener.ts/.test.ts`.
+- Intent: replace failed optimistic profile changes with last verified durable truth, suppress stale-account recovery, validate payloads, and publish recovered only after successful reconciliation. External-apps/Workbench remains excluded pending user-approved design.
+- Next: RED-first recovery contracts/listener acceptance, full gates, exact path-limited commit, native packet, immediate release.
+
+## 2026-08-30 — VS-SOL-CAO-PROFILE-RECONCILE-20260830-44 completion
+
+- Commit: `805debe74ecbbb5c3a44a3daaa00673b3b9d131c` (`fix(cao): restore durable learning profile`), exactly four claimed files via path-limited commit, `+123/-1`.
+- Product result: a failed optimistic learned-profile save reloads and imports the last valid durable profile (or verified empty profile), suppresses import after account change, fails closed on invalid/rejected recovery payloads, and announces recovered only after successful import without scheduling a recovery write loop.
+- Verification: focused profile/listener `2 files / 20 tests` PASS; all adjacent Jarvis memory `12 files / 82 tests` PASS; postcommit `20/20` PASS; isolated Vite build `5,056 modules` PASS; exact Prettier/diff/Gitleaks PASS. Full typecheck ran and reached only concurrent-owner diagnostics at `AssistantBar.test.tsx:185` and `BuildYourOwnAIHub.test.tsx:308,329`; the exact CAO scope compiled through focused tests and production build.
+- Native boundary: no app attach. Sole-controller acceptance requested for save failure rollback, empty durable restore, account switch, and invalid recovery. Isolated output remains at `D:\VibeSpace-Testing\cao-profile-reconcile-build-20260830-44`.
+- Final branch/HEAD: `integration/UnifiedChungus-final` at `805debe7`; lock marked `completed_released`.
+
+## 2026-08-30 — VS-SOL-CAO-HYDRATION-BARRIER-20260830-45 claim
+
+- Agent/task: `VS-SOL-CAO-HYDRATION-BARRIER-20260830-45` / `TASK-CAO-HYDRATION-BARRIER-20260830-45`; branch/base `integration/UnifiedChungus-final` at `805debe7`.
+- Exact scope: new `accountHydrationAuthority.ts/.test.ts` plus `learningListener.ts/.test.ts`.
+- Intent: block learning after failed profile/evidence hydration, dedupe concurrent loads, retry failed loads, and invalidate at account boundaries. Concurrent AssistantBar/Foundry diagnostics and external-apps/Workbench remain excluded.
+- Next: RED-first authority/listener tests, full gates, path-limited exact commit, immediate release/native packet.
+
+## 2026-08-30 — VS-SOL-CAO-HYDRATION-BARRIER-20260830-45 completion
+
+- Commit: `3c0597852f8d5eb8d147ea5ecdc83f13cb67cdf0` (`fix(cao): gate learning on hydration`), exactly four claimed files via path-limited commit, `+100/-6`.
+- Product result: CAO learning cannot mutate an unverified empty profile after account profile/evidence hydration fails. Concurrent loads dedupe, failures are evicted for explicit next-send retry, success remains ready, and account changes invalidate prior readiness; learning proceeds only after exact current-account hydration succeeds.
+- Verification: focused authority/listener `2 files / 20 tests` PASS; all adjacent Jarvis memory `13 files / 86 tests` PASS; postcommit `20/20` PASS; isolated Vite build `5,057 modules` PASS; exact Prettier/diff/Gitleaks PASS. Full typecheck ran and reached only concurrent-owner diagnostics at `chatHandoffProjection.test.ts:126,129` and `BuildYourOwnAIHub.test.tsx:308,329`; neither file was touched.
+- Native boundary: no app attach. Sole-controller acceptance requested for failed hydration, no mutation/save, retry success, concurrent dedupe, and account invalidation. Isolated output remains at `D:\VibeSpace-Testing\cao-hydration-barrier-build-20260830-45`.
+- Final branch/HEAD: `integration/UnifiedChungus-final` at `3c059785`; lock marked `completed_released`.
+
+## 2026-08-30 — VS-SOL-CAO-RECOVERY-NOREENTRY-20260830-46 claim
+
+- Agent/task: `VS-SOL-CAO-RECOVERY-NOREENTRY-20260830-46` / `TASK-CAO-RECOVERY-NOREENTRY-20260830-46`; branch/base `integration/UnifiedChungus-final` at `1e78bcd8`.
+- Exact scope: `learningListener.ts/.test.ts` only.
+- Intent: prevent recovery hydration from re-entering evidence persistence, recursive recovery, or unintended delete/create/replace writes while preserving ordinary serialized mutations. Chat handoff and external-apps scopes remain excluded.
+- Next: RED regression, minimal suppression boundary, adjacent/build/security, exact path-limited commit, immediate release/native packet.
+
+## 2026-08-30 — VS-SOL-CAO-RECOVERY-NOREENTRY-20260830-46 completion
+
+- Commit: `bdb56ba1bbb9f3ed1cf14211d1accdb7f969422f` (`fix(cao): prevent recovery persistence reentry`), exactly `learningListener.ts/.test.ts`, `+7/-1`.
+- Product result: restoring durable evidence after persistence failure is now read-only with respect to the persistence subscriber. It no longer schedules unintended delete/create/replace work, recursively reloads, or mutates repository truth while reconciling UI state; ordinary user mutations remain serialized normally.
+- Verification: RED reproduced an unintended repository delete; focused listener `17/17` PASS; all adjacent Jarvis memory `13 files / 86 tests` PASS; postcommit exact regression PASS; isolated Vite build `5,057 modules` PASS; exact Prettier/diff/Gitleaks PASS. Known concurrent Chat handoff/Foundry typecheck diagnostics remain external and untouched.
+- Native boundary: no app attach. Sole-controller acceptance requested for create failure → one reload → zero recovery writes → recovered UI. Isolated output remains at `D:\VibeSpace-Testing\cao-recovery-noreentry-build-20260830-46`.
+- Final branch/HEAD: `integration/UnifiedChungus-final` at `bdb56ba1`; lock marked `completed_released`.
+
+## 2026-08-30 — VS-SOL-CAO-EVIDENCE-EPOCH-20260830-47 claim
+
+- Agent/task: `VS-SOL-CAO-EVIDENCE-EPOCH-20260830-47` / `TASK-CAO-EVIDENCE-EPOCH-20260830-47`; branch/base `integration/UnifiedChungus-final` at `bdb56ba1`.
+- Exact scope: new `memoryEvidenceWriteAuthority.ts/.test.ts` plus `learningListener.ts/.test.ts`.
+- Intent: invalidate pre-failure queued writes, suppress writes created during reconciliation, allow fresh post-recovery changes, and isolate epochs by account. Active scheduler, Chat handoff, Foundry, and external-apps remain excluded.
+- Next: RED concurrent-failure test, authority implementation/wiring, adjacent/build/security, exact path-limited commit, immediate release/native packet.
+
+### 2026-08-30T20:11:00-05:00 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 review fixes verified
+
+- The delegated adapter pair returned to root with no helper still active. Independent REDs proved non-monotonic affinity locking and generic unparsed approval display; minimal fixes now clamp `lockedAt >= selectedAt` and render only sanitized ephemeral command/path/permission summaries behind opaque response handles.
+- Structured normalization now binds exact `turn/started` before scoped projection, drops stale/prebinding events, keeps intermediate app-server errors nonterminal until authoritative `turn/completed`, and avoids duplicating streamed reasoning summaries from completed snapshots.
+- Fresh gates: focused adapter/backend/catalog/parser matrix 4 files / 86 tests PASS; full repository `npm run typecheck` PASS exit 0; exact Prettier and diff checks PASS; scoped Gitleaks scan 56.08 KB PASS with no leaks. Final-worktree native acceptance remains queued behind the active sole Verify-worktree controller/CDP 9223 lock; the wrong running app was not touched.
+- Next: commit exactly the six owned adapter/backend/design/plan files while preserving every unrelated dirty/staged path, then re-audit locks for the native structured transport milestone.
+
+### 2026-08-30T20:31:00-05:00 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 managed-runtime scope
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `4d2c24808f660f61ba5490b89ab457a8156d3af1`; existing backend fix remains commit `420d6a327ab0c9b5c48a36eeddba3f184da6b4ba` in ancestry.
+- Rechecked active locks. `Cargo.toml` and native OpenCode transport remain actively owned by the PR31 controller, so this milestone claims only new `harness/managed_cli_runtime.rs` plus the already-owned one-line `harness/mod.rs` registration.
+- Intent: RED-first, pure-Rust, non-mutating readiness inspection that accepts pinned Codex only with its native entrypoint and rejects raw OpenCodex tarball extraction until an exact reviewed dependency-closure receipt and required runtime files exist. No app launch, download, config change, Chat UI, RLM, SiYuan, provider route, or Ollama behavior.
+
+### 2026-08-30T21:46:00-05:00 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 managed-runtime verified
+
+- HEAD moved concurrently to `71db77da65d92d5cad58ee3b1c03907102ca4152`; our prior `420d6a32` backend hardening remains in ancestry. Exact owned product diff is new `managed_cli_runtime.rs` plus one `harness/mod.rs` registration line.
+- Independent read-only review caught a potential false-ready state. The corrected contract never marks raw OpenCodex extraction ready: it requires package/dependency-lock identity, exact entrypoint and managed-Bun checksums, Windows Bun/keyring native surfaces, direct managed Bun launch (no system Node assumption), and a version-matched loopback `ready --json` result with exit 0. Replaced Codex binaries fail closed by checksum.
+- RED: the Codex replacement regression failed against the initial path-only inspection. GREEN: focused managed manifest/runtime Rust tests 7/7 PASS; exact rustfmt/diff PASS; Gitleaks scanned 338.96 KB with no leaks.
+- Native/manual boundary: no app process was touched. The sole controller still owns a detached Verify generation, so final-worktree Playwright acceptance is queued for a short handoff after the correct combined native build exists; no second app was launched.
+
+### 2026-08-30T21:56:00-05:00 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 dependency-lock scope
+
+- Concurrent HEAD is `23d9a19acfa37b1c937a2fbf48cd62a52a759891`; exact readiness commit `0b829bdf` remains in ancestry.
+- Claimed only a new `resources/opencodex-managed-runtime/` package/lock/config triplet and new pure-Rust `managed_cli_lock.rs` plus the already-owned module registration. This pins an every-user Bun 1.4.0 Windows-x64 install graph for OpenCodex 2.36.0 without relying on global Node/npm or user registry configuration.
+- The open native app remains the detached Verify/Pet generation and is explicitly ineligible for this task. Four coworker tasks received the user-required two-minute Playwright notice; canonical acceptance waits for the next combined immutable SHA and clean controller handoff.
+
+### 2026-08-30T22:23:00-05:00 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 dependency lock verified
+
+- Concurrent HEAD is `a81caa832e659c17ebb8c1ab6f56b8bdeb3ebfe4`; exact owned diff is the three managed OpenCodex resources, new lock validator, readiness-layout correction, and module registration.
+- Real isolated materialization with Bun 1.4.0 installed 98 frozen packages from the official registry with dependency scripts disabled. Direct managed-Bun invocation returned `opencodex 2.36.0` at exit 0; `ready --json` truthfully returned unreachable at exit 1 because no proxy was started; the Windows x64 keyring native package was present.
+- RED/GREEN: missing lock API and raw-layout readiness both failed first; final managed lock/manifest/runtime Rust matrix 11/11 PASS. Exact rustfmt/diff PASS; Gitleaks passes 26.60 KB resources and 347.84 KB harness with no leaks.
+- The lock validator pins exact OpenCodex/Bun/Windows-native integrities and normalized lock SHA, rejects local/file/git/workspace/insecure sources and trusted dependency scripts, and produces a frozen Windows-x64 copyfile/production/ignore-scripts plan that invokes neither npm nor Node.
+- Native coordination: another lane is using combined SHA `45c6deaa`; this task sent one concise heads-up and did not attach or interfere. This backend resource slice has no exposed UI until the later installer/transport integration.
+
+## 2026-08-30 — VS-CODEX-JARVIS-EDGE-AURA-20260830-42 completion
+
+- Commit: `822641b0` (`feat(jarvis): replace voice panel with global edge aura`), exactly 27 owned product, test, plan, and spec files (`+1442/-25`).
+- Product result: invoking Jarvis keeps the established voice/session/transcription/TTS authority but suppresses the legacy visible voice panel and projects listening, working, speaking, permission, completion, and error states into transparent, click-through, no-activation, always-on-top edge overlays on each physical monitor. Real microphone and Jarvis playback energy drive the light-blue speech motion; idle creates no overlay windows.
+- Verification: focused web matrix `8 files / 38 tests` PASS; full existing voice matrix `37 files / 302 tests` PASS; native focused tests `3/3` PASS; `cargo check` PASS; release-manifest `45/45` PASS; generated theme contract, exact formatting, and `git diff --check` PASS. Full shared build was delayed by concurrent repository-wide TypeScript/Cargo jobs; no owned diagnostic was reported. Native visual relaunch was intentionally not performed because the user prohibited launching another VibeSpace instance and the already-running instance predates the new native command/window registration.
+- Final branch/HEAD: `integration/UnifiedChungus-final` at `822641b09ea5cd36ab0e0a3457a992bb2697f2c6`; own lock released. All unrelated dirty files, processes, locks, and evidence were preserved.
+
+## 2026-08-30T21:41:15-05:00 — VS-SOL-INSTANT-FABRIC-DELIVERY-20260830-43 team vertical
+
+- Product boundary: the Instant catalog now exposes only the implemented Fabric commands (`team.connect`, `team.list`, `team.status`, `team.message`, `team.broadcast`); connect opens the first-party Tools setup, list/status use the real capability-gated Fabric authority, and typed message/broadcast remains confirmation-only before the existing correlation-bound delivery path.
+- Integration: concurrent CAO commit `71db77da` consumed the eight already-staged owned Instant/Fabric files together with six CAO files. Both owners confirmed the files are exact and fully gated; preserve this combined commit without amend/reset/revert.
+- Verification: focused Instant/Fabric matrix `29 files / 148 tests` PASS; full `tsc -b --pretty false` PASS; Vite production build `5,052 modules` PASS; exact Prettier, diff, and staged Gitleaks checks PASS.
+- Native: combined-SHA acceptance packet sent to the sole native lane; this lane did not attach to or control the app.
+
+## 2026-08-30T21:44:00-05:00 — VS-SOL-INSTANT-FABRIC-CAPABILITY-20260830-44 claim
+
+- Exact scope: Instant parser/executor source/tests and the Terminal Peer Fabric authority source/test only.
+- Intent: admit the five capability-gated Fabric commands into the deterministic command-first boundary while checking the bundled compatible native capability before opening setup or projecting confirmation.
+- Exclusions: Assistant/Composer/Chat/Codex/SiYuan/native controller, terminal queue/spawn, credentials, billing, production, deployments, Ollama/11434, and all unrelated dirty/cached paths.
+- Next: RED parser/execution capability tests, minimal product change, focused/adjacent/typecheck/build/format/security, path-only commit, native packet, release.
+
+### 2026-08-30T21:52:00-05:00 — VS-SOL-INSTANT-FABRIC-CAPABILITY-20260830-44 completion
+
+- Commit `23d9a19a` (`fix(instant): gate fabric commands by capability`) contains exactly six owned Instant parser/executor/Fabric authority source-test files (`+93/-3`).
+- Result: all five implemented Fabric commands enter the deterministic command-first boundary, while setup and message/broadcast confirmation remain fail-closed until the bundled capability reports a compatible complete v2 operation set. List/status retain their real authority check and no model routing is introduced.
+- Verification: RED reproduced ten missing-boundary failures; focused `3 files / 72 tests` PASS; adjacent Instant `25 files / 143 tests` PASS; full TypeScript PASS; Vite production build `5,053 modules` PASS; exact Prettier, diff, and Gitleaks checks PASS.
+- Native: exact-SHA packet delegated to the sole native lane; no app/controller access occurred here. All six exact file locks released.
+
+## 2026-08-30T21:54:00-05:00 — VS-SOL-INSTANT-DISCOVERABILITY-20260830-45 claim
+
+- Exact scope: handed-off AssistantBar source/test plus Instant help/suggestions source/tests.
+- Intent: render accessible local catalog suggestions derived from the catalog's aliases, examples, argument hints, safety, and availability; blocked commands remain disabled, while capability-gated commands are selectable and truthfully labeled for runtime verification.
+- Exclusions: Composer/Chat/Codex/Workbench/external apps/native controller, secrets, billing, production, deployments, Ollama/11434, and all unrelated state.
+- Next: RED suggestion/UI tests, minimal product wiring, focused/adjacent/typecheck/build/format/security, path-only commit, native packet, release.
+
+### 2026-08-30T22:03:00-05:00 — VS-SOL-INSTANT-DISCOVERABILITY-20260830-45 completion
+
+- Commit `3e94cec6` (`feat(assistant): surface instant command catalog`) contains exactly four changed Assistant/suggestions files (`+85/-2`), including the new focused suggestion contract test.
+- Result: Jarvis Assistant locally searches the catalog and renders accessible exact-example suggestions with family, safety, availability, and argument metadata. Blocked commands are visible but disabled; capability-gated commands remain selectable and truthfully defer readiness to the runtime authority. Selecting a suggestion fills the exact command for the existing preview/execute boundary without a model call.
+- Verification: RED reproduced missing UI and incorrect capability-gated disablement; focused `3 files / 13 tests` PASS; adjacent Assistant+Instant `33 files / 197 tests` PASS; direct Vite production build `5,056 modules` PASS; Prettier/diff/Gitleaks PASS. Shared typecheck is blocked only by locked concurrent `BuildYourOwnAIHub.test.tsx:308,329` literal-type diagnostics; no owned diagnostic.
+- Native: exact-SHA packet delegated to the sole native lane; no app/controller access occurred. All claimed files released.
+
+## 2026-08-30T22:04:00-05:00 — VS-SOL-INSTANT-PREVIEW-20260830-46 claim
+
+- Exact scope: handed-off AssistantBar source/test only.
+- Intent: complete the catalog-derived exact action/target preview with pre-execution confirmation/approval and bundled Fabric capability disclosure; preview performs no model call or side effect.
+- Next: RED preview test, minimal UI change, focused/adjacent/build/format/security, path-only commit, immediate release/native packet.
+
+### 2026-08-30T22:07:00-05:00 — VS-SOL-INSTANT-PREVIEW-20260830-46 completion
+
+- Commit `1e78bcd8` (`feat(assistant): preview instant command safety`) contains exactly the two handed-off AssistantBar source/test files (`+58`).
+- Result: matched catalog commands preview the canonical action, at most three bounded non-sensitive primitive slot values, confirmation/approval requirement, and the bundled Terminal Peer Fabric dependency before execution. Preview is side-effect free and does not route to a model.
+- Verification: RED reproduced the missing catalog preview; focused AssistantBar `10/10` PASS; adjacent Assistant plus parser/help/suggestions `10 files / 105 tests` PASS; direct Vite production build `5,057 modules` PASS; Prettier/diff/Gitleaks PASS. Locked Foundry remains the already-recorded external typecheck blocker.
+- Native: exact-SHA packet delegated to the sole native lane; no app/controller access. Both files released.
+
+## 2026-08-30T22:08:00-05:00 — VS-SOL-INSTANT-KEYBOARD-20260830-47 claim
+
+- Exact scope: handed-off AssistantBar source/test only.
+- Intent: complete local catalog autocomplete keyboard and screen-reader semantics: combobox/listbox relationship, arrow-key active option, Enter-to-select without execution, blocked-option exclusion.
+- Next: RED keyboard/ARIA tests, minimal product change, focused/adjacent/typecheck/build/format/security, path-only commit, immediate release/native packet.
+
+### 2026-08-30T22:17:00-05:00 — VS-SOL-INSTANT-KEYBOARD-20260830-47 completion
+
+- Commit `ea194414` (`feat(assistant): navigate instant suggestions by keyboard`) contains exactly the two handed-off AssistantBar source/test files (`83 insertions`, `5 deletions`).
+- Result: the textbox exposes list autocomplete controls and active-descendant state; ArrowDown/ArrowUp wrap across selectable catalog entries while skipping disabled commands; Enter selects an active suggestion without dispatch, leaving the existing second-Enter command boundary intact.
+- Verification: RED reproduced both missing keyboard/ARIA cases; focused AssistantBar `12/12` PASS; adjacent Assistant plus parser/help/suggestions `10 files / 107 tests` PASS; shared TypeScript build PASS; direct Vite production build `5,058 modules` PASS; Prettier, diff check, and Gitleaks PASS.
+- Native: exact-SHA acceptance packet delegated to the sole native lane; no app/controller access. Both files released immediately.
+
+## 2026-08-30T22:18:00-05:00 — VS-SOL-INSTANT-COMBOBOX-20260830-48 claim
+
+- Exact scope: handed-off AssistantBar source/test only; prior keyboard lock is released and no later reclaim was observed.
+- Intent: close the remaining Task 9 accessibility seam with an actual combobox role/popup relationship, Home/End navigation, Escape-only suggestion dismissal, typing recovery, and a content-minimal result-count announcement.
+- Next: RED focused tests, minimal product change, adjacent/full gates, path-only commit, immediate release/native packet.
+
+### 2026-08-30T22:24:00-05:00 — VS-SOL-INSTANT-COMBOBOX-20260830-48 completion
+
+- Commit `2baf90af` (`feat(assistant): complete instant combobox controls`) contains exactly the two handed-off AssistantBar source/test files (`72 insertions`, `13 deletions`).
+- Result: the focused input now has the actual combobox role/list popup contract, Home/End select the first/last enabled option, Escape dismisses only the suggestions without dispatch or lost input, subsequent typing reopens them, and an aria-live status reports only a bounded result count.
+- Verification: RED reproduced all 13 role-dependent failures; focused AssistantBar `13/13` PASS; adjacent Assistant plus parser/help/suggestions `10 files / 108 tests` PASS; direct Vite production build `5,058 modules` PASS; Prettier/diff/Gitleaks PASS. Shared TypeScript is externally blocked only by concurrent `learningListener.test.ts` diagnostics at 422/426/454/461; no owned TypeScript diagnostic was reported.
+- Native: exact-SHA packet delegated to the sole native lane; no app/controller access. Both files released immediately.
+
+## 2026-08-30T22:31:00-05:00 — VS-SOL-INSTANT-CORPUS-20260830-49 claim
+
+- Exact scope: new `acceptanceCorpus.ts` and adjacent test only; no active lock overlap found.
+- Intent: implement Task 12's deterministic catalog-derived 300/300/100/100 acceptance corpus with full command coverage, immutable stable ordering, bounded safe text, and no AI/provider/runtime dependency.
+- Next: focused RED, minimal generator, Instant boundary/build/format/security, path-only commit, immediate release/native packet.
+
+### 2026-08-30T22:37:00-05:00 — VS-SOL-INSTANT-CORPUS-20260830-49 completion
+
+- Commit `cc9fbf26` (`test(instant): build exhaustive acceptance corpus`) contains exactly `acceptanceCorpus.ts` and its adjacent test (`132 insertions`, `32 deletions`).
+- Result: catalog metadata deterministically builds immutable stable-ID records for at least 300 positive, 300 close-negative, 100 ambiguity, and 100 authorization fixtures; every current command/family is represented, unsafe or oversized text fails closed, blocked positives retain truthful unavailable expectations, and the legacy `negative` consumer alias remains intact.
+- Verification: RED reproduced the missing structured generator and backward-compatibility alias; focused corpus `3/3` PASS; full Instant boundary `26 files / 146 tests` PASS; an earlier full TypeScript run PASS; direct Vite production build `5,058 modules` PASS; Prettier/diff/Gitleaks PASS. The final shared TypeScript rerun is externally blocked only by concurrent `Composer.chatHandoff.test.tsx` matcher diagnostics at 297/298/303/304; no owned diagnostic.
+- Native: representative exact-SHA corpus packet delegated to the sole native lane; no app/controller access. Both files released immediately.
+
+## 2026-08-30T22:40:00-05:00 — VS-SOL-INSTANT-ACCEPTANCE-RUNNER-20260830-50 claim
+
+- Exact scope: existing plan-defined Instant acceptance runner and adjacent Node test only; released continuation ownership and no active overlap observed.
+- Intent: replace the runner's hard-coded corpus claim with a real fresh Vitest process covering the structured corpus plus warm p95 gate, truthful exit/duration reporting, fail-closed dependency audit, and content-minimal stdout.
+- Next: RED report assertions, minimal runner integration, focused/boundary/format/security, path-only commit, immediate release/native packet.
+
+### 2026-08-30T22:41:00-05:00 — VS-SOL-INSTANT-ACCEPTANCE-RUNNER-20260830-50 completion
+
+- Commit `6187c846` (`test(instant): verify corpus in fresh process`) contains exactly the plan-defined acceptance runner and adjacent Node test (`48 insertions`, `4 deletions`).
+- Result: the runner now launches a real fresh Vitest process for the structured 300/300/100/100 corpus contract and warm p95 latency gate, reports exact test files/duration/status, fails closed on process/dependency errors, and emits one content-minimal JSON receipt without fixture phrases or secrets. Node invokes npm directly without a Windows shell concatenation boundary.
+- Verification: RED reproduced the former hard-coded report; Node acceptance `1/1` PASS and its child corpus/performance boundary PASS; Prettier, diff check, and Gitleaks PASS.
+- Native: representative immutable-SHA packet delegated to the sole native lane; no app/controller access. Both scripts released immediately.
+
+## 2026-08-30T22:43:00-05:00 — VS-SOL-INSTANT-ROLLOUT-20260830-51 claim
+
+- Exact scope: Instant-only rollout decision source/test; no active overlap observed.
+- Intent: close Task 12's fail-closed rollout seam: execute only a matched command when global, account, authority, and hard gates all pass; compare only stable catalog/legacy command IDs locally; keep rejected, unmatched, or unavailable inputs in shadow; freeze the receipt and retain no raw/account content.
+- Next: focused RED, minimal pure-function repair, Instant/type/build/format/security gates, path-only commit, immediate release/native packet.
+
+### 2026-08-30T22:47:00-05:00 — VS-SOL-INSTANT-ROLLOUT-20260830-51 completion
+
+- Commit `6810d905` (`fix(instant): fail closed at rollout gate`) contains exactly the Instant rollout source/test (`91 insertions`, `12 deletions`).
+- Result: rollout execution now requires a matched catalog command plus global, account, authority-availability, and hard-gate approval; unmatched/unavailable/incomplete/disabled cases remain shadow with a stable content-minimal blocker. Local catalog-versus-legacy comparison records stable IDs and `same`/`different`/one-sided/none only, and the entire decision is immutable.
+- Verification: RED reproduced `9/10` failing cases including the former execute-without-match defect; focused rollout `10/10` PASS; full Instant `26 files / 154 tests` PASS; shared TypeScript PASS; direct Vite build `5,058 modules` PASS; Prettier/diff/Gitleaks PASS.
+- Native: immutable-SHA rollout packet delegated to the sole native lane; no app/controller access. Both files released immediately.
+
+## 2026-08-30T22:49:00-05:00 — VS-SOL-INSTANT-SETTINGS-AUTHORITY-20260830-52 claim
+
+- Exact scope: Instant-only setting authority source/test; no active overlap observed.
+- Intent: complete Task 7's typed descriptor contract and fail-safe authority behavior: explicit kind/sensitivity/rollback metadata, boolean toggle through exact read/write, snapshot-and-restore on failed set, canonical bounded receipts, and pre-port rejection of unknown/secret paths.
+- Next: focused RED, minimal authority implementation, Instant/type/build/format/security gates, path-only commit, immediate release/native packet.
+
+### 2026-08-30T22:54:00-05:00 — VS-SOL-INSTANT-SETTINGS-AUTHORITY-20260830-52 completion
+
+- Commit `8f598c81` (`fix(instant): make setting changes reversible`) contains exactly the Instant setting authority source/test (`117 insertions`, `12 deletions`).
+- Result: allowlisted setting descriptors declare boolean/percentage kind, non-sensitive status, and restore-previous behavior; toggle reads the canonical boolean then writes its exact inverse; set snapshots the prior value and attempts one rollback after failure; observed receipt values are reparsed/clamped; backend failures are content-minimal; unknown/secret paths fail before any port call.
+- Verification: RED reproduced `3/5` missing contract/behavior cases; focused setting authority `5/5` PASS; full Instant `26 files / 156 tests` PASS; shared TypeScript PASS; direct Vite build `5,058 modules` PASS; Prettier/diff/Gitleaks PASS.
+- Native: immutable-SHA unavailable/authority packet delegated to the sole native lane; no app/controller access. Both files released immediately.
+
+## 2026-08-30T22:55:00-05:00 — VS-SOL-INSTANT-MEDIA-AUTHORITY-20260830-53 claim
+
+- Exact scope: Instant-only media authority source/test; no active overlap observed.
+- Intent: complete Task 7's missing explicit music-track and ambient ports, bounded/control-free argument validation, content-minimal unavailable/backend errors, and canonical requested/observed volume clamping without changing enumerated playback.
+- Next: focused RED, minimal authority implementation, full Instant/type/build/format/security gates, path-only commit, immediate release/native packet.
+
+### 2026-08-30T21:41:56-05:00 — VS-CODEX-BUILD-YOUR-OWN-AI-OFFLINE-20260830-33 GPU Full-weight offline proof / native queue
+
+- Branch `integration/UnifiedChungus-final`; shared HEAD `71db77da65d92d5cad58ee3b1c03907102ca4152`. Exact owned scope remains the 15 Model Foundry/worker/provider files recorded by the agent lock; no unrelated process, lock, or file was changed.
+- Real canonical worker proof completed under `D:\VibeSpace-ModelFoundry-Offline-MiniTest-20260830-1810`: pinned SmolLM2 135M Full-weight training, `computeDevice=gpu`, four debate text sources compiled to 8 train + 2 validation examples, 8/8 BF16 steps, train loss `3.5073`, eval loss `4.1572`, then post-epoch canonical inference exit `0`. Entire evidence/model/cache/artifact tree is `2.02 GiB`, below the requested 5 GiB bound.
+- Current green gates: Model Foundry frontend `4 files / 47 tests`; isolated previously timed-out AgentManager case `1/1`; Python worker `23/23`; Rust training runtime `19/19`; Rust Foundry core `28/28`; owned rustfmt; diff-check; direct Vite production build `5,043 modules`, exit `0`. A prior affected frontend run passed `7 files / 87 tests`; the post-format combined rerun had one load-only 5-second AgentManager timeout and that exact case then passed in `925 ms`.
+- Repo-wide typecheck is blocked outside this ownership by `src/features/jarvis-ambient/projection.test.ts` and `voiceEnergy.test.ts` importing currently missing active-owner modules. Repository-wide cargo fmt is blocked outside this ownership by `jarvis_ambient_overlay.rs`/`lib.rs`; the two owned Rust files pass exact rustfmt.
+- Native Playwright is queued, not claimed: running `jarvis.exe` PID `31652` / CDP `9223` is source `2caa0ff3` from detached `VibeSpace-UnifiedChungus-Verify` and remains protected by active sole-controller `VS-SOL-FINAL-NATIVE-0E4BE758-20260830-27`. Hash checks confirm its Model Foundry sources differ from the canonical owned changes. The controller should release or explicitly hand off before one quick canonical D-artifact Chat acceptance; no evidence from the mismatched app may be reported as this task's acceptance.
+- The user's proposed 250 MB host-RAM ceiling cannot truthfully support this CUDA training stack because Python, tokenization, loading, and driver orchestration necessarily consume host RAM. No additional training will run under that infeasible constraint; the completed run already proves GPU-only model compute with no CPU fallback.
+### 2026-08-30T21:46:30-05:00 — VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34 Task 2 committed
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `e373d9f90f981efdd76051acebd54bb60da0f943` (upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state observed before commit).
+- Exact commit: `e373d9f9` (`feat(chat): add safe editable handoff drafts`), 11 exact owned files, 795 insertions / 9 deletions. Adds the safe three-calendar-day projector/digest, editable non-sending composer attachment, persisted structured handoff part, and safe summary renderer.
+- Verification: focused Vitest PASS (6 files / 13 tests); root `npm run typecheck` PASS; exact `git diff --check` PASS. Secret scan matches only established Composer key-management identifiers and deliberate fake sanitizer fixtures; no credential value is committed.
+- Persistent SDD report: `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-2-report.md` (claimed in this agent lock). Native official-app acceptance remains queued for a compatible free lane.
+- Blockers: none in Task 2. Product writes pause only for the controller's required review dispatch; next after approval is Task 3 RED for deterministic persisted one-to-four-pane workspace layout.
+
+### 2026-08-30T22:18:00-05:00 — VS-SOL-CAO-EVIDENCE-EPOCH-20260830-47 completion
+
+- Commit `bb7b1477` (`fix(cao): invalidate stale evidence writes`) contains exactly four owned Jarvis memory authority/listener source-test files (`121 insertions`).
+- Result: account-scoped evidence write epochs cancel writes queued before a persistence failure and writes created during durable reconciliation. Fresh post-recovery mutations persist, account recovery is isolated, and account identity changes invalidate the prior token boundary.
+- Verification: focused authority/listener `2 files / 21 tests` PASS; adjacent Jarvis memory `14 files / 90 tests` PASS; post-commit selected regressions `4/4` PASS; isolated Vite production build `5,058 modules` PASS; exact Prettier, diff-check, and Gitleaks PASS. Concurrent external Chat handoff/Foundry diagnostics were left untouched as required.
+- Native: immutable acceptance packet delegated to the sole native lane; this lane did not attach to or control the app. Lock released immediately after the exact path-only commit. Shared branch HEAD advanced concurrently to `ea194414`; the reproducible CAO boundary remains `bb7b14778bcae2f31c1cb9986c8b12b690871c34`.
+
+## 2026-08-30T22:21:00-05:00 — VS-SOL-CAO-PROFILE-EPOCH-20260830-48 claim
+
+- Exact scope: `learningListener.ts` and `learningListener.test.ts` only.
+- Intent: give profile persistence the same account-scoped recovery epoch boundary as evidence writes so stale queued/reconciliation-time snapshots cannot overwrite recovered durable truth; fresh post-recovery writes remain allowed and stop-time flush semantics remain intact.
+- Exclusions: active scheduled-learning/runtime controls, CAO bootstrap, Chat, Instant, native control, external-apps/Workbench, Foundry, credentials/services, and all unrelated shared state.
+
+### 2026-08-30T22:26:00-05:00 — VS-SOL-CAO-PROFILE-EPOCH-20260830-48 completion
+
+- Exact path-only commit `3d32febe` (`fix(cao): invalidate stale profile writes`) contains only `learningListener.ts` and its test (`97 insertions`, `12 deletions`).
+- Result: profile persistence captures account-scoped authority when work is scheduled. A failed save invalidates snapshots queued before failure and changes created during reconciliation, recovered durable truth remains authoritative, and fresh post-recovery changes persist. Account transition still drains the explicitly authorized latest prior-account snapshot before invalidation, preserving synchronous privacy quarantine and stop-time durability.
+- Verification: RED reproduced three stale save calls; focused listener/authority `2 files / 22 tests` PASS; adjacent Jarvis memory `14 files / 91 tests` PASS; post-commit recovery/account/stop selection `3/3` PASS; isolated Vite production build `5,058 modules` PASS; exact Prettier, diff-check, and Gitleaks PASS.
+- Native: exact-SHA acceptance packet delegated to the sole native lane; no app/controller access occurred. Own lock released immediately.
+
+## 2026-08-30T22:30:00-05:00 — VS-SOL-CAO-TARGET-JOURNAL-INTEGRITY-20260830-49 claim
+
+- Exact scope: standalone CAO target-lease contract validation and execution-journal authority source/tests only.
+- Intent: reject malformed persisted lease authority on restart and ambiguous append recovery before registry read/execution, including duplicate targets, selection mismatch, and invalid temporal bounds; valid journal-backed recovery remains unchanged.
+- Exclusions: actively locked scheduled runtime/runner/controls, Chat/OpenCode, Instant/Calyx, native control, unapproved external-apps/Workbench, credentials/services, and unrelated shared state.
+
+### 2026-08-30T22:35:00-05:00 — VS-SOL-CAO-TARGET-JOURNAL-INTEGRITY-20260830-49 completion
+
+- Exact path-only commit `d0809568` (`fix(cao): validate recovered target leases`) contains four owned contract/authority source-test files (`71 insertions`, `1 deletion`).
+- Result: every persisted CAO lease encountered during reload or ambiguous append recovery is validated as a closed standalone v1 contract before registry authority is read. Unknown schema versions, invalid time bounds, duplicate target identities, selection inconsistency, and other malformed durable rows fail closed. A corrupt ambiguous append releases the exact registry claim and reports persistence failure rather than recovering invalid authority.
+- Verification: RED reproduced four accepted-invalid paths; focused contract/authority plus scheduled recovery boundary `4 files / 486 tests` PASS; full TypeScript PASS; isolated Vite production build `5,058 modules` PASS; post-commit invalid journal `4/4` and lease contract `6/6` PASS; exact Prettier, diff-check, and diff-scoped Gitleaks PASS. The broader Jarvis scan reported only established synthetic secret fixtures outside this exact scope.
+- Native: immutable acceptance packet delegated to the sole native lane; no app/controller access occurred. Own lock released immediately. Shared HEAD advanced concurrently to `ecfd5890`; the exact CAO boundary remains `d08095680c1c8a473133130c90e6e364b862415d`.
+
+## 2026-08-30T22:38:00-05:00 — VS-SOL-CAO-TARGET-JOURNAL-LINEAGE-20260830-50 claim
+
+- Exact scope: CAO target execution-journal authority source/test only.
+- Intent: scan durable recovery pages to completion and reject duplicate lease identities, crossed event/run lineage, and non-monotonic sequences before registry authority reuse, while preserving valid bounded reload recovery.
+- Exclusions: Voice, active scheduled runtime/runner/controls, native control, Instant/Calyx, Chat/runtime, unapproved external-apps/Workbench, credentials/services, and unrelated shared state.
+
+### 2026-08-30T22:41:00-05:00 — VS-SOL-CAO-TARGET-JOURNAL-LINEAGE-20260830-50 completion
+
+- Exact path-only commit `6f6ff625` (`fix(cao): validate target journal lineage`) contains only the CAO target journal authority and test (`67 insertions`, `5 deletions`).
+- Result: restart recovery scans bounded pages to completion, requires exact event/run lineage and strictly increasing sequences, and rejects duplicate durable records for a lease identity instead of accepting the first plausible row. Valid exact-scope reload recovery remains unchanged.
+- Verification: RED reproduced all three acceptance defects; focused authority `18/18` PASS; contract/authority/scheduled recovery boundary `4 files / 489 tests` PASS; isolated Vite production build `5,058 modules` PASS; post-commit lineage selection `3/3` PASS; exact Prettier, diff-check, and diff-scoped Gitleaks PASS. Full TypeScript reached only four concurrent locked Chat handoff matcher diagnostics at `Composer.chatHandoff.test.tsx:300,301,307,309`; no owned diagnostic and no locked file touched.
+- Native: immutable acceptance packet delegated to the sole native lane; no app/controller access occurred. Own lock released immediately.
+
+## 2026-08-30T22:44:00-05:00 — VS-SOL-CAO-TARGET-RECOVERY-ERRORS-20260830-51 claim
+
+- Exact scope: CAO target journal authority source/test only.
+- Intent: normalize run/journal/registry dependency failures during acquire and restart recovery to stable safe availability codes, stop before downstream authority reuse, and preserve exact rollback/domain semantics without reflecting raw storage errors.
+- Exclusions: Voice, active scheduled runtime/runner/controls, native control, Instant/Calyx, Chat/runtime, unapproved external-apps/Workbench, credentials/services, and unrelated shared state.
+
+### 2026-08-30T22:46:00-05:00 — VS-SOL-CAO-TARGET-RECOVERY-ERRORS-20260830-51 completion
+
+- Exact path-only commit `e7413513` (`fix(cao): normalize target recovery failures`) contains only the CAO target journal authority and test (`118 insertions`, `12 deletions`).
+- Result: raw run lookup, journal scan, registry read, and registry claim failures collapse to stable `cao_run_unavailable`, `cao_target_journal_unavailable`, or `cao_target_registry_unavailable` truth. Recovery stops before downstream authority reuse, acquire creates no durable lease after dependency failure, and existing ambiguous-append rollback/domain failures remain intact.
+- Verification: RED reproduced raw detail propagation through four paths; focused authority `22/22` PASS; contract/authority/scheduled recovery boundary `4 files / 493 tests` PASS; isolated Vite production build `5,058 modules` PASS; post-commit recovery error selection `4/4` PASS; exact Prettier, diff-check, and diff-scoped Gitleaks PASS. The immediately preceding full TypeScript boundary remains blocked only by the recorded locked Chat matcher diagnostics; no owned diagnostic.
+- Native: immutable acceptance packet delegated to the sole native lane; no app/controller access occurred. Own lock released immediately.
+
+## 2026-08-30T22:49:00-05:00 — VS-SOL-CAO-TARGET-AMBIGUOUS-REVALIDATION-20260830-52 claim
+
+- Exact scope: CAO target journal authority source/test only.
+- Intent: after an ambiguous append that durably committed a lease, revalidate exact live owner/revision/run/expiry before returning authority; reject drift without implicit renew/reacquire while preserving valid recovery.
+- Exclusions: Voice, active scheduled runtime/runner/controls, native control, Instant/Calyx, Chat/runtime, unapproved external-apps/Workbench, credentials/services, and unrelated shared state.
+### 2026-08-30T22:23:00-05:00 — VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34 Task 2 fix round 1 committed
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `a81caa832e659c17ebb8c1ab6f56b8bdeb3ebfe4`; exact fix commit `a81caa83` (`fix(chat): harden handoff delivery safety`), four owned files, 679 insertions / 155 deletions.
+- Resolved the review's 1 Critical / 6 Important findings: comprehensive metadata/instruction credential scrubbing; immutable queued handoff snapshots; acknowledged, retry-idempotent dispatch with persistence/dispatch failure preservation; canonical oversized prompt persistence; exact rendered snapshot/boundary metadata; truthful safe tool/action outcomes; production Composer integration tests.
+- Verification: final Task 2 focused regression PASS 6 files / 21 tests; final projector+Composer PASS 2 files / 12 tests; Prettier PASS; exact diff check PASS; staged Gitleaks PASS (0 leaks, 26.66 KB).
+- Shared typecheck evidence: one post-production-fix invocation PASS; final invocation after test-fixture hardening reports only concurrent dirty `app/src/features/jarvis-memory/learningListener.test.ts` diagnostics at 422/426/454/461, with zero Task 2 diagnostics. Persistent detail is in `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-2-report.md`.
+- Blockers/next: Task 2 awaits scoped re-review. Task 3 product writes remain paused. Official native acceptance remains queued for a compatible free native WebView lane.
+### 2026-08-30T22:29:10-05:00 — VS-CODEX-ROOT-VOICE-RESILIENT-PRESENTATION-20260830-49 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `3d32febe8ca7e0b13ea2f9910772704764f5f784`; exact scope is the existing Voice design, Jarvis Voice header source/test, Voice module CSS, this ledger, and this agent-scoped lock only.
+- Intent: repair long Voice error/status copy that can collapse inside the compact identity column while preserving a concise atomic state, complete accessible actionable detail, connected-model identity, chronological `You`/`Jarvis` transcript, real signal lifecycle, responsive layout, reduced motion, and forced-colors behavior.
+- Exclusions: active Chat/OpenCode, CAO, Instant/Calyx, native controller/Pet, Account, Foundry, Workbench/external-app, backend, credential, billing, deployment, and every unrelated dirty file/process.
+- Next: update the existing design checkpoint, focused RED, minimum product repair, focused/full Voice plus shared gates, exact commit/release, and immutable native acceptance packet.
+
+### 2026-08-30 22:33 CDT — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 / TASK-CODEX-OPENCODEX-FIRST-CLASS-BACKEND-20260830
+- Branch/HEAD: `integration/UnifiedChungus-final` / current shared HEAD (base for this slice includes `f2691091`).
+- Owned files: `app/src-tauri/resources/bun-runtime-manifest.json`, `app/src-tauri/src/harness/managed_bun_manifest.rs`, `app/src-tauri/src/harness/mod.rs`.
+- Change: added a fail-closed authority for the exact official Bun 1.4.0 Windows x64 bootstrap artifact required by managed OpenCodex; no installer/process/UI behavior changed.
+- RED/GREEN: missing parser API failed compilation; focused Rust suite now passes 3/3. Registry byte audit independently matched 40,723,290 bytes, SHA-256 `70ecb8e56cadf21f4280ef8bccca2d7ab6ddd4357325e2bf1530e02fd585c27b`, npm SHA-512 integrity, and `package/bin/bun.exe`.
+- Checks: exact rustfmt/diff/JSON checks pass; scoped Gitleaks scans pass with no leaks.
+- Blocker/next: `Cargo.toml` and native installer/transport stay protected; commit only the three owned product files, then re-audit ownership for atomic materialization.
+
+### 2026-08-30 22:43 CDT — managed Bun bootstrap correction
+- Exact commits: `ecfd5890` added the fail-closed bootstrap authority; `344725f4` corrected it to Bun's official extractable GitHub Windows x64 ZIP, avoiding any new Cargo or system tar/npm dependency.
+- RED/GREEN: the embedded-authority test caught the old tgz identity; the corrected manifest/parser suite passes 3/3. GitHub's release API and independently downloaded bytes both report 40,060,247 bytes and SHA-256 `e6f093d39da486b20262ca8cdd5ed6a9e8bc9c2f275b78e6d3a0c5b28cc95901`; archive entry is `bun-windows-x64/bun.exe`.
+- Checks: exact JSON/rustfmt/diff and scoped Gitleaks pass. No downloader, process, UI, provider, RLM/SiYuan, or official app was touched.
+- Next scope: new isolated `managed_bun_materializer.rs` using existing ZIP/SHA dependencies; protected Cargo/native transport files remain untouched.
+### 2026-08-30T22:42:00-05:00 — VS-CODEX-ROOT-VOICE-RESILIENT-PRESENTATION-20260830-49 completion
+
+- Commit `eac034ad` (`fix(voice): keep errors readable`) contains exactly the existing Voice design plus Jarvis Voice header source/test and Voice CSS (`36 insertions`, `9 deletions`). The compact identity column now announces only `Voice error`; the complete actionable reason is a separate full-width bounded alert with normal wrapping, exact accessible description linkage, narrow-layout resilience, and forced-colors treatment.
+- Verification: focused RED reproduced long error copy inside the narrow status column; focused header `3/3` PASS; focused header/appearance `7/7` PASS; full Voice `37 files / 302 tests` PASS; direct Vite production build `5,058 modules` PASS; exact Prettier, diff-check, and Gitleaks PASS. The normal shared typecheck/build wrapper reports only the active Chat-handoff test matcher diagnostics at `Composer.chatHandoff.test.tsx:300,301,307,309`, with no Voice diagnostic.
+- Native: immutable packet sent to the sole controller for compact/expanded, long-error, model persistence, `You`/`Jarvis` chronology, live mic/speaking energy, cleanup, narrow width, keyboard, reduced-motion, and forced-colors acceptance. Exact Voice files and lock released immediately.
+### 2026-08-30T22:43:24-05:00 — VS-CODEX-ROOT-RUN-STATE-CORRELATION-20260830-50 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `eac034ad99e750c76240854dbe2ed736092ac111`; exact product scope is `app/src/lib/ai/runtime.ts` and its existing test only.
+- Intent: propagate each accepted send controller's exact `cancellationKey` on running/done/error/cancelled `jarvis:run-state` receipts so the active Chat-handoff Composer can acknowledge only its own message and cannot consume another same-chat run state.
+- Exclusions: active Composer/handoff files, CAO, Instant/Calyx, Voice, native controller/Pet, Account, Foundry, Workbench/external apps, provider/backend architecture, credentials/services, and unrelated dirty state.
+- Next: focused RED, minimum receipt-detail repair, focused runtime boundary and shared gates, exact path-only commit/release, then hand the API/commit back to the Chat-handoff owner.
+
+### 2026-08-30T22:53:04-05:00 — VS-CODEX-ROOT-RUN-STATE-CORRELATION-20260830-50 completion
+
+- Commit `f024cff9` (`fix(chat): correlate run-state receipts`) contains exactly `app/src/lib/ai/runtime.ts` and its existing test (`60 insertions`, `27 deletions`). Every accepted send controller now emits its exact `cancellationKey` on running, done, error, and cancelled `jarvis:run-state` receipts, including setup failures and early cancellation, so same-chat consumers can acknowledge only the originating user message.
+- Verification: RED reproduced missing correlation on running/cancelled and setup-error receipts; selected regression `2/2` PASS; full runtime `154/154` PASS; shared TypeScript PASS; direct Vite production build `5,058 modules` PASS; exact Prettier, diff-check, and diff-scoped Gitleaks PASS.
+- Native: immutable acceptance packet queued with the sole native controller; no app/controller access occurred in this implementation lane. Exact product scope and own lock released immediately; API/commit handed to the Chat projection owner.
+
+### 2026-08-30T22:53:00-05:00 — VS-SOL-CAO-TARGET-AMBIGUOUS-REVALIDATION-20260830-52 completion
+
+- Exact commit: `468e634caf518aec3b656b07cf1e98f8be7194bd`; owned product diff: `caoTargetAuthority.ts` and `.test.ts`, 93 insertions / 1 deletion.
+- Behavior: when journal append reports an ambiguous transport failure after durably committing a target lease, authority now revalidates exact live owner, target revision, active run, and expiry before returning. Revision drift, foreign/missing ownership, inactive run, or expiry fails closed without implicit renew/reacquire; expiry releases exact ownership. A still-valid durable commit recovers successfully.
+- TDD: four selected recovery paths failed before the implementation (including zero registry revalidation on the valid case) and pass after it. Focused authority `26/26` PASS; adjacent validators/authority/scheduled-wrapper/recovery boundary `4 files / 497 tests` PASS; post-commit selection `4/4` PASS.
+- Gates: isolated Vite production build `5,058 modules` PASS; exact Prettier, diff-check, and diff-scoped Gitleaks PASS. The immediately preceding shared TypeScript boundary remained blocked only by concurrent locked Chat-handoff matcher diagnostics at `Composer.chatHandoff.test.tsx:300,301,307,309`; no owned diagnostic, and the direct production build passed.
+- Native/control: no app/native control used. Immutable acceptance packet delegated to the sole native controller. Exact lock marked completed/released immediately.
+
+### 2026-08-30T22:59:00-05:00 — VS-SOL-CAO-TARGET-LEASE-RELEASE-20260830-53 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at shared `17d7ce2e`; exact product scope is only `caoTargetAuthority.ts` and its existing test.
+- Intent: provide exact journal-backed release after restart, reconcile ambiguous release outcomes against live ownership, make already-released cleanup idempotent without touching a foreign owner, and stop expiry recovery from reporting cleanup success while ownership remains stuck.
+- Exclusions: active scheduled-learning runtime/runner/controls, Root Chat/Voice/runtime, Instant/Calyx, native controller, external-apps/Workbench, credentials/services, and every unrelated shared file/process.
+- Next: RED-first release/restart/ambiguity/expiry cases, minimal authority implementation, focused and adjacent boundaries, build/format/security, exact path-only commit and immediate lock release, then native packet.
+
+### 2026-08-30T23:04:00-05:00 — VS-SOL-CAO-TARGET-LEASE-RELEASE-20260830-53 completion
+
+- Exact path-only commit `d1f3c4db6a6036785aa43cb91d13853301db72ff` (`fix(cao): reconcile target lease release`) contains only `caoTargetAuthority.ts` and its test (`163 insertions`, `2 deletions`).
+- Result: exact journal-backed authority can be released after authority recreation; a second release is idempotent only after live ownership is confirmed absent. Ambiguous registry release failures reconcile through an exact reread, retained/foreign/mixed ownership fails closed, and expiry recovery no longer reports stale cleanup while a registry failure leaves the target stuck.
+- TDD/gates: RED reproduced four lifecycle defects; focused authority `30/30` PASS; validators/authority/scheduled-target/recovery boundary `4 files / 501 tests` PASS; full TypeScript PASS; isolated Vite production build `5,058 modules` PASS; post-commit release selection `4/4` PASS; exact Prettier, diff-check, and scoped Gitleaks (`8.41 KB`) PASS.
+- Native/control: no native app or Playwright control used. Immutable native acceptance packet delegated to the sole controller. Own exact lock marked completed/released immediately.
+
+### 2026-08-30T23:06:00-05:00 — VS-SOL-CAO-TARGET-CLOCK-ACK-20260830-54 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `d1f3c4db`; exact product scope remains only the unlocked target authority source/test.
+- Intent: enforce safe monotonic acquisition/recovery clocks and exact validated journal append acknowledgement, preventing overflow/future leases and idempotency collisions from returning authority not durably committed for this request.
+- Exclusions: active scheduled runtime/runner/controls, Root Chat/Voice/runtime/ADE, Instant/Calyx, native, external-apps/Workbench, credentials/services, and all unrelated dirty state.
+- Next: RED clock/rollback/collision cases, minimal implementation, focused/adjacent/typecheck/build/format/security, exact commit, immediate release, native packet.
+
+### 2026-08-30T23:10:00-05:00 — VS-SOL-CAO-TARGET-CLOCK-ACK-20260830-54 completion
+
+- Exact path-only commit `2400bbf4bdfafe44e0065dbdb91077f0cf01eeca` (`fix(cao): validate lease clock and journal ack`) contains only the target authority source/test (`122 insertions`, `3 deletions`).
+- Result: acquisition and restart recovery require safe-integer monotonic clocks, including safe expiry arithmetic; NaN/infinity/fractional/overflow/future-acquisition states fail before target reuse. Append success is accepted only when its validated event carries the exact run, idempotency identity, lease scope, timestamps, target identities, and revisions requested; collisions/mismatches roll back the live claim and report safe persistence failure.
+- TDD/gates: RED reproduced nine unsafe paths; selected clock/rollback/acknowledgement `11/11` PASS; focused authority `41/41` PASS; adjacent validators/authority/scheduled-target/recovery `4 files / 512 tests` PASS; full TypeScript PASS; isolated Vite build `5,058 modules` PASS; post-commit selection `11/11` PASS; exact Prettier, diff-check, and scoped Gitleaks (`7.41 KB`) PASS.
+- Native/control: no Playwright/native app control used. Immutable native packet delegated to the sole controller. Own exact lock completed/released immediately.
+
+### 2026-08-30T23:16:00-05:00 — VS-SOL-CAO-TARGET-SET-RECOVERY-20260830-55 completion
+
+- Branch/base: `integration/UnifiedChungus-final` from shared `3e11dcd0`; exact path-only commit `17d8267f387e660260bf48ad7a2992f51c42ac9c` (`fix(cao): recover exact target sets`) contains only `caoTargetAuthority.ts` and its test (`177 insertions`, `9 deletions`).
+- Result: explicit sets reconcile live rows by exact target identity instead of incidental registry order while persisting the caller's requested order and corresponding revisions. Restart cleanup can finish a partially applied release only for remaining targets still owned by the same durable lease. Duplicate/missing identities and mixed or wholly foreign ownership fail closed without releasing the current owner.
+- TDD/gates: RED reproduced reordered acquire/recover and partial-release failures; selected ownership matrix `5/5` PASS; focused authority `46/46` PASS; adjacent validators/authority/scheduled-target/recovery `4 files / 517 tests` PASS; full TypeScript PASS; isolated Vite production build `5,058 modules` PASS; post-commit exact-set selection `5/5` PASS; exact Prettier, diff-check, and scoped Gitleaks (`10.10 KB`) PASS.
+- Native/control: no Playwright/native app control used. Immutable acceptance packet delegated to the sole native controller. Exact lock completed/released immediately; no other owned or active scope was touched.
+
+### 2026-08-30T23:23:00-05:00 — VS-SOL-CAO-TARGET-RETURN-REVALIDATION-20260830-56 completion
+
+- Branch/base: `integration/UnifiedChungus-final` from shared `5cc4e8d7`; exact path-only commit `4993bf683503eda7b75ce4b4e757636bd297ffe6` (`fix(cao): revalidate authority before return`) contains only `caoTargetAuthority.ts` and its test (`124 insertions`, `13 deletions`).
+- Result: successful durable append now passes through the same exact journal/run/clock/registry verification as restart recovery before authority is returned. Verification rechecks run activity and clock after registry I/O. Terminal run or expiry drift releases exact same-lease ownership; same-owner revision drift is cleaned up; foreign/current ownership is rejected and never released.
+- TDD/gates: RED reproduced all four return-time races; focused authority `50/50` PASS; adjacent validators/authority/scheduled-target/recovery `4 files / 521 tests` PASS; isolated Vite production build `5,058 modules` PASS; post-commit return-time selection `4/4` PASS; exact Prettier, diff-check, and scoped Gitleaks (`7.73 KB`) PASS. Full TypeScript reached only the concurrent Instant diagnostic `resourceCommands.test.ts:113` (missing required `nonce`); no owned diagnostic and no Instant file touched.
+- Native/control: no Playwright/native app control used. Immutable acceptance packet delegated to the sole native controller. Exact lock completed/released immediately.
+
+### 2026-08-30T23:30:00-05:00 — VS-SOL-CAO-SCHEDULED-EXECUTION-SNAPSHOT-20260830-57 completion
+
+- Branch/base: `integration/UnifiedChungus-final` from shared `c67ac74a`; exact path-only commit `bb80596176e8fa41e61f63a2083ae6c1584a7343` (`fix(cao): snapshot scheduled target execution`) contains only `caoScheduledTargetAuthority.ts` and its test (`102 insertions`, `11 deletions`).
+- Result: the scheduled-target bridge snapshots account/workspace/project/run/lease/target/revision and execution request identity before awaiting durable authority recovery, then executes only that verified snapshot. The recovered lease is contract-validated again at the execution boundary, and unknown dependency failures collapse to a stable safe availability code while existing CAO run/target codes remain intact.
+- TDD/gates: RED reproduced caller mutation, duplicate/temporally invalid recovered leases, and raw authority error exposure; selected recovery `4/4` PASS; focused bridge `11/11` PASS; adjacent validators/journal-authority/bridge/recovery `4 files / 525 tests` PASS; full TypeScript PASS; isolated Vite production build `5,058 modules` PASS; post-commit selected `4/4` PASS; exact Prettier, diff-check, and scoped Gitleaks (`6.27 KB`) PASS.
+- Native/control: no Playwright/native app control used. Immutable acceptance packet delegated to the sole native controller. Exact lock completed/released immediately; active scheduler/runtime/runner/controls remained untouched.
+
+### 2026-08-30T23:36:00-05:00 — VS-SOL-CAO-SCHEDULED-COMPLETION-REVALIDATION-20260830-58 completion
+
+- Branch/base: `integration/UnifiedChungus-final` from shared `46e55a4b`; exact path-only commit `22012e85cc980d81335bc57e51fa0d4e86ecadc4` (`fix(cao): revalidate scheduled completion`) contains the scheduled-target bridge/source test plus its existing end-to-end recovery acceptance test (`109 insertions`, `32 deletions`).
+- Result: a `completed` scheduled-learning execution revalidates the same exact durable account/workspace/project/run/lease/target/revision authority before completion can advance cursor persistence. Expiry, ownership, revision, scope, malformed lease, and unknown dependency drift during execution fail closed with stable/redacted truth. Failed/cancelled work skips the completion check; manual-force dedupe and pending-pass restart still execute/recount exactly once.
+- TDD/gates: RED reproduced four false-completion paths; focused bridge `16/16` PASS; adjacent validators/journal-authority/bridge/recovery `4 files / 530 tests` PASS; full TypeScript PASS; isolated Vite production build `5,058 modules` PASS; post-commit bridge/recovery `2 files / 20 tests` PASS; exact Prettier, diff-check, and scoped Gitleaks (`9.70 KB`) PASS.
+- Native/control: no Playwright/native app control used. Immutable acceptance packet delegated to the sole native controller. Exact lock completed/released immediately; active scheduler/runtime/state-machine/runner/controls remained untouched.
+
+### 2026-08-30 22:54 CDT — managed Bun atomic materializer committed
+- Exact commit: `17d7ce2e` (`feat(native): materialize managed bun atomically`), only `managed_bun_materializer.rs` plus its module registration.
+- RED/GREEN: missing install/inspect/readiness API failed compilation; managed Rust matrix passes 32 with 0 failures and one explicit local-artifact test ignored. The explicit audited ZIP run passes 1/1 through the production materializer and launches the installed binary as Bun `1.4.0`.
+- Safety: exact archive size/SHA, bounded case-folded ZIP entries, traversal/symlink/non-regular/duplicate rejection, nonce staging, exact receipt plus executable digest, rename promotion, tamper detection, and own-staging-only cleanup.
+- Checks: exact rustfmt/diff and scoped 22.63 KB Gitleaks pass. No existing installer/Cargo/server/app/UI/provider/RLM/SiYuan surface changed.
+- Next: add a narrow download wrapper using the existing verified stream primitive; native transport handoff remains gated on ownership release.
+
+### 2026-08-30T23:02:23-05:00 — VS-SOL-INSTANT-MEDIA-AUTHORITY-20260830-53 completion
+
+- Exact commit `38d067a06a9ca5737aa6d7903622a53caafda24c` (`fix(instant): complete bounded media authority`) contains only `mediaCommands.ts` and its test (`126 insertions`, `11 deletions`).
+- Behavior: `music.track` and `ambient.set` now dispatch only through explicit optional capabilities with trimmed, control-free, 200-character arguments; missing capabilities fail closed. Volume requests and observed values are canonicalized to `0..100`; non-numeric observations and backend exceptions return content-minimal receipts without leaking provider details. Existing enumerated playback routing is preserved.
+- TDD/gates: focused RED reproduced all four gaps; focused `9/9` PASS; full Instant boundary `26 files / 163 tests` PASS; direct Vite production build `5,058 modules` PASS; exact Prettier, diff-check, and authority-scoped Gitleaks PASS. Shared TypeScript reached only the concurrent CAO test diagnostic at `caoTargetAuthority.test.ts:597`, with no owned diagnostic.
+- Native/control: no app or native controller access occurred. Immutable acceptance packet delegated to `/root/native_resume`; exact file lock marked completed/released immediately.
+
+### 2026-08-30T23:04:00-05:00 — VS-SOL-INSTANT-SCHEDULE-LIFECYCLE-20260830-54 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at shared `d1f3c4db`; exact product scope is only `scheduleCommands.ts` and its existing test.
+- Intent: complete an explicit guarded lifecycle seam for schedule list/open/pause/resume/enable/disable/run-now with stable-ID-first/unique-name resolution, stale-revision rejection, recurrence-preserving run-now observations, and content-minimal failure receipts.
+- Exclusions: canonical Schedule UI/repository/runner implementation files, Root Chat/Voice/runtime/ADE, CAO, native controller, Workbench/external apps, credentials/services, and unrelated dirty state.
+- Next: RED-first lifecycle matrix, minimal authority, focused/full Instant plus build/format/security gates, exact path-only commit/release, then native packet.
+
+### 2026-08-30T23:09:45-05:00 — VS-SOL-INSTANT-SCHEDULE-LIFECYCLE-20260830-54 completion
+
+- Exact commit `3e11dcd0bfdf77d26286efc032f68e816344be92` (`feat(instant): guard schedule lifecycle dispatch`) contains only `scheduleCommands.ts` and its test (`208 insertions`, `2 deletions`).
+- Behavior: schedule list/open/pause/resume/enable/disable/run-now use explicit canonical ports after bounded stable-ID-first/unique-name resolution and revision checks. Missing, ambiguous, stale, or unbounded selectors dispatch no mutation. Run-now requests explicit recurrence preservation and verifies the returned recurrence anchor and occurrence count before claiming completion; backend failures are redacted.
+- TDD/gates: RED `8` intended lifecycle failures; focused `10/10` PASS; full Instant boundary `26 files / 171 tests` PASS; shared TypeScript PASS; direct Vite production build `5,058 modules` PASS; exact Prettier, diff-check, and authority-scoped Gitleaks PASS.
+- Native/control: no app or native controller access occurred. Immutable acceptance packet delegated to `/root/native_resume`; exact file lock marked completed/released immediately.
+
+### 2026-08-30T23:11:00-05:00 — VS-SOL-INSTANT-PREVIEW-20260830-55 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `3e11dcd0`; exact product scope is only Instant `help.ts`/test and `suggestions.ts`/test.
+- Intent: complete catalog-derived deterministic pre-execution preview with exact action, bounded parsed target, confirmation/approval notice, and truthful availability; expose the same safety signal in local suggestions.
+- Exclusions: Assistant/Composer/Chat/Voice/runtime/ADE, CAO, native controller, Workbench/external apps, credentials/services, and unrelated dirty state.
+- Next: RED-first preview/suggestion matrix, minimal pure implementation, focused/full Instant plus type/build/format/security, exact path-only commit/release, native packet.
+
+### 2026-08-30T23:15:49-05:00 — VS-SOL-INSTANT-PREVIEW-20260830-55 completion
+
+- Exact commit `5cc4e8d7e6ff2e2cc5be6092f8761fe546223e50` (`feat(instant): preview deterministic commands`) contains only Instant help/suggestion source and tests (`140 insertions`, `8 deletions`).
+- Behavior: pure local preview resolves one catalog match, validates its slots, and reports canonical action, bounded structured target, confirmation/approval requirement, and availability. Unmatched, ambiguous, and rejected inputs fail closed; terminal message payloads are never reflected. Suggestions expose the same gate metadata, keep blocked commands disabled, and keep capability-gated entries truthfully selectable for runtime verification.
+- TDD/gates: RED `4` intended failures; focused `2 files / 6 tests` PASS; full Instant `26 files / 173 tests` PASS; shared TypeScript PASS; direct Vite production build `5,058 modules` PASS; exact Prettier, diff-check, and Instant-scoped Gitleaks PASS.
+- Native/control: no app or native controller access occurred. Immutable acceptance packet delegated to `/root/native_resume`; exact file lock marked completed/released immediately.
+
+### 2026-08-30T23:17:00-05:00 — VS-SOL-INSTANT-RESOURCE-GRANTS-20260830-56 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `5cc4e8d7`; exact product scope is only Instant `resourceCommands.ts` and its test.
+- Intent: make guarded tool/plugin/context/project/chat dispatch consume exact nonce-bound confirmation or approval once, reject unbounded selectors before listing, and keep authority receipts/errors content-minimal while preserving truthful queued/completed/rejected state.
+- Exclusions: canonical resource UIs/stores/gateways, Chat/Voice/runtime/ADE, CAO/native/Workbench/external apps, credentials/services, and unrelated dirty state.
+- Next: RED-first grant/reuse/bounds/redaction matrix, minimal pure authority seam, focused/full gates, exact path-only commit/release, native packet.
+
+### 2026-08-30T23:23:38-05:00 — VS-SOL-INSTANT-RESOURCE-GRANTS-20260830-56 completion
+
+- Exact commit `c67ac74ad752652617447776a3f2bab558f57bcb` (`fix(instant): consume resource grants once`) contains only Instant resource authority source/test (`189 insertions`, `70 deletions`).
+- Behavior: guarded tool/plugin/context/project/chat commands now consume exact command/target/nonce-bound confirmation or approval once through an explicit port; wrong, expired, or reused grants dispatch zero. Selectors are bounded/control-free before resource listing. Authority receipt IDs and backend exceptions never render, while queued/completed/rejected status remains truthful; credential and raw-context guards remain intact.
+- TDD/gates: RED `4` intended failures; focused `9/9` PASS; full Instant `26 files / 176 tests` PASS; shared TypeScript PASS after the owned missing-nonce fixture fix; direct Vite production build `5,058 modules` PASS; exact Prettier, diff-check, and authority-scoped Gitleaks PASS.
+- `/connect` boundary: catalog/navigation already routes `/connect` to the existing Settings Providers surface without credential arguments. This authority milestone preserves secure provider connection by rejecting any credential-shaped command args; final parity (provider/model refresh, cancel/retry/reload) remains official-native acceptance against the existing Providers/OpenCode authority because Composer/backend files are actively owned elsewhere.
+- Native/control: no app or native controller access occurred. Immutable acceptance packet delegated to `/root/native_resume`; exact file lock marked completed/released immediately.
+
+### 2026-08-30T23:25:00-05:00 — VS-SOL-INSTANT-TERMINAL-CONFIRMATION-20260830-57 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `c67ac74a`; exact product scope is only Instant `terminalCommands.ts` and its test.
+- Intent: make destructive terminal lifecycle confirmation consume exact command/session/nonce once, enforce abort boundaries after snapshot/grant and before dispatch, and redact authority failures while preserving prompt interlocks and status truth.
+- Exclusions: `execute.ts`, terminal queue/UI/stores, Chat/Voice/runtime/ADE, CAO/native/Workbench/external apps, credentials/services, and unrelated dirty state.
+- Next: RED-first confirmation replay/abort/redaction matrix, minimal authority change, focused/full gates, exact path-only commit/release, native packet.
+
+### 2026-08-30T23:29:55-05:00 — VS-SOL-INSTANT-TERMINAL-CONFIRMATION-20260830-57 completion
+
+- Exact commit `b17877e038cb5952af7d518eb2bdde6816afc847` (`fix(instant): consume terminal confirmation once`) contains only Instant terminal authority source/test (`143 insertions`, `51 deletions`).
+- Behavior: terminal restart/stop/close and agent stop now require an exact command/session/nonce confirmation consumed once by an explicit authority. Missing consumer, malformed binding, expiry, or replay dispatches zero. Abort is rechecked after target snapshot, after confirmation consumption, and immediately before dispatch; snapshot/consumer/dispatch exceptions are content-minimal. Existing prompt interlocks and verified status remain unchanged.
+- TDD/gates: RED `3` intended failures; focused `6/6` PASS; full Instant `26 files / 179 tests` PASS; shared TypeScript PASS; direct Vite production build `5,058 modules` PASS; exact Prettier, diff-check, and authority-scoped Gitleaks PASS.
+- `/connect` remains on existing catalog → navigation → Settings Providers authority with no credential arguments; no Composer/backend overlap was introduced.
+- Native/control: no app or native controller access occurred. Immutable acceptance packet delegated to `/root/native_resume`; exact file lock marked completed/released immediately.
+
+### 2026-08-30T23:31:00-05:00 — VS-SOL-INSTANT-LEDGER-RECEIPT-20260830-58 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at shared `46e55a4b`; exact scope is only Instant ledger/receipt source and adjacent tests.
+- Intent: canonicalize stable target sets for exactly-once fingerprints, fail closed on invalid bindings or confirmation-token collisions, remove consumed grants, and bound immutable receipt targets/follow-up prompts.
+- Exclusions: execute/runtime/UI, secure Providers `/connect`, Composer/Chat/Voice/ADE, CAO/native/Workbench/external apps, credentials/services, and unrelated dirty state.
+- Next: RED-first canonicalization/collision/receipt-bound matrix, minimal contracts, focused/full gates, exact path-only commit/release, native packet.
+
+### 2026-08-30T23:36:03-05:00 — VS-SOL-INSTANT-LEDGER-RECEIPT-20260830-58 completion
+
+- Exact commit `3a692f1c439c1ef5142632e5222838c34f872d01` (`fix(instant): canonicalize ledger receipts`) contains only Instant ledger/receipt source and tests (`100 insertions`, `5 deletions`).
+- Behavior: idempotency fingerprints validate bounded binding identifiers, reject duplicate/excessive targets, and sort the stable target set so restart/reordering cannot create a second effect. Live confirmation-token collisions fail closed; successful consumption removes the token for bounded reuse by its generator. Receipts reject duplicate/excessive targets and empty, control-bearing, or overlong follow-up prompts while remaining immutable/content-minimal.
+- TDD/gates: RED `3` intended failures; focused `2 files / 8 tests` PASS; full Instant `26 files / 182 tests` PASS; shared TypeScript PASS; direct Vite production build `5,058 modules` PASS; exact Prettier, diff-check, and Instant-scoped Gitleaks PASS.
+- Secure `/connect` routing remains unchanged on the existing Providers authority; no UI/backend overlap occurred.
+- Native/control: no app or native controller access occurred. Immutable acceptance packet delegated to `/root/native_resume`; exact file lock marked completed/released immediately.
+
+### 2026-08-30T23:38:00-05:00 — VS-SOL-INSTANT-CONNECT-GUARD-20260830-59 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `3a692f1c`; exact product scope is only Instant navigation authority source/test.
+- Intent: keep `/connect` exclusively on the existing Settings Providers authority while rejecting any credential/extra/wrong-section slots before UI dispatch and redacting navigation adapter failures.
+- Exclusions: Providers UI/store, OpenCode/backend, Composer/Chat/Voice/ADE, CAO/native/Workbench/external apps, credentials/services, and unrelated dirty state.
+- Next: RED-first secure-connect and exception matrix, minimal authority guard/wrapper, focused/full gates, exact path-only commit/release, native packet.
+
+### 2026-08-30T23:41:28-05:00 — VS-SOL-INSTANT-CONNECT-GUARD-20260830-59 completion
+
+- Exact commit `d1c58dc746e3b85d5b9de0dff2ddc0950fa1dea4` (`fix(instant): guard provider connection route`) contains only Instant navigation authority source/test (`53 insertions`, `1 deletion`).
+- Behavior: `/connect` continues to open only the existing Settings Providers surface, but now accepts solely empty slots or the exact `providers` section. Credential-shaped fields, provider selection fields, extra arguments, and wrong sections reject before UI dispatch without echoing values. Navigation adapter exceptions return a fixed content-minimal failure receipt.
+- TDD/gates: RED `4` intended failures; focused `9/9` PASS; full Instant `26 files / 186 tests` PASS; shared TypeScript PASS; direct Vite production build `5,058 modules` PASS; exact Prettier, diff-check, and authority-scoped Gitleaks PASS.
+- Provider/model connection, refresh, cancel/retry, and reload behavior remains owned by the existing Providers/OpenCode authority and is reserved for official-native acceptance; no alternate credential store or backend was added.
+- Native/control: no app or native controller access occurred. Immutable acceptance packet delegated to `/root/native_resume`; exact file lock marked completed/released immediately.
+
+### 2026-08-30T23:43:00-05:00 — VS-SOL-INSTANT-CATALOG-INTEGRITY-20260830-60 claim
+
+- Branch/base: `integration/UnifiedChungus-final` at `d1c58dc7`; exact product scope is only Instant `catalogIndex.ts` and its test.
+- Intent: fail catalog construction on unsafe/unbounded IDs, authorities, aliases, examples, or empty/control-bearing fixtures, and reject oversized/control-bearing command source before deterministic matching.
+- Exclusions: catalog entry/runtime/UI files, secure Providers `/connect`, Composer/Chat/Voice/ADE, CAO/native/Workbench/external apps, credentials/services, and unrelated dirty state.
+- Next: RED-first integrity matrix, minimal index validators, focused/full gates, exact path-only commit/release, native packet.
+
+### 2026-08-30T23:09:00-05:00 — VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34 Task 2 fix round 2 checkpoint
+
+- Branch/HEAD: `integration/UnifiedChungus-final`; exact Task 2 product commit `90fd561f` on top of runtime receipt dependency `f024cff9`.
+- Exact committed files: `Composer.tsx`, `Composer.chatHandoff.test.tsx`, `chatHandoffProjection.ts`, and `chatHandoffProjection.test.ts` (`538 insertions`, `44 deletions`). No runtime, Schedule, CAO, Instant, native, voice, or other concurrent file was staged.
+- Result: namespaced/standalone OpenAI and Anthropic credentials plus stack labels sanitize; raw string tool results never project; handoff-only drafts queue with immutable payloads; complete canonical delivery keys and per-delivery receipts make retry idempotent; exact direct/queued card identity prevents stale clearing; rendered Composer coverage proves rejection announcement, editable replacement, persistence shape, failure preservation/retry, and success/newer-card clearing rules; acknowledgement requires the exact runtime `cancellationKey`.
+- TDD/gates: focused REDs reproduced missing sanitizer, queue, receipt, exact-card, raw-result, rendered integration, full-delivery-key, and exact-ack behavior. Final affected suite `6 files / 28 tests` PASS; post-format fix suite `2 files / 19 tests` PASS; exact Prettier, diff-check, and staged Gitleaks PASS. Root TypeScript ran to completion but remained externally red only in concurrent `mediaCommands.test.ts` (4 diagnostics) and `caoTargetAuthority.test.ts` (1 diagnostic); no Task 2 diagnostic.
+- Persistent report: `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-2-report.md` contains the exact fix-round evidence and concern. Task 2 awaits scoped re-review; product lock remains active and Task 3 has not started.
+
+### 2026-08-30T23:14:57-05:00 — VS-CODEX-CHAT-HANDOFF-T2-REREVIEW2-20260830-56 claim
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `3e11dcd0bfdf77d26286efc032f68e816344be92`, upstream `origin/UnifiedChungus`; no merge, rebase, cherry-pick, revert, or bisect state.
+- Exact write scope is only `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-2-rereview-round2.md`; all product source/tests, index, commits, processes, other locks, and unrelated dirty state remain read-only/protected.
+- Review target: exact package `672b67c5..90fd561f`, prior round-1 verdict, Task 2 report/spec/plan, and runtime acknowledgement dependency `f024cff9`.
+
+### 2026-08-30T23:16:04-05:00 — VS-CODEX-CHAT-HANDOFF-T2-REREVIEW2-20260830-56 completed / released
+
+- Verdict artifact: `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-2-rereview-round2.md`; result **NEEDS FIXES**.
+- Closed in scope: provider credential and stack-label sanitization, handoff-only queueing, per-delivery receipts, raw-string tool-result exclusion, rendered Composer integration coverage, and exact cancellation-key runtime acknowledgement through `f024cff9`.
+- Remaining Important finding: a direct handoff whose visible textarea draft is normalized by inline slash handling or Prompt Forge builds its submitted key from transformed text but compares against the unchanged visible text, so successful persistence/dispatch can leave the exact submitted handoff card attached (`Composer.tsx:3367-3390,3413-3430,3505-3513,3851-3877`).
+- Verification: review artifact reread; scoped `git diff --check` passed. No product source/test, index, commit, process, other lock, or unrelated dirty state was modified. This review-only lock is released.
+
+### 2026-08-30T23:31:37-05:00 — VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34 Task 2 fix round 3 checkpoint
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `67bef84a6d726f7d4265bb1dade40af66431a9ff`; exact product commit `67bef84a` (`fix(chat): clear normalized handoff drafts`).
+- Exact committed files: `app/src/features/chat/Composer.tsx` and `app/src/features/chat/Composer.chatHandoff.test.tsx` (`87 insertions`, `2 deletions`). No runtime, Schedule, CAO, native, or other concurrent file was staged.
+- Result: direct handoffs capture their pre-normalization visible identity, and a user-edit revision guard lets internal inline-slash/Prompt Forge transformations clear the exact accepted card without clearing a genuinely newer user draft or replacement card.
+- TDD/gates: rendered inline-normalization regression RED with persistence/dispatch successful but card retained; final focused regression PASS; post-format affected suite `2 files / 20 tests` PASS; root `npm run typecheck` PASS; exact Prettier, diff-check, and staged Gitleaks PASS.
+- Persistent report: `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-2-report.md` contains complete round-3 evidence. Task 2 awaits scoped re-review; product lock remains active and Task 3 has not started.
+
+### 2026-08-30T23:33:46-05:00 — VS-CODEX-CHAT-HANDOFF-T2-REREVIEW3-20260830-57 claim
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `67bef84a6d726f7d4265bb1dade40af66431a9ff`, upstream `origin/UnifiedChungus`; no merge, rebase, cherry-pick, revert, or bisect state.
+- Exact write scope is only `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-2-rereview-round3.md`; all product source/tests, index, commits, processes, other locks, and unrelated dirty state remain read-only/protected.
+- Review target: exact package `46e55a4b..67bef84a`, prior round-2 verdict, and Task 2 report tail; scope is only normalized direct-draft success clearing plus newer-card protection and immediate regressions.
+
+### 2026-08-30T23:34:37-05:00 — VS-CODEX-CHAT-HANDOFF-T2-REREVIEW3-20260830-57 completed / released
+
+- Verdict artifact: `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-2-rereview-round3.md`; result **PASS** with no remaining Critical, Important, or Minor scoped finding.
+- Evidence: direct sends capture the pre-normalization visible key; the user-edit revision guard distinguishes internal slash/Prompt Forge normalization from genuine textarea edits; current instruction/projection identity preserves newer instruction/replacement cards. The rendered inline-`/clearfiles` regression and adjacent newer-card regression cover both sides.
+- Verification: exact package/prior verdict/report read; artifact reread; scoped `git diff --check` passed. No product source/test, index, commit, process, other lock, or unrelated dirty state was modified. This review-only lock is released.
+
+### 2026-08-30T23:35:43-05:00 — VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34 Task 3 ownership transfer
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `67bef84a6d726f7d4265bb1dade40af66431a9ff`; Task 2 scoped re-review is PASS and its historical report/commits remain preserved under this lane.
+- Released exclusively for fresh claim by `/root/chat_multipane_task3`: `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-3-report.md`, `app/src/features/chat/chatWorkspaceLayout.ts`, `app/src/features/chat/chatWorkspaceLayout.test.ts`, `app/src/features/chat/ChatWorkspace.tsx`, `app/src/features/chat/ChatWorkspace.test.tsx`, `app/src/features/chat/ChatView.tsx`, and `app/src/features/chat/ChatView.handoffWorkspace.test.tsx`.
+- The seven Task 3 paths were removed from this lane's active exact scope and recorded in its lock as `released_for_fresh_claim`. No product, test, report, index, or commit was changed during this coordination-only handoff.
+- All other existing Task 4-7 reservations in `VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34` remain active and unchanged; this transfer conveys no authority over those paths.
+
+### 2026-08-30T23:36:58-05:00 — VS-SOL-CHAT-MULTIPANE-T3-20260830-59 claimed Task 3
+
+- Worktree/branch/base: `C:\Users\viper\VibeSpace-UnifiedChungus-Final`, `integration/UnifiedChungus-final`, `3a692f1c439c1ef5142632e5222838c34f872d01`, upstream `origin/UnifiedChungus`; linked worktree confirmed (`git_dir` differs from `git_common`) with no merge, rebase, cherry-pick, revert, or bisect state.
+- Explicit transfer: `VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34` released exactly the six Task 3 product/test paths plus `task-3-report.md` to `/root/chat_multipane_task3` at `2026-08-30T23:35:43-05:00`; the earlier system lock is `handed_off`, not active.
+- Exact ownership: `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-3-report.md`, `chatWorkspaceLayout.ts/.test.ts`, `ChatWorkspace.tsx/.test.tsx`, `ChatView.tsx`, and `ChatView.handoffWorkspace.test.tsx` only. All Task 4-7 reservations, App/Composer/ChatThread/runtime/Schedule/provider/native surfaces, other locks, processes, and unrelated dirty state remain protected.
+- Scoped files were clean/untracked-absent at claim. Next: inspect dependency contracts; strict RED for pure layout; minimal GREEN; React RED/GREEN; focused/type/format/diff/security verification; exact-file commit `feat(chat): add persistent multipane workspace`; report and own-lock release.
+
+### 2026-08-30T23:41:38-05:00 — VS-SOL-CHAT-MULTIPANE-T3-20260830-59 pure layout GREEN checkpoint
+
+- Branch/HEAD remains `integration/UnifiedChungus-final` at shared `3a692f1c`; owned uncommitted files are only new `chatWorkspaceLayout.ts` and `.test.ts` plus coordination state.
+- Strict TDD evidence: focused RED failed at import resolution because `./chatWorkspaceLayout` did not exist; after the minimal versioned per-account/workspace/project controller, focused GREEN is `1 file / 11 tests` PASS.
+- Covered behavior: ordered unique add/focus, deterministic next-then-previous close, one-pane preservation, four-pane rejection, 1/2/3/4 grid classes, corrupt/version/duplicate/empty recovery, scoped persistence, inaccessible-chat pruning, primary replacement, and one same-document subscriber notification.
+- Baseline before the RED was `ChatView.browserGoal`, `ChatView.origamiScope`, and `ChatView.petMirror`: `3 files / 12 tests` PASS. No runtime/cancel, Composer, Schedule, provider/model, native, or unrelated product surface changed. Next: React workspace/integration RED then scoped GREEN.
+
+### 2026-08-30 23:44 CDT — Codex/OpenCodex managed-runtime checkpoint
+- Exact commits: `b4cbcbc4` secure automatic Bun download; `67381e86` artifact-pinned runtime entrypoints; `46e55a4b` atomic OpenCodex frozen closure; `74157bd3` atomic official Codex Windows bundle.
+- Real OpenCodex evidence: the first install failed closed because scripts-disabled `node_modules/bun/bin/bun.exe` is an intentional 450-byte error shim. The preserved fixture identified the exact correct native path `node_modules/@oven/bun-windows-x64/bin/bun.exe` (88,825,944 bytes; SHA-256 `627d2e4775c24bdedee2cd7ccc18dcadae061e5345274ab6e3c4c797927bfb8f`). The exact rerun passed the pinned bootstrap, frozen scriptless 98-package closure, receipt/hashes, rename promotion, and real `ready --json` truth (`exit 1`, `ready:false`, `status:unreachable` until proxy startup).
+- Real Codex evidence: OpenAI's official `rust-v0.151.0` Windows x64 ZIP is pinned at 109,921,864 bytes / SHA-256 `7c3bb1585c7148642e7d5df9208b52abd5ce732ec36d04d66949d5d821eb062c`; main executable and both sandbox helpers are exact-verified, atomically promoted, and the explicit real test launched `codex-cli 0.151.0`.
+- Security: rewritten unsigned receipts can no longer bless modified Codex/OpenCodex executable, launcher/source, lock, or Bun bytes; readiness also binds to audited artifact digests.
+- Gates: managed Rust matrix `36 passed / 0 failed / 4 explicit network-artifact tests ignored by default`; relevant real Codex and OpenCodex ignored tests each passed 1/1; JSON/rustfmt/diff/scoped Gitleaks pass.
+- Boundary: active server/Chat owners remain untouched; one concise API handoff was sent. Next is consolidated backend verification while awaiting an exact integration release.
+
+### 2026-08-30T23:43:24-05:00 — VS-SOL-CAO-SCHEDULED-RESULT-INTEGRITY-20260830-59 completed / released
+
+- Exact product commit `97c18e38ac67449ce8ddc6fd8003a9dbed0fed7e` contains only `caoScheduledTargetAuthority.ts` and its focused test (`85 insertions`, `1 deletion`).
+- Scheduled worker outcomes are validated and canonicalized before completion-time lease revalidation: malformed/blank receipts and unknown states fail closed, mutable result objects cannot rewrite returned durable truth, and unknown worker failures collapse to the stable redacted `cao_learning_execution_unavailable` code. Exact account/workspace/project/run/lease/target/revision authority and failed/cancelled recovery behavior remain unchanged.
+- TDD/gates: RED `4` intended failures; focused bridge `20/20` PASS; adjacent validators/journal authority/bridge/recovery `534/534` PASS; full TypeScript PASS; isolated Vite production build `5,058 modules` PASS; post-commit focused `20/20` PASS; exact Prettier, diff-check, and scoped Gitleaks PASS.
+- Native/control: no app or native controller access occurred. Exact file lock is completed/released; immutable acceptance packet sent to `/root/native_resume`.
+
+### 2026-08-31T00:18:00-05:00 — VS-SOL-CAO-TARGET-DEPENDENCY-SHAPE-20260831-65 completed / released
+
+- Exact product commit `843b30dbdf8dfb3864db317d3e992d4b964b5975` contains only `caoTargetAuthority.ts` and its focused test (`88 insertions`).
+- Malformed journal pages and live registry reads now fail with stable content-minimal errors. Malformed ambiguous claim responses reconcile exact same-lease ownership before failing, while a malformed verification read does not release otherwise valid durable authority.
+- TDD/gates: RED `4` intended failures; focused authority `65/65` PASS; adjacent validators/journal authority/bridge/recovery `564/564` PASS; full TypeScript PASS; isolated Vite production build `5,060 modules` PASS; exact Prettier, diff-check, and scoped Gitleaks PASS.
+- Native/control: no app or native controller access occurred. Exact file lock is completed/released; immutable acceptance packet sent to `/root/native_resume`.
+
+### 2026-08-31T00:11:00-05:00 — VS-SOL-CAO-TARGET-REQUEST-SHAPE-20260831-64 completed / released
+
+- Exact product commit `b34ad34da1d5f0e888984c8972e77fb743e3494f` contains only `caoTargetAuthority.ts` and its focused test (`131 insertions`, `7 deletions`).
+- Unknown acquire/verify/release, selection, and target fields now fail closed before dependencies. Registry claims contain only exact scope/run/lease/expiry/target keys, and rollback, ambiguous append recovery, verification, and release use canonical request construction without controller-only or private extras.
+- TDD/gates: RED `6` intended failures; focused authority `61/61` PASS; adjacent validators/journal authority/bridge/recovery `560/560` PASS; full TypeScript PASS after Chat T3/Instant landed; isolated Vite production build `5,060 modules` PASS; exact Prettier, diff-check, and scoped Gitleaks PASS.
+- Native/control: no app or native controller access occurred. Exact file lock is completed/released; immutable acceptance packet sent to `/root/native_resume`.
+
+### 2026-08-31T00:03:00-05:00 — VS-SOL-CAO-TARGET-IDENTIFIER-INTEGRITY-20260830-63 completed / released
+
+- Exact product commit `92188710b3e6293b5d6cd26b0f49fcf1ad3ddd68` contains only `caoTargetAuthority.ts` and its focused test (`64 insertions`, `1 deletion`).
+- Scope, run, lease, and target identities now use the same bounded opaque-ID contract. Control-bearing or oversized recovered identities fail before journal/registry access, while invalid generated lease IDs fail before claim mutation or durable append, preserving stable content-minimal errors.
+- TDD/gates: RED `5` intended failures; focused authority `55/55` PASS; adjacent validators/journal authority/bridge/recovery `554/554` PASS; isolated Vite production build `5,060 modules` PASS; exact Prettier, diff-check, and scoped Gitleaks PASS. Full TypeScript remains intentionally deferred until active Chat T3 and Instant edits land; their files remained untouched.
+- Native/control: no app or native controller access occurred. Exact file lock is completed/released; immutable acceptance packet sent to `/root/native_resume`.
+
+### 2026-08-30T23:59:00-05:00 — VS-SOL-CAO-SCHEDULED-RUNTIME-SHAPE-20260830-62 completed / released
+
+- Exact product commit `0e218767fe5f9f9ba9a95569e34ab0831e962b16` contains only `caoScheduledTargetAuthority.ts` and its focused test (`43 insertions`, `1 deletion`).
+- Null recovered envelopes and unsupported target kinds now fail closed before authority access. Completed results require exactly `status` plus `receiptId`, while failed/cancelled results require exactly `status`, preventing ambiguous private extras from changing or leaking through durable recovery truth.
+- TDD/gates: RED `4` intended failures; focused bridge `35/35` PASS; adjacent validators/journal authority/bridge/recovery `549/549` PASS; isolated Vite production build `5,060 modules` PASS; exact Prettier, diff-check, and scoped Gitleaks PASS. Per root direction, full TypeScript is deferred until active Chat T3 and Instant edits land; their files remained untouched.
+- Native/control: no app or native controller access occurred. Exact file lock is completed/released; immutable acceptance packet sent to `/root/native_resume`.
+
+### 2026-08-30T23:55:00-05:00 — VS-SOL-CAO-SCHEDULED-SCHEMA-INTEGRITY-20260830-61 completed / released
+
+- Exact product commit `da882e44f5eb1dad67125aa020241e00b520950c` contains only `caoScheduledTargetAuthority.ts` and its focused test (`47 insertions`).
+- The scheduled bridge now rejects unknown recovered binding/execution keys before authority access, requires `scheduledDueAt` exactly for scheduled work, forbids it for manual/threshold work, and prevents schema-drift or private extra payloads from reaching the worker after restart.
+- TDD/gates: RED `4` intended failures; focused bridge `30/30` PASS; adjacent validators/journal authority/bridge/recovery `544/544` PASS; isolated Vite production build `5,060 modules` PASS; exact Prettier, diff-check, and scoped Gitleaks PASS. Fresh full TypeScript had no CAO diagnostic and remained externally blocked only in active Chat T3 (`ChatView.tsx`, `ChatView.handoffWorkspace.test.tsx`) and Instant catalog tests; those files remained untouched.
+- Native/control: no app or native controller access occurred. Exact file lock is completed/released; immutable acceptance packet sent to `/root/native_resume`.
+
+### 2026-08-30T23:49:00-05:00 — VS-SOL-CAO-SCHEDULED-INPUT-INTEGRITY-20260830-60 completed / released
+
+- Exact product commit `3f711bd7af7c84af45616902d54577c4130893d2` contains only `caoScheduledTargetAuthority.ts` and its focused test (`87 insertions`, `2 deletions`).
+- Recovered scheduled execution identity, trigger, cursor, and clock bounds now fail closed before authority access or dispatch; clone/access failures use stable redacted `cao_learning_execution_input_invalid`; the worker receives an immutable isolated execution copy so it cannot rewrite the exact snapshot used for completion-time authority revalidation.
+- TDD/gates: RED `6` intended failures; focused bridge `26/26` PASS; adjacent validators/journal authority/bridge/recovery `540/540` PASS; exact Prettier, diff-check, and scoped Gitleaks PASS. Fresh full TypeScript was externally blocked only by active Chat T3 `ChatView.handoffWorkspace.test.tsx:11:5` TS2352, and isolated Vite build was externally blocked after `1,817` modules because that same active lane temporarily deleted `ChatView.tsx`; both locked files remained untouched.
+- Native/control: no app or native controller access occurred. Exact file lock is completed/released; immutable acceptance packet sent to `/root/native_resume`.
+
+### 2026-08-30T23:46:45-05:00 — VS-SOL-INSTANT-CATALOG-INTEGRITY-20260830-60 completed / released
+
+- Exact product commit `0980550bb59a6bfeb4d008fef3357e3ee633384f` contains only `catalogIndex.ts` and `catalogIndex.test.ts` (`72 insertions`, `4 deletions`).
+- Catalog construction now rejects unsafe or whitespace-padded IDs/authorities, oversized or control-bearing aliases/examples, and empty/control-bearing/oversized negative, ambiguity, and authorization fixtures. Matching rejects control-bearing or greater-than-4096-character sources before any catalog, model, or authority route; locale-independent normalization preserves offsets and alias behavior.
+- TDD/gates: RED `3` intended failures; focused catalog `13/13` PASS; full Instant `26 files / 189 tests` PASS; full TypeScript PASS; isolated Vite production build `5,058 modules` PASS; exact Prettier, diff-check, and scoped Gitleaks PASS.
+- Secure `/connect` remains bound to the existing Providers/OpenCode authority with no credential command arguments. No app/native control occurred. Exact lock completed/released; immutable native packet sent to `/root/native_resume`.
+
+### 2026-08-30T23:54:15-05:00 — VS-SOL-INSTANT-CATALOG-SNAPSHOT-20260830-61 completed / released
+
+- Exact product commit `f1afa0bb50e6e53f9ac807626dcdf1fc0cabd5fb` contains only `catalogIndex.ts` and `catalogIndex.test.ts` (`160 insertions`, `5 deletions`).
+- Catalog construction now runtime-validates family, safety, availability, slot grammar, and parser identity; it snapshots and freezes validated routing metadata. Slot parser exceptions, malformed results, and unsafe rejection reasons collapse to one bounded generic rejection without exposing backend/private details, while valid slots remain available to canonical authorities.
+- TDD/gates: RED `3` intended failures; focused catalog/parse/help `68/68` PASS; full Instant `26 files / 192 tests` PASS; owned TypeScript diagnostics zero (shared typecheck blocked only by active Chat Task 3 diagnostics in `ChatView.tsx` and `ChatView.handoffWorkspace.test.tsx`); Vite production build `5,060 modules` PASS; exact Prettier, diff-check, and scoped Gitleaks PASS.
+- Secure `/connect` remains the existing Providers/OpenCode authority with no secret-bearing command argument. No app/native control occurred. Exact lock completed/released; immutable native packet sent to `/root/native_resume`.
+
+### 2026-08-30T23:58:20-05:00 — VS-SOL-INSTANT-SLOT-SNAPSHOT-20260830-62 completed / released
+
+- Exact product commit `db22567cd0488bdb47ecc66dcd8defad5a72e362` contains only `catalogIndex.ts` and `catalogIndex.test.ts` (`97 insertions`, `1 deletion`).
+- Parsed command slots are recursively copied and frozen before classification/preview can retain them. Only bounded plain records/arrays and safe finite scalar values are accepted; prototypes, accessors, executable values, forbidden keys, non-finite numbers, control-bearing/oversized strings, excessive breadth, and excessive depth fail closed with the bounded generic parser rejection. Mutation of a parser-owned nested selector can no longer retarget an accepted command.
+- TDD/gates: RED `2` intended failures; focused catalog/parse/help/terminal `77/77` PASS; full Instant `26 files / 194 tests` PASS; Vite production build `5,060 modules` PASS; exact Prettier, diff-check, and scoped Gitleaks PASS. Shared typecheck was intentionally not rerun because root directed a rerun only after active Chat T3 lands; prior owned diagnostics were already zero.
+- Secure `/connect` remains the existing Providers/OpenCode authority with no secret-bearing command argument. No app/native control occurred. Exact lock completed/released; immutable native packet sent to `/root/native_resume`.
+
+### 2026-08-31T00:09:58-05:00 — VS-SOL-INSTANT-ENTRY-CAPACITY-20260830-63 completed / released
+
+- Exact product commit `49b2fc23a8ca117aa3f81c82f1a7524285aa7b29` contains only `entryBoundary.ts` and `entryBoundary.test.ts` (`278 insertions`, `23 deletions`).
+- The unified command-first boundary never evicts an active interaction at its 256-record bound; a 257th active interaction rejects locally while phrase/voice/retry for an existing exact binding reuse one promise/effect. Settled entries alone may be reclaimed. Interaction IDs bind the exact account/workspace/project/source so correlation reuse cannot replay across authority scope or changed input.
+- Runtime validation rejects malformed identity/context/trigger/source before classification, model, or authority dispatch. Classifier, executor, and model exceptions plus unsafe rejection text collapse to one bounded generic result without private details.
+- TDD/gates: RED `3` intended failures; focused entry/execute/parse `70/70` PASS; full Instant `26 files / 198 tests` PASS; Vite production build `5,060 modules` PASS; exact Prettier, diff-check, and scoped Gitleaks PASS. Shared TypeScript rerun after Chat T3 landed confirmed zero owned diagnostics and was blocked only by concurrent CAO `caoTargetAuthority.ts:163/164/168` diagnostics.
+- Secure `/connect` remains the existing Providers/OpenCode authority with no secret-bearing command argument. No app/native control occurred. Exact lock completed/released; immutable native packet sent to `/root/native_resume`.
+
+### 2026-08-31T00:15:55-05:00 — VS-SOL-INSTANT-LEDGER-CAPACITY-20260831-64 completed / released
+
+- Exact product commit `9c3c5bde594dba3dce23746d5666fd46568e4830` contains only `commandLedger.ts` and `commandLedger.test.ts` (`117 insertions`, `4 deletions`).
+- Correlation IDs now validate before any operation can start. The canonical ledger bounds execution records, never evicts active authority, reclaims settled records only, and preserves exact fingerprint replay. Live confirmations are bounded, expired records are pruned before admission, TTL is capped at five minutes, and invalid token shapes fail closed without binding work.
+- TDD/gates: RED `3` intended failures; focused ledger/execute/receipt `27/27` PASS; full Instant `26 files / 201 tests` PASS; Vite production build `5,060 modules` PASS; exact Prettier, diff-check, and scoped Gitleaks PASS. Per root direction, the shared TypeScript rerun is queued for immediately after active CAO dependency-shape work lands; the last run before that edit showed only its external diagnostics and zero owned diagnostics.
+- Secure `/connect` remains the existing Providers/OpenCode authority with no secret-bearing command argument. No app/native control occurred. Exact lock completed/released immediately after commit; immutable native packet sent to `/root/native_resume`.
+# 2026-08-30 23:56 CDT — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 checkpoint
+
+- **Task:** `TASK-CODEX-OPENCODEX-FIRST-CLASS-BACKEND-20260830`
+- **Branch / base:** `integration/UnifiedChungus-final` at `da882e44f5eb1dad67125aa020241e00b520950c`
+- **Exact files:** `app/src-tauri/src/harness/managed_codex_app_server.rs`, `app/src-tauri/src/harness/mod.rs`
+- **Change:** Added a pure, fail-closed launch contract for the checksum-verified managed Codex 0.151.0 native app-server over explicit stdio. Command-line payloads are limited to `app-server --stdio`; provider/model/prompt/credentials stay out of argv. Wrong backend, unready state, relative/mismatched executable, or inherited arguments are rejected. Raw reasoning text is explicitly classified private; public summaries remain eligible for the existing Chat projection.
+- **Verification:** RED compile exit 1 before implementation; focused tests 3/3 pass; consolidated managed tests 23/23 pass with 4 explicit real-artifact tests ignored by default; rustfmt check exit 0; scoped Gitleaks 7.06 KB exit 0, no leaks.
+- **Boundary:** No process/config/provider/model/UI/RLM/SiYuan/server/Cargo/native-app mutation. Other agents' dirty files and locks preserved.
+- **Next:** exact two-file product commit, then bounded OpenCodex loopback lifecycle/start contract.
+
+### 2026-08-30T23:56:56-05:00 — VS-SOL-CHAT-MULTIPANE-T3-20260830-59 React workspace GREEN checkpoint
+
+- Shared branch advanced concurrently to `2e8b3afc`; Task 3 still owns only the six product/test paths plus its report/coordination state, with no scoped overlap or staging.
+- React RED evidence: `ChatWorkspace.test.tsx` failed import resolution because the component did not exist; all four `ChatView.handoffWorkspace` tests failed on absent pane/drop/event/focus behavior. Minimal GREEN composes existing chat/browser surfaces by explicit chat ID, keeps Composer outside the conversation drop region, and updates only layout/UI focus on close.
+- Verification now: required Task 3 focused `3 files / 22 tests` PASS; post-format Task 3 plus adjacent existing ChatView `6 files / 34 tests` PASS; fresh root `npm run typecheck` PASS. The first typecheck exposed two owned diagnostics plus three then-concurrent Instant diagnostics; the two owned diagnostics were fixed and the fresh compiler is fully green.
+- No cancellation/runtime semantics, Composer, ChatThread, Schedule, provider/model/Ollama, native process/controller, App, or unrelated file changed. Next: exact Prettier/diff/Gitleaks and scoped diff inspection, then exact six-file commit.
+
+### 2026-08-31T00:06:37-05:00 — VS-SOL-CHAT-MULTIPANE-T3-20260830-59 completed / released
+
+- Exact product commit `161d1f9621faa2c1a4e323a393621b8ef1b095c7` (`feat(chat): add persistent multipane workspace`) contains only the six planned Task 3 files (`1,334 insertions`, `65 deletions`). Shared HEAD later advanced concurrently to `7839c4bd`; the exact Task 3 commit remains the reversible boundary.
+- Behavior: versioned account/workspace/project persistence stores only ordered 1-4 chat IDs plus focus; corrupt and inaccessible references recover/prune; duplicates focus; fifth unique panes reject; focused close chooses next then previous. ChatWorkspace renders the existing explicit-ID native/browser surfaces as one full pane, equal two columns, or 2x2; focus/close, live announcements, reduced-motion and drag-over state are accessible.
+- Integration: conversation regions accept typed Open-beside drops and the existing sidebar event after canonical revalidation; Composer remains a separate handoff target and continues stopping propagation. Pane focus updates `activeChatId`; global navigation replaces only the primary pane; close dispatches no cancellation and changes no runtime semantics.
+- TDD/gates: pure missing-module RED, React missing-component/behavior RED, and drag-state RED were all captured before their implementations. Final post-commit Task 3 plus adjacent ChatView matrix is `6 files / 35 tests` PASS; root TypeScript PASS; exact Prettier/diff PASS; Gitleaks scanned `1` commit / `48.74 KB` with no leaks.
+- Persistent report: `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-3-report.md`. No App, Composer, ChatThread, Browser Goal, runtime/cancel, Schedule, provider/model/Ollama, native process/controller, or unrelated file was written.
+- Native/control: no official app lifecycle/control was used. Automated Task 3 verification is complete; official native WebView acceptance remains pending for the authorized native lane. This agent's exact lock is completed/released; Tasks 4-7 remain reserved to `VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34`.
+### 2026-08-31T00:09:31-05:00 — VS-CODEX-CHAT-MULTIPANE-T3-REVIEW-20260831-60 claimed Task 3 independent review
+
+- Worktree/branch/base: `C:\Users\viper\VibeSpace-UnifiedChungus-Final`, `integration/UnifiedChungus-final`, `7839c4bdd73f0e27955e7e6968b383c875c88355`, upstream `origin/UnifiedChungus`; no merge, rebase, or cherry-pick state.
+- Exact write scope: `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-3-review.md`, this agent's lock file, and append-only own ledger entries. All six Task 3 product/test files, the exact review package, index, commits, processes, other locks, and unrelated dirty state remain read-only/protected.
+- Review basis: approved spec, plan Task 3, brief, report, and complete exact package `review-92188710..161d1f96.diff`; claims will be accepted only when supported by diff/test evidence.
+- Next: inspect persistence/recovery/layout/integration/accessibility/privacy semantics, run focused read-only checks as useful, then publish PASS or ordered findings and release only this review lock.
+# 2026-08-31 00:10 CDT — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 checkpoint
+
+- **Task:** `TASK-CODEX-OPENCODEX-FIRST-CLASS-BACKEND-20260830`
+- **Branch / base:** `integration/UnifiedChungus-final` at `b34ad34da1d5f0e888984c8972e77fb743e3494f`; prior launch commit `2e8b3afc4597bbdd7d10dc4d1fb8560a18cc3eb9` remains in ancestry.
+- **Exact files:** `app/src-tauri/src/harness/managed_opencodex_runtime.rs`, `app/src-tauri/src/harness/mod.rs`
+- **Change:** Added the pure on-demand OpenCodex runtime plan. Only the exact verified Bun/source readiness candidate can become a hard-pinned noninteractive `start --port` child plus bounded `ready --json` probe. It requires explicit review, durable Codex-config backup proof, isolated OpenCodex home, exact config digest, loopback bind, Codex enabled, unrelated Grok/Claude integrations disabled, bounded logs, and child-owned teardown; port 11434 and service/shim/init/update/global paths are excluded.
+- **Verification:** Two RED compile boundaries exited 1; focused lifecycle 4/4 pass; managed matrix 27/27 pass with 4 explicit real-artifact tests ignored; rustfmt/diff checks exit 0; Gitleaks 17.77 KB exit 0, no leaks.
+- **Boundary:** No process/config/provider/model/UI/RLM/SiYuan/server/Cargo/native-app mutation. Concurrent commits/dirty paths preserved.
+- **Next:** exact two-file product commit, then a real durable Codex config snapshot/restore receipt.
+
+### 2026-08-31T00:18:00-05:00 — VS-CODEX-CHAT-MULTIPANE-T3-REVIEW-20260831-60 completed / released
+
+- Verdict: **FAIL** with `6 Important` and `2 Minor` findings in `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-3-review.md`.
+- Important gaps: inaccessible active IDs evade pruning; async drops can mix scope epochs; duplicate opens bypass canonical validation and announcements trust payload metadata; close-button pointer capture changes focus before close; production Composer/independent-routing/isolation integration is untested; and null versus `~` project scopes collide in persistence keys.
+- Minor gaps: throwing/unavailable storage is not isolated, and equal-title focus changes need not produce a distinct live announcement.
+- Verification: complete exact package `92188710..161d1f96`, approved spec, plan Task 3, brief, and report inspected; focused Task 3 Vitest passed `3 files / 23 tests`; exact package diff check passed. All six product/test files are worktree-clean and byte-equivalent to exact commit `161d1f96`; no product/test, index, commit, process, other lock, or unrelated dirty state was modified.
+- This review-only lock is completed/released; the persistent review artifact and append-only provenance remain.
+
+### 2026-08-31T00:22:02-05:00 — VS-SOL-CHAT-MULTIPANE-T3-FIX1-20260831-67 claimed Task 3 fix round 1
+
+- Worktree/branch/base: `C:\Users\viper\VibeSpace-UnifiedChungus-Final`, `integration/UnifiedChungus-final`, `843b30dbdf8dfb3864db317d3e992d4b964b5975`, upstream `origin/UnifiedChungus`; no merge, rebase, cherry-pick, revert, or bisect state.
+- Exact scope is the six Task 3 product/test files plus the persistent `task-3-report.md` and this agent's lock/append-only ledger entries. The earlier Task 3 and independent-review locks are completed/released; delivery's Task 3 scope remains explicitly transferred/released to this lane.
+- Root causes confirmed from the exact verdict/source: impossible empty-layout modeling fabricates inaccessible primaries; unkeyed mutable layout refs allow async scope mixing; duplicate fast-path and announcement projection trust unvalidated drag data; capture-phase pane focus precedes close suppression; tests replace the production Composer boundary; scope key encoding aliases null and literal sentinel values; storage calls escape error boundaries; equal-title announcements key only on title.
+- All six product/test files are clean at claim. Next: strict pure-controller RED/GREEN, pointer/announcement RED/GREEN, then canonical/scope/Composer/independent-routing ChatView integration RED/GREEN; focused+adjacent/type/format/diff/security gates; exact six-file fix commit; report and own-lock release.
+
+# 2026-08-31 00:26 CDT — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 checkpoint
+
+- **Task:** `TASK-CODEX-OPENCODEX-FIRST-CLASS-BACKEND-20260830`
+- **Branch / HEAD:** `integration/UnifiedChungus-final` at `843b30dbdf8dfb3864db317d3e992d4b964b5975`.
+- **Exact file:** `app/src-tauri/src/harness/managed_codex_app_server.rs`.
+- **Change:** Added the schema-derived initialize/initialized JSONL handshake for the verified Codex app-server. The request identity and client version are validated, and private raw reasoning notification `item/reasoning/textDelta` is opted out at transport negotiation before any thread or turn can exist.
+- **Verification:** Focused handshake/launch tests pass 5/5; consolidated managed harness passes 29/29 with 4 explicit real-artifact tests ignored; rustfmt/diff checks exit 0; harness-scoped Gitleaks scans 486.70 KB with no leaks. Live local Codex 0.151.0 accepted the exact initialize frame and returned the expected VibeSpace client identity/platform result; no thread, turn, provider, model, prompt, or config mutation occurred.
+- **Boundary / next:** No Chat UI, RLM, SiYuan, server.rs, Cargo.toml, official VibeSpace app, or unrelated agent work changed. Next is the exact-file commit, followed by independent review/integration of the isolated config snapshot module.
+# 2026-08-31 00:27 CDT — VS-SOL-CAO-TARGET-DEPENDENCY-ENTRY-20260831-66 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-DEPENDENCY-ENTRY-20260831-66`, `integration/UnifiedChungus-final`, base `843b30dbdf8dfb3864db317d3e992d4b964b5975`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `b1d07cddef9e77fee13bac89d9eb382d3cebbc29`.
+- **Change:** Target authority now rejects null/malformed journal and registry entries before dereference, reconciles a malformed applied claim with exact same-lease cleanup, preserves valid ownership when verification reads malformed state, and maps throwing clock/lease-ID dependencies to stable redacted authority errors.
+- **Verification:** RED captured six intended raw-TypeError/provider-error failures; GREEN focused `71/71`; adjacent CAO boundary `570/570`; isolated Vite production build PASS (`5,060` modules); exact Prettier/diff/Gitleaks PASS. Full typecheck reached only concurrent Instant `src/features/instant-command/execute.test.ts:362` result-code widening; no owned-file diagnostic.
+- **Boundary:** No scheduled runner/UI, Chat, Instant, native, external-apps/Workbench, provider/service, app-control, or unrelated dirty state was modified. Own lock completed/released immediately after exact commit.
+
+### 2026-08-31T00:48:43-05:00 — VS-SOL-CHAT-MULTIPANE-T3-FIX1-20260831-67 implementation/test checkpoint
+
+- **Task / branch / base:** `TASK-CHAT-HANDOFF-MULTIPANE-T3-FIX-ROUND-1`, `integration/UnifiedChungus-final`, claimed base `843b30dbdf8dfb3864db317d3e992d4b964b5975`; shared HEAD advanced concurrently to `dfb4d38512c35c0070f9907216ca0e6a5afb3df1` without overlap.
+- **Exact product/test scope:** `chatWorkspaceLayout.ts/.test.ts`, `ChatWorkspace.tsx/.test.tsx`, `ChatView.tsx`, `ChatView.handoffWorkspace.test.tsx`; uncommitted owned diff `496 insertions, 84 deletions`.
+- **Change:** Removed active-ID accessibility exemptions, added canonical fallback/empty-flow recovery, canonical duplicate/malformed event validation and announcements, scope+epoch async invalidation, collision-free scope keys, storage-failure recovery, pointer-close focus isolation, equal-title ordinals, per-chat/cross-scope isolation, and an actual Composer drop-boundary integration without runtime/cancel changes.
+- **TDD / verification:** RED captured the expected scope-key, empty-prune, storage-throw, pointer focus, canonical accessibility, scope-switch, forged/stale event, and action-announcement failures. GREEN focused/adjacent Chat matrix: `8 files / 65 tests`; root typecheck PASS; exact-file Prettier and diff check PASS. Commit/Gitleaks/report/release remain next.
+
+# 2026-08-31 00:38 CDT — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 checkpoint
+
+- **Task:** `TASK-CODEX-OPENCODEX-FIRST-CLASS-BACKEND-20260830`
+- **Branch / HEAD:** `integration/UnifiedChungus-final` at `5ac5d542d3d076014b1dd87cbbad50b9cf006533`; handshake commit `6a3940e3bf15a694e0fa9c29b13f43c79205d495` remains in ancestry.
+- **Exact files:** `app/src-tauri/src/harness/managed_codex_config_snapshot.rs`, `app/src-tauri/src/harness/mod.rs`.
+- **Change:** Added a durable, bounded, reversible lifecycle for `CODEX_HOME/config.toml`: absent/regular non-link inputs only, 8 MiB cap, exact original digest, canonical-home receipt binding, exact managed-mutation arming, atomic safe restore, idempotence, and fail-closed handling for cross-home replay, tampering, unstable reads, and user drift.
+- **Verification:** Focused real-crate snapshot tests pass 8/8; independent consolidated managed harness passes 37/37 with 4 explicit real-artifact tests ignored; rustfmt/diff checks exit 0; harness-scoped Gitleaks scans 490.34 KB with no leaks. All tests used isolated temp fixtures; no real user config was accessed.
+- **Residual risk / boundary:** Windows requires closing the verified handle immediately before write-through `MoveFileExW`, leaving a minimal OS-level race after the final drift check. Receipts are hash-consistency evidence, not keyed authentication against a local attacker able to rewrite both backup and receipt. No app process, provider/model/prompt, Chat UI, RLM, SiYuan, server.rs, Cargo.toml, or unrelated file changed.
+- **Next:** exact two-file commit, then native/server integration through the active owner only.
+
+### 2026-08-31T00:28:15-05:00 — VS-SOL-INSTANT-RECEIPT-CONFIRMATION-20260831-66 completed / released
+
+- **Task / branch / base:** `TASK-INSTANT-RECEIPT-CONFIRMATION-20260831`, `integration/UnifiedChungus-final`, base `9c3c5bde594dba3dce23746d5666fd46568e4830`.
+- **Exact files / commit:** `app/src/features/instant-command/receipt.ts`, `receipt.test.ts`, `execute.ts`, `execute.test.ts`; immutable commit `17f960d5195bf50555730e3f7418df04c1765db6` (`100 insertions, 5 deletions`).
+- **Change:** Canonical `confirmation_required` authority outcomes now project as truthful `needs_confirmation` receipts with bounded, control-free follow-up text instead of false rejection. Receipt construction fails closed on invalid status or timestamp, validates/uniquifies/bounds targets, and emits a sorted frozen target snapshot.
+- **Verification:** RED captured three intended failures; focused receipt/execute `22/22`; full Instant `26 files / 204 tests`; direct Vite build `5,060 modules`; exact Prettier, diff-check, and scoped Gitleaks all PASS. Full shared typecheck reports zero owned diagnostics and is blocked only by concurrent Chat Task 3 nullable-state diagnostics at `src/features/chat/ChatView.tsx:190`.
+- **Boundary:** Existing secure `/connect` Providers authority remains unchanged; no Assistant/Composer/Chat/Voice/runtime/CAO/native/Workbench/external-app, secret, billing, production, deployment, Ollama, or app-control scope was touched. Own lock completed/released immediately after the exact path-only commit; native acceptance is delegated to `/root/native_resume`.
+
+### 2026-08-31T00:39:01-05:00 — VS-SOL-INSTANT-DEADLINE-CLEANUP-20260831-68 completed / released
+
+- **Task / branch / base:** `TASK-INSTANT-DEADLINE-CLEANUP-20260831`, `integration/UnifiedChungus-final`, base `17f960d5195bf50555730e3f7418df04c1765db6`.
+- **Exact files / commit:** `app/src/features/instant-command/deadline.ts`, `deadline.test.ts`; immutable commit `05bdfcb945937d5e85cb832bda36e7dde6d6c935` (`38 insertions, 4 deletions`).
+- **Change:** The <=500 ms local receipt boundary now accepts only safe-integer deadlines, clears its timer on completion, synchronous throw, asynchronous rejection, and timeout, preserves the canonical abort reason, and prevents late settlement from changing the timed-out result.
+- **Verification:** RED captured the fractional-deadline and synchronous-throw timer leak; focused `5/5`; full Instant `26 files / 207 tests`; direct Vite build `5,060 modules`; exact Prettier, diff-check, and scoped Gitleaks all PASS. Full shared typecheck reports zero owned diagnostics and is blocked only by concurrent Chat T3 test diagnostics at `ChatView.handoffWorkspace.test.tsx:280,297`; rerun is required once that owner lands.
+- **Boundary:** Existing secure `/connect` Providers and truthful confirmation-receipt authorities remain unchanged. No execute/receipt/ledger/catalog, Assistant/Composer/Chat/Voice/runtime/CAO/native/Workbench/external-app, secret, billing, production, deployment, Ollama, or app-control scope was touched. Own lock completed/released immediately after the exact path-only commit; native acceptance is delegated to `/root/native_resume`.
+
+### 2026-08-31T00:47:21-05:00 — VS-SOL-INSTANT-ROLLOUT-GATES-20260831-69 completed / released
+
+- **Task / branch / base:** `TASK-INSTANT-ROLLOUT-GATES-20260831`, `integration/UnifiedChungus-final`, base `05bdfcb945937d5e85cb832bda36e7dde6d6c935`.
+- **Exact files / commit:** `app/src/features/instant-command/rollout.ts`, `rollout.test.ts`; immutable commit `dfb4d38512c35c0070f9907216ca0e6a5afb3df1` (`93 insertions, 12 deletions`).
+- **Change:** Catalog-v2 execution now requires exact `true` for feature, account, authority availability, and hard gates; omission or malformed runtime values remain shadow-only. Catalog/legacy comparison retains only bounded canonical stable IDs, preventing whitespace, controls, overlength values, or raw content from entering rollout telemetry.
+- **Verification:** RED captured five intended fail-open/identifier-retention cases; focused `15/15`; full Instant `26 files / 212 tests`; direct Vite build `5,060 modules`; exact Prettier, diff-check, and scoped Gitleaks all PASS. Full shared typecheck reports zero owned diagnostics and is blocked only by concurrent Codex backend diagnostics in `codexAppServerProtocol.ts:121-151`; the prior Chat T3 diagnostics no longer appeared, but a clean shared rerun remains required after active owners land.
+- **Boundary:** Existing secure `/connect` Providers, truthful confirmation receipts, and exact deadline lifecycle remain unchanged. No parser/catalog/execute/receipt/deadline/ledger, Assistant/Composer/Chat/Voice/runtime/CAO/native/Workbench/external-app, secret, billing, production, deployment, Ollama, or app-control scope was touched. Own lock completed/released immediately after the exact path-only commit; native acceptance is delegated to `/root/native_resume`.
+
+### 2026-08-31T00:56:02-05:00 — VS-SOL-INSTANT-HELP-CONTAINMENT-20260831-70 completed / released
+
+- **Task / branch / base:** `TASK-INSTANT-HELP-CONTAINMENT-20260831`, `integration/UnifiedChungus-final`, base `dfb4d38512c35c0070f9907216ca0e6a5afb3df1`.
+- **Exact files / commit:** `app/src/features/instant-command/help.ts`, `help.test.ts`, `suggestions.ts`, `suggestions.test.ts`; immutable commit `5f1a2fd6cbcd34c404457bc3b5c5a1ef0566b0f1` (`143 insertions, 40 deletions`).
+- **Change:** Catalog help and suggestions now return deep immutable metadata snapshots, locally bound queries and result limits, and fail closed for malformed/control-bearing/overlength input. Matcher or slot-parser faults project a generic content-free preview rejection; `/connect` remains discoverable through the existing Providers authority.
+- **Verification:** RED captured four intended snapshot/query/parser/suggestion failures; focused `2 files / 10 tests`; full Instant `26 files / 216 tests`; full shared TypeScript PASS; direct Vite build `5,060 modules`; exact Prettier, diff-check, and scoped Gitleaks all PASS.
+- **Boundary:** Existing secure `/connect` Providers, rollout hard gates, truthful confirmation receipts, and exact deadline lifecycle remain unchanged. No parser/catalog/index/execute/receipt/deadline/ledger, Assistant/Composer/Chat/Voice/runtime/Providers implementation/CAO/native/Workbench/external-app, secret, billing, production, deployment, Ollama, or app-control scope was touched. Own lock completed/released immediately after the exact path-only commit; native acceptance is delegated to `/root/native_resume`.
+
+### 2026-08-31T01:05:10-05:00 — VS-SOL-INSTANT-INVENTORY-TRUTH-20260831-71 completed / released
+
+- **Task / branch / base:** `TASK-INSTANT-INVENTORY-TRUTH-20260831`, `integration/UnifiedChungus-final`, base `5f1a2fd6cbcd34c404457bc3b5c5a1ef0566b0f1`.
+- **Exact files / commit:** `app/src/features/instant-command/authorityInventory.ts`, `authorityInventory.test.ts`; immutable commit `b0bf7adaeedbe622fa9422039bb0f7fca65b6a65` (`22 insertions, 3 deletions`).
+- **Change:** Planned-but-uncataloged inventory rows are now emitted only when the stable ID is genuinely absent from the catalog. Every command ID therefore has one immutable canonical authority/safety/state projection, and stale blocked rows can no longer contradict ready catalog truth.
+- **Verification:** RED reproduced 10 duplicate stable IDs (`109 unique / 119 rows`); focused `4/4`; full Instant `26 files / 217 tests`; direct Vite build `5,060 modules`; exact Prettier, diff-check, and scoped Gitleaks all PASS. Owned TypeScript diagnostics are zero; the shared run was blocked only by concurrent CAO test edits at `caoTargetAuthority.test.ts:1267-1325`. A stable shared typecheck had passed immediately before that concurrent edit at CAO boundary `532709061d4b0afa8580754a6046ea114bb4dc39`.
+- **Boundary:** Existing secure/discoverable `/connect`, immutable bounded help/suggestions, rollout hard gates, confirmation receipts, and deadline lifecycle remain unchanged. No catalog/parser/execute/help/suggestions/receipt/deadline/ledger, Assistant/Composer/Chat/Voice/runtime/Providers/CAO/native/Workbench/external-app, secret, billing, production, deployment, Ollama, or app-control scope was touched. Own lock completed/released immediately after the exact path-only commit; native acceptance is delegated to `/root/native_resume`.
+
+### 2026-08-31T01:13:24-05:00 — VS-SOL-INSTANT-CORPUS-DISTINCT-20260831-72 completed / released
+
+- **Task / branch / base:** `TASK-INSTANT-CORPUS-DISTINCT-20260831`, `integration/UnifiedChungus-final`, base `79812947a77174235f66ef2b9c70f33a3e1c3086`.
+- **Exact files / commit:** `app/src/features/instant-command/acceptanceCorpus.ts`, `acceptanceCorpus.test.ts`; immutable commit `32ba62a3f5af93cb62d3c7095d3b5b3ce882e4f9` (`19 insertions, 3 deletions`).
+- **Change:** The required 300 positive, 300 close-negative, 100 ambiguity, and 100 authorization rows now represent distinct kind/command/source cases rather than cycling byte-identical phrases. Deterministic ASCII-whitespace variants preserve parser normalization semantics, stay bounded/control-free, and carry stable variant ordinals in fixture IDs.
+- **Verification:** RED showed only `424` unique kind/command/phrase cases across `812` rows; focused `3/3`; full Instant `26 files / 217 tests`; full shared TypeScript PASS; direct Vite build `5,060 modules`; exact Prettier, diff-check, and scoped Gitleaks all PASS. CAO independently confirmed a stable shared typecheck boundary at `79b1ecf473d30947cc45d9d3f53de67dd7b00edc`.
+- **Boundary:** Existing secure/discoverable `/connect`, unique authority inventory, bounded help/suggestions, rollout hard gates, confirmation receipts, and deadline lifecycle remain unchanged. No catalog/parser/execute/help/suggestions/receipt/deadline/ledger, Assistant/Composer/Chat/Voice/runtime/Providers/CAO/native/Workbench/external-app, secret, billing, production, deployment, Ollama, or app-control scope was touched. Own lock completed/released immediately after the exact path-only commit; native acceptance is delegated to `/root/native_resume`.
+
+### 2026-08-31T01:20:51-05:00 — VS-SOL-INSTANT-TERMINAL-SLOT-BOUNDS-20260831-73 completed / released
+
+- **Task / branch / base:** `TASK-INSTANT-TERMINAL-SLOT-BOUNDS-20260831`, `integration/UnifiedChungus-final`, base `32ba62a3f5af93cb62d3c7095d3b5b3ce882e4f9`.
+- **Exact files / commit:** `app/src/features/instant-command/catalog/terminals.ts`, `terminals.test.ts`; immutable commit `eab5eb1d14083d2293f647e730674c14a90b1729` (`120 insertions, 42 deletions`).
+- **Change:** Direct terminal selector/message slot parsing now rejects malformed runtime types, controls, overlength input, unsafe/out-of-range ordinals, and noncanonical pane/session IDs. Direct parse-slot bypasses enforce the catalog's 4,096-character source boundary; selectors, parse results, slots, catalog rows, and alias arrays are immutable snapshots.
+- **Verification:** RED captured 16 intended containment/immutability failures; focused `18/18`; full Instant `26 files / 228 tests`; direct Vite build `5,060 modules`; exact Prettier, diff-check, and scoped Gitleaks all PASS. Owned TypeScript diagnostics are zero; the shared run was blocked only by concurrent Chat tests `ChatView.origamiScope.test.tsx` and `ChatView.petMirror.test.tsx` using unbranded IDs. The immediately preceding stable shared typecheck passed at CAO boundary `79b1ecf473d30947cc45d9d3f53de67dd7b00edc`.
+- **Boundary:** Existing secure/discoverable `/connect`, distinct corpus, unique authority inventory, bounded help/suggestions, rollout hard gates, confirmation receipts, and deadline lifecycle remain unchanged. No top-level parser/catalog index/execute/target resolver/snapshot/queue/UI, Assistant/Composer/Chat/Voice/runtime/Providers/CAO/native/Workbench/external-app, secret, billing, production, deployment, Ollama, or app-control scope was touched. Own lock completed/released immediately after the exact path-only commit; native acceptance is delegated to `/root/native_resume`.
+
+### 2026-08-31T01:28:05-05:00 — VS-SOL-INSTANT-ENTITY-RESOLUTION-20260831-74 completed / released
+
+- **Task / branch / base:** `TASK-INSTANT-ENTITY-RESOLUTION-20260831`, `integration/UnifiedChungus-final`, base `eab5eb1d14083d2293f647e730674c14a90b1729`.
+- **Exact files / commit:** `app/src/features/instant-command/authorities/entityCommands.ts`, `entityCommands.test.ts`; immutable commit `76a23fa2f95f1beac4f1449678f41a40e27db49b` (`112 insertions, 9 deletions`).
+- **Change:** Task 8 stable-ID/unique-name resolution now validates bounded runtime selectors and registry rows, rejects oversized registries, treats duplicate stable IDs as ambiguity instead of first-wins, sorts/deduplicates candidate IDs, and returns frozen result/entity/candidate snapshots.
+- **Verification:** RED captured five intended corruption/ordering/snapshot failures; focused `8/8`; full Instant `26 files / 235 tests`; full shared TypeScript PASS; direct Vite build `5,060 modules`; exact Prettier, diff-check, and scoped Gitleaks all PASS.
+- **Boundary:** Existing secure/discoverable `/connect`, bounded terminal slots, distinct corpus, unique authority inventory, bounded help/suggestions, rollout hard gates, confirmation receipts, and deadline lifecycle remain unchanged. No resource adapter/catalog/parser/execute/target resolver/snapshot/queue/UI, Assistant/Composer/Chat/Voice/runtime/Providers/CAO/native/Workbench/external-app, secret, billing, production, deployment, Ollama, or app-control scope was touched. Own lock completed/released immediately after the exact path-only commit; native acceptance is delegated to `/root/native_resume`.
+# 2026-08-31 00:34 CDT — VS-SOL-CAO-TARGET-CANONICAL-ENTRIES-20260831-68 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-CANONICAL-ENTRIES-20260831-68`, `integration/UnifiedChungus-final`, base `17f960d5195bf50555730e3f7418df04c1765db6`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `5ac5d542d3d076014b1dd87cbbad50b9cf006533`.
+- **Change:** Journal pages, registry reads, and atomic-claim responses are now canonicalized before authority/recovery decisions. Throwing accessors or non-cloneable dependency objects produce only stable journal/registry-invalid truth; malformed applied claims still receive exact same-lease cleanup, while malformed verification reads preserve valid ownership.
+- **Verification:** RED captured three provider-detail leaks; GREEN focused `75/75`; adjacent CAO boundary `574/574`; isolated Vite production build PASS (`5,060` modules); exact Prettier/diff/Gitleaks PASS. Full typecheck after the Instant fix reached only active concurrent Chat T3 diagnostics in `ChatView.tsx` and `ChatView.handoffWorkspace.test.tsx`; no owned-file diagnostic.
+- **Boundary:** No scheduled runner/UI, Chat, Instant, native, external-apps/Workbench, provider/service, app-control, or unrelated dirty state was modified. Own lock completed/released immediately after exact commit.
+# 2026-08-31 00:40 CDT — VS-SOL-CAO-TARGET-CANONICAL-RUN-ACK-20260831-69 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-CANONICAL-RUN-ACK-20260831-69`, `integration/UnifiedChungus-final`, base `5ac5d542d3d076014b1dd87cbbad50b9cf006533`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `3f49f9bb3d677964a132a67d5c0e7b4917772e5c`.
+- **Change:** Acquisition and recovery now consume canonical, minimally valid run snapshots; malformed/throwing initial snapshots fail before authority access, malformed post-registry snapshots trigger exact lease cleanup, and journal append acknowledgements are canonicalized before persistence is trusted, with exact rollback on invalid adapter output.
+- **Verification:** RED captured four unsafe/misclassified dependency boundaries; GREEN focused `79/79`; adjacent CAO boundary `578/578`; isolated Vite production build PASS (`5,060` modules); exact Prettier/diff/Gitleaks PASS. Stable full typecheck is deferred until active Chat T3 follow-up lands, per root instruction; the Chat lock remained active at release.
+- **Boundary:** No scheduled runner/UI, Chat, Instant, native, external-apps/Workbench, provider/service, app-control, or unrelated dirty state was modified. Own lock completed/released immediately after exact commit.
+# 2026-08-31 00:45 CDT — VS-SOL-CAO-TARGET-AMBIGUOUS-CLAIM-CLEANUP-20260831-70 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-AMBIGUOUS-CLAIM-CLEANUP-20260831-70`, `integration/UnifiedChungus-final`, base `3f49f9bb3d677964a132a67d5c0e7b4917772e5c`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `9ef1d540611ec59371d6593178f040ffa6f37bbe`.
+- **Change:** Structurally applied but semantically invalid atomic claims now use the same authoritative release/readback recovery path as malformed claims. Ambiguously successful cleanup is recognized before returning the original safe validation error; retained ownership or unavailable cleanup evidence reports stable registry-unavailable truth instead of falsely claiming rollback.
+- **Verification:** RED captured three false-cleanup outcomes; GREEN focused `83/83`; adjacent CAO boundary `582/582`; isolated Vite production build PASS (`5,060` modules); exact Prettier/diff/Gitleaks PASS. Stable full typecheck remains deferred until the active Chat T3 follow-up lands; its lock was still active at release.
+- **Boundary:** No scheduled runner/UI, Chat, Instant, native, external-apps/Workbench, provider/service, app-control, or unrelated dirty state was modified. Own lock completed/released immediately after exact commit.
+# 2026-08-31 00:49 CDT — VS-SOL-CAO-TARGET-VERIFY-CLEANUP-20260831-71 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-VERIFY-CLEANUP-20260831-71`, `integration/UnifiedChungus-final`, base `9ef1d540611ec59371d6593178f040ffa6f37bbe`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `a1f446de844107bb99bdfd0aadd6aedff7d7eb4a`.
+- **Change:** Semantic live-target drift during verify/recover now requires authoritative exact release/readback before returning the original stable target error. Ambiguously successful release is recognized; retained ownership, no-op cleanup, or unavailable cleanup evidence returns stable registry-unavailable truth instead of masking the cleanup failure.
+- **Verification:** RED captured three masked cleanup failures; GREEN focused `87/87`; adjacent CAO boundary `586/586`; isolated Vite production build PASS (`5,060` modules); exact Prettier/diff/Gitleaks PASS. Stable full typecheck remains deferred until active Chat T3 follow-up lands; its lock was still active at release.
+- **Boundary:** No scheduled runner/UI, Chat, Instant, native, external-apps/Workbench, provider/service, app-control, or unrelated dirty state was modified. Own lock completed/released immediately after exact commit.
+
+### 2026-08-31T00:53:49-05:00 — VS-SOL-CHAT-MULTIPANE-T3-FIX1-20260831-67 completed / released
+
+- **Task / branch / base:** `TASK-CHAT-HANDOFF-MULTIPANE-T3-FIX-ROUND-1`, `integration/UnifiedChungus-final`, claimed base `843b30dbdf8dfb3864db317d3e992d4b964b5975`; immutable exact commit `6f5281e2f442c507a6845f384fe49286a8621df4` (`fix(chat): harden multipane workspace boundaries`).
+- **Exact commit files:** `app/src/features/chat/chatWorkspaceLayout.ts/.test.ts`, `ChatWorkspace.tsx/.test.tsx`, `ChatView.tsx`, `ChatView.handoffWorkspace.test.tsx`; exactly `496 insertions, 84 deletions`.
+- **Change:** All six Important and two Minor review findings are resolved: canonical accessibility fallback/empty recovery, scope+epoch async invalidation, canonical duplicate/malformed event handling and action announcements, real pointer-close focus preservation, actual Composer boundary plus independent per-chat/cross-scope routing, collision-free scope keys, storage-failure recovery, and equal-title pane ordinals. Runtime/cancel/send/queue semantics are unchanged.
+- **Verification:** Strict RED/GREEN recorded in the persistent Task 3 report; final focused+adjacent Chat matrix `8 files / 65 tests` PASS; root typecheck PASS after owned implementation, with the final concurrent rerun reaching only unowned `codexAppServerProtocol.ts:121-151` diagnostics; exact Prettier/diff/manifest PASS; Gitleaks `8.30.1` scanned one exact commit (~19 KB), no leaks.
+- **Boundary / release:** No `App.tsx`, `Composer.tsx`, `ChatThread.tsx`, runtime, Schedule, provider/model/Ollama, native, or unrelated path was written. Persistent report appended; own lock marked completed/released; official native acceptance remains delegated to the authorized lane.
+
+### 2026-08-31T00:55:36-05:00 — VS-CODEX-CHAT-MULTIPANE-T3-REREVIEW1-20260831-73 claimed fix-round-1 re-review
+
+- Worktree/branch/base: `C:\Users\viper\VibeSpace-UnifiedChungus-Final`, `integration/UnifiedChungus-final`, `532709061d4b0afa8580754a6046ea114bb4dc39`, upstream `origin/UnifiedChungus`; exact fix boundary is `b0d2f54d..6f5281e2`.
+- Exact write scope: `task-3-rereview-round1.md`, this agent's lock, and append-only own ledger entries. All product/test files, the package, index, commits, processes, other locks, and unrelated dirty state remain read-only/protected.
+- Review matrix: inaccessible-active pruning/empty behavior; async scope+epoch isolation; duplicate/malformed canonical validation and canonical announcements; real pointer close ordering; production Composer/drop/routing/cross-scope integration; collision-free keys; throwing storage; and equal-title announcements.
+- Next: inspect the complete exact package plus prior review/report evidence, run focused read-only verification, publish PASS or exact residual findings, then release only this lock.
+# 2026-08-31 00:58 CDT — VS-SOL-CAO-TARGET-TERMINAL-RUN-RECOVERY-20260831-72 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-TERMINAL-RUN-RECOVERY-20260831-72`, `integration/UnifiedChungus-final`, base `b0d2f54d959eaacd5550f55387e2a62adc12fe4c`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `532709061d4b0afa8580754a6046ea114bb4dc39`.
+- **Change:** Restart recovery now resolves the exact durable lease and authoritatively releases its target ownership when the owning CAO run is already terminal. Ambiguously successful release returns stable inactive-run truth; retained ownership reports registry-unavailable, and unavailable journal evidence is surfaced safely without pretending cleanup occurred.
+- **Verification:** RED captured four terminal-run ownership leaks/misreports; GREEN focused `91/91`; adjacent CAO boundary `590/590`; full stable typecheck PASS after Chat T3 release; isolated Vite production build PASS (`5,060` modules); exact Prettier/diff/Gitleaks PASS.
+- **Boundary:** No scheduled runner/UI, Chat, Instant, native, external-apps/Workbench, provider/service, app-control, or unrelated dirty state was modified. Own lock completed/released immediately after exact commit and stable boundary verification.
+
+# 2026-08-31 01:12 CDT — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 checkpoint
+
+- **Task / branch / HEAD:** `TASK-CODEX-OPENCODEX-FIRST-CLASS-BACKEND-20260830`, `integration/UnifiedChungus-final`, `79b1ecf473d30947cc45d9d3f53de67dd7b00edc`; base protocol commit `f11f3bf1601f1f1940719ad5172e54c033f8fde9` remains in ancestry.
+- **Exact files:** `app/src/lib/ai/adapters/codexAppServerProtocol.ts`, `codexAppServerProtocol.test.ts`.
+- **Change:** Added exact JSON-RPC responses for simple command/file approvals and question answers plus exact `turn/interrupt`. Only server-offered approval decisions are accepted; Ask/Plan can only decline/cancel. Question answers must match the exact bounded question set. Permission-profile grants remain fail-closed until native retains the exact request object.
+- **TDD / gates:** Focused RED exited 1 with the three intended missing functions. Final protocol 10/10, adjacent Codex/backend 36/36, full TypeScript within production build, and Vite build (`5,060` modules) PASS/exit 0. Prettier/diff PASS; adapter Gitleaks scans 425.95 KB with no leaks.
+- **Boundary / next:** No UI/runtime/router/server/native app/provider/credential/RLM/SiYuan/OpenCode or unrelated file changed. Next is the exact continuation commit and native-owner handoff.
+
+# 2026-08-31 01:00 CDT — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 checkpoint
+
+- **Task / branch / HEAD:** `TASK-CODEX-OPENCODEX-FIRST-CLASS-BACKEND-20260830`, `integration/UnifiedChungus-final`, `5f1a2fd6cbcd34c404457bc3b5c5a1ef0566b0f1`.
+- **Exact files:** `app/src/lib/ai/adapters/codexAppServerProtocol.ts`, `codexAppServerProtocol.test.ts`.
+- **Change:** Added the schema-derived Codex `thread/start`, `thread/resume`, and `turn/start` request boundary plus fail-closed thread-start identity validation. Provider, model, effort, service tier/Fast, CWD, thread/message IDs, and permissions are carried literally. Ask/Plan are forced read-only; Agent receives only explicit existing approval/sandbox authority. Arbitrary config, prompts, personality, credentials, and fallback identities cannot enter this boundary.
+- **TDD / gates:** Missing-module RED exit 1; network-enabled Ask sandbox RED exit 1; full compiler caught and drove correction of an owned union discriminator. Final focused protocol 7/7, adjacent Codex/backend 33/33, full TypeScript, and production build (`5,060` modules) all PASS/exit 0. Exact Prettier/diff PASS; adapter-scoped Gitleaks scans 419.56 KB with no leaks.
+- **Boundary / next:** No Chat runtime/router/UI, OpenCode, RLM, SiYuan, server.rs, app process, secret, or unrelated file changed. Next is exact two-file commit and native/server-owner integration into the next combined immutable SHA.
+
+### 2026-08-31T01:02:41-05:00 — VS-CODEX-CHAT-MULTIPANE-T3-REREVIEW1-20260831-73 completed / released
+
+- Verdict: **FAIL** with one Important and one Minor finding in `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-3-rereview-round1.md`.
+- Important: `ChatView.tsx:374` still mounts the persisted/unverified layout while canonical accessibility is hydrating, leaves the empty canonical prune only in memory, and keeps the route drop target on the inaccessible active ID until the effect runs. The synchronous live-query test mock does not exercise this interval or remount persistence.
+- Minor: `chatWorkspaceLayout.ts:68,132` still accesses the native `window.localStorage` property outside a catchable accessor boundary; the injected throwing-object test covers only method failures.
+- Addressed evidence: scope/epoch invalidation, canonical duplicate/malformed handling and announcements, pointer close ordering, real Composer boundary, per-chat output routing/cross-scope checks, key encoding, storage method exceptions, and equal-title announcements are implemented and covered.
+- Verification: fresh focused Task 3 Vitest passed `3 files / 36 tests`; exact `b0d2f54d..6f5281e2` package diff check passed; all six product/test files are worktree-clean and match exact fix commit `6f5281e2`. No product/test, index, commit, process, other lock, or unrelated dirty state was modified.
+- This re-review-only lock is completed/released; artifact and append-only provenance remain.
+
+### 2026-08-31T01:04:34-05:00 — VS-SOL-CHAT-MULTIPANE-T3-FIX2-20260831-75 claimed Task 3 fix round 2
+
+- **Task / branch / base:** `TASK-CHAT-HANDOFF-MULTIPANE-T3-FIX-ROUND-2`, `integration/UnifiedChungus-final`, base `f11f3bf1601f1f1940719ad5172e54c033f8fde9`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick/revert state.
+- **Exact write scope:** `chatWorkspaceLayout.ts/.test.ts`, `ChatView.tsx`, `ChatView.handoffWorkspace.test.tsx`, persistent `task-3-report.md`, this own lock, and append-only ledger entries. All other Task 3 files and unrelated shared state remain protected.
+- **Root causes:** `effectiveLayout` uses persisted state during the `undefined` live-query hydration interval; empty canonical pruning clears only React state and leaves persistence/drop targeting stale. `availableStorage` and post-write native detection access `window.localStorage` outside the catchable boundary.
+- **Next:** strict two-phase hydration/remount and getter-throws RED tests, minimal GREEN changes, focused+adjacent/type/format/diff/security verification, exact-file commit, report, and own-lock release.
+# 2026-08-31 01:05 CDT — VS-SOL-CAO-TARGET-MISSING-RUN-RECOVERY-20260831-74 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-MISSING-RUN-RECOVERY-20260831-74`, `integration/UnifiedChungus-final`, base `5f1a2fd6cbcd34c404457bc3b5c5a1ef0566b0f1`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `79812947a77174235f66ef2b9c70f33a3e1c3086`.
+- **Change:** Restart recovery now resolves the exact durable lease and authoritatively releases orphaned target ownership when the run is definitively missing. Ambiguously successful cleanup returns stable missing-run truth; retained ownership reports registry-unavailable, and unavailable journal evidence remains safe without pretending cleanup occurred.
+- **Verification:** RED captured four missing-run ownership leaks/misreports; GREEN focused `95/95`; adjacent CAO boundary `594/594`; full stable typecheck PASS after correcting owned fixture typing; isolated Vite production build PASS (`5,060` modules); exact Prettier/diff/Gitleaks PASS.
+- **Boundary:** No scheduled runner/UI, Chat, Instant, native, external-apps/Workbench, provider/service, app-control, or unrelated dirty state was modified. Own lock completed/released immediately after exact commit and stable boundary verification.
+
+# 2026-08-31 01:11 CDT — VS-SOL-CAO-TARGET-REVOKED-RUN-RECOVERY-20260831-76 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-REVOKED-RUN-RECOVERY-20260831-76`, `integration/UnifiedChungus-final`, base `79812947a77174235f66ef2b9c70f33a3e1c3086`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `79b1ecf473d30947cc45d9d3f53de67dd7b00edc`.
+- **Change:** Restart recovery now authoritatively releases the exact durable target lease when the recovered run's CAO identity or account/workspace/project scope has drifted. Ambiguously applied cleanup preserves the original stable authorization/scope error with ownership cleared; retained ownership reports registry-unavailable, and journal-unavailable truth never pretends cleanup occurred.
+- **Verification:** RED captured four identity/scope-drift cleanup failures; GREEN focused `99/99` (post-commit repeated); adjacent CAO boundary `598/598`; full typecheck PASS; isolated Vite production build PASS (`5,060` modules, `2m 6s`); exact Prettier/diff/Gitleaks PASS.
+- **Boundary:** No scheduled runner/UI, Chat, Instant/Calyx, Root Voice/runtime/ADE, native, external-apps/Workbench, provider/service, app-control, or unrelated dirty state was modified. Own lock completed/released immediately after exact commit and stable verification.
+
+### 2026-08-31T01:14:23-05:00 — VS-SOL-CHAT-MULTIPANE-T3-FIX2-20260831-75 scope expansion checkpoint
+
+- `/root` narrowly expanded this lane to the clean, unclaimed `ChatView.origamiScope.test.tsx` and `ChatView.petMirror.test.tsx` regression fixtures after the mandated fail-closed hydration contract correctly exposed their pre-canonical synchronous expectations.
+- The two fixtures may only resolve/mock canonical `useLiveQuery` accessibility before asserting their existing Origami route and Pet interaction behavior. Product scope remains the original four files; the new hydration contract must not be weakened.
+- Evidence before expansion: new focused regressions `2 files / 28 tests` PASS; root typecheck PASS. Adjacent matrix passed `65` tests and failed only the two newly authorized legacy expectations.
+
+### 2026-08-31T01:20:00-05:00 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 model capability scope checkpoint
+
+- Reclaimed only the clean owned `app/src/lib/ai/adapters/codexAppServerProtocol.ts` and `.test.ts` pair after immutable commit `b87f8f4e`.
+- Scope is the exact Codex 0.151 `model/list` request and bounded paginated validation of the selected model, reasoning effort, and service tier. VibeSpace canonical Fast maps only at this protocol edge from `fast` to the official catalog id `priority`; no model/provider/effort/tier substitution is allowed.
+- Live initialized app-server evidence returned the official model catalog without starting a thread or turn. The generated client request schema exposes no slash-command catalog, so this lane will not fabricate one.
+- No Chat UI/runtime/router, native server/controller, provider secrets/config, RLM, SiYuan, OpenCode, or unrelated dirty state is writable in this scope.
+
+### 2026-08-31T01:22:30-05:00 — VS-SOL-CHAT-MULTIPANE-T3-FIX2-20260831-75 GREEN checkpoint
+
+- **Branch / HEAD / exact diff:** `integration/UnifiedChungus-final`, shared HEAD advanced concurrently to `eab5eb1d14083d2293f647e730674c14a90b1729`; owned six-file diff is `128 insertions, 10 deletions` with no overlap.
+- **RED:** native `window.localStorage` getter threw `SecurityError`; two-phase `undefined -> []` hydration mounted `thread-stale-chat` and the actual Composer/drop target. The newly exposed legacy Origami/Pet assumptions failed until their authorized fixtures supplied canonical accessible rows.
+- **GREEN:** resolved-once exception-bounded storage acquisition plus durable scoped clear; canonical hydration renders no pane/drop target and empty results clear persistence before existing ensure flow; the original Origami/Pet behavior remains covered after canonical resolution. Focused new regressions `28/28`; authorized fixture matrix `9/9`; full adjacent matrix before the final fixture typing cleanup `67/67`; initial root typecheck PASS, latest rerun reaches only concurrently incomplete unowned Codex model-list exports.
+- **Next:** fresh final matrix/type evidence, exact Prettier/diff/Gitleaks, exact six-file commit, persistent report, and own-lock release.
+
+### 2026-08-31T01:27:18-05:00 — VS-SOL-CHAT-MULTIPANE-T3-FIX2-20260831-75 completed / released
+
+- **Task / branch / commit:** `TASK-CHAT-HANDOFF-MULTIPANE-T3-FIX-ROUND-2`, `integration/UnifiedChungus-final`, immutable exact commit `3139fd49423a915814093b602a5f716bda56eaaa` (`fix(chat): gate multipane hydration on canonical access`).
+- **Exact commit files:** `chatWorkspaceLayout.ts/.test.ts`, `ChatView.tsx`, `ChatView.handoffWorkspace.test.tsx`, plus the narrowly authorized `ChatView.origamiScope.test.tsx` and `ChatView.petMirror.test.tsx`; exactly `128 insertions, 10 deletions`.
+- **Change:** Canonical accessibility hydration now fails closed with no stale pane/actual Composer/route drop target, empty canonical results durably clear scoped persistence before existing ensure-active handling, and native localStorage getter failures are contained with one resolved handle. Origami/Pet behavior remains covered after canonical resolution; all prior scope/epoch, canonical event, pointer focus, Composer boundary, persistence-key, and no-cancel strengths remain.
+- **Verification:** Strict RED/GREEN captured; final focused+adjacent Chat matrix `8 files / 67 tests` PASS without warnings/failures; fresh root typecheck PASS; exact Prettier/diff/manifest PASS; Gitleaks `8.30.1` scanned one commit (~4.64 KB), no leaks.
+- **Boundary / release:** No App, Composer, ChatThread, ChatWorkspace, runtime/cancel, Schedule, provider/model/Ollama, native, or unrelated product path was written. Persistent report appended and own lock marked completed/released; official native acceptance remains delegated.
+
+### 2026-08-31T01:27:00-05:00 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 model capability GREEN checkpoint
+
+- **Branch / shared HEAD / exact files:** `integration/UnifiedChungus-final`, `3139fd49423a915814093b602a5f716bda56eaaa`; only `app/src/lib/ai/adapters/codexAppServerProtocol.ts` and `.test.ts`.
+- **Change:** Added the exact bounded/paginated Codex 0.151 `model/list` contract and fail-closed selected model/effort/service-tier validation. Corrected the protocol edge so VibeSpace canonical `fast` becomes the official Codex catalog tier id `priority` without changing the UI/runtime token.
+- **RED / GREEN:** RED captured four missing model capability paths and four incorrect Fast-edge forwards. GREEN focused/adjacent `41/41`; full typecheck PASS; production build PASS (`5,060` modules); exact Prettier/diff PASS; adapter-scoped Gitleaks PASS (`434.03 KB`, no leaks).
+- **Official evidence / boundary:** A live initialized Codex 0.151 app-server returned `gpt-5.6-sol`, `high`, and `{ id: priority, name: Fast }` without starting a thread/turn. Its generated client schema exposes no slash-command catalog, so none was fabricated. No Chat UI/runtime/router, native server/controller, provider secrets/config, RLM, SiYuan, OpenCode, or unrelated dirty state changed.
+
+### 2026-08-31T01:30:30-05:00 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 JSONL decoder scope checkpoint
+
+- Reclaimed only the clean, already-owned `app/src-tauri/src/harness/managed_codex_app_server.rs` after immutable commit `6a3940e3`.
+- Scope is a bounded incremental Codex JSONL stdout decoder: split/multiple chunks, strict object frames, terminal partial-frame rejection, poisoned fail-closed state, and transport suppression of `item/reasoning/textDelta` before IPC.
+- Process spawning, `server.rs`/`cli_bridge.rs`, Chat IPC/UI/runtime, provider/config, RLM, SiYuan, OpenCode, native app control, and unrelated dirty state remain excluded.
+
+### 2026-08-31T01:29:57-05:00 — VS-CODEX-CHAT-MULTIPANE-T3-REREVIEW2-20260831-77 claimed final fix-round-2 re-review
+
+- Worktree/branch/base: `C:\Users\viper\VibeSpace-UnifiedChungus-Final`, `integration/UnifiedChungus-final`, `76a23fa2f95f1beac4f1449678f41a40e27db49b`; exact review boundary `eab5eb1d..3139fd49`.
+- Exact write scope: `task-3-rereview-round2.md`, this own lock, and append-only own ledger entries. All product/test files, package content, index, commits, processes, other locks, and unrelated dirty state remain read-only/protected.
+- Verification matrix: fail-closed pre-canonical rendering/drop targeting; durable exception-bounded empty clear plus ensure-active flow; throwing native localStorage getter; Origami/Pet fixture intent; preservation of prior Task 3 behavior and absence of new regression.
+- Next: inspect complete exact package/prior rereview/report, run fresh focused checks, publish PASS or exact findings, and release only this lock.
+
+### 2026-08-31T01:35:16-05:00 — VS-CODEX-CHAT-MULTIPANE-T3-REREVIEW2-20260831-77 completed / released
+
+- Verdict: **FAIL** with one Important finding in `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-3-rereview-round2.md`.
+- Residual issue: `ChatView.tsx:236-252` still registers the native Tauri OS-file listener from stale `activeChatId` during unresolved canonical accessibility, hit-tests the whole Chat route, and dispatches to stale `layoutRef`/active fallback. The DOM gate is correct, but the official app remains a native drop target before access resolves; the non-Tauri DOM test does not exercise this path.
+- Addressed evidence: stale Thread/actual Composer/DOM drop targeting is gated; empty canonical results exception-bound clear persistence and enter ensure-active; the native localStorage getter is contained; Origami/Pet fixtures preserve their original intent after canonical rows; all prior Task 3 protections remain unchanged in this package.
+- Verification: reconstructed focused+adjacent Chat matrix passed `8 files / 65 tests`; exact `eab5eb1d..3139fd49` package diff check passed; all six product/test files are worktree-clean and match exact commit `3139fd49`. No product/test, index, commit, process, other lock, or unrelated dirty state was modified.
+- This final-re-review-only lock is completed/released; artifact and append-only provenance remain.
+
+### 2026-08-31T01:36:43-05:00 — VS-SOL-INSTANT-SETTING-VALUE-INTEGRITY-20260831-75 completed / released
+
+- **Task / branch / commit:** `TASK-INSTANT-SETTING-VALUE-INTEGRITY-20260831`, `integration/UnifiedChungus-final`, immutable exact commit `76f88712c3dca2076995c4ea0bb68a9ead7a8d56` (`fix(instant): validate setting values canonically`).
+- **Exact files / change:** only `app/src/features/instant-command/authorities/settingsCommands.ts` and `.test.ts` (`106 insertions, 5 deletions`). Bounded request/value checks now reject absent, blank, non-string, control-character, and oversized input before port access; set snapshots canonical prior state and rollback replays that bounded canonical value; parser/backend exception text is never returned.
+- **TDD / verification:** RED captured `7` intended failures; focused `12/12`; full Instant `26 files / 242 tests`; fresh full shared TypeScript PASS; Vite production build PASS (`5,060` modules); exact Prettier/diff-check and Instant-scoped Gitleaks PASS.
+- **Boundary / release:** secure Providers `/connect` authority is unchanged; no settings UI/store, parser/catalog/execute, Assistant/Composer/Chat/Voice/runtime, CAO, native, Workbench/external apps, secret/billing/production/deployment, or Ollama/11434 path changed. Own exact-file lock completed/released; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31T01:38:10-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 integrated Pet HWND materialization
+
+- **Exact integration:** source commit `dd6ba71bfe1c168582f2973d1958468e19fc854a` was integrated as shared release commit `eb760eb1bcff9d5f166f147c9baa6ce1dd139d1e`; only `app/src-tauri/src/pets.rs` changed (`13 insertions, 6 deletions`).
+- **Root cause / repair:** `.visible(false)` registered detached WebViewWindow labels without creating a native HWND/WebView2 host, so later `show()` could not materialize them. Both detached builders now materialize at creation before the existing bounded geometry/topmost/visibility/reuse contract runs.
+- **Verification:** strict delegated RED captured the hidden-builder defect; focused `1/1` and full Pet `39/39` passed; rustfmt, diff, and scoped/commit Gitleaks passed. The historical b0d2f54d PID 8584 is watchdog-poisoned and remains excluded from Chat evidence.
+- **Next:** `/root/native_resume` received immutable `eb760eb1` for an isolated C-drive build, fresh Pet-first official-native Playwright acceptance, and only then clean-PID Chat acceptance with fresh run/message identity and zero Ollama/11434.
+
+### 2026-08-31T01:41:00-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 claimed canonical native Chat drop hydration repair
+
+- **Exact scope / base:** `ChatView.tsx` and `ChatView.handoffWorkspace.test.tsx` only at `eb760eb1bcff9d5f166f147c9baa6ce1dd139d1e`; both were clean and released by Task 3 before claim.
+- **Evidence / intent:** final independent rereview proved the DOM surface fails closed during canonical hydration but the official-Tauri OS-file listener still registered from stale `activeChatId`, hit-tested the entire Chat route, and could dispatch to an inaccessible persisted chat. The repair will register only from the resolved canonical focused ID, hit-test its exact drop surface, capture that identity without fallback, and unlisten on unresolved/empty access.
+- **TDD / boundary:** first add a mocked-Tauri RED covering `undefined -> [] -> canonical -> undefined`, exact dispatch, and cleanup; then make the minimal listener change and run focused/adjacent/type/build/format/security gates. No runtime/provider/OpenCode/Codex/RLM/SiYuan/Pet/CAO/Instant or native process surface is writable.
+
+### 2026-08-31T01:44:00-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 transferred canonical native Chat drop repair
+
+- A later exact owner lock, `VS-SOL-CHAT-MULTIPANE-T3-FIX3-20260831-80`, was reported while root's focused gate was running. Root stopped all writes immediately and transferred both `ChatView.tsx` and `ChatView.handoffWorkspace.test.tsx` without reverting or discarding the shared seed.
+- Preserved evidence: RED failed because `onDragDropEvent` registered once during unresolved hydration; the current seed then passed the complete focused file `15/15` with no warnings. It registers from a resolved canonical focused ID, hit-tests the exact canonical drop root, routes using the captured ID, cleans up on access loss, and includes the mocked-Tauri regression.
+- Recipient must preserve the seed, add its separately identified disposed/scope/epoch stale-callback guard and complete dependencies, run the full Task 3 boundary/type/build/format/security gates, exact commit, and release. Root has released these two files and will not compete.
+### 2026-08-31T01:38:20-05:00 — VS-SOL-CHAT-MULTIPANE-T3-FIX3-20260831-80 claimed Task 3 fix round 3
+
+- **Task / branch / base:** `TASK-CHAT-HANDOFF-MULTIPANE-T3-FIX-ROUND-3`, `integration/UnifiedChungus-final`, base `76f88712c3dca2076995c4ea0bb68a9ead7a8d56`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state.
+- **Exact write scope:** `app/src/features/chat/ChatView.tsx`, `app/src/features/chat/ChatView.handoffWorkspace.test.tsx`, persistent `task-3-report.md`, this own lock, and append-only ledger entries. All other product/test files and unrelated shared state remain protected.
+- **Finding:** the Tauri WebView listener is keyed only to stale `activeChatId`, remains registered before canonical accessibility resolves, and can dispatch through stale layout/active fallbacks.
+- **Next:** strict native-listener RED tests, minimal canonical destination gate and scope/epoch invalidation, focused+adjacent/type/format/diff/security verification, exact-file commit, report, and own-lock release.
+
+### 2026-08-31T01:40:15-05:00 — VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36 JSONL decoder GREEN checkpoint
+
+- **Branch / shared HEAD / exact file:** `integration/UnifiedChungus-final`, `eb760eb1bcff9d5f166f147c9baa6ce1dd139d1e`; only `app/src-tauri/src/harness/managed_codex_app_server.rs`.
+- **Change:** Added a 4 MiB/frame and 1,024 frames/push incremental CRLF/LF JSON-object decoder. It handles split/multiple frames in order, suppresses private `item/reasoning/textDelta` before IPC, and permanently fails closed after empty/malformed/non-object/oversized/over-count/incomplete-EOF input.
+- **RED / GREEN:** RED captured the absent decoder API and absent excessive-frame-count guard. GREEN decoder `4/4`; consolidated managed harness `41/41` with 4 explicit real-artifact tests ignored; exact rustfmt/diff PASS; harness-scoped Gitleaks PASS (`496.70 KB`, no leaks).
+- **Boundary:** No process was spawned and no app, `server.rs`/`cli_bridge.rs`, Chat UI/runtime, provider/config, RLM, SiYuan, OpenCode, or unrelated dirty state changed.
+
+# 2026-08-31 01:41 CDT — VS-SOL-CAO-TARGET-RUN-ID-RECOVERY-20260831-78 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-RUN-ID-RECOVERY-20260831-78`, `integration/UnifiedChungus-final`, base `76a23fa2f95f1beac4f1449678f41a40e27db49b`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `a3e662a5ccede3f7d8a1920481472b82aa897d17`.
+- **Change:** Acquisition now rejects a dependency-returned run whose durable ID is not the exact requested run before any target mutation. Restart recovery resolves the durable lease and authoritatively releases exact ownership before returning stable unauthorized truth; ambiguously applied cleanup is reconciled, retained ownership reports registry-unavailable, and journal-unavailable recovery never pretends cleanup occurred.
+- **Verification:** RED captured four mismatched-run authorization/cleanup failures; GREEN focused `104/104` (post-commit repeated); adjacent CAO boundary `603/603`; full typecheck PASS; isolated Vite production build PASS (`5,060` modules, `1m 44s`); exact Prettier/diff/Gitleaks PASS.
+- **Boundary:** No Chat, Pet, Instant/Calyx, Codex/OpenCode, scheduled runner/UI, native, Voice/ADE, external-apps/Workbench, provider/service, app-control, or unrelated dirty state was modified. Own lock completed/released immediately after exact commit and stable verification.
+
+### 2026-08-31T01:44:31-05:00 — VS-SOL-INSTANT-SCHEDULE-RESOLUTION-INTEGRITY-20260831-76 completed / released
+
+- **Task / branch / commit:** `TASK-INSTANT-SCHEDULE-RESOLUTION-INTEGRITY-20260831`, `integration/UnifiedChungus-final`, immutable exact commit `24fe0ae3c4a22af2a269a23b8e503a50dca18424` (`fix(instant): validate schedule lifecycle state`).
+- **Exact files / change:** only `app/src/features/instant-command/authorities/scheduleCommands.ts` and `.test.ts` (`161 insertions, 11 deletions`). Unknown/invalid command IDs now reject before listing; selector revisions and registry rows/counts are bounded; duplicate stable IDs are ambiguous with unique sorted frozen candidates; resolved entities are snapshots; run-now cannot claim completion from malformed recurrence persistence state.
+- **TDD / verification:** RED captured `10` intended failures; focused `20/20`; full Instant `26 files / 252 tests`; fresh full shared TypeScript PASS; Vite production build PASS (`5,060` modules); exact Prettier/diff-check and Instant-scoped Gitleaks PASS.
+- **Boundary / release:** no Schedule UI/store/runtime, Chat/Voice, Codex harness, Pet, CAO, Providers/credentials, native, Workbench/external apps, billing/production/deployment, or Ollama/11434 path changed. Own exact-file lock completed/released; native acceptance delegated to `/root/native_resume`.
+
+# 2026-08-31 01:47 CDT — VS-SOL-CAO-TARGET-PREPERSIST-REVALIDATION-20260831-79 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-PREPERSIST-REVALIDATION-20260831-79`, `integration/UnifiedChungus-final`, base `a3e662a5ccede3f7d8a1920481472b82aa897d17`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `fe46c8a37e47e8b97578732abc1f4b4c9347ee79`.
+- **Change:** After an exact atomic registry claim, acquisition now revalidates the current run identity/scope/status and bounded lease clock before writing the durable authorization event. Run or time drift releases exact provisional ownership without persisting false authority; ambiguous applied cleanup is reconciled, while retained ownership reports stable registry-unavailable truth.
+- **Verification:** RED captured five false durable-authorization persistence paths; GREEN focused `109/109` (post-commit repeated); adjacent CAO boundary `608/608`; full typecheck PASS; isolated Vite production build PASS (`5,060` modules, `1m 17s`); exact Prettier/diff/Gitleaks PASS.
+- **Boundary:** No Root Chat/Pet, Instant/Calyx, Codex/OpenCode harness, scheduled runner/UI, native, Voice/ADE, external-apps/Workbench, provider/service, credentials/billing/production/Ollama, app-control, or unrelated dirty state was modified. Own lock completed/released immediately after exact commit and stable verification.
+
+# 2026-08-31 02:00 CDT — VS-SOL-CAO-TARGET-FINAL-PREPERSIST-BARRIER-20260831-82 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-FINAL-PREPERSIST-BARRIER-20260831-82`, `integration/UnifiedChungus-final`, base `68924f5a76b0f3982ddfd4ed8efa9e8d4a7f0dca`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `363b5798f11f1756578b71f9b833def36980eda4`.
+- **Change:** Acquisition now performs a final exact run identity/scope/status and monotonic lease-time check after live target I/O and immediately before journal authorization. Run revocation, identity drift, or expiry during the target-read window releases exact provisional ownership and writes no false durable authority.
+- **Verification:** RED `3`; focused `117/117`; adjacent CAO `616/616`; full typecheck PASS; isolated Vite build PASS (`5,067` modules, `2m 9s`); exact Prettier/diff/Gitleaks PASS.
+- **Boundary:** No Chat/Pet/Instant/Codex/native/UI/runtime/service/credential/billing/production/Ollama/app-control or unrelated state changed. Own lock completed/released immediately.
+
+### 2026-08-31T02:00:29-05:00 — VS-SOL-INSTANT-TERMINAL-AUTHORITY-INTEGRITY-20260831-78 completed / released
+
+- **Task / branch / commit:** `TASK-INSTANT-TERMINAL-AUTHORITY-INTEGRITY-20260831`, `integration/UnifiedChungus-final`, immutable exact commit `7959395ef8af9d5702f21a1df2968efab37fc2f9` (`fix(instant): validate terminal authority state`).
+- **Exact files / change:** only `app/src/features/instant-command/authorities/terminalCommands.ts` and `.test.ts` (`208 insertions, 1 deletion`). Unknown command IDs, malformed slots, and unknown prompt states reject before snapshots. Live targets are bounded, process-bound, and unique by pane/session before listing or dispatch. Runtime-invalid confirmation nonces remain confirmation-required. Dispatch projection accepts only coherent bounded success/failure receipts.
+- **TDD / verification:** RED captured `14` intended failures; focused `20/20`; full Instant `26 files / 275 tests`; fresh full shared TypeScript PASS; Vite production build PASS (`5,067` modules); exact Prettier/diff-check and Instant-scoped Gitleaks PASS.
+- **Boundary / release:** no terminal resolver/snapshot/catalog/queue/UI/store/native adapter, Chat/Voice, Codex harness, Pet, CAO, Providers credential, native, Workbench/external app, billing/production/deployment, or Ollama/11434 path changed. Own exact-file lock completed/released; native acceptance delegated to `/root/native_resume`.
+### 2026-08-31 01:49 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 — TASK-082 claimed
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `fe46c8a37e47e8b97578732abc1f4b4c9347ee79`.
+- Exact files: `app/src/features/workbench/types.ts`, `EmbeddedSurface.tsx`, `PanelPalette.tsx`, `embeddedPanels.test.tsx`, and `persistence.test.ts`.
+- Intent: expose the existing truthful ChatGPT ADE route as a typed Workbench panel and prove persistence/reload, reusing existing Context Gateway/tool authority without claiming the still-unbound production dispatcher is runnable.
+- Exclusions: ADE runtime/dispatcher, Chat/provider/native/CAO/Instant/plugin authority, credentials, billing, deployment, and every concurrent dirty path.
+- Next: TDD RED, minimal integration, focused and boundary gates, exact commit, native acceptance packet.
+
+### 2026-08-31 01:56 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 — TASK-082 completed
+
+- Commit: `dbe2fe3b362df9974a16a9139ccf927fb6ad5760`; exact five-file Workbench ADE panel integration.
+- Behavior: ChatGPT ADE is a typed palette/panel surface that persists and reloads through the canonical Workbench document. It embeds the existing truthful unavailable route and does not persist runtime execution identity or claim the unbound production dispatcher is usable. Existing plugin dashboards remain the connected external-app/tool authority.
+- Verification: strict RED `2`; focused `13/13`; full Workbench `32 files / 128 tests`; shared TypeScript PASS; isolated C-drive Vite build PASS (`5,067` modules); exact Prettier, diff check, and staged Gitleaks PASS.
+- Native boundary: immutable acceptance is queued after integration of Pet fix `d3a2b1e4`; runnable ADE remains blocked only by its production dispatcher/native proof, not hidden by this panel.
+- Next: integrate and rebuild the Pet fix once, run native retest, then continue the next non-overlapping vertical milestone.
+
+### 2026-08-31 01:57 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 — Pet native fix integrated
+
+- Source `d3a2b1e4a49d8a3dd0563eb09b6e07e3ef6ea50b` was integrated cleanly as shared commit `e2928397c7159be38f83005078d128d58ba21c0b`; exact file `app/src-tauri/src/pets.rs`.
+- Inherited verification: focused `1/1`, full Pet `39/39`, rustfmt, diff check, and Gitleaks PASS.
+- Sole native controller received immutable `e2928397` for one C-drive rebuild and batched Pet lifecycle, fresh Chat, and Workbench ADE acceptance.
+
+### 2026-08-31 02:06 CDT — Operations Floor ownership transfer
+
+- Root released the clean exact files `app/src/features/schedule/CaoOperationsFloorProjection.tsx` and `.test.tsx` to `/root/cao_chat_resume` for the next user-facing CAO Operations Floor recovery/status milestone.
+- Prior immutable commits `ce7e48db` and `2424e1ea` remain preserved. The transfer excludes the separately locked scheduled-learning runtime, runner, controls, bootstrap, and every unrelated dirty path.
+
+### 2026-08-31 02:04 CDT — TASK-084 Workbench external-app recovery claimed
+
+- Root claimed only `app/src/features/workbench/PluginDashboardPanel.tsx` and `.test.tsx` at `9bad5cedac0a3c2dfdec2b06320570ab794b09fc`.
+- Intent: route disconnected or disabled pinned external-app panels to the canonical Plugins authority and show bounded declared tool identities, without duplicating Plugin/Tool Gateway/RLM/SiYuan authority or touching credentials/external services.
+- Next: focused RED, minimal recovery UI, affected gates, exact commit, native packet.
+
+### 2026-08-31T01:51:13-05:00 — VS-SOL-INSTANT-RESOURCE-RECEIPT-INTEGRITY-20260831-77 completed / released
+
+- **Task / branch / commit:** `TASK-INSTANT-RESOURCE-RECEIPT-INTEGRITY-20260831`, `integration/UnifiedChungus-final`, immutable exact commit `f4dcfd8029ad75392ff7a239aa801d6054534436` (`fix(instant): validate resource authority receipts`).
+- **Exact files / change:** only `app/src/features/instant-command/authorities/resourceCommands.ts` and `.test.ts` (`189 insertions, 14 deletions`). Argument traversal is bounded by nodes/depth/string size, detects cycles and non-plain runtime values, and screens secret/raw-context keys through arrays. Invalid families reject before ports. Queued/completed/rejected projection requires an exact known status plus bounded non-control receipt ID, so malformed authority output cannot invent durable ownership.
+- **TDD / verification:** RED captured `7` intended failures; focused `18/18`; full Instant `26 files / 261 tests`; fresh full shared TypeScript PASS; Vite production build PASS (`5,060` modules); exact Prettier/diff-check and Instant-scoped Gitleaks PASS.
+- **Boundary / release:** no resource UI/store/runtime adapter, Chat/Voice, Codex harness, Pet, CAO, Providers credential, native, Workbench/external-app, billing/production/deployment, or Ollama/11434 path changed. Own exact-file lock completed/released; native acceptance delegated to `/root/native_resume`.
+### 2026-08-31T01:52:46-05:00 — VS-SOL-CHAT-MULTIPANE-T3-FIX3-20260831-80 GREEN checkpoint
+
+- **Shared provenance / HEAD:** central `/root` concurrently seeded the initial two-file canonical native-listener gate after claiming at `eb760eb1` before observing this lane's later lock, then explicitly stopped and transferred that uncommitted diff. This lane preserved and reviewed the seed; shared HEAD has advanced independently to `f4dcfd8029ad75392ff7a239aa801d6054534436`.
+- **RED / GREEN:** the seed captured listener registration during `undefined` canonical hydration. This lane strengthened it with a detached stale-scope callback and reproduced an unauthorized second `jarvis:file:attach`; a dedicated canonical native-drop scope/focus epoch plus disposed/current-authority guards now reject the stale callback. Focused `ChatView.handoffWorkspace` is `15/15` PASS without warnings.
+- **Exact owned diff:** only `app/src/features/chat/ChatView.tsx` and `app/src/features/chat/ChatView.handoffWorkspace.test.tsx` (`206 insertions, 39 deletions` at this checkpoint). No runtime/cancel, Composer, ChatThread, App, Schedule, provider/model/Ollama, native controller/process, or unrelated file changed.
+- **Next:** focused+adjacent matrix, root typecheck, exact Prettier/diff/Gitleaks, exact two-file commit, persistent report, and own-lock release.
+
+# 2026-08-31 01:55 CDT — VS-SOL-CAO-TARGET-PREPERSIST-LIVE-REVALIDATION-20260831-81 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-PREPERSIST-LIVE-REVALIDATION-20260831-81`, `integration/UnifiedChungus-final`, base `fe46c8a37e47e8b97578732abc1f4b4c9347ee79`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `68924f5a76b0f3982ddfd4ed8efa9e8d4a7f0dca`.
+- **Change:** After claim and run/time revalidation, acquisition now re-reads canonical live targets and checks exact identity, scope, selection, lock, same-lease ownership, and revision before durable authorization. Target drift releases only same-lease provisional ownership without a false event; transferred ownership remains untouched, transient reads reconcile cleanup, and ambiguous applied cleanup preserves the original stable target error.
+- **Verification:** RED captured five false live-target authorization persistence paths; GREEN focused `114/114` (post-commit repeated); adjacent CAO boundary `613/613`; full typecheck PASS; isolated Vite production build PASS (`5,067` modules, `1m 41s`); exact Prettier/diff/Gitleaks PASS.
+- **Boundary:** No Root Chat/Pet, Instant/Calyx, Codex/OpenCode harness, scheduled runner/UI, native, Voice/ADE, external-apps/Workbench, provider/service, credentials/billing/production/Ollama, app-control, or unrelated dirty state was modified. Own lock completed/released immediately after exact commit and stable verification.
+### 2026-08-31T02:02:09-05:00 — VS-SOL-CHAT-MULTIPANE-T3-FIX3-20260831-80 completed / released
+
+- **Task / branch / commit:** `TASK-CHAT-HANDOFF-MULTIPANE-T3-FIX-ROUND-3`, `integration/UnifiedChungus-final`, immutable exact commit `9bad5cedac0a3c2dfdec2b06320570ab794b09fc` (`fix(chat): gate native drops on canonical access`).
+- **Exact files / change:** only `app/src/features/chat/ChatView.tsx` and `app/src/features/chat/ChatView.handoffWorkspace.test.tsx` (`204 insertions, 39 deletions`). Native listener registration now requires resolved canonical accessibility and exact focused-chat drop identity; a scope/focus authority epoch, disposed guard, and current-scope check reject stale captured callbacks and remove every active/layout fallback.
+- **Shared provenance:** central `/root` seeded the initial hydration-listener RED/canonical gate from base `eb760eb1` before observing this lane's later lock, then stopped and explicitly transferred the uncommitted diff. This lane preserved/reviewed the seed and added the detached stale-scope RED plus authority-epoch hardening.
+- **Verification:** focused `15/15`; post-format focused+adjacent Chat matrix `8 files / 66 tests` PASS without warnings; fresh root typecheck PASS; exact two-file Prettier/diff/manifest PASS; Gitleaks scanned exact commit (~`7.51 KB`) with no leaks.
+- **Boundary / release:** no DOM drop, runtime/cancel, Composer, ChatThread, ChatWorkspace, App, Schedule, provider/model/Ollama, native process/controller, or unrelated product path changed. Persistent report appended and own lock marked completed/released; official native acceptance remains delegated.
+
+### 2026-08-31T02:05:35-05:00 — VS-CODEX-CHAT-MULTIPANE-T3-REREVIEW3-20260831-84 claimed Task 3 fix-round-3 review
+
+- **Task / branch / base:** `CHAT-HANDOFF-MULTIPANE-TASK-3-FIX-ROUND-3-FINAL-REREVIEW`, `integration/UnifiedChungus-final`, exact review HEAD `9bad5cedac0a3c2dfdec2b06320570ab794b09fc`.
+- **Exact write scope:** only `task-3-rereview-round3.md`, this own lock, and append-only own ledger checkpoints. All product/test files, index, commits, processes, other locks, and unrelated dirty state remain protected.
+- **Intent:** independently inspect the complete `363b5798..9bad5ced` package and prove the native drop boundary stays unregistered while canonical access is unresolved/empty, routes only to the exact verified focused chat, invalidates detached callbacks across scope/focus epochs, and cleans up without regression.
+
+### 2026-08-31T02:11:52-05:00 — VS-CODEX-CHAT-MULTIPANE-T3-REREVIEW3-20260831-84 completed / released
+
+- **Verdict:** PASS. The complete exact `363b5798..9bad5ced` package has no remaining Critical, Important, or Minor finding. Canonical unresolved/empty states establish no native listener; the registered callback captures and revalidates exact scope/chat/epoch/disposal authority, hit-tests the exact canonical route drop root, and has no active/layout fallback. Cleanup handles both active and asynchronously resolved listeners, while focus/scope/hydration changes and ABA transitions invalidate detached callbacks.
+- **Fresh evidence:** focused `15/15` PASS; focused plus adjacent Chat matrix `8 files / 67 tests` PASS; exact-package `git diff --check` PASS; both Task 3 product files remain clean. Root TypeScript was attempted and is blocked only by concurrently owned `app/src/features/workbench/PluginDashboardPanel.tsx:81`, with no exact Task 3 diagnostic.
+- **Artifact / final shared state:** `task-3-rereview-round3.md`; shared branch advanced independently from reviewed `9bad5ced` to `d7ac2ea22ca7ae75b25c2d376fab1cdd289c3a3b` without changing either reviewed file. Product/test files, index, commits, processes, other locks, and unrelated dirty state were untouched; own scoped lock is completed/released.
+
+### 2026-08-31T02:07:49-05:00 — VS-SOL-INSTANT-NAVIGATION-SCHEMA-INTEGRITY-20260831-79 completed / released
+
+- **Task / branch / commit:** `TASK-INSTANT-NAVIGATION-SCHEMA-INTEGRITY-20260831`, `integration/UnifiedChungus-final`, immutable exact commit `d7ac2ea22ca7ae75b25c2d376fab1cdd289c3a3b` (`fix(instant): validate navigation command schemas`).
+- **Exact files / change:** only `app/src/features/instant-command/authorities/navigationCommands.ts` and `.test.ts` (`103 insertions`). Every navigation command now has an exact pre-authority slot schema; unknown IDs and malformed/extra slots trigger no port. `/connect` accepts no command credential/provider payload and opens only existing Providers. Fullscreen success requires a canonical boolean observation rather than coercing malformed state to off.
+- **TDD / verification:** RED captured `10` intended failures; focused `23/23`; full Instant `26 files / 289 tests`; fresh full shared TypeScript PASS; Vite production build PASS (`5,067` modules); exact Prettier/diff-check and Instant-scoped Gitleaks PASS.
+- **Boundary / release:** no navigation/settings/fullscreen UI/store, Providers auth/keyring, Chat/Voice, Codex harness, Pet, CAO, native, Workbench/external app, billing/production/deployment, or Ollama/11434 path changed. Own exact-file lock completed/released; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31T02:13:41-05:00 — VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34 Task 4 ownership transfer
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `d7ac2ea22ca7ae75b25c2d376fab1cdd289c3a3b`; Task 2 historical evidence and the completed Task 3 transfer remain preserved under this lane.
+- Released exclusively for fresh claim by `/root/chat_dispatch_task4`: `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-4-report.md`, `app/src/features/chat/chatToChatDispatch.ts`, and `app/src/features/chat/chatToChatDispatch.test.ts`.
+- The two Task 4 product/test paths were removed from this lane's active exact scope and recorded with the Task 4 report as `released_for_fresh_claim`. No product, test, report, index, or commit was changed during this coordination-only handoff.
+- All existing Task 5-7 reservations in `VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34` remain active and unchanged; this transfer conveys no authority over those paths.
+
+### 2026-08-31T02:14:57-05:00 — VS-SOL-CHAT-DISPATCH-T4-20260831-85 claimed Task 4 canonical dispatch
+
+- **Task / branch / base:** `TASK-CHAT-HANDOFF-MULTIPANE-T4-CANONICAL-DISPATCH`, `integration/UnifiedChungus-final`, base `d7ac2ea22ca7ae75b25c2d376fab1cdd289c3a3b`, upstream `origin/UnifiedChungus`; no merge, rebase, cherry-pick, or bisect state.
+- **Transferred exact write scope:** `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-4-report.md`, `app/src/features/chat/chatToChatDispatch.ts`, and `app/src/features/chat/chatToChatDispatch.test.ts`, explicitly released by `VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34` at `2026-08-31T02:13:41-05:00` with no path edits during transfer.
+- **Intent / TDD:** revalidate exact source and target access, persist a normal visible canonical prompt plus safe `chat_handoff` part and stable dispatch marker before canonical `jarvis:send`, return a prior persisted receipt for the same `dispatchKey`, use exact target/message cancellation identity, and emit nothing on persistence/access failure.
+- **Protected state:** Composer, ChatThread, ChatView/Workspace, App, runtime, Schedule, providers/models/Ollama, native process/controller, Tasks 5-7, other locks/processes, and all unrelated dirty or staged files remain untouched and unstaged.
+
+### 2026-08-31T02:37:10-05:00 — VS-SOL-CHAT-DISPATCH-T4-20260831-85 completed / released
+
+- **Exact commit / files:** `e6a7d9f958bd259490f1e02d10fca2b08dc5d444` (`feat(chat): add canonical chat dispatch service`) contains only `app/src/features/chat/chatToChatDispatch.ts` and `.test.ts` (`679 insertions`). Shared commits advanced the branch from the claim base `d7ac2ea2` to exact commit parent `fea9fbfd`; the immutable Task 4 boundary remains reproducible.
+- **Result:** canonical source/target IDs and projection scope are revalidated before and after the persisted-marker query; one sanitized normal visible user message is written before exact `jarvis:send`; the event uses the persisted message ID cancellation key and captured target selection/runtime readers; stable `scheduleId:occurrenceId`-shaped keys replay the persisted receipt without a second write/event; missing/inaccessible/conflicted or persistence-failed paths emit nothing.
+- **TDD / verification:** missing-module RED; exact-target-ID RED; safe-instruction RED; final focused `11/11` and adjacent Chat matrix `4 files / 35 tests` PASS; fresh root TypeScript PASS; exact Prettier/diff/manifest and Gitleaks `8.30.1` PASS (`1` commit / approximately `23.10 KB`, no leaks).
+- **Boundary / release:** persistent report is `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-4-report.md`. No Composer, ChatThread/View/Workspace, App, runtime, Schedule, provider/model/Ollama, native process/controller, other lock/process, production, billing, deployment, or unrelated product path was changed. Own lock completed/released; combined official native WebView acceptance remains pending for the authorized final lane.
+
+### 2026-08-31 02:16 CDT — TASK-084 Workbench external-app recovery completed
+
+- **Commit / exact scope:** `4cb486a40ee62c5c80be7a05abf4a5340f0fe88d`; only `app/src/features/workbench/PluginDashboardPanel.tsx` and `.test.tsx`.
+- **Behavior:** Pinned external-app dashboards now distinguish declared tools from actually available agent tools, expose a bounded declared-tool identity list, and send disconnected or disabled recovery through the existing lazy-safe Plugins settings authority. No connection, Tool Gateway, RLM, SiYuan, credential, or external-service authority was duplicated or mutated.
+- **TDD / verification:** strict RED captured the absent recovery action and false tool availability; focused plus Workbench boundary `3 files / 11 tests` PASS; shared TypeScript PASS; isolated C-drive Vite production build PASS (`5,067` modules); exact Prettier, diff check, and staged Gitleaks PASS.
+- **Native boundary:** immutable `4cb486a4` is queued for the sole native controller after its active Pet detached-window repair. Root did not start a competing app or Playwright session.
+
+### 2026-08-31 02:19 CDT — TASK-086 Workbench plugin project isolation claimed
+
+- Root claimed only `app/src/features/workbench/WorkbenchPage.tsx`, `WorkbenchPage.test.tsx`, `PluginDashboardPanel.tsx`, and `PluginDashboardPanel.test.tsx` at `e704fed72acac6a55824a229881f05d4e9ac102b`.
+- Intent: make pinned plugin discovery and dashboard tool availability follow the existing account plus project-scope connection contract, including wildcard access, out-of-scope recovery, and reactive project changes, without duplicating Plugin/Tool Gateway/RLM/SiYuan authority.
+- Next: project-A/project-B/wildcard RED, minimal projection, focused and boundary gates, exact commit, native packet.
+
+### 2026-08-31 02:26 CDT — TASK-086 Workbench plugin project isolation completed
+
+- **Commit / exact scope:** `f4a145372eafb52a32111e32ee3ab7e586abc5ec`; only `WorkbenchPage.tsx/.test.tsx` and `PluginDashboardPanel.tsx/.test.tsx`.
+- **Behavior:** Pinned external apps are discoverable only when the canonical account connection is active for the current project (or wildcard). Dashboard tool counts and recovery states use the same activation authority, react to project/connection changes, and route out-of-scope recovery to Plugins. Tool Gateway, RLM, SiYuan, credentials, providers, and external services remain unmodified.
+- **TDD / verification:** strict RED `2`; focused `12/12`; full Workbench `32 files / 133 tests`; isolated C-drive Vite production build PASS (`5,067` modules); exact Prettier/diff/staged Gitleaks PASS. The shared compiler reports no owned-file diagnostic and is blocked only by the active foreign Task 4 `chatToChatDispatch.test.ts` branded-ID fixtures, which root did not touch.
+- **Native boundary:** immutable `f4a14537` is queued for the sole native controller after the current Pet detached-window repair.
+
+### 2026-08-31 02:29 CDT — TASK-087 Workbench Jarvis canonical scope claimed
+
+- Root claimed only `app/src/features/workbench/JarvisPanel.tsx` plus a new focused `JarvisPanel.test.tsx` at `f4a145372eafb52a32111e32ee3ab7e586abc5ec`.
+- Intent: fail closed instead of rendering/sending through a stale cross-project or cross-workspace active chat, list only exact-scope chats, recover through the canonical `ensureActiveChat` path, and remain non-dispatchable while scope hydration is pending.
+- Chat runtime/provider/OpenCode/Codex/RLM/SiYuan internals, repositories, native/Pet, CAO, Instant, credentials, and every foreign lock remain excluded.
+
+### 2026-08-31T02:16:51-05:00 — VS-SOL-INSTANT-MEDIA-SCHEMA-INTEGRITY-20260831-80 completed / released
+
+- **Task / branch / commit:** `TASK-INSTANT-MEDIA-SCHEMA-INTEGRITY-20260831`, `integration/UnifiedChungus-final`, immutable exact commit `e704fed72acac6a55824a229881f05d4e9ac102b` (`fix(instant): validate media command schemas`).
+- **Exact files / change:** only `app/src/features/instant-command/authorities/mediaCommands.ts` and `.test.ts` (`100 insertions, 5 deletions`). Media actions now use an exact own-key allowlist, preventing prototype names such as `toString`/`__proto__` from dispatching. Per-command request schemas reject ignored secret/context extras. Runtime-invalid track/ambient text receives a stable bounded rejection. Out-of-range volume observations no longer clamp into invented success.
+- **TDD / verification:** RED captured `11` intended failures; focused `21/21`; full Instant `26 files / 301 tests`; fresh full shared TypeScript PASS; Vite production build PASS (`5,067` modules); exact Prettier/diff-check and Instant-scoped Gitleaks PASS.
+- **Boundary / release:** no media/ambient UI/store/runtime adapter, Chat/Voice, Codex harness, Pet, CAO, Providers credential, native, Workbench/external app, billing/production/deployment, or Ollama/11434 path changed. Own exact-file lock completed/released; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31T02:23:50-05:00 — VS-SOL-INSTANT-FABRIC-RECEIPT-INTEGRITY-20260831-81 completed / released
+
+- **Task / branch / commit:** `TASK-INSTANT-FABRIC-RECEIPT-INTEGRITY-20260831`, `integration/UnifiedChungus-final`, immutable exact commit `c4b6ee0044248c5e373f796d6f1b106a6c331ad7` (`fix(instant): bind fabric receipts exactly`).
+- **Exact files / change:** only `app/src/features/instant-command/authorities/terminalPeerFabric.ts` and `.test.ts` (`201 insertions, 10 deletions`). Malformed commands/correlations reject before capability and are never echoed; capability rejection is contained; message/broadcast peer cardinality and stable generation identities are bounded and unique; delivery states are enumerated; native receipts require the exact correlation plus expected unique target identity set.
+- **TDD / verification:** RED captured `9` intended failures; focused `17/17`; full Instant `26 files / 310 tests`; Vite production build PASS (`5,067` modules); exact Prettier/diff-check and Instant-scoped Gitleaks PASS. Owned TypeScript diagnostics are zero; shared typecheck is externally blocked only by active `chatToChatDispatch.test.ts` missing-module/branded-ID work and `WorkbenchPage.test.tsx` branded project-ID work, which were preserved untouched.
+- **Boundary / release:** no Fabric tool/native/queue/UI/runtime, Chat/Voice, Codex harness, Pet, CAO, Providers credential, native controller, Workbench/external app, billing/production/deployment, or Ollama/11434 path changed. Own exact-file lock completed/released; native acceptance delegated to `/root/native_resume`.
+
+# 2026-08-31 02:30 CDT — VS-SOL-CAO-TARGET-JOURNAL-ENVELOPE-20260831-84 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-JOURNAL-ENVELOPE-20260831-84`, `integration/UnifiedChungus-final`, base `f4a145372eafb52a32111e32ee3ab7e586abc5ec`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `188e8c45fe0867f41b424b6fae3b5bb2673eeb43`.
+- **Change:** Recovery now requires every persisted CAO target lease to retain its exact context-event lineage: canonical lease-derived idempotency key, context type, and persistence timestamp exactly equal to acquisition time. Corrupt envelopes fail before registry reuse and preserve existing live ownership instead of acting on ambiguous journal truth.
+- **Verification:** RED `4`; focused `121/121`; adjacent CAO `620/620`; isolated Vite build PASS (`5,067` modules, `1m 42s`); exact Prettier/diff/Gitleaks PASS. Owned TypeScript diagnostics are zero; shared typecheck reached only concurrent active Instant `terminalTargetResolver.ts` TS2769/TS2322 diagnostics.
+- **Boundary:** No Operations Floor, scheduled-learning runtime/runner/controls/bootstrap, Root Workbench/Chat, Pet/native, Instant, services/credentials/production/Ollama, app-control, or unrelated state changed. Own lock completed/released immediately.
+
+### 2026-08-31T02:34:10-05:00 — VS-SOL-INSTANT-TERMINAL-RESOLUTION-INTEGRITY-20260831-82 completed / released
+
+- **Task / branch / commit:** `TASK-INSTANT-TERMINAL-RESOLUTION-INTEGRITY-20260831`, `integration/UnifiedChungus-final`, immutable exact commit `fea9fbfd1741c6719e2e715ce6fee09fd0d778bd` (`fix(instant): validate terminal target resolution`).
+- **Exact files / change:** only `app/src/features/instant-command/terminalTargetResolver.ts` and `.test.ts` (`177 insertions, 5 deletions`). Selectors require one exact bounded discriminant (or explicit all scope); malformed/mixed selectors fail closed. Any corrupt, unbounded, or duplicate pane/session/ordinal target registry fails globally rather than permitting another selector to first-win. One/many results are frozen deep snapshots detached from later source mutation.
+- **TDD / verification:** RED captured `5` intended failures; focused `13/13`; full Instant `26 files / 320 tests`; Vite production build PASS (`5,067` modules); exact Prettier/diff-check and Instant-scoped Gitleaks PASS. Owned TypeScript diagnostics are zero; fresh shared typecheck is externally blocked only by active `Workbench/JarvisPanel.test.tsx:55` branded `ChatId` fixture work, preserved untouched.
+- **Boundary / release:** no terminal authority/snapshot/catalog/queue/UI/store/native adapter, Chat/Voice, Codex harness, Pet, CAO, Providers credential, native controller, Workbench/external app, billing/production/deployment, or Ollama/11434 path changed. Own exact-file lock completed/released; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31 02:38 CDT — TASK-087 Workbench Jarvis canonical scope completed
+
+- **Commit / exact scope:** `8dfb6182b47465830f18401ba24c2be3cef27d8e`; only `app/src/features/workbench/JarvisPanel.tsx` and new focused `JarvisPanel.test.tsx`.
+- **Behavior:** Workbench Jarvis now fails closed during scope hydration, lists/renders only chats matching the exact active workspace and project, rejects a stale cross-project/cross-workspace active ID, recovers through canonical `ensureActiveChat`, and keeps both recovery and new-chat creation inside Workbench via `navigateToChat: false`.
+- **TDD / verification:** strict RED `2`; focused final `2/2`; affected Workbench boundary `3 files / 12 tests`; isolated final Vite production build PASS (`5,067` modules); exact Prettier, diff check, and staged Gitleaks PASS. A fresh shared TypeScript run passed after the branded test fixture correction; the final dependency-only refinement has no owned diagnostic, while the concurrent CAO authority lane currently owns the only reported diagnostics.
+- **Native boundary:** immutable `8dfb6182` queued for the sole native controller. Root did not start a competing app or Playwright session.
+
+### 2026-08-31 02:46 CDT — TASK-088 Inspector canonical tool inventory claimed
+
+- Root claims only `app/src/components/layout/Inspector.tsx` plus a new focused `Inspector.toolsInventory.test.tsx` at `82d17d4311efa2ed1b921085a72270e60090c62b`.
+- Intent: stop parsing custom tools from raw localStorage, project the canonical account-scoped tool store, show canonical built-in and custom tools together, and label their origin/availability without creating another action or plugin execution authority.
+- Action registry/runner behavior, tool persistence/editor, plugin/MCP/RLM/SiYuan authority, Chat/runtime, Workbench, native/Pet, CAO, Instant, credentials, and every foreign lock remain excluded.
+
+### 2026-08-31 02:40 CDT — VS-SOL-CAO-TARGET-JOURNAL-PAGE-INTEGRITY-20260831-85 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-JOURNAL-PAGE-INTEGRITY-20260831-85`, `integration/UnifiedChungus-final`, base `188e8c45fe0867f41b424b6fae3b5bb2673eeb43`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `76f8fbaaccb46c4ed2a34bc5dc30289e1af4a524`.
+- **Change:** Restart/recovery rejects sparse or over-limit journal pages before registry reuse, validates every indexed entry, and requires every embedded lease payload to share its enclosing event run lineage. Invalid pages return the stable redacted `cao_target_journal_invalid` result without releasing valid live ownership.
+- **TDD / verification:** RED `3`; focused `124/124`; adjacent CAO `623/623`; full TypeScript PASS; isolated Vite production build PASS (`5,067` modules, `1m 14s`); exact Prettier/diff/Gitleaks PASS.
+- **Boundary / release:** No Operations Floor, scheduled-learning runtime/runner/controls/bootstrap, Root Workbench/Chat, Pet/native, Instant, credentials/production/Ollama, app-control, or unrelated state changed. Own exact-file lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+### 2026-08-31T02:41:09-05:00 — VS-CODEX-CHAT-DISPATCH-T4-REVIEW-20260831-86 claimed Task 4 independent review
+
+- **Task / branch / boundary:** `TASK-CHAT-HANDOFF-MULTIPANE-T4-INDEPENDENT-REVIEW`, `integration/UnifiedChungus-final`, immutable review package `fea9fbfd1741c6719e2e715ce6fee09fd0d778bd..e6a7d9f958bd259490f1e02d10fca2b08dc5d444`; workspace HEAD at claim `8dfb6182b47465830f18401ba24c2be3cef27d8e`, upstream `origin/UnifiedChungus`, with no merge/rebase/cherry-pick/bisect state.
+- **Exact write scope:** only `task-4-review.md`, this own lock, and append-only own ledger checkpoints. Product/test files, index, commits, processes, other locks, unrelated dirty state, native lifecycle, production, billing, deployment, credentials, and external services remain read-only.
+- **Intent:** independently verify approved-spec compliance and security/code quality for canonical access revalidation, persisted-visible-message ordering, exact safe handoff shape, `jarvis:send` identity and selection contract, fail-closed behavior, durable/race-safe idempotency, supervision occurrence keys, and regression coverage.
+
+### 2026-08-31T02:50:23-05:00 — VS-CODEX-CHAT-DISPATCH-T4-REVIEW-20260831-86 completed / released
+
+- **Verdict:** FAIL with `1 Critical` and `4 Important` findings. Production authorization checks only archived chat state rather than canonical account/workspace/project/policy authority and has no post-persistence immediate dispatch barrier; list-then-create idempotency is raceable without durable uniqueness; persisted-marker reuse accepts forged/partial/duplicate candidates; the structural projection input can carry unsanitized nested secret/hidden/tool bytes; and `dispatched` is reported without runtime acceptance while all focused tests mock the persistence/kernel boundaries.
+- **Artifact:** `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-4-review.md` contains ordered file:line evidence and exact fix directions for every finding.
+- **Fresh verification:** exact product files remain byte-equivalent to `e6a7d9f9`; exact-package diff check PASS; focused Task 4 `11/11` PASS; adjacent Chat matrix `35/35` PASS. Root typecheck was attempted and is externally blocked only by concurrent `Inspector.toolsInventory.test.tsx` `TS2305`/`TS7031` diagnostics, with no Task 4 diagnostic.
+- **Boundary / release:** workspace HEAD advanced independently to `160a99f59d8aab3a2540de6ece881165a4a076a0` without changing the reviewed Task 4 files. Product/test files, index, commits, processes, native lifecycle, other locks, and unrelated dirty state were untouched; own scoped lock is completed/released.
+
+### 2026-08-31T02:41:47-05:00 — VS-SOL-INSTANT-TARGET-SNAPSHOT-INTEGRITY-20260831-83 completed / released
+
+- **Task / branch / base:** `TASK-INSTANT-TARGET-SNAPSHOT-INTEGRITY-20260831`, `integration/UnifiedChungus-final`, base `fea9fbfd1741c6719e2e715ce6fee09fd0d778bd`.
+- **Exact files / commit:** only `app/src/features/instant-command/targetSnapshot.ts` and `targetSnapshot.test.ts`; immutable exact commit `82d17d4311efa2ed1b921085a72270e60090c62b` (`fix(instant): validate live target snapshots`).
+- **Behavior:** Live terminal target snapshot construction now rejects malformed, non-array, corrupt, or over-limit native/transcript registries atomically; bounds all stable identifiers and project bindings; retains duplicate pane/session exclusion; and returns frozen target/process-identity copies detached from mutable runtime inputs.
+- **TDD / verification:** RED captured `5` intended failures; focused `11/11`; full Instant `26 files / 326 tests`; shared TypeScript PASS; Vite production build PASS (`5,067` modules); exact Prettier/diff-check and Instant-scoped Gitleaks PASS.
+- **Boundary / release:** No terminal authority/resolver/catalog/queue/UI/store/native adapter, Assistant/Composer/Chat/Voice, Codex harness, Pet, CAO, Providers/credentials, native controller/Workbench/external app, billing/production/deployment, or Ollama/11434 path changed. Own exact-file lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31 02:48 CDT — VS-SOL-CAO-TARGET-POSTACK-RECOVERY-20260831-86 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-POSTACK-RECOVERY-20260831-86`, `integration/UnifiedChungus-final`, base `76f8fbaaccb46c4ed2a34bc5dc30289e1af4a524`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `160a99f59d8aab3a2540de6ece881165a4a076a0`.
+- **Change:** Acquisition remains provisional through its final durable verification. A missing, unavailable, or corrupt post-ack journal read now triggers exact same-lease cleanup; retained ownership or failed cleanup reports stable `cao_target_registry_unavailable` rather than leaking authority or falsely reporting rollback.
+- **TDD / verification:** RED `4`; focused `128/128`; adjacent CAO `627/627`; isolated Vite production build PASS (`5,067` modules, `1m 12s`); exact Prettier/diff/Gitleaks PASS. Owned TypeScript diagnostics are zero; the fresh shared run reached only concurrent `Inspector.toolsInventory.test.tsx` missing-export/implicit-any diagnostics, preserved untouched.
+- **Boundary / release:** No scheduled-learning runtime/runner/controls/bootstrap, Operations Floor, Root Workbench/Chat, Pet/native, Instant, credentials/production/Ollama, app-control, or unrelated state changed. Own exact-file lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31 02:55 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 completed Inspector canonical tool inventory
+
+- **Task / branch / base:** `TASK-088-INSPECTOR-CANONICAL-TOOL-INVENTORY`, `integration/UnifiedChungus-final`, base `82d17d4311efa2ed1b921085a72270e60090c62b`.
+- **Exact files / commit:** `app/src/components/layout/Inspector.tsx`, `app/src/components/layout/Inspector.toolsInventory.test.tsx`; immutable commit `47a5f9d3290aae7d9029259f8c671c0151c04037`.
+- **Change:** Inspector Tools now reads the canonical reactive account-scoped custom-tool store instead of parsing a raw global localStorage payload, presents canonical built-in and custom inventory together, labels each item's origin and availability, and fails stale base-action/workflow wiring closed by withholding its run control while retaining navigation to repair it in Tools.
+- **TDD / verification:** RED `2`; focused `2/2`; Inspector boundary `2 files / 3 tests`; full TypeScript PASS; isolated Vite production build PASS (`5,067` modules); exact Prettier/diff/Gitleaks PASS.
+- **Boundary / next:** No action runner/store persistence, plugin/MCP/RLM/SiYuan authority, Chat/runtime, Workbench, Pet/native, CAO/Instant, credentials/billing/deployment, or unrelated dirty state changed. Immutable native packet delegated to `/root/native_resume`; Root proceeds to the independent Task 4 canonical-dispatch security findings under a fresh exact-file claim.
+
+### 2026-08-31 02:58 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 claimed canonical dispatch security repair
+
+- **Task / branch / base:** `TASK-089-CHAT-DISPATCH-AUTHORITY-IDEMPOTENCY-ACCEPTANCE`, `integration/UnifiedChungus-final`, base `47a5f9d3290aae7d9029259f8c671c0151c04037`.
+- **Exact write scope:** `app/src/features/chat/chatToChatDispatch.ts`, `chatToChatDispatch.test.ts`, and `chatHandoffProjection.ts` only.
+- **Intent:** consume the independent Task 4 FAIL packet in one vertical repair: canonical active-account/workspace/project authority before persistence and dispatch, deep safe canonical projection and exact marker validation, deterministic durable uniqueness, post-persist revalidation, and truthful runtime acceptance state.
+- **Boundary:** Composer/ChatThread/ChatView UI, runtime/provider internals, database schema/repository implementation, Schedule/CAO/Instant, Workbench/Inspector, Pet/native app control, credentials/billing/deployment, and unrelated dirty state remain untouched.
+
+### 2026-08-31 03:01 CDT — TASK-089 stopped and explicitly transferred to preexisting Task 4 owner
+
+- **Collision found:** `VS-SOL-CHAT-DISPATCH-T4-FIX1-20260831-87` had already claimed `chatToChatDispatch.ts/.test.ts` at 02:53, before Root's 02:58 claim. Root stopped immediately when the active lock surfaced.
+- **Transferred packet:** the two shared owned files now contain a five-regression RED packet plus an incomplete production draft, explicitly handed to `/root/chat_dispatch_task4` through its controller thread. Preserved provenance patch: `C:\Users\viper\AppData\Local\Temp\TASK-089-overlap-preserved.patch` (`11,731` bytes).
+- **Evidence:** focused suite captured exactly `5` intended failures: post-persist revocation still dispatches, forged extra-part marker is accepted, nested projection secret persists, async runtime rejection is not awaited, and concurrent same-key calls persist/dispatch twice.
+- **Boundary:** Root reverted its separate `chatHandoffProjection.ts` change, will not touch the active owner's two files, and proceeds immediately to non-overlapping work.
+
+### 2026-08-31 03:04 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 claimed Inspector live-chat evidence repair
+
+- **Task / base / exact scope:** `TASK-090-INSPECTOR-LIVE-CHAT-EVIDENCE`, base `47a5f9d3290aae7d9029259f8c671c0151c04037`; only `app/src/features/inspector/liveWork.ts` and new `liveWork.chatEvidence.test.ts`.
+- **Intent:** replace global-any-agent heuristics and generic chat placeholders with per-chat bound-agent run truth, archived-row exclusion, and the exact latest visible persisted message preview.
+- **Boundary:** analytics/status rollups, Inspector presentation, agent/runtime producers, terminals, active Chat dispatch scope, Workbench, CAO/Instant, Pet/native control, credentials/billing/deployment, and unrelated state remain untouched.
+
+### 2026-08-31 03:08 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 completed Inspector live-chat evidence repair
+
+- **Task / base / commit:** `TASK-090-INSPECTOR-LIVE-CHAT-EVIDENCE`, base `47a5f9d3290aae7d9029259f8c671c0151c04037`, immutable exact commit `a949e2f89b1be3e410fa4da8c85d0b383b11af1c`.
+- **Exact files / behavior:** `app/src/features/inspector/liveWork.ts` and `liveWork.chatEvidence.test.ts`; Active Chats now uses only each chat's bound busy-agent state, excludes archived rows, reads persisted messages for the scoped chat batch, and shows the latest visible text and real activity timestamp. Unrelated runs, cancelled/error states, and missing run evidence stay stationary.
+- **TDD / verification:** RED `3`; focused plus adjacent Inspector evidence/analytics `3 files / 6 tests`; isolated Vite production build PASS (`5,067` modules); exact Prettier/diff/Gitleaks PASS. Fresh shared TypeScript produced no owned diagnostic and was blocked only by the explicitly transferred active Chat dispatch repair draft.
+- **Boundary / next:** No analytics rollup, Inspector presentation, runtime producer, terminal, active Chat dispatch, Workbench, CAO/Instant, native/Pet, credential/billing/deployment, or unrelated file changed. Immutable native packet queued; Root continues the next unclaimed analytics evidence slice.
+
+### 2026-08-31 03:11 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 claimed Inspector usage/duration truth repair
+
+- **Task / base / exact scope:** `TASK-091-INSPECTOR-USAGE-DURATION-TRUTH`, base `a949e2f89b1be3e410fa4da8c85d0b383b11af1c`; only `workspaceAnalytics.ts`, its performance test, and `InspectorActiveWorkPanel.tsx`.
+- **Intent:** include cached/reasoning token receipts, distinguish actual and estimated cost truth, preserve foreground clock evidence, and count background duration only while real agent/tool execution is active.
+- **Boundary:** status analytics storage/producers, Agent/runtime/tool-run producers, liveWork, active Chat dispatch, Workbench, CAO/Instant, Pet/native control, credentials/billing/deployment, and unrelated state remain untouched.
+
+### 2026-08-31 03:14 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 completed Inspector usage/duration truth repair
+
+- **Task / base / commit:** `TASK-091-INSPECTOR-USAGE-DURATION-TRUTH`, base `a949e2f89b1be3e410fa4da8c85d0b383b11af1c`, immutable exact commit `ed77ea6537f0930458aaa0c5acc4b56a8b1f6842`.
+- **Exact files / behavior:** `workspaceAnalytics.ts`, `workspaceAnalytics.performance.test.ts`, and `InspectorActiveWorkPanel.tsx`; the Inspector now counts input/output/reasoning/cached receipts, labels actual versus estimated versus total recorded cost truthfully, preserves foreground clock evidence across usage refreshes, and counts hidden background duration only during a real busy-agent or canonical tool run.
+- **TDD / verification:** RED `3`; focused `5/5`; full Inspector feature matrix `5 files / 13 tests`; isolated Vite production build PASS (`5,067` modules); exact Prettier/diff/Gitleaks PASS. Shared TypeScript remains externally blocked only by the explicitly transferred active Chat dispatch files, with no owned diagnostic.
+- **Boundary / next:** No status analytics storage/producer, agent/runtime/tool-run producer, liveWork, active Chat dispatch, Workbench, CAO/Instant, native/Pet, credential/billing/deployment, or unrelated file changed. Immutable native packet queued; Root continues the next safe unclaimed queue slice.
+
+### 2026-08-31T02:53:16-05:00 — VS-SOL-CHAT-DISPATCH-T4-FIX1-20260831-87 claimed Task 4 fix round 1/5
+
+- **Task / branch / base:** `TASK-CHAT-HANDOFF-MULTIPANE-T4-FIX-ROUND-1`, `integration/UnifiedChungus-final`, base `160a99f59d8aab3a2540de6ece881165a4a076a0`, prior Task 4 commit `e6a7d9f9`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick/bisect state.
+- **Exact write scope:** only `app/src/features/chat/chatToChatDispatch.ts`, `app/src/features/chat/chatToChatDispatch.test.ts`, `task-4-report.md`, this own lock, and append-only own ledger checkpoints. The prior Task 4 lock and independent review lock are completed/released; the delivery lock retains only its separate Task 5-7 reservations.
+- **Intent / TDD:** resolve the review's 1 Critical + 4 Important findings through canonical active-account/workspace/project/policy snapshots before persistence and immediately pre-dispatch; deterministic durable atomic claims; exact persisted envelope validation; rebuilt/deep-sanitized projection safety; exact keyed runtime acceptance with durable pending/accepted/failed truth; and real repository/window concurrency/reopen/forgery/policy-change coverage.
+- **Protected / blocker rule:** App, Composer, ChatThread/View/Workspace, runtime, Schedule, schema/mappers, providers/models/Ollama, native process/controller, other locks/processes, production/billing/deployment, and unrelated state remain untouched. Any missing producer seam outside the exact two product/test files will be reported by exact API/file/owner while all non-overlapping work continues.
+
+### 2026-08-31T03:02:17-05:00 — VS-SOL-INSTANT-SUGGESTION-RANKING-INTEGRITY-20260831-88 claimed
+
+- **Task / branch / base:** `TASK-INSTANT-SUGGESTION-RANKING-INTEGRITY-20260831`, `integration/UnifiedChungus-final`, base `47a5f9d3290aae7d9029259f8c671c0151c04037`.
+- **Exact scope / intent:** only `app/src/features/instant-command/suggestions.ts` and `.test.ts`; deterministic exact/prefix ranking, malformed/unbounded registry containment, immutable bounded output, truthful safety/availability, and secure `/connect` Providers discoverability with no model route.
+- **Boundary:** No Assistant/Composer/Chat/Voice, execute/parse/types/index, authority/catalog/help, Providers credential, terminal/native, Workbench/Inspector, Pet, CAO, billing/production/deployment, or Ollama/11434 path is owned.
+
+### 2026-08-31 03:05 CDT — VS-SOL-CAO-TARGET-AMBIGUOUS-JOURNAL-RECOVERY-20260831-87 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-AMBIGUOUS-JOURNAL-RECOVERY-20260831-87`, `integration/UnifiedChungus-final`, base `47a5f9d3290aae7d9029259f8c671c0151c04037`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `b0498db9215e4e6971f9436a7950222bf6f6ef7d`.
+- **Change:** Ambiguous append reconciliation no longer collapses corrupt or unavailable durable-journal evidence into generic persistence failure. It preserves stable redacted journal truth after exact provisional cleanup, reports registry-unavailable if ownership remains, and cleans a valid ambiguous commit if its final durable verification disappears.
+- **TDD / verification:** RED `2` newly exposed false error classifications plus retained-ownership and second-read recovery coverage; focused `131/131`; adjacent CAO `630/630`; isolated Vite production build PASS (`5,067` modules, `1m 23s`); exact Prettier/diff/Gitleaks PASS. Owned TypeScript diagnostics are zero; the shared run reached only concurrent active Chat dispatch and Inspector/live-work diagnostics, preserved untouched.
+- **Boundary / release:** No scheduled-learning runtime/runner/controls/bootstrap, Operations Floor, Root Workbench/Inspector, Chat, Pet/native, Instant, credentials/production/Ollama, app-control, or unrelated state changed. Own exact-file lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31 04:05 CDT — VS-SOL-INSTANT-SLASH-FAMILY-CATALOG-20260831-96 claimed
+
+- **Task / branch / base:** `TASK-INSTANT-SLASH-FAMILY-CATALOG-20260831`, `integration/UnifiedChungus-final`, base `398ec52502974353e14633655278ea8252905610`, upstream `origin/UnifiedChungus`; no merge state.
+- **Exact write scope:** only `app/src/features/instant-command/catalog.ts`, `.test.ts`, this own lock, and append-only own ledger entries.
+- **Intent / RED boundary:** generate one canonical namespaced slash alias for every remaining family/team definition while proving human alias priority, global normalized uniqueness, per-command `<=64`, secure `/connect` exclusivity, and unchanged authority/safety/availability/slot behavior.
+- **Protected boundary:** no parser/executor/index/types, specialized navigation/terminal catalog, authority, Assistant/Composer/Chat/Voice, Providers/credentials, repository, Workbench/Inspector, Pet/native, CAO, billing/production/deployment, Ollama/11434, app control, or unrelated state will be touched.
+
+### 2026-08-31 04:16 CDT — VS-SOL-INSTANT-SLASH-FAMILY-CATALOG-20260831-96 completed / released
+
+- **Exact files / commit:** `app/src/features/instant-command/catalog.ts`, `.test.ts`; immutable commit `16799ac54a410f8596c7af56dc67fcb1f2b2e85f`.
+- **Change:** Every remaining family and Fabric-team definition now exposes one deterministic canonical namespaced slash alias while retaining its human alias first and reusing unchanged authority, safety, availability, and slot parsing. `/connect` remains uniquely bound to `connections.open` and the secure Providers surface; plugin/team connection forms are `/plugin-connect` and `/team-connect`.
+- **TDD / verification:** RED `3`; focused `7/7`; full Instant `26 files / 338 tests`; shared TypeScript PASS; isolated Vite production build PASS (`5,067` modules); exact Prettier/diff/Gitleaks PASS.
+- **Boundary / release:** No parser/executor/index/types, specialized navigation/terminal catalog, authorities, Assistant/Composer/Chat/Voice, Providers/credentials, repositories, Workbench/Inspector, Pet/native, CAO, billing/production/deployment, Ollama/11434, app control, or unrelated state changed. Own lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31 04:17 CDT — VS-SOL-INSTANT-SLASH-CORPUS-20260831-97 claimed
+
+- **Task / branch / base:** `TASK-INSTANT-SLASH-CORPUS-20260831`, `integration/UnifiedChungus-final`, base `16799ac54a410f8596c7af56dc67fcb1f2b2e85f`, upstream `origin/UnifiedChungus`; no merge/rebase state.
+- **Exact write scope:** only `app/src/features/instant-command/acceptanceCorpus.ts`, `.test.ts`, this own lock, and append-only own ledger entries.
+- **Intent / RED boundary:** guarantee exact command-bound positive corpus coverage for every canonical slash alias via frozen deduplicated examples + slash seeds, preserving deterministic bounded expansion, secure connection identity separation, other corpus kinds, and local-only/security constraints.
+- **Protected boundary:** catalog/parser/executor/index/types/help/suggestions/authorities, Assistant/Composer/Chat/Voice, Providers/credentials, repositories, Workbench/Inspector, Pet/native, CAO, billing/production/deployment, Ollama/11434, app control, and unrelated state remain untouched.
+
+### 2026-08-31 04:26 CDT — VS-SOL-INSTANT-SLASH-CORPUS-20260831-97 completed / released
+
+- **Exact files / commit:** `app/src/features/instant-command/acceptanceCorpus.ts`, `.test.ts`; immutable commit `c023f72a0814f590c82f9b604bedf2ac06ab17f9`.
+- **Change:** Positive acceptance seeds now use a frozen, per-command deduplicated union of examples and canonical slash aliases. Every slash alias is represented exactly and bound to its canonical command ID while `/connect`, `/plugin-connect`, `/team-connect`, Open Codex, and Open OpenCode retain distinct identities.
+- **TDD / verification:** RED `2`; focused `5/5`; full Instant `26 files / 340 tests`; isolated Vite production build PASS (`5,067` modules); exact Prettier/diff/Gitleaks PASS. The one shared TypeScript run was externally blocked only by `13` active Chat dispatcher diagnostics in `chatToChatDispatch.ts/.test.ts`; no Instant/owned diagnostic appeared.
+- **Boundary / release:** No catalog/parser/executor/index/types/help/suggestions/authorities, Assistant/Composer/Chat/Voice, Providers/credentials, repositories, Workbench/Inspector, Pet/native, CAO, billing/production/deployment, Ollama/11434, app control, or unrelated state changed. Own lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31 04:32 CDT — VS-SOL-INSTANT-EXECUTABLE-ACCEPTANCE-20260831-99 claimed
+
+- **Task / branch / base:** `TASK-INSTANT-EXECUTABLE-ACCEPTANCE-20260831`, `integration/UnifiedChungus-final`, base `23fd2f068dc394e6f736d30d55a55077df707c14`, upstream `origin/UnifiedChungus`; no merge/rebase state.
+- **Exact write scope:** only `scripts/pr31-instant-command-catalog-acceptance.mjs`, `.test.mjs`, new `app/src/features/instant-command/executableAcceptance.test.ts`, this own lock, and append-only ledger entries.
+- **Intent / RED boundary:** make the fresh-process runner execute and report exact Open Codex, Open OpenCode, selected OpenCode exactly-once message, secure `/connect`, terminal-list, and schedule-list scenarios through existing canonical authorities with truthful `<=500ms` local receipts and no routing model.
+- **Protected boundary:** every production Instant/parser/executor/catalog/authority file, Assistant/Composer/Chat/Voice, Providers/credentials, repositories, Workbench/Inspector, Pet/native, CAO, billing/production/deployment, Ollama/11434, app control, and unrelated state remain untouched.
+
+### 2026-08-31 04:42 CDT — VS-SOL-INSTANT-EXECUTABLE-ACCEPTANCE-20260831-99 completed / released
+
+- **Exact files / commit:** `scripts/pr31-instant-command-catalog-acceptance.mjs`, `.test.mjs`, new `app/src/features/instant-command/executableAcceptance.test.ts`; immutable commit `f378447905e0de7f11b170f0ddd473d519a13070`.
+- **Change:** The fresh-process acceptance runner now executes and reports exact Open Codex, Open OpenCode, selected OpenCode exactly-once message, secure Providers `/connect`, terminal-list, and schedule-list scenarios through existing canonical parser/receipt/authority seams. Every local path is bounded to `<=500ms`, provider/target/command binding is exact, queued/read receipts remain truthful, sensitive message content stays out of receipts, and the existing performance test is explicitly identified as the warm P95 gate.
+- **TDD / verification:** RED runner missing matrix plus `2` canonical receipt-wording discoveries; executable `6/6`; fresh-process runner `1/1`; full Instant `27 files / 346 tests`; isolated Vite production build PASS (`5,067` modules); exact Prettier/diff/Gitleaks PASS. Shared TypeScript was externally blocked only by `13` active `Composer.tsx` permission-option diagnostics; no owned/Instant acceptance diagnostic appeared.
+- **Boundary / release:** Every production parser/executor/catalog/authority file stayed read-only. No Assistant/Composer/Chat/Voice, Providers/credentials, repositories, Workbench/Inspector, Pet/native, CAO, billing/production/deployment, Ollama/11434, app control, or unrelated state changed. Own lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31 04:51 CDT — VS-SOL-INSTANT-MEDIA-VERTICAL-20260831-101 claimed
+
+- **Task / branch / base:** `TASK-INSTANT-MEDIA-VERTICAL-20260831`, `integration/UnifiedChungus-final`, base `64a5e3446626fdc7824b564248997a8587774456`, upstream `origin/UnifiedChungus`; no merge/rebase state.
+- **Exact write scope:** `catalog.ts/.test.ts`, `execute.ts/.test.ts`, `authorities/mediaCommands.ts/.test.ts`, `help.test.ts`, this own lock, and append-only ledger entries. Root explicitly granted a clean handoff of `execute.ts/.test.ts` for this milestone only.
+- **Intent / RED boundary:** make all eleven media/ambient commands available through exact slot parsing, executor dispatch, and the existing persisted UI ambient state + AmbientAudioEngine authority, proving canonical persistence/reload, exact track resolution, mute/unmute volume retention, abort/deadline/error truth, `<=500ms` receipts, and generated help.
+- **Protected boundary:** production ambient/UI store files and every file outside exact scope, plus Assistant/Composer/Chat/Voice, Providers/credentials, repositories, Workbench/Inspector, Pet/native, CAO, billing/production/deployment, Ollama/11434, app control, and unrelated state remain untouched.
+
+### 2026-08-31T03:50:12-05:00 — VS-SOL-INSTANT-SLASH-TERMINAL-CATALOG-20260831-92 claimed
+
+- **Task / branch / base:** `TASK-INSTANT-SLASH-TERMINAL-CATALOG-20260831`, `integration/UnifiedChungus-final`, base `f84509993f473398f9e49d046f594316f0777386`.
+- **Approved exact scope / design:** only `app/src/features/instant-command/catalog/terminals.ts` and `.test.ts`; one deterministic slash alias per existing terminal/agent lifecycle ID, retaining human aliases, selector/message parsers, safety, availability, and authority.
+- **Boundary:** `/terminal` remains page navigation and `/connect` remains the secure Providers shortcut. Root catalog/parser/executor/help/suggestions, terminal authority/queue/native, Assistant/Composer/Chat/Voice, credentials, Workbench/Inspector, Pet, CAO, billing/production/deployment, and Ollama/11434 remain untouched.
+
+### 2026-08-31 03:33 CDT — VS-SOL-CAO-TARGET-CLAIM-RESULT-SCHEMA-20260831-89 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-CLAIM-RESULT-SCHEMA-20260831-89`, `integration/UnifiedChungus-final`, base `3aca73e9403231db4ffa006351896c4d65a406b2`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `2c1d904b009f091b9bbd636abe24c5eaa4badfda`.
+- **Change:** Registry claim results now require exact discriminated shapes: applied results contain only `applied` plus bounded targets, rejected results contain only `applied` plus one known canonical reason. Unknown reasons or extra fields are ambiguous malformed outcomes, trigger exact provisional ownership reconciliation, and return stable `cao_target_registry_invalid`; canonical known rejections remain non-mutating.
+- **TDD / verification:** RED `3`; focused `140/140`; adjacent CAO `639/639`; full TypeScript PASS; isolated Vite production build PASS (`5,067` modules, `2m 22s`); exact Prettier/diff/Gitleaks PASS.
+- **Boundary / release:** No scheduled-learning runtime/runner/controls/bootstrap, Operations Floor, Root Workbench/Inspector, Chat, Pet/native, Instant, credentials/production/Ollama, app-control, or unrelated state changed. Own exact-file lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31T03:30:04-05:00 — VS-SOL-CHAT-DISPATCH-T4-FIX1-20260831-87 completed / released
+
+- **Task / ancestry:** `TASK-CHAT-HANDOFF-MULTIPANE-T4-FIX-ROUND-1`, branch `integration/UnifiedChungus-final`; initial fix-round base `160a99f59d8aab3a2540de6ece881165a4a076a0`, final moving-tree parent `3aca73e9403231db4ffa006351896c4d65a406b2`.
+- **Exact files / commit:** only `app/src/features/chat/chatToChatDispatch.ts` and `app/src/features/chat/chatToChatDispatch.test.ts`; immutable commit `53f343d6` (`feat(chat): add canonical chat dispatch service`), `1105 insertions / 395 deletions`.
+- **TDD provenance:** central `TASK-089` stopped and explicitly transferred its five-test RED seed plus incomplete draft; preserved patch `C:\Users\viper\AppData\Local\Temp\TASK-089-overlap-preserved.patch`. RED reproduced `5 failed / 11 passed` before the final implementation.
+- **Change:** dispatch now uses canonical active-account/scope epochs plus exact workspace ownership/project membership before persistence and immediately pre-dispatch; deterministic SHA-256 account/key message claims with durable uniqueness; exact two-part, source/target/digest-bound envelopes; bounded deep projection parsing/sanitization; and exact chat/message runtime acceptance persisted as pending/accepted/failed truth. Same-key replay/reopen emits no duplicate message/event.
+- **Verification:** focused Task 4 `18/18`; adjacent Chat matrix `4 files / 53 tests`; fresh root `npm run typecheck` PASS; exact Prettier/diff checks PASS; Gitleaks `8.30.1` exact staged diff approximately `66.50 KB`, no leaks; post-commit focused `18/18`; exact commit manifest two files only.
+- **Policy seam / ruling:** canonical `Project` schema/repositories expose no versioned target-project cross-workspace handoff policy. Per controller ruling, cross-workspace dispatch fails closed; future enablement requires a separately owned producer in `app/src/lib/db/schema.ts` plus a canonical repository/policy resolver. No speculative schema was added.
+- **Boundary / release:** No Composer, ChatThread/View/Workspace, App, runtime, Schedule, schema/mappers, providers/models/Ollama, native process/controller, production/billing/deployment, or unrelated product file was changed. Own lock marked completed/released; Task 4 report updated; combined official native acceptance remains with the authorized final lane.
+
+### 2026-08-31T03:28:21-05:00 — VS-SOL-INSTANT-SLASH-NAVIGATION-20260831-90 claimed
+
+- **Task / branch / base:** `TASK-INSTANT-SLASH-NAVIGATION-20260831`, `integration/UnifiedChungus-final`, base `3aca73e9403231db4ffa006351896c4d65a406b2`.
+- **Approved exact scope / design:** only `app/src/features/instant-command/catalog/navigation.ts` and `.test.ts`; add unique canonical slash aliases for all `APP_ROUTES` plus settings/history/launcher controls, reusing existing typed route/settings authority with no new executor or UI.
+- **Boundary:** `/connect` remains the sole Providers shortcut. Parser/executor/types/index/help/suggestions, Assistant/Composer/Chat/Voice, authorities, credentials, terminal/native, Workbench/Inspector, Pet, CAO, billing/production/deployment, and Ollama/11434 remain untouched.
+
+### 2026-08-31T03:25:33-05:00 — VS-SOL-INSTANT-HELP-SNAPSHOT-INTEGRITY-20260831-89 completed / released
+
+- **Task / branch / commit:** `TASK-INSTANT-HELP-SNAPSHOT-INTEGRITY-20260831`, `integration/UnifiedChungus-final`, immutable exact commit `54f10304d54daf685c675190f2db3da705410af0` (`fix(instant): contain command help snapshots`).
+- **Exact files / behavior:** only `app/src/features/instant-command/help.ts` and `.test.ts` (`153 insertions, 20 deletions`). Help generation validates a bounded, unique, safe metadata snapshot before projecting immutable items and fails closed on malformed/accessor/non-array/over-limit inputs. Preview rejections preserve bounded actionable parser reasons but replace source-reflecting or sensitive details with one stable local error; `/connect` remains available and targets Settings Providers.
+- **TDD / verification:** RED captured `2` intended failures; focused `9/9`; full Instant `26 files / 330 tests`; fresh shared TypeScript PASS; Vite production build PASS (`5,067` modules); exact Prettier/diff-check and Instant-scoped Gitleaks PASS.
+- **Boundary / release:** No suggestions, Assistant/Composer/Chat/Voice, execute/parse/types/index/catalog/authority, Providers credential, terminal/native, Workbench/Inspector, Pet, CAO, billing/production/deployment, or Ollama/11434 path changed. Own exact-file lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31T03:09:50-05:00 — VS-SOL-INSTANT-SUGGESTION-RANKING-INTEGRITY-20260831-88 completed / released
+
+- **Task / branch / commit:** `TASK-INSTANT-SUGGESTION-RANKING-INTEGRITY-20260831`, `integration/UnifiedChungus-final`, immutable exact commit `24e5614344a2206dfd56b2745efad1ed1acd899f` (`fix(instant): rank catalog suggestions safely`).
+- **Exact files / behavior:** only `app/src/features/instant-command/suggestions.ts` and `.test.ts` (`125 insertions, 2 deletions`). Suggestions now rank exact aliases/examples, then exact IDs, alias prefixes, ID prefixes, and family matches with stable catalog-order ties; validate bounded unique help snapshots before search; and fail closed on malformed, duplicate, non-array, or over-limit inputs. `/connect` remains the first available secure Providers action with catalog-derived safety/availability and no model call.
+- **TDD / verification:** RED captured `2` intended failures; focused `5/5`; full Instant `26 files / 328 tests`; Vite production build PASS (`5,067` modules); exact Prettier/diff-check and Instant-scoped Gitleaks PASS. Owned TypeScript diagnostics are zero; shared typecheck reached only active foreign Chat dispatch test errors (`chatToChatDispatch.test.ts` missing concurrently edited module plus derived `parts`/`text` typing), preserved untouched.
+- **Boundary / release:** No Assistant/Composer/Chat/Voice, execute/parse/types/index, authority/catalog/help, Providers credential, terminal/native, Workbench/Inspector, Pet, CAO, billing/production/deployment, or Ollama/11434 path changed. Own exact-file lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31T03:14:51-05:00 — VS-SOL-INSTANT-HELP-SNAPSHOT-INTEGRITY-20260831-89 claimed
+
+- **Task / branch / base:** `TASK-INSTANT-HELP-SNAPSHOT-INTEGRITY-20260831`, `integration/UnifiedChungus-final`, base `ed77ea6537f0930458aaa0c5acc4b56a8b1f6842`.
+- **Exact scope / intent:** only `app/src/features/instant-command/help.ts` and `.test.ts`; bounded validated immutable help snapshots plus redacted parser-rejection previews, preserving secure `/connect` Providers targeting and local/no-model behavior.
+- **Boundary:** Suggestions, Assistant/Composer/Chat/Voice, execute/parse/types/index/catalog/authorities, Providers credentials, terminal/native, Workbench/Inspector, Pet, CAO, billing/production/deployment, and Ollama/11434 remain untouched.
+### 2026-08-31T03:20:00-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION TASK-092 claim
+
+- Base `ed77ea6537f0930458aaa0c5acc4b56a8b1f6842`; exact scope is `benchmarkApi.ts` plus its test and `BenchmarkIntelligencePage.tsx` plus its test.
+- Goal: reject only exact logical duplicate Artificial Analysis identities while preserving genuine variants, and render stable explicit variant/effort disambiguation for repeated provider/model labels in both chart and table. All other dirty work, active locks, native control, production systems, credentials, and billing remain protected.
+
+### 2026-08-31T03:27:00-05:00 — TASK-092 benchmark identity milestone committed
+
+- Immutable `3aca73e9403231db4ffa006351896c4d65a406b2` contains exactly the four claimed Benchmark files. Logical identity validation now rejects backend aliases for the same normalized provider/model/variant/effort while retaining real effort variants; a stable dataset-wide display projection explicitly distinguishes repeated provider/model rows in both chart and table.
+- Evidence: TDD RED 2; focused 15/15; all Benchmark feature tests 10 files/52 tests; full TypeScript; Vite production build 5,067 modules; exact Prettier, diff, commit-scope, and staged Gitleaks all pass. Native acceptance is queued on this immutable SHA with the sole controller.
+
+### 2026-08-31T03:31:00-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION TASK-093 claim
+
+- Base `3aca73e9403231db4ffa006351896c4d65a406b2`; exact scope is `NewsPanel.tsx` and `NewsPanel.live.test.tsx`.
+- Goal: retain verified items through degraded/failed/partial hourly responses, expose distinct reconnecting/partial-source truth, and use the existing local-calendar section authority so a late yesterday item is not mislabeled Today. Worker/API/deployment/credentials/data, subscriptions, and all other active lanes remain protected.
+
+### 2026-08-31T03:43:00-05:00 — TASK-093 News truth milestone committed
+
+- Immutable `fcd80c2196a6eb434d899aaaecff32ac84c31131` contains exactly `NewsPanel.tsx` and its live test. Non-fresh hourly results now retain and deduplicate last verified cards/repository rows while preserving incoming freshness receipts, the header distinguishes partial-source from reconnecting truth, and section counts use the canonical local-calendar grouping rather than rolling 24 hours.
+- Evidence: TDD RED 3; focused 11/11; all News tests 8 files/37 tests; full TypeScript; Vite production build 5,067 modules; exact Prettier, diff, commit-scope, and staged Gitleaks all pass. Native acceptance is queued without interrupting the current frozen build.
+
+### 2026-08-31T03:46:00-05:00 — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION TASK-094 claim
+
+- Base `fcd80c2196a6eb434d899aaaecff32ac84c31131`; exact scope is Inspector workspace analytics, its performance test, Active Work analytics presentation, and one new rendered analytics regression.
+- Goal: surface persisted request/outcome/file-change receipts, preserve zero truth when receipts are absent, and identify provider/model rows accurately. Status producers/repository/schema and all other active lanes remain protected.
+
+
+
+
+
+### 2026-08-31 03:22 CDT — VS-SOL-CAO-TARGET-REGISTRY-ARRAY-INTEGRITY-20260831-88 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-REGISTRY-ARRAY-INTEGRITY-20260831-88`, `integration/UnifiedChungus-final`, base `ed77ea6537f0930458aaa0c5acc4b56a8b1f6842`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `adfa6928ed510ea2b281ed82c6903234e4f687bf`.
+- **Change:** Every applied-claim, verification, pre-persistence, and release-state registry array now passes one dense, bounded (maximum 32), cloned dependency boundary. Sparse or oversized claim results trigger exact provisional cleanup; corrupt verification or release snapshots fail with stable `cao_target_registry_invalid` without mutating valid durable ownership.
+- **TDD / verification:** RED `5`; focused `136/136`; adjacent CAO `635/635`; full TypeScript PASS; isolated Vite production build PASS (`5,067` modules, `2m 18s`); exact Prettier/diff/Gitleaks PASS.
+- **Boundary / release:** No scheduled-learning runtime/runner/controls/bootstrap, Operations Floor, Root Workbench/Inspector, Chat, Pet/native, Instant, credentials/production/Ollama, app-control, or unrelated state changed. Own exact-file lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+### 2026-08-31T03:33:17-05:00 — VS-CODEX-CHAT-DISPATCH-T4-REREVIEW1-20260831-91 claimed Task 4 fix-round-1 re-review
+
+- **Task / branch / boundary:** `TASK-CHAT-HANDOFF-MULTIPANE-T4-FIX-ROUND-1-REREVIEW`, `integration/UnifiedChungus-final`, immutable package `3aca73e9403231db4ffa006351896c4d65a406b2..53f343d6ec5a11639d1997b4dea2332d7043dff7`; workspace HEAD at claim `2c1d904b009f091b9bbd636abe24c5eaa4badfda`, upstream `origin/UnifiedChungus`, with no merge/rebase/cherry-pick/bisect state.
+- **Exact write scope:** only `task-4-rereview-round1.md`, this own lock, and append-only own ledger checkpoints. Product/test files, index, commits, processes, other locks, unrelated dirty state, native lifecycle, production, billing, deployment, credentials, and external services remain read-only.
+- **Intent:** independently prove whether all prior `1 Critical + 4 Important` findings are closed: canonical account/workspace/project authority plus immediate pre-dispatch epoch validation and cross-workspace fail-closed behavior; durable atomic race/reopen idempotency and cross-target binding; exact digest-bound two-part envelope conflicts; deep bounded runtime sanitation; keyed runtime acceptance with durable pending/accepted/failed replay truth; and meaningful production-boundary tests.
+
+### 2026-08-31T03:45:49-05:00 — VS-SOL-INSTANT-SLASH-NAVIGATION-20260831-90 completed / released
+
+- **Task / branch / commit:** `TASK-INSTANT-SLASH-NAVIGATION-20260831`, `integration/UnifiedChungus-final`, immutable exact commit `a6044fc65a70bba3def757b380961bc551126a03` (`feat(instant): add bounded navigation slash commands`).
+- **Exact files / behavior:** only `app/src/features/instant-command/catalog/navigation.ts` and `.test.ts` (`70 insertions, 7 deletions`). The catalog now provides 18 collision-free targetless top-level `/${route}` commands plus `/settings`, `/back`, `/forward`, `/home`, `/palette`, and `/launcher`, all through existing typed local navigation IDs/slots. The established 46 page aliases plus 18 slash forms exactly retain the authoritative 64-alias bound. Bare `/agent-detail` and `/project-detail` are intentionally excluded because stable entity selection is required. `/connect` remains the sole Providers shortcut.
+- **TDD / verification:** RED `2`; focused `7/7`; adjacent navigation/catalog/parser/help/suggestions `6 files / 96 tests`; full Instant `26 files / 332 tests`; fresh shared TypeScript PASS; isolated Vite production build PASS (`5,067` modules); exact Prettier/diff-check and Instant-scoped Gitleaks PASS. The first shared-dist build reached all modules then hit a concurrent `ENOTEMPTY`; the dedicated temp outDir rerun passed without touching shared output.
+- **Boundary / release:** No parser/executor/types/index/help/suggestions, Assistant/Composer/Chat/Voice, navigation authority, Providers credential, terminal/native, Workbench/Inspector, Pet, CAO, billing/production/deployment, or Ollama/11434 path changed. Own exact-file lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31T03:50:33-05:00 — VS-CODEX-CHAT-DISPATCH-T4-REREVIEW1-20260831-91 completed / released
+
+- **Immutable review / verdict:** fully reviewed `review-3aca73e9..53f343d6.diff` for `3aca73e9403231db4ffa006351896c4d65a406b2..53f343d6ec5a11639d1997b4dea2332d7043dff7`; verdict artifact `task-4-rereview-round1.md` is **FAIL — 1 Critical and 2 Important findings**.
+- **Findings:** accepted/failed state writes use generic `messageRepo.update`, which captures the current sync owner and can enqueue account A's full handoff payload under account B after an account switch; immediate predispatch validates the returned create object rather than re-reading/CASing the durable exact pending envelope; and the deep sanitizer accepts embedded `src=data:` / `href=blob:` payloads. The raw IndexedDB harness bypasses the production repository/sync-owner boundary.
+- **Verification:** exact immutable product diff and package `diff --check` PASS; focused Task 4 `18/18` PASS; fresh adjacent run completed `25/25` before host `ENOSPC` prevented two UI suite setups, so no fresh full-matrix pass is claimed; exact regex probe reproduced both embedded scheme bypasses.
+
+### 2026-08-31T03:53:00-05:00 — VS-SOL-CHAT-DISPATCH-T4-FIX2-20260831-94 claimed Task 4 fix round 2/5
+
+- **Task / branch / base:** `TASK-CHAT-HANDOFF-MULTIPANE-T4-FIX-ROUND-2`, `integration/UnifiedChungus-final`, base `f84509993f473398f9e49d046f594316f0777386`, prior Task 4 commit `53f343d6`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick/bisect state.
+- **Exact write scope:** only `app/src/features/chat/chatToChatDispatch.ts`, `.test.ts`, Task 4 report, this own lock, and append-only own ledger entries. Repository/schema/sync-owner code, UI/runtime/Schedule/native/provider surfaces, other locks/processes, unrelated changes, and user files are protected.
+- **Intent / TDD:** resolve the re-review's Critical account-A payload under account-B sync-owner risk, durable-row immediate predispatch validation plus atomic pending-to-terminal compare-and-set requirement, and embedded/encoded data/blob sanitizer bypasses using production-seam tests.
+- **Blocker / disk rule:** if the existing repository lacks an explicit-owner atomic claim/transition API, report the exact producer seam immediately and implement only non-overlapping fixes; never bypass authority with raw IndexedDB or generic `messageRepo.update`. Preserve the recorded ENOSPC condition and delete nothing owned by the user or other agents.
+- **Boundary / release:** only the review artifact, this own lock, and append-only own ledger entries were written. Product/tests, index, commits, processes, other locks, unrelated dirty state, native lifecycle, production, billing, deployment, credentials, and external services remained untouched. Own claim is completed/released at workspace HEAD `f84509993f473398f9e49d046f594316f0777386`.
+
+### 2026-08-31 03:49 CDT — VS-SOL-CAO-TARGET-LIVE-ROW-SCHEMA-20260831-90 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-LIVE-ROW-SCHEMA-20260831-90`, `integration/UnifiedChungus-final`, base `fcd80c2196a6eb434d899aaaecff32ac84c31131`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `f84509993f473398f9e49d046f594316f0777386`.
+- **Change:** Live target rows now require exact known keys, bounded canonical identities, nonnegative safe revisions, literal booleans, and an absent or valid owner lease ID across claim, verification, pre-persistence, and release reads. Type-confused or metadata-bearing claims trigger exact provisional cleanup; corrupt verification/release snapshots fail with stable `cao_target_registry_invalid` without mutating valid durable ownership.
+- **TDD / verification:** RED `4`; focused `144/144`; adjacent CAO `643/643`; full TypeScript PASS; isolated Vite production build PASS (`5,067` modules, `1m 47s`); exact Prettier/diff/Gitleaks PASS.
+- **Boundary / release:** No scheduled-learning runtime/runner/controls/bootstrap, Operations Floor, Root Workbench/Inspector, Chat, Pet/native, Instant, credentials/production/Ollama, app-control, or unrelated state changed. Own exact-file lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31 03:55 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 completed TASK-094
+
+- **Task / branch / commit:** `TASK-094-INSPECTOR-RUN-FILE-RECEIPT-TRUTH`, `integration/UnifiedChungus-final`, immutable exact commit `c243f26198459c8291928c95e8508ec23809365e` (`fix(inspector): show persisted run receipts`).
+- **Exact files / behavior:** only `app/src/features/inspector/workspaceAnalytics.ts`, `.performance.test.ts`, `InspectorActiveWorkPanel.tsx`, and new `.analytics.test.tsx`. Inspector now projects and displays persisted request/completed/failed/cancelled and line-change receipts; missing evidence remains literal zero; provider/model rollups carry explicit exact identities without inventing retry or concurrency outcomes.
+- **TDD / verification:** strict RED `3`; focused `2 files / 7 tests`; full Inspector `6 files / 15 tests`; full TypeScript plus Vite production build PASS (`5,067` modules); exact Prettier/diff-check/staged Gitleaks PASS.
+- **Native boundary / next:** immutable `c243f261` queued behind the frozen `3aca73e9` and `fcd80c21` batches for the sole native controller. Root is completing the authorized recoverable move of four reproducible obsolete Rust-cache subtrees from C to preserved evidence on D, then continues the next non-overlapping vertical milestone.
+
+### 2026-08-31 03:58 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 claimed TASK-095
+
+- **Branch / base / exact scope:** `integration/UnifiedChungus-final` at `c243f26198459c8291928c95e8508ec23809365e`; only `app/src/lib/db/repositories.ts` and new `repositories.chatDispatch.test.ts`.
+- **Intent:** unblock the active Chat-dispatch owner with canonical transaction-scoped claim and exact pending-to-terminal CAS operations over message/chat/sync-queue/settings, always using the caller's original sync-owner snapshot and failing closed across authority or second-connection drift.
+- **Protected boundaries:** `chatToChatDispatch.ts/.test.ts` remain exclusively owned elsewhere; no schema, migrations, sync-owner authority, Chat UI/runtime, CAO, Instant, Inspector, Pet/native controller, credentials/billing/deployment, or unrelated dirty state will be touched.
+
+### 2026-08-31 04:15 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 completed TASK-095
+
+- **Task / commit / exact scope:** `TASK-095-CHAT-DISPATCH-ATOMIC-REPOSITORY-SEAM`, immutable `18c1a45423a9000f1f8bdcf2769cf5460b53dea6` (`fix(chat): add atomic dispatch persistence`); only `app/src/lib/db/repositories.ts` and new `repositories.chatDispatch.test.ts`.
+- **Behavior:** exported `createChatDispatchRepository(database, clock)` and browser `chatDispatchRepo` atomically claim a user handoff message and exact pending-to-terminal CAS it across `messages`, `chats`, `sync_queue`, and owner `settings`. Both operations use the caller's original `SyncQueueOwnerSnapshot`, revalidate caller authority before commit, roll back on account/scope reversal, preserve durable uniqueness, and reject second-connection pending-envelope drift without new queue persistence.
+- **TDD / verification:** strict RED `4`; focused `4/4`; adjacent repository matrix reached `54/55`, exposing its intentional single-use narrow-helper source boundary; fixed by preserving that boundary through an internal alias, then reran only the failed scenario plus new boundary (`9/9`). Full TypeScript and Vite production build PASS (`5,067` modules); exact Prettier/diff-check/staged Gitleaks PASS.
+- **Handoff / boundary:** immutable API commit handed directly to the active Chat-dispatch owner for integration. Root did not edit or stage `chatToChatDispatch.ts/.test.ts`, schema/migrations, sync-owner authority, UI/runtime, or unrelated dirty state.
+
+### 2026-08-31 04:35 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 claimed TASK-096
+
+- **Branch / base / exact scope:** `integration/UnifiedChungus-final` at `16799ac54a410f8596c7af56dc67fcb1f2b2e85f`; only `app/src/features/jarvis-interaction/ModeIndicator.tsx` and `.test.tsx`.
+- **Intent:** replace the two-step permission UI with one authoritative Agent/Plan/Ask picker. Agent persists `full`; Plan and Ask persist `read-only`; every selection clears approve-all, closes immediately, and restores trigger focus while retaining keyboard navigation and existing runtime mode authority.
+- **Protected boundaries:** permission-store implementation and runtime/provider adapters remain unchanged; active Chat-dispatch, CAO, Instant, Pet/native-controller, credentials/billing/deployment, and unrelated dirty state remain protected.
+
+### 2026-08-31 04:31 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 completed TASK-096
+
+- **Task / commit / exact scope:** `TASK-096-CANONICAL-CHAT-MODE-PICKER`, immutable `23fd2f068dc394e6f736d30d55a55077df707c14` (`fix(chat): simplify mode picker permissions`); only `app/src/features/jarvis-interaction/ModeIndicator.tsx` and `.test.tsx`.
+- **Behavior:** Chat now presents one Agent/Plan/Ask picker with no secondary access or approve-all menu. Choosing Agent persists full access; choosing Plan or Ask persists read-only access; every choice clears stale approve-all, closes immediately, and restores trigger focus while preserving existing runtime/provider mode authority.
+- **TDD / verification:** strict RED `4`; focused `6/6`; complete Jarvis-interaction matrix `12 files / 87 tests`; direct Vite production build PASS (`5,067` modules) to `D:/VibeSpace-Testing/build-task096-20260831-0429`; exact Prettier, diff-check, and staged Gitleaks PASS. Shared TypeScript was externally blocked only by active `chatToChatDispatch.ts/.test.ts` diagnostics, with zero owned-file diagnostics.
+- **Native boundary / next:** immutable `23fd2f06` includes the committed Pet main-thread repair `f2d4a085`; handed to the sole native controller for official-app Pet plus mode-policy acceptance. Root continues the next non-overlapping vertical milestone.
+
+### 2026-08-31 04:38 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 claimed TASK-097
+
+- **Branch / base / exact scope:** `integration/UnifiedChungus-final` at `23fd2f068dc394e6f736d30d55a55077df707c14`; only `permissionAccessStore.ts/.test.ts`, `Composer.tsx`, `Composer.modeSafety.test.ts`, and `SlashCommandTypeahead.tsx/.test.ts`.
+- **Intent:** unify every user-facing mode transition behind Agent=`full`, Plan/Ask=`read-only`, approve-all=`false`; reduce `/permissions` typeahead and picker to exactly Agent/Plan/Ask; reject legacy access/approve-all arguments; preserve exact-turn cancellation and existing provider/runtime authority.
+- **Protected boundaries:** active Chat dispatcher files, provider/runtime/adapters, committed ModeIndicator, CAO, Instant, Pet/native controller, credentials/billing/deployment, and unrelated dirty state remain untouched.
+
+### 2026-08-31 04:01 CDT — VS-SOL-INSTANT-SLASH-TERMINAL-CATALOG-20260831-92 completed / released
+
+- **Task / branch / base:** `TASK-INSTANT-SLASH-TERMINAL-CATALOG-20260831`, `integration/UnifiedChungus-final`, base `f84509993f473398f9e49d046f594316f0777386`.
+- **Exact files / commit:** `app/src/features/instant-command/catalog/terminals.ts`, `.test.ts`; immutable commit `c1b4c9a2fe6f5fcadefa9de363b1db3960b6d3d1`.
+- **Change:** Every established terminal and agent lifecycle ID now has one deterministic collision-free slash form through its existing authority, availability, safety, selector, and bounded message parser. Human aliases remain primary; `/terminal` navigation and secure `/connect` Providers routing remain reserved and untouched.
+- **TDD / verification:** RED `2`; focused `21/21`; full Instant `26 files / 335 tests`; shared TypeScript PASS; isolated Vite production build PASS (`5,067` modules); exact Prettier/diff/Gitleaks PASS.
+- **Boundary / release:** No navigation catalog/root parser/executor, terminal runtime/queue/native adapters, Assistant/Composer/Chat/Voice, Providers/credentials, Workbench/Inspector, Pet, CAO, billing/production/deployment, Ollama/11434, app control, or unrelated state changed. Own exact-file lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31 04:03 CDT — VS-SOL-CAO-TARGET-JOURNAL-LEASE-UNIQUENESS-20260831-91 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-JOURNAL-LEASE-UNIQUENESS-20260831-91`, `integration/UnifiedChungus-final`, base `c243f26198459c8291928c95e8508ec23809365e`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `398ec52502974353e14633655278ea8252905610`.
+- **Change:** A present target-lease payload is no longer treated as absent merely because it is falsey; malformed present payloads fail closed. Recovery also tracks every durable lease identity across the entire bounded scan and rejects duplicates globally, including unrelated duplicate leases split across journal pages, before registry reuse.
+- **TDD / verification:** RED `4`; focused `148/148`; adjacent CAO `647/647`; full TypeScript PASS; isolated Vite production build PASS (`5,067` modules, `2m 10s`); exact Prettier/diff/Gitleaks PASS.
+- **Boundary / release:** No scheduled-learning runtime/runner/controls/bootstrap, Operations Floor, Root Workbench/Inspector, Chat, Pet/native, Instant, credentials/production/Ollama, app-control, or unrelated state changed. Own exact-file lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31 04:12 CDT — VS-SOL-CAO-TARGET-ACK-ENVELOPE-20260831-92 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-ACK-ENVELOPE-20260831-92`, `integration/UnifiedChungus-final`, base `398ec52502974353e14633655278ea8252905610`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `421f4e0d7f7028010b3ceadfe595e1974e02a8df`.
+- **Change:** Direct journal append acknowledgements must now preserve the canonical `context` event type and the lease acquisition persistence timestamp before durable verification. A wrong type or earlier/later acknowledgement timestamp triggers stable `cao_target_lease_persistence_failed` and releases the exact provisional owner even when the durable row itself is valid.
+- **TDD / verification:** RED `3`; focused `151/151`; adjacent CAO `650/650`; full TypeScript PASS; isolated Vite production build PASS (`5,067` modules, `2m 51s`); exact Prettier/diff/Gitleaks PASS.
+- **Boundary / release:** No scheduled-learning runtime/runner/controls/bootstrap, Operations Floor, Root Workbench/Inspector, Chat, Pet/native, Instant, credentials/production/Ollama, app-control, or unrelated state changed. Own exact-file lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31 04:24 CDT — VS-SOL-CAO-TARGET-ACK-SEQUENCE-20260831-93 completed / released
+
+- **Task / branch / base:** `TASK-CAO-TARGET-ACK-SEQUENCE-20260831-93`, `integration/UnifiedChungus-final`, base `16799ac54a410f8596c7af56dc67fcb1f2b2e85f`.
+- **Exact files / commit:** `app/src/lib/jarvis/executionJournal/caoTargetAuthority.ts`, `app/src/lib/jarvis/executionJournal/caoTargetAuthority.test.ts`; immutable commit `31048e9ed94c5a2e1c70943f86ef1e0c1c53f11e`.
+- **Change:** Successful append acknowledgements now remain provisional until their sequence exactly equals the unique durable lease event sequence. Earlier, later, or fabricated acknowledgement sequences fail with stable `cao_target_lease_persistence_failed` and release the exact provisional owner; ordinary restart/recovery and ambiguous-append reconciliation preserve their existing durable-authority semantics.
+- **TDD / verification:** RED `3`; focused `154/154`; adjacent CAO `653/653`; exact Prettier/diff/Gitleaks PASS. Fresh full TypeScript and isolated production build were both externally blocked by the actively owned `chatToChatDispatch.ts/.test.ts` dependency-shape diagnostics (`persistMessage`/`updateMessageParts` plus resulting implicit-any errors); neither owned CAO file produced a diagnostic, and the foreign files remained untouched.
+- **Boundary / release:** No scheduled-learning runtime/runner/controls/bootstrap, Operations Floor, repositories/Chat dispatcher, Root Workbench/Inspector, Pet/native, Instant, credentials/production/Ollama, app-control, or unrelated state changed. Own exact-file lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31 04:39 CDT — VS-SOL-CHAT-DISPATCH-T4-FIX2-20260831-94 verification checkpoint
+
+- **Task / branch / provenance:** `TASK-CHAT-HANDOFF-MULTIPANE-T4-FIX-ROUND-2`, `integration/UnifiedChungus-final`; round base `f84509993f473398f9e49d046f594316f0777386`, current shared HEAD `31048e9ed94c5a2e1c70943f86ef1e0c1c53f11e`, producer seam `18c1a45423a9000f1f8bdcf2769cf5460b53dea6`.
+- **Exact owned product files:** `app/src/features/chat/chatToChatDispatch.ts`, `.test.ts`; working diff `522 insertions / 144 deletions`. The service now uses the repository-owned original-sync-owner atomic claim and exact pending-envelope CAS transition, rereads the durable row immediately before dispatch, leaves pending truth on post-acceptance authority loss/conflict, and rejects decoded embedded `data:` / `blob:` schemes.
+- **TDD / verification:** sanitation RED `3`; authority/durable-CAS RED `3`; focused GREEN `30/30`; production repository plus adjacent Chat matrix GREEN `5 files / 69 tests`; fresh full TypeScript PASS; exact Prettier, diff-check, and two exact-file Gitleaks scans PASS.
+- **Boundary / next:** no repository/schema/sync-owner producer, Chat UI/runtime, provider/native, or unrelated file was edited. Next is exact two-file staging/Gitleaks/commit, then report and own lock release.
+
+### 2026-08-31T04:41:46-05:00 — VS-CODEX-CHAT-DISPATCH-T4-REREVIEW2-20260831-95 claimed Task 4 fix-round-2 final re-review
+
+- **Task / branch / immutable inputs:** `TASK-CHAT-HANDOFF-MULTIPANE-T4-FIX-ROUND-2-REREVIEW`, `integration/UnifiedChungus-final`, exact package `23fd2f068dc394e6f736d30d55a55077df707c14..470c973dcee2cdb6134c5d08baf9e7493e6ed925`, producer API commit `18c1a45423a9000f1f8bdcf2769cf5460b53dea6`, workspace HEAD `470c973dcee2cdb6134c5d08baf9e7493e6ed925`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick/bisect state.
+- **Exact write scope:** only `task-4-rereview-round2.md`, this own agent-scoped lock, and append-only own ledger checkpoints. Product/tests, index, commits, processes, other locks, unrelated dirty state, native lifecycle, production, billing, deployment, credentials, and external services remain read-only.
+- **Intent:** independently verify original-owner atomic claim/CAS across A-to-B changes, immediate durable pending-row validation and second-connection drift handling, embedded/encoded data/blob rejection, and absence of regressions in canonical authority, durable idempotency, exact runtime acceptance, and replay truth.
+
+### 2026-08-31 04:41 CDT — VS-SOL-CHAT-DISPATCH-T4-FIX2-20260831-94 completed / released
+
+- **Task / commit / exact scope:** `TASK-CHAT-HANDOFF-MULTIPANE-T4-FIX-ROUND-2`; immutable exact two-file commit `470c973dcee2cdb6134c5d08baf9e7493e6ed925` (`fix(chat): bind dispatch persistence authority`), containing only `app/src/features/chat/chatToChatDispatch.ts` and `.test.ts` (`522 insertions / 144 deletions`). Producer dependency remains separate at `18c1a45423a9000f1f8bdcf2769cf5460b53dea6`.
+- **Behavior:** canonical pending claim and terminal CAS now retain the original account-bound sync owner, reauthorize atomically, reread exact durable pending truth immediately before dispatch, preserve pending on revocation/drift, and reject decoded embedded data/blob payloads. Real repository/two-connection tests prove claim rollback, no B-owned A payload, CAS drift preservation, durable uniqueness, and reopen replay.
+- **TDD / verification:** sanitizer RED `3`; authority/CAS RED `3`; focused `30/30`; adjacent Chat plus producer repository `5 files / 69 tests`; fresh root TypeScript PASS; exact Prettier, diff-check, full-file Gitleaks, and staged Gitleaks PASS.
+- **Report / boundary:** Task 4 report appended with central producer provenance, controller cross-workspace fail-closed ruling, and preserved/resolved ENOSPC evidence. No repository/schema/sync-owner, Composer/ChatThread/View/Workspace, runtime/Schedule/provider/Ollama/native, unrelated product file, other lock, credential, production, deployment, or billing state was changed. Own lock is completed/released; no unresolved Task 4 seam remains.
+
+### 2026-08-31 04:45 CDT — VS-SOL-CAO-SCHEDULED-RECOVERY-INTEGRATION-20260831-94 completed / released
+
+- **Task / branch / base:** `TASK-CAO-SCHEDULED-RECOVERY-INTEGRATION-20260831-94`, `integration/UnifiedChungus-final`, base `23fd2f068dc394e6f736d30d55a55077df707c14` after the native lane's explicit clean transfer.
+- **Exact files / commit:** `app/src/features/jarvis-memory/caoScheduledLearningRuntime.ts`, `.test.ts`, `JarvisLearningControls.tsx`, `.test.tsx`, `app/src/features/schedule/jarvisScheduleRunner.ts`, `.test.ts`; immutable commit `7b0ab1488d6fbf6cd7c67d853e0176d012494c33`.
+- **Change:** Manual force now enumerates only exact active account/workspace/project CAO scopes, deduplicates identical schedules, ignores paused and drifted rows, recovers durable pending work before a new force pass, and stops truthfully on failed/cancelled recovery. Runtime restart restores the pending pass's original trigger; controls initialize and subscribe to canonical account-filtered runtime status. The runner refuses foreign-workspace rows without mutation and persists a stable redacted error for same-workspace project drift before any dispatch or recovery.
+- **TDD / verification:** RED `7` across trigger recovery, manual-force recovery/discovery, UI reload projection, workspace/project drift, and foreign-workspace no-mutation; focused final `3 files / 38 tests`; affected scheduled-learning/schedule/Operations matrix `9 files / 121 tests`; full TypeScript PASS; direct isolated Vite production build PASS (`5,067` modules, `1m 9s`); exact Prettier/diff/Gitleaks PASS.
+- **Boundary / release:** `jarvisSchedules.ts/.test.ts` remained read-only; no protected controller contract, repository/Chat dispatcher, Instant, Inspector/Workbench, Pet/native, credentials/billing/deployment, production/Ollama, app control, or unrelated state changed. Own exact-file lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31 04:47 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 milestone checkpoint
+
+- **Task / commit:** `TASK-097-CANONICAL-CHAT-MODE-SLASH-AUTHORITY`; immutable exact six-file commit `cb46d2fcc09ba4c1672d14cb3f4e93515494eda5` (`fix(chat): unify slash mode permissions`).
+- **Behavior:** Composer, slash commands, the picker, and Shift+Tab now use the same canonical transition: Agent persists full access; Plan and Ask persist read-only access; all mode transitions clear approve-all. `/permissions` exposes only Agent, Plan, Ask, status/policy and rejects legacy read/write/full/approve-all arguments.
+- **TDD / verification:** strict RED `3`; focused `3 files / 32 tests`; affected Chat plus jarvis-interaction matrix `35 files / 220 tests`; full TypeScript PASS; full production Vite build PASS (`5,067` modules); exact Prettier, diff-check, and staged Gitleaks PASS.
+- **Boundary / next:** no provider/runtime adapter, dispatcher, ModeIndicator, CAO, Instant, Pet/native, credential, billing, deployment, or unrelated state changed. Immutable commit is queued for official native acceptance; Root immediately continues the next non-overlapping executable release slice.
+
+### 2026-08-31 05:02 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 claimed progressive OpenCode activity semantics
+
+- **Task / branch / base:** `TASK-098-PROGRESSIVE-OPENCODE-ACTIVITY-SEMANTICS`, `integration/UnifiedChungus-final`, shared base `64a5e3446626fdc7824b564248997a8587774456`.
+- **Exact owned files:** new `app/src/lib/ai/openCodeLiveToolActivity.ts` + `.test.ts`, and `app/src/lib/ai/runtime.ts` only.
+- **Intent:** project every live OpenCode lifecycle callback immediately into truthful Read, Search, Command, Edit, or Verify semantics with safe leaf-file labels; retain exact-call dedupe/stream order and stop labeling every tool as a file read.
+- **Boundary / next:** no Chat UI/ledger component, OpenCode transport/timeline, provider identity, Composer/modes/dispatcher, CAO, Instant, Pet/native, credential, billing, deployment, or unrelated state is owned. Strict pure-projection RED precedes minimal runtime wiring and affected gates.
+
+### 2026-08-31 05:03 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 progressive activity milestone complete
+
+- **Task / commit:** `TASK-098-PROGRESSIVE-OPENCODE-ACTIVITY-SEMANTICS`; immutable exact three-file commit `d1367862e1b217a75d2c7a7fee6befe97e4175fa` (`fix(chat): stream truthful tool activity`).
+- **Behavior:** each live OpenCode tool callback now immediately projects truthful Read, Search, Command, Edit, Verify, or generic-tool semantics with running/done/error state and safe leaf-file labels. Existing exact call-ID dedupe, chronological streaming, and final persisted OpenCode timeline are preserved.
+- **TDD / verification:** strict missing-module RED; pure projection `9/9`; adjacent public timeline plus activity-ledger `35/35`; runtime suite `153/154` exposed one stale file-label assertion, followed by root-cause correction and the failed runtime scenario `1/1` plus projection boundary `9/9`; full TypeScript PASS; full Vite production build PASS (`5,069` modules); exact Prettier, diff-check, and staged Gitleaks PASS.
+- **Boundary / next:** no Chat UI/ledger renderer, OpenCode transport/timeline, provider identity, Composer/modes/dispatcher, CAO, Instant, Pet/native, credential, billing, deployment, or unrelated state changed. Immutable native live-conversation acceptance is queued while Root continues the next non-overlapping slice.
+
+### 2026-08-31 04:48 CDT — VS-SOL-CAO-OPERATIONS-FLOOR-20260831-95 claimed
+
+- **Task / branch / base:** `TASK-CAO-OPERATIONS-FLOOR-20260831-95`, `integration/UnifiedChungus-final`, base `64a5e3446626fdc7824b564248997a8587774456`.
+- **Exact product ownership:** only `app/src/features/schedule/CaoOperationsFloorProjection.tsx` and `.test.tsx`; both were clean at claim. The prior Operations recovery lock is released with no product changes.
+- **Approved intent:** canonical exact-scope runtime status on reload, compact overview plus accessible durable drill-down, last-verified degraded refresh truth, and canonical retry recovery. No scheduled-learning runtime/persistence authority or unrelated system is in scope.
+- **Next:** RED-first focused tests, smallest projection implementation, affected/typecheck/build/format/security gates, exact-file commit, native packet, immediate own-lock release.
+
+### 2026-08-31 05:01 CDT — VS-SOL-CAO-OPERATIONS-FLOOR-20260831-95 completed / released
+
+- **Task / immutable commit / exact scope:** `TASK-CAO-OPERATIONS-FLOOR-20260831-95`; `00c257f9` (`feat(cao): recover operations floor truth`), containing only `app/src/features/schedule/CaoOperationsFloorProjection.tsx` and `.test.tsx` (`212 insertions / 28 deletions`).
+- **Behavior:** the production floor restores exact-scope canonical runtime status after reload, keeps overview truth compact, exposes verified history and pending recovery identity through native accessible disclosures, preserves the last verified snapshot when a terminal refresh degrades, and retries empty/unavailable/degraded hydration through the canonical persistence loader. Foreign scope status and stale async loads remain suppressed.
+- **TDD / verification:** intended RED `5`; focused final `1 file / 9 tests`; affected CAO schedule/learning matrix `9 files / 83 tests`; fresh full TypeScript PASS; direct isolated Vite production build PASS (`5,069` modules); exact Prettier, diff-check, diff/full-file Gitleaks PASS.
+- **Boundary / release:** no scheduled-learning runtime/runner/persistence/control, Chat, Instant, Pet/native, Workbench, credential/billing/deployment, app-control, or unrelated product state changed. Own lock completed/released immediately; native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31 05:12 CDT — VS-SOL-CAO-CHAT-CONTROL-20260831-96 claimed
+
+- **Task / branch / base:** `TASK-CAO-CHAT-CONTROL-20260831-96`, `integration/UnifiedChungus-final`, base `bfc21825d5b10c0ae5f495e7d3e0bff9517158f8`.
+- **Exact ownership:** CAO `bootstrap.ts/.test.ts`, new `controlCommand.ts/.test.ts` and `controlRuntime.ts/.test.ts`, plus the explicitly transferred CAO-only seam in `Composer.tsx` and `Composer.caoBootstrap.test.ts`; all eight were clean at claim.
+- **Approved boundary:** one strict explicit/natural-language parser; exact project-scoped chat/terminal resolution; durable approval/lease/action/receipt state machine with cancellation, reload recovery, duplicate prevention, and redaction. Canonical production authority must fail closed if unavailable; no parallel registry or runtime/schema/repository mutation is allowed.
+- **Next:** RED-first contract/runtime/Composer tests, smallest implementation, focused/adjacent/typecheck/build/format/security gates, exact-file commit, native packet, immediate own-lock release.
+
+### 2026-08-31 05:21 CDT — VS-SOL-CAO-CHAT-CONTROL-20260831-96 completed / released
+
+- **Task / immutable commit / exact scope:** `TASK-CAO-CHAT-CONTROL-20260831-96`; `eac38e69de63f65047703f1635b1176925557c38` (`feat(cao): gate exact chat controls`), containing exactly the eight claimed CAO bootstrap/command/runtime and Composer seam files (`834 insertions / 1 deletion`).
+- **Behavior:** confirmed `@CAO` and strict ordinary-language control requests share one parser for supervise/diagnose/restart/verify/grade/force-check/cancel; 1–32 chat/terminal targets resolve only by exact ID or unique exact title inside the active account/workspace/project. The durable injected controller persists before effects, requires approvals for restart/force-check, leases and revalidates exact target revisions, returns bounded redacted receipts, recovers pending approval/terminal truth, prevents duplicate execution, cancels only the exact request, and does not replay uncertain mutation after reload.
+- **Production truth:** the current repository has an abstract `CaoTargetRegistry` but no safe canonical production composition. Composer validates exact scope/targets, then fails closed with `cao_control_authority_unavailable`; it never falls through to provider execution or invents a parallel registry. This is the exact approved dependency boundary for the next authority-composition milestone.
+- **Verification:** focused CAO/Composer `4 files / 43 tests`; adjacent Composer boundary `8 files / 74 tests`; direct isolated Vite production build PASS (`5,070` modules); exact Prettier, diff-check, full-file/diff/commit Gitleaks PASS. Full TypeScript cleared all owned files and stopped only on concurrent ADE tests: missing `createChatGptAdeRunSeed`, `readLatestChatGptAdeRecovery`, missing `productionChatGptAdeBinding`, and downstream tuple/undefined diagnostics.
+- **Boundary / release:** no AI runtime/activity, database schema/repository, terminal UI, Schedule, Instant, Pet/native, Workbench, credential/billing/deployment, app control, or unrelated product state changed. Own lock completed/released immediately; native packet delegates only fail-closed ingress/target validation until canonical registry composition lands.
+
+### 2026-08-31T04:52:57-05:00 — VS-CODEX-CHAT-DISPATCH-T4-REREVIEW2-20260831-95 completed / released
+
+- **Immutable review / verdict:** fully reviewed `review-23fd2f06..470c973d.diff`, Task 4 commit `470c973dcee2cdb6134c5d08baf9e7493e6ed925`, and producer API commit `18c1a45423a9000f1f8bdcf2769cf5460b53dea6`. Verdict artifact `task-4-rereview-round2.md` is **FAIL — 1 Important finding**.
+- **Closed boundaries:** the original owner snapshot now drives atomic claim/CAS queue writes; A-to-B reversal cannot enqueue A payload under B; durable pending truth is re-read immediately predispatch; exact-parts CAS preserves second-connection drift/revocation; and authority/idempotency/cross-target/runtime acceptance/replay behavior remains intact.
+- **Remaining finding:** percent/entity decoding can yield ASCII tab/newline *inside* `data`/`blob` (`d%09ata:`, `b&#9;lob:`), which the contiguous-scheme regex accepts although the standard URL parser removes that whitespace and resolves the unsafe scheme. Malformed-neighbor percent input and more-than-three encoding layers also bypass the decoder.
+- **Fresh verification:** exact Task 4/producer tree equality and package diff-check PASS; production repository plus adjacent Chat matrix `5 files / 69 tests` PASS; root TypeScript PASS; exact decoder and standard URL probes reproduced the remaining bypass.
+- **Boundary / release:** only the verdict artifact, this own lock, and append-only own ledger entries were written. Product/tests, index, commits, processes, other locks, unrelated dirty state, native lifecycle, production, billing, deployment, credentials, and external services remained untouched. Own claim released at shared workspace HEAD `64a5e3446626fdc7824b564248997a8587774456`.
+
+### 2026-08-31 05:04 CDT — VS-SOL-CHAT-DISPATCH-T4-FIX3-20260831-96 claimed
+
+- **Task / branch / base:** `TASK-CHAT-HANDOFF-MULTIPANE-T4-FIX-ROUND-3`, `integration/UnifiedChungus-final`, base `64a5e3446626fdc7824b564248997a8587774456`; prior Task 4 commit `470c973dcee2cdb6134c5d08baf9e7493e6ed925`.
+- **Exact write scope:** only `app/src/features/chat/chatToChatDispatch.ts`, `.test.ts`, Task 4 report, this own lock, and append-only own ledger entries. Both product files are clean and the independent review lock is completed/released.
+- **Intent / next:** reproduce encoded ASCII-control scheme splitting, malformed-neighbor percent suppression, and deeper-layer bypasses as service-level RED fixtures; then replace the fixed-pass/all-or-nothing decoder with bounded total canonicalization while preserving benign text bytes.
+- **Protected boundary:** authority/CAS, repository/schema/sync-owner, Chat UI/runtime/Schedule/provider/native, other locks/processes, and unrelated dirty state remain untouched.
+
+### 2026-08-31 05:04 CDT — VS-SOL-INSTANT-MEDIA-VERTICAL-20260831-101 completed / released
+
+- **Task / immutable commit / exact scope:** `TASK-INSTANT-MEDIA-VERTICAL-20260831`; `bfc21825d5b10c0ae5f495e7d3e0bff9517158f8` (`feat(instant): execute media commands`), containing only the seven claimed Instant catalog/executor/media-authority/help source and test files (`491 insertions / 12 deletions`).
+- **Behavior:** all eleven media commands (`play`, `pause`, `resume`, `stop`, `next`, `previous`, `track`, `volume`, `mute`, `unmute`, `ambient`) are available and discoverable, parse bounded typed slots, and execute locally through the existing persisted UI ambient state plus `AmbientAudioEngine`. Track selection resolves exact stable IDs before unique normalized labels; volume/track/always-play persist canonically; mute preserves the persisted unmuted volume; reload reconstructs real state without a second store.
+- **Truth / safety boundaries:** exact-schema dispatch, bounded track inventory, missing/ambiguous selection rejection, abort checks before and after authority awaits, content-minimal redacted errors, local/no-routing-model execution, and truthful completed/failed receipts remain enforced. Secure `/connect`, Open Codex/OpenCode, provider credentials, and every non-Instant authority remain unchanged.
+- **TDD / verification:** intended RED `7`; focused final `4 files / 70 tests`; full Instant `27 files / 362 tests`; fresh shared TypeScript PASS; direct isolated Vite production build PASS (`5,069` modules); exact Prettier, diff-check, and full Instant-source Gitleaks PASS.
+- **Boundary / release:** no production ambient engine/store file, Chat/Voice, Providers/credentials, repositories, Workbench/Inspector, Pet/native, CAO, billing/deployment, Ollama/11434, or unrelated state changed. Own lock completed/released immediately; official native acceptance delegated to `/root/native_resume`.
+
+### 2026-08-31 05:14 CDT — VS-SOL-CHAT-DISPATCH-T4-FIX3-20260831-96 verification checkpoint
+
+- **Task / branch / current shared HEAD:** `TASK-CHAT-HANDOFF-MULTIPANE-T4-FIX-ROUND-3`, `integration/UnifiedChungus-final`, current `bfc21825d5b10c0ae5f495e7d3e0bff9517158f8`; round base remains `64a5e3446626fdc7824b564248997a8587774456`.
+- **Exact owned product diff:** only `app/src/features/chat/chatToChatDispatch.ts` and `.test.ts`, `115 insertions / 27 deletions`. Fixed-pass/global percent decoding is replaced by bounded fixed-point per-run decoding, layered entity normalization, control-stripped detection-only probing, and fail-closed work/output/pass budgets.
+- **TDD / verification:** intended RED `9 failed / 31 passed`; final focused `40/40`; final adjacent Chat plus producer repository `5 files / 79 tests`; fresh full TypeScript PASS; exact Prettier, diff-check, and full-file Gitleaks PASS. Benign percent/data/blob text remains byte-preserved in persistence and runtime text.
+- **Boundary / next:** authority/CAS/repository/UI/runtime/native and all unrelated files remain untouched. Next is exact two-file staging/staged Gitleaks/commit, report append, and own lock release.
+
+### 2026-08-31 05:09 CDT — VS-CODEX-ROOT TASK-099 claimed
+
+- **Task / branch / base:** `TASK-099-EMPTY-CONTEXT-CONTINUATION`, `integration/UnifiedChungus-final`, base `bfc21825d5b10c0ae5f495e7d3e0bff9517158f8`.
+- **Exact ownership:** Tool Gateway production/runtime and OpenCode public-timeline/persistent-adapter source plus their four focused tests (eight clean files). Active CAO, external-app, Instant, Pet/native, Composer/dispatcher, runtime, credentials, billing/deployment, and unrelated dirty state are excluded.
+- **Intent / safety:** keep a typed empty/unavailable Context retrieval visibly failed with a precise bounded receipt while permitting the same authenticated OpenCode turn to continue only context-independent work. Generic tool errors, malformed envelopes, authority/scope failures, cancellation, and unsupported grounded claims remain fail-closed; no citation is manufactured.
+- **Next:** RED-first vertical regressions, minimal typed implementation, focused/affected/typecheck/build/format/security gates, exact-file commit, then immutable official-app acceptance packet.
+
+### 2026-08-31 05:21 CDT — VS-CODEX-ROOT TASK-099 committed
+
+- **Immutable commit / exact scope:** `b1fdee45d79c145a8f1fed9a26b626ee389bc2ec` (`fix(context): continue after empty retrieval`), exactly seven Tool Gateway production/runtime, OpenCode public-timeline, and focused test files (`307 insertions / 14 deletions`).
+- **Behavior:** a typed required-Context-unavailable receipt retains its exact bounded failure and project scope, projects publicly as `Context unavailable`, remains visibly failed, creates no citation, and permits the same authenticated OpenCode turn to continue only later context-independent work. Generic Context/tool, malformed, authority, scope, provider, and cancellation failures remain fail-closed.
+- **Verification:** intended RED `4`; focused final `4 files / 135 tests`; affected Context/Gateway/SiYuan/OpenCode matrix `10 files / 305 tests`; PR31 OpenCode/RLM static invariant PASS; isolated Vite production build PASS (`5,070` modules); exact Prettier, diff-check, and staged Gitleaks PASS.
+- **Pending boundary:** full TypeScript reached only concurrent ADE RED diagnostics (missing new module/exports and its dependent tuple types), with zero owned diagnostics; it remains mandatory at the next stable shared boundary. Immutable native acceptance is queued behind the sole controller's proven Pet first-failure repair; no native claim is made yet.
+
+### 2026-08-31 05:16 CDT — VS-SOL-CHAT-DISPATCH-T4-FIX3-20260831-96 completed / released
+
+- **Task / commit / exact scope:** `TASK-CHAT-HANDOFF-MULTIPANE-T4-FIX-ROUND-3`; immutable exact two-file commit `1915b1c43c38a3be642d6f2bdfcaae3687ec096d` (`fix(chat): harden handoff scheme sanitation`), containing only `app/src/features/chat/chatToChatDispatch.ts` and `.test.ts` (`115 insertions / 27 deletions`).
+- **Behavior:** unsafe `data:` / `blob:` detection now uses bounded fixed-point percent/entity canonicalization, strips URL-parser-ignored and null-ish ASCII controls only in the detection probe, decodes valid runs independently of malformed neighbors, and rejects closed on output/work/pass exhaustion. Original benign text remains unchanged.
+- **TDD / verification:** intended RED `9 failed / 31 passed`; final focused `40/40`; adjacent Chat plus producer repository `5 files / 79 tests`; fresh full TypeScript PASS; exact Prettier, diff-check, full-file Gitleaks, and staged Gitleaks PASS.
+- **Report / boundary:** Task 4 report appended. Authority/CAS/repository/schema/sync-owner, Composer/ChatThread/View/Workspace, runtime/Schedule/provider/Ollama/native, unrelated product state, other locks, credentials, production, deployment, and billing remained untouched. Own lock is completed/released; no remaining Task 4 finding or producer seam.
+
+### 2026-08-31T05:12:15-05:00 — VS-CODEX-CHAT-DISPATCH-T4-REREVIEW3-20260831-97 claimed Task 4 fix-round-3 final re-review
+
+- **Task / branch / immutable package:** `TASK-CHAT-HANDOFF-MULTIPANE-T4-FIX-ROUND-3-REREVIEW`, `integration/UnifiedChungus-final`, exact `a04a741df1163365bdf34f9b383f2ee61bd02f7b..1915b1c43c38a3be642d6f2bdfcaae3687ec096d`, workspace HEAD `1915b1c43c38a3be642d6f2bdfcaae3687ec096d`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick/bisect state.
+- **Exact write scope:** only `task-4-rereview-round3.md`, this own agent-scoped lock, and append-only own ledger checkpoints. Product/tests, index, commits, processes, other locks, unrelated dirty state, native lifecycle, production, billing, deployment, credentials, and external services remain read-only.
+- **Intent:** independently verify encoded ASCII-control, deep-layer, malformed-neighbor, and mixed percent/entity `data:`/`blob:` rejection; bounded total sanitizer work/output/non-convergence; byte-preserved benign text; and no authority/CAS/idempotency/runtime regression.
+
+### 2026-08-31T05:23:11-05:00 — VS-CODEX-CHAT-DISPATCH-T4-REREVIEW3-20260831-97 completed / released
+
+- **Immutable review / verdict:** fully reviewed exact package `a04a741df1163365bdf34f9b383f2ee61bd02f7b..1915b1c43c38a3be642d6f2bdfcaae3687ec096d`; verdict artifact `task-4-rereview-round3.md` is **PASS** with no Critical, Important, or Minor finding.
+- **Closed boundary:** per-run percent decoding, layered entity/NFKC canonicalization, control-stripped detection-only probing, and fail-closed pass/output/work budgets close control-split, malformed-neighbor, mixed, and deep `data:`/`blob:` encodings without rewriting benign source bytes. Authority/original-owner atomic claim/CAS, durable predispatch validation, idempotency, runtime acceptance, and replay behavior are untouched.
+- **Fresh verification:** exact Task 4 tree equality and package diff-check PASS; production repository plus adjacent Chat matrix `5 files / 79 tests` PASS; independent exact-algorithm probes found zero misses across 44 unsafe cases and zero benign false positives, with representative 64K probes completing in milliseconds. Fresh root typecheck was externally blocked only by active ADE diagnostics and emitted no Task 4 diagnostic.
+- **Boundary / release:** only the verdict artifact, this own lock, and append-only own ledger entries were written. Product/tests, index, commits, processes, other locks, unrelated dirty state, native lifecycle, production, billing, deployment, credentials, and external services remained untouched. Own claim released at shared workspace HEAD `b1fdee45d79c145a8f1fed9a26b626ee389bc2ec`.
+### 2026-08-31 05:20 CDT — VS-SOL-WORKBENCH-ADE-RUNNABLE-20260831-102 claimed
+
+- **Task / branch / base:** `TASK-WORKBENCH-ADE-RUNNABLE-20260831`, `integration/UnifiedChungus-final`, base `bfc21825d5b10c0ae5f495e7d3e0bff9517158f8`.
+- **Exact write scope:** only `productionChatGptAdeBinding.ts/.test.ts`, `productionChatGptAde.ts/.test.ts`, `ChatGptAdePage.tsx/.test.tsx`, and Workbench `embeddedPanels.test.tsx`.
+- **Approved intent:** make the existing persisted Workbench ADE runnable for read-capable tasks only through the authenticated exact selected OpenCode route, shared production Context Gateway/RLM/SiYuan, existing Tool Gateway authority, and durable Jarvis lifecycle. Exact provider-verified live effort/Fast metadata is mandatory; absent or drifted authority fails closed with zero dispatch.
+- **Protected boundary:** write/full ADE actions remain disabled pending canonical approval UI. Chat/Composer/runtime, gateway/RLM/SiYuan internals, Providers credentials, native/Pet, CAO, billing/deployment, Ollama/11434, other locks, and unrelated dirty state remain untouched.
+
+### 2026-08-31T05:26:01-05:00 — VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34 Task 5 ownership transfer
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `b1fdee45d79c145a8f1fed9a26b626ee389bc2ec`; Task 2 historical evidence and the completed Task 3-4 transfers remain preserved under this lane.
+- Released exclusively for fresh claim by `/root/chat_supervision_task5`: `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-5-report.md`, `app/src/features/schedule/chatSupervision.ts`, `app/src/features/schedule/chatSupervision.test.ts`, `app/src/features/schedule/jarvisScheduleDispatch.ts`, and `app/src/features/schedule/jarvisScheduleDispatch.supervision.test.ts`.
+- The four Task 5 product/test paths were removed from this lane's active exact scope and recorded with the Task 5 report as `released_for_fresh_claim`. No product, test, report, index, or commit was changed during this coordination-only handoff.
+- All existing Task 6-7 reservations in `VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34` remain active and unchanged; this transfer conveys no authority over those paths.
+
+### 2026-08-31 05:32 CDT — VS-CODEX-ROOT TASK-100 claimed
+
+- **Task / branch / base:** `TASK-100-DB-RELOAD-CYCLE-RECOVERY`, `integration/UnifiedChungus-final`, base `b1fdee45d79c145a8f1fed9a26b626ee389bc2ec`.
+- **Exact ownership:** new DB leaf authority and cycle regression plus `lib/db/index.ts`, `repositories.ts`, `jarvisRepositories.ts`, and `seed.ts`. Schema/migrations, active ADE/CAO, Chat/runtime, Pet/native Rust, credentials, billing/deployment, and unrelated dirty state remain excluded.
+- **Intent:** remove the native reload `Cannot access 'db' before initialization` ESM cycle without changing the public DB API, schema/version, persistent rows, repository contracts, seeding, or open/retry semantics.
+- **Next:** strict source/module RED, minimal leaf extraction, focused and adjacent database gates, typecheck/build/format/security, exact commit, then immutable native reload acceptance.
+- **Scope expansion:** `app/src/lib/db/seed.test.ts` is added solely to move its focused mock to the new singleton leaf; no behavior or assertion is weakened.
+- **Focused-harness expansion:** `repositories.connection.test.ts`, `repositories.initialization.test.ts`, and `index.migration.test.ts` are added only so their mocks/source guard follow the relocated DB leaf. No database behavior, schema, version, or assertion is relaxed.
+
+### 2026-08-31 05:40 CDT — VS-CODEX-ROOT TASK-100 committed
+
+- **Immutable commit / exact scope:** `d1f2b50af9b766825742a670b7001d419e045fc1` (`fix(storage): break reload database cycle`), exactly ten DB leaf/barrel, runtime-consumer, and focused harness files (`280 insertions / 258 deletions`).
+- **Behavior:** the Dexie singleton and unchanged V1–V13 declarations moved to an import-safe leaf. Runtime repositories and seeding import that leaf, so public-barrel re-exports cannot read `db` before initialization during native reload; the public `@/lib/db` API and persisted schema remain unchanged.
+- **Verification:** strict cycle-boundary RED `2`; focused final `57/57`; complete `lib/db` matrix `20 files / 252 tests`; full TypeScript PASS; isolated Vite production build PASS (`5,072` modules); exact Prettier, diff-check, and staged Gitleaks PASS.
+- **Next:** integrate the completed exact Pet host repair, freeze one immutable C-drive SHA, and queue combined official-app Pet plus reload/reconnect acceptance with the sole native controller.
+
+### 2026-08-31 05:42 CDT — Pet repair integrated; TASK-101 claimed
+
+- **Integrated immutable boundary:** `6b13b0e8` applies the native lane's exact `74ecd644` Pet setup-host repair atop DB reload commit `d1f2b50a`; only `app/src-tauri/src/pets.rs`, with inherited focused/full Pet `43/43`, cargo fmt, diff, and Gitleaks PASS. The sole controller owns official C-drive acceptance.
+- **TASK-101 exact ownership:** only `app/src/lib/ai/adapters/opencodePersistent.ts` and `.test.ts` at base `6b13b0e8`.
+- **Intent / safety:** exact live combined effort/Fast variants and explicitly provider-exposed capabilities must survive into observed Gateway/ADE authority. No provider-default/standard value may replace a proven `high-fast` completion; absent/malformed/catalog-missing or route/model/variant drift remains fail-closed.
+- **Next:** strict parser/authority RED, minimal repair, focused and affected gates, exact commit, then immutable live OpenCode/ADE acceptance packet.
+
+### 2026-08-31 05:45 CDT — VS-CODEX-ROOT TASK-101 committed
+
+- **Immutable commit / exact scope:** `ea10a3960b1dfcfc414f558011915c594570e051` (`fix(opencode): preserve observed fast variant`), exactly `opencodePersistent.ts/.test.ts` (`147 insertions / 11 deletions`).
+- **Behavior:** exact provider-reported capability fields are retained; token-exact combined variants such as `high-fast` preserve both reasoning effort and Fast semantics; observed Gateway/ADE authority now records exact `high` + `high-fast` rather than invented `provider-default` + `standard`.
+- **Safety:** malformed capability metadata fails closed, partial words never imply Fast, and absent/catalog-missing or provider/model/variant/service-tier drift still fails closed.
+- **Verification:** strict RED `2`; focused final `76/76`; affected OpenCode controls/SDK/ADE matrix `12 files / 153 tests`; full TypeScript PASS; isolated Vite build PASS (`5,072` modules); exact Prettier, diff-check, and staged Gitleaks PASS.
+- **Native boundary / next:** the sole controller is finishing the already-frozen `6b13b0e8` Pet/reload batch. `ea10a396` is queued next for authenticated OpenCode/ADE/Context live acceptance without interrupting the current immutable run.
+
+### 2026-08-31 05:48 CDT — canonical CAO target-registry handoff
+
+- **Authoritative clean transfer:** controller `/root` releases clean `app/src/lib/db/schema.ts` and `index.migration.test.ts` from the Codex/OpenCodex protected set to `/root/cao_chat_resume`, together with new `features/cao/productionTargetRegistry.ts/.test.ts`, at base `ea10a396`.
+- **Purpose:** finish the previously approved canonical Dexie-backed exact chat/terminal target claims: atomic whole-set ownership, scope/revision and terminal-state validation, expiry/orphan recovery, idempotent same-run reload, exact release, and integration with committed CAO production composition. No parallel store or in-memory/Web Locks authority is allowed.
+- **Boundary:** DB singleton/barrel/repositories, remaining backend-protected Chat/runtime/router/native files, OpenCode/ADE, Pet/native controller, credentials, billing/deployment, and unrelated state remain untouched.
+### 2026-08-31 05:38 CDT — VS-SOL-CAO-PRODUCTION-CONTROL-RUNTIME-20260831-103 claimed
+
+- **Task / branch / base:** `TASK-CAO-PRODUCTION-CONTROL-RUNTIME-20260831-103`, `integration/UnifiedChungus-final`, base `b1fdee45d79c145a8f1fed9a26b626ee389bc2ec`.
+- **Exact ownership:** new `app/src/features/cao/productionControlRuntime.ts` and `.test.ts` only; both absent at claim.
+- **Approved boundary:** compose the committed control state machine with injected canonical Jarvis record persistence, existing run/event/approval read authorities, injected `CaoTargetRegistry`, and exact action/cancellation adapters. Prove exact identity and ordering, approvals, cancellation, reconnect/reload, dedupe/recovery, and fail-closed missing adapters without introducing a store or registry.
+- **Next:** RED-first focused tests, smallest composition, focused/adjacent/typecheck/build/format/security gates, exact-file commit, native packet, immediate own-lock release.
+
+### 2026-08-31 05:43 CDT — VS-SOL-CAO-PRODUCTION-CONTROL-RUNTIME-20260831-103 completed / released
+
+- **Task / immutable commit / exact scope:** `TASK-CAO-PRODUCTION-CONTROL-RUNTIME-20260831-103`; `759a1b8a834044e38b49d89386e2c4744e40e6c2` (`feat(cao): compose production control runtime`), containing only new `productionControlRuntime.ts/.test.ts` (`577 insertions`).
+- **Behavior:** composes the committed CAO controller with an injected canonical Jarvis record CAS adapter, execution journal/event repository, canonical approval rows, `CaoTargetRegistry`, and exact per-action/cancellation adapters. Exact target order and revision are revalidated through durable target leases; requests reload/dedupe across runtime instances, approved mutations resume once, exact cancellation routes by durable run identity, uncertain mutations fail recovery-closed, and missing/malformed adapters fail before persistence or effects. No registry/store/schema/UI/runtime parallel authority was introduced.
+- **TDD / verification:** missing-module RED; focused final `5/5`; adjacent CAO command/control/target authority `4 files / 182 tests`; fresh full TypeScript PASS; isolated Vite production build PASS (`5,072` modules); exact Prettier/diff-check plus full-file/staged/commit Gitleaks PASS.
+- **Boundary / release:** no schema/migration/DB implementation, Composer/dispatcher/AI runtime, ADE, Instant, Pet/native, credentials/billing/deployment, app control, or unrelated dirty state changed. Own lock marked completed/released immediately; native acceptance is delegated to the sole controller against an integrated immutable SHA.
+
+2026-08-31T05:36:17-05:00 | VS-CODEX-CHAT-SUPERVISION-T5-HANDOFF-20260831-95 | TASK-CHAT-SUPERVISION-T5-SCHEDULE-HANDOFF-20260831 | integration/UnifiedChungus-final @ d1f2b50a | Controller-level explicit four-file handoff to `/root/chat_supervision_task5`. The historical CAO schedule lock transferred to `/root/cao_chat_resume` and is `transferred_released`; successor lock `VS-SOL-CAO-SCHEDULED-RECOVERY-INTEGRATION-20260831-94` coherently committed runner recovery as `7b0ab148` and is `released_complete`; `jarvisSchedules.ts/.test.ts` remained read-only/clean and `jarvisScheduleRunner.ts/.test.ts` are clean after that commit. No live lock owns these files. Exact released scope: `app/src/features/schedule/jarvisSchedules.ts`, `.test.ts`, `jarvisScheduleRunner.ts`, `.test.ts`. Task 5 must create a fresh claim, preserve ordinary Schedule and committed CAO recovery behavior, and receives no App/runtime/schema/repository/native/provider/Ollama/unrelated authority. Handoff record: `.agent-coordination.lock/VS-CODEX-CHAT-SUPERVISION-T5-HANDOFF-20260831-95.txt` (`completed_released`).
+### 2026-08-31T05:37:56-05:00 — VS-SOL-WORKBENCH-ADE-RUNNABLE-20260831-102 complete/released
+
+- **Task / commit / exact scope:** `TASK-WORKBENCH-ADE-RUNNABLE-20260831`, immutable `015a17929f194ee34638b70fc248b03cbd8aef8e` (`feat(ade): bind authenticated read runtime`); exactly the seven claimed ADE binding/lifecycle/page tests and Workbench embedding regression.
+- **Behavior:** Workbench ADE now requires the current authenticated `opencode-live` selection, exact account/workspace/project/worktree/chat scope, provider-supported explicit effort plus Fast variant, and observed Tool Gateway route identity. It exposes only bounded read tools, queues durable Jarvis history before dispatch, suppresses late cancelled output, projects reload interruption without persisted provider output, and routes unavailable auth recovery to the existing Providers UI. Write/full actions remain unavailable until canonical approval UI exists.
+- **Verification:** RED observed at missing binding/seed/recovery/placeholder boundaries; focused 17/17 PASS; complete ADE 46/46 PASS; shared `pnpm typecheck` PASS; isolated Vite production build PASS (5,072 modules); Prettier, `git diff --check`, and Gitleaks PASS. Existing Workbench act warnings and build chunk/cycle warnings are unchanged/non-blocking.
+- **Truthful native prerequisite:** the existing read-only OpenCode adapter currently projects combined variant Fast as invented `standard` (and may project effort as `provider-default`) in its observed Tool Gateway identity. This slice rejects that mismatch rather than weakening authority, so official native execution must expect fail-closed observed-authority recovery until a separately approved adapter correction lands.
+- **Final branch / HEAD / ownership:** `integration/UnifiedChungus-final` at `015a17929f194ee34638b70fc248b03cbd8aef8e`; exact product paths clean and this lane's lock released. All concurrent DB/Chat/CAO/Pet/native state remains untouched.
+
+### 2026-08-31T05:45:00-05:00 — VS-SOL-CHAT-SUPERVISION-T5-20260831-103 binding checkpoint
+
+- **Shared HEAD / exact owned diff:** shared `ea10a3960b1dfcfc414f558011915c594570e051`; new `chatSupervision.ts/.test.ts` plus modified `jarvisSchedules.ts/.test.ts` only at this boundary (`124` tracked insertions plus two new files). Concurrent HEAD movement and all foreign dirty state remain preserved.
+- **TDD evidence:** RED was the missing `chatSupervision` module plus five expected metadata failures for absent round-trip/fail-closed handling. Minimal GREEN adds exact-key/version/stable-ID/reply/end-condition parsing and optional Schedule metadata preservation; focused binding/metadata matrix passes `2 files / 33 tests`.
+- **Preserved behavior / next:** ordinary and CAO metadata serialization tests remain byte-stable through the existing prefix and minimum interval normalization remains authoritative. Next is occurrence/runner RED then the minimal canonical dispatch/existing-runner branch; no protected scope changed.
+
+### 2026-08-31T05:40:06-05:00 — VS-SOL-CHAT-SUPERVISION-T5-20260831-103 claimed
+
+- **Task / branch / base:** `TASK-CHAT-HANDOFF-MULTIPANE-SUPERVISION-T5-20260831`, `integration/UnifiedChungus-final`, base `015a17929f194ee34638b70fc248b03cbd8aef8e`, upstream `origin/UnifiedChungus`; no merge/rebase/cherry-pick state.
+- **Ownership gates:** transfer A from `VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34` is explicit at `2026-08-31T05:26:01-05:00`; controller transfer B is explicit in `VS-CODEX-CHAT-SUPERVISION-T5-HANDOFF-20260831-95` at `2026-08-31T05:36:17-05:00`. Preserve coherent CAO runner recovery commit `7b0ab1488d6fbf6cd7c67d853e0176d012494c33`.
+- **Exact product/test ownership:** only `app/src/features/schedule/chatSupervision.ts`, `.test.ts`, `jarvisSchedules.ts`, `.test.ts`, `jarvisScheduleRunner.ts`, `.test.ts`, `jarvisScheduleDispatch.ts`, and `jarvisScheduleDispatch.supervision.test.ts`; plus Task 5 report, this own lock, and append-only own ledger checkpoints.
+- **Intent / boundary:** strict RED-GREEN typed fail-closed supervision binding and per-occurrence fresh handoff through canonical `dispatchChatToChat`, using the existing Schedule claim/release/catch-up authority and preserving ordinary and CAO paths. App, Composer, ChatThread/View, schema, repositories, providers/models, runtime, Ollama, native processes, credentials, production/deployment, other locks, and unrelated dirty state remain untouched.
+- **Next:** binding/parser RED, minimal metadata GREEN, occurrence/runner RED, minimal existing-runner GREEN, focused/adjacent/typecheck/format/diff/Gitleaks verification, exact eight-file commit, report, and own-lock release.
+### 2026-08-31 05:49 CDT — VS-SOL-CAO-PRODUCTION-TARGET-REGISTRY-20260831-104 claimed
+
+- **Task / branch / base:** `TASK-CAO-PRODUCTION-TARGET-REGISTRY-20260831-104`, `integration/UnifiedChungus-final`, base `ea10a3960b1dfcfc414f558011915c594570e051`.
+- **Exact clean handoff / ownership:** `app/src/lib/db/schema.ts`, `index.migration.test.ts`, and new `app/src/features/cao/productionTargetRegistry.ts/.test.ts` only, as explicitly released by backend/root.
+- **Approved boundary:** add the sole durable Dexie target-claim authority over exact real project-scoped chat/terminal rows; atomic entire-set claim, strict missing/scope/status/revision/foreign-owner rejection, same run+lease idempotency, expired orphan recovery, exact release, and compatibility with `759a1b8a`. No Web Locks/localStorage/parallel state, singleton/repository/UI/runtime edits, or unrelated overlap.
+- **Next:** migration and registry REDs, minimal schema/transaction implementation, focused/adjacent/typecheck/build/format/security, exact-file commit, native packet, immediate own-lock release.
+
+### 2026-08-31 06:05 CDT — VS-SOL-CAO-PRODUCTION-TARGET-REGISTRY-20260831-104 completed / released
+
+- **Task / immutable commit / exact scope:** `TASK-CAO-PRODUCTION-TARGET-REGISTRY-20260831-104`; `371c3e1dcd180fda5710efbb085642265edb9cdf` (`feat(cao): persist exact target claims`), exactly new `productionTargetRegistry.ts/.test.ts`, `schema.ts`, `index.migration.test.ts`, and the explicitly transferred four-line V14 registration seam in `database.ts` (`610 insertions / 10 deletions`).
+- **Behavior:** V14 adds the sole local durable `[kind+targetId]` CAO ownership table while real chat/terminal rows remain target truth. One Dexie transaction validates workspace-owner account truth, exact workspace/project, archived/exited status, revision, expiry, and all active owners before atomically claiming an explicitly ordered mixed set. Same run+lease reload is idempotent without renewal; foreign live ownership rejects the whole set; expired orphan rows recover; revision drift rejects; read truth never trusts caller account; release is exact, atomic, and idempotent.
+- **TDD / verification:** migration source RED `16 pass / 1 expected fail`; missing-registry RED; account-projection RED `5 pass / 1 expected fail`; final focused migration/registry `2 files / 24 tests`; adjacent production runtime/target authority/DB cycle+connection+initialization `7 files / 219 tests`; isolated Vite production build PASS (`5,075` modules); exact Prettier/diff-check plus full-file/staged/commit Gitleaks PASS. Full TypeScript emitted zero owned diagnostics and stopped only on concurrent Instant provider-entry and Schedule supervision test edits.
+- **Boundary / release:** no DB singleton/open behavior beyond the authorized V14 declaration, no repositories/index.ts/seed, Composer/AI runtime/router/backend, ADE/OpenCode, Instant, Schedule, Pet/native, credentials/billing/deployment, app control, or unrelated dirty state changed. Own lock completed/released immediately; native acceptance delegated to the sole controller.
+### 2026-08-31 05:48 CDT — TASK-CAO-PRODUCTION-TARGET-REGISTRY scope handoff extension
+
+- Agent/controller: `VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002` (`/root`)
+- Branch/base: `integration/UnifiedChungus-final` @ `ea10a3960b1dfcfc414f558011915c594570e051`
+- Recipient: `/root/cao_chat_resume` / `TASK-CAO-PRODUCTION-TARGET-REGISTRY-20260831-104`
+- Added exact file: `app/src/lib/db/database.ts`, limited to importing/typing/registering the v14 `cao_target_claims` table.
+- Reason: the already-transferred schema and migration-test files cannot create the table in the production `JarvisDexie`; omitting this leaf registration would yield a test-only registry and a false live integration.
+- State/tests: file verified clean before handoff; no product edit made by root at this checkpoint. All other DB singleton behavior, barrels, repositories, seed, backend/chat/native/ADE/OpenCode, and unrelated state remain excluded.
+### 2026-08-31 05:52 CDT — Pet deferred setup-host hide integrated
+
+- Agent/controller: `VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002` (`/root`)
+- Branch: `integration/UnifiedChungus-final`
+- Source/integration: `953afafb` → `f4461b508c2df5f3055b534bf9a69a9a165fe40b`
+- Exact file: `app/src-tauri/src/pets.rs`.
+- Behavior: setup-created offscreen Pet hosts remain materializable for a bounded one-second WebView2/controller interval, then hide only while still offscreen so a real show/reposition cannot be raced by the deferred cleanup.
+- Verification inherited from sole native lane: exact TDD RED, focused GREEN, pre/post full Pet boundary 43/43 PASS, cargo fmt, diff, and file/commit Gitleaks PASS.
+- Native next: official immutable C-drive Pet-first retest, then batch Jarvis/ADE/CAO acceptance on the same stable SHA; current official 6b13 app remains open/responding until the artifact swap.
+### 2026-08-31 05:54 CDT — TASK-102 Jarvis pre-event thinking handoff claimed
+
+- Agent: `VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002` (`/root`)
+- Branch/base: `integration/UnifiedChungus-final` @ `f4461b508c2df5f3055b534bf9a69a9a165fe40b`
+- Exact files: `app/src/features/chat/agentic-console/AgenticConsole.tsx`, `app/src/features/chat/agentic-console/AgenticConsole.test.tsx` (both clean and unclaimed at inspection).
+- Intent: render the existing Jarvis thinking motion immediately after Send while the canonical session is active and OpenCode has not emitted its first public event; hand the same status position to the real streamed event when it arrives and remove it on terminal state.
+- Boundary: presentation only; no invented operation/receipt/detail/private reasoning, timeout, guessed phase, persistence, provider/runtime, Composer, CAO, Pet/native, ADE, credential, billing, deployment, or unrelated change.
+- Next: strict RED, minimal GREEN, affected/type/build/format/security gates, exact commit, then native packet.
+### 2026-08-31T05:50:00-05:00 — VS-SOL-INSTANT-CONNECT-ENTRYPOINT-20260831-105 claimed
+
+- **Task / branch / base:** `TASK-INSTANT-CONNECT-ENTRYPOINT-20260831`, `integration/UnifiedChungus-final`, base `f4461b508c2df5f3055b534bf9a69a9a165fe40b`; merge/rebase/cherry-pick inactive.
+- **Exact scope:** new credential-free provider connection helper/test; Instant navigation catalog/authority/suggestion production/tests; AssistantBar production/test only. All ten paths were clean and had no active foreign exact lock at claim.
+- **Approved boundary:** bare `/connect` remains primary; optional focus accepts only exact supported nonlocal Providers IDs, persists only that safe ID for lazy/reload recovery, and uses existing Settings tab/provider events. Unknown, extra, control-bearing, secret-like, local/Ollama inputs fail before authority without echo. Composer, Providers UI/credentials, provider backend, native/CAO/Pet/Schedule, billing/deployment, and unrelated state remain excluded.
+- **Next:** RED parser/helper/authority/typeahead/accessibility tests, minimal implementation, focused/affected/typecheck/build/format/security, exact-file commit, immediate own-lock release, native packet.
+
+### 2026-08-31T06:01:18-05:00 — VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34 Task 6 ownership transfer
+
+- Branch/HEAD: `integration/UnifiedChungus-final` at `f4461b508c2df5f3055b534bf9a69a9a165fe40b`; Task 2 historical evidence and completed Task 3-5 transfers remain preserved under this lane.
+- Released exclusively for fresh claim by future owner `/root/chat_schedule_card_task6`: `.superpowers/sdd/2026-08-30-chat-handoff-multipane-supervision-implementation/task-6-report.md`, `app/src/features/chat/SupervisionScheduleCard.tsx`, `app/src/features/chat/SupervisionScheduleCard.test.tsx`, `app/src/features/chat/MessagePart.tsx`, `app/src/features/chat/MessagePart.supervisionSchedule.test.tsx`, `app/src/types/chat.ts`, `app/src/features/schedule/chatSupervisionNavigation.ts`, `app/src/features/schedule/chatSupervisionNavigation.test.ts`, `app/src/features/schedule/SchedulePage.tsx`, and `app/src/features/schedule/SchedulePage.supervisionNavigation.test.tsx`.
+- The nine Task 6 product/test paths were removed from this lane's active exact scope and recorded with the Task 6 report as `released_for_fresh_claim`. No product, test, report, index, or commit was changed during this coordination-only handoff.
+- All existing Task 7 reservations in `VS-SOL-CHAT-HANDOFF-DELIVERY-20260830-34` remain active and unchanged; this transfer conveys no authority over those paths.
+### 2026-08-31 06:02 CDT — TASK-102 Jarvis pre-event thinking handoff committed
+
+- Agent: `VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002` (`/root`)
+- Commit: `608eaedad60d3670e851f0cea9668fa072a88716` (`fix(chat): show thinking before first event`).
+- Exact files: `app/src/features/chat/agentic-console/AgenticConsole.tsx`, `app/src/features/chat/agentic-console/AgenticConsole.test.tsx`.
+- Behavior: canonical queued/planning/running/recovering session truth immediately renders the existing Jarvis motion after Send and before OpenCode's first public event; the exact streamed event replaces it in one status slot, and terminal state removes it. No fabricated tool/action/receipt/detail, private reasoning, timer, provider, runtime, or persistence behavior was added.
+- Verification: intended focused RED 1; focused final 39/39 PASS; adjacent Agentic/activity matrix 4 files / 104 tests PASS; exact Prettier and diff checks PASS; staged Gitleaks PASS; isolated Vite production build PASS with 5,075 modules.
+- Full typecheck was invoked and failed only in concurrent in-progress `/connect` and Schedule-owned files; no diagnostic referenced either TASK-102 file. Those owners remain responsible for completing their RED/GREEN pass before the combined boundary rerun.
+- Native: immutable `f4461b50` Pet-first build remains undisturbed; this commit is queued for the next combined stable SHA.
+### 2026-08-31 06:08 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 Pet reused-host retry integrated
+
+- **Branch / HEAD:** `integration/UnifiedChungus-final` at `2665eb5823f80ee52e51877b60c935875ea230d9`; source commit `e80c8e0c`, release cherry-pick `2665eb58`.
+- **Exact file / behavior:** only `app/src-tauri/src/pets.rs`; reused real Pet HWNDs now receive the same already-bounded `50 x 20 ms` readiness loop as newly created hosts, allowing asynchronous Tauri show/geometry dispatch to settle without altering setup-host materialization.
+- **Inherited executable gates:** focused TDD RED/GREEN, full Pet `43/43`, rustfmt/diff, and exact-file plus commit Gitleaks PASS.
+- **Native boundary:** `/root/native_resume` is the sole controller and is building/retesting immutable `e80c8e0c`; prior official `f4461b50` app remained healthy/open. Native visibility is still pending and no PASS is claimed yet.
+- **Safety / ownership:** exact clean cherry-pick only; concurrent CAO, Instant, Schedule, coordination, evidence, native process, and all unrelated dirty state were preserved.
+### 2026-08-31 06:12 CDT — TASK-CAO-PRODUCTION-CONTROL-COMPOSITION claimed
+
+- **Agent / branch / base:** `/root/cao_chat_resume`; `integration/UnifiedChungus-final`; `2665eb5823f80ee52e51877b60c935875ea230d9`.
+- **Exact new-file scope:** `productionControlActionAdapters.ts/.test.ts` and `productionControlComposition.ts/.test.ts` under `app/src/features/cao/`.
+- **Intent:** bind committed production runtime `759a1b8a` and canonical target registry `371c3e1d` through injected durable record, journal/event/approval/cancellation, and real action capability ports. Exact target order/revision is revalidated; missing ports fail closed; no fallback store, registry, or simulated action exists.
+- **Boundary:** no Composer, DB/schema/registry, Schedule, Instant, Pet/native, Chat dispatcher, ADE, credentials/billing/deployment, app control, or unrelated dirty state.
+### 2026-08-31 06:16 CDT — VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 claimed CAO durable control records
+
+- **Task / branch / base:** `TASK-CAO-DURABLE-CONTROL-RECORDS-20260831-106`, `integration/UnifiedChungus-final` at `2665eb5823f80ee52e51877b60c935875ea230d9`.
+- **Exact scope:** `app/src/lib/db/schema.ts`, `database.ts`, `index.migration.test.ts`, and new `app/src/features/cao/productionControlRecordRepository.ts/.test.ts` only. The prior V14 target-registry owner committed `371c3e1d` and released the clean DB files; root is the backend controller and has explicitly reclaimed only this additive schema slice.
+- **Intent / first RED:** add a local-only additive V15 CAO control-record store and strict request-scoped Dexie compare-and-save adapter; prove fresh install, V14 byte preservation, create/reload/CAS/conflict/scope validation before implementation.
+- **Parallel boundary:** `/root/cao_chat_resume` owns only its two new CAO composition/action-adapter file pairs; Composer, Chat runtime/router/types, target registry, Schedule, Instant, Pet/native, action capability ports, credentials/billing/deployment, production services, and all unrelated dirty state remain excluded.
+
+### 2026-08-31 06:17 CDT — TASK-INSTANT-CONNECT-ENTRYPOINT-20260831 complete / released
+
+- **Agent / branch / commit:** `/root/instant_resume`; `integration/UnifiedChungus-final`; immutable `ddebadc1` (`feat(instant): add secure provider connect entrypoint`), based from claimed `f4461b50` with concurrent shared HEAD advances preserved.
+- **Exact committed files:** `providerConnectionEntrypoint.ts/.test.ts`, `catalog/navigation.ts/.test.ts`, `authorities/navigationCommands.ts/.test.ts`, `suggestions.ts/.test.ts`, and `AssistantBar.test.tsx` under `app/src/features/instant-command/` / `app/src/features/assistant/`.
+- **Behavior:** bare `/connect` remains primary and opens the existing Settings Providers authority; exact supported nonlocal provider aliases may persist only a safe provider ID and replay the existing tab/focus events for lazy mount/reload. Unknown, extra, control-bearing, secret-like, local, and Ollama inputs reject before authority access without reflection. Accessible AssistantBar typeahead selects the exact alias without dispatching or recording it prematurely. Legacy bare-connect ports retain the existing `openSettings('providers')` fallback; provider focus fails closed without the focus-capable port.
+- **Verification:** TDD RED observed (`6` intended failures); focused GREEN `58/58`; full Instant boundary `385/385`; shared `pnpm typecheck` PASS; isolated Vite production build PASS; exact Prettier check and `git diff --check` PASS; Gitleaks `8.30.1` PASS for Instant scope and AssistantBar test. Existing Vite chunk/circular warnings and jsdom media warnings were unchanged/non-owned.
+- **Acceptance boundary:** no Composer/Chat-runtime or Providers credential UI/store files were edited, so VibeSpace Chat Composer acceptance remains a separate owner prerequisite; no credential text is accepted or persisted by this command seam. Native acceptance is delegated to `/root/native_resume`; no app control was used here.
+- **Release:** `.agent-coordination.lock/VS-SOL-INSTANT-CONNECT-ENTRYPOINT-20260831-105.txt` removed by its owner after exact commit; unrelated staged/unstaged files and foreign locks preserved.
+2026-08-31T06:21:00-05:00 | VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 | TASK-INSTANT-CONNECT-COMPOSER-INTEGRATION-20260831-107 | integration/UnifiedChungus-final @ 2665eb58 | Clean ownership handoff: committed/clean `app/src/features/chat/Composer.tsx` plus new focused `Composer.connect.test.tsx` transferred from inactive `/root/chat_handoff_delivery` reservation to active `/root/instant_resume` for secure `/connect` end-to-end integration. Task 2 historical evidence and Task 7/Schedule/CAO/Pet/runtime/backend/credential surfaces remain excluded. | Tests: prior `/connect` commit ddebadc1 reports focused 58/58, Instant 385/385, typecheck/build/format/Gitleaks PASS; Composer integration pending. | Next: exact claim, TDD integration, immutable commit, native Playwright packet.
+
+### 2026-08-31 06:25 CDT — TASK-INSTANT-CONNECT-COMPOSER-INTEGRATION-20260831-107 claimed
+
+- **Agent / branch / base:** `/root/instant_resume`; `integration/UnifiedChungus-final`; `ddebadc10878343fecc6c2fa01acad098e502669`; no merge/rebase/cherry-pick state.
+- **Exact scope:** transferred `Composer.tsx` plus new `Composer.connect.test.tsx`; `slashCommandRouting.ts/.test.ts`; `SlashCommandTypeahead.tsx/.test.ts`; new `composerInstantCommand.ts/.test.ts`; new `Providers.connectFocus.test.tsx`.
+- **Approved design:** route only collision-free `/connect`, `/settings`, `/palette`, `/launcher`, and `/back` through the existing `InstantCommandEntryBoundary` under exact account/workspace/project scope. Keep existing Chat model dispatch/transcript/activity untouched; use a per-Composer local in-flight guard; reject credential-like, control-bearing, extra, local, and Ollama connect input without echo or authority access. Reuse the existing Settings Providers focus/session/event seam and verify accessible lazy-mount/reload recovery without editing credential storage.
+- **Boundaries:** no other Chat/runtime/backend, Providers implementation/key store, CAO, Schedule, Pet/native, billing/production/deployment, Ollama/11434, or unrelated shared file/process/index state.
+### 2026-08-31 06:22 CDT — TASK-CAO-PRODUCTION-CONTROL-COMPOSITION completed / released
+
+- **Immutable commit / exact scope:** `01d4d550d1cde92de4e2bdd6fa627e4bbc13ab18` (`feat(cao): compose production control actions`), exactly four new CAO files: `productionControlActionAdapters.ts/.test.ts`, `productionControlComposition.ts/.test.ts` (`404 insertions`).
+- **Behavior:** production composition binds the committed canonical runtime and Dexie registry only through injected durable records, Jarvis journal/events/approvals/cancellation, and action+target-kind capability ports. Exact scope/order/revision/owner lease is re-read before action; every mixed-set capability is preflighted before dispatch; abort and private failures become bounded public states; receipt IDs remain exact and bounded; missing record/cancellation/action ports fail closed with stable codes. No fallback state or simulated execution.
+- **TDD / gates:** missing-module RED; focused final `7/7`; adjacent CAO authority/runtime/registry matrix `6 files / 179 tests` PASS; full TypeScript PASS after owned fixture fixes; isolated Vite production build PASS (`5,075` modules); exact Prettier/diff-check and CAO-directory plus commit Gitleaks PASS.
+- **Boundary / release:** no Composer, DB/schema/registry, Schedule, Instant, Pet/native, Chat dispatcher, ADE, credentials/billing/deployment, app control, or unrelated dirty state changed. Own lock released immediately. Native acceptance is delegated to `/root/native_resume` on an immutable combined SHA.
+2026-08-31T06:23:00-05:00 | VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 | TASK-CAO-DURABLE-CONTROL-RECORDS-20260831-106 | integration/UnifiedChungus-final @ e77c559e (base 2665eb58) | Committed exact V15 durable CAO control request persistence and strict CAS repository in five owned files. Records are schema-validated, detached/frozen on load, preserve immutable scope/command/targets across revisions, reject duplicate/stale/skipped revision and malformed/secret-shaped inputs, and migrate V14 target claims byte-for-byte into V15. | Verification: focused+adjacent 42/42 PASS; shared typecheck PASS; isolated Vite production build 5,075 modules PASS; Prettier and diff checks PASS; staged Gitleaks no leaks. Commit: e77c559e. | Blocker/next: native CAO acceptance requires integration of this repository with composition commit 01d4d550 and exported real capability ports; proceed immediately, then immutable official-app Playwright.
+### 2026-08-31 06:25 CDT — TASK-CAO-PRODUCTION-CAPABILITY-PORTS claimed
+
+- **Agent / branch / base:** `/root/cao_chat_resume`; `integration/UnifiedChungus-final`; `e77c559eb6237d69659e514c1e378ff8f165699b`.
+- **Exact scope:** new `productionControlCapabilityPorts.ts/.test.ts` plus the released `productionControlComposition.ts/.test.ts` pair.
+- **Intent:** expose explicit canonical Chat/terminal authority methods for every supported CAO action, carrying exact target/scope/run/request identity and only accepting bounded real receipts. Composition now instantiates the committed durable V15 control-record repository and maps only present authority methods—no fallback state, generic guessed dispatch, message simulation, or parallel registry.
+- **Boundary:** no Composer, DB/schema/record-repository, Schedule, Instant, Pet/native, Chat dispatcher/backend, ADE, credentials/billing/deployment, app control, or unrelated dirty state.
+### 2026-08-31 06:36 CDT — TASK-CODEX-OPENCODEX vertical integration claimed
+
+- **Agent / branch / base:** `VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36` (`/root`), `integration/UnifiedChungus-final`, base `01d4d550d1cde92de4e2bdd6fa627e4bbc13ab18`; no merge/rebase/cherry-pick state.
+- **Exact controller scope:** new renderer Codex native transport and persistent adapter pairs, `router.ts`, and new `router.codexBackend.test.ts`.
+- **Exact single-helper scope:** new `harness/codex_server.rs`, existing owned `harness/mod.rs`, and released/clean `src-tauri/src/lib.rs`; helper must not touch `server.rs` or any renderer/product file.
+- **Intent / boundary:** connect the committed structured Codex app-server protocol and bounded native decoder into the existing provider-event path and branch only an explicit `codex` backend before the byte-preserved OpenCode executor. Composer, Chat persistence/types, runtime controls, OpenCode server/transport, RLM, SiYuan, CAO, Pet, Schedule, credentials, and unrelated dirty state remain excluded.
+- **Next:** strict native and renderer REDs, minimal real controller/adapter/router GREEN, focused and affected gates, exact commits, then claim released persistence/runtime/UI seams and official native Playwright acceptance.
+- **Native scope clarification:** add `app/src-tauri/src/cli_bridge.rs` only for a one-token `pub(crate)` visibility seam on the existing trusted executable resolver; no CLI scan/start/cancel/process behavior may change. This avoids accepting a renderer-supplied executable path.
+2026-08-31T06:28:00-05:00 | VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002 | PET-EVENT-LOOP-INTEGRATION | integration/UnifiedChungus-final @ f0e0cdac | Integrated the native worker's exact one-file commit `f005fcd7361670443b5b2002f4c9227185bbaff6` unchanged as release commit `f0e0cdac`. Existing Pet overlay/panel HWND configuration now executes through bounded `run_on_main_thread`; detached WebView construction remains off the event loop. Inherited evidence: focused 1/1, full Pet 44/44, rustfmt/diff/Gitleaks PASS. Official-app Playwright retest is active; no native PASS claimed yet. | Next: failed-scenario immutable retest, then combined stable-SHA native batch.
+### 2026-08-31 06:29 CDT — TASK-CAO-PRODUCTION-CAPABILITY-PORTS completed / released
+
+- **Immutable commit / exact scope:** `b799fef17beac22870b60094f144ec5fa95e11bb` (`feat(cao): bind canonical control capability ports`), new `productionControlCapabilityPorts.ts/.test.ts` plus released `productionControlComposition.ts/.test.ts` only (`239 insertions / 20 deletions`).
+- **Behavior:** every supported CAO action now has an explicit optional Chat and terminal canonical authority method. Ports receive exact account/workspace/project/request/run/target/revision plus abort signal, retain no state, accept only exact bounded receipt shapes, and reduce private throws/malformed replies to safe failure. Absent methods remain absent so the existing preflight rejects before record persistence or target claims. Production composition now constructs the committed V15 durable control-record repository from the same injected JarvisDexie and retains the canonical V14 target registry; no fallback or simulated dispatch exists.
+- **TDD / gates:** missing-module and old-composition RED; focused final `2 files / 6 tests`; adjacent production record/runtime/registry/authority matrix `8 files / 186 tests` PASS; full TypeScript has zero owned diagnostics and is blocked only by concurrent foreign `composerInstantCommand.test.ts` missing-module RED; isolated Vite production build PASS (`5,076` modules); exact Prettier/diff-check and CAO-directory plus commit Gitleaks PASS.
+- **Boundary / release:** no Composer, DB/schema/record-repository, Schedule, Instant, Pet/native, Chat dispatcher/backend, ADE, credentials/billing/deployment, app control, or unrelated dirty state changed. Own lock released immediately; official-app acceptance delegated to `/root/native_resume` after the foreign Composer owner wires concrete authorities.
+### 2026-08-31 06:45 CDT — VS-SOL-P0-CONTEXT-SIYUAN-20260831-108 claimed
+
+- **Task / branch / base:** `TASK-P0-CONTEXT-SIYUAN-DENIAL-TRUTH-20260831-108`, `integration/UnifiedChungus-final`, base `b799fef17beac22870b60094f144ec5fa95e11bb`.
+- **Exact write scope:** `app/src/features/context/gateway/ContextGateway.ts`, `app/src/features/context/gateway/ContextGateway.test.ts`, this append-only ledger entry, and `.agent-coordination.lock/VS-SOL-P0-CONTEXT-SIYUAN-20260831-108.txt`.
+- **Proven boundary / intent:** the saved empty-first-search premature completion is already repaired by `b1fdee45`; the remaining Context-side truth defect is that exact SiYuan/query `permission_denied` errors collapse to generic `retrieval-failed`. Add a focused RED and the smallest classifier correction so denied retrieval remains fail-closed as `unauthorized-scope`, then verify the existing full Context/SiYuan acceptance matrix read-only.
+- **Exclusions:** root-owned Context acceptance suite/schema files, OpenCode persistent adapter and test, Chat/Composer/UI, CAO, Instant, Pet/native controller, Schedule, Codex backend, credentials, billing, deployment, production services, all unrelated dirty state, and every other agent's lock/work.
+
+### 2026-08-31 06:35 CDT — TASK-P0-OPENCODE-EMPTY-CONTEXT-CONTINUATION-20260831-109 claimed
+
+- **Agent / branch / base:** `VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002`, `integration/UnifiedChungus-final`, base `b799fef17beac22870b60094f144ec5fa95e11bb`.
+- **Exact write scope:** `app/src/lib/ai/adapters/opencodePersistent.ts`, `app/src/lib/ai/adapters/opencodePersistent.test.ts`, own lock checkpoint, and this append-only ledger entry.
+- **Intent:** reproduce the saved native empty-first Context search stop at the remaining OpenCode instruction seam; add the failing regression first, then require independent in-scope Agent work to continue after an optional Context miss while every grounded claim remains fail-closed.
+- **Ownership boundary:** `/root/p0_context_siyuan` exclusively owns `ContextGateway.ts/.test.ts`; Chat/Composer/UI, CAO, Instant, Schedule, Pet/native controller, Codex backend, credentials/billing/deployment, production services, and unrelated dirty state remain excluded.
+
+### 2026-08-31 06:41 CDT — TASK-P0-OPENCODE-EMPTY-CONTEXT-CONTINUATION-20260831-109 committed
+
+- **Immutable commit / exact scope:** `3e83ea8a380114b72de66109717d92fb9205f9d0` (`fix(opencode): continue after optional context miss`), exactly `opencodePersistent.ts/.test.ts` (`19 insertions / 1 deletion`).
+- **Behavior:** the broad RLM/OpenCode contract reports an optional Context miss once, continues every independent authorized Agent action, and still prohibits every factual claim that required the unavailable evidence. This closes the remaining provider-instruction seam visible in the saved zero-result/no-artifact native trace without weakening the fail-closed Context boundary.
+- **TDD / gates:** intended focused RED `1`; focused final `1/1`; affected OpenCode/public-timeline/Tool-Gateway matrix `4 files / 139 tests` PASS; PR31 OpenCode/RLM static invariant PASS; exact Prettier, diff check, and staged Gitleaks PASS.
+- **Build boundary:** the shared build observed concurrent unowned Codex backend files mid-materialization and failed only because `codexPersistent.test.ts` arrived before `codexPersistent.ts`; no build PASS is claimed. It will be rerun at that lane's stable commit rather than against mutable state.
+- **Native / next:** sole native controller is running the first-hour half-matrix gate on unaffected immutable workflows. Root next consumes the Context/SiYuan denial classifier and Instant `/connect` commits, then batches native P0 continuation on one stable SHA.
+
+### 2026-08-31 07:02 CDT — TASK-PET-WEBVIEW2-ENVIRONMENT-RECOVERY-20260831-110 claimed
+
+- **Agent / branch / base:** `VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002`, `integration/UnifiedChungus-final`, base `3e83ea8a380114b72de66109717d92fb9205f9d0`.
+- **Exact write scope:** `app/src-tauri/src/pets.rs`, own lock checkpoint, and this append-only ledger entry only.
+- **Proven boundary:** immutable f005/f0e0 native evidence returned `created:false` plus bounded `not_visible` for both Pet surfaces, with no detached HWND/CDP target. Local Tauri/Wry source confirms same-data-directory WebViews must share exact WebView2 environment options; current Pet builders omit the main window's runtime browser args, then reuse a manager registration even when `hwnd()` is absent.
+- **TDD intent:** make missing-HWND registrations retire/recreate and apply the exact configured main-window browser arguments to both detached builders. `/root/native_resume` released Pet source and retains only official-app control. `lib.rs` remains excluded because the concurrent Codex backend lane has active uncommitted ownership there.
+
+### 2026-08-31 07:06 CDT — TASK-PET-WEBVIEW2-ENVIRONMENT-RECOVERY-20260831-110 committed
+
+- **Immutable commit / exact scope:** `950d10a680a86cb96d6e173d9c6821aeebcc5425` (`fix(pets): share main WebView2 environment`), exactly `app/src-tauri/src/pets.rs` (`60 insertions / 9 deletions`).
+- **Root cause / behavior:** the reused-profile 3e83 packet proved mutually exclusive creation—Pet overlay/panel CDP targets existed while the main target failed—confirming same-data-directory WebView2 option mismatch. Both detached builders now consume the exact runtime main-window `additionalBrowserArgs`, including the merged CDP config. A registered Pet dispatcher without a native HWND is retired/rebuilt instead of being reused indefinitely.
+- **TDD / gates:** exact missing-option resolver RED and poisoned-registration RED; focused failed test GREEN; full Pet boundary `45/45` PASS; cargo fmt, exact diff check, and staged Gitleaks PASS. Rust compilation completed through the full Pet test binary; concurrent unowned `lib.rs` Codex work was preserved untouched.
+- **Native / next:** sole native controller is building exact detached `950d10a6` and rerunning only startup-enabled main+overlay+panel target health plus show/hide/reload/dedup. No native PASS is claimed until that packet completes.
+
+### 2026-08-31 07:07 CDT — TASK-PET-WEBVIEW2-ENVIRONMENT-RECOVERY-20260831-110 review correction
+
+- **Verified:** local Tauri/Wry review confirms `950d10a6` shares the exact merged normal/CDP main WebView2 environment options and that current main-thread builder scheduling does not expose a valid registration-before-HWND race.
+- **Narrow remaining defect:** if WebView2 creation fails for another reason, the runtime never inserts the native window ID, so `destroy()` cannot emit the event Tauri requires to remove its manager registration. The new classifier therefore produces the precise `stale_window_retire_failed` boundary but cannot recover that poisoned manager entry in-process.
+- **Required clean follow-up / blocker:** startup Pet materialization must move from handle-side `load_geometry` to setup's direct `&App` creation path, preventing false manager attachment when native creation fails. `app/src-tauri/src/lib.rs` is currently dirty and actively owned by the separate Codex backend lane (plus an older ambient-overlay lock), so root will not overlap it. The `950d10a6` trigger fix remains under native verification; the direct-`&App` prevention seam waits only for a clean ownership handoff.
+
+### 2026-08-31 06:49 CDT — TASK-INSTANT-CONNECT-COMPOSER-INTEGRATION-20260831-107 completed / released
+
+- **Agent / immutable commit:** `VS-SOL-INSTANT-CHAT-CONNECT-20260831-107`, `de8e64eb3400677bff8d6646d748f7be7426cf12` (`feat(chat): route secure instant commands`).
+- **Exact product scope:** `Composer.tsx`, `Composer.connect.test.tsx`, `composerInstantCommand.ts/.test.ts`, `SlashCommandTypeahead.tsx/.test.ts`, `slashCommandRouting.ts/.test.ts`, and `Providers.connectFocus.test.tsx` only (`544 insertions / 10 deletions`).
+- **Behavior:** Chat now discovers and locally executes `/connect`, `/settings`, `/palette`, `/launcher`, and `/back` through the existing exactly-once Instant entry boundary. `/connect` opens the existing Providers authority and may carry one validated provider focus through the existing session/event recovery seam; secret-like, local/Ollama, unknown, control-bearing, and extra arguments reject without transcript, activity, model dispatch, UI echo, or credential persistence. Picker ranking now keeps an exact command-token prefix ahead of incidental description matches.
+- **TDD / gates:** ranking regression witnessed RED (`fast` selected for `conn`) then GREEN. Focused `5 files / 40 tests`, adjacent Chat/Providers `6 files / 52 tests`, and full Instant `28 files / 371 tests` PASS. Shared `pnpm typecheck` PASS. Direct isolated Vite build PASS (`5,076 modules`, `2m05s`). Exact Prettier, diff-check, Chat + Settings Gitleaks PASS. Native official-app acceptance remains delegated to `/root/native_resume`; no app control performed here.
+- **Boundary / release:** Chat model dispatch, transcript/activity persistence, Providers credential implementation, backend/runtime, CAO, Schedule, Pet/native, billing/deployment, and unrelated shared edits were unchanged. Own lock released immediately after this checkpoint.
+### 2026-08-31 07:20 CDT — TASK-OPENCODE-RENDERER-RELOAD-CONTINUITY-20260831-111 claimed
+
+- **Agent / branch / base:** `VS-SOL-OPENCODE-RELOAD-CONTINUITY-20260831-111`, `integration/UnifiedChungus-final`, base `dc7adfdf2f634b7290348c03d2a2f0f721d944b0`.
+- **Exact write scope:** `app/src/lib/ai/adapters/opencodePersistent.ts`, `app/src/lib/ai/adapters/opencodePersistent.test.ts`, own lock, and this append-only checkpoint.
+- **Proven boundary / intent:** native `3e83` lost its renderer observer while the accepted OpenCode session remained busy/user-only. Add a RED that disposes and reinitializes the observer, then preserve a bounded non-secret accepted-turn marker so replay surfaces an explicit interrupted/recoverable result without a second provider dispatch.
+- **Exclusions:** ContextGateway/SiYuan, Chat/Composer/UI, CAO/Schedule, Instant, Pet/native controller, Codex backend, providers/credentials, billing/deployment/production, app control, and all unrelated dirty state.
+
+### 2026-08-31 07:26 CDT — TASK-OPENCODE-RENDERER-RELOAD-CONTINUITY-20260831-111 committed / released
+
+- **Immutable commit / exact scope:** `4192bdb4ea9a0c1d4653061512f7144a1163cc87` (`fix(opencode): interrupt orphaned accepted turns`), exactly `opencodePersistent.ts/.test.ts` (`115 insertions`).
+- **Behavior:** after `prompt_async` accepts a turn, the adapter persists only bounded request/chat/scope/session/runtime identity. If renderer reinitialization loses the live observer and the same accepted request is replayed, it emits an explicit interrupted/recoverable error and returns without another provider dispatch. No prompt, credential, provider output, or assistant text is stored; a new retry request can continue through the already-persisted chat session.
+- **TDD / gates:** regression witnessed RED as a second `session` plus second `prompt_async`, then GREEN with one dispatch. Full adapter `78/78` PASS; four adjacent OpenCode routing files `45/45` PASS; shared `pnpm typecheck` PASS; exact Prettier, diff-check, and staged Gitleaks PASS.
+- **External boundary:** current-base `router.test.ts` is `33/34`; its subscription-CLI case enters concurrent Codex routing and fails at `cliBridge.ts:612` because an unrelated executable-probe mock returns `undefined`. The OpenCode adapter suite and all other selected routing suites pass; no foreign file was changed.
+- **Release / native:** own exact files are clean and own lock is released. Official native acceptance should force a renderer reload after accepted busy/user-only dispatch, replay the durable request once, verify explicit interrupted/recoverable presentation and zero second `prompt_async`, then retry under a new request ID on the same persistent session.
+
+### 2026-08-31 07:24 CDT — TASK-PET-WEBVIEW2-ENVIRONMENT-RECOVERY-20260831-110 native accepted
+
+- **Immutable product / artifact:** `950d10a680a86cb96d6e173d9c6821aeebcc5425`; executable SHA-256 `568CCA066B8548C498E16EDC5CCE953BC49608198363F20473AD7E3F62614C07`.
+- **Official-app Playwright result:** PASS on both fresh Pet-enabled startup and Pet-enabled reused-profile restart. Main, `pet-overlay`, and `pet-mini-panel` each retained a distinct CDP target and nonzero visible HWND. Duplicate show remained idempotent; hide/show, reload, and visibility recovery passed.
+- **Failure-boundary checks:** no stale-label, registration, watchdog, `main_webview_missing`, duplicate-target, or `not_visible` errors; ports `5173` and `11434` absent.
+- **Evidence / live state:** `D:\VibeSpace-Testing\native-evidence\release-950d10a6`; official immutable app remains open and responsive at PID `9268` while the sole native controller continues the remaining unaffected matrix.
+- **Next:** integrate the Context/SiYuan denial and OpenCode reload-continuity commits, then produce one combined immutable SHA for authenticated OpenCode/Context and Codex backend native acceptance.
+
+### 2026-08-31 07:26 CDT — TASK-PET-DIRECT-APP-SETUP-PREVENTION-20260831-112 claimed
+
+- **Agent / branch / base:** `VS-CODEX-ROOT-PR31-MASTER-CONTINUATION-20260830-002`, `integration/UnifiedChungus-final`, base `dc7adfdf2f634b7290348c03d2a2f0f721d944b0`.
+- **Exact write scope:** `app/src-tauri/src/pets.rs`, `app/src-tauri/src/lib.rs`, own lock checkpoint, and this append-only ledger entry.
+- **Intent:** TDD the remaining narrow Pet prevention seam: startup hosts must be built through setup's direct `&App` manager so a native creation failure propagates before manager attachment; `load_geometry` becomes persistence-only. Command-time `AppHandle` behavior is preserved.
+- **Ownership:** the Codex backend controller committed `dc7adfdf`, explicitly released clean `lib.rs`, and retains no helper on it. The native lane controls only Playwright/CDP. Every unrelated dirty file remains excluded.
+
+### 2026-08-31 07:31 CDT — TASK-PET-DIRECT-APP-SETUP-PREVENTION-20260831-112 committed
+
+- **Immutable commit / exact scope:** `167a7dd33db1222b8bb870b782bef640c08936b1` (`fix(pets): materialize hosts from setup app`), exactly `app/src-tauri/src/pets.rs` and `app/src-tauri/src/lib.rs`.
+- **Behavior:** startup Pet hosts are now built through setup's direct `&App` manager before geometry restore, so native creation failure cannot leave the handle-side poisoned-registration seam. `load_geometry` is persistence-only; command-time `AppHandle` builders retain the same generic creation path and exact main WebView2 options.
+- **TDD / gates:** intended source-boundary RED; focused final `1/1`; full Pet boundary `45/45` PASS; exact rustfmt, diff check, precommit diff Gitleaks, postcommit Gitleaks, and commit check PASS. Broad `cargo fmt --check` remains blocked only by a foreign `harness/mod.rs` ordering change and was not rewritten.
+- **Native / next:** sole controller is building exact `167a7dd3` and retesting only fresh/reused startup creation plus one duplicate/reload boundary. No native PASS is claimed yet; after it returns, root combines the Context/SiYuan and OpenCode continuity commits for P0 native acceptance.
+
+### 2026-08-31 07:34 CDT — TASK-CODEX-BACKEND-AFFINITY-ONLY-20260831-113 claimed
+
+- **Agent / branch / base:** `VS-CODEX-CODEX-OPENCODEX-BACKEND-20260830-36` (`/root`), `integration/UnifiedChungus-final`, base `167a7dd33db1222b8bb870b782bef640c08936b1`.
+- **Exact scope:** `app/src/lib/ai/router.ts` and `app/src/lib/ai/router.codexBackend.test.ts` only.
+- **Proven RED / intent:** existing `router.test.ts` is `33/34` because `openai-codex` is both a legacy OpenCode subscription identity and was newly treated as implicit Codex backend selection. Correct the seam so only explicit immutable `backend: 'codex'` enters structured Codex; legacy/OpenCode chats retain the unchanged subscription route.
+- **Exclusions:** Chat persistence/UI, backend affinity module, adapters/native, OpenCode transport, Context, Pet, CAO/Schedule, credentials, and every unrelated dirty file.
+
+### 2026-08-31 07:41 CDT — TASK-CODEX-BACKEND-AFFINITY-ONLY-20260831-113 committed
+
+- **Immutable commit / exact scope:** `c262810bae979b80fd305aa7eaafeeda34243b8c` (`fix(chat): honor explicit backend affinity`), exactly `router.ts` and `router.codexBackend.test.ts`.
+- **Behavior:** structured Codex dispatch now requires explicit immutable `backend: 'codex'`. The legacy `openai-codex` subscription connection remains on the unchanged OpenCode executor and can no longer implicitly switch a chat backend.
+- **RED / gates:** existing canonical router suite reproduced the regression at `33/34` by entering direct Codex executable discovery for a legacy subscription chat. Corrected router/Codex adapter matrix `39/39` PASS; shared typecheck PASS; exact Prettier, diff, precommit Gitleaks, postcommit Gitleaks, and commit check PASS.
+- **Next:** after the active `167a7dd3` Pet retest and Context/SiYuan commit return, build one combined immutable SHA for explicit backend selection plus real Codex conversation acceptance.
+
+### 2026-08-31 07:30 CDT — immutable `950d10a6` remaining matrix executed
+
+- **Coverage:** three additional top-level Playwright workflows executed; cumulative release-matrix coverage is now `9/10` top-level scenarios.
+- **Truthful results:** `/md` + Workbench was NOT RUNNABLE because no model was selected (`/md: Design MD` recognized, then exact `Cannot send`); ADE was NOT RUNNABLE because account/workspace/project/worktree/chat authority was absent and Retry remained fail closed; CAO Operations Floor was NOT RUNNABLE because canonical schedule state had zero CAO-supervised actions. No unavailable state was counted as PASS or product failure.
+- **Evidence / environment:** `D:\VibeSpace-Testing\native-evidence\release-950d10a6\remaining-matrix-summary.json` plus adjacent packets. Official app PID `9268` remained responsive; ports `5173` and `11434` absent.
+- **Next:** run the final authenticated OpenCode/Context scenario on the combined current SHA, then unblock `/md` with real model selection and CAO with real scheduled action composition rather than fixtures.
+
+### 2026-08-31 07:52 CDT — CAO zero-row production bootstrap boundary
+
+- **First missing wire:** SchedulePage can consume/edit/run/pause/delete an EventRow containing parsed `caoSupervision`, but its real create path calls `buildJarvisScheduleEventInput` without that metadata. Tests pre-seed the supervised row, so immutable `950d10a6` truthfully had zero Jarvis Actions and no runnable Operations Floor/manual-force path.
+- **Downstream gap:** `createProductionCaoControlComposition` has no non-test caller, so real Chat/terminal control capability ports remain unbootstrapped even after a row exists.
+- **Ownership blockers:** active `chat_supervision_task5` owns dirty `jarvisSchedules`/Runner/Dispatch files, and active Chat handoff task 6 reserves `SchedulePage.tsx`. Root will not overlap them.
+- **Next clean milestone:** after both exact owners commit/release, add one real scoped CAO schedule create workflow through the existing Schedule authority, then instantiate the committed production control composition with existing approval/journal/event/cancel/Chat/terminal authorities. No second scheduler or fixture-only acceptance.
+
+### 2026-08-31 08:02 CDT — TASK-MD-ARTIFACT-CATALOG-REFRESH-20260831-114 handed off
+
+- **Controller / recipient / base:** `/root` to `/root/instant_resume`, `integration/UnifiedChungus-final` at `869ed29c44b4e0175577c0bffabd2f99b76f0185`.
+- **Exact scope:** clean `app/src/features/chat/Composer.tsx` plus new focused `Composer.mdArtifactRefresh.test.tsx` only. Prior Chat-handoff ownership transferred Composer to this lane and the `/connect` slice committed/released; backend/root will not overlap it.
+- **Proven defect:** account artifacts load only when `pluginAccountId` changes, so a newly finalized `/md` artifact cannot enter mixed `@` discovery during the same Composer lifetime.
+- **Contract:** refresh the bounded metadata-only account artifact list when mixed `@` discovery opens; contain repository failures; reject stale account/request results; preserve existing catalog authority/ranking. Workbench design, kernel/repository, model selection, runtime/backend, and all other files remain excluded.
+
+### 2026-08-31 07:45 CDT — TASK-P0-CONTEXT-SIYUAN-DENIAL-TRUTH-20260831-108 committed / released
+
+- **Immutable commit / exact scope:** `869ed29c44b4e0175577c0bffabd2f99b76f0185` (`fix(context): preserve denied retrieval truth`), exactly `app/src/features/context/gateway/ContextGateway.ts` and `.test.ts` (`20 insertions / 1 deletion`).
+- **Boundary / behavior:** a real SiYuan `ContextQueryError('permission_denied')` was previously collapsed to generic `retrieval-failed`; the existing Gateway now preserves it as `unauthorized-scope`, with an empty evidence-handle list and no second context authority.
+- **TDD / gates:** focused regression witnessed RED (`retrieval-failed`) then GREEN. Postcommit Gateway + production Gateway + SiYuan query matrix `3 files / 41 tests` PASS; complete Context tree `125 files / 1,398 tests` PASS; PR31 OpenCode/RLM verification PASS; release manifest `45/45` PASS; exact Prettier, diff-check, isolated Vite build (`5,076 modules`), and exact-file Gitleaks PASS.
+- **External/shared gates:** shared typecheck is blocked only by concurrent `codexPersistent.ts/.test.ts` diagnostics, and Rust check only by concurrent `harness/codex_server.rs` E0597. A repository-wide Vitest sweep was stopped after confirming the owned Context matrix remained green; its failures were foreign concurrent Account/Schedule/App/Persistence/appearance/performance tests and were not expanded into this exact two-file lane.
+- **Release / next:** exact files are clean and own lock released. Official native acceptance is delegated to `/root/native_resume` for the combined immutable SHA; no browser or duplicate native runtime was started here.
+
+### 2026-08-31 08:05 CDT — TASK-ADE-SCOPE-RECOVERY-20260831-114 claimed
+
+- **Agent / branch / base:** `VS-SOL-ADE-SCOPE-RECOVERY-20260831-114`, `integration/UnifiedChungus-final`, base `869ed29c44b4e0175577c0bffabd2f99b76f0185`.
+- **Exact write scope:** `productionChatGptAdeBinding.ts/.test.ts`, `ChatGptAdePage.tsx/.test.tsx`, own lock, and this append-only checkpoint.
+- **Intent:** return exact missing ADE scope prerequisites, route recovery to existing workspace/project/files/chat authorities, and reserve catalog refresh for provider-route/catalog states without fabricating identity or scope.
+- **Exclusions:** NavPane/auth/files/Chat runtime, adapters, Context, native control, credentials/billing/deployment/production, and every unrelated dirty path.
+2026-08-31T08:30:00-05:00 | VS-SOL-MD-ARTIFACT-REFRESH-20260831-115 | TASK-MD-ARTIFACT-REFRESH-20260831-115 | integration/UnifiedChungus-final @ 869ed29c | Claims only clean `app/src/features/chat/Composer.tsx` plus new `Composer.mdArtifactRefresh.test.tsx` after explicit root/backend transfer. RED-first bounded fix: refresh account-scoped canonical Jarvis artifacts when mixed `@` discovery opens, contain repository failures, and discard stale account/request results. Workbench/kernel/repository/model/native and all foreign dirty state excluded.
+2026-08-31T08:11:00-05:00 | VS-SOL-MD-ARTIFACT-REFRESH-20260831-115 | TASK-MD-ARTIFACT-REFRESH-20260831-115 | integration/UnifiedChungus-final @ 98b3f7db | Released exact two-file scope after commit `98b3f7dba1857c3ab31e1ca5f86661e9a3326d47`. Mixed `@` open now refreshes the bounded account-scoped artifact projection, contains repository failure, and rejects stale request/account results without changing ranking or retaining artifact bodies. RED 3/3 intended failures; GREEN focused 3/3 and adjacent Chat/reference 32/32; shared TypeScript exit 0; exact Prettier/diff/Gitleaks PASS. Workbench remains explicitly untouched and pending separate approved design.
+
+### 2026-08-31 08:12 CDT — TASK-ADE-SCOPE-RECOVERY-20260831-114 committed / released
+
+- **Immutable commit / exact scope:** `d288b49cfe901383067072a1f3c939125079a668` (`fix(ade): route missing scope recovery`), exactly `productionChatGptAdeBinding.ts/.test.ts` and `ChatGptAdePage.tsx/.test.tsx` (`201 insertions / 34 deletions`).
+- **Behavior:** scope-unavailable ADE authority now returns ordered exact missing `account/workspace/project/worktree/chat` parts. The unavailable surface routes only to existing Account, project selection, Files root, or Chat authorities; it never fabricates identity/scope. Catalog refresh renders only for route/catalog failures and not for scope/runtime-control recovery.
+- **TDD / gates:** intended RED was three failures (missing structured scope plus wrongly visible scope/runtime Retry); focused final `11/11` PASS; full ADE `7 files / 49 tests` PASS; shared typecheck PASS; exact Prettier, diff-check, and four-file Gitleaks PASS; postcommit focused `11/11` PASS.
+- **Boundary / release:** NavPane, auth/files, Chat runtime, adapters, Context, native process, credentials/billing/deployment and every foreign change remained untouched. Exact product/test files are clean and own lock released; official native profile setup/read-cancel-recovery acceptance remains delegated to the sole native controller.
+
+### 2026-08-31 09:00 CDT — hourly gate satisfied / Codex proxy P1 handoff
+
+- **Playwright gate:** `vibespace-playwright-hourly-gate` remains active. The first checkpoint target is already satisfied at `6/10` top-level scenarios executed; cumulative coverage is `9/10`, with unavailable states recorded truthfully rather than counted as passes.
+- **Exact handoff:** `/root/instant_resume` owns only clean `managed_codex_proxy_runtime.rs` and `codex_server.rs` at base `d288b49c` to add regressions and fixes for reviewed-runtime byte integrity before credential delivery and retryable lifecycle ownership after failed termination. Root will not overlap or stage those files.
+- **Native lane:** `/root/native_resume` remains the sole Playwright/CDP controller and continues the D:-target immutable build and final authenticated OpenCode/Context acceptance. Foreign app/process ownership remains untouched.
+
+### 2026-08-31 09:05 CDT — TASK-WORKBENCH-ARTIFACT-RESTORE-20260831-116 claimed
+
+- **Branch / base / owner:** `/root`, `integration/UnifiedChungus-final` at `d288b49c`.
+- **Exact files:** `WorkbenchPage.tsx/.test.tsx`, `PanelPalette.tsx`, and `persistence.ts/.test.ts` only.
+- **Vertical contract:** production Workbench uses the existing account-scoped digest-validating artifact authority; a bounded chooser opens canonical `/md` artifacts as reference panels; only opaque id + exact digest persist; reload revalidates; account/digest/repository changes fail closed; reusable templates shed account-specific artifact references.
+- **Exclusions:** Chat/Composer, repository/contracts, ReferencePanel semantics, native control, credentials/billing/deployment, and every foreign-owned file/process.
+
+### 2026-08-31 09:42 CDT — TASK-WORKBENCH-ARTIFACT-RESTORE-20260831-116 committed / released
+
+- **Immutable commit / exact scope:** `87b0b7d94c7c3c877adce4e6ded0274713921211` (`feat(workbench): restore verified artifacts`), exactly `WorkbenchPage.tsx/.test.tsx`, `PanelPalette.tsx`, and `persistence.ts/.test.ts` (`250 insertions / 1 deletion`).
+- **Behavior:** Workbench now exposes a bounded Artifact chooser backed by the canonical account repository, creates a digest-bound reference panel through the existing resolver, persists only opaque id + exact digest, revalidates after reload/focus, fails closed across account/digest/repository changes, and strips account-specific references from reusable templates.
+- **TDD / gates:** intended RED was three missing boundaries. Focused/adjacent final `32/32` PASS; complete Workbench `33 files / 138 tests` PASS; TypeScript typecheck PASS; isolated D: Vite production build `5,080 modules` PASS; exact Prettier, diff check, staged Gitleaks, and commit scope PASS.
+- **Native next:** sole controller will batch `/md` creation, mixed `@` discovery, chooser/open, digest revalidation, and reload restoration against one combined immutable SHA after the active Codex proxy P1 commit lands.
+
+### 2026-08-31 09:45 CDT — Workbench artifact cross-account title P1 reopened
+
+- **Independent review finding:** commit `87b0b7d9` persisted the canonical account artifact title as global panel chrome. Preview content failed closed on account change, but the prior account's title could remain visible and serialized.
+- **Exact repair scope:** `WorkbenchPage.tsx/.test.tsx` only. Regression must prove a switch from account A to B removes A's title from rendered UI and that storage never contains it; the persisted panel title remains generic while the resolver-validated ready snapshot owns the canonical title.
+
+### 2026-08-31 09:06 CDT — TASK-CODEX-PROXY-INTEGRITY-CLEANUP-20260831-116 claimed
+
+- **Agent / branch / base:** `VS-SOL-CODEX-PROXY-INTEGRITY-CLEANUP-20260831-116` (`/root/instant_resume`), `integration/UnifiedChungus-final`, base `d288b49cfe901383067072a1f3c939125079a668`.
+- **Exact scope:** `app/src-tauri/src/harness/managed_codex_proxy_runtime.rs` and `app/src-tauri/src/harness/codex_server.rs` only, under the explicit root handoff recorded in the backend lock.
+- **RED-first intent:** reject correct-name/version but byte-mutated OpenCodex runtimes through the existing pinned managed-installer receipt/closure authority before credential delivery; independently prove Codex and proxy termination failures remain owned and retryable, and lifecycle state is removed only after both stops succeed.
+- **Exclusions:** `harness/mod.rs`, renderer/Chat, profiles, credentials, user/global configuration, native app/process control, and every unrelated dirty path.
+
+### 2026-08-31 10:01 CDT — TASK-CODEX-PROXY-INTEGRITY-CLEANUP-20260831-116 committed / released
+
+- **Immutable commit / exact scope:** `981538ba089ffbf11611dd65c935195d688615b8` (`fix(codex): attest proxy runtime and retry shutdown`), exactly `managed_codex_proxy_runtime.rs` and `codex_server.rs` (`177 insertions / 77 deletions`).
+- **Integrity behavior:** proxy resolution now accepts only the existing VibeSpace-managed OpenCodex `2.36.0` runtime after its pinned release receipt and dependency/source/Bun closure checks return `ProbeRequired`. Roaming npm package metadata is never an authority; missing is unavailable and incomplete/tampered is unreviewed before credential loading.
+- **Lifecycle behavior:** Codex and proxy termination are attempted independently. A failed child remains owned, the error is returned, and a later exact-owner/generation stop retries it; controller lifecycle state is removed only after both owned guards have stopped.
+- **Verification:** postcommit runtime tests `5/5` PASS; lifecycle tests `10/10` PASS; adjacent pinned managed-runtime tests `4/4` PASS. Exact `rustfmt --check`, diff check, and commit-diff Gitleaks PASS. Initial C: run was blocked before assertions by OS error 112; final gates used isolated `D:\VibeSpace-Testing\codex-targets\proxy-p1-d288b49c` without touching foreign processes.
+- **Boundary / release:** exact files are clean; own lock is released. No app/Playwright control, credential access, `harness/mod.rs`, renderer, user/global config, or foreign state was touched. Native should rebuild the combined immutable SHA and prove managed runtime start plus exact stop/restart recovery; process-double failure paths remain unit-only fault injection.
+
+### 2026-08-31 08:47 CDT — Workbench artifact cross-account title P1 repaired / released
+
+- **Immutable commit / exact scope:** `de6eb6d11d91b49f716a575f668231290d31e276` (`fix(workbench): isolate artifact titles`), exactly `WorkbenchPage.tsx/.test.tsx` (`17 insertions / 4 deletions`).
+- **Behavior:** global Workbench state keeps artifact panel chrome generic. Canonical titles render only inside the current account's digest-validated provider snapshot; serialized storage and switched-account UI no longer expose the prior account title.
+- **TDD / gates:** focused RED proved the persisted title leak; final WorkbenchPage plus persistence boundary `2 files / 18 tests` PASS; TypeScript typecheck PASS; exact Prettier, diff check, staged Gitleaks, and exact-file commit scope PASS.
+- **Release / next:** exact two product/test files are clean and released. Native chooser/revalidation/reload acceptance remains batched with the active Codex proxy P1 commit against one immutable combined SHA.
+
+### 2026-08-31 08:54 CDT — Workbench artifact truth P1 follow-up claimed
+
+- **Branch / base / owner:** `/root`, `integration/UnifiedChungus-final` at `de6eb6d1`; prior ReferencePanel/integration ownership is released and no active lock overlaps the exact scope.
+- **Exact files:** `WorkbenchPage.tsx`, `ReferencePanel.tsx`, `store.ts`, and `integration.test.ts` only.
+- **Proven boundaries:** live same-session template save/apply bypasses the existing artifact identity sanitizer, and artifact panels report ready before account/digest resolution. The repair shares the sanitizer with production save and drives busy/ready/error status only from resolver truth.
+
+### 2026-08-31 08:56 CDT — Workbench artifact truth P1 follow-up committed / released
+
+- **Immutable commit / exact scope:** `95bb104158f4bb56b3e2d18bf36c89ae14abb64b` (`fix(workbench): persist verified artifact state`), exactly `WorkbenchPage.tsx`, `ReferencePanel.tsx`, `store.ts`, and `integration.test.ts` (`62 insertions / 11 deletions`).
+- **Behavior:** same-session template save/apply now uses the shared live-identity sanitizer, so artifact ids/digests never enter reusable template state. Artifact panels report busy while initially resolving, ready only after current-account digest validation, and error after missing/mismatch/resolver failure.
+- **TDD / gates:** two intended RED failures reproduced both P1s; focused integration `16/16` PASS; WorkbenchPage + persistence + integration boundary `3 files / 34 tests` PASS; TypeScript typecheck PASS; exact Prettier, diff check, staged Gitleaks, and exact-file commit scope PASS.
+- **Release / next:** exact four product/test files are clean and released. Sole native controller will exercise chooser, verified-ready, mismatch/error, reload, and template isolation on the combined immutable SHA after the proxy P1 lands.
+### 2026-08-31 10:05 CDT — TASK-OPENCODE-TRANSIENT-PROBE-RECOVERY-20260831-117 claimed
+
+- **Agent / branch / base:** `VS-SOL-OPENCODE-TRANSIENT-PROBE-20260831-117` (`/root/p0_context_siyuan`), `integration/UnifiedChungus-final`, base `95bb10413f263fc61d6f180be8f1dd002adf4d26`.
+- **Exact scope:** clean `app/src-tauri/src/harness/runtime.rs`, own lock, and append-only coordination checkpoint.
+- **Intent:** reproduce the valid APPDATA npm OpenCode transient timeout being classified permanently incompatible, then add one bounded fail-closed recovery while preserving canonical-path/fingerprint/version/max-bound authority.
+- **Exclusions:** `managed_codex_proxy_runtime.rs`, `codex_server.rs`, wrappers, Ollama, credentials, native processes, and every unrelated dirty file/lock.
+
+### 2026-08-31 10:31 CDT — TASK-OPENCODE-TRANSIENT-PROBE-RECOVERY-20260831-117 implementation checkpoint
+
+- **Owned diff:** only `app/src-tauri/src/harness/runtime.rs`; one exact timeout retry with canonical-path and fingerprint equality before retry, followed by the existing post-success identity check. Every other error remains terminal for that candidate and the retry count is capped at one.
+- **TDD evidence:** focused regression RED returned `Incompatible` instead of `SystemCompatible`; focused GREEN `1/1` PASS. Affected `harness::runtime::tests` matrix `16/16` PASS in isolated `D:\VibeSpace-Testing\codex-targets\runtime-probe-95bb1041`.
+- **Release gates:** exact rustfmt check PASS; exact diff check PASS; exact-file Gitleaks scanned 40.65 KB with no leaks. Pre-existing unrelated native dead-code warnings remain unchanged.
+- **Next:** exact one-file commit, postcommit check, final ledger release, and remove only this task's lock.
+
+### 2026-08-31 10:32 CDT — TASK-OPENCODE-TRANSIENT-PROBE-RECOVERY-20260831-117 committed / released
+
+- **Immutable commit / exact scope:** `85e532eb84d41144ce7be91a0d6b17036901e5de` (`fix(harness): retry transient runtime probe`), exactly `app/src-tauri/src/harness/runtime.rs` (`81 insertions / 7 deletions`).
+- **Behavior:** a native candidate receiving the exact bounded version-probe timeout gets at most one retry, only after its canonical path and SHA-256 fingerprint still match the pre-probe identity. The existing post-success identity/version checks remain authoritative; start/exit/read/UTF-8/version/identity failures never retry.
+- **TDD / verification:** intended focused RED returned `Incompatible`; focused GREEN `1/1` PASS; affected runtime matrix `16/16` PASS in isolated D: target. Exact rustfmt/diff checks and pre/postcommit Gitleaks PASS; postcommit scan covered one commit / 3.38 KB with no leaks.
+- **Boundary / release:** no proxy file, wrapper, Ollama, credential, Pet/watchdog file, native process, or unrelated state changed. Exact product file is clean and this task's lock is released.
+
+### 2026-08-31 10:08 CDT — TASK-RENDERER-WATCHDOG-ESCALATION-20260831-118 claimed
+
+- **Agent / branch / base:** `VS-SOL-RENDERER-WATCHDOG-ESCALATION-20260831-118` (`/root/instant_resume`), `integration/UnifiedChungus-final`, base `981538ba089ffbf11611dd65c935195d688615b8`.
+- **Exact scope:** clean `app/src-tauri/src/renderer_watchdog.rs` only under root's explicit Pet/watchdog handoff; `pets.rs` remains read-only because the bounded evidence does not require a Pet change.
+- **Proven boundary:** immutable `869ed29c` logged two reloads, one retained `AwaitMainAbsent` failure, then repeated `main_unregister_timeout` every retry. `native_recovery_resume_action` always overrides the outer bounded policy whenever lifecycle state is retained, so recreate failure count can never trigger the already-defined restart/no-restart decision.
+- **RED-first intent:** prove the first retained phase may resume after the retry interval, but after one failed recreate attempt it must yield to `next_recovery_action_for_reason` instead of masking escalation indefinitely. Preserve Pet windows and all process/native ownership.
+
+### 2026-08-31 10:12 CDT — TASK-RENDERER-WATCHDOG-ESCALATION-20260831-118 scope extended
+
+- **Exact scope extension:** added clean `app/src-tauri/src/pets.rs` under root's existing explicit handoff after fresh native evidence showed `enabled=false, overlayVisible=false` still materialized visible Pet HWNDs and `pet_hide_overlay` returned success while the overlay HWND remained visible.
+- **Bounded seam:** the command discards `WebviewWindow::hide` failure and never verifies native visibility. Add a Windows-native hide fallback/acknowledgement so persisted-disabled frontend reconciliation and explicit hide cannot report success while the HWND remains visible; retain detached host materialization and explicit show behavior.
+
+### 2026-08-31 10:36 CDT — TASK-RENDERER-WATCHDOG-ESCALATION-20260831-118 committed / released
+
+- **Immutable commit / exact scope:** `d2dfad92` (`fix(native): bound renderer and pet recovery`), exactly `app/src-tauri/src/renderer_watchdog.rs` and `app/src-tauri/src/pets.rs` (`88 insertions / 7 deletions`).
+- **Behavior:** a failed retained native recovery yields to the existing restart/live-PTY safety policy instead of retrying `main_unregister_timeout` forever. Pet setup and explicit overlay hide share an HWND-verified hide boundary; Windows uses `SW_HIDE` and rejects success while the native HWND is still visible.
+- **TDD / gates:** watchdog RED reproduced `Some(RecreateWebview)` instead of escalation; Pet RED reproduced the unacknowledged hide seam. GREEN: complete renderer-watchdog module `31/31`, complete Pet module `46/46`; exact rustfmt, diff check, and Gitleaks PASS in isolated `D:\VibeSpace-Testing\codex-targets\proxy-p1-d288b49c`.
+- **Release / native:** exact product files are clean and own lock is released. Sole native controller must verify persisted-disabled cold start, explicit overlay hide native visibility, enabled show, and renderer-stall recovery on immutable `d2dfad92` or a descendant.
+
+### 2026-08-31 10:39 CDT — TASK-PET-WATCHDOG-P1-FOLLOWUP-20260831-119 claimed
+
+- **Agent / branch / base:** `VS-SOL-PET-WATCHDOG-P1-FOLLOWUP-20260831-119` (`/root/instant_resume`), `integration/UnifiedChungus-final`, base `d2dfad920148e44ca9fe6801c23807e0032dfe2c`.
+- **Exact scope:** clean `app/src-tauri/src/renderer_watchdog.rs` and `app/src-tauri/src/pets.rs` only under root's explicit follow-up handoff.
+- **Verified review boundaries:** yielding every failed retained recovery to an absent reason can stall forever with a live PTY; it must continue bounded recreate attempts without process restart. Setup's position check and delayed hide are not atomic with explicit show intent; a generation fence must prevent a stale setup worker from hiding a newly requested Pet.
+
+### 2026-08-31 10:50 CDT — TASK-PET-WATCHDOG-P1-FOLLOWUP-20260831-119 committed / released
+
+- **Immutable commit / exact scope:** `5485f38b` (`fix(native): fence bounded recovery races`), exactly `app/src-tauri/src/renderer_watchdog.rs` and `app/src-tauri/src/pets.rs` (`139 insertions / 15 deletions`).
+- **Behavior:** retained native recovery yields after failure when application restart is safe; when a live PTY forbids restart, it resumes only until the established three-recreate cap and then fails closed. Pet overlay/panel setup hides capture per-surface intent generations before materialization, serialize with the existing lifecycle locks, and skip stale hides after explicit show/open; explicit overlay hide records intent and still performs the HWND-verified hide.
+- **TDD / gates:** focused watchdog RED got `None` instead of PTY-safe `RecreateWebview`; focused Pet RED proved absent generation state/fence. GREEN: renderer-watchdog `32/32`, Pet `47/47`; exact rustfmt, diff check, and Gitleaks PASS in the isolated warm D target.
+- **Release / native:** exact product files are clean and own lock is released. Sole native controller must verify early show/open survives the delayed setup-hide boundary, disabled/explicit hide remains hidden, and a live PTY bounds retained recovery without process restart on `5485f38b` or a descendant.
+
+### 2026-08-31 10:53 CDT — TASK-PET-PANEL-ORDERING-20260831-120 claimed
+
+- **Agent / branch / base:** `VS-SOL-PET-PANEL-ORDERING-20260831-120` (`/root/instant_resume`), `integration/UnifiedChungus-final`, base `5485f38baf85ce83d1c8a2a54e9c6fe1c06cb71f`.
+- **Exact scope / verified P1:** clean `app/src-tauri/src/pets.rs` only. Panel open records intent before queueing and configures under `panel_lifecycle`; later minimize/hide currently records no panel intent and holds no matching lifecycle lock, allowing earlier queued configure/show to win after the later hide.
+- **TDD intent:** prove later panel visibility intent advances generation before acquiring the same lifecycle lock, then serialize minimize/hide so final native visibility follows invocation order while preserving overlay restoration.
+
+### 2026-08-31 11:00 CDT — TASK-PET-PANEL-ORDERING-20260831-120 committed / released
+
+- **Immutable commit / exact scope:** `9ed3a40b` (`fix(pets): serialize panel visibility intent`), exactly `app/src-tauri/src/pets.rs` (`97 insertions / 28 deletions`).
+- **Behavior:** panel minimize/hide now record `PET_MINI_PANEL_LABEL` intent before acquiring `panel_lifecycle`; any earlier queued open/configure finishes first, then the later hide/minimize applies last and restores the overlay only after releasing the panel lifecycle lock.
+- **TDD / gates:** focused RED failed at the absent later panel intent; GREEN focused concurrency scenario PASS and complete Pet boundary `48/48` PASS in the isolated D target. Exact rustfmt, diff check, and Gitleaks PASS.
+- **Release / native:** `pets.rs` is clean and own lock released. Native must queue/hold a panel open, invoke hide/minimize later, release open, and assert final panel HWND hidden/minimized with overlay restored on `9ed3a40b` or descendant.
+
+### 2026-08-31 11:03 CDT — TASK-PET-PANEL-GENERATION-20260831-121 claimed
+
+- **Agent / branch / base:** `VS-SOL-PET-PANEL-GENERATION-20260831-121` (`/root/instant_resume`), `integration/UnifiedChungus-final`, base `9ed3a40b`.
+- **Exact scope / verified P1:** clean `app/src-tauri/src/pets.rs` only. Panel commands record generations before potentially delayed lifecycle acquisition but discard the token, so invocation order can invert at the lock and a stale open/hide can apply last.
+- **TDD intent:** prove both stale-open-after-later-hide and stale-hide-after-later-open no-op after lock acquisition; thread captured tokens through production and preserve overlay restoration only for current hide/minimize intent.
+
+### 2026-08-31 11:09 CDT — TASK-PET-PANEL-GENERATION-20260831-121 committed / released
+
+- **Immutable commit / exact scope:** `3685a7c9` (`fix(pets): reject stale panel intents`), exactly `app/src-tauri/src/pets.rs` (`71 insertions / 33 deletions`).
+- **Behavior:** panel open/hide/minimize capture the generation returned when intent is recorded and revalidate after acquiring `panel_lifecycle`. Superseded opens return typed `superseded` failure before native creation/configure; stale hide/minimize no-op before visibility or overlay restoration, so later invocation wins symmetrically without deadlock.
+- **TDD / gates:** focused RED failed because generations were discarded. GREEN delayed stale-open/stale-hide concurrency regression PASS and complete Pet boundary `48/48` PASS on the isolated D target; exact rustfmt, diff check, and Gitleaks PASS.
+- **Release / native:** `pets.rs` is clean and own lock released. Native must exercise both queue inversions on `3685a7c9` or descendant and require final HWND visibility to match the newest intent.
+
+### 2026-08-31 11:12 CDT — TASK-PET-PANEL-RESTORE-20260831-122 claimed
+
+- **Agent / branch / base:** `VS-SOL-PET-PANEL-RESTORE-20260831-122` (`/root/instant_resume`), `integration/UnifiedChungus-final`, base `3685a7c98eecca0f0f35514735cb9e2ab36707c3`.
+- **Exact scope / verified P1:** clean `app/src-tauri/src/pets.rs` only. Current hide/minimize validates under `panel_lifecycle` but releases it before overlay restoration; a newer open can supersede during that gap and the stale operation still invokes overlay show.
+- **TDD intent:** pause the post-lock restoration, apply a newer open token, and prove stale hide/minimize skips overlay restoration while the current command preserves it.
+
+### 2026-08-31 11:17 CDT — TASK-PET-PANEL-RESTORE-20260831-122 scope extended
+
+- **Same-file extension:** root review proved overlay show/hide also discard their generation tokens, allowing delayed show to apply after later hide. Extend the RED/GREEN within `pets.rs` to capture/revalidate overlay tokens under `overlay_lifecycle` and make panel-driven overlay restoration serialized/conditional, including supersession recorded during the show side effect.
+
+### 2026-08-31 11:27 CDT — TASK-PET-PANEL-RESTORE-20260831-122 committed / released
+
+- **Immutable commit / exact scope:** `7f5967a8` (`fix(pets): reject stale overlay restoration`), exactly `app/src-tauri/src/pets.rs` (`268 insertions / 8 deletions`).
+- **Behavior:** overlay show/hide now retain and revalidate their own visibility generations under `overlay_lifecycle`, so delayed stale operations fail closed. Panel hide/minimize restore the overlay through one blocking panel→overlay lifecycle boundary; it rejects supersession before show and, if a newer panel open is recorded during the native show, hides the stale restoration before releasing the locks.
+- **TDD / gates:** RED exposed discarded overlay generations and non-atomic post-panel restoration. GREEN combined queued-show/queued-hide plus before-show/during-show panel supersession regression `1/1` PASS; complete Pet boundary `49/49` PASS on isolated D target. `rustfmt --check`, exact diff check, and Gitleaks PASS.
+- **Release / native:** `pets.rs` is clean and own lock released. Native must exercise queued stale overlay show after later hide, stale hide after later show, and panel hide/minimize restoration superseded both before and during show on `7f5967a8` or descendant; final HWND visibility must match the newest intent.
+
+### 2026-08-31 11:42 CDT — TASK-CODEX-PROXY-P1-CLOSURE-20260831-123 claimed
+
+- **Agent / branch / base:** `VS-SOL-CODEX-PROXY-P1-CLOSURE-20260831-123` (`/root/instant_resume`), `integration/UnifiedChungus-final`, base `7f5967a89c9520c538616bfc61c9214bea6f59e4`.
+- **Exact scope / handoff:** clean managed CLI receipt/runtime, OpenCodex materializer, managed proxy runtime, Codex server, and OpenCode runtime files only. Root directly assigned the three independently reviewed P1s and the earlier backend lock explicitly transferred proxy/server ownership to this lane.
+- **TDD intent:** reject any mutated imported closure byte before credential read/spawn using a canonical schema-v2 aggregate receipt; prove inherited probe pipes cannot defeat the deadline/retry cap; retain replacement/shutdown process ownership after failed stop for an explicit later retry.
+
+### 2026-08-31 11:50 CDT — TASK-CODEX-PROXY-P1-CLOSURE-20260831-123 committed / released
+
+- **Immutable commit / exact scope:** `0237d5eb` (`fix(codex): close proxy lifecycle boundaries`), exactly managed CLI runtime, OpenCodex materializer, Codex server, and OpenCode runtime (`219 insertions / 23 deletions`). The read-only managed proxy resolver required no edit.
+- **Behavior:** schema-v2 managed receipts bind a deterministic aggregate over every regular closure file except the receipt itself; imported JS, native keyring bytes, extras, escaped paths, and symlinks fail closed. The exact runtime is re-attested after credential read and immediately before process construction. Version probing no longer joins inherited output pipes without a deadline. Exited replacement and shutdown stop in place and remove controller ownership only after every child stop succeeds.
+- **TDD / gates:** initial RED failed on absent closure digest and bounded pipe receiver; repeated-failure lifecycle tests also required new helpers. GREEN affected five-module matrix `40 passed / 1 intentionally ignored`; `rustfmt --check`, exact diff check, and Gitleaks PASS in the isolated D target.
+- **Release / native impact:** exact product files are clean and own lock released. Existing schema-v1 managed runtimes now truthfully require rematerialization before credential-bearing launch; no app/native process was controlled.
+
+### 2026-08-31T13:31:43-05:00 — VS-SOL-CODEX-PROXY-FINAL-REPAIR-20260831-124 released
+
+- Branch/base/result: `integration/UnifiedChungus-final` / `0237d5eb` / `128c536a`.
+- Exact commit scope: `app/src-tauri/Cargo.toml`, OpenCodex runtime manifest, and the six managed runtime/proxy/server harness modules claimed in the agent lock.
+- Result: canonical LF v2 closure authority (`5beb85ce...e37c` independently reproduced twice), atomic legacy rematerialization/recovery, bounded Job-contained probes, retry-retained shutdown ownership, OS-level runtime DACL/file/directory sealing, suspended final attestation before credential-bearing resume, and fail-closed integrity checks at launch and command boundaries.
+- Verification: D-target focused groups PASS (3 + 5 + 7 + 6 + 16 + 33; one intentional ignored network materialization); `cargo fmt --check`, exact diff check, harness/resources scans, and exact-commit Gitleaks PASS. Lock released; no native app control.
+
+### 2026-08-31 13:34 CDT — TASK-CODEX-PROXY-SEAL-ORDER-20260831-125 claimed
+
+- Agent/branch/base: `VS-SOL-CODEX-PROXY-SEAL-ORDER-20260831-125`, `integration/UnifiedChungus-final`, `128c536a`.
+- Exact scope: clean `app/src-tauri/src/harness/codex_server.rs` only, explicitly handed off by root.
+- RED intent: inject a server handshake failure plus retryable proxy termination and prove runtime entry creation remains denied until termination or Job-close fallback is observed.
+
+### 2026-08-31 13:49 CDT — TASK-CODEX-PROXY-SEAL-ORDER-20260831-125 committed / released
+
+- Immutable commit: `85fb26b0` (`fix(codex): retain seal through launch cleanup`), exactly `app/src-tauri/src/harness/codex_server.rs`.
+- Behavior: all `launch_server` error exits now retain proxy process and runtime seal in one ordered lifecycle guard. Cleanup performs bounded direct termination, drops the kill-on-close Job if required, observes/reaps once more, drops process ownership, and only then releases runtime DACL/file handles.
+- Verification: the initial focused boundary was `16/17`, with the new handshake/seal-order regression passing and one older assertion corrected to the retained-retry truth. Both exact regressions then passed. `rustfmt --check`, exact diff check, file secret scan, and exact-commit Gitleaks passed. Lock released; no native app control.
+
+### 2026-08-31 13:55 CDT — TASK-CODEX-MANAGED-INSTALL-20260831-126 claimed
+
+- Agent/branch/base: `VS-SOL-CODEX-MANAGED-INSTALL-20260831-126`, `integration/UnifiedChungus-final`, `85fb26b0`.
+- Approved exact scope: new managed Codex install controller; native registration/wiring; isolated Codex runtime manager/readiness gate; VibeSpace Doctor read-only projection and focused tests. Root retains Composer/backend-affinity integration.
+- TDD intent: explicit Install only, pinned local-app-data materializers, progress/cancel/single-flight, trusted managed executable identity, reload/error recovery, and no OpenCode/config/credential mutation.
+
+### 2026-08-31 13:55 CDT — TASK-CAO-SCHEDULE-BOOTSTRAP-20260831-127 claimed
+
+- Agent/branch/base: `VS-SOL-CAO-SCHEDULE-BOOTSTRAP-20260831-127` (`/root/p0_context_siyuan`), `integration/UnifiedChungus-final`, `85fb26b0`.
+- Exact scope: clean new `caoScheduleBootstrap.ts/.test.ts` plus clean `SchedulePage.tsx` and `SchedulePage.jarvisLifecycle.test.tsx` only.
+- Approved TDD intent: explicit CAO-supervised-learning toggle; schedule ID equals the created Event ID; active project plus canonical `learning-md`/`quarter-hour-v1` binding; fail closed without exact production capability and account/workspace/project/enabled-learning scope.
+- Protection: active chat-supervision files remain excluded; no native app/Playwright/process control or foreign dirty-file changes.
+
+### 2026-08-31 14:25 CDT — TASK-CAO-SCHEDULE-BOOTSTRAP-20260831-127 implementation checkpoint
+
+- Result: the real Schedule form can explicitly create a CAO-supervised learning row bound to one generated Event ID, active project, canonical `learning-md` target, and `quarter-hour-v1` policy. Scope/capability/learning-state gaps fail closed, and manual force now refuses a row outside the active project before claiming it.
+- Persistence/recovery proof: created metadata survives remount and reaches exact manual-force scope; adjacent production runtime and recovery acceptance remain green.
+- Verification: focused/adjacent 4 files / 37 tests PASS; full app typecheck exit 0; Prettier, diff check, and exact-source Gitleaks (157 KB) PASS.
+- External build blocker: isolated Vite build transformed 2,251 modules, then the active foreign Chat WIP failed at `app/src/features/chat/Composer.tsx:6454` because the file currently ends at `undefin`. No owned build diagnostic; no overlap or app/process control attempted.
+
+### 2026-08-31 14:15 CDT — TASK-CODEX-MANAGED-INSTALL-20260831-126 committed / released
+
+- Immutable commit: `db8467bd` (`feat(codex): add explicit managed tools install`), exactly the ten files in the agent lock.
+- Behavior: ordinary native runtime now exposes explicit-only pinned Codex/OpenCodex detect/install/cancel commands under `app_data/managed-runtime`, with one install lease, bounded component progress, cancellation, receipt reinspection, and verified managed Codex registration in the existing trusted CliBridge registry. Renderer state refreshes on activation/reload without auto-install, rejects invalid identities, contains stale events/errors, and provides an accessible Install/Cancel/Retry gate. Doctor performs read-only detection and reports missing/incomplete/ready truth without invoking installation.
+- Verification: focused renderer/Doctor `20/20` PASS; Rust managed installer `2/2` PASS; ordinary-builder registration `1/1` PASS; direct Vite production build PASS; Prettier/rustfmt/diff checks and exact-commit Gitleaks PASS. Shared `pnpm typecheck` reached only the concurrently owned `caoScheduleBootstrap.ts:64` diagnostic and no owned-file diagnostics.
+- Handoff/native impact: root still owns mounting `CodexReadinessGate` only for selected Codex affinity and passing its trusted executable ID into the existing backend route. Native acceptance should verify missing-state Doctor truth, explicit consent, component progress/cancel/retry, reload adoption, and successful Codex readiness without changing OpenCode behavior or credentials. Own lock released; no native app control.
+
+### 2026-08-31 14:20 CDT — TASK-CODEX-MANAGED-DISPATCH-20260831-128 claimed
+
+- Agent/branch/base: `VS-SOL-CODEX-MANAGED-DISPATCH-20260831-128`, `integration/UnifiedChungus-final`, `db8467bd`.
+- Approved exact scope: clean `app/src/lib/ai/adapters/codexPersistent.ts` and `.test.ts` only.
+- TDD intent: refresh the read-only managed runtime authority before every persistent Codex start; verified managed executable ID wins, existing trusted Codex scan is the only fallback, neither authority fails before native start, and no installation path is reachable.

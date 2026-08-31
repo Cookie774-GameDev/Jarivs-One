@@ -1,0 +1,126 @@
+{
+  "capturedAt": "2026-08-30T06:59:18.488Z",
+  "identity": {
+    "jarvisPid": 34752,
+    "webViewPid": 18496,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-30T01:59:15.3902195-05:00"
+  },
+  "state": {
+    "activeChatId": "cht_fPdpkISu5ZnyEjwa",
+    "selection": {
+      "providerId": "opencode",
+      "connectionId": "opencode-cli",
+      "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+    },
+    "runtime": {
+      "settings": {
+        "effort": "high",
+        "fastMode": "off",
+        "performance": "balanced",
+        "rlmEnabled": true
+      },
+      "access": "full",
+      "approveAllForRun": false
+    },
+    "probe": {
+      "sends": [
+        {
+          "at": 1788073113347,
+          "chatId": "cht_fPdpkISu5ZnyEjwa",
+          "modelSelectionOverride": {
+            "mode": "single",
+            "providerId": "opencode",
+            "connectionId": "opencode-cli",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "reasoningPreference": {
+            "effortOverride": "high"
+          },
+          "runtimeSettings": {
+            "effort": "high",
+            "performance": "balanced",
+            "fastMode": "off",
+            "rlmEnabled": true
+          },
+          "approveAllForRun": false
+        }
+      ],
+      "runs": [
+        {
+          "at": 1788073113458,
+          "chatId": "cht_fPdpkISu5ZnyEjwa",
+          "status": "running",
+          "errorCode": null
+        },
+        {
+          "at": 1788073128295,
+          "chatId": "cht_fPdpkISu5ZnyEjwa",
+          "status": "done",
+          "errorCode": null
+        }
+      ]
+    },
+    "finalAnswers": [
+      "Understood, vipersel2 — the Gateway returned a grounded evidence block, but it is thin. I report exactly what the product exposed and nothing more. **Grounded evidence (retrieved through the active Context Gateway / RLM path)** Investigation receipt: - receiptId: `context-receipt-ea39833e-8e5a-4b77-83db-a88243dbdf4e` - route: `deep` · cacheStatus: `miss` · policyVersion: `vibespace-context-policy-v1` - decision: `required-deep` (reasons: `explicit-context`, `explicit-deep`, `incomplete-working-set`) - scopeRevision: `ses_fae89862bffeGGiCZIu8sGoD6b:0` - sourceRevisions: - sourceId: `[unverified link omitted]` - revision (content hash): `[unverified link omitted]` - executionIdentity: provider `opencode-go` model `deepseek-v4-flash-vision-exp` · transport `opencode-cli` Evidence handles opened: - `[unverified link omitted]` - `[unverified link omitted]` **What the excerpts actually contain** Only two fragments hyd. They concern the revision canary: \"Revision canary: the exact selected OpenCode route must hydrat"
+    ],
+    "finalAnswerMetrics": [
+      {
+        "length": 2299,
+        "containsFixtureName": false,
+        "containsContextGateway": true,
+        "containsJarvisExecutable": false,
+        "containsOllamaInvariant": false,
+        "ending": "dentity string in the hydrate. - No exact ports (no data on any port number). - No explicit \"zero-Ollama invariant\" wording surfaced in the returned fragments. - No SiYuan document ID or block ID was returned by the feed. - No user-visible source link/URL was returned. I did not browse the public web, and I did not read the source directly from the filesystem; the stream above came solely from the Gateway/RLM retrieval path. **Honest summary** The retrieval route is live and returned a valid receipt, but the hydrated evidence set was incomplete: it only confirmed the revision-canary expectation. The process/WebView identity, ports, and the zero-Ollama invariant were **not** present in the fragments the product returned, so I cannot state them as grounded facts without inventing provenance."
+      }
+    ],
+    "finalAnswerLinks": [],
+    "checkpoints": [
+      {
+        "kind": "final",
+        "text": "Understood, vipersel2 — the Gateway returned a grounded evidence block, but it is thin. I report exactly what the product exposed and nothing more. **Grounded evidence (retrieved through the active Context Gateway / RLM path)** Investigation receipt: - receiptId: `context-receipt-ea39833e-8e5a-4b77-83db-a88243dbdf4e` - route: `deep` · cacheStatus: `miss` · policyVersion: `vibespace-context-policy-v1` - decision: `required-deep` (reasons: `explicit-context`, `explicit-deep`, `incomplete-working-set`) - scopeRevision: `ses_fae89862bffeGGiCZIu8sGoD6b:0` - sourceRevisions: - sourceId: `[unverified link omitted]` - revision (content hash): `[unverified link omitted]` - executionIdentity: provider `opencode-go` model `deepseek-v4-flash-vision-exp` · transport `opencode-cli` Evidence handles opened: - `[unverified link omitted]` - `[unverified link omitted]` **What the excerpts actually contain** Only two fragments hyd. They concern the revision canary: \"Revision canary: the exact selected OpenCode route must hydrat"
+      }
+    ],
+    "activity": [
+      "Show activity details 1 action"
+    ],
+    "context": [],
+    "approvals": [],
+    "visibleControls": [
+      "Open session details",
+      "0 subagents",
+      "Chat console settings",
+      "Show full prompt",
+      "Collapse completed work details",
+      "Show activity details 1 action",
+      "Choose model",
+      "Connection details for Opencode Go",
+      "Agent Mode. Open permissions panel.",
+      "Upgrade prompt with Prompt Forge",
+      "Configure Prompt Forge",
+      "Start dictation",
+      "Send message"
+    ],
+    "counts": {
+      "finalAnswers": 1,
+      "checkpoints": 1,
+      "activity": 1,
+      "context": 0,
+      "approvals": 0,
+      "send": 1,
+      "stop": 0
+    }
+  },
+  "safety": {
+    "label": "phase0:result",
+    "capturedAt": "2026-08-30T01:59:18.3956986-05:00",
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  },
+  "events": []
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "classification": "measured_not_pixel_identical",
+  "dimensions": {
+    "reference": "1586x992",
+    "actual": "1586x992",
+    "dimensionCheck": "passed"
+  },
+  "pixelmatchThreshold": 0.12,
+  "comparisonPolicy": "Measurement-only maxMismatchRatio=1 was used so both diff packets were emitted. The comparator status is not asserted as visual parity.",
+  "collapsed": {
+    "mismatchedPixels": 248907,
+    "totalPixels": 1573312,
+    "mismatchRatio": 0.1582057468575845,
+    "report": "01-collapsed-pixel-report.json",
+    "diff": "01-collapsed-diff.png"
+  },
+  "expanded": {
+    "mismatchedPixels": 200640,
+    "totalPixels": 1573312,
+    "mismatchRatio": 0.12752715291054795,
+    "report": "02-expanded-pixel-report.json",
+    "diff": "02-expanded-diff.png"
+  },
+  "truthBoundary": "The official-native captures are exact-dimension semantic matches for collapsed continuous-response ledger and expanded activity inspector, but their fixture text, timestamps, surrounding app state, and current layout are not identical to the authoritative reference compositions. No pixel-perfect claim is made.",
+  "screenshotResizedAfterCapture": false,
+  "ollamaProcessCount": 0,
+  "listener11434Count": 0
+}

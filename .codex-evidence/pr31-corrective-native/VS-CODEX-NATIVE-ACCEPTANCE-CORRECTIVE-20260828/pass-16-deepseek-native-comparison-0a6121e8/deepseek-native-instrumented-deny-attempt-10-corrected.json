@@ -1,0 +1,816 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-DEEPSEEK-ATTEMPT-10-INSTRUMENTED-DENY",
+  "startedAt": "2026-08-28T20:37:33.278Z",
+  "status": "failed",
+  "captureHead": "0853e43d574a64d70fa76c7147a5a4a08b853db7",
+  "identity": {
+    "jarvisPid": 5076,
+    "webViewPid": 16336,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-28T15:37:33.1659881-05:00"
+  },
+  "safety": [
+    {
+      "label": "attach:before",
+      "capturedAt": "2026-08-28T15:37:27.6666018-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attach:after",
+      "capturedAt": "2026-08-28T15:37:33.1659881-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attempt10:before",
+      "capturedAt": "2026-08-28T15:37:36.9373180-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attempt10:after-reload",
+      "capturedAt": "2026-08-28T15:37:50.6598296-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attempt10:after-decision",
+      "capturedAt": "2026-08-28T15:38:03.5741339-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "one full WebView reload preserved exact official process ownership",
+      "passed": true,
+      "details": {
+        "processBefore": {
+          "label": "attempt10:before",
+          "capturedAt": "2026-08-28T15:37:36.9373180-05:00",
+          "jarvisPid": 5076,
+          "jarvisParentPid": 6324,
+          "jarvisParentAlive": false,
+          "webViewPid": 16336,
+          "webViewParentPid": 5076,
+          "webViewOwnedByJarvis": true,
+          "cdpPort": 9223,
+          "cdpOwnerExact": true,
+          "openCodePid": 20688,
+          "openCodeParentPid": 5076,
+          "openCodeOwnedByJarvis": true,
+          "openCodeLoopbackPort": 59856,
+          "openCodeLoopbackExact": true,
+          "ollamaProcessCount": 0,
+          "listener11434Count": 0
+        },
+        "processAfterReload": {
+          "label": "attempt10:after-reload",
+          "capturedAt": "2026-08-28T15:37:50.6598296-05:00",
+          "jarvisPid": 5076,
+          "jarvisParentPid": 6324,
+          "jarvisParentAlive": false,
+          "webViewPid": 16336,
+          "webViewParentPid": 5076,
+          "webViewOwnedByJarvis": true,
+          "cdpPort": 9223,
+          "cdpOwnerExact": true,
+          "openCodePid": 20688,
+          "openCodeParentPid": 5076,
+          "openCodeOwnedByJarvis": true,
+          "openCodeLoopbackPort": 59856,
+          "openCodeLoopbackExact": true,
+          "ollamaProcessCount": 0,
+          "listener11434Count": 0
+        }
+      }
+    },
+    {
+      "name": "instrumented kernelHost source was stable before and after boot refresh",
+      "passed": false,
+      "details": {
+        "stableModuleBefore": {
+          "value": {
+            "ok": true,
+            "digest": "88b02d83f0eb871dd5f34088ac637cabc49c937c26c3feac45ea62dd7ac7cfc3",
+            "hasSanitizer": true,
+            "hasDiagnostic": true,
+            "hasApprovalConflictCode": true,
+            "stableObservations": 2
+          },
+          "attempts": 2,
+          "elapsedMs": 146
+        },
+        "stableModuleAfter": {
+          "value": {
+            "ok": true,
+            "digest": "88b02d83f0eb871dd5f34088ac637cabc49c937c26c3feac45ea62dd7ac7cfc3",
+            "hasSanitizer": true,
+            "hasDiagnostic": true,
+            "hasApprovalConflictCode": true,
+            "stableObservations": 2
+          },
+          "attempts": 2,
+          "elapsedMs": 888
+        },
+        "viteConnectedObserved": true
+      }
+    },
+    {
+      "name": "exact hash-selected stale approval is the only open pending approval",
+      "passed": true,
+      "details": {
+        "capturedAt": "2026-08-28T20:37:52.734Z",
+        "identity": {
+          "ready": true,
+          "source": "supabase",
+          "matchesRunAccount": true
+        },
+        "target": {
+          "approvalIdSha256": "518594a0061e1c94f3d7ece548c470b33af0ba92fe4686f97782ad8648ba2e00",
+          "runIdSha256": "733303c95d5451ae40a463e7adbb9aa6aa97b3c5ec715df9a12eca4a6791b766",
+          "requestIdSha256": "fc764e047c342e9563a2c87ab9af6aad81f84cee5de958a9ac875998455c2cf9",
+          "messageIdSha256": "ccab367f73976e8253b7bb627cbace740e0908352b2e8129dc2af50a1ac0feef",
+          "callIdSha256": "da56a4766929b4bfd4469d15dd353585be8a7be98579b4bc1d72c0c09a940a6b",
+          "actionId": "files.create",
+          "attemptNumber": 1
+        },
+        "approval": {
+          "status": "pending",
+          "createdAt": 1787937160082,
+          "expiresAt": 1787937760060,
+          "decidedAt": null,
+          "consumedAt": null
+        },
+        "run": {
+          "status": "awaiting_approval",
+          "source": "typed_chat",
+          "updatedAt": 1787937160082,
+          "transportAttemptCount": 0
+        },
+        "messagePart": {
+          "status": "pending",
+          "actionId": "files.create"
+        },
+        "card": {
+          "present": true,
+          "status": "pending",
+          "submitState": "idle",
+          "approveControlCount": 0,
+          "denyControlCount": 0,
+          "alertSha256": null,
+          "alertCharCount": 0,
+          "decisionResponseCategory": null
+        },
+        "openApprovalCount": 1,
+        "exactTargetIsOnlyOpen": true,
+        "eventTailSeq": 9,
+        "kernelStatus": {
+          "kind": "approval_state",
+          "status": "pending",
+          "accountMatches": true,
+          "approvalMatches": true,
+          "unavailableReason": null,
+          "unavailableRequestKind": null
+        }
+      }
+    },
+    {
+      "name": "requested and wrong targets are absent before Deny",
+      "passed": true,
+      "details": {
+        "requestedTarget": {
+          "exists": false,
+          "byteCount": 0,
+          "sha256": null
+        },
+        "wrongTarget": {
+          "exists": false,
+          "byteCount": 0,
+          "sha256": null
+        }
+      }
+    },
+    {
+      "name": "exact target Deny was clicked once with no model, approval, file, or process action",
+      "passed": true,
+      "details": {
+        "reloadCount": 1,
+        "denialClickCount": 1,
+        "approvalClickCount": 0,
+        "modelDispatchCount": 0,
+        "fileMutationCount": 0,
+        "processMutationCount": 0
+      }
+    },
+    {
+      "name": "Deny reached durable canonical cancelled semantics",
+      "passed": false,
+      "details": {
+        "decisionResponseCategory": "kernel_request_failed:unclassified",
+        "afterDecision": {
+          "capturedAt": "2026-08-28T20:37:55.266Z",
+          "identity": {
+            "ready": true,
+            "source": "supabase",
+            "matchesRunAccount": true
+          },
+          "target": {
+            "approvalIdSha256": "518594a0061e1c94f3d7ece548c470b33af0ba92fe4686f97782ad8648ba2e00",
+            "runIdSha256": "733303c95d5451ae40a463e7adbb9aa6aa97b3c5ec715df9a12eca4a6791b766",
+            "requestIdSha256": "fc764e047c342e9563a2c87ab9af6aad81f84cee5de958a9ac875998455c2cf9",
+            "messageIdSha256": "ccab367f73976e8253b7bb627cbace740e0908352b2e8129dc2af50a1ac0feef",
+            "callIdSha256": "da56a4766929b4bfd4469d15dd353585be8a7be98579b4bc1d72c0c09a940a6b",
+            "actionId": "files.create",
+            "attemptNumber": 1
+          },
+          "approval": {
+            "status": "pending",
+            "createdAt": 1787937160082,
+            "expiresAt": 1787937760060,
+            "decidedAt": null,
+            "consumedAt": null
+          },
+          "run": {
+            "status": "awaiting_approval",
+            "source": "typed_chat",
+            "updatedAt": 1787937160082,
+            "transportAttemptCount": 0
+          },
+          "messagePart": {
+            "status": "pending",
+            "actionId": "files.create"
+          },
+          "card": {
+            "present": true,
+            "status": "pending",
+            "submitState": "failed",
+            "approveControlCount": 0,
+            "denyControlCount": 0,
+            "alertSha256": "3573ab2157e41067144af09172a219904ecf6eddbea0159006dc09512341dce8",
+            "alertCharCount": 81,
+            "decisionResponseCategory": "verification_failure"
+          },
+          "openApprovalCount": 1,
+          "exactTargetIsOnlyOpen": true,
+          "eventTailSeq": 9,
+          "kernelStatus": {
+            "kind": "approval_state",
+            "status": "pending",
+            "accountMatches": true,
+            "approvalMatches": true,
+            "unavailableReason": null,
+            "unavailableRequestKind": null
+          }
+        },
+        "kernelDiagnostics": [
+          {
+            "requestKind": "approval_decide",
+            "code": "unclassified"
+          }
+        ]
+      }
+    },
+    {
+      "name": "requested and wrong targets remain absent and unchanged after Deny",
+      "passed": true,
+      "details": {
+        "filesBefore": {
+          "requestedTarget": {
+            "exists": false,
+            "byteCount": 0,
+            "sha256": null
+          },
+          "wrongTarget": {
+            "exists": false,
+            "byteCount": 0,
+            "sha256": null
+          }
+        },
+        "filesAfterDecision": {
+          "requestedTarget": {
+            "exists": false,
+            "byteCount": 0,
+            "sha256": null
+          },
+          "wrongTarget": {
+            "exists": false,
+            "byteCount": 0,
+            "sha256": null
+          }
+        }
+      }
+    },
+    {
+      "name": "official process tree and forbidden-service safety remain exact",
+      "passed": true,
+      "details": {
+        "label": "attempt10:after-decision",
+        "capturedAt": "2026-08-28T15:38:03.5741339-05:00",
+        "jarvisPid": 5076,
+        "jarvisParentPid": 6324,
+        "jarvisParentAlive": false,
+        "webViewPid": 16336,
+        "webViewParentPid": 5076,
+        "webViewOwnedByJarvis": true,
+        "cdpPort": 9223,
+        "cdpOwnerExact": true,
+        "openCodePid": 20688,
+        "openCodeParentPid": 5076,
+        "openCodeOwnedByJarvis": true,
+        "openCodeLoopbackPort": 59856,
+        "openCodeLoopbackExact": true,
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "14-stale-wrong-approval-instrumented-deny-attempt-10-corrected.png",
+      "width": 1600,
+      "height": 1025,
+      "byteCount": 1190134,
+      "sha256": "1508c5bae945dce170d531a264c12df6a9865bd6851940d530c43d2f0d272468"
+    }
+  ],
+  "events": [
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "af1885a87d9dc26134a5c35237ab2c54e1c0f56748b99eb60c372c33fdfed02d",
+      "charCount": 709
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "61ee69b53ee3dac540f9e957ba36bb3d7cfe3dc62b0f51fd5ef8f9b7d5545c1f",
+      "charCount": 603
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "af1885a87d9dc26134a5c35237ab2c54e1c0f56748b99eb60c372c33fdfed02d",
+      "charCount": 709
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "af1885a87d9dc26134a5c35237ab2c54e1c0f56748b99eb60c372c33fdfed02d",
+      "charCount": 709
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "af1885a87d9dc26134a5c35237ab2c54e1c0f56748b99eb60c372c33fdfed02d",
+      "charCount": 709
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "af1885a87d9dc26134a5c35237ab2c54e1c0f56748b99eb60c372c33fdfed02d",
+      "charCount": 709
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "164fdf2b38daa40db41cf61a25ace8a9e787d676a1f69bd72a5a4482bda32fdb",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "aaf19c1dd6ed46344cc4de177986d877724ad169778834ac7eded90f153b13fb",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "ae1245b82f854b4ec64203a4bd8a004a80e9ff813169d0f87d52511e0cc2a5a8",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "e9d33e847b7999d46fd13fcefb37bef1ad9da975e15df13430823651544b9a1f",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "07748f02ee4f3d1cfe8ee6bbc8d63257d3e6106ea555f0ac6f1d2b4b38dac1ad",
+      "charCount": 136
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "2b417f74fc1be4f6cf59cf9b60182c253a2c58bc25b94c05fe0b4d39dce1d368",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "error",
+      "textSha256": "be3180416310eb750f5ff396974c2445881cabb1073f8851f9e3562cf6a387de",
+      "charCount": 69
+    },
+    {
+      "source": "console",
+      "type": "error",
+      "textSha256": "eedcfcd0bfdeac2dd2ff12a8bf09b91ba6051e386a905d4aacf736e1a88f251a",
+      "charCount": 69
+    },
+    {
+      "source": "console",
+      "type": "error",
+      "textSha256": "51376116c65a1606e45f76aa669c0e79f9a85bc6801c60aef7852e6ea680cb0d",
+      "charCount": 81
+    }
+  ],
+  "firstFailure": {
+    "code": "semantic_assertion_failed",
+    "stage": "assertion",
+    "name": "NativeAcceptanceHarnessError",
+    "details": {
+      "name": "instrumented kernelHost source was stable before and after boot refresh",
+      "details": {
+        "stableModuleBefore": {
+          "value": {
+            "ok": true,
+            "digest": "88b02d83f0eb871dd5f34088ac637cabc49c937c26c3feac45ea62dd7ac7cfc3",
+            "hasSanitizer": true,
+            "hasDiagnostic": true,
+            "hasApprovalConflictCode": true,
+            "stableObservations": 2
+          },
+          "attempts": 2,
+          "elapsedMs": 146
+        },
+        "stableModuleAfter": {
+          "value": {
+            "ok": true,
+            "digest": "88b02d83f0eb871dd5f34088ac637cabc49c937c26c3feac45ea62dd7ac7cfc3",
+            "hasSanitizer": true,
+            "hasDiagnostic": true,
+            "hasApprovalConflictCode": true,
+            "stableObservations": 2
+          },
+          "attempts": 2,
+          "elapsedMs": 888
+        },
+        "viteConnectedObserved": true
+      }
+    }
+  },
+  "metadata": {
+    "scenario": "one boot-refreshed Deny of the exact stale wrong-file approval",
+    "reloadCount": 0,
+    "denialClickCount": 0,
+    "modelDispatchCount": 0,
+    "approvalClickCount": 0,
+    "fileMutationCount": 0,
+    "processMutationCount": 0,
+    "rawPathsInReport": false,
+    "rawContentInReport": false,
+    "rawAccountIdsInReport": false
+  },
+  "instrumentedDeny": {
+    "stableModuleBefore": {
+      "value": {
+        "ok": true,
+        "digest": "88b02d83f0eb871dd5f34088ac637cabc49c937c26c3feac45ea62dd7ac7cfc3",
+        "hasSanitizer": true,
+        "hasDiagnostic": true,
+        "hasApprovalConflictCode": true,
+        "stableObservations": 2
+      },
+      "attempts": 2,
+      "elapsedMs": 146
+    },
+    "stableModuleAfter": {
+      "value": {
+        "ok": true,
+        "digest": "88b02d83f0eb871dd5f34088ac637cabc49c937c26c3feac45ea62dd7ac7cfc3",
+        "hasSanitizer": true,
+        "hasDiagnostic": true,
+        "hasApprovalConflictCode": true,
+        "stableObservations": 2
+      },
+      "attempts": 2,
+      "elapsedMs": 888
+    },
+    "viteConnectedObserved": true,
+    "processBefore": {
+      "label": "attempt10:before",
+      "capturedAt": "2026-08-28T15:37:36.9373180-05:00",
+      "jarvisPid": 5076,
+      "jarvisParentPid": 6324,
+      "jarvisParentAlive": false,
+      "webViewPid": 16336,
+      "webViewParentPid": 5076,
+      "webViewOwnedByJarvis": true,
+      "cdpPort": 9223,
+      "cdpOwnerExact": true,
+      "openCodePid": 20688,
+      "openCodeParentPid": 5076,
+      "openCodeOwnedByJarvis": true,
+      "openCodeLoopbackPort": 59856,
+      "openCodeLoopbackExact": true,
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    "processAfterReload": {
+      "label": "attempt10:after-reload",
+      "capturedAt": "2026-08-28T15:37:50.6598296-05:00",
+      "jarvisPid": 5076,
+      "jarvisParentPid": 6324,
+      "jarvisParentAlive": false,
+      "webViewPid": 16336,
+      "webViewParentPid": 5076,
+      "webViewOwnedByJarvis": true,
+      "cdpPort": 9223,
+      "cdpOwnerExact": true,
+      "openCodePid": 20688,
+      "openCodeParentPid": 5076,
+      "openCodeOwnedByJarvis": true,
+      "openCodeLoopbackPort": 59856,
+      "openCodeLoopbackExact": true,
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    "processAfterDecision": {
+      "label": "attempt10:after-decision",
+      "capturedAt": "2026-08-28T15:38:03.5741339-05:00",
+      "jarvisPid": 5076,
+      "jarvisParentPid": 6324,
+      "jarvisParentAlive": false,
+      "webViewPid": 16336,
+      "webViewParentPid": 5076,
+      "webViewOwnedByJarvis": true,
+      "cdpPort": 9223,
+      "cdpOwnerExact": true,
+      "openCodePid": 20688,
+      "openCodeParentPid": 5076,
+      "openCodeOwnedByJarvis": true,
+      "openCodeLoopbackPort": 59856,
+      "openCodeLoopbackExact": true,
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    "nativeLogEvidence": {
+      "rendererConsoleCaptured": true,
+      "knownNativeLogDirectoryPresent": false,
+      "directNativeStdoutRetrievable": false,
+      "boundary": "The detached official jarvis process exposes no known native log directory or retrievable stdout sink; renderer host failures are captured from the official WebView console."
+    },
+    "beforeDecision": {
+      "capturedAt": "2026-08-28T20:37:52.734Z",
+      "identity": {
+        "ready": true,
+        "source": "supabase",
+        "matchesRunAccount": true
+      },
+      "target": {
+        "approvalIdSha256": "518594a0061e1c94f3d7ece548c470b33af0ba92fe4686f97782ad8648ba2e00",
+        "runIdSha256": "733303c95d5451ae40a463e7adbb9aa6aa97b3c5ec715df9a12eca4a6791b766",
+        "requestIdSha256": "fc764e047c342e9563a2c87ab9af6aad81f84cee5de958a9ac875998455c2cf9",
+        "messageIdSha256": "ccab367f73976e8253b7bb627cbace740e0908352b2e8129dc2af50a1ac0feef",
+        "callIdSha256": "da56a4766929b4bfd4469d15dd353585be8a7be98579b4bc1d72c0c09a940a6b",
+        "actionId": "files.create",
+        "attemptNumber": 1
+      },
+      "approval": {
+        "status": "pending",
+        "createdAt": 1787937160082,
+        "expiresAt": 1787937760060,
+        "decidedAt": null,
+        "consumedAt": null
+      },
+      "run": {
+        "status": "awaiting_approval",
+        "source": "typed_chat",
+        "updatedAt": 1787937160082,
+        "transportAttemptCount": 0
+      },
+      "messagePart": {
+        "status": "pending",
+        "actionId": "files.create"
+      },
+      "card": {
+        "present": true,
+        "status": "pending",
+        "submitState": "idle",
+        "approveControlCount": 0,
+        "denyControlCount": 0,
+        "alertSha256": null,
+        "alertCharCount": 0,
+        "decisionResponseCategory": null
+      },
+      "openApprovalCount": 1,
+      "exactTargetIsOnlyOpen": true,
+      "eventTailSeq": 9,
+      "kernelStatus": {
+        "kind": "approval_state",
+        "status": "pending",
+        "accountMatches": true,
+        "approvalMatches": true,
+        "unavailableReason": null,
+        "unavailableRequestKind": null
+      }
+    },
+    "decisionWait": {
+      "value": {
+        "state": {
+          "capturedAt": "2026-08-28T20:37:55.236Z",
+          "identity": {
+            "ready": true,
+            "source": "supabase",
+            "matchesRunAccount": true
+          },
+          "target": {
+            "approvalIdSha256": "518594a0061e1c94f3d7ece548c470b33af0ba92fe4686f97782ad8648ba2e00",
+            "runIdSha256": "733303c95d5451ae40a463e7adbb9aa6aa97b3c5ec715df9a12eca4a6791b766",
+            "requestIdSha256": "fc764e047c342e9563a2c87ab9af6aad81f84cee5de958a9ac875998455c2cf9",
+            "messageIdSha256": "ccab367f73976e8253b7bb627cbace740e0908352b2e8129dc2af50a1ac0feef",
+            "callIdSha256": "da56a4766929b4bfd4469d15dd353585be8a7be98579b4bc1d72c0c09a940a6b",
+            "actionId": "files.create",
+            "attemptNumber": 1
+          },
+          "approval": {
+            "status": "pending",
+            "createdAt": 1787937160082,
+            "expiresAt": 1787937760060,
+            "decidedAt": null,
+            "consumedAt": null
+          },
+          "run": {
+            "status": "awaiting_approval",
+            "source": "typed_chat",
+            "updatedAt": 1787937160082,
+            "transportAttemptCount": 0
+          },
+          "messagePart": {
+            "status": "pending",
+            "actionId": "files.create"
+          },
+          "card": {
+            "present": true,
+            "status": "pending",
+            "submitState": "failed",
+            "approveControlCount": 0,
+            "denyControlCount": 0,
+            "alertSha256": "3573ab2157e41067144af09172a219904ecf6eddbea0159006dc09512341dce8",
+            "alertCharCount": 81,
+            "decisionResponseCategory": "verification_failure"
+          },
+          "openApprovalCount": 1,
+          "exactTargetIsOnlyOpen": true,
+          "eventTailSeq": 9,
+          "kernelStatus": {
+            "kind": "approval_state",
+            "status": "pending",
+            "accountMatches": true,
+            "approvalMatches": true,
+            "unavailableReason": null,
+            "unavailableRequestKind": null
+          }
+        },
+        "diagnosticCount": 1
+      },
+      "attempts": 2,
+      "elapsedMs": 220
+    },
+    "kernelDiagnostics": [
+      {
+        "requestKind": "approval_decide",
+        "code": "unclassified"
+      }
+    ],
+    "decisionResponseCategory": "kernel_request_failed:unclassified",
+    "afterDecision": {
+      "capturedAt": "2026-08-28T20:37:55.266Z",
+      "identity": {
+        "ready": true,
+        "source": "supabase",
+        "matchesRunAccount": true
+      },
+      "target": {
+        "approvalIdSha256": "518594a0061e1c94f3d7ece548c470b33af0ba92fe4686f97782ad8648ba2e00",
+        "runIdSha256": "733303c95d5451ae40a463e7adbb9aa6aa97b3c5ec715df9a12eca4a6791b766",
+        "requestIdSha256": "fc764e047c342e9563a2c87ab9af6aad81f84cee5de958a9ac875998455c2cf9",
+        "messageIdSha256": "ccab367f73976e8253b7bb627cbace740e0908352b2e8129dc2af50a1ac0feef",
+        "callIdSha256": "da56a4766929b4bfd4469d15dd353585be8a7be98579b4bc1d72c0c09a940a6b",
+        "actionId": "files.create",
+        "attemptNumber": 1
+      },
+      "approval": {
+        "status": "pending",
+        "createdAt": 1787937160082,
+        "expiresAt": 1787937760060,
+        "decidedAt": null,
+        "consumedAt": null
+      },
+      "run": {
+        "status": "awaiting_approval",
+        "source": "typed_chat",
+        "updatedAt": 1787937160082,
+        "transportAttemptCount": 0
+      },
+      "messagePart": {
+        "status": "pending",
+        "actionId": "files.create"
+      },
+      "card": {
+        "present": true,
+        "status": "pending",
+        "submitState": "failed",
+        "approveControlCount": 0,
+        "denyControlCount": 0,
+        "alertSha256": "3573ab2157e41067144af09172a219904ecf6eddbea0159006dc09512341dce8",
+        "alertCharCount": 81,
+        "decisionResponseCategory": "verification_failure"
+      },
+      "openApprovalCount": 1,
+      "exactTargetIsOnlyOpen": true,
+      "eventTailSeq": 9,
+      "kernelStatus": {
+        "kind": "approval_state",
+        "status": "pending",
+        "accountMatches": true,
+        "approvalMatches": true,
+        "unavailableReason": null,
+        "unavailableRequestKind": null
+      }
+    },
+    "remountReadback": null,
+    "filesBefore": {
+      "requestedTarget": {
+        "exists": false,
+        "byteCount": 0,
+        "sha256": null
+      },
+      "wrongTarget": {
+        "exists": false,
+        "byteCount": 0,
+        "sha256": null
+      }
+    },
+    "filesAfterDecision": {
+      "requestedTarget": {
+        "exists": false,
+        "byteCount": 0,
+        "sha256": null
+      },
+      "wrongTarget": {
+        "exists": false,
+        "byteCount": 0,
+        "sha256": null
+      }
+    },
+    "interactionCounts": {
+      "reloadCount": 1,
+      "denialClickCount": 1,
+      "approvalClickCount": 0,
+      "modelDispatchCount": 0,
+      "fileMutationCount": 0,
+      "processMutationCount": 0
+    }
+  },
+  "completedAt": "2026-08-28T20:38:03.699Z"
+}

@@ -1,0 +1,276 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-CHAT-AUTHORITATIVE-REFERENCE-DIMENSIONS",
+  "startedAt": "2026-08-29T03:29:44.575Z",
+  "status": "failed",
+  "head": "7d9090cc3bdbb2e9c2881271fa50c903056be6e2",
+  "requestedDimensions": {
+    "width": 1586,
+    "height": 992
+  },
+  "safety": [
+    {
+      "label": "driver:start",
+      "capturedAt": "2026-08-28T22:29:48.2638200-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "route-chat:before",
+      "capturedAt": "2026-08-28T22:29:52.6185181-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "route-chat:after",
+      "capturedAt": "2026-08-28T22:29:58.0288893-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "set-authoritative-viewport:before",
+      "capturedAt": "2026-08-28T22:30:01.3908691-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "set-authoritative-viewport:after",
+      "capturedAt": "2026-08-28T22:30:04.8976406-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "create-local-chat-ledger-fixture:before",
+      "capturedAt": "2026-08-28T22:30:08.4220524-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "create-local-chat-ledger-fixture:after",
+      "capturedAt": "2026-08-28T22:30:12.1365535-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "select-local-chat-ledger-fixture:before",
+      "capturedAt": "2026-08-28T22:30:15.5457018-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "select-local-chat-ledger-fixture:after",
+      "capturedAt": "2026-08-28T22:30:21.2539722-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:FAIL-chat-reference-dimensions.png:before",
+      "capturedAt": "2026-08-28T22:30:54.8390510-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:FAIL-chat-reference-dimensions.png:after",
+      "capturedAt": "2026-08-28T22:31:21.0057117-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "cleanup-local-chat-ledger-fixture:before",
+      "capturedAt": "2026-08-28T22:31:24.6027461-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "cleanup-local-chat-ledger-fixture:after",
+      "capturedAt": "2026-08-28T22:31:28.4714128-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "driver:final",
+      "capturedAt": "2026-08-28T22:31:31.9955449-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "one official jarvis process is running",
+      "passed": true,
+      "jarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe",
+          "CommandLine": "\"D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe\""
+        }
+      ]
+    },
+    {
+      "name": "CDP root is a direct official jarvis WebView child",
+      "passed": true,
+      "rootWebView": {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 6608,
+        "ParentProcessId": 9084,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      "listeners9223": [
+        {
+          "LocalAddress": "127.0.0.1",
+          "LocalPort": 9223,
+          "OwningProcess": 6608
+        }
+      ]
+    },
+    {
+      "name": "official VibeSpace page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=context"
+    },
+    {
+      "name": "Playwright viewport accepted exact authoritative dimensions",
+      "passed": true,
+      "viewport": {
+        "width": 1586,
+        "height": 992
+      }
+    },
+    {
+      "name": "FAIL-chat-reference-dimensions.png",
+      "passed": true,
+      "width": 1586,
+      "height": 992,
+      "viewport": {
+        "width": 1586,
+        "height": 992
+      },
+      "window": {
+        "innerWidth": 1586,
+        "innerHeight": 992,
+        "outerWidth": 0,
+        "outerHeight": 0,
+        "devicePixelRatio": 1.0000000149011612,
+        "screenWidth": 1586,
+        "screenHeight": 992
+      },
+      "semanticState": {
+        "failure": "page.waitForFunction: Timeout 30000ms exceeded.\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\pass-13-chat-reference-dimensions-cbdcec5d\\chat-reference-dimensions-driver.mjs:343:14"
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "FAIL-chat-reference-dimensions.png",
+      "width": 1586,
+      "height": 992,
+      "viewport": {
+        "width": 1586,
+        "height": 992
+      },
+      "window": {
+        "innerWidth": 1586,
+        "innerHeight": 992,
+        "outerWidth": 0,
+        "outerHeight": 0,
+        "devicePixelRatio": 1.0000000149011612,
+        "screenWidth": 1586,
+        "screenHeight": 992
+      },
+      "semanticState": {
+        "failure": "page.waitForFunction: Timeout 30000ms exceeded.\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\pass-13-chat-reference-dimensions-cbdcec5d\\chat-reference-dimensions-driver.mjs:343:14"
+      }
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "prohibitions": {
+    "productFilesEdited": false,
+    "screenshotResizedAfterCapture": false,
+    "modelDispatch": false,
+    "credentialsEntered": false,
+    "productionMutation": false,
+    "standaloneBrowserControlled": false,
+    "computerUseUsed": false
+  },
+  "failure": "page.waitForFunction: Timeout 30000ms exceeded.\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\pass-13-chat-reference-dimensions-cbdcec5d\\chat-reference-dimensions-driver.mjs:343:14",
+  "finalProcess": {
+    "CapturedAt": "2026-08-28T22:31:31.9955449-05:00",
+    "Jarvis": [
+      {
+        "Name": "jarvis.exe",
+        "ProcessId": 9084,
+        "ParentProcessId": 26768,
+        "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe",
+        "CommandLine": "\"D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe\""
+      }
+    ],
+    "WebViews": [
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 6608,
+        "ParentProcessId": 9084,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 34016,
+        "ParentProcessId": 6608,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 38792,
+        "ParentProcessId": 6608,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 38696,
+        "ParentProcessId": 6608,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 32856,
+        "ParentProcessId": 6608,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 37292,
+        "ParentProcessId": 6608,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      }
+    ],
+    "Listeners9223": [
+      {
+        "LocalAddress": "127.0.0.1",
+        "LocalPort": 9223,
+        "OwningProcess": 6608
+      }
+    ],
+    "Ollama": [],
+    "Listeners11434": []
+  },
+  "finalViewport": {
+    "width": 1586,
+    "height": 992
+  },
+  "originalViewport": null,
+  "safetySummary": {
+    "checks": 14,
+    "maxOllamaProcesses": 0,
+    "maxListeners11434": 0
+  },
+  "completedAt": "2026-08-29T03:31:32.063Z"
+}

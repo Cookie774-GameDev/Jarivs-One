@@ -1,0 +1,126 @@
+{
+  "capturedAt": "2026-08-30T07:01:50.529Z",
+  "identity": {
+    "jarvisPid": 34752,
+    "webViewPid": 18496,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-30T02:01:47.7080668-05:00"
+  },
+  "state": {
+    "activeChatId": "cht_3mT8J5aRN1DGHHJH",
+    "selection": {
+      "providerId": "opencode",
+      "connectionId": "opencode-cli",
+      "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+    },
+    "runtime": {
+      "settings": {
+        "effort": "high",
+        "fastMode": "off",
+        "performance": "balanced",
+        "rlmEnabled": true
+      },
+      "access": "full",
+      "approveAllForRun": false
+    },
+    "probe": {
+      "sends": [
+        {
+          "at": 1788073261753,
+          "chatId": "cht_3mT8J5aRN1DGHHJH",
+          "modelSelectionOverride": {
+            "mode": "single",
+            "providerId": "opencode",
+            "connectionId": "opencode-cli",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "reasoningPreference": {
+            "effortOverride": "high"
+          },
+          "runtimeSettings": {
+            "effort": "high",
+            "performance": "balanced",
+            "fastMode": "off",
+            "rlmEnabled": true
+          },
+          "approveAllForRun": false
+        }
+      ],
+      "runs": [
+        {
+          "at": 1788073261842,
+          "chatId": "cht_3mT8J5aRN1DGHHJH",
+          "status": "running",
+          "errorCode": null
+        },
+        {
+          "at": 1788073279666,
+          "chatId": "cht_3mT8J5aRN1DGHHJH",
+          "status": "done",
+          "errorCode": null
+        }
+      ]
+    },
+    "finalAnswers": [
+      "**Official native process/WebView identity. ** The official native artifact is the Tauri WebView, not any browser build. It must expose Chrome DevTools Protocol on loopback port `9223`, while the development renderer is served from loopback port `5173`. Acceptance requires the page to be titled `VibeSpace`, report `document. readyState === \"complete\"`, contain `#root`, expose `window. __TAURI_INTERNALS__`, and present the real public main/navigation surface. Standalone Chromium, headless browser, Vite web preview, and mock DOM fixtures are explicitly excluded as non-evidence for official native acceptance. **Zero-Ollama invariant. ** For PR31 Phase 0, Ollama is prohibited. No `ollama` process and no listener on port `11434` may exist before attachment, during the scenario, or after it completes. This is a hard gate: the gap above is listed as \"Ollama is prohibited for PR31 Phase 0\" plus the repeated constraint \"no `ollama` process and no listener on port `11434` may exist before attachment, during the scenari"
+    ],
+    "finalAnswerMetrics": [
+      {
+        "length": 2069,
+        "containsFixtureName": false,
+        "containsContextGateway": false,
+        "containsJarvisExecutable": false,
+        "containsOllamaInvariant": true,
+        "ending": "urce revision and to \"this changed source\" (the official-native-acceptance. md content), implying a content-hash-driven re-hydration check rather than a pointer-only condition. **Provenance (all real, all plain identifiers). ** - Receipt: `context-receipt-3c870ec3-e541-43ad-8a90-d1deaee4d772` - Request: `9eed29d6-3627-4fbe-ac7a-092b4a9adc72` - Source: `[unverified link omitted]` - Version hash: `[unverified link omitted]` - Evidence handles: `[unverified link omitted]`, `[unverified link omitted]`, `[unverified link omitted]`. **Unavailable evidence. ** The runtime did not expose the exact indexed relative path for `official-native-acceptance. md`, nor any SiYuan document/block ID, nor a human-readable source link. Those specific citations are not provided by the product path in this turn."
+      }
+    ],
+    "finalAnswerLinks": [],
+    "checkpoints": [
+      {
+        "kind": "final",
+        "text": "**Official native process/WebView identity. ** The official native artifact is the Tauri WebView, not any browser build. It must expose Chrome DevTools Protocol on loopback port `9223`, while the development renderer is served from loopback port `5173`. Acceptance requires the page to be titled `VibeSpace`, report `document. readyState === \"complete\"`, contain `#root`, expose `window. __TAURI_INTERNALS__`, and present the real public main/navigation surface. Standalone Chromium, headless browser, Vite web preview, and mock DOM fixtures are explicitly excluded as non-evidence for official native acceptance. **Zero-Ollama invariant. ** For PR31 Phase 0, Ollama is prohibited. No `ollama` process and no listener on port `11434` may exist before attachment, during the scenario, or after it completes. This is a hard gate: the gap above is listed as \"Ollama is prohibited for PR31 Phase 0\" plus the repeated constraint \"no `ollama` process and no listener on port `11434` may exist before attachment, during the scenari"
+      }
+    ],
+    "activity": [
+      "Show activity details 1 action"
+    ],
+    "context": [],
+    "approvals": [],
+    "visibleControls": [
+      "Open session details",
+      "0 subagents",
+      "Chat console settings",
+      "Show full prompt",
+      "Collapse completed work details",
+      "Show activity details 1 action",
+      "Choose model",
+      "Connection details for Opencode Go",
+      "Agent Mode. Open permissions panel.",
+      "Upgrade prompt with Prompt Forge",
+      "Configure Prompt Forge",
+      "Start dictation",
+      "Send message"
+    ],
+    "counts": {
+      "finalAnswers": 1,
+      "checkpoints": 1,
+      "activity": 1,
+      "context": 0,
+      "approvals": 0,
+      "send": 1,
+      "stop": 0
+    }
+  },
+  "safety": {
+    "label": "phase0:result",
+    "capturedAt": "2026-08-30T02:01:50.4496631-05:00",
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  },
+  "events": []
+}

@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-DEEPSEEK-NATIVE-COMPARISON-EVIDENCE-ATTEMPT-06",
+  "status": "blocked_before_model_dispatch",
+  "classification": "native_artifact_identity_gate",
+  "recordedAt": "2026-08-28T14:24:00-05:00",
+  "captureHead": "a17eba3cd7a29788891e09a15bcbcd1fdecb4059",
+  "requiredAncestors": {
+    "contract": "0a6121e81fcdcbbc1b1a03212ad21a321fbf2015",
+    "cwdRoutingRepair": "d808806c35e7bdd5833978e7ae43f55e55da7091",
+    "denialReconciliationRepair": "226cd09e2c909c77d815ce83556e9db38acf9cac"
+  },
+  "identityGate": {
+    "passed": false,
+    "reason": "The 226cd09e denial reconciliation adds native Rust approval_status protocol handling, but the bounded rebuild did not produce a new executable. The relaunched official binary is the last valid pre-repair artifact and cannot truthfully verify that protocol.",
+    "expected": "an official jarvis.exe built from a descendant containing 226cd09e",
+    "observed": {
+      "executableLastWrite": "2026-08-27T22:39:19.1234151-05:00",
+      "executableBytes": 82075136,
+      "executableSha256": "4cbad5d0ba3062c72014cae7ee02807d61fa60bd815d2b668df10a8eb03fb09d"
+    }
+  },
+  "essentialRestart": {
+    "whyRequired": "The preceding official jarvis process was created at 2026-08-28T07:34:54-05:00, before the native repair; renderer HMR cannot replace Rust protocol handling.",
+    "stoppedOfficialTreeRootPid": 19612,
+    "guard": "VITE_DISABLE_OLLAMA_BOOTSTRAP=true",
+    "buildAttempts": [
+      {
+        "command": "cargo build --bin jarvis",
+        "result": "failed",
+        "firstFailure": "LNK1318 Unexpected PDB error LIMIT while linking target/debug/deps/jarvis.pdb"
+      },
+      {
+        "command": "cargo build --bin jarvis after moving only the exact failed jarvis.pdb to a recoverable build-cache backup",
+        "result": "failed",
+        "firstFailure": "LNK1318 Unexpected PDB error LIMIT recurred on a newly created PDB"
+      },
+      {
+        "command": "cargo rustc --bin jarvis -- -C debuginfo=0",
+        "result": "failed",
+        "firstFailure": "the inherited dev profile still emitted /DEBUG and LNK1318 recurred"
+      },
+      {
+        "command": "cargo build --bin jarvis with CARGO_PROFILE_DEV_DEBUG=0",
+        "result": "failed",
+        "firstFailure": "OS error 112: not enough disk space while creating Rust archives"
+      },
+      {
+        "command": "one root-authorized guarded cargo build --bin jarvis retry after free-space reclamation",
+        "result": "failed",
+        "firstFailure": "OS error 112 while rebuilding target/debug/deps/jarvis_lib.lib"
+      }
+    ],
+    "furtherBuildOrCleanupAttempted": false
+  },
+  "modelBoundary": {
+    "requiredProviderId": "opencode",
+    "requiredConnectionId": "opencode-cli",
+    "requiredProviderConnection": "opencode-go",
+    "requiredModelId": "deepseek-v4-flash-vision-exp",
+    "routeSelected": false,
+    "modelDispatched": false,
+    "approvalClicked": false,
+    "staleDenialClicked": false,
+    "promptCount": 0
+  },
+  "fileSafety": {
+    "inputPathSha256": "eedd698a7d9ea2badad16f37508dff0e130817bb972aa17f3e167476953854ae",
+    "inputExists": false,
+    "outputPathSha256": "66bc4d190b76e9dabdd9c93eb468159a6463a87f6fe0946639c4760cfe57b880",
+    "outputExists": false,
+    "wrongPathSha256": "c36b6078728ca9b1d43739d22631ae9a4051f5f5cd121e8787aa4a1e888bdd22",
+    "wrongPathExists": false
+  },
+  "finalOfficialProcess": {
+    "jarvisPid": 32052,
+    "jarvisCreatedAt": "2026-08-28T14:22:36.954297-05:00",
+    "webViewRootPid": 19604,
+    "cdp": "127.0.0.1:9223",
+    "officialProfile": "ai.jarvis.desktop/EBWebView",
+    "appRunning": true,
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  },
+  "firstFailure": {
+    "stage": "native_artifact_identity",
+    "code": "required_native_repair_not_present_in_running_binary",
+    "retryCondition": "Produce and launch a current official jarvis.exe from a descendant containing 226cd09e with sufficient disk/linker capacity, then rerun the immutable attempt-06 driver without changing its model or approval boundary."
+  }
+}

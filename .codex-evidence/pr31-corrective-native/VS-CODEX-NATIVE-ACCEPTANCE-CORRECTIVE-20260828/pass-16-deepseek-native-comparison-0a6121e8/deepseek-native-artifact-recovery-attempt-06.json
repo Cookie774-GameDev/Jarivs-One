@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-DEEPSEEK-NATIVE-ARTIFACT-RECOVERY-ATTEMPT-06",
+  "status": "passed",
+  "recordedAt": "2026-08-28T14:31:00-05:00",
+  "captureHead": "a17eba3cd7a29788891e09a15bcbcd1fdecb4059",
+  "supersedesOnlyTheRuntimeBlockerIn": "deepseek-native-blocked-attempt-06.json",
+  "preservesHistoricalFailurePacket": true,
+  "build": {
+    "command": "cargo build --bin jarvis",
+    "environment": {
+      "CARGO_PROFILE_DEV_PACKAGE_JARVIS_DEBUG": "0",
+      "CARGO_INCREMENTAL": "0",
+      "VITE_DISABLE_OLLAMA_BOOTSTRAP": "true"
+    },
+    "scope": "jarvis package only; dependencies reused",
+    "elapsed": "1m39s",
+    "exitCode": 0,
+    "sourceWarnings": 38,
+    "sourceErrors": 0
+  },
+  "executable": {
+    "pathAuthority": "repository app/src-tauri/target/debug/jarvis.exe",
+    "lastWrite": "2026-08-28T14:28:01.5198203-05:00",
+    "bytes": 82107904,
+    "sha256": "5713211cbc164f19f3a2d5fc81f3b0a425ee1b224c429551d07cc229c8d65c45",
+    "changedFromStaleSha256": "4cbad5d0ba3062c72014cae7ee02807d61fa60bd815d2b668df10a8eb03fb09d",
+    "compiledApprovalStatusMarkerPresent": true,
+    "containsRepairAncestor": "226cd09e2c909c77d815ce83556e9db38acf9cac"
+  },
+  "officialRuntime": {
+    "jarvisPid": 5076,
+    "jarvisCreatedAt": "2026-08-28T14:30:07.019505-05:00",
+    "webViewRootPid": 16336,
+    "cdp": "127.0.0.1:9223",
+    "officialProfile": "ai.jarvis.desktop/EBWebView",
+    "launchEnvironment": {
+      "VITE_DISABLE_OLLAMA_BOOTSTRAP": "true",
+      "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS": "--remote-debugging-port=9223"
+    },
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  },
+  "readOnlySmoke": {
+    "status": "passed",
+    "report": "native-harness-smoke.json",
+    "screenshot": "00-native-harness-smoke.png",
+    "route": "chat",
+    "readyState": "complete",
+    "hasTauri": true,
+    "eventCount": 0
+  },
+  "modelBoundary": {
+    "modelDispatched": false,
+    "approvalClicked": false,
+    "staleDenialClicked": false,
+    "attempt06ReadyAfterStableRendererBoundary": true
+  }
+}

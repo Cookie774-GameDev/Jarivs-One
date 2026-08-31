@@ -1,0 +1,75 @@
+{
+  "status": "failed",
+  "head": "9b40ddc51e3177548ffddfae962cd13d3bc33df9",
+  "route": {
+    "providerId": "opencode",
+    "connectionId": "opencode-cli",
+    "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+  },
+  "chatId": "chat_pr31_real_workflow_1787988371849",
+  "startedAt": "2026-08-29T07:26:11.849Z",
+  "assertions": [
+    {
+      "name": "isolated fixture starts at exact draft bytes",
+      "passed": true,
+      "sha256": "f63221160dc2cbe317b5e8fd6615b5c567c60a39b92c51d93d2e5503e09eaffc"
+    },
+    {
+      "name": "one official jarvis process",
+      "passed": true,
+      "jarvis": [
+        {
+          "ProcessId": 39864,
+          "ParentProcessId": 30552,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-siyuan-02243c1e\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "official native page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    }
+  ],
+  "turns": [],
+  "artifacts": [
+    {
+      "name": "FAIL-real-chat-workflow.png",
+      "width": 1600,
+      "height": 1025,
+      "state": {
+        "failure": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('listbox').getByRole('option').filter({ hasText: 'DeepSeek V4 Flash Vision Exp' }).filter({ hasText: 'Opencode Go provider connection' }) to be visible\u001b[22m\n\n    at selectExactRoute (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\real-chat-workflow.mjs:99:16)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:212:20"
+      }
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 39864,
+          "ParentProcessId": 30552,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-siyuan-02243c1e\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 39864,
+          "ParentProcessId": 30552,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-siyuan-02243c1e\\debug\\jarvis.exe"
+        }
+      ]
+    }
+  ],
+  "failure": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('listbox').getByRole('option').filter({ hasText: 'DeepSeek V4 Flash Vision Exp' }).filter({ hasText: 'Opencode Go provider connection' }) to be visible\u001b[22m\n\n    at selectExactRoute (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\real-chat-workflow.mjs:99:16)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:212:20",
+  "completedAt": "2026-08-29T07:26:50.652Z"
+}

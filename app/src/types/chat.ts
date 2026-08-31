@@ -24,6 +24,7 @@ import type {
   ReconciledTokenUsage,
   TokenOptimizationReceipt,
 } from '@/features/token-optimizer/optimizationReport';
+import type { ChatBackendAffinityV1 } from '@/lib/ai/backend/chatBackend';
 
 export type Role = 'user' | 'assistant' | 'agent' | 'system' | 'tool';
 
@@ -170,6 +171,8 @@ export type Chat = {
   active_agent_ids: AgentId[]; // single in chat mode, n in council
   /** Exact local provider connection selected for this chat. Never cloud-synced. */
   connection?: ProviderConnection;
+  /** Immutable OpenCode/Codex execution backend, locked by the first committed user turn. */
+  backend_affinity?: ChatBackendAffinityV1;
   created_at: number;
   updated_at: number;
   archived?: boolean;

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-DEEPSEEK-NATIVE-DISPOSABLE-WRITE-DENIAL-POST-CLICK-DIAGNOSTIC",
+  "status": "deny-click-did-not-transition-within-20s-no-further-interaction",
+  "capturedAt": "2026-08-28T17:33:30.203Z",
+  "activeChatIdSha256": "bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e",
+  "semantic": {
+    "blockedAwaitingApproval": true,
+    "awaitingApprovalVisible": true,
+    "wrongTargetVisible": true,
+    "requestedMarkerVisible": true,
+    "denyVisible": true,
+    "approveVisible": true,
+    "stopVisible": false,
+    "sendVisible": true
+  },
+  "recentEvents": [],
+  "fileProof": {
+    "requestedOutputPath": "C:\\Users\\viper\\Documents\\Codex\\2026-08-21\\output.txt",
+    "requestedOutput": {
+      "exists": false
+    },
+    "wrongProposedTargetPath": "C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\Projects\\jarvis-note.txt",
+    "wrongTarget": {
+      "exists": false
+    }
+  },
+  "process": {
+    "CapturedAt": "2026-08-28T12:33:30.0078833-05:00",
+    "Jarvis": [
+      {
+        "Name": "jarvis.exe",
+        "ProcessId": 19612,
+        "ParentProcessId": 12924,
+        "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+        "CommandLine": "\"C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe\""
+      }
+    ],
+    "WebViews": [
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 9688,
+        "ParentProcessId": 19612,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 4916,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 100,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 20148,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 7372,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 17940,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      }
+    ],
+    "Listeners9223": [
+      {
+        "LocalAddress": "127.0.0.1",
+        "LocalPort": 9223,
+        "OwningProcess": 9688
+      }
+    ],
+    "Ollama": [],
+    "Listeners11434": []
+  },
+  "artifact": "05-disposable-write-denial-click-no-transition.png",
+  "interactionBoundary": "One public semantic Deny action click was issued after waking Ambient mode. The approval card did not transition within 20 seconds. No approval or further action control was used."
+}

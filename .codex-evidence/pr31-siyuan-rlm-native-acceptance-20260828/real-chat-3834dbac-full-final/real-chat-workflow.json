@@ -1,0 +1,119 @@
+{
+  "status": "failed",
+  "head": "3834dbacf955cc26fdd917c8f8c87351c0423a41",
+  "route": {
+    "providerId": "opencode",
+    "connectionId": "opencode-cli",
+    "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+  },
+  "chatId": "chat_pr31_real_workflow_1787981776245",
+  "startedAt": "2026-08-29T05:36:16.245Z",
+  "assertions": [
+    {
+      "name": "isolated fixture starts at exact draft bytes",
+      "passed": true,
+      "sha256": "f63221160dc2cbe317b5e8fd6615b5c567c60a39b92c51d93d2e5503e09eaffc"
+    },
+    {
+      "name": "one official jarvis process",
+      "passed": true,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "official native page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "name": "composer visibly retains exact DeepSeek selection",
+      "passed": true,
+      "visibleLabel": "opencode · opencode-go/deepseek-v4-flash-vision-exp"
+    },
+    {
+      "name": "exact DeepSeek route selected and persisted",
+      "passed": true,
+      "connection": {
+        "providerId": "opencode",
+        "id": "opencode-cli",
+        "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+        "mode": "external-cli",
+        "authSource": "opencode-provider-session"
+      },
+      "selection": {
+        "mode": "none"
+      }
+    },
+    {
+      "name": "one files.read proposal",
+      "passed": true,
+      "proposals": [
+        {
+          "action": "files.read",
+          "status": "pending",
+          "params": {
+            "path": "C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\Projects\\.vibespace-native-acceptance\\brief.md"
+          }
+        }
+      ]
+    }
+  ],
+  "turns": [],
+  "artifacts": [
+    {
+      "name": "FAIL-real-chat-workflow.png",
+      "width": 1600,
+      "height": 1025,
+      "state": {
+        "failure": "locator.waitFor: Timeout 120000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: 'Send message' }) to be visible\u001b[22m\n\n    at runTurn (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\real-chat-workflow.mjs:158:60)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:207:3"
+      }
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "read:before",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    }
+  ],
+  "failure": "locator.waitFor: Timeout 120000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: 'Send message' }) to be visible\u001b[22m\n\n    at runTurn (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\real-chat-workflow.mjs:158:60)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:207:3",
+  "completedAt": "2026-08-29T05:39:00.515Z"
+}

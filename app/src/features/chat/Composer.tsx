@@ -65,6 +65,7 @@ import { MicWaveform } from './MicWaveform';
 import { formatComposerVoiceFailure } from './composerVoiceFailures';
 import { formatComposerSendFailure } from './composerSendFailures';
 import { HarnessReadinessGate, useHarnessRuntimeState } from './HarnessReadinessGate';
+import { CodexReadinessGate, useCodexRuntimeState } from './CodexReadinessGate';
 import { runVibeSpaceDoctor } from '@/features/doctor/vibeSpaceDoctor';
 
 export function getThemeCommandHelp(): string {
@@ -350,6 +351,16 @@ import type {
   ReasoningSelection,
 } from '@/lib/ai/reasoningControls';
 import { CODEX_CLI_CONNECTION } from '@/lib/ai/adapters/catalog';
+import {
+  ChatBackendLockedError,
+  resolveChatBackendAffinity,
+  type ChatBackend,
+  type ChatBackendAffinityV1,
+} from '@/lib/ai/backend/chatBackend';
+import {
+  dexieChatBackendPersistence,
+  selectPersistedChatBackend,
+} from '@/lib/ai/backend/chatBackendPersistence';
 import { restoreExactChatSelection, type ExactChatSelection } from './chatSelectionAuthority';
 import { ModeIndicator } from '@/features/jarvis-interaction/ModeIndicator';
 import { cycleInteractionMode, PERMISSION_MODE_OPTIONS } from '@/features/jarvis-interaction/modes';
@@ -1278,6 +1289,7 @@ export function Composer({
   const [sending, setSending] = useState(false);
   const harnessRuntimeState = useHarnessRuntimeState();
   const harnessBlocked = harnessRuntimeState.kind !== 'ready';
+  const codexRuntimeState = useCodexRuntimeState();
   const [jarvisRunning, setJarvisRunning] = useState(false);
   const [stoppedRequest, setStoppedRequest] = useState(false);
   const [queuedMessages, setQueuedMessages] = useState<QueuedChatMessage[]>([]);
@@ -1527,6 +1539,11 @@ export function Composer({
   const [modelSelectionReadyChatId, setModelSelectionReadyChatId] = useState('');
   const [retainedExactChatSelection, setRetainedExactChatSelection] =
     useState<ExactChatSelection | null>(null);
+  const [chatBackendAffinity, setChatBackendAffinity] = useState<ChatBackendAffinityV1 | null>(
+    null,
+  );
+  const backendRuntimeBlocked =
+    chatBackendAffinity?.backend === 'codex' ? codexRuntimeState.kind !== 'ready' : harnessBlocked;
   const chatModelSelection = useMemo(
     () => restoreExactChatSelection(globalChatModelSelection, retainedExactChatSelection),
     [globalChatModelSelection, retainedExactChatSelection],
@@ -1717,11 +1734,17 @@ export function Composer({
   useEffect(() => {
     let cancelled = false;
     setRetainedExactChatSelection(null);
+    setChatBackendAffinity(null);
     setModelSelectionReadyChatId('');
-    void chatRepo
-      .getById(chatId as ChatId)
-      .then((chat) => {
-        if (cancelled || !chat?.connection) return;
+    void Promise.all([chatRepo.getById(chatId as ChatId), messageRepo.listByChat(chatId as ChatId)])
+      .then(([chat, messages]) => {
+        if (cancelled || !chat) return;
+        const affinity = resolveChatBackendAffinity(chat.backend_affinity, {
+          hasCommittedUserMessage: messages.some((message) => message.role === 'user'),
+          chatCreatedAt: chat.created_at,
+        });
+        setChatBackendAffinity(affinity);
+        if (!chat.connection) return;
         const current = useAuthStore.getState().chatModelSelection;
         const modelId =
           chat.connection.modelId ??
@@ -1730,10 +1753,18 @@ export function Composer({
             : '') ??
           '';
         if (!modelId) return;
+        const connection =
+          affinity.backend === 'codex'
+            ? {
+                ...CODEX_CLI_CONNECTION,
+                providerId: chat.connection.providerId,
+                modelId,
+              }
+            : chat.connection;
         const restored = selectionFromOption(
           chat.connection.providerId as ProviderId,
           modelId,
-          chat.connection,
+          connection,
         );
         if (restored.mode !== 'single') return;
         setRetainedExactChatSelection(restored);
@@ -1773,6 +1804,38 @@ export function Composer({
 
     if (normalizeSlashCmd(cmd) === 'chat') {
       return CHAT_ENGINE_OPTIONS.map((option) => ({ ...option }));
+    }
+
+    if (normalizeSlashCmd(cmd) === 'cli') {
+      const locked = chatBackendAffinity?.locked === true;
+      return [
+        {
+          id: 'opencode',
+          label: 'OpenCode',
+          description: 'Use the authenticated OpenCode backend for this chat',
+          metadata:
+            chatBackendAffinity?.backend === 'opencode'
+              ? locked
+                ? 'active · locked'
+                : 'active'
+              : locked
+                ? 'locked out'
+                : undefined,
+        },
+        {
+          id: 'codex',
+          label: 'Codex',
+          description: 'Use Codex CLI through the same selected provider and model',
+          metadata:
+            chatBackendAffinity?.backend === 'codex'
+              ? locked
+                ? 'active · locked'
+                : 'active'
+              : locked
+                ? 'locked out'
+                : undefined,
+        },
+      ];
     }
 
     if (normalizeSlashCmd(cmd) === 'agent') {
@@ -1932,6 +1995,7 @@ export function Composer({
 
     return [];
   }, [
+    chatBackendAffinity,
     optionPickerCtx,
     terminalSessions,
     projectId,
@@ -2221,6 +2285,7 @@ export function Composer({
       (isChatAttachSlashCmd(cmd.cmd) ||
         normalizeSlashCmd(cmd.cmd) === 'permissions' ||
         normalizeSlashCmd(cmd.cmd) === 'agent' ||
+        canonicalCmd === 'cli' ||
         canonicalCmd === 'chat' ||
         cmd.cmd === 'effort' ||
         cmd.cmd === 'mode' ||
@@ -2237,22 +2302,24 @@ export function Composer({
           ? useUIStore.getState().theme
           : cmd.cmd === 'theme'
             ? loadConsolePreferences().profile
-            : canonicalCmd === 'chat'
-              ? storedChatEngine(String(chatId))
-              : cmd.cmd === 'rlm'
-                ? resolveRlmEnabled({
-                    chatId: String(chatId),
-                    workspaceId: workspaceId ?? undefined,
-                  }).enabled
-                  ? 'on'
-                  : 'off'
-                : cmd.cmd === 'effort' || cmd.cmd === 'mode'
-                  ? (buildReasoningSlashPickerState({
-                      command: cmd.cmd,
-                      selection: reasoningSelectionFromChatModel(chatModelSelection),
-                      preference: reasoningPreference,
-                    }).selectedId ?? '')
-                  : '',
+            : canonicalCmd === 'cli'
+              ? (chatBackendAffinity?.backend ?? 'opencode')
+              : canonicalCmd === 'chat'
+                ? storedChatEngine(String(chatId))
+                : cmd.cmd === 'rlm'
+                  ? resolveRlmEnabled({
+                      chatId: String(chatId),
+                      workspaceId: workspaceId ?? undefined,
+                    }).enabled
+                    ? 'on'
+                    : 'off'
+                  : cmd.cmd === 'effort' || cmd.cmd === 'mode'
+                    ? (buildReasoningSlashPickerState({
+                        command: cmd.cmd,
+                        selection: reasoningSelectionFromChatModel(chatModelSelection),
+                        preference: reasoningPreference,
+                      }).selectedId ?? '')
+                    : '',
       );
       setOptionPickerCtx({ cmd, query: '' });
       requestAnimationFrame(() => textareaRef.current?.focus());
@@ -2299,6 +2366,33 @@ export function Composer({
     });
   };
 
+  const chooseChatBackend = async (backend: ChatBackend): Promise<void> => {
+    try {
+      const next = await selectPersistedChatBackend(
+        dexieChatBackendPersistence,
+        String(chatId),
+        backend,
+        Date.now(),
+      );
+      setChatBackendAffinity(next);
+      toast.info(
+        `${backend === 'codex' ? 'Codex' : 'OpenCode'} selected`,
+        next.locked
+          ? 'This chat backend is locked because the conversation has started.'
+          : 'The backend will lock after the first message is sent.',
+      );
+    } catch (error) {
+      if (error instanceof ChatBackendLockedError) {
+        toast.warning(
+          'Chat backend is locked',
+          `This chat already uses ${error.currentBackend === 'codex' ? 'Codex' : 'OpenCode'}. Start a new chat to switch.`,
+        );
+        return;
+      }
+      toast.error('Backend not changed', 'The chat backend could not be saved safely.');
+    }
+  };
+
   const selectOption = (option: SlashCommandOption) => {
     if (!optionPickerCtx) return;
     const cmd = optionPickerCtx.cmd;
@@ -2320,6 +2414,15 @@ export function Composer({
           useUIStore.getState().setRoute('chat');
         }
       });
+      return;
+    }
+
+    if (canonical === 'cli' && (option.id === 'opencode' || option.id === 'codex')) {
+      setOptionPickerCtx(null);
+      setSelectedOptionId('');
+      setText('');
+      void chooseChatBackend(option.id);
+      requestAnimationFrame(() => textareaRef.current?.focus());
       return;
     }
 
@@ -2649,9 +2752,11 @@ export function Composer({
           ? useUIStore.getState().theme
           : def.cmd === 'theme'
             ? loadConsolePreferences().profile
-            : normalizeSlashCmd(def.cmd) === 'chat'
-              ? storedChatEngine(String(chatId))
-              : (reasoningState?.selectedId ?? ''),
+            : normalizeSlashCmd(def.cmd) === 'cli'
+              ? (chatBackendAffinity?.backend ?? 'opencode')
+              : normalizeSlashCmd(def.cmd) === 'chat'
+                ? storedChatEngine(String(chatId))
+                : (reasoningState?.selectedId ?? ''),
       );
       setOptionPickerCtx({ cmd: def, query: '' });
       requestAnimationFrame(() => textareaRef.current?.focus());
@@ -2799,6 +2904,29 @@ export function Composer({
         }
       }
       openAttachPicker('mode');
+      return true;
+    }
+    if (cmd === 'cli') {
+      const requested = rest.toLowerCase();
+      if (!requested) {
+        openAttachPicker('cli');
+        return true;
+      }
+      if (requested === 'status') {
+        const affinity = chatBackendAffinity;
+        await addSystem(
+          affinity
+            ? `CLI: ${affinity.backend === 'codex' ? 'Codex' : 'OpenCode'}${affinity.locked ? ' · locked for this chat' : ' · locks after the first message'}`
+            : 'CLI backend is still loading. Try again.',
+        );
+        return true;
+      }
+      if (requested !== 'opencode' && requested !== 'codex') {
+        await addSystem('Usage: /cli opencode | codex | status');
+        return true;
+      }
+      await chooseChatBackend(requested);
+      setText('');
       return true;
     }
     if (cmd === 'chat') {
@@ -3324,7 +3452,7 @@ export function Composer({
       submittedVisibleHandoffKey?: string | null;
     } = {},
   ): Promise<boolean> => {
-    if (harnessBlocked) return false;
+    if (backendRuntimeBlocked) return false;
     const draftText = overrideText ?? text;
     const directlySubmittedDraftEditRevision = handoffDraftEditRevisionRef.current;
     const directlySubmittedVisibleHandoffKey =
@@ -4738,7 +4866,7 @@ export function Composer({
       confirmedCatalogReferences.length > 0 ||
       pendingHandoff !== null) &&
     !sending &&
-    !harnessBlocked;
+    !backendRuntimeBlocked;
   const kernelSmokeHiveBound = KERNEL_SMOKE_ENABLED && isKernelSmokeBindingActive();
   const kernelSmokeHivePrepared =
     kernelSmokeHiveBound &&
@@ -5499,7 +5627,11 @@ export function Composer({
         />
       )}
       <div className={cn('px-3 py-2.5', compact && 'px-3.5 py-3')}>
-        <HarnessReadinessGate />
+        {chatBackendAffinity?.backend === 'codex' ? (
+          <CodexReadinessGate />
+        ) : (
+          <HarnessReadinessGate />
+        )}
         {promptForge.recoverableJob ? (
           <PromptForgeRecovery
             job={promptForge.recoverableJob}
@@ -5629,7 +5761,7 @@ export function Composer({
               <textarea
                 ref={textareaRef}
                 value={text}
-                disabled={harnessBlocked}
+                disabled={backendRuntimeBlocked}
                 rows={1}
                 onChange={(e) => {
                   const nextDraft = e.target.value;

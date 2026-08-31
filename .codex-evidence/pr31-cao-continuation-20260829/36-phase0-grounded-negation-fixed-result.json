@@ -1,0 +1,126 @@
+{
+  "capturedAt": "2026-08-30T07:11:28.489Z",
+  "identity": {
+    "jarvisPid": 34752,
+    "webViewPid": 18496,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-30T02:11:25.6796342-05:00"
+  },
+  "state": {
+    "activeChatId": "cht_vv6pb-whYfQjXq-5",
+    "selection": {
+      "providerId": "opencode",
+      "connectionId": "opencode-cli",
+      "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+    },
+    "runtime": {
+      "settings": {
+        "effort": "high",
+        "fastMode": "off",
+        "performance": "balanced",
+        "rlmEnabled": true
+      },
+      "access": "full",
+      "approveAllForRun": false
+    },
+    "probe": {
+      "sends": [
+        {
+          "at": 1788073849930,
+          "chatId": "cht_vv6pb-whYfQjXq-5",
+          "modelSelectionOverride": {
+            "mode": "single",
+            "providerId": "opencode",
+            "connectionId": "opencode-cli",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "reasoningPreference": {
+            "effortOverride": "high"
+          },
+          "runtimeSettings": {
+            "effort": "high",
+            "performance": "balanced",
+            "fastMode": "off",
+            "rlmEnabled": true
+          },
+          "approveAllForRun": false
+        }
+      ],
+      "runs": [
+        {
+          "at": 1788073850032,
+          "chatId": "cht_vv6pb-whYfQjXq-5",
+          "status": "running",
+          "errorCode": null
+        },
+        {
+          "at": 1788073863407,
+          "chatId": "cht_vv6pb-whYfQjXq-5",
+          "status": "done",
+          "errorCode": null
+        }
+      ]
+    },
+    "finalAnswers": [
+      "Investigation complete. Answer grounded strictly in the returned Gateway/RLM prompt block. **Grounded findings** - **Process [unverified link omitted] No `ollama` process and no listener on port `11434` may exist before attachment, during the scenario, or after it. - **Invalid [unverified link omitted] Standalone Chromium, headless browser, Vite preview, and mock DOM fixtures do not count as official native evidence. - **Repository [unverified link omitted] root agent policy, native acceptance harness, Tauri CDP configuration, and the architecture map. - **Revision [unverified link omitted] the exact selected OpenCode route must hydrate the changed source into its stable SiYuan child document before the grounded Chat acceptance is considered complete. - **Receipt:** `[redacted:high_entropy_candidate]` - **Evidence [unverified link omitted] `[unverified link omitted]` - **Pointer [unverified link omitted] `[unverified link omitted]` - **Source [unverified link omitted] `[unverified link omitted]` **Route obser"
+    ],
+    "finalAnswerMetrics": [
+      {
+        "length": 1672,
+        "containsFixtureName": false,
+        "containsContextGateway": false,
+        "containsJarvisExecutable": false,
+        "containsOllamaInvariant": true,
+        "ending": "itted]` - **Pointer [unverified link omitted] `[unverified link omitted]` - **Source [unverified link omitted] `[unverified link omitted]` **Route observed this [unverified link omitted] context route `deep` (decision `required-deep`); provider `opencode-cli` upstream `opencode-go` model `deepseek-v4-flash-vision-exp`; effort `provider-default`; fastVariant `standard`; authBillingRoute `opencode-provider-session`. Note: the retrieved evidence confirms the zero-`ollama` safety condition and denies Vite/headless/mock stand-ins as official evidence, but it does not itself expose the exact native process name, WebView profile, or CDP port. Those specific values sit in the authority surfaces named above (native acceptance harness and Tauri CDP configuration), which were not opened in this turn."
+      }
+    ],
+    "finalAnswerLinks": [],
+    "checkpoints": [
+      {
+        "kind": "final",
+        "text": "Investigation complete. Answer grounded strictly in the returned Gateway/RLM prompt block. **Grounded findings** - **Process [unverified link omitted] No `ollama` process and no listener on port `11434` may exist before attachment, during the scenario, or after it. - **Invalid [unverified link omitted] Standalone Chromium, headless browser, Vite preview, and mock DOM fixtures do not count as official native evidence. - **Repository [unverified link omitted] root agent policy, native acceptance harness, Tauri CDP configuration, and the architecture map. - **Revision [unverified link omitted] the exact selected OpenCode route must hydrate the changed source into its stable SiYuan child document before the grounded Chat acceptance is considered complete. - **Receipt:** `[redacted:high_entropy_candidate]` - **Evidence [unverified link omitted] `[unverified link omitted]` - **Pointer [unverified link omitted] `[unverified link omitted]` - **Source [unverified link omitted] `[unverified link omitted]` **Route obser"
+      }
+    ],
+    "activity": [
+      "Show activity details 1 action"
+    ],
+    "context": [],
+    "approvals": [],
+    "visibleControls": [
+      "Open session details",
+      "0 subagents",
+      "Chat console settings",
+      "Show full prompt",
+      "Collapse completed work details",
+      "Show activity details 1 action",
+      "Choose model",
+      "Connection details for Opencode Go",
+      "Agent Mode. Open permissions panel.",
+      "Upgrade prompt with Prompt Forge",
+      "Configure Prompt Forge",
+      "Start dictation",
+      "Send message"
+    ],
+    "counts": {
+      "finalAnswers": 1,
+      "checkpoints": 1,
+      "activity": 1,
+      "context": 0,
+      "approvals": 0,
+      "send": 1,
+      "stop": 0
+    }
+  },
+  "safety": {
+    "label": "phase0:result",
+    "capturedAt": "2026-08-30T02:11:28.4074704-05:00",
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  },
+  "events": []
+}

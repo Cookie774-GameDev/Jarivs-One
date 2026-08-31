@@ -1,0 +1,322 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-DEEPSEEK-ATTEMPT-09-CANONICAL-STATE-DIAGNOSTIC",
+  "startedAt": "2026-08-28T20:08:19.975Z",
+  "status": "passed",
+  "captureHead": "7e47b3143f4684c881727e3c4626a59d745d84b9",
+  "identity": {
+    "jarvisPid": 5076,
+    "webViewPid": 16336,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-28T15:08:19.8488692-05:00"
+  },
+  "safety": [
+    {
+      "label": "attach:before",
+      "capturedAt": "2026-08-28T15:08:15.9539693-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attach:after",
+      "capturedAt": "2026-08-28T15:08:19.8488692-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attempt09-canonical-diagnostic:after",
+      "capturedAt": "2026-08-28T15:08:23.0994967-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "target canonical identities are hash-only",
+      "passed": true,
+      "details": {
+        "approvalIdSha256": "518594a0061e1c94f3d7ece548c470b33af0ba92fe4686f97782ad8648ba2e00",
+        "runIdSha256": "733303c95d5451ae40a463e7adbb9aa6aa97b3c5ec715df9a12eca4a6791b766",
+        "requestIdSha256": "fc764e047c342e9563a2c87ab9af6aad81f84cee5de958a9ac875998455c2cf9",
+        "callIdSha256": "da56a4766929b4bfd4469d15dd353585be8a7be98579b4bc1d72c0c09a940a6b"
+      }
+    },
+    {
+      "name": "failed Deny left approval and parent at canonical open boundary",
+      "passed": true,
+      "details": {
+        "approvalStatus": "pending",
+        "messagePartStatus": "pending",
+        "parentRunStatus": "awaiting_approval",
+        "kernelStatus": {
+          "kind": "approval_state",
+          "status": "pending",
+          "accountMatches": true,
+          "approvalMatches": true,
+          "unavailableReason": null,
+          "unavailableRequestKind": null
+        }
+      }
+    },
+    {
+      "name": "diagnostic performed no mutation or model/process action",
+      "passed": true,
+      "details": {
+        "repairCommit": "8fa3ad3aeda901fe2e34b4b061d9f0b92eb2ca09",
+        "interactionBoundary": "read-only official page and IndexedDB/repository inspection",
+        "clickCount": 0,
+        "reloadCount": 0,
+        "processActionCount": 0,
+        "modelDispatchCount": 0,
+        "mutationCount": 0,
+        "rawParamsStored": false,
+        "rawContentStored": false,
+        "credentialsStored": "[redacted]",
+        "fullCanonicalIdsStored": false
+      }
+    },
+    {
+      "name": "read-only diagnostic emitted no new page errors",
+      "passed": true,
+      "details": []
+    }
+  ],
+  "artifacts": [],
+  "events": [],
+  "firstFailure": null,
+  "metadata": {
+    "repairCommit": "8fa3ad3aeda901fe2e34b4b061d9f0b92eb2ca09",
+    "interactionBoundary": "read-only official page and IndexedDB/repository inspection",
+    "clickCount": 0,
+    "reloadCount": 0,
+    "processActionCount": 0,
+    "modelDispatchCount": 0,
+    "mutationCount": 0,
+    "rawParamsStored": false,
+    "rawContentStored": false,
+    "credentialsStored": "[redacted]",
+    "fullCanonicalIdsStored": false
+  },
+  "canonicalState": {
+    "capturedAt": "2026-08-28T20:08:20.200Z",
+    "wallClockMs": 1787947700200,
+    "message": {
+      "chatIdSha256": "bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e",
+      "messageIdSha256": "ccab367f73976e8253b7bb627cbace740e0908352b2e8129dc2af50a1ac0feef",
+      "callIdSha256": "da56a4766929b4bfd4469d15dd353585be8a7be98579b4bc1d72c0c09a940a6b",
+      "persistedPartStatus": "pending",
+      "actionId": "files.create"
+    },
+    "approval": {
+      "approvalIdSha256": "518594a0061e1c94f3d7ece548c470b33af0ba92fe4686f97782ad8648ba2e00",
+      "runIdSha256": "733303c95d5451ae40a463e7adbb9aa6aa97b3c5ec715df9a12eca4a6791b766",
+      "requestIdSha256": "fc764e047c342e9563a2c87ab9af6aad81f84cee5de958a9ac875998455c2cf9",
+      "attemptNumber": 1,
+      "status": "pending",
+      "createdAt": 1787937160082,
+      "expiresAt": 1787937760060,
+      "actionId": "files.create",
+      "actionVersion": 1,
+      "risk": "confirm",
+      "decidedAt": null,
+      "consumedAt": null,
+      "expired": true,
+      "wallClockDeltaFromExpiryMs": 9940140
+    },
+    "parentRun": {
+      "runIdSha256": "733303c95d5451ae40a463e7adbb9aa6aa97b3c5ec715df9a12eca4a6791b766",
+      "status": "awaiting_approval",
+      "updatedAt": 1787937160082,
+      "createdAt": 1787937153147,
+      "completedAt": null,
+      "source": "typed_chat",
+      "transportAttemptCount": 0,
+      "currentTransportAttempt": null,
+      "approvalScopedTransportAttempt": null
+    },
+    "openSiblings": {
+      "count": 0,
+      "statuses": {},
+      "items": []
+    },
+    "events": {
+      "count": 9,
+      "tailSeq": 9,
+      "idempotencyCategoryCounts": {
+        "kernel_context": 1,
+        "other:kernel": 2,
+        "provider_start_checkpoint": 1,
+        "other:kernel-live": 2,
+        "approval_lifecycle": 1,
+        "approval_created": 1,
+        "action_response_ready": 1
+      },
+      "tail": [
+        {
+          "seq": 1,
+          "type": "context",
+          "status": "completed",
+          "createdAt": 1787937153065,
+          "idempotencyCategory": "kernel_context",
+          "boundedErrorCodes": [],
+          "producerCheckpoint": null,
+          "executionEvidence": null,
+          "canonicalResult": null
+        },
+        {
+          "seq": 2,
+          "type": "run_state",
+          "status": "compiling",
+          "createdAt": 1787937153168,
+          "idempotencyCategory": "other:kernel",
+          "boundedErrorCodes": [],
+          "producerCheckpoint": null,
+          "executionEvidence": null,
+          "canonicalResult": null
+        },
+        {
+          "seq": 3,
+          "type": "run_state",
+          "status": "running",
+          "createdAt": 1787937153235,
+          "idempotencyCategory": "other:kernel",
+          "boundedErrorCodes": [],
+          "producerCheckpoint": null,
+          "executionEvidence": null,
+          "canonicalResult": null
+        },
+        {
+          "seq": 4,
+          "type": "model",
+          "status": "started",
+          "createdAt": 1787937153251,
+          "idempotencyCategory": "provider_start_checkpoint",
+          "boundedErrorCodes": [],
+          "producerCheckpoint": {
+            "phase": "start",
+            "state": "started",
+            "requestIdSha256": "fc764e047c342e9563a2c87ab9af6aad81f84cee5de958a9ac875998455c2cf9",
+            "attemptNumber": 1
+          },
+          "executionEvidence": null,
+          "canonicalResult": null
+        },
+        {
+          "seq": 5,
+          "type": "model",
+          "status": "started",
+          "createdAt": 1787937153251,
+          "idempotencyCategory": "other:kernel-live",
+          "boundedErrorCodes": [],
+          "producerCheckpoint": null,
+          "executionEvidence": null,
+          "canonicalResult": null
+        },
+        {
+          "seq": 6,
+          "type": "run_state",
+          "status": "awaiting_approval",
+          "createdAt": 1787937160082,
+          "idempotencyCategory": "approval_lifecycle",
+          "boundedErrorCodes": [],
+          "producerCheckpoint": null,
+          "executionEvidence": null,
+          "canonicalResult": null
+        },
+        {
+          "seq": 7,
+          "type": "approval",
+          "status": "pending",
+          "createdAt": 1787937160082,
+          "idempotencyCategory": "approval_created",
+          "boundedErrorCodes": [],
+          "producerCheckpoint": null,
+          "executionEvidence": null,
+          "canonicalResult": null
+        },
+        {
+          "seq": 8,
+          "type": "message",
+          "status": "approval_required",
+          "createdAt": 1787937160002,
+          "idempotencyCategory": "action_response_ready",
+          "boundedErrorCodes": [
+            "approval_required"
+          ],
+          "producerCheckpoint": {
+            "phase": "result",
+            "state": "completed",
+            "requestIdSha256": "fc764e047c342e9563a2c87ab9af6aad81f84cee5de958a9ac875998455c2cf9",
+            "attemptNumber": 1
+          },
+          "executionEvidence": null,
+          "canonicalResult": null
+        },
+        {
+          "seq": 9,
+          "type": "model",
+          "status": "completed",
+          "createdAt": 1787937160002,
+          "idempotencyCategory": "other:kernel-live",
+          "boundedErrorCodes": [],
+          "producerCheckpoint": null,
+          "executionEvidence": null,
+          "canonicalResult": null
+        }
+      ],
+      "providerStartCheckpoints": {
+        "count": 1,
+        "states": {
+          "started": 1
+        }
+      },
+      "providerResultCheckpoints": {
+        "count": 1,
+        "completedCount": 1,
+        "degradedCount": 0
+      },
+      "exactActionResponseReadyCount": 1,
+      "completeProviderStartResultPair": true,
+      "cancellationIntent": {
+        "present": false,
+        "count": 0,
+        "seqs": [],
+        "idempotencyKeySha256": []
+      }
+    },
+    "kernelHost": {
+      "approvalStatus": {
+        "kind": "approval_state",
+        "status": "pending",
+        "accountMatches": true,
+        "approvalMatches": true,
+        "unavailableReason": null,
+        "unavailableRequestKind": null
+      },
+      "cardStatus": "pending",
+      "approveSubmitState": "failed",
+      "decisionFailureCategory": "verification",
+      "alertSha256": "3573ab2157e41067144af09172a219904ecf6eddbea0159006dc09512341dce8",
+      "alertCharCount": 81,
+      "presentationState": null,
+      "presentationCode": null,
+      "boundedEventErrorCodes": [
+        "approval_required"
+      ],
+      "exactDecisionExceptionCodeExposed": false,
+      "codeBoundary": "The public card exposes verification versus persistence failure, but its catch boundary does not expose which bounded kernel decision exception produced verification failure."
+    },
+    "redactionBoundary": {
+      "rawApprovalParamsReadIntoReport": false,
+      "rawMessageContentReadIntoReport": false,
+      "rawCredentialsReadIntoReport": "[redacted]",
+      "fullCanonicalIdsReadIntoReport": false
+    }
+  },
+  "completedAt": "2026-08-28T20:08:23.223Z"
+}

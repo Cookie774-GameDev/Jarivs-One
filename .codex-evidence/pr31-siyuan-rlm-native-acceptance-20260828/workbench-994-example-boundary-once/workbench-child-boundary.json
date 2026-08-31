@@ -1,0 +1,57 @@
+{
+  "status": "failed",
+  "head": "64f4bcaf213cb8bd64c976ff9622fa394740bd46",
+  "startedAt": "2026-08-29T08:02:47.979Z",
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 4096189823. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3269254975. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2718668134. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 356976575. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_mxI1dtQHCKyG"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_S3NWtHJawUqL"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_L0e7K-nBLP8y"
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io"
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io"
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io"
+    }
+  ],
+  "pageErrors": [
+    "TypeError: Cannot read properties of undefined (reading 'handlerId')"
+  ],
+  "assertions": [],
+  "failure": "page.waitForFunction: Timeout 30000ms exceeded.\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\workbench-child-boundary.mjs:30:14",
+  "completedAt": "2026-08-29T08:03:35.913Z"
+}

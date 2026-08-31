@@ -1,0 +1,1077 @@
+{
+  "startedAt": "2026-08-29T10:01:55.032Z",
+  "console": [],
+  "pageErrors": [],
+  "panels": [
+    {
+      "index": 0,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "ancestors": [
+        {
+          "class": "workbench-panel-body",
+          "aria-hidden": "false"
+        },
+        {
+          "class": "workbench-panel",
+          "data-kind": "browser",
+          "data-panel-id": "browser-e6727cc0-96aa-4a5d-9ca0-11f0ceb50a6c",
+          "data-selected": "false",
+          "data-minimized": "false",
+          "aria-label": "Browser panel",
+          "style": "left: 296px; top: 258px; width: 680px; height: 440px; z-index: 9;"
+        },
+        {
+          "class": "workbench-stage [html[data-theme=monochrome]_&]:will-change-auto",
+          "style": "transform: translate3d(-179.2px, 38.6001px, 0px) scale(0.78);"
+        },
+        {
+          "class": "workbench-canvas",
+          "data-testid": "workbench-canvas",
+          "tabindex": "0",
+          "role": "application",
+          "aria-label": "Spatial Workbench canvas"
+        },
+        {
+          "data-monochrome-surface": "workbench-canvas",
+          "data-sakura-content": "workbench-canvas",
+          "class": "workbench-content [html[data-theme=monochrome]_&]:bg-background",
+          "data-palette-revealed": "false"
+        }
+      ],
+      "address": "https://example.com/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    },
+    {
+      "index": 1,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "ancestors": [
+        {
+          "class": "workbench-panel-body",
+          "aria-hidden": "false"
+        },
+        {
+          "class": "workbench-panel",
+          "data-kind": "browser",
+          "data-panel-id": "browser-13618e87-29cd-470b-aae3-48a84d255610",
+          "data-selected": "false",
+          "data-minimized": "false",
+          "aria-label": "Browser panel",
+          "style": "left: 324px; top: 282px; width: 680px; height: 440px; z-index: 10;"
+        },
+        {
+          "class": "workbench-stage [html[data-theme=monochrome]_&]:will-change-auto",
+          "style": "transform: translate3d(-179.2px, 38.6001px, 0px) scale(0.78);"
+        },
+        {
+          "class": "workbench-canvas",
+          "data-testid": "workbench-canvas",
+          "tabindex": "0",
+          "role": "application",
+          "aria-label": "Spatial Workbench canvas"
+        },
+        {
+          "data-monochrome-surface": "workbench-canvas",
+          "data-sakura-content": "workbench-canvas",
+          "class": "workbench-content [html[data-theme=monochrome]_&]:bg-background",
+          "data-palette-revealed": "false"
+        }
+      ],
+      "address": "https://developer.mozilla.org/en-US/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    },
+    {
+      "index": 2,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "ancestors": [
+        {
+          "class": "workbench-panel-body",
+          "aria-hidden": "false"
+        },
+        {
+          "class": "workbench-panel",
+          "data-kind": "browser",
+          "data-panel-id": "browser-3052c3f3-6e70-4609-820c-9cd4a687e1b3",
+          "data-selected": "false",
+          "data-minimized": "false",
+          "aria-label": "Browser panel",
+          "style": "left: 352px; top: 306px; width: 680px; height: 440px; z-index: 11;"
+        },
+        {
+          "class": "workbench-stage [html[data-theme=monochrome]_&]:will-change-auto",
+          "style": "transform: translate3d(-179.2px, 38.6001px, 0px) scale(0.78);"
+        },
+        {
+          "class": "workbench-canvas",
+          "data-testid": "workbench-canvas",
+          "tabindex": "0",
+          "role": "application",
+          "aria-label": "Spatial Workbench canvas"
+        },
+        {
+          "data-monochrome-surface": "workbench-canvas",
+          "data-sakura-content": "workbench-canvas",
+          "class": "workbench-content [html[data-theme=monochrome]_&]:bg-background",
+          "data-palette-revealed": "false"
+        }
+      ],
+      "address": "https://developer.mozilla.org/en-US/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    },
+    {
+      "index": 3,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "ancestors": [
+        {
+          "class": "workbench-panel-body",
+          "aria-hidden": "false"
+        },
+        {
+          "class": "workbench-panel",
+          "data-kind": "browser",
+          "data-panel-id": "browser-3d92b9ac-0ae8-49f1-81e0-d8a45255defd",
+          "data-selected": "false",
+          "data-minimized": "false",
+          "aria-label": "Browser panel",
+          "style": "left: 380px; top: 330px; width: 680px; height: 440px; z-index: 12;"
+        },
+        {
+          "class": "workbench-stage [html[data-theme=monochrome]_&]:will-change-auto",
+          "style": "transform: translate3d(-179.2px, 38.6001px, 0px) scale(0.78);"
+        },
+        {
+          "class": "workbench-canvas",
+          "data-testid": "workbench-canvas",
+          "tabindex": "0",
+          "role": "application",
+          "aria-label": "Spatial Workbench canvas"
+        },
+        {
+          "data-monochrome-surface": "workbench-canvas",
+          "data-sakura-content": "workbench-canvas",
+          "class": "workbench-content [html[data-theme=monochrome]_&]:bg-background",
+          "data-palette-revealed": "false"
+        }
+      ],
+      "address": "https://developer.mozilla.org/en-US/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    },
+    {
+      "index": 4,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "ancestors": [
+        {
+          "class": "workbench-panel-body",
+          "aria-hidden": "false"
+        },
+        {
+          "class": "workbench-panel",
+          "data-kind": "browser",
+          "data-panel-id": "browser-9864f624-71d9-4615-ad95-f706687f631f",
+          "data-selected": "false",
+          "data-minimized": "false",
+          "aria-label": "Browser panel",
+          "style": "left: 408px; top: 354px; width: 680px; height: 440px; z-index: 13;"
+        },
+        {
+          "class": "workbench-stage [html[data-theme=monochrome]_&]:will-change-auto",
+          "style": "transform: translate3d(-179.2px, 38.6001px, 0px) scale(0.78);"
+        },
+        {
+          "class": "workbench-canvas",
+          "data-testid": "workbench-canvas",
+          "tabindex": "0",
+          "role": "application",
+          "aria-label": "Spatial Workbench canvas"
+        },
+        {
+          "data-monochrome-surface": "workbench-canvas",
+          "data-sakura-content": "workbench-canvas",
+          "class": "workbench-content [html[data-theme=monochrome]_&]:bg-background",
+          "data-palette-revealed": "false"
+        }
+      ],
+      "address": "https://example.com/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    },
+    {
+      "index": 5,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "ancestors": [
+        {
+          "class": "workbench-panel-body",
+          "aria-hidden": "false"
+        },
+        {
+          "class": "workbench-panel",
+          "data-kind": "browser",
+          "data-panel-id": "browser-c16d0264-b687-47b6-9a7d-784173f1ff11",
+          "data-selected": "false",
+          "data-minimized": "false",
+          "aria-label": "Browser panel",
+          "style": "left: 436px; top: 378px; width: 680px; height: 440px; z-index: 14;"
+        },
+        {
+          "class": "workbench-stage [html[data-theme=monochrome]_&]:will-change-auto",
+          "style": "transform: translate3d(-179.2px, 38.6001px, 0px) scale(0.78);"
+        },
+        {
+          "class": "workbench-canvas",
+          "data-testid": "workbench-canvas",
+          "tabindex": "0",
+          "role": "application",
+          "aria-label": "Spatial Workbench canvas"
+        },
+        {
+          "data-monochrome-surface": "workbench-canvas",
+          "data-sakura-content": "workbench-canvas",
+          "class": "workbench-content [html[data-theme=monochrome]_&]:bg-background",
+          "data-palette-revealed": "false"
+        }
+      ],
+      "address": "https://developer.mozilla.org/en-US/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    },
+    {
+      "index": 6,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "ancestors": [
+        {
+          "class": "workbench-panel-body",
+          "aria-hidden": "false"
+        },
+        {
+          "class": "workbench-panel",
+          "data-kind": "browser",
+          "data-panel-id": "browser-a3b6094c-3872-496d-9fe2-af4007c6402d",
+          "data-selected": "false",
+          "data-minimized": "false",
+          "aria-label": "Browser panel",
+          "style": "left: 464px; top: 402px; width: 680px; height: 440px; z-index: 15;"
+        },
+        {
+          "class": "workbench-stage [html[data-theme=monochrome]_&]:will-change-auto",
+          "style": "transform: translate3d(-179.2px, 38.6001px, 0px) scale(0.78);"
+        },
+        {
+          "class": "workbench-canvas",
+          "data-testid": "workbench-canvas",
+          "tabindex": "0",
+          "role": "application",
+          "aria-label": "Spatial Workbench canvas"
+        },
+        {
+          "data-monochrome-surface": "workbench-canvas",
+          "data-sakura-content": "workbench-canvas",
+          "class": "workbench-content [html[data-theme=monochrome]_&]:bg-background",
+          "data-palette-revealed": "false"
+        }
+      ],
+      "address": "https://example.com/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    },
+    {
+      "index": 7,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "ancestors": [
+        {
+          "class": "workbench-panel-body",
+          "aria-hidden": "false"
+        },
+        {
+          "class": "workbench-panel",
+          "data-kind": "browser",
+          "data-panel-id": "browser-ea430bd1-fda6-4f66-b7d9-6d4a7990d69f",
+          "data-selected": "false",
+          "data-minimized": "false",
+          "aria-label": "Browser panel",
+          "style": "left: 492px; top: 426px; width: 680px; height: 440px; z-index: 16;"
+        },
+        {
+          "class": "workbench-stage [html[data-theme=monochrome]_&]:will-change-auto",
+          "style": "transform: translate3d(-179.2px, 38.6001px, 0px) scale(0.78);"
+        },
+        {
+          "class": "workbench-canvas",
+          "data-testid": "workbench-canvas",
+          "tabindex": "0",
+          "role": "application",
+          "aria-label": "Spatial Workbench canvas"
+        },
+        {
+          "data-monochrome-surface": "workbench-canvas",
+          "data-sakura-content": "workbench-canvas",
+          "class": "workbench-content [html[data-theme=monochrome]_&]:bg-background",
+          "data-palette-revealed": "false"
+        }
+      ],
+      "address": "https://developer.mozilla.org/en-US/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    }
+  ],
+  "buttons": [
+    {
+      "name": "Save Workbench",
+      "title": null
+    },
+    {
+      "name": "Templates",
+      "title": null
+    },
+    {
+      "name": "Wallpapers",
+      "title": null
+    },
+    {
+      "name": "Undo",
+      "title": null
+    },
+    {
+      "name": "Redo",
+      "title": null
+    },
+    {
+      "name": "Recenter workspace",
+      "title": "Recenter view — does not move your panels"
+    },
+    {
+      "name": "Pause wallpaper",
+      "title": null
+    },
+    {
+      "name": "Toggle system fullscreen",
+      "title": "Enter system fullscreen"
+    },
+    {
+      "name": "Hold to arm Workbench exit",
+      "title": "Hold to arm exit, then Confirm"
+    },
+    {
+      "name": "Add Terminal",
+      "title": null
+    },
+    {
+      "name": "Add Browser",
+      "title": null
+    },
+    {
+      "name": "Add Jarvis",
+      "title": null
+    },
+    {
+      "name": "Add Agent",
+      "title": null
+    },
+    {
+      "name": "Add Files",
+      "title": null
+    },
+    {
+      "name": "Add Editor",
+      "title": null
+    },
+    {
+      "name": "Add Kanban",
+      "title": null
+    },
+    {
+      "name": "Add Actions",
+      "title": null
+    },
+    {
+      "name": "Add Notes",
+      "title": null
+    },
+    {
+      "name": "Add Diagram",
+      "title": null
+    },
+    {
+      "name": "Add Plugins",
+      "title": null
+    },
+    {
+      "name": "Add Tools",
+      "title": null
+    },
+    {
+      "name": "Add Activity",
+      "title": null
+    },
+    {
+      "name": "Close panels",
+      "title": "Close panels"
+    },
+    {
+      "name": "Duplicate Project files",
+      "title": null
+    },
+    {
+      "name": "Minimize Project files",
+      "title": null
+    },
+    {
+      "name": "Close Project files",
+      "title": null
+    },
+    {
+      "name": "Refresh files",
+      "title": null
+    },
+    {
+      "name": "Choose folder",
+      "title": null
+    },
+    {
+      "name": "Open path",
+      "title": null
+    },
+    {
+      "name": ".vibespace",
+      "title": null
+    },
+    {
+      "name": ".vibespace-native-acceptance",
+      "title": null
+    },
+    {
+      "name": "hey-x20",
+      "title": null
+    },
+    {
+      "name": "sup",
+      "title": null
+    },
+    {
+      "name": "supabase-plugin-supabase-openai-curated-remote",
+      "title": null
+    },
+    {
+      "name": "vibespace-agent-codex-thread-01a02746-2b5c",
+      "title": null
+    },
+    {
+      "name": "breakout.html",
+      "title": null
+    },
+    {
+      "name": "snake-game.html",
+      "title": null
+    },
+    {
+      "name": "Resize Project files",
+      "title": null
+    },
+    {
+      "name": "Duplicate Editor & preview",
+      "title": null
+    },
+    {
+      "name": "Minimize Editor & preview",
+      "title": null
+    },
+    {
+      "name": "Close Editor & preview",
+      "title": null
+    },
+    {
+      "name": "Open iPhone 15 preview",
+      "title": null
+    },
+    {
+      "name": "Save as",
+      "title": "Save to Desktop with a name"
+    },
+    {
+      "name": "Resize Editor & preview",
+      "title": null
+    },
+    {
+      "name": "Duplicate Jarvis",
+      "title": null
+    },
+    {
+      "name": "Minimize Jarvis",
+      "title": null
+    },
+    {
+      "name": "Close Jarvis",
+      "title": null
+    },
+    {
+      "name": "New chat",
+      "title": "New chat"
+    },
+    {
+      "name": "Open session details",
+      "title": null
+    },
+    {
+      "name": "0 subagents",
+      "title": null
+    },
+    {
+      "name": "Chat console settings",
+      "title": null
+    },
+    {
+      "name": "Copy message",
+      "title": null
+    },
+    {
+      "name": "Branch from here",
+      "title": null
+    },
+    {
+      "name": "Choose model",
+      "title": null
+    },
+    {
+      "name": "Agent Mode. Open permissions panel.",
+      "title": "Full work mode — read/write files and run commands. Risky actions still need Approve. Click to change · Shift+Tab cycles · /permissions"
+    },
+    {
+      "name": "Upgrade prompt with Prompt Forge",
+      "title": null
+    },
+    {
+      "name": "Configure Prompt Forge",
+      "title": null
+    },
+    {
+      "name": "Start dictation",
+      "title": null
+    },
+    {
+      "name": "Send message",
+      "title": null
+    },
+    {
+      "name": "Resize Jarvis",
+      "title": null
+    },
+    {
+      "name": "Duplicate Terminal 1",
+      "title": null
+    },
+    {
+      "name": "Minimize Terminal 1",
+      "title": null
+    },
+    {
+      "name": "Close Terminal 1",
+      "title": null
+    },
+    {
+      "name": "Resize Terminal 1",
+      "title": null
+    },
+    {
+      "name": "Duplicate Terminal 2",
+      "title": null
+    },
+    {
+      "name": "Minimize Terminal 2",
+      "title": null
+    },
+    {
+      "name": "Close Terminal 2",
+      "title": null
+    },
+    {
+      "name": "Resize Terminal 2",
+      "title": null
+    },
+    {
+      "name": "Duplicate Terminal",
+      "title": null
+    },
+    {
+      "name": "Minimize Terminal",
+      "title": null
+    },
+    {
+      "name": "Close Terminal",
+      "title": null
+    },
+    {
+      "name": "Resize Terminal",
+      "title": null
+    },
+    {
+      "name": "Duplicate Jarvis",
+      "title": null
+    },
+    {
+      "name": "Minimize Jarvis",
+      "title": null
+    },
+    {
+      "name": "Close Jarvis",
+      "title": null
+    },
+    {
+      "name": "New chat",
+      "title": "New chat"
+    },
+    {
+      "name": "Open session details",
+      "title": null
+    },
+    {
+      "name": "0 subagents",
+      "title": null
+    },
+    {
+      "name": "Chat console settings",
+      "title": null
+    },
+    {
+      "name": "Copy message",
+      "title": null
+    },
+    {
+      "name": "Branch from here",
+      "title": null
+    },
+    {
+      "name": "Choose model",
+      "title": null
+    },
+    {
+      "name": "Agent Mode. Open permissions panel.",
+      "title": "Full work mode — read/write files and run commands. Risky actions still need Approve. Click to change · Shift+Tab cycles · /permissions"
+    },
+    {
+      "name": "Upgrade prompt with Prompt Forge",
+      "title": null
+    },
+    {
+      "name": "Configure Prompt Forge",
+      "title": null
+    },
+    {
+      "name": "Start dictation",
+      "title": null
+    },
+    {
+      "name": "Send message",
+      "title": null
+    },
+    {
+      "name": "Resize Jarvis",
+      "title": null
+    },
+    {
+      "name": "Duplicate Browser",
+      "title": null
+    },
+    {
+      "name": "Minimize Browser",
+      "title": null
+    },
+    {
+      "name": "Close Browser",
+      "title": null
+    },
+    {
+      "name": "Back",
+      "title": null
+    },
+    {
+      "name": "Forward",
+      "title": null
+    },
+    {
+      "name": "Go",
+      "title": null
+    },
+    {
+      "name": "Reload browser",
+      "title": null
+    },
+    {
+      "name": "Stop loading",
+      "title": null
+    },
+    {
+      "name": "Resize Browser",
+      "title": null
+    },
+    {
+      "name": "Duplicate Browser",
+      "title": null
+    },
+    {
+      "name": "Minimize Browser",
+      "title": null
+    },
+    {
+      "name": "Close Browser",
+      "title": null
+    },
+    {
+      "name": "Back",
+      "title": null
+    },
+    {
+      "name": "Forward",
+      "title": null
+    },
+    {
+      "name": "Go",
+      "title": null
+    },
+    {
+      "name": "Reload browser",
+      "title": null
+    },
+    {
+      "name": "Stop loading",
+      "title": null
+    },
+    {
+      "name": "Resize Browser",
+      "title": null
+    },
+    {
+      "name": "Duplicate Browser",
+      "title": null
+    },
+    {
+      "name": "Minimize Browser",
+      "title": null
+    },
+    {
+      "name": "Close Browser",
+      "title": null
+    },
+    {
+      "name": "Back",
+      "title": null
+    },
+    {
+      "name": "Forward",
+      "title": null
+    },
+    {
+      "name": "Go",
+      "title": null
+    },
+    {
+      "name": "Reload browser",
+      "title": null
+    },
+    {
+      "name": "Stop loading",
+      "title": null
+    },
+    {
+      "name": "Resize Browser",
+      "title": null
+    },
+    {
+      "name": "Duplicate Browser",
+      "title": null
+    },
+    {
+      "name": "Minimize Browser",
+      "title": null
+    },
+    {
+      "name": "Close Browser",
+      "title": null
+    },
+    {
+      "name": "Back",
+      "title": null
+    },
+    {
+      "name": "Forward",
+      "title": null
+    },
+    {
+      "name": "Go",
+      "title": null
+    },
+    {
+      "name": "Reload browser",
+      "title": null
+    },
+    {
+      "name": "Stop loading",
+      "title": null
+    },
+    {
+      "name": "Resize Browser",
+      "title": null
+    },
+    {
+      "name": "Duplicate Browser",
+      "title": null
+    },
+    {
+      "name": "Minimize Browser",
+      "title": null
+    },
+    {
+      "name": "Close Browser",
+      "title": null
+    },
+    {
+      "name": "Back",
+      "title": null
+    },
+    {
+      "name": "Forward",
+      "title": null
+    },
+    {
+      "name": "Go",
+      "title": null
+    },
+    {
+      "name": "Reload browser",
+      "title": null
+    },
+    {
+      "name": "Stop loading",
+      "title": null
+    },
+    {
+      "name": "Resize Browser",
+      "title": null
+    },
+    {
+      "name": "Duplicate Browser",
+      "title": null
+    },
+    {
+      "name": "Minimize Browser",
+      "title": null
+    },
+    {
+      "name": "Close Browser",
+      "title": null
+    },
+    {
+      "name": "Back",
+      "title": null
+    },
+    {
+      "name": "Forward",
+      "title": null
+    },
+    {
+      "name": "Go",
+      "title": null
+    },
+    {
+      "name": "Reload browser",
+      "title": null
+    },
+    {
+      "name": "Stop loading",
+      "title": null
+    },
+    {
+      "name": "Resize Browser",
+      "title": null
+    },
+    {
+      "name": "Duplicate Browser",
+      "title": null
+    },
+    {
+      "name": "Minimize Browser",
+      "title": null
+    },
+    {
+      "name": "Close Browser",
+      "title": null
+    },
+    {
+      "name": "Back",
+      "title": null
+    },
+    {
+      "name": "Forward",
+      "title": null
+    },
+    {
+      "name": "Go",
+      "title": null
+    },
+    {
+      "name": "Reload browser",
+      "title": null
+    },
+    {
+      "name": "Stop loading",
+      "title": null
+    },
+    {
+      "name": "Resize Browser",
+      "title": null
+    },
+    {
+      "name": "Duplicate Browser",
+      "title": null
+    },
+    {
+      "name": "Minimize Browser",
+      "title": null
+    },
+    {
+      "name": "Close Browser",
+      "title": null
+    },
+    {
+      "name": "Back",
+      "title": null
+    },
+    {
+      "name": "Forward",
+      "title": null
+    },
+    {
+      "name": "Go",
+      "title": null
+    },
+    {
+      "name": "Reload browser",
+      "title": null
+    },
+    {
+      "name": "Stop loading",
+      "title": null
+    },
+    {
+      "name": "Resize Browser",
+      "title": null
+    },
+    {
+      "name": "Focus panel from minimap",
+      "title": "Jump to this panel"
+    },
+    {
+      "name": "Focus panel from minimap",
+      "title": "Jump to this panel"
+    },
+    {
+      "name": "Focus panel from minimap",
+      "title": "Jump to this panel"
+    },
+    {
+      "name": "Focus panel from minimap",
+      "title": "Jump to this panel"
+    },
+    {
+      "name": "Focus panel from minimap",
+      "title": "Jump to this panel"
+    },
+    {
+      "name": "Focus panel from minimap",
+      "title": "Jump to this panel"
+    },
+    {
+      "name": "Focus panel from minimap",
+      "title": "Jump to this panel"
+    },
+    {
+      "name": "Focus panel from minimap",
+      "title": "Jump to this panel"
+    },
+    {
+      "name": "Focus panel from minimap",
+      "title": "Jump to this panel"
+    },
+    {
+      "name": "Focus panel from minimap",
+      "title": "Jump to this panel"
+    },
+    {
+      "name": "Focus panel from minimap",
+      "title": "Jump to this panel"
+    },
+    {
+      "name": "Focus panel from minimap",
+      "title": "Jump to this panel"
+    },
+    {
+      "name": "Focus panel from minimap",
+      "title": "Jump to this panel"
+    },
+    {
+      "name": "Focus panel from minimap",
+      "title": "Jump to this panel"
+    },
+    {
+      "name": "Focus panel from minimap",
+      "title": "Jump to this panel"
+    },
+    {
+      "name": "Show all work",
+      "title": "Show all work — recenters the camera only"
+    }
+  ],
+  "address": "https://developer.mozilla.org/en-US/",
+  "text": "Loading…\n\nREMOTE PAGES STAY INSIDE A CAPABILITY-FREE VIBESPACE CHILD WEBVIEW.",
+  "surfaceCount": 1,
+  "completedAt": "2026-08-29T10:02:03.703Z"
+}

@@ -22,11 +22,12 @@ import {
 import { findCliExecutable } from './cliBridge';
 import type { DetectedExecutable } from './cliBridge';
 import type { ProviderAdapter, ProviderEvent, ProviderRequest } from './types';
+import { codexRuntimeManager, type CodexRuntimeManager } from '@/lib/harness/codexRuntimeManager';
 
 type NativeFrame = Record<string, unknown>;
 
 export interface CodexPersistentDependencies {
-  findExecutable(): Promise<DetectedExecutable | undefined>;
+  findExecutable(): Promise<Readonly<{ executableId: string }> | undefined>;
   start(
     executableId: string,
     ownerId: string,
@@ -40,8 +41,33 @@ export interface CodexPersistentDependencies {
   stop(generation: string): Promise<boolean>;
 }
 
+export interface CodexExecutableResolverDependencies {
+  manager: Pick<CodexRuntimeManager, 'refresh' | 'getSnapshot'>;
+  findSystem(): Promise<DetectedExecutable | undefined>;
+}
+
+const defaultResolverDependencies: CodexExecutableResolverDependencies = {
+  manager: codexRuntimeManager,
+  findSystem: () => findCliExecutable('codex'),
+};
+
+export async function resolveCodexExecutable(
+  dependencies: CodexExecutableResolverDependencies = defaultResolverDependencies,
+): Promise<Readonly<{ executableId: string }> | DetectedExecutable | undefined> {
+  try {
+    await dependencies.manager.refresh();
+    const managed = dependencies.manager.getSnapshot();
+    if (managed.kind === 'ready') {
+      return Object.freeze({ executableId: managed.executableId });
+    }
+  } catch {
+    // The existing fingerprinted system scan remains an independent trusted authority.
+  }
+  return dependencies.findSystem();
+}
+
 const defaultDependencies: CodexPersistentDependencies = {
-  findExecutable: () => findCliExecutable('codex'),
+  findExecutable: () => resolveCodexExecutable(),
   start: startNativeCodexAppServer,
   frames: (generation) => {
     let subscribed!: () => void;
@@ -218,10 +244,7 @@ async function* sendCodexRequest(
       dependencies.write,
       request.requestId,
     );
-    const threadRequestId = requestId(
-      request.requestId,
-      request.sessionId ? 'resume' : 'thread',
-    );
+    const threadRequestId = requestId(request.requestId, request.sessionId ? 'resume' : 'thread');
     const threadRequest = request.sessionId
       ? buildCodexThreadResumeRequest({
           requestId: threadRequestId,

@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEON RUNNER — 3D</title>
+<style>
+  html,body{
+    margin:0;padding:0;height:100%;overflow:hidden;
+    background:#0a0a12;
+    font-family:'Segoe UI',system-ui,sans-serif;
+    color:#eafcff;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  #hud{
+    position:fixed;top:16px;left:16px;z-index:10;
+    pointer-events:none;
+  }
+  #hud .score{
+    font-size:42px;font-weight:800;letter-spacing:2px;
+    text-shadow:0 0 18px rgba(0,229,255,.8);
+  }
+  #hud .label{font-size:12px;letter-spacing:4px;opacity:.7;text-transform:uppercase}
+  #overlay{
+    position:fixed;inset:0;z-index:20;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:rgba(5,5,12,.72);
+    backdrop-filter:blur(3px);
+    text-align:center;
+  }
+  #overlay h1{
+    font-size:56px;margin:0;letter-spacing:6px;
+    text-shadow:0 0 30px rgba(0,255,180,.9);
+  }
+  #overlay p{max-width:520px;opacity:.85;line-height:1.6;margin:16px 0}
+  #overlay.hidden{display:none}
+  .btn{
+    cursor:pointer;border:none;border-radius:999px;
+    padding:16px 34px;font-size:18px;font-weight:800;letter-spacing:2px;
+    color:#03131a;background:linear-gradient(135deg,#00e5ff,#00ff9d);
+    box-shadow:0 0 30px rgba(0,229,255,.6);
+    transition:transform .12s ease, box-shadow .12s ease;
+  }
+  .btn:hover{transform:scale(1.06);box-shadow:0 0 42px rgba(0,255,157,.8)}
+  .keys{
+    display:flex;gap:20px;margin-top:22px;flex-wrap:wrap;justify-content:center;
+  }
+  .key{
+    background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);
+    border-radius:10px;padding:10px 16px;font-size:14px;
+  }
+  .key b{color:#00e5ff}
+  kbd{
+    display:inline-block;padding:2px 8px;border-radius:6px;margin:0 2px;
+    background:#1a2233;border:1px solid #33405c;font-family:inherit;font-size:13px;
+  }
+</style>
+</head>
+<body>
+  <div id="hud">
+    <div class="label">Score</div>
+    <div class="score" id="score">0</div>
+  </div>
+
+  <div id="overlay">
+    <h1 id="title">NEON RUNNER</h1>
+    <p id="sub">Dodge the neon barriers, grab crystals, and push your run as far as you can.</p>
+    <div class="keys">
+      <div class="key"><b>A</b> / <kbd>&larr;</kbd> left</div>
+      <div class="key"><b>D</b> / <kbd>&rarr;</kbd> right</div>
+      <div class="key"><kbd>&uarr;</kbd> jump</div>
+      <div class="key"><b>P</b> pause</div>
+    </div>
+    <div style="margin-top:26px">
+      <button class="btn" id="startBtn">START RUN</button>
+    </div>
+  </div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+// ---------- Renderer / Scene ----------
+const renderer = new THREE.WebGLRenderer({ antialias:true, powerPreference:'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x0a0a12, 30, 110);
+
+const camera = new THREE.PerspectiveCamera(65, window.innerWidth/window.innerHeight, 0.1, 400);
+camera.position.set(0, 6, 14);
+camera.lookAt(0, 3, -10);
+
+// ---------- Lights ----------
+const hemi = new THREE.HemisphereLight(0x8fd8ff, 0x221133, 0.9);
+scene.add(hemi);
+const dir = new THREE.DirectionalLight(0xffffff, 1.6);
+dir.position.set(8, 20, 6);
+dir.castShadow = true;
+dir.shadow.mapSize.set(2048, 2048);
+dir.shadow.camera.left = -30; dir.shadow.camera.right = 30;
+dir.shadow.camera.top = 30; dir.shadow.camera.bottom = -30;
+dir.shadow.camera.far = 80;
+scene.add(dir);
+
+// ---------- Objects ----------
+const player = new THREE.Group();
+
+// Player mesh (a glowing capsule-ish ship)
+const playerBody = new THREE.Mesh(
+  new THREE.ConeGeometry(0.6, 1.6, 24),
+  new THREE.MeshStandardMaterial({ color:0x00e5ff, emissive:0x004a55, roughness:0.2, metalness:0.6 })
+);
+playerBody.rotation.x = Math.PI;
+playerBody.position.y = 0.8;
+playerBody.castShadow = true;
+player.add(playerBody);
+
+const outerGlow = new THREE.Mesh(
+  new THREE.SphereGeometry(0.75, 20, 20),
+  new THREE.MeshBasicMaterial({ color:0x22ffd0, transparent:true, opacity:0.18 })
+);
+outerGlow.position.y = 0.9;
+player.add(outerGlow);
+
+// player offsets for lighting
+const playerLight = new THREE.PointLight(0x00e5ff, 2.5, 18, 2);
+playerLight.position.set(0, 1.5, 0);
+player.add(playerLight);
+
+scene.add(player);
+
+// ---------- Ground ----------
+const groundGeo = new THREE.PlaneGeometry(90, 400, 1, 1);
+const ground = new THREE.Mesh(
+  groundGeo,
+  new THREE.MeshStandardMaterial({ color:0x0e1425, roughness:0.9, metalness:0.1 })
+);
+ground.rotation.x = -Math.PI/2;
+ground.position.z = -140;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Marker lines to give a sense of speed
+const lineMaterial = new THREE.MeshBasicMaterial({ color:0x0a2436 });
+for (let i=0;i<20;i++){
+  const line = new THREE.Mesh(new THREE.PlaneGeometry(90,0.2), lineMaterial);
+  line.rotation.x = -Math.PI/2;
+  line.position.set(0, 0.01, -i*14);
+  scene.add(line);
+}
+
+// ---------- Game State ----------
+const LANES = [-4, 0, 4];
+let lane = 1;
+let playerX = 0;
+let targetX = 0;
+let score = 0;
+let speed = 16;
+let baseSpeed = 16;
+let distance = 0;
+let running = false;
+let paused = false;
+let over = false;
+
+// obstacle/crystal pool
+let barriers = [];
+let crystals = [];
+
+// ---------- Spawning ----------
+function spawnBarrier(){
+  const laneIndex = Math.floor(Math.random()*3);
+  const x = LANES[laneIndex];
+  const h = 0.8 + Math.random()*1.6;
+  const geo = new THREE.BoxGeometry(2.4, 1, 1.2);
+  const mat = new THREE.MeshStandardMaterial({ color:0xff2d55, emissive:0x5a0016, roughness:0.3, metalness:0.5 });
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, h/2, -150 + (Math.random()*10));
+  m.castShadow = true;
+  // store total height; geometry is a unit box so scale.y = h, position.y = h/2
+  barriers.push({ mesh:m, h:h });
+}
+function spawnCrystal(){
+  const laneIndex = Math.floor(Math.random()*3);
+  const x = LANES[laneIndex];
+  const geo = new THREE.OctahedronGeometry(0.55, 0);
+  const mat = new THREE.MeshStandardMaterial({
+    color:0x00ff9d, emissive:0x00804d, roughness:0.1, metalness:0.8
+  });
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, 1.6, -160);
+  m.castShadow = true;
+  scene.add(m);
+  crystals.push({ mesh:m, collected:false });
+}
+
+// Prewarm a wave of obstacles
+function prewarm(){
+  for (let i=0;i<40;i++) spawnBarrier();
+  for (let i=0;i<25;i++) spawnCrystal();
+}
+
+// ---------- Collision helpers ----------
+function respawnGameover(mesh, laneIndex, yPos){
+  mesh.position.set(LANES[laneIndex], yPos, -150 - Math.random()*40);
+}
+
+// ---------- Update ----------
+function updateGame(dt){
+  if (!running || paused || over) return;
+
+  speed = baseSpeed + distance*0.02;
+  distance += speed*dt;
+
+  // move world toward player by moving camera forward illusion: shift objects
+  const moveZ = speed*dt;
+
+  for (const b of barriers){
+    b.mesh.position.z += moveZ;
+    // out of bounds behind -> recycle ahead
+    if (b.mesh.position.z > 18){
+      const laneIndex = Math.floor(Math.random()*3);
+      b.mesh.position.x = LANES[laneIndex];
+      b.h = 0.8 + Math.random()*1.6;
+      b.mesh.scale.y = b.h;
+      b.mesh.position.y = b.h/2;
+      b.mesh.position.z = -150 - Math.random()*40;
+    }
+    // collision
+    if (Math.abs(b.mesh.position.x - playerX) < 1.4 &&
+        Math.abs(b.mesh.position.z - 0) < 1.2 &&
+        player.position.y < b.mesh.position.y + 0.6){
+      gameOver();
+      return;
+    }
+  }
+
+  for (const c of crystals){
+    if (c.collected) continue;
+    c.mesh.position.z += moveZ;
+    c.mesh.rotation.y += dt*4;
+    c.mesh.rotation.x += dt*2;
+    if (c.mesh.position.z > 20){
+      const laneIndex = Math.floor(Math.random()*3);
+      c.mesh.position.x = LANES[laneIndex];
+      c.mesh.position.z = -150 - Math.random()*40;
+      c.collected = false;
+      c.mesh.visible = true;
+    }
+    if (Math.abs(c.mesh.position.x - playerX) < 1.2 &&
+        Math.abs(c.mesh.position.z) < 1.2 &&
+        player.position.y > 0.5 && Math.abs(c.mesh.position.y - player.position.y) < 1.5){
+      c.collected = true;
+      c.mesh.visible = false;
+      score += 25;
+      updateScore();
+    }
+  }
+
+  // lane movement easing
+  playerX = THREE.MathUtils.lerp(playerX, targetX, Math.min(1, dt*10));
+  player.position.x = playerX;
+
+  // keep camera tracking
+  camera.position.x = THREE.MathUtils.lerp(camera.position.x, playerX*0.4, Math.min(1, dt*3));
+  camera.lookAt(player.position.x*0.6, 3, -10);
+}
+
+// ---------- Score ----------
+function updateScore(){
+  document.getElementById('score').textContent = score;
+}
+
+// ---------- Pause / game over ----------
+function gameOver(){
+  over = true;
+  const title = document.getElementById('title');
+  title.textContent = 'GAME OVER';
+  document.getElementById('sub').innerHTML =
+    'You crashed! Final score <b style="font-size:28px;color:#00e5ff">'+score+'</b>.';
+  document.getElementById('startBtn').textContent = 'RUN AGAIN';
+  document.getElementById('overlay').classList.remove('hidden');
+}
+
+function setPaused(p){
+  paused = p;
+  document.getElementById('overlay').classList.toggle('hidden', !p);
+  document.getElementById('title').textContent = 'PAUSED';
+  document.getElementById('sub').textContent = 'Press P to resume.';
+  document.getElementById('startBtn').textContent = 'RESUME';
+}
+
+// ---------- Start ----------
+function startGame(){
+  overlay.classList.add('hidden');
+  score = 0; updateScore();
+  distance = 0; speed = baseSpeed;
+  lane = 1; targetX = 0; playerX = 0;
+  player.position.set(0, 0, 0);
+  playerBody.rotation.z = 0;
+  for (const b of barriers){
+    const laneIndex = Math.floor(Math.random()*3);
+    b.mesh.position.x = LANES[laneIndex];
+    b.h = 0.8 + Math.random()*1.6;
+    b.mesh.scale.y = b.h;
+    b.mesh.position.y = b.h/2;
+    b.mesh.position.z = -160 - Math.random()*80;
+  }
+  running = true; over = false; paused = false;
+}
+
+// ---------- Input ----------
+let keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'KeyA' || e.code === 'ArrowLeft')  moveLane(-1);
+  if (e.code === 'KeyD' || e.code === 'ArrowRight') moveLane(1);
+  if (e.code === 'ArrowUp')  jump();
+  if (e.code === 'KeyP')  pauseToggle();
+  if (e.code === 'Space' && !running) startGame();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+function moveLane(dir){
+  lane = Math.max(0, Math.min(2, lane + dir));
+  targetX = LANES[lane];
+}
+function jump(){
+  if (player.position.y <= 0.01){
+    player.position.y = 4.2;
+  }
+}
+function pauseToggle(){
+  if (!running || over) return;
+  setPaused(!paused);
+}
+
+// click start
+document.getElementById('startBtn').addEventListener('click', () => {
+  if (paused) setPaused(false);
+  else startGame();
+});
+
+// ---------- Physics (gravity + sit) ----------
+function physics(dt){
+  if (player.position.y > 0){
+    player.position.y -= 22*dt;
+    if (player.position.y <= 0){
+      player.position.y = 0;
+      // squash on landing
+      playerBody.scale.y = 0.6;
+      setTimeout(()=>{ playerBody.scale.y = 1; }, 90);
+    }
+  }
+  // idle bob on ground
+  if (player.position.y <= 0 && running && !paused && !over){
+    playerBody.position.y = 0.8 + Math.sin(performance.now()*0.006)*0.06;
+  }
+  // bank into turns
+  player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, (targetX - playerX)*0.25, 0.15);
+}
+
+// ---------- Main loop ----------
+const clock = new THREE.Clock();
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  updateGame(dt);
+  physics(dt);
+  // gentle camera bob
+  camera.position.y = 6 + Math.sin(performance.now()*0.002)*0.15;
+  renderer.render(scene, camera);
+}
+
+// ---------- Resize ----------
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+prewarm();
+startGame(); // game starts ready to play on load
+animate();
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "capturedAt": "2026-08-29T11:36:10.745Z",
+  "commit": "24572dc41b7b1a93317dbf85005dfcff2dfc3259",
+  "scenario": "Official-native Playwright feature-pack diagnosis only",
+  "mutationCommandsInvoked": [],
+  "diagnosis": {
+    "status": "unsupported",
+    "reason": "production_trust_not_configured",
+    "productionTrustConfigured": false,
+    "repairArtifactConfigured": false,
+    "externalPrerequisite": "production-trust-and-signed-artifact"
+  },
+  "doctorCheck": {
+    "label": "Playwright acceptance runtime",
+    "ok": false,
+    "detail": "External prerequisite required · production_trust_not_configured · production-trust-and-signed-artifact"
+  },
+  "screenshotPath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\doctor-245-diagnose-only\\03-playwright-doctor-diagnose.png"
+}

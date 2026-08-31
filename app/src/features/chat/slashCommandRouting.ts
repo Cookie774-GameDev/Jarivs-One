@@ -70,6 +70,7 @@ const ROUTES = {
   commands: { owner: 'vibespace-ui', execution: 'local' },
   help: { owner: 'vibespace-ui', execution: 'local' },
   connect: { owner: 'vibespace-ui', execution: 'local' },
+  cli: { owner: 'vibespace-ui', execution: 'local' },
   settings: { owner: 'vibespace-ui', execution: 'local' },
   palette: { owner: 'vibespace-ui', execution: 'local' },
   launcher: { owner: 'vibespace-ui', execution: 'local' },

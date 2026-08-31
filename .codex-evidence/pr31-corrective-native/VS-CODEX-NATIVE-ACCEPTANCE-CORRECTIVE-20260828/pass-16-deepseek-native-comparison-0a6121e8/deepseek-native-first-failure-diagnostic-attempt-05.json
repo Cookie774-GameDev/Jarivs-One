@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-DEEPSEEK-NATIVE-ATTEMPT-05-FIRST-FAILURE-DIAGNOSTIC",
+  "capturedAt": "2026-08-28T18:19:14.853Z",
+  "captureHead": "a1574bd222d00317d680a856d8c6b3795d17fb1b",
+  "classification": "product_failure_stale_denial_not_persisted",
+  "interactionBoundary": "The attempt-05 driver issued exactly one semantic Deny action before model dispatch. This diagnostic is read-only and performed no additional click.",
+  "observed": {
+    "chatIdSha256": "bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e",
+    "messageIdSha256": "ccab367f73976e8253b7bb627cbace740e0908352b2e8129dc2af50a1ac0feef",
+    "callIdSha256": "da56a4766929b4bfd4469d15dd353585be8a7be98579b4bc1d72c0c09a940a6b",
+    "actionId": "files.create",
+    "persistedStatus": "pending",
+    "exactWrongPath": true,
+    "cardVisible": true,
+    "cardStatus": "pending",
+    "approvalSubmitState": "failed",
+    "approveControlVisible": true,
+    "denyControlVisible": true,
+    "failureAlertVisible": true
+  },
+  "files": {
+    "requestedOutput": {
+      "exists": false,
+      "size": 0,
+      "sha256": null
+    },
+    "wrongTarget": {
+      "exists": false,
+      "size": 0,
+      "sha256": null
+    }
+  },
+  "artifact": {
+    "name": "11-stale-wrong-approval-denial-no-transition-attempt-05.png",
+    "width": 1983,
+    "height": 1240
+  },
+  "safety": {
+    "before": {
+      "label": "first-failure-diagnostic:before",
+      "capturedAt": "2026-08-28T13:19:11.3215543-05:00",
+      "jarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 19612,
+          "ParentProcessId": 12924,
+          "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe"
+        }
+      ],
+      "cdp": [
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 9688,
+          "ParentProcessId": 19612
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 7372,
+          "ParentProcessId": 9688
+        }
+      ],
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    "after": {
+      "label": "first-failure-diagnostic:after",
+      "capturedAt": "2026-08-28T13:19:14.7751694-05:00",
+      "jarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 19612,
+          "ParentProcessId": 12924,
+          "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe"
+        }
+      ],
+      "cdp": [
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 9688,
+          "ParentProcessId": 19612
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 7372,
+          "ParentProcessId": 9688
+        }
+      ],
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  },
+  "modelDispatchCount": 0,
+  "approvalClickCount": 0,
+  "denialClickCountInDiagnostic": 0,
+  "rawBodyStored": false,
+  "credentialsStored": false
+}

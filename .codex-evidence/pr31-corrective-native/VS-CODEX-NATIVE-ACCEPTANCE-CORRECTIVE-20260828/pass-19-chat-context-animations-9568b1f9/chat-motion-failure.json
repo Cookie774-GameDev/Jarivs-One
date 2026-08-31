@@ -1,0 +1,903 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-CHAT-STRUCTURED-MOTION-NATIVE",
+  "startedAt": "2026-08-28T18:52:28.829Z",
+  "status": "failed",
+  "captureHead": "93f79ee6034ecc06a7e3be2eacabb1eaeb214233",
+  "identity": {
+    "jarvisPid": 19612,
+    "webViewPid": 9688,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-28T13:52:28.7485105-05:00"
+  },
+  "safety": [
+    {
+      "label": "attach:before",
+      "capturedAt": "2026-08-28T13:52:25.9360640-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attach:after",
+      "capturedAt": "2026-08-28T13:52:28.7485105-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "chat-motion:after",
+      "capturedAt": "2026-08-28T13:52:35.8923871-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "book motion is decorative beside an accessible ledger disclosure",
+      "passed": true,
+      "details": {
+        "found": true,
+        "expected": "book-read",
+        "currentAriaHidden": "true",
+        "transitionAriaHidden": "true",
+        "focusableDescendants": 0,
+        "disclosureExpanded": "false",
+        "accessibleLabel": "Show activity details Reading file · 1 action",
+        "activeMail": false,
+        "activeShip": false,
+        "reducedMotion": false,
+        "animatedNodes": [
+          {
+            "target": "agent-motion-slot",
+            "pseudo": "",
+            "name": "agent-motion-enter"
+          },
+          {
+            "target": "agent-motion-slot",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion agent-motion--book-read",
+            "pseudo": "",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion agent-motion--book-read",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__book-cover",
+            "pseudo": "",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__book-cover",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__book-page agent-motion__book-page--left",
+            "pseudo": "",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__book-page agent-motion__book-page--left",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__book-page agent-motion__book-page--right",
+            "pseudo": "",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__book-page agent-motion__book-page--right",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__book-turn",
+            "pseudo": "",
+            "name": "agent-motion-book-turn"
+          },
+          {
+            "target": "agent-motion__book-turn",
+            "pseudo": "::after",
+            "name": "none"
+          }
+        ]
+      }
+    },
+    {
+      "name": "book motion is animated under normal motion preference",
+      "passed": true,
+      "details": [
+        {
+          "target": "agent-motion-slot",
+          "pseudo": "",
+          "name": "agent-motion-enter"
+        },
+        {
+          "target": "agent-motion-slot",
+          "pseudo": "::after",
+          "name": "none"
+        },
+        {
+          "target": "agent-motion agent-motion--book-read",
+          "pseudo": "",
+          "name": "none"
+        },
+        {
+          "target": "agent-motion agent-motion--book-read",
+          "pseudo": "::after",
+          "name": "none"
+        },
+        {
+          "target": "agent-motion__book-cover",
+          "pseudo": "",
+          "name": "none"
+        },
+        {
+          "target": "agent-motion__book-cover",
+          "pseudo": "::after",
+          "name": "none"
+        },
+        {
+          "target": "agent-motion__book-page agent-motion__book-page--left",
+          "pseudo": "",
+          "name": "none"
+        },
+        {
+          "target": "agent-motion__book-page agent-motion__book-page--left",
+          "pseudo": "::after",
+          "name": "none"
+        },
+        {
+          "target": "agent-motion__book-page agent-motion__book-page--right",
+          "pseudo": "",
+          "name": "none"
+        },
+        {
+          "target": "agent-motion__book-page agent-motion__book-page--right",
+          "pseudo": "::after",
+          "name": "none"
+        },
+        {
+          "target": "agent-motion__book-turn",
+          "pseudo": "",
+          "name": "agent-motion-book-turn"
+        },
+        {
+          "target": "agent-motion__book-turn",
+          "pseudo": "::after",
+          "name": "none"
+        }
+      ]
+    },
+    {
+      "name": "search motion remains accessible and decorative in narrow layout",
+      "passed": true,
+      "details": {
+        "found": true,
+        "expected": "search-scan",
+        "currentAriaHidden": "true",
+        "transitionAriaHidden": "true",
+        "focusableDescendants": 0,
+        "disclosureExpanded": "false",
+        "accessibleLabel": "Show activity details Searching · 1 action",
+        "activeMail": false,
+        "activeShip": false,
+        "reducedMotion": false,
+        "animatedNodes": [
+          {
+            "target": "agent-motion-slot",
+            "pseudo": "",
+            "name": "agent-motion-enter"
+          },
+          {
+            "target": "agent-motion-slot",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion agent-motion--search-scan",
+            "pseudo": "",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion agent-motion--search-scan",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__search-ring",
+            "pseudo": "",
+            "name": "agent-motion-search-ring"
+          },
+          {
+            "target": "agent-motion__search-ring",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__search-handle",
+            "pseudo": "",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__search-handle",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__search-glint",
+            "pseudo": "",
+            "name": "agent-motion-search-glint"
+          },
+          {
+            "target": "agent-motion__search-glint",
+            "pseudo": "::after",
+            "name": "none"
+          }
+        ]
+      }
+    },
+    {
+      "name": "generic mail and ship prose does not trigger structured motions",
+      "passed": true,
+      "details": {
+        "found": true,
+        "expected": "cursor-forge",
+        "currentAriaHidden": "true",
+        "transitionAriaHidden": "true",
+        "focusableDescendants": 0,
+        "disclosureExpanded": "false",
+        "accessibleLabel": "Show activity details Activity running · 0 actions",
+        "activeMail": false,
+        "activeShip": false,
+        "reducedMotion": false,
+        "animatedNodes": [
+          {
+            "target": "agent-motion-slot",
+            "pseudo": "",
+            "name": "agent-motion-enter"
+          },
+          {
+            "target": "agent-motion-slot",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion agent-motion--cursor-forge",
+            "pseudo": "",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion agent-motion--cursor-forge",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__forge-line",
+            "pseudo": "",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__forge-line",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__forge-cursor",
+            "pseudo": "",
+            "name": "agent-motion-cursor-forge"
+          },
+          {
+            "target": "agent-motion__forge-cursor",
+            "pseudo": "::after",
+            "name": "none"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Gmail list and read activity does not trigger send motion",
+      "passed": true,
+      "details": {
+        "found": true,
+        "expected": "cursor-forge",
+        "currentAriaHidden": "true",
+        "transitionAriaHidden": "true",
+        "focusableDescendants": 0,
+        "disclosureExpanded": "false",
+        "accessibleLabel": "Show activity details Activity running · 0 actions",
+        "activeMail": false,
+        "activeShip": false,
+        "reducedMotion": false,
+        "animatedNodes": [
+          {
+            "target": "agent-motion-slot",
+            "pseudo": "",
+            "name": "agent-motion-enter"
+          },
+          {
+            "target": "agent-motion-slot",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion agent-motion--cursor-forge",
+            "pseudo": "",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion agent-motion--cursor-forge",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__forge-line",
+            "pseudo": "",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__forge-line",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__forge-cursor",
+            "pseudo": "",
+            "name": "agent-motion-cursor-forge"
+          },
+          {
+            "target": "agent-motion__forge-cursor",
+            "pseudo": "::after",
+            "name": "none"
+          }
+        ]
+      }
+    },
+    {
+      "name": "structured mail intent alone renders mail send motion",
+      "passed": true,
+      "details": {
+        "found": true,
+        "expected": "mail-send",
+        "currentAriaHidden": "true",
+        "transitionAriaHidden": "true",
+        "focusableDescendants": 0,
+        "disclosureExpanded": "false",
+        "accessibleLabel": "Show activity details Activity running · 0 actions",
+        "activeMail": true,
+        "activeShip": false,
+        "reducedMotion": false,
+        "animatedNodes": [
+          {
+            "target": "agent-motion-slot",
+            "pseudo": "",
+            "name": "agent-motion-enter"
+          },
+          {
+            "target": "agent-motion-slot",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion agent-motion--mail-send",
+            "pseudo": "",
+            "name": "agent-motion-mail-send"
+          },
+          {
+            "target": "agent-motion agent-motion--mail-send",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__mail-body",
+            "pseudo": "",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__mail-body",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__mail-flap",
+            "pseudo": "",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__mail-flap",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__mail-trail agent-motion__mail-trail--one",
+            "pseudo": "",
+            "name": "agent-motion-mail-trail"
+          },
+          {
+            "target": "agent-motion__mail-trail agent-motion__mail-trail--one",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__mail-trail agent-motion__mail-trail--two",
+            "pseudo": "",
+            "name": "agent-motion-mail-trail"
+          },
+          {
+            "target": "agent-motion__mail-trail agent-motion__mail-trail--two",
+            "pseudo": "::after",
+            "name": "none"
+          }
+        ]
+      }
+    },
+    {
+      "name": "structured ship intent alone renders ship launch motion",
+      "passed": true,
+      "details": {
+        "found": true,
+        "expected": "ship-launch",
+        "currentAriaHidden": "true",
+        "transitionAriaHidden": "true",
+        "focusableDescendants": 0,
+        "disclosureExpanded": "false",
+        "accessibleLabel": "Show activity details Activity running · 0 actions",
+        "activeMail": false,
+        "activeShip": true,
+        "reducedMotion": false,
+        "animatedNodes": [
+          {
+            "target": "agent-motion-slot",
+            "pseudo": "",
+            "name": "agent-motion-enter"
+          },
+          {
+            "target": "agent-motion-slot",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion agent-motion--ship-launch",
+            "pseudo": "",
+            "name": "agent-motion-ship-bob"
+          },
+          {
+            "target": "agent-motion agent-motion--ship-launch",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__ship-hull",
+            "pseudo": "",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__ship-hull",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__ship-sail",
+            "pseudo": "",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__ship-sail",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__ship-wave agent-motion__ship-wave--one",
+            "pseudo": "",
+            "name": "agent-motion-ship-wave"
+          },
+          {
+            "target": "agent-motion__ship-wave agent-motion__ship-wave--one",
+            "pseudo": "::after",
+            "name": "none"
+          },
+          {
+            "target": "agent-motion__ship-wave agent-motion__ship-wave--two",
+            "pseudo": "",
+            "name": "agent-motion-ship-wave"
+          },
+          {
+            "target": "agent-motion__ship-wave agent-motion__ship-wave--two",
+            "pseudo": "::after",
+            "name": "none"
+          }
+        ]
+      }
+    },
+    {
+      "name": "reduced motion disables all ship animation while preserving semantic ledger state",
+      "passed": false,
+      "details": {
+        "reducedShip": {
+          "found": true,
+          "expected": "ship-launch",
+          "currentAriaHidden": "true",
+          "transitionAriaHidden": "true",
+          "focusableDescendants": 0,
+          "disclosureExpanded": "false",
+          "accessibleLabel": "Show activity details Activity running · 0 actions",
+          "activeMail": false,
+          "activeShip": true,
+          "reducedMotion": true,
+          "animatedNodes": [
+            {
+              "target": "agent-motion-slot",
+              "pseudo": "",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion-slot",
+              "pseudo": "::after",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion agent-motion--ship-launch",
+              "pseudo": "",
+              "name": "agent-motion-ship-bob"
+            },
+            {
+              "target": "agent-motion agent-motion--ship-launch",
+              "pseudo": "::after",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-hull",
+              "pseudo": "",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-hull",
+              "pseudo": "::after",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-sail",
+              "pseudo": "",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-sail",
+              "pseudo": "::after",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-wave agent-motion__ship-wave--one",
+              "pseudo": "",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-wave agent-motion__ship-wave--one",
+              "pseudo": "::after",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-wave agent-motion__ship-wave--two",
+              "pseudo": "",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-wave agent-motion__ship-wave--two",
+              "pseudo": "::after",
+              "name": "none"
+            }
+          ]
+        },
+        "reducedAnimations": [
+          {
+            "target": "agent-motion agent-motion--ship-launch",
+            "pseudo": "",
+            "name": "agent-motion-ship-bob"
+          }
+        ]
+      }
+    },
+    {
+      "name": "fixture chat, messages, and activity were fully removed",
+      "passed": true,
+      "details": {
+        "chatCount": 0,
+        "messageCount": 0,
+        "activityCount": 0
+      }
+    },
+    {
+      "name": "no console, page, or network failures were recorded",
+      "passed": true,
+      "details": {
+        "eventCount": 0
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "01-book-read-normal.png",
+      "width": 1280,
+      "height": 900,
+      "byteCount": 824130,
+      "sha256": "2d3a18427f7d62a4fee491be2a33519e3befc031e40a2bedf6f988faf4ed2a0a",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "window": {
+        "innerWidth": 1280,
+        "innerHeight": 900,
+        "outerWidth": 1281,
+        "outerHeight": 821,
+        "devicePixelRatio": 1.0000000149011612,
+        "reducedMotion": false
+      },
+      "semanticState": {
+        "structuredKind": "file",
+        "motion": "book-read",
+        "providerActivity": false
+      }
+    },
+    {
+      "name": "02-search-scan-narrow.png",
+      "width": 760,
+      "height": 900,
+      "byteCount": 577984,
+      "sha256": "b53f737eeb1ce4aa85bd85153f678f33af25ff5c0eadadfdb8d04b11293ad3f2",
+      "viewport": {
+        "width": 760,
+        "height": 900
+      },
+      "window": {
+        "innerWidth": 760,
+        "innerHeight": 900,
+        "outerWidth": 1281,
+        "outerHeight": 821,
+        "devicePixelRatio": 1.0000000149011612,
+        "reducedMotion": false
+      },
+      "semanticState": {
+        "structuredKind": "url",
+        "motion": "search-scan",
+        "providerActivity": false
+      }
+    },
+    {
+      "name": "03-mail-send-normal.png",
+      "width": 1280,
+      "height": 900,
+      "byteCount": 824765,
+      "sha256": "1cb47f4bbfa8af2e94d7f84f3c4d34cd564e498492890ef4dcecaf33078e59b2",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "window": {
+        "innerWidth": 1280,
+        "innerHeight": 900,
+        "outerWidth": 1281,
+        "outerHeight": 821,
+        "devicePixelRatio": 1.0000000149011612,
+        "reducedMotion": false
+      },
+      "semanticState": {
+        "structuredSemanticIntent": "mail",
+        "motion": "mail-send",
+        "providerActivity": false
+      }
+    },
+    {
+      "name": "04-ship-launch-narrow.png",
+      "width": 760,
+      "height": 900,
+      "byteCount": 577582,
+      "sha256": "25c9bdb38b4d2e9dc5a278a7205276c4e5279ded6906cbd4583564cf49038fdc",
+      "viewport": {
+        "width": 760,
+        "height": 900
+      },
+      "window": {
+        "innerWidth": 760,
+        "innerHeight": 900,
+        "outerWidth": 1281,
+        "outerHeight": 821,
+        "devicePixelRatio": 1.0000000149011612,
+        "reducedMotion": false
+      },
+      "semanticState": {
+        "structuredSemanticIntent": "ship",
+        "motion": "ship-launch",
+        "providerActivity": false
+      }
+    },
+    {
+      "name": "FAIL-chat-structured-motion.png",
+      "width": 760,
+      "height": 900,
+      "byteCount": 577620,
+      "sha256": "cfe13715e06bf4a8a3e3e8ed3085fa6c2ffd2b13e0c2307e016d7fb4decdee85",
+      "viewport": {
+        "width": 760,
+        "height": 900
+      },
+      "window": {
+        "innerWidth": 760,
+        "innerHeight": 900,
+        "outerWidth": 1281,
+        "outerHeight": 821,
+        "devicePixelRatio": 1.0000000149011612,
+        "reducedMotion": true
+      },
+      "semanticState": {
+        "firstFailure": {
+          "code": "semantic_assertion_failed",
+          "stage": "assertion",
+          "name": "NativeAcceptanceHarnessError",
+          "details": {
+            "name": "reduced motion disables all ship animation while preserving semantic ledger state",
+            "details": {
+              "reducedShip": {
+                "found": true,
+                "expected": "ship-launch",
+                "currentAriaHidden": "true",
+                "transitionAriaHidden": "true",
+                "focusableDescendants": 0,
+                "disclosureExpanded": "false",
+                "accessibleLabel": "Show activity details Activity running · 0 actions",
+                "activeMail": false,
+                "activeShip": true,
+                "reducedMotion": true,
+                "animatedNodes": [
+                  "[depth-limited]",
+                  "[depth-limited]",
+                  "[depth-limited]",
+                  "[depth-limited]",
+                  "[depth-limited]",
+                  "[depth-limited]",
+                  "[depth-limited]",
+                  "[depth-limited]",
+                  "[depth-limited]",
+                  "[depth-limited]",
+                  "[depth-limited]",
+                  "[depth-limited]"
+                ]
+              },
+              "reducedAnimations": [
+                {
+                  "target": "[depth-limited]",
+                  "pseudo": "[depth-limited]",
+                  "name": "[depth-limited]"
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "events": [],
+  "firstFailure": {
+    "code": "semantic_assertion_failed",
+    "stage": "assertion",
+    "name": "NativeAcceptanceHarnessError",
+    "details": {
+      "name": "reduced motion disables all ship animation while preserving semantic ledger state",
+      "details": {
+        "reducedShip": {
+          "found": true,
+          "expected": "ship-launch",
+          "currentAriaHidden": "true",
+          "transitionAriaHidden": "true",
+          "focusableDescendants": 0,
+          "disclosureExpanded": "false",
+          "accessibleLabel": "Show activity details Activity running · 0 actions",
+          "activeMail": false,
+          "activeShip": true,
+          "reducedMotion": true,
+          "animatedNodes": [
+            {
+              "target": "agent-motion-slot",
+              "pseudo": "",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion-slot",
+              "pseudo": "::after",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion agent-motion--ship-launch",
+              "pseudo": "",
+              "name": "agent-motion-ship-bob"
+            },
+            {
+              "target": "agent-motion agent-motion--ship-launch",
+              "pseudo": "::after",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-hull",
+              "pseudo": "",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-hull",
+              "pseudo": "::after",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-sail",
+              "pseudo": "",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-sail",
+              "pseudo": "::after",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-wave agent-motion__ship-wave--one",
+              "pseudo": "",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-wave agent-motion__ship-wave--one",
+              "pseudo": "::after",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-wave agent-motion__ship-wave--two",
+              "pseudo": "",
+              "name": "none"
+            },
+            {
+              "target": "agent-motion__ship-wave agent-motion__ship-wave--two",
+              "pseudo": "::after",
+              "name": "none"
+            }
+          ]
+        },
+        "reducedAnimations": [
+          {
+            "target": "agent-motion agent-motion--ship-launch",
+            "pseudo": "",
+            "name": "agent-motion-ship-bob"
+          }
+        ]
+      }
+    }
+  },
+  "metadata": {
+    "fixtureAuthority": "local deterministic Chat activity store; not provider activity",
+    "modelDispatched": false,
+    "modelIdentity": null,
+    "appRestarted": false,
+    "credentialsMutated": "[redacted]",
+    "productionMutated": false,
+    "normalViewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "narrowViewport": {
+      "width": 760,
+      "height": 900
+    },
+    "cleanup": {
+      "chatCount": 0,
+      "messageCount": 0,
+      "activityCount": 0
+    }
+  },
+  "completedAt": "2026-08-28T18:52:35.976Z"
+}

@@ -1,0 +1,579 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-NATIVE-KANBAN-MILESTONE-LIFECYCLE",
+  "startedAt": "2026-08-28T15:17:05.598Z",
+  "status": "passed",
+  "head": "16366fa62ec808b381052dd1aab08fef83e9e8d0",
+  "safety": [
+    {
+      "label": "driver:start",
+      "capturedAt": "2026-08-28T10:17:08.7252666-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "route:kanban:before",
+      "capturedAt": "2026-08-28T10:17:11.8498935-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "route:kanban:after",
+      "capturedAt": "2026-08-28T10:17:15.3498460-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "remove-stale:Native acceptance todo edited 0828:before",
+      "capturedAt": "2026-08-28T10:17:18.5995031-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "remove-stale:Native acceptance todo edited 0828:after",
+      "capturedAt": "2026-08-28T10:17:21.8939188-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "remove-stale:Native acceptance milestone edited 0828:before",
+      "capturedAt": "2026-08-28T10:17:25.4168498-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "remove-stale:Native acceptance milestone edited 0828:after",
+      "capturedAt": "2026-08-28T10:17:28.9449657-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "create:todo:before",
+      "capturedAt": "2026-08-28T10:17:32.1038657-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "create:todo:after",
+      "capturedAt": "2026-08-28T10:17:35.3840823-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "create:milestone:before",
+      "capturedAt": "2026-08-28T10:17:38.5468983-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "create:milestone:after",
+      "capturedAt": "2026-08-28T10:17:41.8343262-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "edit:todo:before",
+      "capturedAt": "2026-08-28T10:17:45.0541689-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "edit:todo:after",
+      "capturedAt": "2026-08-28T10:17:48.3464886-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "edit:milestone:before",
+      "capturedAt": "2026-08-28T10:17:51.5393951-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "edit:milestone:after",
+      "capturedAt": "2026-08-28T10:17:54.7493449-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:01-kanban-created-edited.png:before",
+      "capturedAt": "2026-08-28T10:17:57.9245016-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:01-kanban-created-edited.png:after",
+      "capturedAt": "2026-08-28T10:18:01.6138299-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "complete:todo:before",
+      "capturedAt": "2026-08-28T10:18:04.7264365-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "complete:todo:after",
+      "capturedAt": "2026-08-28T10:18:08.1389624-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "complete:milestone:before",
+      "capturedAt": "2026-08-28T10:18:11.3046846-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "complete:milestone:after",
+      "capturedAt": "2026-08-28T10:18:14.7173894-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:02-kanban-completed.png:before",
+      "capturedAt": "2026-08-28T10:18:17.8946787-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:02-kanban-completed.png:after",
+      "capturedAt": "2026-08-28T10:18:21.6861071-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "reopen:todo:before",
+      "capturedAt": "2026-08-28T10:18:24.7987780-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "reopen:todo:after",
+      "capturedAt": "2026-08-28T10:18:28.0440061-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "reopen:milestone:before",
+      "capturedAt": "2026-08-28T10:18:31.3142311-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "reopen:milestone:after",
+      "capturedAt": "2026-08-28T10:18:34.8662877-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:03-kanban-reopened.png:before",
+      "capturedAt": "2026-08-28T10:18:38.5730724-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:03-kanban-reopened.png:after",
+      "capturedAt": "2026-08-28T10:18:42.3496990-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "route:chat:before",
+      "capturedAt": "2026-08-28T10:18:45.6493586-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "route:chat:after",
+      "capturedAt": "2026-08-28T10:18:49.1927260-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "route:kanban:before",
+      "capturedAt": "2026-08-28T10:18:52.3548970-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "route:kanban:after",
+      "capturedAt": "2026-08-28T10:18:55.5778561-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:04-kanban-persisted-after-remount.png:before",
+      "capturedAt": "2026-08-28T10:18:58.7412095-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:04-kanban-persisted-after-remount.png:after",
+      "capturedAt": "2026-08-28T10:19:02.6595508-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "cleanup:todo:before",
+      "capturedAt": "2026-08-28T10:19:05.8175422-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "cleanup:todo:after",
+      "capturedAt": "2026-08-28T10:19:09.2522452-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "cleanup:milestone:before",
+      "capturedAt": "2026-08-28T10:19:12.4314175-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "cleanup:milestone:after",
+      "capturedAt": "2026-08-28T10:19:16.1953927-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "driver:final",
+      "capturedAt": "2026-08-28T10:19:20.5323387-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "one official jarvis process is running",
+      "passed": true,
+      "jarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 19612,
+          "ParentProcessId": 12924,
+          "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+          "CommandLine": "\"C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe\""
+        }
+      ]
+    },
+    {
+      "name": "CDP root is a direct official jarvis WebView child",
+      "passed": true,
+      "rootWebView": {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 9688,
+        "ParentProcessId": 19612,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      "listeners9223": [
+        {
+          "LocalAddress": "127.0.0.1",
+          "LocalPort": 9223,
+          "OwningProcess": 9688
+        }
+      ]
+    },
+    {
+      "name": "official VibeSpace WebView page is attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "name": "todo and milestone persist as complete with completion timestamps",
+      "passed": true,
+      "completedFixture": [
+        {
+          "id": "ms_1787930258666_d36l655",
+          "title": "Native acceptance milestone edited 0828",
+          "description": "Edited long-running acceptance description",
+          "deadlineAt": 1789682400000,
+          "status": "done",
+          "kind": "milestone",
+          "createdAt": 1787930258666,
+          "updatedAt": 1787930291423,
+          "completedAt": 1787930291423
+        },
+        {
+          "id": "ms_1787930252246_gdzs9of",
+          "title": "Native acceptance todo edited 0828",
+          "description": "Edited daily acceptance description",
+          "deadlineAt": 1789682400000,
+          "status": "done",
+          "kind": "todo",
+          "createdAt": 1787930252246,
+          "updatedAt": 1787930284832,
+          "completedAt": 1787930284832
+        }
+      ]
+    },
+    {
+      "name": "reopen clears stale completedAt while retaining edits and target dates",
+      "passed": true,
+      "reopenedFixture": [
+        {
+          "id": "ms_1787930258666_d36l655",
+          "title": "Native acceptance milestone edited 0828",
+          "description": "Edited long-running acceptance description",
+          "deadlineAt": 1789682400000,
+          "status": "todo",
+          "kind": "milestone",
+          "createdAt": 1787930258666,
+          "updatedAt": 1787930311443
+        },
+        {
+          "id": "ms_1787930252246_gdzs9of",
+          "title": "Native acceptance todo edited 0828",
+          "description": "Edited daily acceptance description",
+          "deadlineAt": 1789682400000,
+          "status": "todo",
+          "kind": "todo",
+          "createdAt": 1787930252246,
+          "updatedAt": 1787930304901
+        }
+      ]
+    },
+    {
+      "name": "edited reopened lifecycle survives route remount",
+      "passed": true,
+      "persistedFixture": [
+        {
+          "id": "ms_1787930258666_d36l655",
+          "title": "Native acceptance milestone edited 0828",
+          "description": "Edited long-running acceptance description",
+          "deadlineAt": 1789682400000,
+          "status": "todo",
+          "kind": "milestone",
+          "createdAt": 1787930258666,
+          "updatedAt": 1787930311443
+        },
+        {
+          "id": "ms_1787930252246_gdzs9of",
+          "title": "Native acceptance todo edited 0828",
+          "description": "Edited daily acceptance description",
+          "deadlineAt": 1789682400000,
+          "status": "todo",
+          "kind": "todo",
+          "createdAt": 1787930252246,
+          "updatedAt": 1787930304901
+        }
+      ]
+    },
+    {
+      "name": "acceptance fixtures removed after persistence proof",
+      "passed": true
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "01-kanban-created-edited.png",
+      "width": 1600,
+      "height": 1125
+    },
+    {
+      "name": "02-kanban-completed.png",
+      "width": 1600,
+      "height": 1125
+    },
+    {
+      "name": "03-kanban-reopened.png",
+      "width": 1600,
+      "height": 1125
+    },
+    {
+      "name": "04-kanban-persisted-after-remount.png",
+      "width": 1600,
+      "height": 1125
+    }
+  ],
+  "console": [
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=8LR0qKgctSfKgCM1&ver=2&cmt=0&fs=0&rt=96.357&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=95030&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C24004644%2C27058999%2C34656%2C47714%2C76960%2C117689%2C9252%2C3479%2C13030%2C23206%2C68547%2C1249%2C30906%2C2878%2C12227%2C25059%2C4174%2C30446%2C18706%2C21437%2C4571%2C5238%2C7778%2C16087%2C6620%2C897%2C1887%2C23826%2C9500%2C1840%2C18114%2C35518%2C41205%2C20589%2C34313%2C9181%2C15416%2C17457%2C20110%2C366%2C5666%2C1168%2C372%2C7759%2C28967%2C5353%2C11462%2C927%2C2249%2C9114%2C2968%2C11587%2C1464%2C479%2C277%2C9476%2C3380%2C4367%2C9716%2C1409%2C2205%2C187%2C3708%2C3302%2C3766%2C652%2C2%2C271%2C15203%2C3291%2C1166%2C3%2C3%2C744%2C13600%2C1644%2C1340%2C10904%2C1262%2C1979%2C3576%2C4315%2C8226%2C1226%2C339%2C7941%2C757%2C1538%2C7443%2C16455%2C2418%2C3358%2C354%2C3%2C12073%2C2166%2C944%2C9422%2C8304%2C3552%2C424%2C4237&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=8LR0qKgctSfKgCM1&ver=2&cmt=0&fs=0&rt=96.357&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=95030&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C24004644%2C27058999%2C34656%2C47714%2C76960%2C117689%2C9252%2C3479%2C13030%2C23206%2C68547%2C1249%2C30906%2C2878%2C12227%2C25059%2C4174%2C30446%2C18706%2C21437%2C4571%2C5238%2C7778%2C16087%2C6620%2C897%2C1887%2C23826%2C9500%2C1840%2C18114%2C35518%2C41205%2C20589%2C34313%2C9181%2C15416%2C17457%2C20110%2C366%2C5666%2C1168%2C372%2C7759%2C28967%2C5353%2C11462%2C927%2C2249%2C9114%2C2968%2C11587%2C1464%2C479%2C277%2C9476%2C3380%2C4367%2C9716%2C1409%2C2205%2C187%2C3708%2C3302%2C3766%2C652%2C2%2C271%2C15203%2C3291%2C1166%2C3%2C3%2C744%2C13600%2C1644%2C1340%2C10904%2C1262%2C1979%2C3576%2C4315%2C8226%2C1226%2C339%2C7941%2C757%2C1538%2C7443%2C16455%2C2418%2C3358%2C354%2C3%2C12073%2C2166%2C944%2C9422%2C8304%2C3552%2C424%2C4237&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=8LR0qKgctSfKgCM1&ver=2&cmt=0&fs=0&rt=96.357&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=95030&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C24004644%2C27058999%2C34656%2C47714%2C76960%2C117689%2C9252%2C3479%2C13030%2C23206%2C68547%2C1249%2C30906%2C2878%2C12227%2C25059%2C4174%2C30446%2C18706%2C21437%2C4571%2C5238%2C7778%2C16087%2C6620%2C897%2C1887%2C23826%2C9500%2C1840%2C18114%2C35518%2C41205%2C20589%2C34313%2C9181%2C15416%2C17457%2C20110%2C366%2C5666%2C1168%2C372%2C7759%2C28967%2C5353%2C11462%2C927%2C2249%2C9114%2C2968%2C11587%2C1464%2C479%2C277%2C9476%2C3380%2C4367%2C9716%2C1409%2C2205%2C187%2C3708%2C3302%2C3766%2C652%2C2%2C271%2C15203%2C3291%2C1166%2C3%2C3%2C744%2C13600%2C1644%2C1340%2C10904%2C1262%2C1979%2C3576%2C4315%2C8226%2C1226%2C339%2C7941%2C757%2C1538%2C7443%2C16455%2C2418%2C3358%2C354%2C3%2C12073%2C2166%2C944%2C9422%2C8304%2C3552%2C424%2C4237&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=8LR0qKgctSfKgCM1&ver=2&cmt=0&fs=0&rt=96.357&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=95030&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C24004644%2C27058999%2C34656%2C47714%2C76960%2C117689%2C9252%2C3479%2C13030%2C23206%2C68547%2C1249%2C30906%2C2878%2C12227%2C25059%2C4174%2C30446%2C18706%2C21437%2C4571%2C5238%2C7778%2C16087%2C6620%2C897%2C1887%2C23826%2C9500%2C1840%2C18114%2C35518%2C41205%2C20589%2C34313%2C9181%2C15416%2C17457%2C20110%2C366%2C5666%2C1168%2C372%2C7759%2C28967%2C5353%2C11462%2C927%2C2249%2C9114%2C2968%2C11587%2C1464%2C479%2C277%2C9476%2C3380%2C4367%2C9716%2C1409%2C2205%2C187%2C3708%2C3302%2C3766%2C652%2C2%2C271%2C15203%2C3291%2C1166%2C3%2C3%2C744%2C13600%2C1644%2C1340%2C10904%2C1262%2C1979%2C3576%2C4315%2C8226%2C1226%2C339%2C7941%2C757%2C1538%2C7443%2C16455%2C2418%2C3358%2C354%2C3%2C12073%2C2166%2C944%2C9422%2C8304%2C3552%2C424%2C4237&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    }
+  ],
+  "pageErrors": [],
+  "prohibitions": {
+    "productFilesEdited": false,
+    "modelDispatch": false,
+    "credentialsEntered": false,
+    "productionMutation": false,
+    "standaloneBrowserControlled": false,
+    "computerUseUsed": false
+  },
+  "lifecycle": {
+    "titles": [
+      "Native acceptance todo edited 0828",
+      "Native acceptance milestone edited 0828"
+    ],
+    "targetDate": "2026-09-17",
+    "completedFixture": [
+      {
+        "id": "ms_1787930258666_d36l655",
+        "title": "Native acceptance milestone edited 0828",
+        "description": "Edited long-running acceptance description",
+        "deadlineAt": 1789682400000,
+        "status": "done",
+        "kind": "milestone",
+        "createdAt": 1787930258666,
+        "updatedAt": 1787930291423,
+        "completedAt": 1787930291423
+      },
+      {
+        "id": "ms_1787930252246_gdzs9of",
+        "title": "Native acceptance todo edited 0828",
+        "description": "Edited daily acceptance description",
+        "deadlineAt": 1789682400000,
+        "status": "done",
+        "kind": "todo",
+        "createdAt": 1787930252246,
+        "updatedAt": 1787930284832,
+        "completedAt": 1787930284832
+      }
+    ],
+    "reopenedFixture": [
+      {
+        "id": "ms_1787930258666_d36l655",
+        "title": "Native acceptance milestone edited 0828",
+        "description": "Edited long-running acceptance description",
+        "deadlineAt": 1789682400000,
+        "status": "todo",
+        "kind": "milestone",
+        "createdAt": 1787930258666,
+        "updatedAt": 1787930311443
+      },
+      {
+        "id": "ms_1787930252246_gdzs9of",
+        "title": "Native acceptance todo edited 0828",
+        "description": "Edited daily acceptance description",
+        "deadlineAt": 1789682400000,
+        "status": "todo",
+        "kind": "todo",
+        "createdAt": 1787930252246,
+        "updatedAt": 1787930304901
+      }
+    ],
+    "persistedFixture": [
+      {
+        "id": "ms_1787930258666_d36l655",
+        "title": "Native acceptance milestone edited 0828",
+        "description": "Edited long-running acceptance description",
+        "deadlineAt": 1789682400000,
+        "status": "todo",
+        "kind": "milestone",
+        "createdAt": 1787930258666,
+        "updatedAt": 1787930311443
+      },
+      {
+        "id": "ms_1787930252246_gdzs9of",
+        "title": "Native acceptance todo edited 0828",
+        "description": "Edited daily acceptance description",
+        "deadlineAt": 1789682400000,
+        "status": "todo",
+        "kind": "todo",
+        "createdAt": 1787930252246,
+        "updatedAt": 1787930304901
+      }
+    ],
+    "fixtureRemoved": true
+  },
+  "finalProcess": {
+    "CapturedAt": "2026-08-28T10:19:20.5323387-05:00",
+    "Jarvis": [
+      {
+        "Name": "jarvis.exe",
+        "ProcessId": 19612,
+        "ParentProcessId": 12924,
+        "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+        "CommandLine": "\"C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe\""
+      }
+    ],
+    "WebViews": [
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 9688,
+        "ParentProcessId": 19612,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 4916,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 100,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 20148,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 7372,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 17940,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      }
+    ],
+    "Listeners9223": [
+      {
+        "LocalAddress": "127.0.0.1",
+        "LocalPort": 9223,
+        "OwningProcess": 9688
+      }
+    ],
+    "Ollama": [],
+    "Listeners11434": []
+  },
+  "safetySummary": {
+    "checks": 40,
+    "maxOllamaProcesses": 0,
+    "maxListeners11434": 0
+  },
+  "completedAt": "2026-08-28T15:19:20.610Z"
+}

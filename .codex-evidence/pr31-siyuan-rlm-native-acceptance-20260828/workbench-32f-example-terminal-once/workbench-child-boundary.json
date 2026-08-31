@@ -1,0 +1,51 @@
+{
+  "status": "failed",
+  "head": "32f31099cd82ce4058bf1adf3631259fdc94cc6b",
+  "startedAt": "2026-08-29T09:36:28.312Z",
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_X3cku9GzBlC-"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_8GECePe705cw"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_xK6osbrnBM4r"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 673591483. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 673591483. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 673591483. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 673591483. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io"
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io"
+    }
+  ],
+  "pageErrors": [],
+  "assertions": [],
+  "failure": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByTestId('workbench-browser-panel').last().getByRole('alert') to be visible\u001b[22m\n\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\workbench-child-boundary.mjs:44:30",
+  "completedAt": "2026-08-29T09:37:18.014Z"
+}

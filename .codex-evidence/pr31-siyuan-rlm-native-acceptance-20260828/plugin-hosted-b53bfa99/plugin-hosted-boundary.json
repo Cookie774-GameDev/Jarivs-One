@@ -1,0 +1,257 @@
+{
+  "status": "failed",
+  "head": "b53bfa9907d6520d3e8a5fd4d5d697c54b57f074",
+  "startedAt": "2026-08-29T04:11:00.549Z",
+  "providers": [
+    {
+      "id": "github",
+      "name": "GitHub",
+      "status": "error",
+      "cardText": "GH\nGitHub\n\nDeveloper Tools\n\nError\n\nRepositories, issues, pull requests, actions, and authenticated account context.\n\nGitHub authorization requires a registered VibeSpace OAuth client.\n\n7 tools declared\nConnect",
+      "buttons": [
+        "Connect"
+      ],
+      "links": [],
+      "authorizationClicked": false,
+      "credentialsEntered": false,
+      "providerHostedClaim": true,
+      "eligibleForClick": false,
+      "boundary": "Provider-hosted action unavailable or disabled."
+    },
+    {
+      "id": "supabase",
+      "name": "Supabase",
+      "status": "unknown",
+      "cardText": "SU\nSupabase\n\nDatabases\n\nExternal blocker\n\nDatabase, authentication, storage, edge functions, and project API context.\n\n2 tools declared\nView requirements",
+      "buttons": [
+        " View requirements"
+      ],
+      "links": [],
+      "authorizationClicked": false,
+      "credentialsEntered": false,
+      "providerHostedClaim": false,
+      "eligibleForClick": false,
+      "boundary": "Catalog does not truthfully claim a provider-hosted flow; no click performed."
+    }
+  ],
+  "assertions": [
+    {
+      "name": "official VibeSpace page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "01-github-catalog.png",
+      "width": 919,
+      "height": 249
+    },
+    {
+      "name": "01-supabase-catalog.png",
+      "width": 919,
+      "height": 216
+    }
+  ],
+  "console": [
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/styles/globals.css"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] invalidate /src/features/chat/Composer.tsx: Could not Fast Refresh (\"applyChatReasoningMode\" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/features/chat/Composer.tsx"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] invalidate /src/App.tsx: Could not Fast Refresh (\"activateMonochromeFixtureProductState\" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/App.tsx"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/components/layout/PageRouter.tsx"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/components/layout/Inspector.tsx"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/features/chat/ChatView.tsx"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/features/pets/PetChatSurface.tsx"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/styles/globals.css"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at http://localhost:5173/src/lib/jarvis/kernelHost.ts:211:15\n    at async http://localhost:5173/src/App.tsx?t=1787976679550:1414:38"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at readCodexAccountUsage (http://localhost:5173/src/lib/ai/adapters/codexAccountUsage.ts:60:21)\n    at async refreshCoordinator.run.ttlMs (http://localhost:5173/src/features/taskbar-usage/taskbarUsageController.ts?t=1787974728459:178:32)"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2965113967. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3923672594. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 249968946. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2984675101. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connecting..."
+    },
+    {
+      "type": "debug",
+      "text": "[vite] connected."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3027187349. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2091184825. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1305402521. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold"
+    },
+    {
+      "type": "info",
+      "text": "[STORAGE MEASUREMENT] Stage: BOOT"
+    },
+    {
+      "type": "info",
+      "text": "- Approx Total LocalStorage Size: 633.35 KB"
+    },
+    {
+      "type": "info",
+      "text": "  * Key 'jarvis-ui': 0.97 KB"
+    },
+    {
+      "type": "info",
+      "text": "  * Key 'jarvis-terminal-transcripts': 46.61 KB"
+    },
+    {
+      "type": "info",
+      "text": "  * Key 'jarvis-auth': 1.93 KB"
+    },
+    {
+      "type": "info",
+      "text": "  * Key 'jarvis-tools': 0.36 KB"
+    },
+    {
+      "type": "info",
+      "text": "  * Key 'jarvis-terminal-scheduler-v1': not found"
+    },
+    {
+      "type": "info",
+      "text": "[STORAGE MEASUREMENT] 'jarvis-ui' field analysis:"
+    },
+    {
+      "type": "info",
+      "text": "    - navSectionsCollapsed: 0.12 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - doneNotifications: 0.12 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - activeChatId: 0.02 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - activeAgentId: 0.02 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - density: 0.01 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - ambientTrack: 0.01 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - sakuraPetalSpeed: 0.01 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - clockFormat: 0.01 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - lastSeenWhatsNewVersion: 0.01 KB"
+    },
+    {
+      "type": "info",
+      "text": "    - chatMode: 0.01 KB"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()"
+    }
+  ],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0
+    }
+  ],
+  "failure": "locator.fill: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('dialog').filter({ hasText: 'Configure providers' }).getByRole('textbox', { name: 'Search plugins' })\u001b[22m\n\u001b[2m    - waiting for\" http://localhost:5173/?route=chat\" navigation to finish...\u001b[22m\n\u001b[2m    - navigated to \"http://localhost:5173/?route=chat\"\u001b[22m\n\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\plugin-hosted-boundary.mjs:40:18",
+  "completedAt": "2026-08-29T04:11:55.688Z"
+}

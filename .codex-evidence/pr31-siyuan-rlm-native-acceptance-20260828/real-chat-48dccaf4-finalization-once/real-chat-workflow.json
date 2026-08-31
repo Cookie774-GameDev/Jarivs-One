@@ -1,0 +1,75 @@
+{
+  "status": "failed",
+  "head": "48dccaf48613fc1c89502ab71778f9f208e19ec4",
+  "route": {
+    "providerId": "opencode",
+    "connectionId": "opencode-cli",
+    "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+  },
+  "chatId": "chat_pr31_real_workflow_1787983047013",
+  "startedAt": "2026-08-29T05:57:27.013Z",
+  "assertions": [
+    {
+      "name": "isolated fixture starts at exact draft bytes",
+      "passed": true,
+      "sha256": "f63221160dc2cbe317b5e8fd6615b5c567c60a39b92c51d93d2e5503e09eaffc"
+    },
+    {
+      "name": "one official jarvis process",
+      "passed": true,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "official native page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    }
+  ],
+  "turns": [],
+  "artifacts": [
+    {
+      "name": "FAIL-real-chat-workflow.png",
+      "width": 1600,
+      "height": 1025,
+      "state": {
+        "failure": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /Mode\\. Open permissions panel\\./u })\u001b[22m\n\u001b[2m    - locator resolved to <button type=\"button\" data-state=\"closed\" aria-expanded=\"false\" aria-haspopup=\"listbox\" aria-label=\"Agent Mode. Open permissions panel.\" title=\"Full work mode — read/write files and run commands. Risky actions still need Approve. Click to change · Shift+Tab cycles · /permissions\" class=\"group inline-flex h-7 items-center gap-1 rounded-full border px-1.5 py-0 text-[11px] font-medium leading-none transition-all hover:brightness-110 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring …>…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div class=\"relative flex h-full flex-col items-center justify-center gap-8 px-8\">…</div> from <div role=\"dialog\" data-state=\"active\" data-sakura-route=\"ambient\" data-sakura-surface=\"ambient-home\" data-monochrome-surface=\"ambient-home\" aria-label=\"Ambient mode. Press any key to wake.\" class=\"ambient-root [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_.ambient-orb-wrap]:hidden [html[data-theme=monochrome]_&_.ambient-grain]:hidden [html[data-theme=monochrome]_&_.ambient-dot]:hidd…>…</div> subtree intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div class=\"relative flex h-full flex-col items-center justify-center gap-8 px-8\">…</div> from <div role=\"dialog\" data-state=\"active\" data-sakura-route=\"ambient\" data-sakura-surface=\"ambient-home\" data-monochrome-surface=\"ambient-home\" aria-label=\"Ambient mode. Press any key to wake.\" class=\"ambient-root [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_.ambient-orb-wrap]:hidden [html[data-theme=monochrome]_&_.ambient-grain]:hidden [html[data-theme=monochrome]_&_.ambient-dot]:hidd…>…</div> subtree intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    47 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is visible, enabled and stable\u001b[22m\n\u001b[2m       - scrolling into view if needed\u001b[22m\n\u001b[2m       - done scrolling\u001b[22m\n\u001b[2m       - <div class=\"relative flex h-full flex-col items-center justify-center gap-8 px-8\">…</div> from <div role=\"dialog\" data-state=\"active\" data-sakura-route=\"ambient\" data-sakura-surface=\"ambient-home\" data-monochrome-surface=\"ambient-home\" aria-label=\"Ambient mode. Press any key to wake.\" class=\"ambient-root [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_.ambient-orb-wrap]:hidden [html[data-theme=monochrome]_&_.ambient-grain]:hidden [html[data-theme=monochrome]_&_.ambient-dot]:hidd…>…</div> subtree intercepts pointer events\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n\n    at setWriteMode (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\real-chat-workflow.mjs:114:17)\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\real-chat-workflow.mjs:203:9"
+      }
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    }
+  ],
+  "failure": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: /Mode\\. Open permissions panel\\./u })\u001b[22m\n\u001b[2m    - locator resolved to <button type=\"button\" data-state=\"closed\" aria-expanded=\"false\" aria-haspopup=\"listbox\" aria-label=\"Agent Mode. Open permissions panel.\" title=\"Full work mode — read/write files and run commands. Risky actions still need Approve. Click to change · Shift+Tab cycles · /permissions\" class=\"group inline-flex h-7 items-center gap-1 rounded-full border px-1.5 py-0 text-[11px] font-medium leading-none transition-all hover:brightness-110 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring …>…</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div class=\"relative flex h-full flex-col items-center justify-center gap-8 px-8\">…</div> from <div role=\"dialog\" data-state=\"active\" data-sakura-route=\"ambient\" data-sakura-surface=\"ambient-home\" data-monochrome-surface=\"ambient-home\" aria-label=\"Ambient mode. Press any key to wake.\" class=\"ambient-root [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_.ambient-orb-wrap]:hidden [html[data-theme=monochrome]_&_.ambient-grain]:hidden [html[data-theme=monochrome]_&_.ambient-dot]:hidd…>…</div> subtree intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div class=\"relative flex h-full flex-col items-center justify-center gap-8 px-8\">…</div> from <div role=\"dialog\" data-state=\"active\" data-sakura-route=\"ambient\" data-sakura-surface=\"ambient-home\" data-monochrome-surface=\"ambient-home\" aria-label=\"Ambient mode. Press any key to wake.\" class=\"ambient-root [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_.ambient-orb-wrap]:hidden [html[data-theme=monochrome]_&_.ambient-grain]:hidden [html[data-theme=monochrome]_&_.ambient-dot]:hidd…>…</div> subtree intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    47 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m       - element is visible, enabled and stable\u001b[22m\n\u001b[2m       - scrolling into view if needed\u001b[22m\n\u001b[2m       - done scrolling\u001b[22m\n\u001b[2m       - <div class=\"relative flex h-full flex-col items-center justify-center gap-8 px-8\">…</div> from <div role=\"dialog\" data-state=\"active\" data-sakura-route=\"ambient\" data-sakura-surface=\"ambient-home\" data-monochrome-surface=\"ambient-home\" aria-label=\"Ambient mode. Press any key to wake.\" class=\"ambient-root [html[data-theme=monochrome]_&]:bg-background [html[data-theme=monochrome]_&]:font-sans [html[data-theme=monochrome]_&]:shadow-none [html[data-theme=monochrome]_&_.ambient-orb-wrap]:hidden [html[data-theme=monochrome]_&_.ambient-grain]:hidden [html[data-theme=monochrome]_&_.ambient-dot]:hidd…>…</div> subtree intercepts pointer events\u001b[22m\n\u001b[2m     - retrying click action\u001b[22m\n\u001b[2m       - waiting 500ms\u001b[22m\n\n    at setWriteMode (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\real-chat-workflow.mjs:114:17)\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\real-chat-workflow.mjs:203:9",
+  "completedAt": "2026-08-29T05:58:04.927Z"
+}

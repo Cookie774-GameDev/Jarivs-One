@@ -11,8 +11,182 @@ import type {
 } from '@/lib/jarvis/contracts/execution';
 import { canonicalizeJarvisApprovalJson } from '@/lib/jarvis/contracts/execution';
 import type { JarvisKernelTurnResult } from '@/lib/jarvis/kernel';
+import type { Chat, Message } from '@/types/chat';
+import type {
+  ChatToChatDispatchInput,
+  ChatToChatDispatchReceipt,
+} from '@/features/chat/chatToChatDispatch';
+import {
+  projectChatHandoff,
+  type ChatHandoffProjectionV1,
+} from '@/features/chat/chatHandoffProjection';
+import { parseChatSupervisionBinding, type ChatSupervisionBindingV1 } from './chatSupervision';
 
 type ScheduleSourceEvidence = Extract<JarvisProducerSourceEvidenceV1, { producerKind: 'schedule' }>;
+
+export type ChatSupervisionPreviousReceipt = Readonly<{
+  schemaVersion: 1;
+  at: number;
+  runId: string;
+  requestId: string;
+  status: 'dispatched' | 'completed' | 'partial' | 'failed' | 'cancelled' | 'timed_out';
+  summary?: string;
+}>;
+
+export type ChatSupervisionOccurrenceInput = Readonly<{
+  scheduleId: string;
+  occurrenceId: string;
+  binding: ChatSupervisionBindingV1;
+  previousReceipt?: ChatSupervisionPreviousReceipt;
+}>;
+
+export type ChatSupervisionOccurrenceReceipt = Readonly<{
+  scheduleId: string;
+  occurrenceId: string;
+  dispatchKey: string;
+  status: ChatToChatDispatchReceipt['status'];
+  targetChatId: string;
+  messageId?: string;
+  reason?: string;
+  replyToSourceAllowed: boolean;
+  startedAt: number;
+  completedAt: number;
+}>;
+
+export type ChatSupervisionOccurrenceDeps = Readonly<{
+  getChat: (id: string) => Promise<Chat | undefined>;
+  listMessages: (chatId: string) => Promise<Message[]>;
+  canAccess: (source: Chat, target: Chat) => boolean;
+  projectHandoff?: (input: {
+    sourceChat: Chat;
+    messages: readonly Message[];
+    now: number;
+  }) => ChatHandoffProjectionV1;
+  dispatchChat: (input: ChatToChatDispatchInput) => Promise<ChatToChatDispatchReceipt>;
+  now: () => number;
+}>;
+
+function supervisionInstruction(
+  binding: ChatSupervisionBindingV1,
+  previousReceipt: ChatSupervisionPreviousReceipt | undefined,
+): string {
+  const replyAuthorization = binding.allowReplyToSource
+    ? `Reply-to-source authorization: allowed. You may send a normal user-visible message to source chat ${binding.sourceChatId}.`
+    : `Reply-to-source authorization: denied. Do not send a message to source chat ${binding.sourceChatId}.`;
+  return [
+    binding.instruction,
+    replyAuthorization,
+    `Originating handoff message: ${binding.originatingMessageId}`,
+    `Originating schedule card message: ${binding.originatingCardMessageId}`,
+    `Previous supervision receipt: ${previousReceipt ? JSON.stringify(previousReceipt) : 'none'}`,
+  ].join('\n\n');
+}
+
+function rejectedSupervisionReceipt(
+  input: ChatSupervisionOccurrenceInput,
+  dispatchKey: string,
+  startedAt: number,
+  completedAt: number,
+  reason: string,
+): ChatSupervisionOccurrenceReceipt {
+  return {
+    scheduleId: input.scheduleId,
+    occurrenceId: input.occurrenceId,
+    dispatchKey,
+    status: 'rejected',
+    targetChatId: input.binding.supervisingChatId,
+    reason,
+    replyToSourceAllowed: input.binding.allowReplyToSource,
+    startedAt,
+    completedAt,
+  };
+}
+
+export async function runChatSupervisionOccurrence(
+  input: ChatSupervisionOccurrenceInput,
+  deps: ChatSupervisionOccurrenceDeps,
+): Promise<ChatSupervisionOccurrenceReceipt> {
+  const startedAt = deps.now();
+  const dispatchKey = `${input.scheduleId}:${input.occurrenceId}`;
+  if (
+    !stableIdentifier(input.scheduleId) ||
+    !stableIdentifier(input.occurrenceId) ||
+    !parseChatSupervisionBinding(input.binding)
+  ) {
+    return rejectedSupervisionReceipt(input, dispatchKey, startedAt, deps.now(), 'invalid_binding');
+  }
+
+  let source: Chat | undefined;
+  let supervisor: Chat | undefined;
+  try {
+    [source, supervisor] = await Promise.all([
+      deps.getChat(input.binding.sourceChatId),
+      deps.getChat(input.binding.supervisingChatId),
+    ]);
+  } catch {
+    return rejectedSupervisionReceipt(
+      input,
+      dispatchKey,
+      startedAt,
+      deps.now(),
+      'chat_unavailable',
+    );
+  }
+  if (!source || !supervisor) {
+    return rejectedSupervisionReceipt(
+      input,
+      dispatchKey,
+      startedAt,
+      deps.now(),
+      'chat_unavailable',
+    );
+  }
+  if (!deps.canAccess(source, supervisor)) {
+    return rejectedSupervisionReceipt(input, dispatchKey, startedAt, deps.now(), 'access_denied');
+  }
+
+  let sourceMessages: Message[];
+  try {
+    const [freshSourceMessages] = await Promise.all([
+      deps.listMessages(input.binding.sourceChatId),
+      deps.listMessages(input.binding.supervisingChatId),
+    ]);
+    sourceMessages = freshSourceMessages;
+  } catch {
+    return rejectedSupervisionReceipt(
+      input,
+      dispatchKey,
+      startedAt,
+      deps.now(),
+      'chat_unavailable',
+    );
+  }
+
+  const projection = (deps.projectHandoff ?? projectChatHandoff)({
+    sourceChat: source,
+    messages: sourceMessages,
+    now: startedAt,
+  });
+  const dispatch = await deps.dispatchChat({
+    sourceChatId: input.binding.sourceChatId,
+    targetChatId: input.binding.supervisingChatId,
+    projection,
+    instruction: supervisionInstruction(input.binding, input.previousReceipt),
+    dispatchKey,
+  });
+  return {
+    scheduleId: input.scheduleId,
+    occurrenceId: input.occurrenceId,
+    dispatchKey,
+    status: dispatch.status,
+    targetChatId: dispatch.targetChatId,
+    ...('messageId' in dispatch ? { messageId: dispatch.messageId } : {}),
+    ...('reason' in dispatch && dispatch.reason ? { reason: dispatch.reason } : {}),
+    replyToSourceAllowed: input.binding.allowReplyToSource,
+    startedAt,
+    completedAt: deps.now(),
+  };
+}
 
 const SCHEDULE_SOURCE_COMMON_KEYS = [
   'accountId',

@@ -1,0 +1,119 @@
+{
+  "status": "passed",
+  "head": "400e5320b782d50ed938a8835c59b81596c109a4",
+  "startedAt": "2026-08-29T05:33:53.473Z",
+  "providers": [
+    {
+      "id": "github",
+      "name": "GitHub",
+      "status": "error",
+      "cardText": "GH\nGitHub\n\nDeveloper Tools\n\nError\n\nRepositories, issues, pull requests, actions, and authenticated account context.\n\nGitHub authorization requires a registered VibeSpace OAuth client.\n\n7 tools declared\nConnect",
+      "buttons": [
+        "Connect"
+      ],
+      "links": [],
+      "authorizationClicked": false,
+      "credentialsEntered": false,
+      "providerHostedClaim": true,
+      "eligibleForClick": false,
+      "connectDom": {
+        "visible": true,
+        "enabled": true,
+        "ariaDisabled": null
+      },
+      "boundary": "Provider-hosted action unavailable or disabled."
+    },
+    {
+      "id": "supabase",
+      "name": "Supabase",
+      "status": "unknown",
+      "cardText": "SU\nSupabase\n\nDatabases\n\nExternal blocker\n\nDatabase, authentication, storage, edge functions, and project API context.\n\n2 tools declared\nView requirements",
+      "buttons": [
+        " View requirements"
+      ],
+      "links": [],
+      "authorizationClicked": false,
+      "credentialsEntered": false,
+      "providerHostedClaim": false,
+      "eligibleForClick": false,
+      "connectDom": {
+        "visible": false,
+        "enabled": false,
+        "ariaDisabled": null
+      },
+      "boundary": "Catalog does not truthfully claim a provider-hosted flow; no click performed."
+    },
+    {
+      "id": "gmail",
+      "name": "Gmail",
+      "status": "error",
+      "cardText": "GM\nGmail\n\nGoogle Workspace\n\nError\n\nSearch and read bounded Gmail context, create drafts, prepare replies, and send an existing draft only after explicit approval.\n\nProvider authorization is not registered for this plugin.\n\n6 tools declared\nConnect",
+      "buttons": [
+        "Connect"
+      ],
+      "links": [],
+      "authorizationClicked": false,
+      "credentialsEntered": false,
+      "providerHostedClaim": false,
+      "eligibleForClick": false,
+      "connectDom": {
+        "visible": true,
+        "enabled": true,
+        "ariaDisabled": null
+      },
+      "boundary": "Catalog does not truthfully claim a provider-hosted flow; no click performed."
+    }
+  ],
+  "assertions": [
+    {
+      "name": "official VibeSpace page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "name": "no credentials entered for representative providers",
+      "passed": true
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "01-github-catalog.png",
+      "width": 1600,
+      "height": 1025
+    },
+    {
+      "name": "01-supabase-catalog.png",
+      "width": 1600,
+      "height": 1025
+    },
+    {
+      "name": "01-gmail-catalog.png",
+      "width": 1600,
+      "height": 1025
+    }
+  ],
+  "console": [
+    {
+      "type": "info",
+      "text": "Images loaded lazily and replaced with placeholders. Load events are deferred. See https://go.microsoft.com/fwlink/?linkid=2048113"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()"
+    }
+  ],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0
+    }
+  ],
+  "completedAt": "2026-08-29T05:34:06.564Z"
+}

@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "head": "b698b064a19b2a7ae9337318a041a842541a840b",
+  "exactModel": "opencode-go/deepseek-v4-flash-vision-exp",
+  "rootCause": {
+    "trigger": "Opening Chat ModelPicker runs bootstrapOllamaConnection({ force: true }).",
+    "rendererPath": [
+      "app/src/features/chat/Composer.tsx ModelPicker open effect",
+      "app/src/lib/ai/ollamaBootstrap.ts bootstrapOllamaConnection/runBootstrap",
+      "app/src/lib/ai/providers/ollama.ts ensureOllamaReadySilent"
+    ],
+    "nativePath": [
+      "app/src-tauri/src/local_ai.rs ensure_ollama_ready_internal",
+      "app/src-tauri/src/local_ai.rs start_ollama_serve_silent"
+    ],
+    "observedBeforeContainment": {
+      "jarvisPid": 18744,
+      "ollamaTreePids": [
+        31948,
+        16992
+      ],
+      "commandLine": "\"ollama\" serve",
+      "listener": {
+        "address": "127.0.0.1",
+        "port": 11434,
+        "ownerPid": 31948
+      }
+    }
+  },
+  "prevention": {
+    "configuration": "VITE_DISABLE_OLLAMA_BOOTSTRAP=true",
+    "productFilesEdited": false,
+    "isOllamaBootstrapDisabled": true,
+    "directBootstrapResult": {
+      "ready": false,
+      "status": {
+        "ready": false,
+        "apiReachable": false,
+        "installed": false,
+        "phase": "disabled",
+        "detail": "Automatic Ollama startup is disabled for this VibeSpace runtime.",
+        "statusMsg": "Ollama bootstrap disabled"
+      },
+      "modelCount": 0
+    },
+    "pickerBootstrapResult": {
+      "ready": false,
+      "status": {
+        "ready": false,
+        "apiReachable": false,
+        "installed": false,
+        "phase": "disabled",
+        "detail": "Automatic Ollama startup is disabled for this VibeSpace runtime.",
+        "statusMsg": "Ollama bootstrap disabled"
+      },
+      "modelCount": 0
+    }
+  },
+  "modelPicker": {
+    "textLength": 2277,
+    "exactModelIndex": -1,
+    "opencodeIndex": 238,
+    "exactModelPresent": false,
+    "text": "ALIBABA MODELS\nALIBABA TOKEN PLAN CN MODELS\nALIBABA TOKEN PLAN MODELS\nAZURE MODELS\nBASETEN MODELS\nCLAUDE / ANTHROPIC MODELS\nCOMMANDCODE MODELS\nGOOGLE GEMINI MODELS\nKIMI FOR CODING MODELS\nKIRO MODELS\nMOONAI MODELS\nNARAROUTER MODELS\nOPENAI\nOPENCODE GO MODELS\nDeepSeek V4 Flash · Opencode Go provider connection\nOpencode Go provider connection · Ready\nDeepSeek V4 Flash Vision Exp · Opencode Go provider connection\nOpencode Go provider connection · Ready\nactive\n>\nDeepSeek V4 Pro (New)\nOpencode Go provider connection · Ready\nGLM-5.1 · Opencode Go provider connection\nOpencode Go provider connection · Ready\nGLM-5.2 · Opencode Go provider connection\nOpencode Go provider connection · Ready\nGLM-5.3 · Opencode Go provider connection\nOpencode Go provider connection · Ready\nGLM-5.3-Flash (2x usage)\nOpencode Go provider connection · Ready\nGPT-5.6 Luna · Opencode Go provider connection\nOpencode Go provider connection · Ready\nGrok 4.6 · Opencode Go provider connection\nOpencode Go provider connection · Ready\nHy3 (8x usage)\nOpencode Go provider connection · Ready\nKimi K2.6 · Opencode Go provider connection\nOpencode Go provider connection · Ready\nKimi K2.7 Code · Opencode Go provider connection\nOpencode Go provider connection · Ready\nKimi K3 · Opencode Go provider connection\nOpencode Go provider connection · Ready\nLongCat-2.0\nOpencode Go provider connection · Ready\nMiMo V2.5\nOpencode Go provider connection · Ready\nMiMo V2.5 Pro\nOpencode Go provider connection · Ready\nMiniMax-M2.7 · Opencode Go provider connection\nOpencode Go provider connection · Ready\nMiniMax-M3 · Opencode Go provider connection\nOpencode Go provider connection · Ready\nMuse Spark 1.2 Contributor · Opencode Go provider connection\nOpencode Go provider connection · Ready\nQwen3.6 Plus · Opencode Go provider connection\nOpencode Go provider connection · Ready\nQwen3.7 Max · Opencode Go provider connection\nOpencode Go provider connection · Ready\nQwen3.7 Plus · Opencode Go provider connection\nOpencode Go provider connection · Ready\nQwen3.8 Flash · Opencode Go provider connection\nOpencode Go provider connection · Ready\nQwen3.8 Max · Opencode Go provider connection\nOpencode Go provider connection · Ready\nOPENCODE MODELS\nOPENROUTER MODELS\nORCAROUTER MODELS\nQWEN API\nQWEN MODELS\nSCX AI MODELS\nSEEKAI MODELS"
+  },
+  "before": {
+    "CapturedAt": "2026-08-28T07:53:24.8877598-05:00",
+    "Jarvis": [
+      {
+        "Name": "jarvis.exe",
+        "ProcessId": 19612,
+        "ParentProcessId": 12924,
+        "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe"
+      }
+    ],
+    "Ollama": [],
+    "Listeners11434": []
+  },
+  "after": {
+    "CapturedAt": "2026-08-28T07:53:33.7456037-05:00",
+    "Jarvis": [
+      {
+        "Name": "jarvis.exe",
+        "ProcessId": 19612,
+        "ParentProcessId": 12924,
+        "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe"
+      }
+    ],
+    "Ollama": [],
+    "Listeners11434": []
+  },
+  "providerRequestSent": false,
+  "modelSelectionChanged": false,
+  "credentialsEntered": false,
+  "screenshot": {
+    "name": "model-picker-ollama-disabled.png",
+    "width": 1600,
+    "height": 1025
+  }
+}

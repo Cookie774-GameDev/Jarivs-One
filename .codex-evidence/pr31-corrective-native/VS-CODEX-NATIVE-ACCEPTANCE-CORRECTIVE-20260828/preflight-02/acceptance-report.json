@@ -1,0 +1,617 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-CORRECTIVE-NATIVE-ACCEPTANCE",
+  "agent": "VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828",
+  "startedAt": "2026-08-28T11:54:46.719Z",
+  "cdpUrl": "http://127.0.0.1:9223",
+  "expectedModel": "opencode-go/deepseek-v4-flash-vision-exp",
+  "selectedScenarios": [
+    "official-native-identity"
+  ],
+  "safety": {
+    "officialNativeOnly": true,
+    "credentialsEntered": false,
+    "oauthCompleted": false,
+    "externalAccountCompleted": false,
+    "productionMutation": false,
+    "standaloneBrowserControlled": false,
+    "computerUseUsed": false,
+    "browserMcpUsed": false,
+    "ollamaTouched": false
+  },
+  "scenarios": [
+    {
+      "name": "official-native-identity",
+      "status": "passed",
+      "startedAt": "2026-08-28T11:54:47.929Z",
+      "completedAt": "2026-08-28T11:55:14.481Z",
+      "evidence": {
+        "title": "VibeSpace",
+        "url": "http://localhost:5173/?route=chat",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0",
+        "isTauri": true,
+        "pageCount": 1,
+        "targetPages": [
+          {
+            "url": "http://localhost:5173/?route=chat",
+            "title": "VibeSpace"
+          }
+        ],
+        "processes": {
+          "Processes": [
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18280,
+              "ParentProcessId": 16916,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18396,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18460,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18480,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18572,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18976,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 3416,
+              "ParentProcessId": 23772,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 14768,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25044,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25048,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 17920,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25064,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26392,
+              "ParentProcessId": 17080,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26608,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26744,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26752,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26892,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 27112,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "jarvis.exe",
+              "ProcessId": 15352,
+              "ParentProcessId": 14760,
+              "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 12576,
+              "ParentProcessId": 15352,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": true
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 24272,
+              "ParentProcessId": 12576,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 21368,
+              "ParentProcessId": 12576,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 17016,
+              "ParentProcessId": 12576,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 29588,
+              "ParentProcessId": 12576,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 28432,
+              "ParentProcessId": 12576,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": true
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 28192,
+              "ParentProcessId": 12576,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "opencode.exe",
+              "ProcessId": 5168,
+              "ParentProcessId": 15352,
+              "ExecutablePath": "C:\\Users\\viper\\AppData\\Roaming\\npm\\node_modules\\opencode-ai\\bin\\opencode.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            }
+          ],
+          "CdpListener": [
+            {
+              "LocalAddress": "127.0.0.1",
+              "LocalPort": 9223,
+              "OwningProcess": 12576,
+              "State": 2
+            }
+          ]
+        },
+        "git": {
+          "worktree": "C:/Users/viper/VibeSpace-UnifiedChungus-Final",
+          "branch": "integration/UnifiedChungus-final",
+          "head": "99a3c38af0d7d382d590e83a42aec44fc7ea656e",
+          "upstream": "origin/UnifiedChungus",
+          "finalHead": "99a3c38af0d7d382d590e83a42aec44fc7ea656e"
+        }
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "official-native-webview-identity.json",
+      "kind": "json"
+    },
+    {
+      "name": "official-native-initial.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "official-native-final-running.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "activity-ledger-visual-boundary.json",
+      "kind": "json"
+    }
+  ],
+  "console": [
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at http://localhost:5173/src/lib/harness/runtimeManager.ts:289:23",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at http://localhost:5173/src/lib/jarvis/kernelHost.ts:166:15",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at Object.stop (http://localhost:5173/src/features/taskbar-usage/taskbarUsageController.ts?t=1787888104475:100:43)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at Object.stop (http://localhost:5173/src/features/taskbar-usage/taskbarUsageController.ts?t=1787888104475:100:43)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:232:7",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at Object.stop (http://localhost:5173/src/features/taskbar-usage/taskbarUsageController.ts?t=1787888104475:100:43)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:231:7",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at nativeInvoke (http://localhost:5173/src/features/browser-chat/providerSurface.ts:269:43)\n    at Object.hideAllSurfaces (http://localhost:5173/src/features/browser-chat/providerSurface.ts:298:13)\n    at http://localhost:5173/src/features/browser-chat/providerSurface.ts:216:26",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at Object.stop (http://localhost:5173/src/features/taskbar-usage/taskbarUsageController.ts?t=1787888104475:100:43)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at scanCliBridge (http://localhost:5173/src/lib/ai/adapters/cliBridge.ts:83:10)\n    at async findCliExecutable (http://localhost:5173/src/lib/ai/adapters/cliBridge.ts:383:18)",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1873635531. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3721374898. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2813883678. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3629562938. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2961608462. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2902422841. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3297913632. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1330248660. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1391062192. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1237840994. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 4067572496. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3650273712. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3440033187. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1219966626. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 897234699. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1325925575. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2456560124. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3742344636. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1116293546. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 712275654. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 380621060. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2337094798. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3342532612. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2578539497. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 582470790. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2436748508. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 994840514. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 ()",
+      "url": "http://localhost:5173/?route=chat"
+    }
+  ],
+  "pageErrors": [],
+  "git": {
+    "worktree": "C:/Users/viper/VibeSpace-UnifiedChungus-Final",
+    "branch": "integration/UnifiedChungus-final",
+    "head": "99a3c38af0d7d382d590e83a42aec44fc7ea656e",
+    "upstream": "origin/UnifiedChungus",
+    "finalHead": "99a3c38af0d7d382d590e83a42aec44fc7ea656e"
+  },
+  "finalState": {
+    "url": "http://localhost:5173/?route=chat",
+    "exactModelVisible": true,
+    "fixtureRemoved": true
+  },
+  "completedAt": "2026-08-28T11:55:20.541Z",
+  "summary": {
+    "passed": 1,
+    "failed": 0,
+    "fatal": false
+  }
+}

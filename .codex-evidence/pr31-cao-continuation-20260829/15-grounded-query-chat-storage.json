@@ -1,0 +1,399 @@
+{
+  "status": "captured",
+  "capturedAt": "2026-08-30T06:37:16.877Z",
+  "identity": {
+    "jarvisPid": 34752,
+    "webViewPid": 18496,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-30T01:37:16.7928673-05:00"
+  },
+  "state": {
+    "chatId": "cht_CixkP3i9hIVG-whs",
+    "messages": [
+      {
+        "id": "msg_2rFi58By6LA5GnFQ",
+        "role": "system",
+        "createdAt": 1788071652256,
+        "usage": null,
+        "parts": [
+          {
+            "kind": "text",
+            "length": 19,
+            "ending": "Effort set to high."
+          }
+        ]
+      },
+      {
+        "id": "msg_L-L_hiu6oyNrm1ZN",
+        "role": "system",
+        "createdAt": 1788071652739,
+        "usage": null,
+        "parts": [
+          {
+            "kind": "text",
+            "length": 89,
+            "ending": "Performance profile set to balanced; model, effort, and provider Fast mode are unchanged."
+          }
+        ]
+      },
+      {
+        "id": "msg_wH1wZ6cLnGq3ELPw",
+        "role": "system",
+        "createdAt": 1788071652942,
+        "usage": null,
+        "parts": [
+          {
+            "kind": "text",
+            "length": 21,
+            "ending": "Fast mode set to off."
+          }
+        ]
+      },
+      {
+        "id": "msg_h7vt2HOa6W73zBaW",
+        "role": "system",
+        "createdAt": 1788071653164,
+        "usage": null,
+        "parts": [
+          {
+            "kind": "text",
+            "length": 14,
+            "ending": "RLM turned on."
+          }
+        ]
+      },
+      {
+        "id": "msg_Mn30bj6w0ohsJT6q",
+        "role": "system",
+        "createdAt": 1788071653426,
+        "usage": null,
+        "parts": [
+          {
+            "kind": "text",
+            "length": 21,
+            "ending": "Approve All disabled."
+          }
+        ]
+      },
+      {
+        "id": "msg_MO-Y20_WoPtfFbXb",
+        "role": "user",
+        "createdAt": 1788071653712,
+        "usage": null,
+        "parts": [
+          {
+            "kind": "text",
+            "length": 798,
+            "ending": "Use the active project Context Gateway and RLM retrieval path to answer from the already indexed SiYuan Context Map source `official-native-acceptance.md`.\n\nExplain the official native process/WebView identity, the exact ports, the zero-Ollama invariant, and the revision canary. Do not browse the public web and do not read the source directly from the filesystem. Retrieve it through the product's Context/SiYuan path.\n\nInclude the exact indexed relative path and every real user-visible retrieval citation, receipt ID, Context Gateway reference, SiYuan document/block ID, or source link that the product makes available. Never invent provenance. If the runtime does not expose a requested citation or receipt, say exactly which evidence is unavailable. Keep the answer between 250 and 450 words."
+          }
+        ]
+      },
+      {
+        "id": "msg_jreq_32136e9c-3f6f-4076-a28c-9637b8b22cb3",
+        "role": "assistant",
+        "createdAt": 1788071765851,
+        "usage": {
+          "input_tokens": "[redacted]",
+          "output_tokens": "[redacted]",
+          "cost_usd": 0.001603192,
+          "provider": "opencode",
+          "model": "opencode-go/deepseek-v4-flash-vision-exp"
+        },
+        "parts": [
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-1",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-1",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-2",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-2",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-3",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-3",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-4",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-4",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-5",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-5",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-6",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-6",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-7",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-7",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-8",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-8",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-9",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-9",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-10",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-10",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-11",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-11",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-12",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-12",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-13",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-13",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-14",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-14",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "tool_call",
+            "tool": "vibespace_context",
+            "callId": "opencode-tool-15",
+            "args": {}
+          },
+          {
+            "kind": "tool_result",
+            "callId": "opencode-tool-15",
+            "error": null,
+            "result": {
+              "status": "completed"
+            }
+          },
+          {
+            "kind": "text",
+            "length": 2325,
+            "ending": "e`, have `document. readyState === \"complete\"`, contain `#root`, expose `window. __TAURI_INTERNALS__`, and present the public main/navigation surface. **Exact ports. ** The official WebView must expose CDP on loopback port `9223`; the development renderer is served from loopback port `5173`. **Zero-Ollama invariant. ** Ollama is prohibited for PR31 Phase 0. No `ollama` process and no listener on port `11434` may exist before attachment, during the scenario, or after it. Standalone Chromium, headless browser, Vite preview, and mock DOM fixtures do not count as official native evidence. **Revision canary. ** The exact selected OpenCode route must hydrate this changed source into its stable SiYuan child document before the grounded Chat acceptance is considered complete. Declared repository authorities are the root agent policy, the native acceptance harness, the Tauri CDP configuration, and this architecture map. **Evidence not exposed by the [unverified link omitted] no distinct SiYuan document ID / block ID, "
+          },
+          {
+            "kind": "jarvis_source_ref",
+            "source": {
+              "id": "jsource_jreq_32136e9c-3f6f-4076-a28c-9637b8b22cb3_user_identity",
+              "kind": "memory",
+              "label": "User-selected identity",
+              "trust": "user_direct",
+              "sensitivity": "private",
+              "observedAt": 1788071653935
+            }
+          },
+          {
+            "kind": "jarvis_source_ref",
+            "source": {
+              "id": "jsource_jreq_32136e9c-3f6f-4076-a28c-9637b8b22cb3_model_skill_inventory",
+              "kind": "tool_result",
+              "label": "Model and skill availability inventory",
+              "trust": "app_verified",
+              "sensitivity": "private",
+              "observedAt": 1788071653935
+            }
+          },
+          {
+            "kind": "jarvis_source_ref",
+            "source": {
+              "id": "jsource_jreq_32136e9c-3f6f-4076-a28c-9637b8b22cb3_resolved_context",
+              "kind": "context_node",
+              "label": "Resolved app context",
+              "trust": "app_verified",
+              "sensitivity": "private",
+              "observedAt": 1788071653935
+            }
+          },
+          {
+            "kind": "jarvis_source_ref",
+            "source": {
+              "id": "jsource_jreq_32136e9c-3f6f-4076-a28c-9637b8b22cb3_intent_policy",
+              "kind": "tool_result",
+              "label": "Request policy classification",
+              "trust": "app_verified",
+              "sensitivity": "private",
+              "observedAt": 1788071653935
+            }
+          },
+          {
+            "kind": "jarvis_source_ref",
+            "source": {
+              "id": "jsource_jreq_32136e9c-3f6f-4076-a28c-9637b8b22cb3_interaction_mode",
+              "kind": "tool_result",
+              "label": "Interaction mode policy",
+              "trust": "app_verified",
+              "sensitivity": "private",
+              "observedAt": 1788071653935
+            }
+          },
+          {
+            "kind": "jarvis_source_ref",
+            "source": {
+              "id": "jsource_jreq_32136e9c-3f6f-4076-a28c-9637b8b22cb3_terminal_operating",
+              "kind": "terminal",
+              "label": "Terminal operating state",
+              "trust": "app_verified",
+              "sensitivity": "private",
+              "observedAt": 1788071653935
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "safety": {
+    "label": "phase0:chat-storage",
+    "capturedAt": "2026-08-30T01:37:19.1849085-05:00",
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  }
+}

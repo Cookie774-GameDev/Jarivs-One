@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-NATIVE-SCHEDULE-EVENT-SUPPLEMENT",
+  "generatedAt": "2026-08-28T16:52:26.186Z",
+  "status": "passed",
+  "captureHead": "4912c802004a867dbf105cff2a2efb08d49470e6",
+  "scheduleCommit": "f72d97469a9daca77714bace8ea0bd281d228d88",
+  "commitIsAncestor": true,
+  "sourceMatches": true,
+  "assertions": [
+    {
+      "name": "surviving native event has the committed recurrence and both reminders",
+      "passed": true,
+      "eventRow": {
+        "id": "evt_2aClLIxEMhY2tpp2",
+        "workspace_id": "wks_SIY0XpxdDdLY4ndp",
+        "title": "Native custom event 0828",
+        "description": "Native custom recurrence and reminder proof.",
+        "start_at": 1788444000000,
+        "end_at": 1788449400000,
+        "all_day": false,
+        "timezone": "America/Chicago",
+        "attendees": [],
+        "source": "manual",
+        "recurrence_rule": "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,TH;UNTIL=20261231T235959",
+        "reminders": [
+          {
+            "offset_min": 15,
+            "channels": [
+              "desktop",
+              "in_app"
+            ]
+          },
+          {
+            "offset_min": 60,
+            "channels": [
+              "desktop",
+              "in_app"
+            ]
+          }
+        ],
+        "status": "scheduled",
+        "created_by": "usr_uC_BDHkQsSNV_Jd9",
+        "created_at": 1787935677247,
+        "updated_at": 1787935677247,
+        "jarvisMetadata": null
+      }
+    }
+  ],
+  "event": {
+    "id": "evt_2aClLIxEMhY2tpp2",
+    "workspace_id": "wks_SIY0XpxdDdLY4ndp",
+    "title": "Native custom event 0828",
+    "description": "Native custom recurrence and reminder proof.",
+    "start_at": 1788444000000,
+    "end_at": 1788449400000,
+    "all_day": false,
+    "timezone": "America/Chicago",
+    "attendees": [],
+    "source": "manual",
+    "recurrence_rule": "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,TH;UNTIL=20261231T235959",
+    "reminders": [
+      {
+        "offset_min": 15,
+        "channels": [
+          "desktop",
+          "in_app"
+        ]
+      },
+      {
+        "offset_min": 60,
+        "channels": [
+          "desktop",
+          "in_app"
+        ]
+      }
+    ],
+    "status": "scheduled",
+    "created_by": "usr_uC_BDHkQsSNV_Jd9",
+    "created_at": 1787935677247,
+    "updated_at": 1787935677247,
+    "jarvisMetadata": null
+  },
+  "artifact": {
+    "name": "06-schedule-event-supplement.png",
+    "width": 1983,
+    "height": 1240
+  },
+  "boundary": "Immutable snapshot only; no event edit/cancel/reopen replay was performed."
+}

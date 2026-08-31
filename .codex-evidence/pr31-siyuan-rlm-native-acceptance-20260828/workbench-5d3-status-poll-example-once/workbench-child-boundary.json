@@ -1,0 +1,535 @@
+{
+  "status": "failed",
+  "head": "5d3faa82454fac728c1e100292ade46c6bacc4ff",
+  "startedAt": "2026-08-29T11:54:57.052Z",
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff2"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "warning",
+      "text": "Failed to decode downloaded font: http://localhost:5173/@fs/C:/Users/viper/VibeSpace-UnifiedChungus-Final/app/node_modules/.pnpm/@fontsource+jetbrains-mono@5.3.0/node_modules/@fontsource/jetbrains-mono/files/jetbrains-mono-latin-600-normal.woff"
+    },
+    {
+      "type": "warning",
+      "text": "OTS parsing error: invalid sfntVersion: 1008821359"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_OK6zqky63a2q"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_e_8j5lHMLS4J"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_pgc5EV-WBYL6"
+    }
+  ],
+  "pageErrors": [],
+  "assertions": [
+    {
+      "name": "example navigation uses bounded native surface",
+      "passed": true
+    },
+    {
+      "name": "example navigation is stable without app error",
+      "passed": false,
+      "details": {
+        "panelId": "browser-8ec5e5d9-d153-41ee-8a4a-a77d8ce3a455",
+        "address": "https://developer.mozilla.org/en-US/",
+        "text": "Loading…\n\nREMOTE PAGES STAY INSIDE A CAPABILITY-FREE VIBESPACE CHILD WEBVIEW.",
+        "surfaceCount": 1
+      }
+    },
+    {
+      "name": "single official CDP listener remains authoritative",
+      "passed": true,
+      "details": [
+        {
+          "LocalAddress": "127.0.0.1",
+          "OwningProcess": 38144
+        }
+      ]
+    },
+    {
+      "name": "child browser does not inherit main CDP endpoint",
+      "passed": true,
+      "details": [
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 17812,
+          "ParentProcessId": 8480,
+          "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-e6727cc0-96aa-4a5d-9ca0-11f0ceb50a6c\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.14306056615244068835 /pfhostedapp:3c2b3f602f66b470aa06478ffaea88d5842ab963"
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 36208,
+          "ParentProcessId": 8480,
+          "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-13618e87-29cd-470b-aae3-48a84d255610\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.7158939354805092520 /pfhostedapp:192a2e8b561e08e4b4412e110746cebb05610a4c"
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 25144,
+          "ParentProcessId": 8480,
+          "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-3052c3f3-6e70-4609-820c-9cd4a687e1b3\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.10211732888573000911 /pfhostedapp:b6b847c193ad0b652d8ffbd16f24682c069d28d1"
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 5332,
+          "ParentProcessId": 8480,
+          "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-3d92b9ac-0ae8-49f1-81e0-d8a45255defd\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.17204751272555855427 /pfhostedapp:1312e0155dd41df0e3ca20afb0b252460d1300a1"
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 38036,
+          "ParentProcessId": 8480,
+          "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-9864f624-71d9-4615-ad95-f706687f631f\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.17972833901526069896 /pfhostedapp:dc83c635075215fab34ec841cdd96c8e9e0047a6"
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 6700,
+          "ParentProcessId": 8480,
+          "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-c16d0264-b687-47b6-9a7d-784173f1ff11\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.5462828587832490368 /pfhostedapp:6dfd9baf5c4fd350c6280be08610df98231340fb"
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 9688,
+          "ParentProcessId": 8480,
+          "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-a3b6094c-3872-496d-9fe2-af4007c6402d\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.4347216379256546440 /pfhostedapp:6a9847710be8251a9961721880a932238f03588d"
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 37836,
+          "ParentProcessId": 8480,
+          "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-ea430bd1-fda6-4f66-b7d9-6d4a7990d69f\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.1585479884318649958 /pfhostedapp:110b05376b76299f9bedf4e85de6b219ba29f06c"
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 20992,
+          "ParentProcessId": 8480,
+          "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-46660ce0-7d5c-448f-9ed0-16bac0303b11\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.1657489365080438140 /pfhostedapp:99f80943b2d49a2e87d12227bde01451964681d9"
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 21492,
+          "ParentProcessId": 8480,
+          "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-8ec5e5d9-d153-41ee-8a4a-a77d8ce3a455\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.12720294343693175371 /pfhostedapp:985296a01d1747d92c70d1cd2de939eb29280862"
+        }
+      ]
+    },
+    {
+      "name": "zero Ollama and 11434",
+      "passed": true
+    }
+  ],
+  "panel": {
+    "panelId": "browser-8ec5e5d9-d153-41ee-8a4a-a77d8ce3a455",
+    "address": "https://developer.mozilla.org/en-US/",
+    "text": "Loading…\n\nREMOTE PAGES STAY INSIDE A CAPABILITY-FREE VIBESPACE CHILD WEBVIEW.",
+    "surfaceCount": 1
+  },
+  "processes": {
+    "tree": [
+      {
+        "Name": "jarvis.exe",
+        "ProcessId": 8480,
+        "ParentProcessId": 19348,
+        "CommandLine": "\"D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-641\\debug\\jarvis.exe\" "
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 38144,
+        "ParentProcessId": 8480,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --js-flags=--max-old-space-size=1536 --remote-debugging-port=9223 --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.6791340839397961154 /pfhostedapp:46c5fc76a556ed1b85e162257f1e47cd7fbc7c40"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 17812,
+        "ParentProcessId": 8480,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-e6727cc0-96aa-4a5d-9ca0-11f0ceb50a6c\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.14306056615244068835 /pfhostedapp:3c2b3f602f66b470aa06478ffaea88d5842ab963"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 36208,
+        "ParentProcessId": 8480,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-13618e87-29cd-470b-aae3-48a84d255610\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.7158939354805092520 /pfhostedapp:192a2e8b561e08e4b4412e110746cebb05610a4c"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 25144,
+        "ParentProcessId": 8480,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-3052c3f3-6e70-4609-820c-9cd4a687e1b3\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.10211732888573000911 /pfhostedapp:b6b847c193ad0b652d8ffbd16f24682c069d28d1"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 5332,
+        "ParentProcessId": 8480,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-3d92b9ac-0ae8-49f1-81e0-d8a45255defd\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.17204751272555855427 /pfhostedapp:1312e0155dd41df0e3ca20afb0b252460d1300a1"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 38036,
+        "ParentProcessId": 8480,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-9864f624-71d9-4615-ad95-f706687f631f\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.17972833901526069896 /pfhostedapp:dc83c635075215fab34ec841cdd96c8e9e0047a6"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 6700,
+        "ParentProcessId": 8480,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-c16d0264-b687-47b6-9a7d-784173f1ff11\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.5462828587832490368 /pfhostedapp:6dfd9baf5c4fd350c6280be08610df98231340fb"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 9688,
+        "ParentProcessId": 8480,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-a3b6094c-3872-496d-9fe2-af4007c6402d\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.4347216379256546440 /pfhostedapp:6a9847710be8251a9961721880a932238f03588d"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 37836,
+        "ParentProcessId": 8480,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-ea430bd1-fda6-4f66-b7d9-6d4a7990d69f\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.1585479884318649958 /pfhostedapp:110b05376b76299f9bedf4e85de6b219ba29f06c"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 20992,
+        "ParentProcessId": 8480,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-46660ce0-7d5c-448f-9ed0-16bac0303b11\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.1657489365080438140 /pfhostedapp:99f80943b2d49a2e87d12227bde01451964681d9"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 21492,
+        "ParentProcessId": 8480,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-8ec5e5d9-d153-41ee-8a4a-a77d8ce3a455\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=8480.9828.12720294343693175371 /pfhostedapp:985296a01d1747d92c70d1cd2de939eb29280862"
+      }
+    ],
+    "listeners": [
+      {
+        "LocalAddress": "127.0.0.1",
+        "OwningProcess": 38144
+      }
+    ],
+    "ollama": 0,
+    "port11434": 0
+  },
+  "completedAt": "2026-08-29T11:55:47.626Z"
+}

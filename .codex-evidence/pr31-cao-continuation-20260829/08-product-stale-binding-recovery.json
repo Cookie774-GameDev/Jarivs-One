@@ -1,0 +1,58 @@
+{
+  "status": "passed",
+  "identity": {
+    "jarvisPid": 33732,
+    "webViewPid": 23264,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-30T01:03:09.2934979-05:00"
+  },
+  "expectedRoot": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-cao-continuation-20260829\\phase0-context-fixture",
+  "expectedNodeId": "path:official-native-acceptance.md",
+  "injectedMissingId": "20260830003159-stale01",
+  "safety": [
+    {
+      "label": "recovery:before",
+      "capturedAt": "2026-08-30T01:03:11.4491947-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "recovery:during",
+      "capturedAt": "2026-08-30T01:03:14.2767666-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "recovery:after",
+      "capturedAt": "2026-08-30T01:03:16.4557744-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "recovery": {
+    "projectId": "prj_leBT3oqNPBtoSMmf",
+    "mapId": "map-1d0fhy8-c-users-viper-vibespace-unifiedchungus-final-codex-evidence-pr31-cao-continuatio-1788065716038",
+    "rootDocumentId": "20260829235518-nzlf9e3",
+    "originalBindingId": "20260830001145-odbzdel",
+    "injectedMissingId": "20260830003159-stale01",
+    "replacementBindingId": "20260830001145-odbzdel",
+    "replacementPath": "/20260823111108-g8hllha/20260829235518-nzlf9e3/20260830001145-odbzdel.sy",
+    "rootPath": "/20260823111108-g8hllha/20260829235518-nzlf9e3.sy",
+    "outcome": "rejected",
+    "reason": "siyuan_cloud_summary_scope_ready",
+    "job": {
+      "status": "paused",
+      "phase": "summarizing",
+      "pauseReason": "cloud_approval_required",
+      "indexed": 1,
+      "createdNodes": 1,
+      "failed": 0
+    }
+  },
+  "failure": null
+}

@@ -1,0 +1,289 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-DEEPSEEK-ATTEMPT-09-AUTH-SYNC-AUTHORITY",
+  "startedAt": "2026-08-28T20:17:09.955Z",
+  "status": "failed",
+  "captureHead": "7e47b3143f4684c881727e3c4626a59d745d84b9",
+  "identity": {
+    "jarvisPid": 5076,
+    "webViewPid": 16336,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-28T15:17:09.8663201-05:00"
+  },
+  "safety": [
+    {
+      "label": "attach:before",
+      "capturedAt": "2026-08-28T15:17:06.8709596-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attach:after",
+      "capturedAt": "2026-08-28T15:17:09.8663201-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attempt09-auth-sync-authority:after",
+      "capturedAt": "2026-08-28T15:17:12.6939702-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "active identity matches its declared auth source and approval parent",
+      "passed": false,
+      "details": {
+        "ready": true,
+        "source": "supabase",
+        "cloudSessionPresent": false,
+        "localIdentityPresent": true,
+        "matchesDeclaredAuthSource": false,
+        "matchesApprovalParentAccount": true
+      }
+    },
+    {
+      "name": "sync queue owner and authority scope are equivalent at status read",
+      "passed": true,
+      "details": {
+        "before": {
+          "capturedAt": 1787948230254,
+          "identity": {
+            "ready": true,
+            "source": "supabase",
+            "cloudSessionPresent": false,
+            "localIdentityPresent": true,
+            "matchesDeclaredAuthSource": false,
+            "matchesApprovalParentAccount": true
+          },
+          "syncQueueOwner": {
+            "state": "cloud",
+            "capturedAt": 1787948230254,
+            "accountMatchesActiveIdentity": true
+          },
+          "authorityScope": {
+            "state": "cloud",
+            "nameMode": "cloud:<account>",
+            "accountMatchesActiveIdentity": true
+          },
+          "ownerMatchesAuthorityScope": true
+        },
+        "after": {
+          "capturedAt": 1787948230343,
+          "identity": {
+            "ready": true,
+            "source": "supabase",
+            "cloudSessionPresent": false,
+            "localIdentityPresent": true,
+            "matchesDeclaredAuthSource": false,
+            "matchesApprovalParentAccount": true
+          },
+          "syncQueueOwner": {
+            "state": "cloud",
+            "capturedAt": 1787948230343,
+            "accountMatchesActiveIdentity": true
+          },
+          "authorityScope": {
+            "state": "cloud",
+            "nameMode": "cloud:<account>",
+            "accountMatchesActiveIdentity": true
+          },
+          "ownerMatchesAuthorityScope": true
+        },
+        "stableAcrossRead": true
+      }
+    },
+    {
+      "name": "approval status account matches the active identity",
+      "passed": true,
+      "details": {
+        "kind": "approval_state",
+        "status": "pending",
+        "accountMatchesActiveIdentity": true,
+        "approvalMatchesTarget": true,
+        "unavailableReason": null,
+        "unavailableRequestKind": null
+      }
+    },
+    {
+      "name": "all canonical pre-commit Deny predicates pass at status read",
+      "passed": true,
+      "details": {
+        "evaluationBoundary": "read-only canonical rows with observed wall clock as proposed Deny time",
+        "approvalLifecycleCoherent": true,
+        "requestAttemptMatch": true,
+        "decidedAtAtOrAfterApprovalCreated": true,
+        "decidedAtAtOrAfterRunUpdated": true,
+        "openApprovalCount": 1,
+        "openApprovalIsExactTarget": true,
+        "runAwaitingApproval": true,
+        "approvalPending": true,
+        "cancellationIntentCount": 0,
+        "noCancellationIntent": true,
+        "eventTailSeq": 9,
+        "eventTailSafeInteger": true,
+        "transportAttemptCount": 0,
+        "transportAttemptLegacyAllowance": true,
+        "providerStartCheckpointCount": 1,
+        "providerStartExactCorrelation": true,
+        "providerResultCheckpointCount": 1,
+        "providerResultExactCorrelation": true,
+        "responseCheckpointCount": 1,
+        "responseCheckpointExactCorrelation": true,
+        "allObservedPredicatesPass": true
+      }
+    },
+    {
+      "name": "official process ownership and safety are exact",
+      "passed": true,
+      "details": {
+        "jarvisPid": 5076,
+        "webViewPid": 16336,
+        "cdpPort": 9223,
+        "cdpOwnerMatchesWebView": true,
+        "openCodePid": 20688,
+        "openCodeParentPid": 5076,
+        "openCodeOwnedByJarvis": true,
+        "openCodeLoopbackListener": true,
+        "openCodePort": 59856
+      }
+    },
+    {
+      "name": "read-only authority snapshot emitted no page events",
+      "passed": true,
+      "details": []
+    }
+  ],
+  "artifacts": [],
+  "events": [],
+  "firstFailure": {
+    "code": "semantic_assertion_failed",
+    "stage": "assertion",
+    "name": "NativeAcceptanceHarnessError",
+    "details": {
+      "name": "active identity matches its declared auth source and approval parent",
+      "details": {
+        "ready": true,
+        "source": "supabase",
+        "cloudSessionPresent": false,
+        "localIdentityPresent": true,
+        "matchesDeclaredAuthSource": false,
+        "matchesApprovalParentAccount": true
+      }
+    }
+  },
+  "metadata": {
+    "observation": "single synchronized read-only approval/auth/sync authority snapshot",
+    "clickCount": 0,
+    "reloadCount": 0,
+    "processActionCount": 0,
+    "modelDispatchCount": 0,
+    "mutationCount": 0,
+    "privateDataIncluded": false,
+    "rawIdentityIncluded": false,
+    "queuePayloadIncluded": false
+  },
+  "authority": {
+    "beforeApprovalStatusRead": {
+      "capturedAt": 1787948230254,
+      "identity": {
+        "ready": true,
+        "source": "supabase",
+        "cloudSessionPresent": false,
+        "localIdentityPresent": true,
+        "matchesDeclaredAuthSource": false,
+        "matchesApprovalParentAccount": true
+      },
+      "syncQueueOwner": {
+        "state": "cloud",
+        "capturedAt": 1787948230254,
+        "accountMatchesActiveIdentity": true
+      },
+      "authorityScope": {
+        "state": "cloud",
+        "nameMode": "cloud:<account>",
+        "accountMatchesActiveIdentity": true
+      },
+      "ownerMatchesAuthorityScope": true
+    },
+    "approvalStatus": {
+      "kind": "approval_state",
+      "status": "pending",
+      "accountMatchesActiveIdentity": true,
+      "approvalMatchesTarget": true,
+      "unavailableReason": null,
+      "unavailableRequestKind": null
+    },
+    "afterApprovalStatusRead": {
+      "capturedAt": 1787948230343,
+      "identity": {
+        "ready": true,
+        "source": "supabase",
+        "cloudSessionPresent": false,
+        "localIdentityPresent": true,
+        "matchesDeclaredAuthSource": false,
+        "matchesApprovalParentAccount": true
+      },
+      "syncQueueOwner": {
+        "state": "cloud",
+        "capturedAt": 1787948230343,
+        "accountMatchesActiveIdentity": true
+      },
+      "authorityScope": {
+        "state": "cloud",
+        "nameMode": "cloud:<account>",
+        "accountMatchesActiveIdentity": true
+      },
+      "ownerMatchesAuthorityScope": true
+    },
+    "denialPredicates": {
+      "evaluationBoundary": "read-only canonical rows with observed wall clock as proposed Deny time",
+      "approvalLifecycleCoherent": true,
+      "requestAttemptMatch": true,
+      "decidedAtAtOrAfterApprovalCreated": true,
+      "decidedAtAtOrAfterRunUpdated": true,
+      "openApprovalCount": 1,
+      "openApprovalIsExactTarget": true,
+      "runAwaitingApproval": true,
+      "approvalPending": true,
+      "cancellationIntentCount": 0,
+      "noCancellationIntent": true,
+      "eventTailSeq": 9,
+      "eventTailSafeInteger": true,
+      "transportAttemptCount": 0,
+      "transportAttemptLegacyAllowance": true,
+      "providerStartCheckpointCount": 1,
+      "providerStartExactCorrelation": true,
+      "providerResultCheckpointCount": 1,
+      "providerResultExactCorrelation": true,
+      "responseCheckpointCount": 1,
+      "responseCheckpointExactCorrelation": true,
+      "allObservedPredicatesPass": true
+    },
+    "stableAcrossRead": true,
+    "equalityBoundary": {
+      "noRawAccountIdReturned": true,
+      "noRawApprovalIdReturned": true,
+      "noTokenReturned": "[redacted]",
+      "noQueuePayloadReturned": true
+    }
+  },
+  "processIdentity": {
+    "jarvisPid": 5076,
+    "webViewPid": 16336,
+    "cdpPort": 9223,
+    "cdpOwnerMatchesWebView": true,
+    "openCodePid": 20688,
+    "openCodeParentPid": 5076,
+    "openCodeOwnedByJarvis": true,
+    "openCodeLoopbackListener": true,
+    "openCodePort": 59856
+  },
+  "completedAt": "2026-08-28T20:17:12.777Z"
+}

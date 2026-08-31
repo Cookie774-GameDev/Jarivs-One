@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "recordedUtc": "2026-08-30T10:50:45Z",
+  "head": "765809978ebd6bc395f20a7d07a73cd762bcaaed",
+  "binary": {
+    "path": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "sha256": "98D82E78A23BF7B6AB52F85CC4FCBAF0823746931CFCB94643DE136F6A33464A",
+    "bytes": 154924544,
+    "pid": 31164,
+    "createdLocal": "2026-08-30T05:39:40.665048-05:00"
+  },
+  "firstBrokenBoundary": "native process before Tauri WebView initialization",
+  "dialog": {
+    "title": "Microsoft Visual C++ Runtime Library",
+    "class": "#32770",
+    "handle": 8979834,
+    "message": "Debug Assertion Failed! Program: ...\\target\\debug\\jarvis.exe; File: minkernel\\crts\\ucrt\\src\\appcrt\\heap\\debug_heap.cpp; Line: 904; Expression: _CrtIsValidHeapPointer(block)",
+    "buttons": ["Abort", "Retry", "Ignore"],
+    "interacted": false
+  },
+  "runtimeState": {
+    "officialWebViewCount": 0,
+    "port9223ListenerCount": 0,
+    "viteOrPort5173Count": 0,
+    "ollamaProcessCount": 0,
+    "port11434ListenerCount": 0,
+    "lateRecoveryObserved": false
+  },
+  "loadedCrt": [
+    "C:\\Windows\\System32\\ucrtbase.dll",
+    "C:\\Windows\\System32\\ucrtbased.dll",
+    "C:\\Windows\\System32\\MSVCP140.dll",
+    "C:\\Windows\\System32\\MSVCP140_1.dll",
+    "C:\\Windows\\System32\\VCRUNTIME140.dll",
+    "C:\\Windows\\System32\\VCRUNTIME140_1.dll"
+  ],
+  "peEvidence": {
+    "directDependency": "ucrtbased.dll",
+    "debugImports": ["_stricmp", "___lc_codepage_func", "_free_dbg", "_strdup", "_malloc_dbg"]
+  },
+  "rootCause": {
+    "package": "espeak-rs-sys",
+    "version": "0.2.0",
+    "buildOutput": "app/src-tauri/target/debug/build/espeak-rs-sys-3b36e80e18853fc7/output",
+    "buildOutputLine": 3978,
+    "emittedDirective": "cargo:rustc-link-lib=dylib=msvcrtd",
+    "cmakeProfile": "Release",
+    "sourceBehavior": "build.rs defaults ESPEAK_LIB_PROFILE to Release, but independently emits msvcrtd whenever the Rust crate has debug_assertions on Windows",
+    "upstreamMainStillAffected": true,
+    "conclusion": "Release-built eSpeak objects were linked to the debug CRT in the Rust debug artifact, causing a cross-heap free assertion before WebView startup."
+  },
+  "verdict": "FAIL"
+}

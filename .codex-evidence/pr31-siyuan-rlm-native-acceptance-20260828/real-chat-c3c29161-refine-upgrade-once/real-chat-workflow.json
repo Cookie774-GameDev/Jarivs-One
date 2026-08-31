@@ -1,0 +1,106 @@
+{
+  "status": "failed",
+  "head": "c3c291615c24e827aa7ad6414346c778dba0ad13",
+  "route": {
+    "providerId": "opencode",
+    "connectionId": "opencode-cli",
+    "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+  },
+  "chatId": "chat_pr31_real_workflow_1787983847673",
+  "startedAt": "2026-08-29T06:10:47.673Z",
+  "assertions": [
+    {
+      "name": "isolated fixture starts at exact written bytes",
+      "passed": true,
+      "sha256": "db7cb17498d29f23805a00abed6f66f7955499194845ef3c8e576c75c89a9a9d"
+    },
+    {
+      "name": "one official jarvis process",
+      "passed": true,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "official native page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "name": "composer visibly retains exact DeepSeek selection",
+      "passed": true,
+      "visibleLabel": "opencode · opencode-go/deepseek-v4-flash-vision-exp"
+    },
+    {
+      "name": "exact DeepSeek route selected and persisted",
+      "passed": true,
+      "connection": {
+        "providerId": "opencode",
+        "id": "opencode-cli",
+        "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+        "mode": "external-cli",
+        "authSource": "opencode-provider-session"
+      },
+      "selection": {
+        "mode": "none"
+      }
+    }
+  ],
+  "turns": [],
+  "artifacts": [
+    {
+      "name": "FAIL-real-chat-workflow.png",
+      "width": 1600,
+      "height": 1025,
+      "state": {
+        "failure": "Error: semantic_timeout:one exact action proposal:[{\"id\":\"msg_qnFQEBCVuyMTb3lL\",\"role\":\"user\",\"createdAt\":1787983856616,\"updatedAt\":1787983856616,\"parts\":[{\"kind\":\"text\",\"text\":\"Refine the same file using exactly one registered files.edit action and these exact UTF-8 bytes, including the final newline:\\n\\n# Native Chat Workflow Fixture\\n\\nStatus: refined\\nSummary: VibeSpace refined the note into a concise verified acceptance artifact.\\nEvidence: refine-v2\\nQuality: clear, bounded, and local-only\\n\\nDo not use a terminal, patch, helper file, or another path.\"}],\"usage\":null},{\"id\":\"msg_jreq_69aada95-68ca-40b1-ba02-2e7aada191a6\",\"role\":\"assistant\",\"createdAt\":1787983906410,\"updatedAt\":1787983906410,\"parts\":[{\"kind\":\"text\",\"text\":\"Refined `\\\\.vibespace-native-acceptance\\\\brief.md` via one `files.edit`. The file now ends at line 7 with the final trailing newline, containing the exact UTF-8 bytes requested.\"},{\"kind\":\"jarvis_source_ref\",\"source\":{\"id\":\"jsource_jreq_69aada95-68ca-40b1-ba02-2e7aada191a6_project_tree\",\"kind\":\"context_node\",\"label\":\"Project context map\",\"trust\":\"app_verified\",\"sensitivity\":\"private\",\"observedAt\":1787983857028}},{\"kind\":\"jarvis_source_ref\",\"source\":{\"id\":\"jsource_jreq_69aada95-68ca-40b1-ba02-2e7aada191a6_us\n    at waitFor (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:60:9)\n    at async approveExact (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:127:20)\n    at async runTurn (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:157:28)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:218:3"
+      }
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "refine:before",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    }
+  ],
+  "failure": "Error: semantic_timeout:one exact action proposal:[{\"id\":\"msg_qnFQEBCVuyMTb3lL\",\"role\":\"user\",\"createdAt\":1787983856616,\"updatedAt\":1787983856616,\"parts\":[{\"kind\":\"text\",\"text\":\"Refine the same file using exactly one registered files.edit action and these exact UTF-8 bytes, including the final newline:\\n\\n# Native Chat Workflow Fixture\\n\\nStatus: refined\\nSummary: VibeSpace refined the note into a concise verified acceptance artifact.\\nEvidence: refine-v2\\nQuality: clear, bounded, and local-only\\n\\nDo not use a terminal, patch, helper file, or another path.\"}],\"usage\":null},{\"id\":\"msg_jreq_69aada95-68ca-40b1-ba02-2e7aada191a6\",\"role\":\"assistant\",\"createdAt\":1787983906410,\"updatedAt\":1787983906410,\"parts\":[{\"kind\":\"text\",\"text\":\"Refined `\\\\.vibespace-native-acceptance\\\\brief.md` via one `files.edit`. The file now ends at line 7 with the final trailing newline, containing the exact UTF-8 bytes requested.\"},{\"kind\":\"jarvis_source_ref\",\"source\":{\"id\":\"jsource_jreq_69aada95-68ca-40b1-ba02-2e7aada191a6_project_tree\",\"kind\":\"context_node\",\"label\":\"Project context map\",\"trust\":\"app_verified\",\"sensitivity\":\"private\",\"observedAt\":1787983857028}},{\"kind\":\"jarvis_source_ref\",\"source\":{\"id\":\"jsource_jreq_69aada95-68ca-40b1-ba02-2e7aada191a6_us\n    at waitFor (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:60:9)\n    at async approveExact (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:127:20)\n    at async runTurn (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:157:28)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:218:3",
+  "completedAt": "2026-08-29T06:13:50.951Z"
+}

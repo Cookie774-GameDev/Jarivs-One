@@ -1,0 +1,426 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-SIYUAN-PRESERVED-RECOVERY",
+  "startedAt": "2026-08-29T04:49:49.377Z",
+  "status": "failed",
+  "captureHead": "617b7a56e5a9e143a3412343eef7ff16799bb9a4",
+  "identity": {
+    "jarvisPid": 16772,
+    "webViewPid": 34188,
+    "executablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-b53-siyuan-native\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-28T23:49:49.2998151-05:00"
+  },
+  "safety": [
+    {
+      "label": "attach:before",
+      "capturedAt": "2026-08-28T23:49:46.9548900-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attach:after",
+      "capturedAt": "2026-08-28T23:49:49.2998151-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "exactly one active deterministic fixture is preserved",
+      "passed": true,
+      "details": {
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "fixtureCount": 1,
+        "job": {
+          "schemaVersion": 1,
+          "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "canonicalRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"selected\",\"selectedExtensions\":[],\"selectedPaths\":[\"c:/users/viper/plugins\"],\"excludedPaths\":[]}",
+          "phase": "creating_nodes",
+          "status": "failed",
+          "pauseReason": null,
+          "cursor": 8,
+          "frontierLength": 8,
+          "indexed": 13,
+          "excluded": 1,
+          "unreadable": 0,
+          "summarized": 0,
+          "summaryEligible": 0,
+          "createdNodes": 7,
+          "failed": 0,
+          "skipped": 0,
+          "inputTokens": "[redacted]",
+          "outputTokens": "[redacted]",
+          "totalTokens": "[redacted]",
+          "tokenProvenance": "[redacted]",
+          "summaryProviderId": null,
+          "summaryConnectionId": null,
+          "summaryModelId": null,
+          "phaseStartedAt": 1787959741985,
+          "rateSamples": [
+            {
+              "at": 1787959741985,
+              "processed": 0
+            }
+          ],
+          "discoverySamples": [
+            {
+              "at": 1787959741838,
+              "processed": 1,
+              "frontierRemaining": 6,
+              "discovered": 7
+            },
+            {
+              "at": 1787959741903,
+              "processed": 7,
+              "frontierRemaining": 1,
+              "discovered": 12
+            },
+            {
+              "at": 1787959741956,
+              "processed": 8,
+              "frontierRemaining": 0,
+              "discovered": 13
+            }
+          ],
+          "estimatedPercent": 25,
+          "estimatedEtaSeconds": null,
+          "reconciledAt": null,
+          "pendingNativeNodeIds": [
+            "path:README.txt",
+            "path:assets/photo.png.meta.json",
+            "path:binary/sample.bin",
+            "path:nested/deeper/info.md",
+            "path:src/app.ts",
+            "path:web/index.html"
+          ],
+          "startupDisposition": null,
+          "startupDispositionAt": null,
+          "pausedMs": 0,
+          "startedAt": 1787959741471,
+          "updatedAt": 1787973985461,
+          "completedAt": null,
+          "summaryEffort": null
+        },
+        "map": {
+          "id": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "name": "vibespace-pr31-context-fixture-20260827 Context Map",
+          "status": "active",
+          "sourceType": "local_folder"
+        },
+        "manifest": {
+          "version": 1,
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "sourceRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "notebookId": "20260823111107-czbgf4r",
+          "rootDocumentId": "20260828182841-tbwq3n7",
+          "revision": 16,
+          "status": "error",
+          "sourcePolicy": {
+            "readOnly": true,
+            "excludedPaths": []
+          },
+          "summaryPolicy": {
+            "mode": "selected",
+            "selectedExtensions": [],
+            "selectedPaths": [
+              "C:\\Users\\viper\\plugins"
+            ]
+          },
+          "summaryModel": {
+            "kind": "none"
+          },
+          "cloudSummaryApproval": null,
+          "counts": {
+            "indexed": 0,
+            "excluded": 0,
+            "unreadable": 0,
+            "summarized": 0
+          },
+          "nodeBindings": {},
+          "updatedAt": 1787973985463
+        },
+        "body": "Workspace / Project / Context V WORKSPACE Chat Workbench Canvas Terminals Kanban Schedule Benchmarks History ChatGPT ADE Agents Skills Tools Files PINNED Pin chats to keep them close. PROJECTS No projects yet. Hit + to create one. CHATS Hello, vipersel2 Hi there AGENTS Context 1/5 active maps vibespace-pr31-context-fixture-20260827 Context Map DELETED vibespace-pr31-context-fixture-20260827 Context Map ACTIVE FILES Local · uC_B Hello, vipersel2 Hi there CONTEXT Project Context Map Create a cozy draggable map for every AI chat and terminal. Create map Maps Sources Notes Views Templates Workspaces CONTEXT SOURCE FOLDER Choose SiYuan Context Map · local, project-scoped, and no provider credential required Review privacy and exclusions 1 SOURCE 2 PRIVACY 3 SUMMARIES 4 CREATE Summaries Every eligible item discovered by the safe scan is indexed either way. Summaries use the registered local model first; cloud use always asks before sending anything. No summaries Selected folders / file types (recommended) Everythin"
+      }
+    },
+    {
+      "name": "preserved checkpoint is the known failed 7 of 13 state",
+      "passed": true,
+      "details": {
+        "schemaVersion": 1,
+        "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+        "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+        "canonicalRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+        "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"selected\",\"selectedExtensions\":[],\"selectedPaths\":[\"c:/users/viper/plugins\"],\"excludedPaths\":[]}",
+        "phase": "creating_nodes",
+        "status": "failed",
+        "pauseReason": null,
+        "cursor": 8,
+        "frontierLength": 8,
+        "indexed": 13,
+        "excluded": 1,
+        "unreadable": 0,
+        "summarized": 0,
+        "summaryEligible": 0,
+        "createdNodes": 7,
+        "failed": 0,
+        "skipped": 0,
+        "inputTokens": "[redacted]",
+        "outputTokens": "[redacted]",
+        "totalTokens": "[redacted]",
+        "tokenProvenance": "[redacted]",
+        "summaryProviderId": null,
+        "summaryConnectionId": null,
+        "summaryModelId": null,
+        "phaseStartedAt": 1787959741985,
+        "rateSamples": [
+          {
+            "at": 1787959741985,
+            "processed": 0
+          }
+        ],
+        "discoverySamples": [
+          {
+            "at": 1787959741838,
+            "processed": 1,
+            "frontierRemaining": 6,
+            "discovered": 7
+          },
+          {
+            "at": 1787959741903,
+            "processed": 7,
+            "frontierRemaining": 1,
+            "discovered": 12
+          },
+          {
+            "at": 1787959741956,
+            "processed": 8,
+            "frontierRemaining": 0,
+            "discovered": 13
+          }
+        ],
+        "estimatedPercent": 25,
+        "estimatedEtaSeconds": null,
+        "reconciledAt": null,
+        "pendingNativeNodeIds": [
+          "path:README.txt",
+          "path:assets/photo.png.meta.json",
+          "path:binary/sample.bin",
+          "path:nested/deeper/info.md",
+          "path:src/app.ts",
+          "path:web/index.html"
+        ],
+        "startupDisposition": null,
+        "startupDispositionAt": null,
+        "pausedMs": 0,
+        "startedAt": 1787959741471,
+        "updatedAt": 1787973985461,
+        "completedAt": null,
+        "summaryEffort": null
+      }
+    },
+    {
+      "name": "exactly six definitely-uncommitted nodes remain pending",
+      "passed": true,
+      "details": [
+        "path:README.txt",
+        "path:assets/photo.png.meta.json",
+        "path:binary/sample.bin",
+        "path:nested/deeper/info.md",
+        "path:src/app.ts",
+        "path:web/index.html"
+      ]
+    },
+    {
+      "name": "single retry completes the preserved job",
+      "passed": false,
+      "details": {
+        "schemaVersion": 1,
+        "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+        "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+        "canonicalRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+        "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"selected\",\"selectedExtensions\":[],\"selectedPaths\":[\"c:/users/viper/plugins\"],\"excludedPaths\":[]}",
+        "phase": "creating_nodes",
+        "status": "failed",
+        "pauseReason": null,
+        "cursor": 8,
+        "frontierLength": 8,
+        "indexed": 13,
+        "excluded": 1,
+        "unreadable": 0,
+        "summarized": 0,
+        "summaryEligible": 0,
+        "createdNodes": 7,
+        "failed": 0,
+        "skipped": 0,
+        "inputTokens": "[redacted]",
+        "outputTokens": "[redacted]",
+        "totalTokens": "[redacted]",
+        "tokenProvenance": "[redacted]",
+        "summaryProviderId": null,
+        "summaryConnectionId": null,
+        "summaryModelId": null,
+        "phaseStartedAt": 1787959741985,
+        "rateSamples": [
+          {
+            "at": 1787959741985,
+            "processed": 0
+          }
+        ],
+        "discoverySamples": [
+          {
+            "at": 1787959741838,
+            "processed": 1,
+            "frontierRemaining": 6,
+            "discovered": 7
+          },
+          {
+            "at": 1787959741903,
+            "processed": 7,
+            "frontierRemaining": 1,
+            "discovered": 12
+          },
+          {
+            "at": 1787959741956,
+            "processed": 8,
+            "frontierRemaining": 0,
+            "discovered": 13
+          }
+        ],
+        "estimatedPercent": 25,
+        "estimatedEtaSeconds": null,
+        "reconciledAt": null,
+        "pendingNativeNodeIds": [
+          "path:README.txt",
+          "path:assets/photo.png.meta.json",
+          "path:binary/sample.bin",
+          "path:nested/deeper/info.md",
+          "path:src/app.ts",
+          "path:web/index.html"
+        ],
+        "startupDisposition": "needs_repair",
+        "startupDispositionAt": 1787979051453,
+        "pausedMs": 0,
+        "startedAt": 1787959741471,
+        "updatedAt": 1787979051453,
+        "completedAt": null,
+        "summaryEffort": null
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "FAIL-siyuan-preserved-recovery.png",
+      "width": 1600,
+      "height": 1025,
+      "byteCount": 1317548,
+      "sha256": "1a89054e6211bb71e10e8a25365b8cd1fab4220a90911abae51397710541df79"
+    }
+  ],
+  "events": [],
+  "firstFailure": {
+    "code": "semantic_assertion_failed",
+    "stage": "assertion",
+    "name": "NativeAcceptanceHarnessError",
+    "details": {
+      "name": "single retry completes the preserved job",
+      "details": {
+        "schemaVersion": 1,
+        "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+        "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+        "canonicalRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+        "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"selected\",\"selectedExtensions\":[],\"selectedPaths\":[\"c:/users/viper/plugins\"],\"excludedPaths\":[]}",
+        "phase": "creating_nodes",
+        "status": "failed",
+        "pauseReason": null,
+        "cursor": 8,
+        "frontierLength": 8,
+        "indexed": 13,
+        "excluded": 1,
+        "unreadable": 0,
+        "summarized": 0,
+        "summaryEligible": 0,
+        "createdNodes": 7,
+        "failed": 0,
+        "skipped": 0,
+        "inputTokens": "[redacted]",
+        "outputTokens": "[redacted]",
+        "totalTokens": "[redacted]",
+        "tokenProvenance": "[redacted]",
+        "summaryProviderId": null,
+        "summaryConnectionId": null,
+        "summaryModelId": null,
+        "phaseStartedAt": 1787959741985,
+        "rateSamples": [
+          {
+            "at": 1787959741985,
+            "processed": 0
+          }
+        ],
+        "discoverySamples": [
+          {
+            "at": 1787959741838,
+            "processed": 1,
+            "frontierRemaining": 6,
+            "discovered": 7
+          },
+          {
+            "at": 1787959741903,
+            "processed": 7,
+            "frontierRemaining": 1,
+            "discovered": 12
+          },
+          {
+            "at": 1787959741956,
+            "processed": 8,
+            "frontierRemaining": 0,
+            "discovered": 13
+          }
+        ],
+        "estimatedPercent": 25,
+        "estimatedEtaSeconds": null,
+        "reconciledAt": null,
+        "pendingNativeNodeIds": [
+          "path:README.txt",
+          "path:assets/photo.png.meta.json",
+          "path:binary/sample.bin",
+          "path:nested/deeper/info.md",
+          "path:src/app.ts",
+          "path:web/index.html"
+        ],
+        "startupDisposition": "needs_repair",
+        "startupDispositionAt": 1787979051453,
+        "pausedMs": 0,
+        "startedAt": 1787959741471,
+        "updatedAt": 1787979051453,
+        "completedAt": null,
+        "summaryEffort": null
+      }
+    }
+  },
+  "metadata": {
+    "expectedHead": "617b7a56e5a9e143a3412343eef7ff16799bb9a4",
+    "binaryCommit": "98567661384d97919de6b10224ebb2f93d7ba9e2 (contains b53bfa9907d6520d3e8a5fd4d5d697c54b57f074)",
+    "excludedDirtyScope": "all shared-checkout dirty files; scenario executes immutable native binary and reads frozen renderer state only",
+    "retryClicks": 1,
+    "modelDispatched": false,
+    "recycledMapMutated": false,
+    "productionMutated": false
+  },
+  "completedAt": "2026-08-29T04:50:52.648Z"
+}

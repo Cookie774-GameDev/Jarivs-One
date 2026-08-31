@@ -425,6 +425,15 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     argPlaceholder: '[supported provider]',
   },
   {
+    cmd: 'cli',
+    description: 'Choose OpenCode or Codex for this new chat',
+    icon: Terminal,
+    category: 'chat',
+    takesArg: true,
+    argPlaceholder: 'opencode | codex | status',
+    hasOptions: true,
+  },
+  {
     cmd: 'settings',
     description: 'Open VibeSpace Settings',
     icon: SlidersHorizontal,

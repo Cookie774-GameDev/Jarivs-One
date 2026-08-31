@@ -1,0 +1,1227 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-CORRECTIVE-NATIVE-ACCEPTANCE",
+  "agent": "VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828",
+  "startedAt": "2026-08-28T12:06:44.627Z",
+  "cdpUrl": "http://127.0.0.1:9223",
+  "expectedModel": "opencode-go/deepseek-v4-flash-vision-exp",
+  "selectedScenarios": [
+    "official-native-identity",
+    "workbench-browser",
+    "chat-whole-app-states"
+  ],
+  "safety": {
+    "officialNativeOnly": true,
+    "credentialsEntered": false,
+    "oauthCompleted": false,
+    "externalAccountCompleted": false,
+    "productionMutation": false,
+    "standaloneBrowserControlled": false,
+    "computerUseUsed": false,
+    "browserMcpUsed": false,
+    "ollamaTouched": false
+  },
+  "scenarios": [
+    {
+      "name": "official-native-identity",
+      "status": "passed",
+      "startedAt": "2026-08-28T12:06:45.227Z",
+      "completedAt": "2026-08-28T12:06:52.384Z",
+      "evidence": {
+        "title": "VibeSpace",
+        "url": "http://localhost:5173/?route=chat",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0",
+        "isTauri": true,
+        "pageCount": 1,
+        "targetPages": [
+          {
+            "url": "http://localhost:5173/?route=chat",
+            "title": "VibeSpace"
+          }
+        ],
+        "processes": {
+          "Processes": [
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18280,
+              "ParentProcessId": 16916,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18396,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18460,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18480,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18572,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18976,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 3416,
+              "ParentProcessId": 23772,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 14768,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25044,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25048,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 17920,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25064,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26392,
+              "ParentProcessId": 17080,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26608,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26744,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26752,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26892,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 27112,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "jarvis.exe",
+              "ProcessId": 7932,
+              "ParentProcessId": 7972,
+              "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 10728,
+              "ParentProcessId": 7932,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": true
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26404,
+              "ParentProcessId": 10728,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 17236,
+              "ParentProcessId": 10728,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 2120,
+              "ParentProcessId": 10728,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 17460,
+              "ParentProcessId": 10728,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 22608,
+              "ParentProcessId": 10728,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": true
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25236,
+              "ParentProcessId": 10728,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "opencode.exe",
+              "ProcessId": 22940,
+              "ParentProcessId": 7932,
+              "ExecutablePath": "C:\\Users\\viper\\AppData\\Roaming\\npm\\node_modules\\opencode-ai\\bin\\opencode.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            }
+          ],
+          "CdpListener": [
+            {
+              "LocalAddress": "127.0.0.1",
+              "LocalPort": 9223,
+              "OwningProcess": 10728,
+              "State": 2
+            }
+          ]
+        },
+        "git": {
+          "worktree": "C:/Users/viper/VibeSpace-UnifiedChungus-Final",
+          "branch": "integration/UnifiedChungus-final",
+          "head": "46da1567a097b6c10a68b89a43e6bcdb7340b42b",
+          "upstream": "origin/UnifiedChungus",
+          "finalHead": "46da1567a097b6c10a68b89a43e6bcdb7340b42b"
+        }
+      }
+    },
+    {
+      "name": "workbench-browser",
+      "status": "passed",
+      "startedAt": "2026-08-28T12:06:52.391Z",
+      "completedAt": "2026-08-28T12:07:28.882Z",
+      "evidence": {
+        "ordinarySites": [
+          "https://example.com/",
+          "https://www.wikipedia.org/"
+        ],
+        "history": [
+          "https://example.com/",
+          "https://www.wikipedia.org/"
+        ],
+        "youtubeEmbed": "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+        "blocked": "Address blocked\nOnly HTTP and HTTPS pages can open in the Workbench browser.",
+        "refused": "Loopback is intentionally embedded; a browser-generated connection refusal is transport failure, not remote iframe policy.",
+        "restoredUrl": "https://www.wikipedia.org/"
+      }
+    },
+    {
+      "name": "chat-whole-app-states",
+      "status": "failed",
+      "startedAt": "2026-08-28T12:07:28.894Z",
+      "completedAt": "2026-08-28T12:07:29.452Z",
+      "error": "Error: Exact model identity missing from Chat: opencode-go/deepseek-v4-flash-vision-exp\n    at chatAcceptance (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:661:11)\n    at async scenario (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:203:22)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:1030:5"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "official-native-webview-identity.json",
+      "kind": "json"
+    },
+    {
+      "name": "official-native-initial.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "workbench-ordinary-example-policy.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "workbench-ordinary-wikipedia-policy.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-history-back-forward.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-youtube-privacy-embed.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-youtube-loading-reload.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-stop-loading-idle.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-address-blocked-error.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-error-recovery.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-loopback-refused-to-connect.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-refused-recovery.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-browser-evidence.json",
+      "kind": "json"
+    },
+    {
+      "name": "FAIL-chat-whole-app-states.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "official-native-final-running.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "activity-ledger-visual-boundary.json",
+      "kind": "json"
+    }
+  ],
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/terminals/TerminalCliRuntimeHost.tsx?t=1787918816198:63:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/lib/harness/ToolGatewayHost.tsx?t=1787918816198:64:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/terminals/TerminalCliRuntimeHost.tsx?t=1787918816198:63:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/terminals/TerminalCliRuntimeHost.tsx?t=1787918816198:63:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:232:7",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/lib/harness/ToolGatewayHost.tsx?t=1787918816198:64:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/lib/harness/ToolGatewayHost.tsx?t=1787918816198:64:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/terminals/TerminalCliRuntimeHost.tsx?t=1787918816198:63:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:231:7",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/lib/harness/ToolGatewayHost.tsx?t=1787918816198:64:10\n    at commitHookEffectListMount (http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000:16963:34)",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at defaultInvoke (http://localhost:5173/src/lib/runtimeProfile.ts:1146:10)\n    at async http://localhost:5173/src/lib/runtimeProfile.ts:1110:20",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at emitTo (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:58:9)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:55:23",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at emitTo (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:58:9)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:55:23",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:190:43",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at http://localhost:5173/src/lib/jarvis/kernelHost.ts:166:15\n    at async http://localhost:5173/src/App.tsx:1414:38",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at readCodexAccountUsage (http://localhost:5173/src/lib/ai/adapters/codexAccountUsage.ts:60:21)\n    at async refreshCoordinator.run.ttlMs (http://localhost:5173/src/features/taskbar-usage/taskbarUsageController.ts:178:32)",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:190:43",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:190:43",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at emitTo (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:58:9)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:55:23",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at listen (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:36:10)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:190:43",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at Module.fetch (http://localhost:5173/node_modules/.vite/deps/@tauri-apps_plugin-http.js?v=1653b000:60:89)\n    at async nativeFetch (http://localhost:5173/src/lib/nativeFetch.ts:53:22)",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at emitTo (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:58:9)\n    at http://localhost:5173/src/features/opencode-system-log/OpenCodeSystemLogHost.tsx:55:23",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at defaultInvoke (http://localhost:5173/src/lib/runtimeProfile.ts:1146:10)\n    at async http://localhost:5173/src/lib/runtimeProfile.ts:1110:20",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1188239065. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2432756927. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3210498047. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2609318978. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1503369230. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2381888605. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3651705601. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 777848311. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2135294661. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2259508736. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 969273328. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1504102857. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1657081275. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 4186445340. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 4228112116. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 846265537. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2773479965. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2740074421. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1259008726. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 173201469. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3225952819. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3221948763. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3708797886. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2384261005. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3521589940. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3278360030. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1195021876. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3035435220. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3574492202. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2181806343. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 ()",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10889.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10889.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10889.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10889.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6_tcc.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6_tcc.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6_tcc.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6_tcc.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6_tcc.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10893.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10893.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10893.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10893.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io",
+      "url": "http://localhost:5173/?route=workbench"
+    }
+  ],
+  "pageErrors": [
+    "TypeError: Cannot read properties of undefined (reading 'plugins')\n    at <anonymous>:5:50\n    at <anonymous>:11:4",
+    "Uncaught SecurityError: Failed to read the 'caches' property from 'Window': Cache storage is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag.\n    at <anonymous> (https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base:999:3)",
+    "ReferenceError: writeEmbed is not defined\n    at https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ:11:10889",
+    "TypeError: Cannot read properties of undefined (reading 'plugins')\n    at <anonymous>:5:50\n    at <anonymous>:11:4",
+    "Uncaught SecurityError: Failed to read the 'caches' property from 'Window': Cache storage is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag.\n    at <anonymous> (https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base:999:3)",
+    "ReferenceError: writeEmbed is not defined\n    at https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ:11:10893",
+    "TypeError: Cannot read properties of undefined (reading 'plugins')\n    at <anonymous>:5:50\n    at <anonymous>:11:4"
+  ],
+  "git": {
+    "worktree": "C:/Users/viper/VibeSpace-UnifiedChungus-Final",
+    "branch": "integration/UnifiedChungus-final",
+    "head": "46da1567a097b6c10a68b89a43e6bcdb7340b42b",
+    "upstream": "origin/UnifiedChungus",
+    "finalHead": "46da1567a097b6c10a68b89a43e6bcdb7340b42b"
+  },
+  "finalState": {
+    "url": "http://localhost:5173/?route=chat",
+    "exactModelVisible": true,
+    "fixtureRemoved": true
+  },
+  "completedAt": "2026-08-28T12:07:30.756Z",
+  "summary": {
+    "passed": 2,
+    "failed": 1,
+    "fatal": false
+  }
+}

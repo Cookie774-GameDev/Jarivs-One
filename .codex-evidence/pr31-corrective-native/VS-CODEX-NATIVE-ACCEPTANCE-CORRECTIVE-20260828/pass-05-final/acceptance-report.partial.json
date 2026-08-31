@@ -1,0 +1,1119 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-CORRECTIVE-NATIVE-ACCEPTANCE",
+  "agent": "VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828",
+  "startedAt": "2026-08-28T12:13:33.174Z",
+  "cdpUrl": "http://127.0.0.1:9223",
+  "expectedModel": "opencode-go/deepseek-v4-flash-vision-exp",
+  "selectedScenarios": [
+    "official-native-identity",
+    "workbench-browser",
+    "chat-whole-app-states",
+    "schedule-kanban-milestones",
+    "five-plugin-flows"
+  ],
+  "safety": {
+    "officialNativeOnly": true,
+    "credentialsEntered": false,
+    "oauthCompleted": false,
+    "externalAccountCompleted": false,
+    "productionMutation": false,
+    "standaloneBrowserControlled": false,
+    "computerUseUsed": false,
+    "browserMcpUsed": false,
+    "ollamaTouched": false
+  },
+  "scenarios": [
+    {
+      "name": "official-native-identity",
+      "status": "passed",
+      "startedAt": "2026-08-28T12:13:33.809Z",
+      "completedAt": "2026-08-28T12:13:37.851Z",
+      "evidence": {
+        "title": "VibeSpace",
+        "url": "http://localhost:5173/?route=chat",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36 Edg/151.0.0.0",
+        "isTauri": true,
+        "pageCount": 1,
+        "targetPages": [
+          {
+            "url": "http://localhost:5173/?route=chat",
+            "title": "VibeSpace"
+          }
+        ],
+        "processes": {
+          "Processes": [
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18280,
+              "ParentProcessId": 16916,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18396,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18460,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18480,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18572,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 18976,
+              "ParentProcessId": 18280,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 3416,
+              "ParentProcessId": 23772,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 14768,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25044,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25048,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 17920,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 25064,
+              "ParentProcessId": 3416,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26392,
+              "ParentProcessId": 17080,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26608,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26744,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26752,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26892,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 27112,
+              "ParentProcessId": 26392,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "jarvis.exe",
+              "ProcessId": 18744,
+              "ParentProcessId": 13372,
+              "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 29860,
+              "ParentProcessId": 18744,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": true
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 23896,
+              "ParentProcessId": 29860,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 23848,
+              "ParentProcessId": 29860,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 364,
+              "ParentProcessId": 29860,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 26296,
+              "ParentProcessId": 29860,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 27640,
+              "ParentProcessId": 29860,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": true
+            },
+            {
+              "Name": "msedgewebview2.exe",
+              "ProcessId": 27824,
+              "ParentProcessId": 29860,
+              "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+              "JarvisWebViewOwner": true,
+              "CdpPort9223": false
+            },
+            {
+              "Name": "opencode.exe",
+              "ProcessId": 27828,
+              "ParentProcessId": 18744,
+              "ExecutablePath": "C:\\Users\\viper\\AppData\\Roaming\\npm\\node_modules\\opencode-ai\\bin\\opencode.exe",
+              "JarvisWebViewOwner": false,
+              "CdpPort9223": false
+            }
+          ],
+          "CdpListener": [
+            {
+              "LocalAddress": "127.0.0.1",
+              "LocalPort": 9223,
+              "OwningProcess": 29860,
+              "State": 2
+            }
+          ]
+        },
+        "git": {
+          "worktree": "C:/Users/viper/VibeSpace-UnifiedChungus-Final",
+          "branch": "integration/UnifiedChungus-final",
+          "head": "b698b064a19b2a7ae9337318a041a842541a840b",
+          "upstream": "origin/UnifiedChungus"
+        }
+      }
+    },
+    {
+      "name": "workbench-browser",
+      "status": "passed",
+      "startedAt": "2026-08-28T12:13:37.857Z",
+      "completedAt": "2026-08-28T12:13:57.705Z",
+      "evidence": {
+        "ordinarySites": [
+          "https://example.com/",
+          "https://www.wikipedia.org/"
+        ],
+        "history": [
+          "https://example.com/",
+          "https://www.wikipedia.org/"
+        ],
+        "youtubeEmbed": "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+        "blocked": "Address blocked\nOnly HTTP and HTTPS pages can open in the Workbench browser.",
+        "refused": "Loopback is intentionally embedded; a browser-generated connection refusal is transport failure, not remote iframe policy.",
+        "restoredUrl": "https://www.wikipedia.org/"
+      }
+    },
+    {
+      "name": "chat-whole-app-states",
+      "status": "failed",
+      "startedAt": "2026-08-28T12:13:57.714Z",
+      "completedAt": "2026-08-28T12:14:37.826Z",
+      "error": "locator.fill: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('textbox', { name: 'Message' })\u001b[22m\n\n    at chatAcceptance (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:745:18)\n    at async scenario (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:203:22)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:1086:5"
+    },
+    {
+      "name": "schedule-kanban-milestones",
+      "status": "passed",
+      "startedAt": "2026-08-28T12:14:38.481Z",
+      "completedAt": "2026-08-28T12:14:41.748Z",
+      "evidence": {
+        "schedule": "Workspace\n/\nProject\n/\nSchedule\nV\nWORKSPACE\nChat\nWorkbench\nCanvas\nTerminals\nKanban\nSchedule\nBenchmarks\nHistory\nChatGPT ADE\nAgents\nSkills\nTools\nFiles\nPINNED\n\nPin chats to keep them close.\n\nPROJECTS\n\nNo projects yet. Hit + to create one.\n\nCHATS\nPR31 Native Acceptance Fixture\nhi'\nAGENTS\nContext\n1/5 active maps\nvibespace-pr31-context-fixture-20260827 Context Map\nACTIVE\nFILES\nLocal · uC_B\nPR31 Native Acceptance Fixture\nhi'\nSo right now it looks really useful…\nSCHEDULE\nEvents, timed tasks, and AI plans\n\nTell Jarvis what should happen and when. Times use your device clock.\n\nCalendar\n0 events\n0 timed tasks\nTimeline\n\nNext two weeks · local dates and times\n\nTimeline\nJarvis Actions\n\nNothing scheduled yet\n\nAdd an event on the right or schedule a task with a due date to make it appear here.\n\nCreate a schedule\n\nAdd a clear title and time, then choose repeat, notes, and reminders.\n\nEvent\nJarvis Action\nTitle\nWhen\nStart\nEnd\nAll day\nRepeat\nNo repeat\nDaily\nWeekdays\nWeekly\nMonthly\nCustom\nNotes\nReminders\nAt time\n5 min before\n15 min before\n1 hour before\nSave event",
+        "kanban": "Workspace\n/\nProject\n/\nKanban\nV\nWORKSPACE\nChat\nWorkbench\nCanvas\nTerminals\nKanban\nSchedule\nBenchmarks\nHistory\nChatGPT ADE\nAgents\nSkills\nTools\nFiles\nPINNED\n\nPin chats to keep them close.\n\nPROJECTS\n\nNo projects yet. Hit + to create one.\n\nCHATS\nPR31 Native Acceptance Fixture\nhi'\nAGENTS\nContext\n1/5 active maps\nvibespace-pr31-context-fixture-20260827 Context Map\nACTIVE\nFILES\nLocal · uC_B\nPR31 Native Acceptance Fixture\nhi'\nTRACE · DAILY FOCUS & LONG-RUN GOALS\nKanban\n\nKnock out today's to-dos and track milestones that run for weeks. Everything syncs live with the Inspector Trace panel.\n\nTO-DO\n1\nopen today\nDONE\n—\ntoday\nMILESTONES\n0%\ncomplete\nSESSION\n—\ndone (rollup)\nToday's to-do\n\n0/1 done\n\n6 days ago\nMilestones\n\nGoals that run for weeks or months\n\nNo milestones yet. Track the big goals here — they persist across days."
+      }
+    },
+    {
+      "name": "five-plugin-flows",
+      "status": "failed",
+      "startedAt": "2026-08-28T12:14:41.759Z",
+      "completedAt": "2026-08-28T12:15:12.660Z",
+      "error": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('dialog').filter({ hasText: 'Configure providers' }).getByRole('heading', { name: 'OpenCode MCP servers', exact: true }).locator('xpath=ancestor::section[1]') to be visible\u001b[22m\n\n    at pluginAcceptance (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:896:20)\n    at async scenario (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\native-acceptance-driver.mjs:203:22)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/native-acceptance-driver.mjs:1092:5"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "official-native-webview-identity.json",
+      "kind": "json"
+    },
+    {
+      "name": "official-native-initial.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-native-restart-reconnect-evidence.json",
+      "kind": "json"
+    },
+    {
+      "name": "chat-native-restart-reconnected.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "workbench-ordinary-example-policy.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-ordinary-wikipedia-policy.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-history-back-forward.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-youtube-privacy-embed.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-youtube-loading-reload.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-stop-loading-idle.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-address-blocked-error.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-error-recovery.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-loopback-refused-to-connect.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-refused-recovery.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=workbench",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 943.9638671875,
+        "y": 14.304089546203613,
+        "width": 529.1519775390625,
+        "height": 309.1920042037964
+      }
+    },
+    {
+      "name": "workbench-browser-evidence.json",
+      "kind": "json"
+    },
+    {
+      "name": "chat-existing-populated-exact-model.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-empty-fixture.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-question-state.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 345.20001220703125,
+        "y": 304.1750183105469,
+        "width": 305.51251220703125,
+        "height": 20
+      }
+    },
+    {
+      "name": "chat-plan-review-state.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 345.20001220703125,
+        "y": 658.5750122070312,
+        "width": 409.5,
+        "height": 20
+      }
+    },
+    {
+      "name": "chat-streaming-question-plan-tool.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": {
+        "x": 268.8000183105469,
+        "y": 388.57501220703125,
+        "width": 972.7999572753906,
+        "height": 24.074981689453125
+      }
+    },
+    {
+      "name": "chat-populated-complete.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-activity-ledger-expanded.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-subagent-state.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-exact-model-picker.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-mode-ask-plan-agent-menu.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-slash-command-catalog.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "FAIL-chat-whole-app-states.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-schedule-whole-app.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=schedule",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "chat-kanban-milestones-whole-app.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=kanban",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    },
+    {
+      "name": "FAIL-five-plugin-flows.png",
+      "kind": "screenshot",
+      "url": "http://localhost:5173/?route=chat",
+      "viewport": {
+        "width": 1280,
+        "height": 820
+      },
+      "dimensions": {
+        "width": 1600,
+        "height": 1025
+      },
+      "target": null
+    }
+  ],
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10889.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10889.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10889.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10889.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6_tce.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6_tce.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6_tce.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6_tce.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6_tce.vflset/en_US/base.js.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=Script%20error.&type=UnhandledWindowError&stack=Error%0A%20%20%20%20at%20window.onerror%20(https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A8%3A110).",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10893.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10893.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10893.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/error_204?t=jserror&level=ERROR&client.name=56&client.version=2.20260827.01.00&msg=writeEmbed%20is%20not%20defined&type=UnhandledWindowReferenceError&stack=ReferenceError%3A%20writeEmbed%20is%20not%20defined%0A%20%20%20%20at%20https%3A%2F%2Fwww.youtube-nocookie.com%2Fembed%2FdQw4w9WgXcQ%3A11%3A10893.",
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "http://localhost:5173/?route=chat"
+    }
+  ],
+  "pageErrors": [
+    "TypeError: Cannot read properties of undefined (reading 'plugins')\n    at <anonymous>:5:50\n    at <anonymous>:11:4",
+    "Uncaught SecurityError: Failed to read the 'caches' property from 'Window': Cache storage is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag.\n    at <anonymous> (https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base:999:3)",
+    "ReferenceError: writeEmbed is not defined\n    at https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ:11:10889",
+    "TypeError: Cannot read properties of undefined (reading 'plugins')\n    at <anonymous>:5:50\n    at <anonymous>:11:4",
+    "Uncaught SecurityError: Failed to read the 'caches' property from 'Window': Cache storage is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag.\n    at <anonymous> (https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base:999:3)",
+    "ReferenceError: writeEmbed is not defined\n    at https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ:11:10893",
+    "TypeError: Cannot read properties of undefined (reading 'plugins')\n    at <anonymous>:5:50\n    at <anonymous>:11:4"
+  ],
+  "git": {
+    "worktree": "C:/Users/viper/VibeSpace-UnifiedChungus-Final",
+    "branch": "integration/UnifiedChungus-final",
+    "head": "b698b064a19b2a7ae9337318a041a842541a840b",
+    "upstream": "origin/UnifiedChungus"
+  }
+}

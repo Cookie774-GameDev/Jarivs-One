@@ -1,0 +1,82 @@
+{
+  "status": "passed",
+  "stage": "capture-complete",
+  "expectedRoot": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-cao-continuation-20260829\\phase0-context-fixture",
+  "identity": {
+    "jarvisPid": 33732,
+    "webViewPid": 23264,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-30T01:09:43.9430094-05:00"
+  },
+  "projectId": "prj_leBT3oqNPBtoSMmf",
+  "state": {
+    "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+    "projectId": "prj_leBT3oqNPBtoSMmf",
+    "selectedMapId": "map-1d0fhy8-c-users-viper-vibespace-unifiedchungus-final-codex-evidence-pr31-cao-continuatio-1788065716038",
+    "matchingMapCount": 1,
+    "activeMap": {
+      "id": "map-1d0fhy8-c-users-viper-vibespace-unifiedchungus-final-codex-evidence-pr31-cao-continuatio-1788065716038",
+      "name": "phase0-context-fixture Context Map",
+      "status": "active",
+      "rootDir": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-cao-continuation-20260829\\phase0-context-fixture",
+      "fileCount": 1,
+      "nodeCount": 1
+    },
+    "job": {
+      "status": "completed",
+      "phase": "completed",
+      "indexed": 1,
+      "createdNodes": 1,
+      "summarized": 1,
+      "summaryEligible": 3,
+      "summaryProviderId": "opencode",
+      "summaryModelId": "opencode-go/deepseek-v4-flash-vision-exp",
+      "summaryEffort": "high",
+      "pauseReason": null,
+      "failed": 0
+    },
+    "entries": [
+      {
+        "id": null,
+        "kind": "file",
+        "relativePath": "official-native-acceptance.md",
+        "summaryState": "completed",
+        "hasSummary": true
+      }
+    ],
+    "manifest": {
+      "notebookId": "20260823111107-czbgf4r",
+      "rootDocumentId": "20260829235518-nzlf9e3",
+      "summaryModel": {
+        "kind": "cloud-approved",
+        "providerId": "opencode",
+        "connectionId": "opencode-cli",
+        "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+      }
+    },
+    "recentContextErrors": []
+  },
+  "safety": [
+    {
+      "label": "map:before",
+      "capturedAt": "2026-08-30T01:09:46.6571441-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "map:after",
+      "capturedAt": "2026-08-30T01:10:10.4824234-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "events": [],
+  "notices": [],
+  "visibleText": null,
+  "failure": null
+}

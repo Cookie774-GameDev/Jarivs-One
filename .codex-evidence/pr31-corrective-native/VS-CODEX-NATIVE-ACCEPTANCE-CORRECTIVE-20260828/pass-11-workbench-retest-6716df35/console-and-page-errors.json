@@ -1,0 +1,263 @@
+{
+  "console": [
+    {
+      "capturedAt": "2026-08-28T14:41:12.518Z",
+      "type": "info",
+      "text": "[workspace] flushed persistence (before-hide; completed=3, failed=0, timedOut=false)",
+      "url": "http://localhost:5173/src/features/dev-console/patchers.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.568Z",
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/src/features/dev-console/patchers.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.569Z",
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/src/features/dev-console/patchers.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.569Z",
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/src/features/dev-console/patchers.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.569Z",
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch",
+      "url": "http://localhost:5173/src/features/dev-console/patchers.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.570Z",
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at http://localhost:5173/src/lib/jarvis/kernelHost.ts:166:15",
+      "url": "http://localhost:5173/src/features/dev-console/patchers.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.570Z",
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/src/features/dev-console/patchers.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.570Z",
+      "type": "warning",
+      "text": "IPC custom protocol failed, Tauri will now use the postMessage interface instead TypeError: Failed to fetch\n    at patchedFetch (http://localhost:5173/src/features/dev-console/patchers.ts:89:25)\n    at Object.sendIpcMessage (<anonymous>:83:7)\n    at Object.<anonymous> (<anonymous>:177:38)\n    at action (<anonymous>:336:38)\n    at <anonymous>:345:11\n    at new Promise (<anonymous>)\n    at Object.value (<anonymous>:325:14)\n    at invoke (http://localhost:5173/node_modules/.vite/deps/chunk-N7XNJV4S.js?v=1653b000:109:37)\n    at _unlisten (http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:28:9)\n    at http://localhost:5173/node_modules/.vite/deps/chunk-BLKRPNAV.js?v=1653b000:41:24",
+      "url": "http://localhost:5173/src/features/dev-console/patchers.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.625Z",
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3283969269. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": null
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.625Z",
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 4440292. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": null
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.625Z",
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 966174707. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": null
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.626Z",
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3283371648. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": null
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.626Z",
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1862552510. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": null
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.626Z",
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 3554845325. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": null
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.626Z",
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 4167222006. This might happen when the app is reloaded while Rust is running an asynchronous operation.",
+      "url": null
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.635Z",
+      "type": "debug",
+      "text": "[vite] connecting...",
+      "url": "http://localhost:5173/@vite/client"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:12.646Z",
+      "type": "debug",
+      "text": "[vite] connected.",
+      "url": "http://localhost:5173/@vite/client"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.795Z",
+      "type": "info",
+      "text": "%cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold",
+      "url": "http://localhost:5173/node_modules/.vite/deps/chunk-GTUMBEX6.js?v=1653b000"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.807Z",
+      "type": "info",
+      "text": "[STORAGE MEASUREMENT] Stage: BOOT",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.808Z",
+      "type": "info",
+      "text": "- Approx Total LocalStorage Size: 608.21 KB",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.808Z",
+      "type": "info",
+      "text": "  * Key 'jarvis-ui': 0.97 KB",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.808Z",
+      "type": "info",
+      "text": "  * Key 'jarvis-terminal-transcripts': 40.86 KB",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.808Z",
+      "type": "info",
+      "text": "  * Key 'jarvis-auth': 2.36 KB",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.808Z",
+      "type": "info",
+      "text": "  * Key 'jarvis-tools': 0.36 KB",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.809Z",
+      "type": "info",
+      "text": "  * Key 'jarvis-terminal-scheduler-v1': not found",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.809Z",
+      "type": "info",
+      "text": "[STORAGE MEASUREMENT] 'jarvis-ui' field analysis:",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.809Z",
+      "type": "info",
+      "text": "    - navSectionsCollapsed: 0.12 KB",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.809Z",
+      "type": "info",
+      "text": "    - doneNotifications: 0.12 KB",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.809Z",
+      "type": "info",
+      "text": "    - activeChatId: 0.02 KB",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.809Z",
+      "type": "info",
+      "text": "    - activeAgentId: 0.02 KB",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.810Z",
+      "type": "info",
+      "text": "    - density: 0.01 KB",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.810Z",
+      "type": "info",
+      "text": "    - ambientTrack: 0.01 KB",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.810Z",
+      "type": "info",
+      "text": "    - sakuraPetalSpeed: 0.01 KB",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.810Z",
+      "type": "info",
+      "text": "    - clockFormat: 0.01 KB",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.810Z",
+      "type": "info",
+      "text": "    - lastSeenWhatsNewVersion: 0.01 KB",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:14.811Z",
+      "type": "info",
+      "text": "    - chatMode: 0.01 KB",
+      "url": "http://localhost:5173/src/lib/persistence/safeLocalStorage.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:23.360Z",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 ()",
+      "url": "https://tipeobvisjqvpbzcpckh.supabase.co/rest/v1/rpc/publish_desktop_presence"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:23.443Z",
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND",
+      "url": "blob:http://localhost:5173/bd69aa6a-2c7e-409e-840b-661d67b23fe0"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:23.444Z",
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND",
+      "url": "blob:http://localhost:5173/bd69aa6a-2c7e-409e-840b-661d67b23fe0"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:23.476Z",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 ()",
+      "url": "https://tipeobvisjqvpbzcpckh.supabase.co/rest/v1/app_sync_records?on_conflict=user_id%2Ctable_name%2Crow_id&columns=%22user_id%22%2C%22table_name%22%2C%22row_id%22%2C%22op%22%2C%22payload%22%2C%22deleted_at%22%2C%22updated_at%22"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:31.845Z",
+      "type": "log",
+      "text": "[Jarvis] Re-attaching to existing active session: tty_Haksa5LS36sb (existing-session)",
+      "url": "http://localhost:5173/src/features/dev-console/patchers.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:31.857Z",
+      "type": "log",
+      "text": "[Jarvis] Re-attaching to existing active session: tty_T7p9Z-jRXf8W (existing-session)",
+      "url": "http://localhost:5173/src/features/dev-console/patchers.ts"
+    },
+    {
+      "capturedAt": "2026-08-28T14:41:31.858Z",
+      "type": "log",
+      "text": "[Jarvis] Re-attaching to existing active session: tty_OP0ab17vk-0h (existing-session)",
+      "url": "http://localhost:5173/src/features/dev-console/patchers.ts"
+    }
+  ],
+  "pageErrors": []
+}

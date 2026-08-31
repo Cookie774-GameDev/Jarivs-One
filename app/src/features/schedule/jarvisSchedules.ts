@@ -2,6 +2,7 @@ import type { EventCreateInput } from '@/lib/db/repositories';
 import type { ChatModelSelection } from '@/lib/ai/modelSelection';
 import type { EventRow } from '@/types/event';
 import type { AgentId, WorkspaceId } from '@/types/common';
+import { parseChatSupervisionBinding, type ChatSupervisionBindingV1 } from './chatSupervision';
 
 export type JarvisScheduleRecurrence =
   'once' | 'daily' | 'weekly' | 'monthly' | 'weekdays' | 'custom_interval' | 'custom_days';
@@ -56,6 +57,7 @@ export interface JarvisScheduleMetadata {
   runHistory: JarvisScheduleRunHistoryEntry[];
   errorHistory: Array<{ at: number; error: string }>;
   caoSupervision?: CaoSupervisionScheduleMetadataV1;
+  chatSupervision?: ChatSupervisionBindingV1;
 }
 
 const CAO_METADATA_KEYS = new Set([
@@ -219,6 +221,11 @@ export function parseJarvisScheduleMetadata(event: EventRow): JarvisScheduleMeta
         ? undefined
         : parseCaoSupervisionMetadata(parsed.caoSupervision);
     if (parsed.caoSupervision !== undefined && !caoSupervision) return null;
+    const chatSupervision =
+      parsed.chatSupervision === undefined
+        ? undefined
+        : parseChatSupervisionBinding(parsed.chatSupervision);
+    if (parsed.chatSupervision !== undefined && !chatSupervision) return null;
     const intervalMs = normalizeJarvisIntervalMs(parsed.intervalMs);
     return {
       ...parsed,
@@ -228,6 +235,7 @@ export function parseJarvisScheduleMetadata(event: EventRow): JarvisScheduleMeta
         ? parsed.errorHistory.slice(-JARVIS_SCHEDULE_HISTORY_CAP)
         : [],
       ...(caoSupervision ? { caoSupervision } : {}),
+      ...(chatSupervision ? { chatSupervision } : {}),
     };
   } catch {
     return null;
@@ -264,6 +272,7 @@ export function buildJarvisScheduleEventInput(input: {
   agentId: AgentId | string;
   projectId?: string;
   caoSupervision?: CaoSupervisionScheduleMetadataV1;
+  chatSupervision?: ChatSupervisionBindingV1;
 }): EventCreateInput {
   const cleanTitle = input.title.trim() || 'Jarvis task';
   const intervalMs =
@@ -283,6 +292,7 @@ export function buildJarvisScheduleEventInput(input: {
     runHistory: [],
     errorHistory: [],
     ...(input.caoSupervision ? { caoSupervision: input.caoSupervision } : {}),
+    ...(input.chatSupervision ? { chatSupervision: input.chatSupervision } : {}),
   };
   return {
     workspace_id: input.workspaceId,
@@ -320,6 +330,7 @@ export function buildJarvisScheduleEventUpdate(
     intervalMs?: number;
     timezone: string;
     modelSelection: ChatModelSelection;
+    chatSupervision?: ChatSupervisionBindingV1;
   },
 ): Partial<EventRow> | null {
   const current = parseJarvisScheduleMetadata(event);
@@ -346,6 +357,7 @@ export function buildJarvisScheduleEventUpdate(
     ...(intervalMs === undefined ? { intervalMs: undefined } : { intervalMs }),
     modelSelection: input.modelSelection,
     nextRunAt: input.startAt,
+    ...(input.chatSupervision ? { chatSupervision: input.chatSupervision } : {}),
   };
   const metadataPatch = withJarvisScheduleMetadata(event, metadata);
   const metadataId = metadataPatch.source_ref?.context?.id;

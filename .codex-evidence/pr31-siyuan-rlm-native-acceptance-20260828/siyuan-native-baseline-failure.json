@@ -1,0 +1,738 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-SIYUAN-NATIVE-BASELINE",
+  "startedAt": "2026-08-29T02:35:37.585Z",
+  "status": "failed",
+  "captureHead": "f72efb24244f91588b9f8ff4ab969496abe56a29",
+  "identity": {
+    "jarvisPid": 9084,
+    "webViewPid": 6608,
+    "executablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-28T21:35:37.4040119-05:00"
+  },
+  "safety": [
+    {
+      "label": "attach:before",
+      "capturedAt": "2026-08-28T21:35:19.8419437-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attach:after",
+      "capturedAt": "2026-08-28T21:35:37.4040119-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "siyuan-baseline:after",
+      "capturedAt": "2026-08-28T21:37:03.8770017-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "exactly one deterministic project-scoped SiYuan fixture exists",
+      "passed": true,
+      "details": {
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "route": "context",
+        "fixtureCount": 1,
+        "fixture": {
+          "schemaVersion": 1,
+          "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "canonicalRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"selected\",\"selectedExtensions\":[],\"selectedPaths\":[\"c:/users/viper/plugins\"],\"excludedPaths\":[]}",
+          "phase": "creating_nodes",
+          "status": "running",
+          "pauseReason": null,
+          "cursor": 8,
+          "frontierLength": 8,
+          "indexed": 13,
+          "excluded": 1,
+          "unreadable": 0,
+          "summarized": 0,
+          "summaryEligible": 0,
+          "createdNodes": 7,
+          "failed": 0,
+          "skipped": 0,
+          "inputTokens": "[redacted]",
+          "outputTokens": "[redacted]",
+          "totalTokens": "[redacted]",
+          "tokenProvenance": "[redacted]",
+          "summaryProviderId": null,
+          "summaryConnectionId": null,
+          "summaryModelId": null,
+          "phaseStartedAt": 1787959741985,
+          "rateSamples": [
+            {
+              "at": 1787959741985,
+              "processed": 0
+            }
+          ],
+          "discoverySamples": [
+            {
+              "at": 1787959741838,
+              "processed": 1,
+              "frontierRemaining": 6,
+              "discovered": 7
+            },
+            {
+              "at": 1787959741903,
+              "processed": 7,
+              "frontierRemaining": 1,
+              "discovered": 12
+            },
+            {
+              "at": 1787959741956,
+              "processed": 8,
+              "frontierRemaining": 0,
+              "discovered": 13
+            }
+          ],
+          "estimatedPercent": 25,
+          "estimatedEtaSeconds": null,
+          "reconciledAt": null,
+          "pendingNativeNodeIds": [
+            "path:README.txt",
+            "path:assets/photo.png.meta.json",
+            "path:binary/sample.bin",
+            "path:src/app.ts",
+            "path:web/index.html",
+            "path:nested/deeper/info.md"
+          ],
+          "startupDisposition": null,
+          "startupDispositionAt": null,
+          "pausedMs": 0,
+          "startedAt": 1787959741471,
+          "updatedAt": 1787970951191,
+          "completedAt": null,
+          "summaryEffort": null
+        },
+        "map": {
+          "id": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "name": "vibespace-pr31-context-fixture-20260827 Context Map",
+          "rootDir": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "status": "active",
+          "sourceType": "local_folder",
+          "treeFileCount": 0,
+          "treeNodeCount": 0
+        },
+        "manifest": {
+          "version": 1,
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "sourceRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "notebookId": "20260823111107-czbgf4r",
+          "rootDocumentId": "20260828182841-tbwq3n7",
+          "revision": 7,
+          "status": "error",
+          "sourcePolicy": {
+            "readOnly": true,
+            "excludedPaths": []
+          },
+          "summaryPolicy": {
+            "mode": "selected",
+            "selectedExtensions": [],
+            "selectedPaths": [
+              "C:\\Users\\viper\\plugins"
+            ]
+          },
+          "summaryModel": {
+            "kind": "none"
+          },
+          "cloudSummaryApproval": null,
+          "counts": {
+            "indexed": 0,
+            "excluded": 0,
+            "unreadable": 0,
+            "summarized": 0
+          },
+          "nodeBindings": {},
+          "updatedAt": 1787959742121
+        },
+        "mapRows": [
+          "vibespace-pr31-context-fixture-20260827 Context Map13 indexed items - C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827\\context_map.jsonNeeds repairActive",
+          "vibespace-pr31-context-fixture-20260827 Context Map0 files - C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827\\context_map.jsonRestore"
+        ],
+        "bodyHasIndexedItems": true,
+        "bodyHasMisleadingFilesCount": false,
+        "vaultVisible": false,
+        "vaultText": ""
+      }
+    },
+    {
+      "name": "Context map row reports indexed-item semantics instead of a misleading files count",
+      "passed": true,
+      "details": {
+        "mapRows": [
+          "vibespace-pr31-context-fixture-20260827 Context Map13 indexed items - C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827\\context_map.jsonNeeds repairActive",
+          "vibespace-pr31-context-fixture-20260827 Context Map0 files - C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827\\context_map.jsonRestore"
+        ]
+      }
+    },
+    {
+      "name": "fixture remains bound to one project and one managed SiYuan root",
+      "passed": true,
+      "details": {
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "fixture": {
+          "schemaVersion": 1,
+          "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "canonicalRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"selected\",\"selectedExtensions\":[],\"selectedPaths\":[\"c:/users/viper/plugins\"],\"excludedPaths\":[]}",
+          "phase": "creating_nodes",
+          "status": "running",
+          "pauseReason": null,
+          "cursor": 8,
+          "frontierLength": 8,
+          "indexed": 13,
+          "excluded": 1,
+          "unreadable": 0,
+          "summarized": 0,
+          "summaryEligible": 0,
+          "createdNodes": 7,
+          "failed": 0,
+          "skipped": 0,
+          "inputTokens": "[redacted]",
+          "outputTokens": "[redacted]",
+          "totalTokens": "[redacted]",
+          "tokenProvenance": "[redacted]",
+          "summaryProviderId": null,
+          "summaryConnectionId": null,
+          "summaryModelId": null,
+          "phaseStartedAt": 1787959741985,
+          "rateSamples": [
+            {
+              "at": 1787959741985,
+              "processed": 0
+            }
+          ],
+          "discoverySamples": [
+            {
+              "at": 1787959741838,
+              "processed": 1,
+              "frontierRemaining": 6,
+              "discovered": 7
+            },
+            {
+              "at": 1787959741903,
+              "processed": 7,
+              "frontierRemaining": 1,
+              "discovered": 12
+            },
+            {
+              "at": 1787959741956,
+              "processed": 8,
+              "frontierRemaining": 0,
+              "discovered": 13
+            }
+          ],
+          "estimatedPercent": 25,
+          "estimatedEtaSeconds": null,
+          "reconciledAt": null,
+          "pendingNativeNodeIds": [
+            "path:README.txt",
+            "path:assets/photo.png.meta.json",
+            "path:binary/sample.bin",
+            "path:src/app.ts",
+            "path:web/index.html",
+            "path:nested/deeper/info.md"
+          ],
+          "startupDisposition": null,
+          "startupDispositionAt": null,
+          "pausedMs": 0,
+          "startedAt": 1787959741471,
+          "updatedAt": 1787970951191,
+          "completedAt": null,
+          "summaryEffort": null
+        },
+        "map": {
+          "id": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "name": "vibespace-pr31-context-fixture-20260827 Context Map",
+          "rootDir": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "status": "active",
+          "sourceType": "local_folder",
+          "treeFileCount": 0,
+          "treeNodeCount": 0
+        },
+        "manifest": {
+          "version": 1,
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "sourceRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "notebookId": "20260823111107-czbgf4r",
+          "rootDocumentId": "20260828182841-tbwq3n7",
+          "revision": 7,
+          "status": "error",
+          "sourcePolicy": {
+            "readOnly": true,
+            "excludedPaths": []
+          },
+          "summaryPolicy": {
+            "mode": "selected",
+            "selectedExtensions": [],
+            "selectedPaths": [
+              "C:\\Users\\viper\\plugins"
+            ]
+          },
+          "summaryModel": {
+            "kind": "none"
+          },
+          "cloudSummaryApproval": null,
+          "counts": {
+            "indexed": 0,
+            "excluded": 0,
+            "unreadable": 0,
+            "summarized": 0
+          },
+          "nodeBindings": {},
+          "updatedAt": 1787959742121
+        }
+      }
+    },
+    {
+      "name": "no page or console errors occurred",
+      "passed": false,
+      "details": {
+        "failureEventCount": 1
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "01-context-indexed-item-semantics.png",
+      "width": 1600,
+      "height": 1025,
+      "byteCount": 1304128,
+      "sha256": "473bea24e03b49261c4598acff51aae4c81bf1f37be35b80a1c602b802f9f5d5",
+      "semanticState": {
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "route": "context",
+        "fixtureCount": 1,
+        "fixture": {
+          "schemaVersion": 1,
+          "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "canonicalRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"selected\",\"selectedExtensions\":[],\"selectedPaths\":[\"c:/users/viper/plugins\"],\"excludedPaths\":[]}",
+          "phase": "creating_nodes",
+          "status": "running",
+          "pauseReason": null,
+          "cursor": 8,
+          "frontierLength": 8,
+          "indexed": 13,
+          "excluded": 1,
+          "unreadable": 0,
+          "summarized": 0,
+          "summaryEligible": 0,
+          "createdNodes": 7,
+          "failed": 0,
+          "skipped": 0,
+          "inputTokens": "[redacted]",
+          "outputTokens": "[redacted]",
+          "totalTokens": "[redacted]",
+          "tokenProvenance": "[redacted]",
+          "summaryProviderId": null,
+          "summaryConnectionId": null,
+          "summaryModelId": null,
+          "phaseStartedAt": 1787959741985,
+          "rateSamples": [
+            {
+              "at": 1787959741985,
+              "processed": 0
+            }
+          ],
+          "discoverySamples": [
+            {
+              "at": 1787959741838,
+              "processed": 1,
+              "frontierRemaining": 6,
+              "discovered": 7
+            },
+            {
+              "at": 1787959741903,
+              "processed": 7,
+              "frontierRemaining": 1,
+              "discovered": 12
+            },
+            {
+              "at": 1787959741956,
+              "processed": 8,
+              "frontierRemaining": 0,
+              "discovered": 13
+            }
+          ],
+          "estimatedPercent": 25,
+          "estimatedEtaSeconds": null,
+          "reconciledAt": null,
+          "pendingNativeNodeIds": [
+            "path:README.txt",
+            "path:assets/photo.png.meta.json",
+            "path:binary/sample.bin",
+            "path:src/app.ts",
+            "path:web/index.html",
+            "path:nested/deeper/info.md"
+          ],
+          "startupDisposition": null,
+          "startupDispositionAt": null,
+          "pausedMs": 0,
+          "startedAt": 1787959741471,
+          "updatedAt": 1787970951191,
+          "completedAt": null,
+          "summaryEffort": null
+        },
+        "map": {
+          "id": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "name": "vibespace-pr31-context-fixture-20260827 Context Map",
+          "rootDir": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "status": "active",
+          "sourceType": "local_folder",
+          "treeFileCount": 0,
+          "treeNodeCount": 0
+        },
+        "manifest": {
+          "version": 1,
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "sourceRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "notebookId": "20260823111107-czbgf4r",
+          "rootDocumentId": "20260828182841-tbwq3n7",
+          "revision": 7,
+          "status": "error",
+          "sourcePolicy": {
+            "readOnly": true,
+            "excludedPaths": []
+          },
+          "summaryPolicy": {
+            "mode": "selected",
+            "selectedExtensions": [],
+            "selectedPaths": [
+              "C:\\Users\\viper\\plugins"
+            ]
+          },
+          "summaryModel": {
+            "kind": "none"
+          },
+          "cloudSummaryApproval": null,
+          "counts": {
+            "indexed": 0,
+            "excluded": 0,
+            "unreadable": 0,
+            "summarized": 0
+          },
+          "nodeBindings": {},
+          "updatedAt": 1787959742121
+        },
+        "mapRows": [
+          "vibespace-pr31-context-fixture-20260827 Context Map13 indexed items - C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827\\context_map.jsonNeeds repairActive",
+          "vibespace-pr31-context-fixture-20260827 Context Map0 files - C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827\\context_map.jsonRestore"
+        ],
+        "bodyHasIndexedItems": true,
+        "bodyHasMisleadingFilesCount": false,
+        "vaultVisible": false,
+        "vaultText": ""
+      }
+    },
+    {
+      "name": "FAIL-siyuan-native-baseline.png",
+      "width": 1600,
+      "height": 1025,
+      "byteCount": 1268175,
+      "sha256": "5ce232ef4f7d7039cb6ea38021fd3b24d01d30ab187d4ca5c38281204a2bc3f8",
+      "semanticState": {
+        "firstFailure": {
+          "code": "semantic_wait_timeout",
+          "stage": "siyuan_native_baseline",
+          "name": "NativeAcceptanceHarnessError",
+          "details": {
+            "description": "official embedded SiYuan Context Vault",
+            "attempts": 4,
+            "elapsedMs": 36726,
+            "lastValue": {
+              "projectId": "prj_leBT3oqNPBtoSMmf",
+              "route": "context",
+              "fixtureCount": 1,
+              "fixture": {
+                "schemaVersion": 1,
+                "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+                "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+                "projectId": "prj_leBT3oqNPBtoSMmf",
+                "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+                "canonicalRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+                "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"selected\",\"selectedExtensions\":[],\"selectedPaths\":[\"c:/users/viper/plugins\"],\"excludedPaths\":[]}",
+                "phase": "creating_nodes",
+                "status": "running",
+                "pauseReason": null,
+                "cursor": 8,
+                "frontierLength": 8,
+                "indexed": 13,
+                "excluded": 1,
+                "unreadable": 0,
+                "summarized": 0,
+                "summaryEligible": 0,
+                "createdNodes": 7,
+                "failed": 0,
+                "skipped": 0,
+                "inputTokens": "[redacted]",
+                "outputTokens": "[redacted]",
+                "totalTokens": "[redacted]",
+                "tokenProvenance": "[redacted]",
+                "summaryProviderId": null,
+                "summaryConnectionId": null,
+                "summaryModelId": null,
+                "phaseStartedAt": 1787959741985,
+                "rateSamples": [
+                  "[depth-limited]"
+                ],
+                "discoverySamples": [
+                  "[depth-limited]",
+                  "[depth-limited]",
+                  "[depth-limited]"
+                ],
+                "estimatedPercent": 25,
+                "estimatedEtaSeconds": null,
+                "reconciledAt": null,
+                "pendingNativeNodeIds": [
+                  "[depth-limited]",
+                  "[depth-limited]",
+                  "[depth-limited]",
+                  "[depth-limited]",
+                  "[depth-limited]",
+                  "[depth-limited]"
+                ],
+                "startupDisposition": null,
+                "startupDispositionAt": null,
+                "pausedMs": 0,
+                "startedAt": 1787959741471,
+                "updatedAt": 1787970951191,
+                "completedAt": null,
+                "summaryEffort": null
+              },
+              "map": {
+                "id": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+                "name": "vibespace-pr31-context-fixture-20260827 Context Map",
+                "rootDir": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+                "status": "active",
+                "sourceType": "local_folder",
+                "treeFileCount": 0,
+                "treeNodeCount": 0
+              },
+              "manifest": {
+                "version": 1,
+                "projectId": "prj_leBT3oqNPBtoSMmf",
+                "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+                "sourceRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+                "notebookId": "20260823111107-czbgf4r",
+                "rootDocumentId": "20260828182841-tbwq3n7",
+                "revision": 7,
+                "status": "error",
+                "sourcePolicy": {
+                  "readOnly": "[depth-limited]",
+                  "excludedPaths": "[depth-limited]"
+                },
+                "summaryPolicy": {
+                  "mode": "[depth-limited]",
+                  "selectedExtensions": "[depth-limited]",
+                  "selectedPaths": "[depth-limited]"
+                },
+                "summaryModel": {
+                  "kind": "[depth-limited]"
+                },
+                "cloudSummaryApproval": null,
+                "counts": {
+                  "indexed": "[depth-limited]",
+                  "excluded": "[depth-limited]",
+                  "unreadable": "[depth-limited]",
+                  "summarized": "[depth-limited]"
+                },
+                "nodeBindings": {},
+                "updatedAt": 1787959742121
+              },
+              "mapRows": [
+                "vibespace-pr31-context-fixture-20260827 Context Map13 indexed items - C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827\\context_map.json≈ 60% · Estimating time… · 7 nodesActive",
+                "vibespace-pr31-context-fixture-20260827 Context Map0 files - C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827\\context_map.jsonRestore"
+              ],
+              "bodyHasIndexedItems": true,
+              "bodyHasMisleadingFilesCount": false,
+              "vaultVisible": false,
+              "vaultText": ""
+            }
+          }
+        }
+      }
+    }
+  ],
+  "events": [
+    {
+      "source": "page",
+      "type": "",
+      "textSha256": "e9ec9f4492741d0e7b99d0f50fb48596573d3421c9194eb2ff16c4ce51a2a8f4",
+      "charCount": 45
+    }
+  ],
+  "firstFailure": {
+    "code": "semantic_wait_timeout",
+    "stage": "siyuan_native_baseline",
+    "name": "NativeAcceptanceHarnessError",
+    "details": {
+      "description": "official embedded SiYuan Context Vault",
+      "attempts": 4,
+      "elapsedMs": 36726,
+      "lastValue": {
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "route": "context",
+        "fixtureCount": 1,
+        "fixture": {
+          "schemaVersion": 1,
+          "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "canonicalRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"selected\",\"selectedExtensions\":[],\"selectedPaths\":[\"c:/users/viper/plugins\"],\"excludedPaths\":[]}",
+          "phase": "creating_nodes",
+          "status": "running",
+          "pauseReason": null,
+          "cursor": 8,
+          "frontierLength": 8,
+          "indexed": 13,
+          "excluded": 1,
+          "unreadable": 0,
+          "summarized": 0,
+          "summaryEligible": 0,
+          "createdNodes": 7,
+          "failed": 0,
+          "skipped": 0,
+          "inputTokens": "[redacted]",
+          "outputTokens": "[redacted]",
+          "totalTokens": "[redacted]",
+          "tokenProvenance": "[redacted]",
+          "summaryProviderId": null,
+          "summaryConnectionId": null,
+          "summaryModelId": null,
+          "phaseStartedAt": 1787959741985,
+          "rateSamples": [
+            {
+              "at": 1787959741985,
+              "processed": 0
+            }
+          ],
+          "discoverySamples": [
+            {
+              "at": 1787959741838,
+              "processed": 1,
+              "frontierRemaining": 6,
+              "discovered": 7
+            },
+            {
+              "at": 1787959741903,
+              "processed": 7,
+              "frontierRemaining": 1,
+              "discovered": 12
+            },
+            {
+              "at": 1787959741956,
+              "processed": 8,
+              "frontierRemaining": 0,
+              "discovered": 13
+            }
+          ],
+          "estimatedPercent": 25,
+          "estimatedEtaSeconds": null,
+          "reconciledAt": null,
+          "pendingNativeNodeIds": [
+            "path:README.txt",
+            "path:assets/photo.png.meta.json",
+            "path:binary/sample.bin",
+            "path:src/app.ts",
+            "path:web/index.html",
+            "path:nested/deeper/info.md"
+          ],
+          "startupDisposition": null,
+          "startupDispositionAt": null,
+          "pausedMs": 0,
+          "startedAt": 1787959741471,
+          "updatedAt": 1787970951191,
+          "completedAt": null,
+          "summaryEffort": null
+        },
+        "map": {
+          "id": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "name": "vibespace-pr31-context-fixture-20260827 Context Map",
+          "rootDir": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "status": "active",
+          "sourceType": "local_folder",
+          "treeFileCount": 0,
+          "treeNodeCount": 0
+        },
+        "manifest": {
+          "version": 1,
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+          "sourceRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "notebookId": "20260823111107-czbgf4r",
+          "rootDocumentId": "20260828182841-tbwq3n7",
+          "revision": 7,
+          "status": "error",
+          "sourcePolicy": {
+            "readOnly": true,
+            "excludedPaths": []
+          },
+          "summaryPolicy": {
+            "mode": "selected",
+            "selectedExtensions": [],
+            "selectedPaths": [
+              "C:\\Users\\viper\\plugins"
+            ]
+          },
+          "summaryModel": {
+            "kind": "none"
+          },
+          "cloudSummaryApproval": null,
+          "counts": {
+            "indexed": 0,
+            "excluded": 0,
+            "unreadable": 0,
+            "summarized": 0
+          },
+          "nodeBindings": {},
+          "updatedAt": 1787959742121
+        },
+        "mapRows": [
+          "vibespace-pr31-context-fixture-20260827 Context Map13 indexed items - C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827\\context_map.json≈ 60% · Estimating time… · 7 nodesActive",
+          "vibespace-pr31-context-fixture-20260827 Context Map0 files - C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827\\context_map.jsonRestore"
+        ],
+        "bodyHasIndexedItems": true,
+        "bodyHasMisleadingFilesCount": false,
+        "vaultVisible": false,
+        "vaultText": ""
+      }
+    }
+  },
+  "metadata": {
+    "expectedHead": "f72efb24244f91588b9f8ff4ab969496abe56a29",
+    "fixtureMutation": false,
+    "modelDispatched": false,
+    "credentialsMutated": "[redacted]",
+    "productionMutated": false,
+    "projectFixture": {
+      "created": false,
+      "projectId": "prj_leBT3oqNPBtoSMmf"
+    }
+  },
+  "completedAt": "2026-08-29T02:37:04.411Z"
+}

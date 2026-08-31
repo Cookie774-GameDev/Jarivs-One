@@ -1,0 +1,421 @@
+{
+  "status": "passed",
+  "head": "c3c291615c24e827aa7ad6414346c778dba0ad13",
+  "route": {
+    "providerId": "opencode",
+    "connectionId": "opencode-cli",
+    "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+  },
+  "chatId": "chat_pr31_real_workflow_1787984075206",
+  "startedAt": "2026-08-29T06:14:35.206Z",
+  "assertions": [
+    {
+      "name": "isolated fixture starts at exact written bytes",
+      "passed": true,
+      "sha256": "db7cb17498d29f23805a00abed6f66f7955499194845ef3c8e576c75c89a9a9d"
+    },
+    {
+      "name": "one official jarvis process",
+      "passed": true,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "official native page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "name": "composer visibly retains exact DeepSeek selection",
+      "passed": true,
+      "visibleLabel": "opencode · opencode-go/deepseek-v4-flash-vision-exp"
+    },
+    {
+      "name": "exact DeepSeek route selected and persisted",
+      "passed": true,
+      "connection": {
+        "providerId": "opencode",
+        "id": "opencode-cli",
+        "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+        "mode": "external-cli",
+        "authSource": "opencode-provider-session"
+      },
+      "selection": {
+        "mode": "none"
+      }
+    },
+    {
+      "name": "one files.edit proposal",
+      "passed": true,
+      "proposals": [
+        {
+          "action": "files.edit",
+          "status": "pending",
+          "params": {
+            "path": "C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\Projects\\.vibespace-native-acceptance\\brief.md",
+            "content": "# Native Chat Workflow Fixture\n\nStatus: refined\nSummary: VibeSpace refined the note into a concise verified acceptance artifact.\nEvidence: refine-v2\nQuality: clear, bounded, and local-only\n"
+          }
+        }
+      ]
+    },
+    {
+      "name": "refine streamed",
+      "passed": true,
+      "firstTextAt": 24067
+    },
+    {
+      "name": "refine no duplicate tool dispatch",
+      "passed": true,
+      "callIds": [
+        "jarvisapproval:jappr_58c5bac8-bf66-4244-bd17-d832fb1eb62d"
+      ]
+    },
+    {
+      "name": "refine durable tool lifecycle balanced",
+      "passed": true,
+      "toolCalls": 1,
+      "toolResults": 1
+    },
+    {
+      "name": "refine short turn skips RLM and SiYuan",
+      "passed": true,
+      "toolNames": [
+        ""
+      ]
+    },
+    {
+      "name": "refine observed execution identity is exact DeepSeek OpenCode route",
+      "passed": true,
+      "observedUsage": [
+        {
+          "input_tokens": 26403,
+          "output_tokens": 147,
+          "cost_usd": 0.0060522,
+          "provider": "opencode",
+          "model": "opencode-go/deepseek-v4-flash-vision-exp"
+        },
+        {
+          "input_tokens": 253,
+          "output_tokens": 103,
+          "cost_usd": 0.000460336,
+          "provider": "opencode",
+          "model": "opencode-go/deepseek-v4-flash-vision-exp"
+        }
+      ]
+    },
+    {
+      "name": "refine exact disk bytes",
+      "passed": true,
+      "expectedSha256": "cad26bcb1a68da8976001f28a1b56a0b603b13a74d1ee25b538efaf773440496",
+      "actualSha256": "cad26bcb1a68da8976001f28a1b56a0b603b13a74d1ee25b538efaf773440496"
+    },
+    {
+      "name": "refine exact persisted route",
+      "passed": true,
+      "connection": {
+        "providerId": "opencode",
+        "id": "opencode-cli",
+        "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+        "mode": "external-cli",
+        "authSource": "opencode-provider-session"
+      }
+    },
+    {
+      "name": "one files.edit proposal",
+      "passed": true,
+      "proposals": [
+        {
+          "action": "files.edit",
+          "status": "pending",
+          "params": {
+            "path": "C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\Projects\\.vibespace-native-acceptance\\brief.md",
+            "content": "# Native Chat Workflow Fixture\n\nStatus: upgraded\nSummary: VibeSpace upgraded the note with durable verification metadata.\nEvidence: upgrade-v3\nQuality: clear, bounded, local-only, and disk-verified\nNext: retain only as disposable native acceptance evidence\n"
+          }
+        }
+      ]
+    },
+    {
+      "name": "upgrade streamed",
+      "passed": true,
+      "firstTextAt": 37572
+    },
+    {
+      "name": "upgrade no duplicate tool dispatch",
+      "passed": true,
+      "callIds": [
+        "jarvisapproval:jappr_1f64912a-8e27-4153-84b8-1092a523eeae"
+      ]
+    },
+    {
+      "name": "upgrade durable tool lifecycle balanced",
+      "passed": true,
+      "toolCalls": 1,
+      "toolResults": 1
+    },
+    {
+      "name": "upgrade short turn skips RLM and SiYuan",
+      "passed": true,
+      "toolNames": [
+        ""
+      ]
+    },
+    {
+      "name": "upgrade observed execution identity is exact DeepSeek OpenCode route",
+      "passed": true,
+      "observedUsage": [
+        {
+          "input_tokens": 26397,
+          "output_tokens": 136,
+          "cost_usd": 0.0063624,
+          "provider": "opencode",
+          "model": "opencode-go/deepseek-v4-flash-vision-exp"
+        },
+        {
+          "input_tokens": 344,
+          "output_tokens": 127,
+          "cost_usd": 0.000726772,
+          "provider": "opencode",
+          "model": "opencode-go/deepseek-v4-flash-vision-exp"
+        }
+      ]
+    },
+    {
+      "name": "upgrade exact disk bytes",
+      "passed": true,
+      "expectedSha256": "7a59974ec44c36c54efe758f0a46b32901655307badb75d138d54bb98c78d0cc",
+      "actualSha256": "7a59974ec44c36c54efe758f0a46b32901655307badb75d138d54bb98c78d0cc"
+    },
+    {
+      "name": "upgrade exact persisted route",
+      "passed": true,
+      "connection": {
+        "providerId": "opencode",
+        "id": "opencode-cli",
+        "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+        "mode": "external-cli",
+        "authSource": "opencode-provider-session"
+      }
+    },
+    {
+      "name": "no page errors",
+      "passed": true,
+      "pageErrors": []
+    }
+  ],
+  "turns": [
+    {
+      "id": "refine",
+      "durationMs": 24491,
+      "firstActivityAt": 7317,
+      "firstTextAt": 24067,
+      "receipt": {
+        "actionId": "files.edit",
+        "callIdSha256": "b162de384968a6d93290c3e3d77f1b7c65bafeda4d8026819c070cdf4ae55633",
+        "pathMatches": true,
+        "rootMatches": true,
+        "contentMatches": true
+      },
+      "disk": {
+        "bytes": 189,
+        "sha256": "cad26bcb1a68da8976001f28a1b56a0b603b13a74d1ee25b538efaf773440496"
+      },
+      "connection": {
+        "providerId": "opencode",
+        "id": "opencode-cli",
+        "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+        "mode": "external-cli",
+        "authSource": "opencode-provider-session"
+      },
+      "assistantMessages": 2,
+      "toolCalls": 1,
+      "toolResults": 1
+    },
+    {
+      "id": "upgrade",
+      "durationMs": 38167,
+      "firstActivityAt": 10434,
+      "firstTextAt": 37572,
+      "receipt": {
+        "actionId": "files.edit",
+        "callIdSha256": "12c6a3fe868a5e08e8fc67daf44828a4376b73a7a9622c29d3627670d5e007bd",
+        "pathMatches": true,
+        "rootMatches": true,
+        "contentMatches": true
+      },
+      "disk": {
+        "bytes": 257,
+        "sha256": "7a59974ec44c36c54efe758f0a46b32901655307badb75d138d54bb98c78d0cc"
+      },
+      "connection": {
+        "providerId": "opencode",
+        "id": "opencode-cli",
+        "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+        "mode": "external-cli",
+        "authSource": "opencode-provider-session"
+      },
+      "assistantMessages": 2,
+      "toolCalls": 1,
+      "toolResults": 1
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "01-real-chat-collapsed.png",
+      "width": 1600,
+      "height": 1025,
+      "state": {
+        "turns": [
+          {
+            "id": "refine",
+            "durationMs": 24491,
+            "firstActivityAt": 7317,
+            "firstTextAt": 24067,
+            "receipt": {
+              "actionId": "files.edit",
+              "callIdSha256": "b162de384968a6d93290c3e3d77f1b7c65bafeda4d8026819c070cdf4ae55633",
+              "pathMatches": true,
+              "rootMatches": true,
+              "contentMatches": true
+            },
+            "disk": {
+              "bytes": 189,
+              "sha256": "cad26bcb1a68da8976001f28a1b56a0b603b13a74d1ee25b538efaf773440496"
+            },
+            "connection": {
+              "providerId": "opencode",
+              "id": "opencode-cli",
+              "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+              "mode": "external-cli",
+              "authSource": "opencode-provider-session"
+            },
+            "assistantMessages": 2,
+            "toolCalls": 1,
+            "toolResults": 1
+          },
+          {
+            "id": "upgrade",
+            "durationMs": 38167,
+            "firstActivityAt": 10434,
+            "firstTextAt": 37572,
+            "receipt": {
+              "actionId": "files.edit",
+              "callIdSha256": "12c6a3fe868a5e08e8fc67daf44828a4376b73a7a9622c29d3627670d5e007bd",
+              "pathMatches": true,
+              "rootMatches": true,
+              "contentMatches": true
+            },
+            "disk": {
+              "bytes": 257,
+              "sha256": "7a59974ec44c36c54efe758f0a46b32901655307badb75d138d54bb98c78d0cc"
+            },
+            "connection": {
+              "providerId": "opencode",
+              "id": "opencode-cli",
+              "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+              "mode": "external-cli",
+              "authSource": "opencode-provider-session"
+            },
+            "assistantMessages": 2,
+            "toolCalls": 1,
+            "toolResults": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "02-real-chat-expanded.png",
+      "width": 1600,
+      "height": 1025,
+      "state": {
+        "inspector": "Input\n344\nExact response metadata\n\nOutput\n127\nExact response metadata"
+      }
+    }
+  ],
+  "console": [
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/styles/globals.css"
+    }
+  ],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "refine:before",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "refine:after",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "upgrade:before",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "upgrade:after",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    }
+  ],
+  "completedAt": "2026-08-29T06:15:59.374Z"
+}

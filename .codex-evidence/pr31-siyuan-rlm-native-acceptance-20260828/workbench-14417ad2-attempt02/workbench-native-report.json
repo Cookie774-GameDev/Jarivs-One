@@ -1,0 +1,64 @@
+{
+  "status": "failed",
+  "capturedAt": "2026-08-29T03:14:08.862Z",
+  "commit": "14417ad2bae50debaaaf5b21d562567c8fd0be08",
+  "failure": "Error: Assertion failed: ordinary sites use truthful system-browser handoff, not iframe embedding\n    at assert (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/workbench-native-smoke.mjs:30:29)\n    at file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/workbench-native-smoke.mjs:78:3",
+  "assertions": [
+    {
+      "name": "ordinary sites use truthful system-browser handoff, not iframe embedding",
+      "passed": false,
+      "policies": [
+        {
+          "label": "vibespaceos",
+          "url": "https://vibespaceos.com/",
+          "src": "https://vibespaceos.com/",
+          "sandbox": "allow-forms allow-modals allow-popups allow-scripts",
+          "referrerPolicy": "no-referrer",
+          "allow": "clipboard-read 'none'; clipboard-write 'none'; camera 'none'; microphone 'none'; geolocation 'none'",
+          "frameBlocked": false,
+          "usedEmbed": false,
+          "externalUrl": "https://vibespaceos.com/",
+          "delivery": "native-child"
+        },
+        {
+          "label": "amazon",
+          "url": "https://www.amazon.com/",
+          "src": "https://www.amazon.com/",
+          "sandbox": "allow-forms allow-modals allow-popups allow-scripts",
+          "referrerPolicy": "no-referrer",
+          "allow": "clipboard-read 'none'; clipboard-write 'none'; camera 'none'; microphone 'none'; geolocation 'none'",
+          "frameBlocked": false,
+          "usedEmbed": false,
+          "externalUrl": "https://www.amazon.com/",
+          "delivery": "native-child"
+        },
+        {
+          "label": "wikipedia",
+          "url": "https://www.wikipedia.org/",
+          "src": "https://www.wikipedia.org/",
+          "sandbox": "allow-forms allow-modals allow-popups allow-scripts",
+          "referrerPolicy": "no-referrer",
+          "allow": "clipboard-read 'none'; clipboard-write 'none'; camera 'none'; microphone 'none'; geolocation 'none'",
+          "frameBlocked": false,
+          "usedEmbed": false,
+          "externalUrl": "https://www.wikipedia.org/",
+          "delivery": "native-child"
+        },
+        {
+          "label": "example",
+          "url": "https://example.com/",
+          "src": "https://example.com/",
+          "sandbox": "allow-forms allow-modals allow-popups allow-scripts",
+          "referrerPolicy": "no-referrer",
+          "allow": "clipboard-read 'none'; clipboard-write 'none'; camera 'none'; microphone 'none'; geolocation 'none'",
+          "frameBlocked": false,
+          "usedEmbed": false,
+          "externalUrl": "https://example.com/",
+          "delivery": "native-child"
+        }
+      ]
+    }
+  ],
+  "consoleMessages": [],
+  "pageErrors": []
+}

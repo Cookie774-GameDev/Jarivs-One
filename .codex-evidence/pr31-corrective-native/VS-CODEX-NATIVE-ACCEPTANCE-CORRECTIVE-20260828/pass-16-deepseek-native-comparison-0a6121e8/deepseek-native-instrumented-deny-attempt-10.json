@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-DEEPSEEK-ATTEMPT-10-INSTRUMENTED-DENY",
+  "startedAt": "2026-08-28T20:34:43.930Z",
+  "status": "failed",
+  "captureHead": "0853e43d574a64d70fa76c7147a5a4a08b853db7",
+  "identity": {
+    "jarvisPid": 5076,
+    "webViewPid": 16336,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-28T15:34:43.6130273-05:00"
+  },
+  "safety": [
+    {
+      "label": "attach:before",
+      "capturedAt": "2026-08-28T15:34:37.9710671-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attach:after",
+      "capturedAt": "2026-08-28T15:34:43.6130273-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attempt10:before",
+      "capturedAt": "2026-08-28T15:34:47.8988509-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attempt10:failure-final",
+      "capturedAt": "2026-08-28T15:35:11.7102129-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [],
+  "artifacts": [
+    {
+      "name": "13-stale-wrong-approval-instrumented-deny-attempt-10.png",
+      "width": 1600,
+      "height": 1025,
+      "byteCount": 1159239,
+      "sha256": "629b98501ccaa21790f0bf7b1a1a58b194891418710fc294fba42fbb896a87e1"
+    }
+  ],
+  "events": [],
+  "firstFailure": {
+    "code": "semantic_wait_timeout",
+    "stage": "instrumented_deny",
+    "name": "NativeAcceptanceHarnessError",
+    "details": {
+      "description": "stable 0853 kernelHost module before boot refresh",
+      "attempts": 153,
+      "elapsedMs": 20016,
+      "lastValue": {
+        "ok": true,
+        "digest": "9833c56e22bd9a359e4cb266c7fb3882ee942518459eaa1bd7255ea5e429fc74",
+        "hasSanitizer": true,
+        "hasDiagnostic": true,
+        "hasApprovalConflictCode": true,
+        "stableObservations": 1
+      }
+    }
+  },
+  "metadata": {
+    "scenario": "one boot-refreshed Deny of the exact stale wrong-file approval",
+    "reloadCount": 0,
+    "denialClickCount": 0,
+    "modelDispatchCount": 0,
+    "approvalClickCount": 0,
+    "fileMutationCount": 0,
+    "processMutationCount": 0,
+    "rawPathsInReport": false,
+    "rawContentInReport": false,
+    "rawAccountIdsInReport": false
+  },
+  "completedAt": "2026-08-28T20:35:11.840Z"
+}

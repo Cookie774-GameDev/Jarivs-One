@@ -1,0 +1,1553 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-WORKBENCH-REFERRER-NATIVE-RETEST",
+  "startedAt": "2026-08-28T15:47:35.333Z",
+  "status": "passed",
+  "target": "96959d56",
+  "safety": [
+    {
+      "label": "driver:start",
+      "capturedAt": "2026-08-28T10:47:39.3525969-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "open-workbench-public-navigation:before",
+      "capturedAt": "2026-08-28T10:47:43.1649742-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "open-workbench-public-navigation:after",
+      "capturedAt": "2026-08-28T10:47:47.3139392-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "ordinary-remote-policy:before",
+      "capturedAt": "2026-08-28T10:47:50.9994257-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "ordinary-remote-policy:after",
+      "capturedAt": "2026-08-28T10:47:55.1292420-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "seed-visible-external-handoff-without-native-launch:before",
+      "capturedAt": "2026-08-28T10:47:58.6592212-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "seed-visible-external-handoff-without-native-launch:after",
+      "capturedAt": "2026-08-28T10:48:09.4745873-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:01-ordinary-external-handoff-no-launch.png:before",
+      "capturedAt": "2026-08-28T10:48:14.8585255-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:01-ordinary-external-handoff-no-launch.png:after",
+      "capturedAt": "2026-08-28T10:48:21.2923565-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "address:youtube-watch:before",
+      "capturedAt": "2026-08-28T10:48:24.6926009-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "address:youtube-watch:after",
+      "capturedAt": "2026-08-28T10:48:29.2999550-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:02-youtube-player-rendered.png:before",
+      "capturedAt": "2026-08-28T10:48:35.1066007-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:02-youtube-player-rendered.png:after",
+      "capturedAt": "2026-08-28T10:48:46.7659891-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "reload-youtube:before",
+      "capturedAt": "2026-08-28T10:48:50.2230650-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "reload-youtube:after",
+      "capturedAt": "2026-08-28T10:48:54.0089071-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:03-youtube-reload-rendered.png:before",
+      "capturedAt": "2026-08-28T10:48:59.8280913-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:03-youtube-reload-rendered.png:after",
+      "capturedAt": "2026-08-28T10:49:05.3089071-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "address:loopback-refused:before",
+      "capturedAt": "2026-08-28T10:49:08.7457270-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "address:loopback-refused:after",
+      "capturedAt": "2026-08-28T10:49:13.3645755-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:04-loopback-refused.png:before",
+      "capturedAt": "2026-08-28T10:49:16.9659710-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:04-loopback-refused.png:after",
+      "capturedAt": "2026-08-28T10:49:22.7113406-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "back-to-youtube:before",
+      "capturedAt": "2026-08-28T10:49:26.1905721-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "back-to-youtube:after",
+      "capturedAt": "2026-08-28T10:49:30.1467926-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:05-back-youtube-recovery.png:before",
+      "capturedAt": "2026-08-28T10:49:36.0555174-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:05-back-youtube-recovery.png:after",
+      "capturedAt": "2026-08-28T10:49:41.5322135-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "forward-to-refusal:before",
+      "capturedAt": "2026-08-28T10:49:44.8543575-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "forward-to-refusal:after",
+      "capturedAt": "2026-08-28T10:49:48.7803912-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "final-back-to-youtube:before",
+      "capturedAt": "2026-08-28T10:49:52.5632907-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "final-back-to-youtube:after",
+      "capturedAt": "2026-08-28T10:49:58.1846658-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:06-final-youtube-recovery.png:before",
+      "capturedAt": "2026-08-28T10:50:03.7524113-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:06-final-youtube-recovery.png:after",
+      "capturedAt": "2026-08-28T10:50:09.5548924-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "driver:final",
+      "capturedAt": "2026-08-28T10:50:13.4699586-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "repair target is an ancestor and exact Workbench files have zero descendant diff",
+      "passed": true,
+      "target": "96959d56",
+      "startHead": "631e8336f97e5bff86978db3278dbbae30a31fb8",
+      "targetIsAncestor": true,
+      "sourceMatches": true,
+      "paths": [
+        "app/src/features/workbench/BrowserPanel.tsx",
+        "app/src/features/workbench/BrowserPanel.test.tsx",
+        "app/src/features/workbench/browserSecurity.ts",
+        "app/src/features/workbench/browserSecurity.test.ts"
+      ]
+    },
+    {
+      "name": "exactly one official jarvis process is running",
+      "passed": true,
+      "jarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 19612,
+          "ParentProcessId": 12924,
+          "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+          "CommandLine": "\"C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe\""
+        }
+      ]
+    },
+    {
+      "name": "CDP root is a direct official jarvis WebView child",
+      "passed": true,
+      "rootWebView": {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 9688,
+        "ParentProcessId": 19612,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      "listeners9223": [
+        {
+          "LocalAddress": "127.0.0.1",
+          "LocalPort": 9223,
+          "OwningProcess": 9688
+        }
+      ]
+    },
+    {
+      "name": "official VibeSpace page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=workbench"
+    },
+    {
+      "name": "ordinary remote pages remain no-referrer system-browser handoffs with no approved embed",
+      "passed": true,
+      "ordinaryPolicies": [
+        {
+          "url": "https://example.com/",
+          "src": "https://example.com/",
+          "sandbox": "allow-forms allow-modals allow-popups allow-scripts",
+          "referrerPolicy": "no-referrer",
+          "allow": "clipboard-read 'none'; clipboard-write 'none'; camera 'none'; microphone 'none'; geolocation 'none'",
+          "frameBlocked": true,
+          "usedEmbed": false,
+          "externalUrl": "https://example.com/",
+          "delivery": "system-browser"
+        },
+        {
+          "url": "https://www.wikipedia.org/",
+          "src": "https://www.wikipedia.org/",
+          "sandbox": "allow-forms allow-modals allow-popups allow-scripts",
+          "referrerPolicy": "no-referrer",
+          "allow": "clipboard-read 'none'; clipboard-write 'none'; camera 'none'; microphone 'none'; geolocation 'none'",
+          "frameBlocked": true,
+          "usedEmbed": false,
+          "externalUrl": "https://www.wikipedia.org/",
+          "delivery": "system-browser"
+        }
+      ]
+    },
+    {
+      "name": "visible ordinary-site state is a normal-browser handoff with zero iframe",
+      "passed": true,
+      "address": "https://example.com/",
+      "status": "Ready in your normal browser\nRemote sites open with your normal signed-in browser profile so saved sessions and site credentials keep working. Localhost and approved media embeds stay interactive here.\nOpen in my browser",
+      "iframeCount": 0
+    },
+    {
+      "name": "YouTube watch uses privacy embed, trusted-media sandbox, and strict-origin referrer",
+      "passed": true,
+      "address": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "iframeSrc": "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+      "sandbox": "allow-forms allow-modals allow-popups allow-scripts allow-same-origin",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "frameUrl": "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+      "state": {
+        "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster) - YouTube",
+        "player": {
+          "width": 678.4000244140625,
+          "height": 317.6000061035156
+        },
+        "errorText": "",
+        "visiblePixels": {
+          "width": 663,
+          "height": 309,
+          "nearBlackRatio": 0.02905299535796395,
+          "youtubeRedRatio": 0.012930340171916414,
+          "lightPixelRatio": 0.03940605368360937,
+          "meanLuma": 88.30210524191979,
+          "lumaStdDev": 55.881596814927555
+        }
+      }
+    },
+    {
+      "name": "approved media renders player controls and thumbnail with no Error 153",
+      "passed": true,
+      "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster) - YouTube",
+      "player": {
+        "width": 678.4000244140625,
+        "height": 317.6000061035156
+      },
+      "errorText": "",
+      "visiblePixels": {
+        "width": 663,
+        "height": 309,
+        "nearBlackRatio": 0.02905299535796395,
+        "youtubeRedRatio": 0.012930340171916414,
+        "lightPixelRatio": 0.03940605368360937,
+        "meanLuma": 88.30210524191979,
+        "lumaStdDev": 55.881596814927555
+      }
+    },
+    {
+      "name": "approved media has substantial non-black high-variance pixels",
+      "passed": true,
+      "width": 663,
+      "height": 309,
+      "nearBlackRatio": 0.02905299535796395,
+      "youtubeRedRatio": 0.012930340171916414,
+      "lightPixelRatio": 0.03940605368360937,
+      "meanLuma": 88.30210524191979,
+      "lumaStdDev": 55.881596814927555
+    },
+    {
+      "name": "reload restores playable YouTube content without Error 153",
+      "passed": true,
+      "state": {
+        "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster) - YouTube",
+        "player": {
+          "width": 678.4000244140625,
+          "height": 292
+        },
+        "errorText": "",
+        "visiblePixels": {
+          "width": 663,
+          "height": 309,
+          "nearBlackRatio": 0.02905299535796395,
+          "youtubeRedRatio": 0.012930340171916414,
+          "lightPixelRatio": 0.03940605368360937,
+          "meanLuma": 88.30210524191979,
+          "lumaStdDev": 55.881596814927555
+        }
+      },
+      "reloadPixels": {
+        "width": 663,
+        "height": 309,
+        "nearBlackRatio": 0.02905299535796395,
+        "youtubeRedRatio": 0.012930340171916414,
+        "lightPixelRatio": 0.03940605368360937,
+        "meanLuma": 88.30210524191979,
+        "lumaStdDev": 55.881596814927555
+      }
+    },
+    {
+      "name": "loopback refusal reaches the WebView transport error document",
+      "passed": true,
+      "address": "http://127.0.0.1:65534/",
+      "iframeSrc": "http://127.0.0.1:65534/",
+      "frameUrl": "chrome-error://chromewebdata/",
+      "classification": "loopback transport refusal, not remote iframe policy"
+    },
+    {
+      "name": "back recovers playable approved media",
+      "passed": true,
+      "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster) - YouTube",
+      "player": {
+        "width": 678.4000244140625,
+        "height": 292
+      },
+      "errorText": "",
+      "visiblePixels": {
+        "width": 663,
+        "height": 309,
+        "nearBlackRatio": 0.02905299535796395,
+        "youtubeRedRatio": 0.012930340171916414,
+        "lightPixelRatio": 0.03940605368360937,
+        "meanLuma": 88.30210524191979,
+        "lumaStdDev": 55.881596814927555
+      }
+    },
+    {
+      "name": "forward restores exact refused loopback state",
+      "passed": true
+    },
+    {
+      "name": "final recovery remains playable and Error-153-free",
+      "passed": true,
+      "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster) - YouTube",
+      "player": {
+        "width": 678.4000244140625,
+        "height": 292
+      },
+      "errorText": "",
+      "visiblePixels": {
+        "width": 663,
+        "height": 309,
+        "nearBlackRatio": 0.02905299535796395,
+        "youtubeRedRatio": 0.012930340171916414,
+        "lightPixelRatio": 0.03940605368360937,
+        "meanLuma": 88.30210524191979,
+        "lumaStdDev": 55.881596814927555
+      }
+    },
+    {
+      "name": "console has zero Error 153 or missing-referrer evidence",
+      "passed": true,
+      "referrerFailures": []
+    },
+    {
+      "name": "console has zero legacy Cache Storage/writeEmbed sandbox errors",
+      "passed": true,
+      "sandboxFailures": []
+    },
+    {
+      "name": "Workbench source remains zero-diff from repair target at completion",
+      "passed": true,
+      "endHead": "631e8336f97e5bff86978db3278dbbae30a31fb8",
+      "endTargetIsAncestor": true,
+      "endSourceMatches": true
+    }
+  ],
+  "console": [
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=BUFO1YudkC-b1pP3&ver=2&cmt=0&fs=0&rt=134.416&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=133813&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C24004644%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C6258%2C16948%2C100702%2C2877%2C12228%2C25059%2C4174%2C30447%2C18705%2C21437%2C4571%2C5238%2C7778%2C13109%2C2978%2C6621%2C2783%2C23826%2C9500%2C1840%2C94838%2C20588%2C5273%2C29040%2C9181%2C15416%2C17459%2C20108%2C366%2C5666%2C1168%2C372%2C7758%2C19625%2C14696%2C11462%2C927%2C2249%2C12082%2C11592%2C1349%2C110%2C479%2C277%2C9476%2C7747%2C9716%2C3614%2C188%2C3707%2C3302%2C3766%2C652%2C2%2C12629%2C2845%2C1350%2C1942%2C1165%2C3%2C3%2C744%2C13601%2C1642%2C1340%2C6471%2C3147%2C1287%2C3241%2C7891%2C8225%2C1227%2C339%2C7941%2C758%2C1537%2C2617%2C4826%2C16455%2C2416%2C3362%2C352%2C3%2C3794%2C7029%2C1250%2C2167%2C8156%2C2209%2C369%2C7935%2C3107%2C5105&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Re-attaching to existing active session: tty_Haksa5LS36sb (existing-session)"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Re-attaching to existing active session: tty_T7p9Z-jRXf8W (existing-session)"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Re-attaching to existing active session: tty_OP0ab17vk-0h (existing-session)"
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6_tcc.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6_tcc.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6_tcc.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6_tcc.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6_tcc.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=r78Drb."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=r78Drb."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=r78Drb."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=r78Drb."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.google.com/js/th/lbOtJYu-XSMPpmqwnfYQu-hXa7FqdGzVnIQYRsDfT3c.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.google.com/js/th/lbOtJYu-XSMPpmqwnfYQu-hXa7FqdGzVnIQYRsDfT3c.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.google.com/js/th/lbOtJYu-XSMPpmqwnfYQu-hXa7FqdGzVnIQYRsDfT3c.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.google.com/js/th/lbOtJYu-XSMPpmqwnfYQu-hXa7FqdGzVnIQYRsDfT3c.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,r78Drb,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=cwx9N."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,r78Drb,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=cwx9N."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,r78Drb,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=cwx9N."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,r78Drb,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=cwx9N."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?QasnAQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?QasnAQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?QasnAQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?QasnAQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=3auz4S1DgxCV97dM&ver=2&cmt=0&fs=0&rt=24.756&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=24172&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C24004644%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C100702%2C2878%2C12227%2C25059%2C4174%2C30446%2C18706%2C21437%2C4571%2C5239%2C7777%2C13109%2C2978%2C6620%2C2784%2C23826%2C9500%2C1840%2C24119%2C70719%2C20588%2C34313%2C9181%2C15416%2C17458%2C20109%2C366%2C5666%2C1168%2C372%2C7758%2C34321%2C11462%2C927%2C2249%2C12082%2C11591%2C1460%2C478%2C278%2C9476%2C7747%2C9717%2C3613%2C3895%2C3301%2C3254%2C513%2C652%2C2%2C14921%2C553%2C3291%2C1166%2C3%2C3%2C744%2C13600%2C1644%2C1339%2C6471%2C3090%2C56%2C1288%2C1262%2C1981%2C7889%2C8225%2C1227%2C339%2C7941%2C758%2C1537%2C7443%2C11881%2C4574%2C2417%2C2%2C3357%2C353%2C4%2C12073%2C2167%2C8156%2C2209%2C8304%2C8213&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=3auz4S1DgxCV97dM&ver=2&cmt=0&fs=0&rt=24.756&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=24172&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C24004644%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C100702%2C2878%2C12227%2C25059%2C4174%2C30446%2C18706%2C21437%2C4571%2C5239%2C7777%2C13109%2C2978%2C6620%2C2784%2C23826%2C9500%2C1840%2C24119%2C70719%2C20588%2C34313%2C9181%2C15416%2C17458%2C20109%2C366%2C5666%2C1168%2C372%2C7758%2C34321%2C11462%2C927%2C2249%2C12082%2C11591%2C1460%2C478%2C278%2C9476%2C7747%2C9717%2C3613%2C3895%2C3301%2C3254%2C513%2C652%2C2%2C14921%2C553%2C3291%2C1166%2C3%2C3%2C744%2C13600%2C1644%2C1339%2C6471%2C3090%2C56%2C1288%2C1262%2C1981%2C7889%2C8225%2C1227%2C339%2C7941%2C758%2C1537%2C7443%2C11881%2C4574%2C2417%2C2%2C3357%2C353%2C4%2C12073%2C2167%2C8156%2C2209%2C8304%2C8213&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=3auz4S1DgxCV97dM&ver=2&cmt=0&fs=0&rt=24.756&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=24172&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C24004644%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C100702%2C2878%2C12227%2C25059%2C4174%2C30446%2C18706%2C21437%2C4571%2C5239%2C7777%2C13109%2C2978%2C6620%2C2784%2C23826%2C9500%2C1840%2C24119%2C70719%2C20588%2C34313%2C9181%2C15416%2C17458%2C20109%2C366%2C5666%2C1168%2C372%2C7758%2C34321%2C11462%2C927%2C2249%2C12082%2C11591%2C1460%2C478%2C278%2C9476%2C7747%2C9717%2C3613%2C3895%2C3301%2C3254%2C513%2C652%2C2%2C14921%2C553%2C3291%2C1166%2C3%2C3%2C744%2C13600%2C1644%2C1339%2C6471%2C3090%2C56%2C1288%2C1262%2C1981%2C7889%2C8225%2C1227%2C339%2C7941%2C758%2C1537%2C7443%2C11881%2C4574%2C2417%2C2%2C3357%2C353%2C4%2C12073%2C2167%2C8156%2C2209%2C8304%2C8213&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=3auz4S1DgxCV97dM&ver=2&cmt=0&fs=0&rt=24.756&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=24172&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C24004644%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C100702%2C2878%2C12227%2C25059%2C4174%2C30446%2C18706%2C21437%2C4571%2C5239%2C7777%2C13109%2C2978%2C6620%2C2784%2C23826%2C9500%2C1840%2C24119%2C70719%2C20588%2C34313%2C9181%2C15416%2C17458%2C20109%2C366%2C5666%2C1168%2C372%2C7758%2C34321%2C11462%2C927%2C2249%2C12082%2C11591%2C1460%2C478%2C278%2C9476%2C7747%2C9717%2C3613%2C3895%2C3301%2C3254%2C513%2C652%2C2%2C14921%2C553%2C3291%2C1166%2C3%2C3%2C744%2C13600%2C1644%2C1339%2C6471%2C3090%2C56%2C1288%2C1262%2C1981%2C7889%2C8225%2C1227%2C339%2C7941%2C758%2C1537%2C7443%2C11881%2C4574%2C2417%2C2%2C3357%2C353%2C4%2C12073%2C2167%2C8156%2C2209%2C8304%2C8213&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?pJfraQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?pJfraQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?pJfraQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?pJfraQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=4ADvaOvmKBIRnpte&ver=2&cmt=0&fs=0&rt=15.557&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=14983&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C24004644%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C6258%2C16948%2C68547%2C32155%2C2878%2C12227%2C25059%2C4174%2C30447%2C18705%2C21437%2C4571%2C13016%2C16087%2C9404%2C23826%2C9500%2C1840%2C94837%2C20589%2C34313%2C9181%2C15416%2C17456%2C20111%2C366%2C5666%2C1168%2C372%2C7758%2C28995%2C5326%2C11462%2C927%2C2249%2C12082%2C11586%2C1465%2C478%2C278%2C9477%2C7746%2C9717%2C3613%2C3895%2C3301%2C3253%2C514%2C652%2C2%2C9672%2C5802%2C3291%2C1166%2C3%2C3%2C744%2C13600%2C1644%2C1340%2C9617%2C1287%2C1261%2C1981%2C7889%2C8226%2C1227%2C339%2C7941%2C757%2C1538%2C7443%2C16454%2C2419%2C3360%2C351%2C4%2C6917%2C1649%2C3507%2C2167%2C8156%2C2209%2C7625%2C679%2C8213%2C5044&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=4ADvaOvmKBIRnpte&ver=2&cmt=0&fs=0&rt=15.557&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=14983&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C24004644%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C6258%2C16948%2C68547%2C32155%2C2878%2C12227%2C25059%2C4174%2C30447%2C18705%2C21437%2C4571%2C13016%2C16087%2C9404%2C23826%2C9500%2C1840%2C94837%2C20589%2C34313%2C9181%2C15416%2C17456%2C20111%2C366%2C5666%2C1168%2C372%2C7758%2C28995%2C5326%2C11462%2C927%2C2249%2C12082%2C11586%2C1465%2C478%2C278%2C9477%2C7746%2C9717%2C3613%2C3895%2C3301%2C3253%2C514%2C652%2C2%2C9672%2C5802%2C3291%2C1166%2C3%2C3%2C744%2C13600%2C1644%2C1340%2C9617%2C1287%2C1261%2C1981%2C7889%2C8226%2C1227%2C339%2C7941%2C757%2C1538%2C7443%2C16454%2C2419%2C3360%2C351%2C4%2C6917%2C1649%2C3507%2C2167%2C8156%2C2209%2C7625%2C679%2C8213%2C5044&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=4ADvaOvmKBIRnpte&ver=2&cmt=0&fs=0&rt=15.557&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=14983&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C24004644%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C6258%2C16948%2C68547%2C32155%2C2878%2C12227%2C25059%2C4174%2C30447%2C18705%2C21437%2C4571%2C13016%2C16087%2C9404%2C23826%2C9500%2C1840%2C94837%2C20589%2C34313%2C9181%2C15416%2C17456%2C20111%2C366%2C5666%2C1168%2C372%2C7758%2C28995%2C5326%2C11462%2C927%2C2249%2C12082%2C11586%2C1465%2C478%2C278%2C9477%2C7746%2C9717%2C3613%2C3895%2C3301%2C3253%2C514%2C652%2C2%2C9672%2C5802%2C3291%2C1166%2C3%2C3%2C744%2C13600%2C1644%2C1340%2C9617%2C1287%2C1261%2C1981%2C7889%2C8226%2C1227%2C339%2C7941%2C757%2C1538%2C7443%2C16454%2C2419%2C3360%2C351%2C4%2C6917%2C1649%2C3507%2C2167%2C8156%2C2209%2C7625%2C679%2C8213%2C5044&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=4ADvaOvmKBIRnpte&ver=2&cmt=0&fs=0&rt=15.557&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=14983&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C24004644%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C6258%2C16948%2C68547%2C32155%2C2878%2C12227%2C25059%2C4174%2C30447%2C18705%2C21437%2C4571%2C13016%2C16087%2C9404%2C23826%2C9500%2C1840%2C94837%2C20589%2C34313%2C9181%2C15416%2C17456%2C20111%2C366%2C5666%2C1168%2C372%2C7758%2C28995%2C5326%2C11462%2C927%2C2249%2C12082%2C11586%2C1465%2C478%2C278%2C9477%2C7746%2C9717%2C3613%2C3895%2C3301%2C3253%2C514%2C652%2C2%2C9672%2C5802%2C3291%2C1166%2C3%2C3%2C744%2C13600%2C1644%2C1340%2C9617%2C1287%2C1261%2C1981%2C7889%2C8226%2C1227%2C339%2C7941%2C757%2C1538%2C7443%2C16454%2C2419%2C3360%2C351%2C4%2C6917%2C1649%2C3507%2C2167%2C8156%2C2209%2C7625%2C679%2C8213%2C5044&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/www-player.css."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/am=AAAAQA/d=1/excm=base,root/br=1/rs=AGKMywGuRGzgJHYS4iEdwnlHADV6xpZ1wg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/06ab6907/player_embed_es6.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/ss/k=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/br=1/rs=AGKMywFxa-d4QJuwPgoIBZGoeIf9rXpmmg/m=root,base."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=r78Drb."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=r78Drb."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=r78Drb."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=r78Drb."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.google.com/js/th/lbOtJYu-XSMPpmqwnfYQu-hXa7FqdGzVnIQYRsDfT3c.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.google.com/js/th/lbOtJYu-XSMPpmqwnfYQu-hXa7FqdGzVnIQYRsDfT3c.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.google.com/js/th/lbOtJYu-XSMPpmqwnfYQu-hXa7FqdGzVnIQYRsDfT3c.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.google.com/js/th/lbOtJYu-XSMPpmqwnfYQu-hXa7FqdGzVnIQYRsDfT3c.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,r78Drb,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=cwx9N."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,r78Drb,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=cwx9N."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,r78Drb,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=cwx9N."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/_/ytembeds/_/js/k=ytembeds.base.en_US.ol-sNCcxXfg.2021.O/ck=ytembeds.base.toREzO7j7d8.L.W.O/am=AAAAQA/d=1/exm=base,r78Drb,root/excm=base,root/ed=1/br=1/rs=AGKMywEaGIb7bQum2lx57iWwQI3Nc6jSmg/m=cwx9N."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?h_ztFg."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?h_ztFg."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?h_ztFg."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?h_ztFg."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=x-atGqOaeuMY1Lfg&ver=2&cmt=0&fs=0&rt=15.127&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=14514&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C23848211%2C156433%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C100702%2C15105%2C25059%2C4174%2C30447%2C18705%2C21437%2C4571%2C29103%2C6620%2C2784%2C23826%2C9500%2C1840%2C115426%2C34313%2C9181%2C15416%2C37567%2C366%2C4988%2C678%2C1168%2C372%2C7758%2C19626%2C9369%2C5326%2C11462%2C927%2C2249%2C12082%2C10758%2C2293%2C756%2C9477%2C7746%2C13330%2C3895%2C6554%2C514%2C652%2C2%2C15474%2C4457%2C3%2C3%2C744%2C13601%2C1643%2C12244%2C1358%2C9774%2C9452%2C339%2C7941%2C757%2C1538%2C1810%2C5633%2C1541%2C21044%2C3%2C12073%2C2167%2C8156%2C2209%2C8304%2C8213&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=x-atGqOaeuMY1Lfg&ver=2&cmt=0&fs=0&rt=15.127&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=14514&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C23848211%2C156433%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C100702%2C15105%2C25059%2C4174%2C30447%2C18705%2C21437%2C4571%2C29103%2C6620%2C2784%2C23826%2C9500%2C1840%2C115426%2C34313%2C9181%2C15416%2C37567%2C366%2C4988%2C678%2C1168%2C372%2C7758%2C19626%2C9369%2C5326%2C11462%2C927%2C2249%2C12082%2C10758%2C2293%2C756%2C9477%2C7746%2C13330%2C3895%2C6554%2C514%2C652%2C2%2C15474%2C4457%2C3%2C3%2C744%2C13601%2C1643%2C12244%2C1358%2C9774%2C9452%2C339%2C7941%2C757%2C1538%2C1810%2C5633%2C1541%2C21044%2C3%2C12073%2C2167%2C8156%2C2209%2C8304%2C8213&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=x-atGqOaeuMY1Lfg&ver=2&cmt=0&fs=0&rt=15.127&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=14514&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C23848211%2C156433%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C100702%2C15105%2C25059%2C4174%2C30447%2C18705%2C21437%2C4571%2C29103%2C6620%2C2784%2C23826%2C9500%2C1840%2C115426%2C34313%2C9181%2C15416%2C37567%2C366%2C4988%2C678%2C1168%2C372%2C7758%2C19626%2C9369%2C5326%2C11462%2C927%2C2249%2C12082%2C10758%2C2293%2C756%2C9477%2C7746%2C13330%2C3895%2C6554%2C514%2C652%2C2%2C15474%2C4457%2C3%2C3%2C744%2C13601%2C1643%2C12244%2C1358%2C9774%2C9452%2C339%2C7941%2C757%2C1538%2C1810%2C5633%2C1541%2C21044%2C3%2C12073%2C2167%2C8156%2C2209%2C8304%2C8213&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/api/stats/atr?ns=yt&el=embedded&cpn=x-atGqOaeuMY1Lfg&ver=2&cmt=0&fs=0&rt=15.127&euri=http%3A%2F%2Flocalhost%3A5173%2F&lact=14514&cl=970918632&mos=0&volume=100&cbr=Edge%20Chromium&cbrver=151.0.0.0&c=WEB_EMBEDDED_PLAYER&cver=2.20260827.01.00&cplayer=UNIPLAYER&cos=Windows&cosver=10.0&cplatform=DESKTOP&epm=1&hl=en_US&cr=US&len=214&fexp=v1%2C23848211%2C156433%2C27058999%2C34656%2C124674%2C117689%2C9252%2C3479%2C13030%2C23206%2C100702%2C15105%2C25059%2C4174%2C30447%2C18705%2C21437%2C4571%2C29103%2C6620%2C2784%2C23826%2C9500%2C1840%2C115426%2C34313%2C9181%2C15416%2C37567%2C366%2C4988%2C678%2C1168%2C372%2C7758%2C19626%2C9369%2C5326%2C11462%2C927%2C2249%2C12082%2C10758%2C2293%2C756%2C9477%2C7746%2C13330%2C3895%2C6554%2C514%2C652%2C2%2C15474%2C4457%2C3%2C3%2C744%2C13601%2C1643%2C12244%2C1358%2C9774%2C9452%2C339%2C7941%2C757%2C1538%2C1810%2C5633%2C1541%2C21044%2C3%2C12073%2C2167%2C8156%2C2209%2C8304%2C8213&muted=0&docid=dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/aad252b0/www-player.css."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/aad252b0/www-player.css."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/aad252b0/www-player.css."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/aad252b0/www-player.css."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/aad252b0/player_embed_es6.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/aad252b0/player_embed_es6.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/aad252b0/player_embed_es6.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/aad252b0/player_embed_es6.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/s/player/aad252b0/player_embed_es6.vflset/en_US/base.js."
+    },
+    {
+      "type": "warning",
+      "text": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127"
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://yt3.ggpht.com/MOWpaiGJdgN4aKMI-NGQLL4jMVP3aDORlQpOBWooi0GSE2TGt4_9ncyepk1pCh-yWQ795AhPbw=s68-c-k-c0x00ffffff-no-rj."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?IKdEUg."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?IKdEUg."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?IKdEUg."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/generate_204?IKdEUg."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    },
+    {
+      "type": "warning",
+      "text": "Tracking Prevention blocked access to storage for https://www.youtube-nocookie.com/youtubei/v1/log_event?alt=json."
+    }
+  ],
+  "pageErrors": [
+    {
+      "message": "TypeError: Cannot read properties of undefined (reading 'plugins')"
+    },
+    {
+      "message": "TypeError: Cannot read properties of undefined (reading 'plugins')"
+    },
+    {
+      "message": "TypeError: Cannot read properties of undefined (reading 'plugins')"
+    },
+    {
+      "message": "TypeError: Cannot read properties of undefined (reading 'plugins')"
+    },
+    {
+      "message": "TypeError: Cannot read properties of undefined (reading 'plugins')"
+    },
+    {
+      "message": "TypeError: Cannot read properties of undefined (reading 'plugins')"
+    },
+    {
+      "message": "TypeError: Cannot read properties of undefined (reading 'plugins')"
+    },
+    {
+      "message": "TypeError: Cannot read properties of undefined (reading 'plugins')"
+    },
+    {
+      "message": "TypeError: Cannot read properties of undefined (reading 'plugins')"
+    },
+    {
+      "message": "TypeError: Cannot read properties of undefined (reading 'plugins')"
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "01-ordinary-external-handoff-no-launch.png",
+      "width": 663,
+      "height": 388
+    },
+    {
+      "name": "02-youtube-player-rendered.png",
+      "width": 663,
+      "height": 309
+    },
+    {
+      "name": "03-youtube-reload-rendered.png",
+      "width": 663,
+      "height": 309
+    },
+    {
+      "name": "04-loopback-refused.png",
+      "width": 663,
+      "height": 388
+    },
+    {
+      "name": "05-back-youtube-recovery.png",
+      "width": 663,
+      "height": 388
+    },
+    {
+      "name": "06-final-youtube-recovery.png",
+      "width": 663,
+      "height": 388
+    }
+  ],
+  "prohibitions": {
+    "productFilesEdited": false,
+    "modelDispatch": false,
+    "credentialsEntered": false,
+    "productionMutation": false,
+    "externalAccountActionCompleted": false,
+    "nativeExternalBrowserControlled": false,
+    "computerUseUsed": false
+  },
+  "workbench": {
+    "ordinaryPolicies": [
+      {
+        "url": "https://example.com/",
+        "src": "https://example.com/",
+        "sandbox": "allow-forms allow-modals allow-popups allow-scripts",
+        "referrerPolicy": "no-referrer",
+        "allow": "clipboard-read 'none'; clipboard-write 'none'; camera 'none'; microphone 'none'; geolocation 'none'",
+        "frameBlocked": true,
+        "usedEmbed": false,
+        "externalUrl": "https://example.com/",
+        "delivery": "system-browser"
+      },
+      {
+        "url": "https://www.wikipedia.org/",
+        "src": "https://www.wikipedia.org/",
+        "sandbox": "allow-forms allow-modals allow-popups allow-scripts",
+        "referrerPolicy": "no-referrer",
+        "allow": "clipboard-read 'none'; clipboard-write 'none'; camera 'none'; microphone 'none'; geolocation 'none'",
+        "frameBlocked": true,
+        "usedEmbed": false,
+        "externalUrl": "https://www.wikipedia.org/",
+        "delivery": "system-browser"
+      }
+    ],
+    "external": {
+      "address": "https://example.com/",
+      "status": "Ready in your normal browser\nRemote sites open with your normal signed-in browser profile so saved sessions and site credentials keep working. Localhost and approved media embeds stay interactive here.\nOpen in my browser",
+      "iframeCount": 0
+    },
+    "youtube": {
+      "address": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "iframeSrc": "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+      "sandbox": "allow-forms allow-modals allow-popups allow-scripts allow-same-origin",
+      "referrerPolicy": "strict-origin-when-cross-origin",
+      "frameUrl": "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ",
+      "state": {
+        "title": "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster) - YouTube",
+        "player": {
+          "width": 678.4000244140625,
+          "height": 317.6000061035156
+        },
+        "errorText": "",
+        "visiblePixels": {
+          "width": 663,
+          "height": 309,
+          "nearBlackRatio": 0.02905299535796395,
+          "youtubeRedRatio": 0.012930340171916414,
+          "lightPixelRatio": 0.03940605368360937,
+          "meanLuma": 88.30210524191979,
+          "lumaStdDev": 55.881596814927555
+        }
+      },
+      "firstPixels": {
+        "width": 663,
+        "height": 309,
+        "nearBlackRatio": 0.02905299535796395,
+        "youtubeRedRatio": 0.012930340171916414,
+        "lightPixelRatio": 0.03940605368360937,
+        "meanLuma": 88.30210524191979,
+        "lumaStdDev": 55.881596814927555
+      },
+      "reloadPixels": {
+        "width": 663,
+        "height": 309,
+        "nearBlackRatio": 0.02905299535796395,
+        "youtubeRedRatio": 0.012930340171916414,
+        "lightPixelRatio": 0.03940605368360937,
+        "meanLuma": 88.30210524191979,
+        "lumaStdDev": 55.881596814927555
+      }
+    },
+    "refusal": {
+      "address": "http://127.0.0.1:65534/",
+      "iframeSrc": "http://127.0.0.1:65534/",
+      "frameUrl": "chrome-error://chromewebdata/",
+      "classification": "loopback transport refusal, not remote iframe policy"
+    },
+    "history": {
+      "back": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "forward": "http://127.0.0.1:65534/",
+      "final": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    },
+    "referrerFailures": [],
+    "sandboxFailures": []
+  },
+  "finalProcess": {
+    "CapturedAt": "2026-08-28T10:50:13.4699586-05:00",
+    "Jarvis": [
+      {
+        "Name": "jarvis.exe",
+        "ProcessId": 19612,
+        "ParentProcessId": 12924,
+        "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+        "CommandLine": "\"C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe\""
+      }
+    ],
+    "WebViews": [
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 9688,
+        "ParentProcessId": 19612,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 4916,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 100,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 20148,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 7372,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 17940,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 29296,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      }
+    ],
+    "Listeners9223": [
+      {
+        "LocalAddress": "127.0.0.1",
+        "LocalPort": 9223,
+        "OwningProcess": 9688
+      }
+    ],
+    "Ollama": [],
+    "Listeners11434": []
+  },
+  "finalHead": "631e8336f97e5bff86978db3278dbbae30a31fb8",
+  "safetySummary": {
+    "checks": 32,
+    "maxOllamaProcesses": 0,
+    "maxListeners11434": 0
+  },
+  "completedAt": "2026-08-28T15:50:13.659Z"
+}

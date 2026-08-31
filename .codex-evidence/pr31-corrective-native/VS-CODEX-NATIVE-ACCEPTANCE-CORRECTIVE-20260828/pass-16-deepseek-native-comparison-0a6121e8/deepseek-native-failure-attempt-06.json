@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-DEEPSEEK-NATIVE-COMPARISON-EVIDENCE-ATTEMPT-06",
+  "startedAt": "2026-08-28T19:32:50.497Z",
+  "failedAt": "2026-08-28T19:33:20.113Z",
+  "status": "failed",
+  "captureHead": "170a7e7be4cf4757b9752ca3a10875acce37bb65",
+  "failure": "page.waitForFunction: Timeout 20000ms exceeded.\n    at reconcileStaleWrongApproval (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\pass-16-deepseek-native-comparison-0a6121e8\\deepseek-native-comparison-driver-attempt-06.mjs:243:14)\n    at async guarded (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\pass-16-deepseek-native-comparison-0a6121e8\\deepseek-native-comparison-driver-attempt-06.mjs:166:12)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-16-deepseek-native-comparison-0a6121e8/deepseek-native-comparison-driver-attempt-06.mjs:730:17",
+  "completedPromptReports": [],
+  "approvals": [],
+  "assertions": [
+    {
+      "name": "required contract and both repairs are capture-head ancestors",
+      "passed": true,
+      "captureHead": "170a7e7be4cf4757b9752ca3a10875acce37bb65",
+      "contractCommit": "0a6121e81fcdcbbc1b1a03212ad21a321fbf2015",
+      "routingCommit": "d808806c35e7bdd5833978e7ae43f55e55da7091",
+      "denialCommit": "226cd09e2c909c77d815ce83556e9db38acf9cac"
+    },
+    {
+      "name": "committed latency contract is unchanged",
+      "passed": true
+    },
+    {
+      "name": "claimed output is absent before model work",
+      "passed": true,
+      "outputBefore": {
+        "exists": false,
+        "size": 0,
+        "sha256": null
+      }
+    },
+    {
+      "name": "native disposable input matches terminal bytes",
+      "passed": true,
+      "inputSha256": "51ef1fb954f9943798b2c7fe07373cdf36a25d8c7c1023fe460fe2742f17ba11",
+      "inputCharCount": 17
+    },
+    {
+      "name": "one official jarvis process is running",
+      "passed": true,
+      "jarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 5076,
+          "ParentProcessId": 6324,
+          "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "CDP belongs to the official jarvis WebView root",
+      "passed": true,
+      "rootWebView": {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 16336,
+        "ParentProcessId": 5076,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true,
+        "OfficialProfile": true
+      },
+      "listeners9223": [
+        {
+          "LocalAddress": "127.0.0.1",
+          "LocalPort": 9223,
+          "OwningProcess": 16336
+        }
+      ]
+    },
+    {
+      "name": "official VibeSpace page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "name": "official project root is the claimed disposable root",
+      "passed": true,
+      "projectRootSha256": "5fc5d568df65d5964129f54a6c6dd2a3f4ae40919df39f1756ebd49e44d1eeed"
+    },
+    {
+      "name": "stale wrong proposal retains canonical approval identity",
+      "passed": true,
+      "callIdSha256": "da56a4766929b4bfd4469d15dd353585be8a7be98579b4bc1d72c0c09a940a6b"
+    }
+  ],
+  "artifacts": [],
+  "safety": [
+    {
+      "label": "attempt06:start",
+      "capturedAt": "2026-08-28T14:32:53.9214478-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "stale-denial-regression:before",
+      "capturedAt": "2026-08-28T14:32:56.7306918-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "stale-denial-regression:after",
+      "capturedAt": "2026-08-28T14:33:20.0437358-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "consoleErrors": [],
+  "pageErrors": []
+}

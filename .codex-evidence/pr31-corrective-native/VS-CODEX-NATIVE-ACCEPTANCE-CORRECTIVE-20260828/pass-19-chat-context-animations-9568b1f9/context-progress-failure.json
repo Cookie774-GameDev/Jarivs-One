@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-CONTEXT-PROGRESS-PAUSE-RESUME-NATIVE",
+  "startedAt": "2026-08-28T19:00:58.039Z",
+  "status": "failed",
+  "captureHead": "ddb96184bccb015c781f4f7ee9d2111ad1b3d62f",
+  "identity": {
+    "jarvisPid": 19612,
+    "webViewPid": 9688,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-28T14:00:57.9613146-05:00"
+  },
+  "safety": [
+    {
+      "label": "attach:before",
+      "capturedAt": "2026-08-28T14:00:55.5442458-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attach:after",
+      "capturedAt": "2026-08-28T14:00:57.9613146-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "context-progress:after",
+      "capturedAt": "2026-08-28T14:01:32.7399569-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "no console, page, or network failures were recorded",
+      "passed": true,
+      "details": {
+        "eventCount": 0
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "FAIL-context-progress-pause-resume.png",
+      "width": 950,
+      "height": 1125,
+      "byteCount": 919106,
+      "sha256": "4227966fc8bf300ca55a28d7f0b14230fd7c2c8e6a9bef63dfeb331b35e84684",
+      "viewport": null,
+      "window": {
+        "innerWidth": 760,
+        "innerHeight": 900,
+        "outerWidth": 1281,
+        "outerHeight": 821,
+        "devicePixelRatio": 1.25,
+        "reducedMotion": false
+      },
+      "semanticState": {
+        "firstFailure": {
+          "code": "semantic_wait_timeout",
+          "stage": "context_progress_pause_resume",
+          "name": "NativeAcceptanceHarnessError",
+          "details": {
+            "description": "selected official Context map",
+            "attempts": 139,
+            "elapsedMs": 30007,
+            "lastValue": {
+              "mapId": null,
+              "projectId": null,
+              "cardText": "Context Map completeFinished and saved.100%SiYuan map creation progressContext Map complete · completed100%Indexed13Excluded1Unreadable0SiYuan nodes13Summarized0Skipped0Failed0Summary scope: No summariesSummary modelLocal-first automatic stays private. Choose an exact connected cloud route only when you want to replace the summary pass; VibeSpace will show scope and ask before sending.Local-first automatic",
+              "progress": {
+                "valueNow": "100",
+                "valueText": "100%, paused",
+                "paused": "true",
+                "motion": "full",
+                "estimated": "false",
+                "canvasAriaHidden": "true"
+              },
+              "workingVisible": false,
+              "animatedNodes": [],
+              "pauseVisible": false,
+              "resumeVisible": false,
+              "job": null,
+              "manifest": null
+            }
+          }
+        }
+      }
+    }
+  ],
+  "events": [],
+  "firstFailure": {
+    "code": "semantic_wait_timeout",
+    "stage": "context_progress_pause_resume",
+    "name": "NativeAcceptanceHarnessError",
+    "details": {
+      "description": "selected official Context map",
+      "attempts": 139,
+      "elapsedMs": 30007,
+      "lastValue": {
+        "mapId": null,
+        "projectId": null,
+        "cardText": "Context Map completeFinished and saved.100%SiYuan map creation progressContext Map complete · completed100%Indexed13Excluded1Unreadable0SiYuan nodes13Summarized0Skipped0Failed0Summary scope: No summariesSummary modelLocal-first automatic stays private. Choose an exact connected cloud route only when you want to replace the summary pass; VibeSpace will show scope and ask before sending.Local-first automatic",
+        "progress": {
+          "valueNow": "100",
+          "valueText": "100%, paused",
+          "paused": "true",
+          "motion": "full",
+          "estimated": "false",
+          "canvasAriaHidden": "true"
+        },
+        "workingVisible": false,
+        "animatedNodes": [],
+        "pauseVisible": false,
+        "resumeVisible": false,
+        "job": null,
+        "manifest": null
+      }
+    }
+  },
+  "metadata": {
+    "fixtureAuthority": "existing local vibespace-pr31-context-fixture-20260827 with exact job/manifest snapshot-and-restore",
+    "modelDispatched": false,
+    "modelIdentity": null,
+    "appRestarted": false,
+    "credentialsMutated": "[redacted]",
+    "productionMutated": false,
+    "normalViewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "narrowViewport": {
+      "width": 760,
+      "height": 900
+    }
+  },
+  "completedAt": "2026-08-28T19:01:32.870Z"
+}

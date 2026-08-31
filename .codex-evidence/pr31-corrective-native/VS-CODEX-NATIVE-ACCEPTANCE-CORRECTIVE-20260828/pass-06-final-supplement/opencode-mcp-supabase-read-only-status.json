@@ -1,0 +1,7 @@
+{
+  "statusText": "supabase\nAuthorization needed\nConnect",
+  "visibleUrls": [],
+  "authorizationActionClicked": false,
+  "lifecycleActionClicked": false,
+  "exactBoundary": "The authoritative OpenCode MCP status surface exposes server name/status but no configured URL. No config or credential-bearing endpoint was queried."
+}

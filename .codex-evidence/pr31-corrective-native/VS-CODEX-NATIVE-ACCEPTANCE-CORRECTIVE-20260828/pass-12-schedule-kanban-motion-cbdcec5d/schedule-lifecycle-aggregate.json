@@ -1,0 +1,704 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-NATIVE-SCHEDULE-LIFECYCLE-AGGREGATE",
+  "generatedAt": "2026-08-28T16:53:43.408Z",
+  "status": "passed",
+  "captureHead": "4912c802004a867dbf105cff2a2efb08d49470e6",
+  "stableCommit": "f72d97469a9daca77714bace8ea0bd281d228d88",
+  "reports": {
+    "immutableEventSupplement": "schedule-event-supplement-f72d9746.json",
+    "boundedActionSupplement": "schedule-action-supplement-f72d9746.json",
+    "preservedHistoricalDriverReport": "schedule-lifecycle-report.json"
+  },
+  "classification": {
+    "product": "passed",
+    "historicalDriverRetries": "preserved; latest overwrite failed before visible event synchronization"
+  },
+  "coverage": [
+    "custom weekly interval and end date",
+    "reminders 15 and 60 retained",
+    "event edit/cancel/reopen visual history preserved in prior artifacts",
+    "Jarvis action create/edit/cancel/reopen",
+    "custom interval",
+    "exact provider/connection/model identity",
+    "provider-default effort receipt",
+    "Schedule remount persistence",
+    "fixture cleanup"
+  ],
+  "event": {
+    "schemaVersion": 1,
+    "task": "PR31-NATIVE-SCHEDULE-EVENT-SUPPLEMENT",
+    "generatedAt": "2026-08-28T16:52:26.186Z",
+    "status": "passed",
+    "captureHead": "4912c802004a867dbf105cff2a2efb08d49470e6",
+    "scheduleCommit": "f72d97469a9daca77714bace8ea0bd281d228d88",
+    "commitIsAncestor": true,
+    "sourceMatches": true,
+    "assertions": [
+      {
+        "name": "surviving native event has the committed recurrence and both reminders",
+        "passed": true,
+        "eventRow": {
+          "id": "evt_2aClLIxEMhY2tpp2",
+          "workspace_id": "wks_SIY0XpxdDdLY4ndp",
+          "title": "Native custom event 0828",
+          "description": "Native custom recurrence and reminder proof.",
+          "start_at": 1788444000000,
+          "end_at": 1788449400000,
+          "all_day": false,
+          "timezone": "America/Chicago",
+          "attendees": [],
+          "source": "manual",
+          "recurrence_rule": "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,TH;UNTIL=20261231T235959",
+          "reminders": [
+            {
+              "offset_min": 15,
+              "channels": [
+                "desktop",
+                "in_app"
+              ]
+            },
+            {
+              "offset_min": 60,
+              "channels": [
+                "desktop",
+                "in_app"
+              ]
+            }
+          ],
+          "status": "scheduled",
+          "created_by": "usr_uC_BDHkQsSNV_Jd9",
+          "created_at": 1787935677247,
+          "updated_at": 1787935677247,
+          "jarvisMetadata": null
+        }
+      }
+    ],
+    "event": {
+      "id": "evt_2aClLIxEMhY2tpp2",
+      "workspace_id": "wks_SIY0XpxdDdLY4ndp",
+      "title": "Native custom event 0828",
+      "description": "Native custom recurrence and reminder proof.",
+      "start_at": 1788444000000,
+      "end_at": 1788449400000,
+      "all_day": false,
+      "timezone": "America/Chicago",
+      "attendees": [],
+      "source": "manual",
+      "recurrence_rule": "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,TH;UNTIL=20261231T235959",
+      "reminders": [
+        {
+          "offset_min": 15,
+          "channels": [
+            "desktop",
+            "in_app"
+          ]
+        },
+        {
+          "offset_min": 60,
+          "channels": [
+            "desktop",
+            "in_app"
+          ]
+        }
+      ],
+      "status": "scheduled",
+      "created_by": "usr_uC_BDHkQsSNV_Jd9",
+      "created_at": 1787935677247,
+      "updated_at": 1787935677247,
+      "jarvisMetadata": null
+    },
+    "artifact": {
+      "name": "06-schedule-event-supplement.png",
+      "width": 1983,
+      "height": 1240
+    },
+    "boundary": "Immutable snapshot only; no event edit/cancel/reopen replay was performed."
+  },
+  "action": {
+    "schemaVersion": 1,
+    "task": "PR31-NATIVE-SCHEDULE-ACTION-SUPPLEMENT",
+    "startedAt": "2026-08-28T16:52:07.459Z",
+    "completedAt": "2026-08-28T16:53:43.402Z",
+    "status": "passed",
+    "captureHead": "4912c802004a867dbf105cff2a2efb08d49470e6",
+    "scheduleCommit": "f72d97469a9daca77714bace8ea0bd281d228d88",
+    "expectedAuthority": {
+      "providerId": "opencode",
+      "connectionId": "opencode-cli",
+      "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+      "effort": "provider default"
+    },
+    "officialProcess": {
+      "jarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 19612,
+          "ParentProcessId": 12924,
+          "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+          "CommandLine": "\"C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe\""
+        }
+      ],
+      "rootWebView": {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 9688,
+        "ParentProcessId": 19612,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      "listeners9223": [
+        {
+          "LocalAddress": "127.0.0.1",
+          "LocalPort": 9223,
+          "OwningProcess": 9688
+        }
+      ],
+      "finalJarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 19612,
+          "ParentProcessId": 12924,
+          "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+          "CommandLine": "\"C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe\""
+        }
+      ]
+    },
+    "selectedModelText": "OP\nopencode · DeepSeek V4 Flash Vision Exp · Opencode Go provider connection",
+    "savedIdentity": "Provider: OpenCode · Connection: opencode-cli · Model: opencode-go/deepseek-v4-flash-vision-exp · Fast: provider default · Effort: provider default",
+    "action": {
+      "id": "evt_oRSLdRydSJJ3seZ6",
+      "workspace_id": "wks_SIY0XpxdDdLY4ndp",
+      "title": "Jarvis Scheduled — Native recovery exact-route action edited 0828",
+      "description": "Edited bounded native recovery receipt on the same saved route.",
+      "start_at": 1788554700000,
+      "end_at": 1788555000000,
+      "all_day": false,
+      "timezone": "America/Chicago",
+      "attendees": [],
+      "source": "ai",
+      "source_ref": {
+        "context": {
+          "kind": "memory",
+          "id": "jarvis_schedule:{\"kind\":\"jarvis_schedule\",\"prompt\":\"Edited bounded native recovery receipt on the same saved route.\",\"recurrence\":\"custom_interval\",\"intervalMs\":864000000,\"modelSelection\":{\"mode\":\"single\",\"providerId\":\"opencode\",\"modelId\":\"opencode-go/deepseek-v4-flash-vision-exp\",\"connectionId\":\"opencode-cli\",\"connectionMode\":\"external-cli\",\"authSource\":\"opencode-provider-session\",\"capabilities\":{\"text\":true,\"images\":false,\"files\":false,\"tools\":false,\"modelSelection\":true,\"structuredOutput\":true,\"streaming\":true,\"cancellation\":true,\"resumeSession\":false,\"systemPrompt\":false,\"workingDirectory\":true,\"usage\":true,\"subscriptionQuota\":false,\"localOnly\":false}},\"agentId\":\"agt_rbQU8hlSPQsRXWD_\",\"createdBy\":\"jarvis\",\"nextRunAt\":1788554700000,\"runHistory\":[],\"errorHistory\":[]}",
+          "excerpt": "Edited bounded native recovery receipt on the same saved route."
+        }
+      },
+      "recurrence_rule": "custom_interval",
+      "reminders": [],
+      "status": "scheduled",
+      "color_hue": 265,
+      "created_by": "agt_rbQU8hlSPQsRXWD_",
+      "created_at": 1787935962143,
+      "updated_at": 1787935981800,
+      "jarvisMetadata": {
+        "kind": "jarvis_schedule",
+        "prompt": "Edited bounded native recovery receipt on the same saved route.",
+        "recurrence": "custom_interval",
+        "intervalMs": 864000000,
+        "modelSelection": {
+          "mode": "single",
+          "providerId": "opencode",
+          "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+          "connectionId": "opencode-cli",
+          "connectionMode": "external-cli",
+          "authSource": "opencode-provider-session",
+          "capabilities": {
+            "text": true,
+            "images": false,
+            "files": false,
+            "tools": false,
+            "modelSelection": true,
+            "structuredOutput": true,
+            "streaming": true,
+            "cancellation": true,
+            "resumeSession": false,
+            "systemPrompt": false,
+            "workingDirectory": true,
+            "usage": true,
+            "subscriptionQuota": false,
+            "localOnly": false
+          }
+        },
+        "agentId": "agt_rbQU8hlSPQsRXWD_",
+        "createdBy": "jarvis",
+        "nextRunAt": 1788554700000,
+        "runHistory": [],
+        "errorHistory": []
+      }
+    },
+    "remounted": {
+      "event": {
+        "id": "evt_2aClLIxEMhY2tpp2",
+        "workspace_id": "wks_SIY0XpxdDdLY4ndp",
+        "title": "Native custom event 0828",
+        "description": "Native custom recurrence and reminder proof.",
+        "start_at": 1788444000000,
+        "end_at": 1788449400000,
+        "all_day": false,
+        "timezone": "America/Chicago",
+        "attendees": [],
+        "source": "manual",
+        "recurrence_rule": "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,TH;UNTIL=20261231T235959",
+        "reminders": [
+          {
+            "offset_min": 15,
+            "channels": [
+              "desktop",
+              "in_app"
+            ]
+          },
+          {
+            "offset_min": 60,
+            "channels": [
+              "desktop",
+              "in_app"
+            ]
+          }
+        ],
+        "status": "scheduled",
+        "created_by": "usr_uC_BDHkQsSNV_Jd9",
+        "created_at": 1787935677247,
+        "updated_at": 1787935677247,
+        "jarvisMetadata": null
+      },
+      "action": {
+        "id": "evt_oRSLdRydSJJ3seZ6",
+        "workspace_id": "wks_SIY0XpxdDdLY4ndp",
+        "title": "Jarvis Scheduled — Native recovery exact-route action edited 0828",
+        "description": "Edited bounded native recovery receipt on the same saved route.",
+        "start_at": 1788554700000,
+        "end_at": 1788555000000,
+        "all_day": false,
+        "timezone": "America/Chicago",
+        "attendees": [],
+        "source": "ai",
+        "source_ref": {
+          "context": {
+            "kind": "memory",
+            "id": "jarvis_schedule:{\"kind\":\"jarvis_schedule\",\"prompt\":\"Edited bounded native recovery receipt on the same saved route.\",\"recurrence\":\"custom_interval\",\"intervalMs\":864000000,\"modelSelection\":{\"mode\":\"single\",\"providerId\":\"opencode\",\"modelId\":\"opencode-go/deepseek-v4-flash-vision-exp\",\"connectionId\":\"opencode-cli\",\"connectionMode\":\"external-cli\",\"authSource\":\"opencode-provider-session\",\"capabilities\":{\"text\":true,\"images\":false,\"files\":false,\"tools\":false,\"modelSelection\":true,\"structuredOutput\":true,\"streaming\":true,\"cancellation\":true,\"resumeSession\":false,\"systemPrompt\":false,\"workingDirectory\":true,\"usage\":true,\"subscriptionQuota\":false,\"localOnly\":false}},\"agentId\":\"agt_rbQU8hlSPQsRXWD_\",\"createdBy\":\"jarvis\",\"nextRunAt\":1788554700000,\"runHistory\":[],\"errorHistory\":[]}",
+            "excerpt": "Edited bounded native recovery receipt on the same saved route."
+          }
+        },
+        "recurrence_rule": "custom_interval",
+        "reminders": [],
+        "status": "scheduled",
+        "color_hue": 265,
+        "created_by": "agt_rbQU8hlSPQsRXWD_",
+        "created_at": 1787935962143,
+        "updated_at": 1787935981800,
+        "jarvisMetadata": {
+          "kind": "jarvis_schedule",
+          "prompt": "Edited bounded native recovery receipt on the same saved route.",
+          "recurrence": "custom_interval",
+          "intervalMs": 864000000,
+          "modelSelection": {
+            "mode": "single",
+            "providerId": "opencode",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+            "connectionId": "opencode-cli",
+            "connectionMode": "external-cli",
+            "authSource": "opencode-provider-session",
+            "capabilities": {
+              "text": true,
+              "images": false,
+              "files": false,
+              "tools": false,
+              "modelSelection": true,
+              "structuredOutput": true,
+              "streaming": true,
+              "cancellation": true,
+              "resumeSession": false,
+              "systemPrompt": false,
+              "workingDirectory": true,
+              "usage": true,
+              "subscriptionQuota": false,
+              "localOnly": false
+            }
+          },
+          "agentId": "agt_rbQU8hlSPQsRXWD_",
+          "createdBy": "jarvis",
+          "nextRunAt": 1788554700000,
+          "runHistory": [],
+          "errorHistory": []
+        }
+      }
+    },
+    "assertions": [
+      {
+        "name": "action-only lifecycle persists exact OpenCode route and custom recurrence after reopen",
+        "passed": true,
+        "actionRow": {
+          "id": "evt_oRSLdRydSJJ3seZ6",
+          "workspace_id": "wks_SIY0XpxdDdLY4ndp",
+          "title": "Jarvis Scheduled — Native recovery exact-route action edited 0828",
+          "description": "Edited bounded native recovery receipt on the same saved route.",
+          "start_at": 1788554700000,
+          "end_at": 1788555000000,
+          "all_day": false,
+          "timezone": "America/Chicago",
+          "attendees": [],
+          "source": "ai",
+          "source_ref": {
+            "context": {
+              "kind": "memory",
+              "id": "jarvis_schedule:{\"kind\":\"jarvis_schedule\",\"prompt\":\"Edited bounded native recovery receipt on the same saved route.\",\"recurrence\":\"custom_interval\",\"intervalMs\":864000000,\"modelSelection\":{\"mode\":\"single\",\"providerId\":\"opencode\",\"modelId\":\"opencode-go/deepseek-v4-flash-vision-exp\",\"connectionId\":\"opencode-cli\",\"connectionMode\":\"external-cli\",\"authSource\":\"opencode-provider-session\",\"capabilities\":{\"text\":true,\"images\":false,\"files\":false,\"tools\":false,\"modelSelection\":true,\"structuredOutput\":true,\"streaming\":true,\"cancellation\":true,\"resumeSession\":false,\"systemPrompt\":false,\"workingDirectory\":true,\"usage\":true,\"subscriptionQuota\":false,\"localOnly\":false}},\"agentId\":\"agt_rbQU8hlSPQsRXWD_\",\"createdBy\":\"jarvis\",\"nextRunAt\":1788554700000,\"runHistory\":[],\"errorHistory\":[]}",
+              "excerpt": "Edited bounded native recovery receipt on the same saved route."
+            }
+          },
+          "recurrence_rule": "custom_interval",
+          "reminders": [],
+          "status": "scheduled",
+          "color_hue": 265,
+          "created_by": "agt_rbQU8hlSPQsRXWD_",
+          "created_at": 1787935962143,
+          "updated_at": 1787935981800,
+          "jarvisMetadata": {
+            "kind": "jarvis_schedule",
+            "prompt": "Edited bounded native recovery receipt on the same saved route.",
+            "recurrence": "custom_interval",
+            "intervalMs": 864000000,
+            "modelSelection": {
+              "mode": "single",
+              "providerId": "opencode",
+              "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+              "connectionId": "opencode-cli",
+              "connectionMode": "external-cli",
+              "authSource": "opencode-provider-session",
+              "capabilities": {
+                "text": true,
+                "images": false,
+                "files": false,
+                "tools": false,
+                "modelSelection": true,
+                "structuredOutput": true,
+                "streaming": true,
+                "cancellation": true,
+                "resumeSession": false,
+                "systemPrompt": false,
+                "workingDirectory": true,
+                "usage": true,
+                "subscriptionQuota": false,
+                "localOnly": false
+              }
+            },
+            "agentId": "agt_rbQU8hlSPQsRXWD_",
+            "createdBy": "jarvis",
+            "nextRunAt": 1788554700000,
+            "runHistory": [],
+            "errorHistory": []
+          }
+        }
+      },
+      {
+        "name": "visible saved identity receipt exposes exact provider connection model and effort",
+        "passed": true,
+        "savedIdentity": "Provider: OpenCode · Connection: opencode-cli · Model: opencode-go/deepseek-v4-flash-vision-exp · Fast: provider default · Effort: provider default"
+      },
+      {
+        "name": "event and exact-route action remain canonical after Schedule remount",
+        "passed": true,
+        "remountedEvent": {
+          "id": "evt_2aClLIxEMhY2tpp2",
+          "workspace_id": "wks_SIY0XpxdDdLY4ndp",
+          "title": "Native custom event 0828",
+          "description": "Native custom recurrence and reminder proof.",
+          "start_at": 1788444000000,
+          "end_at": 1788449400000,
+          "all_day": false,
+          "timezone": "America/Chicago",
+          "attendees": [],
+          "source": "manual",
+          "recurrence_rule": "RRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE,TH;UNTIL=20261231T235959",
+          "reminders": [
+            {
+              "offset_min": 15,
+              "channels": [
+                "desktop",
+                "in_app"
+              ]
+            },
+            {
+              "offset_min": 60,
+              "channels": [
+                "desktop",
+                "in_app"
+              ]
+            }
+          ],
+          "status": "scheduled",
+          "created_by": "usr_uC_BDHkQsSNV_Jd9",
+          "created_at": 1787935677247,
+          "updated_at": 1787935677247,
+          "jarvisMetadata": null
+        },
+        "remountedAction": {
+          "id": "evt_oRSLdRydSJJ3seZ6",
+          "workspace_id": "wks_SIY0XpxdDdLY4ndp",
+          "title": "Jarvis Scheduled — Native recovery exact-route action edited 0828",
+          "description": "Edited bounded native recovery receipt on the same saved route.",
+          "start_at": 1788554700000,
+          "end_at": 1788555000000,
+          "all_day": false,
+          "timezone": "America/Chicago",
+          "attendees": [],
+          "source": "ai",
+          "source_ref": {
+            "context": {
+              "kind": "memory",
+              "id": "jarvis_schedule:{\"kind\":\"jarvis_schedule\",\"prompt\":\"Edited bounded native recovery receipt on the same saved route.\",\"recurrence\":\"custom_interval\",\"intervalMs\":864000000,\"modelSelection\":{\"mode\":\"single\",\"providerId\":\"opencode\",\"modelId\":\"opencode-go/deepseek-v4-flash-vision-exp\",\"connectionId\":\"opencode-cli\",\"connectionMode\":\"external-cli\",\"authSource\":\"opencode-provider-session\",\"capabilities\":{\"text\":true,\"images\":false,\"files\":false,\"tools\":false,\"modelSelection\":true,\"structuredOutput\":true,\"streaming\":true,\"cancellation\":true,\"resumeSession\":false,\"systemPrompt\":false,\"workingDirectory\":true,\"usage\":true,\"subscriptionQuota\":false,\"localOnly\":false}},\"agentId\":\"agt_rbQU8hlSPQsRXWD_\",\"createdBy\":\"jarvis\",\"nextRunAt\":1788554700000,\"runHistory\":[],\"errorHistory\":[]}",
+              "excerpt": "Edited bounded native recovery receipt on the same saved route."
+            }
+          },
+          "recurrence_rule": "custom_interval",
+          "reminders": [],
+          "status": "scheduled",
+          "color_hue": 265,
+          "created_by": "agt_rbQU8hlSPQsRXWD_",
+          "created_at": 1787935962143,
+          "updated_at": 1787935981800,
+          "jarvisMetadata": {
+            "kind": "jarvis_schedule",
+            "prompt": "Edited bounded native recovery receipt on the same saved route.",
+            "recurrence": "custom_interval",
+            "intervalMs": 864000000,
+            "modelSelection": {
+              "mode": "single",
+              "providerId": "opencode",
+              "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+              "connectionId": "opencode-cli",
+              "connectionMode": "external-cli",
+              "authSource": "opencode-provider-session",
+              "capabilities": {
+                "text": true,
+                "images": false,
+                "files": false,
+                "tools": false,
+                "modelSelection": true,
+                "structuredOutput": true,
+                "streaming": true,
+                "cancellation": true,
+                "resumeSession": false,
+                "systemPrompt": false,
+                "workingDirectory": true,
+                "usage": true,
+                "subscriptionQuota": false,
+                "localOnly": false
+              }
+            },
+            "agentId": "agt_rbQU8hlSPQsRXWD_",
+            "createdBy": "jarvis",
+            "nextRunAt": 1788554700000,
+            "runHistory": [],
+            "errorHistory": []
+          }
+        }
+      },
+      {
+        "name": "both recovery fixture prefixes are removed",
+        "passed": true
+      }
+    ],
+    "artifacts": [
+      {
+        "name": "07-schedule-action-receipt-supplement.png",
+        "width": 1983,
+        "height": 1240
+      },
+      {
+        "name": "08-schedule-supplement-after-remount.png",
+        "width": 1983,
+        "height": 1240
+      }
+    ],
+    "safety": [
+      {
+        "label": "bounded-recovery:start",
+        "capturedAt": "2026-08-28T11:52:10.9264781-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "show-surviving-event:before",
+        "capturedAt": "2026-08-28T11:52:14.8590407-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "show-surviving-event:after",
+        "capturedAt": "2026-08-28T11:52:18.8420940-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "screenshot:06-schedule-event-supplement.png:before",
+        "capturedAt": "2026-08-28T11:52:22.3357335-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "screenshot:06-schedule-event-supplement.png:after",
+        "capturedAt": "2026-08-28T11:52:26.1198660-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "open-action-editor:before",
+        "capturedAt": "2026-08-28T11:52:29.5963546-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "open-action-editor:after",
+        "capturedAt": "2026-08-28T11:52:32.7317723-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "select-exact-opencode-route:before",
+        "capturedAt": "2026-08-28T11:52:35.7660176-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "select-exact-opencode-route:after",
+        "capturedAt": "2026-08-28T11:52:38.8093189-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "create-action-only:before",
+        "capturedAt": "2026-08-28T11:52:41.8315580-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "create-action-only:after",
+        "capturedAt": "2026-08-28T11:52:45.3129625-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "edit-action-only:before",
+        "capturedAt": "2026-08-28T11:52:48.4210159-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "edit-action-only:after",
+        "capturedAt": "2026-08-28T11:52:51.8092508-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "cancel-action-only:before",
+        "capturedAt": "2026-08-28T11:52:55.1847888-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "cancel-action-only:after",
+        "capturedAt": "2026-08-28T11:52:58.4515601-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "reopen-action-only:before",
+        "capturedAt": "2026-08-28T11:53:01.6616241-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "reopen-action-only:after",
+        "capturedAt": "2026-08-28T11:53:05.0168547-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "open-saved-identity-receipt:before",
+        "capturedAt": "2026-08-28T11:53:08.2676692-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "open-saved-identity-receipt:after",
+        "capturedAt": "2026-08-28T11:53:11.5440061-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "screenshot:07-schedule-action-receipt-supplement.png:before",
+        "capturedAt": "2026-08-28T11:53:14.8519306-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "screenshot:07-schedule-action-receipt-supplement.png:after",
+        "capturedAt": "2026-08-28T11:53:19.4334088-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "schedule-remount:before",
+        "capturedAt": "2026-08-28T11:53:22.4823851-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "schedule-remount:after",
+        "capturedAt": "2026-08-28T11:53:26.6732807-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "screenshot:08-schedule-supplement-after-remount.png:before",
+        "capturedAt": "2026-08-28T11:53:29.7498495-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "screenshot:08-schedule-supplement-after-remount.png:after",
+        "capturedAt": "2026-08-28T11:53:33.6416067-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "cleanup-both-fixture-prefixes:before",
+        "capturedAt": "2026-08-28T11:53:36.6986771-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "cleanup-both-fixture-prefixes:after",
+        "capturedAt": "2026-08-28T11:53:40.0500149-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      },
+      {
+        "label": "bounded-recovery:complete",
+        "capturedAt": "2026-08-28T11:53:43.3330675-05:00",
+        "ollamaProcessCount": 0,
+        "listener11434Count": 0
+      }
+    ],
+    "safetySummary": {
+      "checks": 28,
+      "maxOllamaProcesses": 0,
+      "maxListeners11434": 0
+    },
+    "console": [],
+    "pageErrors": [],
+    "prohibitions": {
+      "modelDispatch": false,
+      "productFilesEdited": false,
+      "credentialsEntered": false,
+      "productionMutation": false,
+      "standaloneBrowserControlled": false,
+      "computerUseUsed": false
+    }
+  },
+  "safetySummary": {
+    "checks": 28,
+    "maxOllamaProcesses": 0,
+    "maxListeners11434": 0
+  }
+}

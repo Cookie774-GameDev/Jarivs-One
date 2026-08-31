@@ -1,0 +1,38 @@
+{
+  "status": "failed",
+  "capturedAt": "2026-08-29T03:11:25.229Z",
+  "commit": "14417ad2bae50debaaaf5b21d562567c8fd0be08",
+  "failure": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByTestId('workbench-browser-panel') to be visible\u001b[22m\n\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\workbench-native-smoke.mjs:57:15",
+  "assertions": [],
+  "consoleMessages": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Re-attaching to existing active session: tty_PIfVYxLnZz4P (existing-session)"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Re-attaching to existing active session: tty_dA8J6ci0i2u5 (existing-session)"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Re-attaching to existing active session: tty_Xc7E_K0AbWT4 (existing-session)"
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io"
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io"
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io"
+    }
+  ],
+  "pageErrors": []
+}

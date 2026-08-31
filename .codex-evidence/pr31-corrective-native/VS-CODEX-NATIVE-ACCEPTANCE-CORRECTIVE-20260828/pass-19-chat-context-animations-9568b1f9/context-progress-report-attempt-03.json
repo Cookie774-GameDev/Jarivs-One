@@ -1,0 +1,1164 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-CONTEXT-PROGRESS-PAUSE-RESUME-NATIVE",
+  "startedAt": "2026-08-28T19:06:18.860Z",
+  "status": "passed",
+  "captureHead": "226cd09e2c909c77d815ce83556e9db38acf9cac",
+  "identity": {
+    "jarvisPid": 19612,
+    "webViewPid": 9688,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-28T14:06:18.7428113-05:00"
+  },
+  "safety": [
+    {
+      "label": "attach:before",
+      "capturedAt": "2026-08-28T14:06:16.1503602-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attach:after",
+      "capturedAt": "2026-08-28T14:06:18.7428113-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "context-progress:after",
+      "capturedAt": "2026-08-28T14:06:30.2653201-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "running Context progress exposes truthful progressbar and active working state",
+      "passed": true,
+      "details": {
+        "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "fixtureMatchCount": 1,
+        "cardText": "Discovering allowed files and folders≈ 68% · About 3 min for discovery · elapsed 0s≈ 68%SiYuan map creation progressDiscovering allowed files and folders · running≈ 68%Indexed68Excluded1Unreadable0SiYuan nodes13Summarized0Skipped0Failed0Summary scope: No summariesSummary modelLocal-first automatic stays private. Choose an exact connected cloud route only when you want to replace the summary pass; VibeSpace will show scope and ask before sending.Local-first automaticPauseCancel",
+        "progress": {
+          "valueNow": "68",
+          "valueText": "Approximately 68%",
+          "paused": "false",
+          "motion": "full",
+          "estimated": "true",
+          "canvasAriaHidden": "true"
+        },
+        "workingVisible": true,
+        "animatedNodes": [
+          {
+            "target": "relative flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-accent-copper/25 bg-accent-copper/10 text-accent-copper",
+            "animationName": "none"
+          },
+          {
+            "target": "absolute inset-0 rounded-full bg-accent-copper/10 motion-safe:animate-ping motion-reduce:animate-none",
+            "animationName": "ping"
+          },
+          {
+            "target": "lucide lucide-refresh-cw relative h-3 w-3 animate-spin motion-reduce:animate-none",
+            "animationName": "spin"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          }
+        ],
+        "pauseVisible": true,
+        "resumeVisible": false,
+        "job": {
+          "schemaVersion": 1,
+          "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "canonicalRoot": "C:/Users/viper/AppData/Local/Temp/vibespace-pr31-context-fixture-20260827",
+          "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"none\",\"selectedExtensions\":[\"css\",\"html\",\"js\",\"json\",\"md\",\"py\",\"rs\",\"ts\",\"tsx\",\"txt\"],\"selectedPaths\":[],\"excludedPaths\":[]}",
+          "phase": "discovering",
+          "status": "running",
+          "pauseReason": null,
+          "cursor": 68,
+          "frontierLength": 100,
+          "indexed": 68,
+          "excluded": 1,
+          "unreadable": 0,
+          "summarized": 0,
+          "summaryEligible": 0,
+          "createdNodes": 13,
+          "failed": 0,
+          "skipped": 0,
+          "inputTokens": "[redacted]",
+          "outputTokens": "[redacted]",
+          "totalTokens": "[redacted]",
+          "tokenProvenance": "[redacted]",
+          "summaryProviderId": null,
+          "summaryConnectionId": null,
+          "summaryModelId": null,
+          "phaseStartedAt": 1787943889791,
+          "rateSamples": [
+            {
+              "at": 1787943837292,
+              "processed": 13
+            }
+          ],
+          "discoverySamples": [
+            {
+              "at": 1787943949791,
+              "processed": 20,
+              "frontierRemaining": 80,
+              "discovered": 100
+            },
+            {
+              "at": 1787943964791,
+              "processed": 44,
+              "frontierRemaining": 56,
+              "discovered": 100
+            },
+            {
+              "at": 1787943979791,
+              "processed": 68,
+              "frontierRemaining": 32,
+              "discovered": 100
+            }
+          ],
+          "estimatedPercent": 68,
+          "estimatedEtaSeconds": 180,
+          "reconciledAt": null,
+          "pendingNativeNodeIds": [],
+          "startupDisposition": null,
+          "startupDispositionAt": null,
+          "pausedMs": 201385,
+          "startedAt": 1787943859791,
+          "updatedAt": 1787943979791,
+          "completedAt": null,
+          "summaryEffort": null
+        },
+        "manifest": {
+          "version": 1,
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "sourceRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "notebookId": "20260823111107-czbgf4r",
+          "rootDocumentId": "20260827200803-5gqj8rz",
+          "revision": 34,
+          "status": "indexing",
+          "sourcePolicy": {
+            "readOnly": true,
+            "excludedPaths": []
+          },
+          "summaryPolicy": {
+            "mode": "none",
+            "selectedExtensions": [
+              "css",
+              "html",
+              "js",
+              "json",
+              "md",
+              "py",
+              "rs",
+              "ts",
+              "tsx",
+              "txt"
+            ],
+            "selectedPaths": []
+          },
+          "summaryModel": {
+            "kind": "none"
+          },
+          "cloudSummaryApproval": null,
+          "counts": {
+            "indexed": 13,
+            "excluded": 1,
+            "unreadable": 0,
+            "summarized": 0
+          },
+          "nodeBindings": {
+            "path:assets": "20260827200805-jautdig",
+            "path:binary": "20260827200806-xmk74fc",
+            "path:excluded": "20260827200806-59ylpby",
+            "path:nested": "20260827200808-pdzs9tz",
+            "path:nested/deeper": "20260827200810-m6r1r7q",
+            "path:src": "20260827200810-zbjdpho",
+            "path:web": "20260827200809-uglsoam"
+          },
+          "updatedAt": 1787943979791
+        }
+      }
+    },
+    {
+      "name": "paused Context checkpoint remains stable with no new local work",
+      "passed": true,
+      "details": {
+        "before": {
+          "status": "paused",
+          "updatedAt": 1787943985741,
+          "cursor": 68,
+          "indexed": 68,
+          "createdNodes": 13
+        },
+        "after": {
+          "status": "paused",
+          "updatedAt": 1787943985741,
+          "cursor": 68,
+          "indexed": 68,
+          "createdNodes": 13
+        }
+      }
+    },
+    {
+      "name": "paused Context progress announces paused state and preserves ETA/progress",
+      "passed": true,
+      "details": {
+        "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "fixtureMatchCount": 1,
+        "cardText": "Discovering allowed files and foldersPaused safely — your checkpoint is saved.≈ 68% · ETA About 3 min · elapsed 0s≈ 68%SiYuan map creation progressDiscovering allowed files and folders · paused≈ 68%Indexed68Excluded1Unreadable0SiYuan nodes13Summarized0Skipped0Failed0Summary scope: No summariesSummary modelLocal-first automatic stays private. Choose an exact connected cloud route only when you want to replace the summary pass; VibeSpace will show scope and ask before sending.Local-first automaticResumeCancel",
+        "progress": {
+          "valueNow": "68",
+          "valueText": "Approximately 68%, paused",
+          "paused": "true",
+          "motion": "full",
+          "estimated": "true",
+          "canvasAriaHidden": "true"
+        },
+        "workingVisible": false,
+        "animatedNodes": [],
+        "pauseVisible": false,
+        "resumeVisible": true,
+        "job": {
+          "schemaVersion": 1,
+          "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "canonicalRoot": "C:/Users/viper/AppData/Local/Temp/vibespace-pr31-context-fixture-20260827",
+          "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"none\",\"selectedExtensions\":[\"css\",\"html\",\"js\",\"json\",\"md\",\"py\",\"rs\",\"ts\",\"tsx\",\"txt\"],\"selectedPaths\":[],\"excludedPaths\":[]}",
+          "phase": "discovering",
+          "status": "paused",
+          "pauseReason": "user",
+          "cursor": 68,
+          "frontierLength": 100,
+          "indexed": 68,
+          "excluded": 1,
+          "unreadable": 0,
+          "summarized": 0,
+          "summaryEligible": 0,
+          "createdNodes": 13,
+          "failed": 0,
+          "skipped": 0,
+          "inputTokens": "[redacted]",
+          "outputTokens": "[redacted]",
+          "totalTokens": "[redacted]",
+          "tokenProvenance": "[redacted]",
+          "summaryProviderId": null,
+          "summaryConnectionId": null,
+          "summaryModelId": null,
+          "phaseStartedAt": 1787943889791,
+          "rateSamples": [
+            {
+              "at": 1787943837292,
+              "processed": 13
+            }
+          ],
+          "discoverySamples": [
+            {
+              "at": 1787943949791,
+              "processed": 20,
+              "frontierRemaining": 80,
+              "discovered": 100
+            },
+            {
+              "at": 1787943964791,
+              "processed": 44,
+              "frontierRemaining": 56,
+              "discovered": 100
+            },
+            {
+              "at": 1787943979791,
+              "processed": 68,
+              "frontierRemaining": 32,
+              "discovered": 100
+            }
+          ],
+          "estimatedPercent": 68,
+          "estimatedEtaSeconds": 180,
+          "reconciledAt": null,
+          "pendingNativeNodeIds": [],
+          "startupDisposition": null,
+          "startupDispositionAt": null,
+          "pausedMs": 201385,
+          "startedAt": 1787943859791,
+          "updatedAt": 1787943985741,
+          "completedAt": null,
+          "summaryEffort": null
+        },
+        "manifest": {
+          "version": 1,
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "sourceRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "notebookId": "20260823111107-czbgf4r",
+          "rootDocumentId": "20260827200803-5gqj8rz",
+          "revision": 35,
+          "status": "paused",
+          "sourcePolicy": {
+            "readOnly": true,
+            "excludedPaths": []
+          },
+          "summaryPolicy": {
+            "mode": "none",
+            "selectedExtensions": [
+              "css",
+              "html",
+              "js",
+              "json",
+              "md",
+              "py",
+              "rs",
+              "ts",
+              "tsx",
+              "txt"
+            ],
+            "selectedPaths": []
+          },
+          "summaryModel": {
+            "kind": "none"
+          },
+          "cloudSummaryApproval": null,
+          "counts": {
+            "indexed": 13,
+            "excluded": 1,
+            "unreadable": 0,
+            "summarized": 0
+          },
+          "nodeBindings": {
+            "path:assets": "20260827200805-jautdig",
+            "path:binary": "20260827200806-xmk74fc",
+            "path:excluded": "20260827200806-59ylpby",
+            "path:nested": "20260827200808-pdzs9tz",
+            "path:nested/deeper": "20260827200810-m6r1r7q",
+            "path:src": "20260827200810-zbjdpho",
+            "path:web": "20260827200809-uglsoam"
+          },
+          "updatedAt": 1787943985810
+        }
+      }
+    },
+    {
+      "name": "resume restores running state while reduced motion keeps working icon static",
+      "passed": true,
+      "details": {
+        "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "fixtureMatchCount": 1,
+        "cardText": "Discovering allowed files and folders≈ 68% · About 3 min for discovery · elapsed 0s≈ 68%SiYuan map creation progressDiscovering allowed files and folders · running≈ 68%Indexed68Excluded1Unreadable0SiYuan nodes13Summarized0Skipped0Failed0Summary scope: No summariesSummary modelLocal-first automatic stays private. Choose an exact connected cloud route only when you want to replace the summary pass; VibeSpace will show scope and ask before sending.Local-first automaticPauseCancel",
+        "progress": {
+          "valueNow": "68",
+          "valueText": "Approximately 68%",
+          "paused": "false",
+          "motion": "reduced",
+          "estimated": "true",
+          "canvasAriaHidden": "true"
+        },
+        "workingVisible": true,
+        "animatedNodes": [
+          {
+            "target": "relative flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-accent-copper/25 bg-accent-copper/10 text-accent-copper",
+            "animationName": "none"
+          },
+          {
+            "target": "absolute inset-0 rounded-full bg-accent-copper/10 motion-safe:animate-ping motion-reduce:animate-none",
+            "animationName": "none"
+          },
+          {
+            "target": "lucide lucide-refresh-cw relative h-3 w-3 animate-spin motion-reduce:animate-none",
+            "animationName": "none"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          }
+        ],
+        "pauseVisible": true,
+        "resumeVisible": false,
+        "job": {
+          "schemaVersion": 1,
+          "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "canonicalRoot": "C:/Users/viper/AppData/Local/Temp/vibespace-pr31-context-fixture-20260827",
+          "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"none\",\"selectedExtensions\":[\"css\",\"html\",\"js\",\"json\",\"md\",\"py\",\"rs\",\"ts\",\"tsx\",\"txt\"],\"selectedPaths\":[],\"excludedPaths\":[]}",
+          "phase": "discovering",
+          "status": "running",
+          "pauseReason": null,
+          "cursor": 68,
+          "frontierLength": 100,
+          "indexed": 68,
+          "excluded": 1,
+          "unreadable": 0,
+          "summarized": 0,
+          "summaryEligible": 0,
+          "createdNodes": 13,
+          "failed": 0,
+          "skipped": 0,
+          "inputTokens": "[redacted]",
+          "outputTokens": "[redacted]",
+          "totalTokens": "[redacted]",
+          "tokenProvenance": "[redacted]",
+          "summaryProviderId": null,
+          "summaryConnectionId": null,
+          "summaryModelId": null,
+          "phaseStartedAt": 1787943889791,
+          "rateSamples": [
+            {
+              "at": 1787943837292,
+              "processed": 13
+            }
+          ],
+          "discoverySamples": [
+            {
+              "at": 1787943949791,
+              "processed": 20,
+              "frontierRemaining": 80,
+              "discovered": 100
+            },
+            {
+              "at": 1787943964791,
+              "processed": 44,
+              "frontierRemaining": 56,
+              "discovered": 100
+            },
+            {
+              "at": 1787943979791,
+              "processed": 68,
+              "frontierRemaining": 32,
+              "discovered": 100
+            }
+          ],
+          "estimatedPercent": 68,
+          "estimatedEtaSeconds": 180,
+          "reconciledAt": null,
+          "pendingNativeNodeIds": [],
+          "startupDisposition": null,
+          "startupDispositionAt": null,
+          "pausedMs": 202213,
+          "startedAt": 1787943859791,
+          "updatedAt": 1787943986569,
+          "completedAt": null,
+          "summaryEffort": null
+        },
+        "manifest": {
+          "version": 1,
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "sourceRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "notebookId": "20260823111107-czbgf4r",
+          "rootDocumentId": "20260827200803-5gqj8rz",
+          "revision": 35,
+          "status": "paused",
+          "sourcePolicy": {
+            "readOnly": true,
+            "excludedPaths": []
+          },
+          "summaryPolicy": {
+            "mode": "none",
+            "selectedExtensions": [
+              "css",
+              "html",
+              "js",
+              "json",
+              "md",
+              "py",
+              "rs",
+              "ts",
+              "tsx",
+              "txt"
+            ],
+            "selectedPaths": []
+          },
+          "summaryModel": {
+            "kind": "none"
+          },
+          "cloudSummaryApproval": null,
+          "counts": {
+            "indexed": 13,
+            "excluded": 1,
+            "unreadable": 0,
+            "summarized": 0
+          },
+          "nodeBindings": {
+            "path:assets": "20260827200805-jautdig",
+            "path:binary": "20260827200806-xmk74fc",
+            "path:excluded": "20260827200806-59ylpby",
+            "path:nested": "20260827200808-pdzs9tz",
+            "path:nested/deeper": "20260827200810-m6r1r7q",
+            "path:src": "20260827200810-zbjdpho",
+            "path:web": "20260827200809-uglsoam"
+          },
+          "updatedAt": 1787943985810
+        }
+      }
+    },
+    {
+      "name": "original Context job and manifest were restored byte-for-byte",
+      "passed": true,
+      "details": {
+        "restoredJobSha256": "67b5b3c2427e4a0a9bb0bc300d97d2e2ff791d69ebd8bae434c4a8cba4aa8ca3",
+        "restoredManifestSha256": "d3e350aaa928072106939fe110ac07885d45e7a4b2c7aa8400ebe5f597744778",
+        "expectedJobSha256": "67b5b3c2427e4a0a9bb0bc300d97d2e2ff791d69ebd8bae434c4a8cba4aa8ca3",
+        "expectedManifestSha256": "d3e350aaa928072106939fe110ac07885d45e7a4b2c7aa8400ebe5f597744778"
+      }
+    },
+    {
+      "name": "no console errors, page errors, or network failures were recorded",
+      "passed": true,
+      "details": {
+        "failureEventCount": 0
+      }
+    },
+    {
+      "name": "console warnings are retained as bounded hashed evidence",
+      "passed": true,
+      "details": {
+        "warningCount": 0
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "06-context-running-normal-attempt-03.png",
+      "width": 1280,
+      "height": 900,
+      "byteCount": 938890,
+      "sha256": "78045ed4515e495ccb8ac8fff099953b2ff79d94e336245dfeb02a3bb3b9e5b5",
+      "viewport": {
+        "width": 1280,
+        "height": 900
+      },
+      "window": {
+        "innerWidth": 1280,
+        "innerHeight": 900,
+        "outerWidth": 1281,
+        "outerHeight": 821,
+        "devicePixelRatio": 1.0000000149011612,
+        "reducedMotion": false
+      },
+      "semanticState": {
+        "jobStatus": "running",
+        "progress": {
+          "valueNow": "68",
+          "valueText": "Approximately 68%",
+          "paused": "false",
+          "motion": "full",
+          "estimated": "true",
+          "canvasAriaHidden": "true"
+        },
+        "providerActivity": false
+      }
+    },
+    {
+      "name": "07-context-paused-narrow-attempt-03.png",
+      "width": 760,
+      "height": 900,
+      "byteCount": 648458,
+      "sha256": "35ef4c12593d2d8bc9ced3a7a05c3d7041bedd01e034563149c8c5cc8e2749ac",
+      "viewport": {
+        "width": 760,
+        "height": 900
+      },
+      "window": {
+        "innerWidth": 760,
+        "innerHeight": 900,
+        "outerWidth": 1281,
+        "outerHeight": 821,
+        "devicePixelRatio": 1.0000000149011612,
+        "reducedMotion": false
+      },
+      "semanticState": {
+        "jobStatus": "paused",
+        "progress": {
+          "valueNow": "68",
+          "valueText": "Approximately 68%, paused",
+          "paused": "true",
+          "motion": "full",
+          "estimated": "true",
+          "canvasAriaHidden": "true"
+        },
+        "checkpointStable": true,
+        "providerActivity": false
+      }
+    },
+    {
+      "name": "08-context-resumed-narrow-reduced-motion-attempt-03.png",
+      "width": 760,
+      "height": 900,
+      "byteCount": 654682,
+      "sha256": "e5afc3a8e73c868db43e4a4e96c8e3fe4ede4380e081efe9bb1bacd060e57452",
+      "viewport": {
+        "width": 760,
+        "height": 900
+      },
+      "window": {
+        "innerWidth": 760,
+        "innerHeight": 900,
+        "outerWidth": 1281,
+        "outerHeight": 821,
+        "devicePixelRatio": 1.0000000149011612,
+        "reducedMotion": true
+      },
+      "semanticState": {
+        "jobStatus": "running",
+        "progress": {
+          "valueNow": "68",
+          "valueText": "Approximately 68%",
+          "paused": "false",
+          "motion": "reduced",
+          "estimated": "true",
+          "canvasAriaHidden": "true"
+        },
+        "reducedMotion": true,
+        "providerActivity": false
+      }
+    }
+  ],
+  "events": [],
+  "firstFailure": null,
+  "metadata": {
+    "fixtureAuthority": "existing local vibespace-pr31-context-fixture-20260827 with exact job/manifest snapshot-and-restore",
+    "modelDispatched": false,
+    "modelIdentity": null,
+    "appRestarted": false,
+    "credentialsMutated": "[redacted]",
+    "productionMutated": false,
+    "normalViewport": {
+      "width": 1280,
+      "height": 900
+    },
+    "narrowViewport": {
+      "width": 760,
+      "height": 900
+    },
+    "fixture": {
+      "projectId": "prj_leBT3oqNPBtoSMmf",
+      "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+      "originalJobSha256": "67b5b3c2427e4a0a9bb0bc300d97d2e2ff791d69ebd8bae434c4a8cba4aa8ca3",
+      "originalManifestSha256": "d3e350aaa928072106939fe110ac07885d45e7a4b2c7aa8400ebe5f597744778",
+      "originalStatus": "completed",
+      "originalPhase": "completed"
+    },
+    "states": {
+      "running": {
+        "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "fixtureMatchCount": 1,
+        "cardText": "Discovering allowed files and folders≈ 68% · About 3 min for discovery · elapsed 0s≈ 68%SiYuan map creation progressDiscovering allowed files and folders · running≈ 68%Indexed68Excluded1Unreadable0SiYuan nodes13Summarized0Skipped0Failed0Summary scope: No summariesSummary modelLocal-first automatic stays private. Choose an exact connected cloud route only when you want to replace the summary pass; VibeSpace will show scope and ask before sending.Local-first automaticPauseCancel",
+        "progress": {
+          "valueNow": "68",
+          "valueText": "Approximately 68%",
+          "paused": "false",
+          "motion": "full",
+          "estimated": "true",
+          "canvasAriaHidden": "true"
+        },
+        "workingVisible": true,
+        "animatedNodes": [
+          {
+            "target": "relative flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-accent-copper/25 bg-accent-copper/10 text-accent-copper",
+            "animationName": "none"
+          },
+          {
+            "target": "absolute inset-0 rounded-full bg-accent-copper/10 motion-safe:animate-ping motion-reduce:animate-none",
+            "animationName": "ping"
+          },
+          {
+            "target": "lucide lucide-refresh-cw relative h-3 w-3 animate-spin motion-reduce:animate-none",
+            "animationName": "spin"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          }
+        ],
+        "pauseVisible": true,
+        "resumeVisible": false,
+        "job": {
+          "schemaVersion": 1,
+          "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "canonicalRoot": "C:/Users/viper/AppData/Local/Temp/vibespace-pr31-context-fixture-20260827",
+          "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"none\",\"selectedExtensions\":[\"css\",\"html\",\"js\",\"json\",\"md\",\"py\",\"rs\",\"ts\",\"tsx\",\"txt\"],\"selectedPaths\":[],\"excludedPaths\":[]}",
+          "phase": "discovering",
+          "status": "running",
+          "pauseReason": null,
+          "cursor": 68,
+          "frontierLength": 100,
+          "indexed": 68,
+          "excluded": 1,
+          "unreadable": 0,
+          "summarized": 0,
+          "summaryEligible": 0,
+          "createdNodes": 13,
+          "failed": 0,
+          "skipped": 0,
+          "inputTokens": "[redacted]",
+          "outputTokens": "[redacted]",
+          "totalTokens": "[redacted]",
+          "tokenProvenance": "[redacted]",
+          "summaryProviderId": null,
+          "summaryConnectionId": null,
+          "summaryModelId": null,
+          "phaseStartedAt": 1787943889791,
+          "rateSamples": [
+            {
+              "at": 1787943837292,
+              "processed": 13
+            }
+          ],
+          "discoverySamples": [
+            {
+              "at": 1787943949791,
+              "processed": 20,
+              "frontierRemaining": 80,
+              "discovered": 100
+            },
+            {
+              "at": 1787943964791,
+              "processed": 44,
+              "frontierRemaining": 56,
+              "discovered": 100
+            },
+            {
+              "at": 1787943979791,
+              "processed": 68,
+              "frontierRemaining": 32,
+              "discovered": 100
+            }
+          ],
+          "estimatedPercent": 68,
+          "estimatedEtaSeconds": 180,
+          "reconciledAt": null,
+          "pendingNativeNodeIds": [],
+          "startupDisposition": null,
+          "startupDispositionAt": null,
+          "pausedMs": 201385,
+          "startedAt": 1787943859791,
+          "updatedAt": 1787943979791,
+          "completedAt": null,
+          "summaryEffort": null
+        },
+        "manifest": {
+          "version": 1,
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "sourceRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "notebookId": "20260823111107-czbgf4r",
+          "rootDocumentId": "20260827200803-5gqj8rz",
+          "revision": 34,
+          "status": "indexing",
+          "sourcePolicy": {
+            "readOnly": true,
+            "excludedPaths": []
+          },
+          "summaryPolicy": {
+            "mode": "none",
+            "selectedExtensions": [
+              "css",
+              "html",
+              "js",
+              "json",
+              "md",
+              "py",
+              "rs",
+              "ts",
+              "tsx",
+              "txt"
+            ],
+            "selectedPaths": []
+          },
+          "summaryModel": {
+            "kind": "none"
+          },
+          "cloudSummaryApproval": null,
+          "counts": {
+            "indexed": 13,
+            "excluded": 1,
+            "unreadable": 0,
+            "summarized": 0
+          },
+          "nodeBindings": {
+            "path:assets": "20260827200805-jautdig",
+            "path:binary": "20260827200806-xmk74fc",
+            "path:excluded": "20260827200806-59ylpby",
+            "path:nested": "20260827200808-pdzs9tz",
+            "path:nested/deeper": "20260827200810-m6r1r7q",
+            "path:src": "20260827200810-zbjdpho",
+            "path:web": "20260827200809-uglsoam"
+          },
+          "updatedAt": 1787943979791
+        }
+      },
+      "paused": {
+        "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "fixtureMatchCount": 1,
+        "cardText": "Discovering allowed files and foldersPaused safely — your checkpoint is saved.≈ 68% · ETA About 3 min · elapsed 0s≈ 68%SiYuan map creation progressDiscovering allowed files and folders · paused≈ 68%Indexed68Excluded1Unreadable0SiYuan nodes13Summarized0Skipped0Failed0Summary scope: No summariesSummary modelLocal-first automatic stays private. Choose an exact connected cloud route only when you want to replace the summary pass; VibeSpace will show scope and ask before sending.Local-first automaticResumeCancel",
+        "progress": {
+          "valueNow": "68",
+          "valueText": "Approximately 68%, paused",
+          "paused": "true",
+          "motion": "full",
+          "estimated": "true",
+          "canvasAriaHidden": "true"
+        },
+        "workingVisible": false,
+        "animatedNodes": [],
+        "pauseVisible": false,
+        "resumeVisible": true,
+        "job": {
+          "schemaVersion": 1,
+          "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "canonicalRoot": "C:/Users/viper/AppData/Local/Temp/vibespace-pr31-context-fixture-20260827",
+          "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"none\",\"selectedExtensions\":[\"css\",\"html\",\"js\",\"json\",\"md\",\"py\",\"rs\",\"ts\",\"tsx\",\"txt\"],\"selectedPaths\":[],\"excludedPaths\":[]}",
+          "phase": "discovering",
+          "status": "paused",
+          "pauseReason": "user",
+          "cursor": 68,
+          "frontierLength": 100,
+          "indexed": 68,
+          "excluded": 1,
+          "unreadable": 0,
+          "summarized": 0,
+          "summaryEligible": 0,
+          "createdNodes": 13,
+          "failed": 0,
+          "skipped": 0,
+          "inputTokens": "[redacted]",
+          "outputTokens": "[redacted]",
+          "totalTokens": "[redacted]",
+          "tokenProvenance": "[redacted]",
+          "summaryProviderId": null,
+          "summaryConnectionId": null,
+          "summaryModelId": null,
+          "phaseStartedAt": 1787943889791,
+          "rateSamples": [
+            {
+              "at": 1787943837292,
+              "processed": 13
+            }
+          ],
+          "discoverySamples": [
+            {
+              "at": 1787943949791,
+              "processed": 20,
+              "frontierRemaining": 80,
+              "discovered": 100
+            },
+            {
+              "at": 1787943964791,
+              "processed": 44,
+              "frontierRemaining": 56,
+              "discovered": 100
+            },
+            {
+              "at": 1787943979791,
+              "processed": 68,
+              "frontierRemaining": 32,
+              "discovered": 100
+            }
+          ],
+          "estimatedPercent": 68,
+          "estimatedEtaSeconds": 180,
+          "reconciledAt": null,
+          "pendingNativeNodeIds": [],
+          "startupDisposition": null,
+          "startupDispositionAt": null,
+          "pausedMs": 201385,
+          "startedAt": 1787943859791,
+          "updatedAt": 1787943985741,
+          "completedAt": null,
+          "summaryEffort": null
+        },
+        "manifest": {
+          "version": 1,
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "sourceRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "notebookId": "20260823111107-czbgf4r",
+          "rootDocumentId": "20260827200803-5gqj8rz",
+          "revision": 35,
+          "status": "paused",
+          "sourcePolicy": {
+            "readOnly": true,
+            "excludedPaths": []
+          },
+          "summaryPolicy": {
+            "mode": "none",
+            "selectedExtensions": [
+              "css",
+              "html",
+              "js",
+              "json",
+              "md",
+              "py",
+              "rs",
+              "ts",
+              "tsx",
+              "txt"
+            ],
+            "selectedPaths": []
+          },
+          "summaryModel": {
+            "kind": "none"
+          },
+          "cloudSummaryApproval": null,
+          "counts": {
+            "indexed": 13,
+            "excluded": 1,
+            "unreadable": 0,
+            "summarized": 0
+          },
+          "nodeBindings": {
+            "path:assets": "20260827200805-jautdig",
+            "path:binary": "20260827200806-xmk74fc",
+            "path:excluded": "20260827200806-59ylpby",
+            "path:nested": "20260827200808-pdzs9tz",
+            "path:nested/deeper": "20260827200810-m6r1r7q",
+            "path:src": "20260827200810-zbjdpho",
+            "path:web": "20260827200809-uglsoam"
+          },
+          "updatedAt": 1787943985810
+        }
+      },
+      "pauseStability": {
+        "before": {
+          "status": "paused",
+          "updatedAt": 1787943985741,
+          "cursor": 68,
+          "indexed": 68,
+          "createdNodes": 13
+        },
+        "after": {
+          "status": "paused",
+          "updatedAt": 1787943985741,
+          "cursor": 68,
+          "indexed": 68,
+          "createdNodes": 13
+        }
+      },
+      "resumed": {
+        "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "fixtureMatchCount": 1,
+        "cardText": "Discovering allowed files and folders≈ 68% · About 3 min for discovery · elapsed 0s≈ 68%SiYuan map creation progressDiscovering allowed files and folders · running≈ 68%Indexed68Excluded1Unreadable0SiYuan nodes13Summarized0Skipped0Failed0Summary scope: No summariesSummary modelLocal-first automatic stays private. Choose an exact connected cloud route only when you want to replace the summary pass; VibeSpace will show scope and ask before sending.Local-first automaticPauseCancel",
+        "progress": {
+          "valueNow": "68",
+          "valueText": "Approximately 68%",
+          "paused": "false",
+          "motion": "reduced",
+          "estimated": "true",
+          "canvasAriaHidden": "true"
+        },
+        "workingVisible": true,
+        "animatedNodes": [
+          {
+            "target": "relative flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-accent-copper/25 bg-accent-copper/10 text-accent-copper",
+            "animationName": "none"
+          },
+          {
+            "target": "absolute inset-0 rounded-full bg-accent-copper/10 motion-safe:animate-ping motion-reduce:animate-none",
+            "animationName": "none"
+          },
+          {
+            "target": "lucide lucide-refresh-cw relative h-3 w-3 animate-spin motion-reduce:animate-none",
+            "animationName": "none"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          },
+          {
+            "target": "",
+            "animationName": "none"
+          }
+        ],
+        "pauseVisible": true,
+        "resumeVisible": false,
+        "job": {
+          "schemaVersion": 1,
+          "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "canonicalRoot": "C:/Users/viper/AppData/Local/Temp/vibespace-pr31-context-fixture-20260827",
+          "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/appdata/local/temp/vibespace-pr31-context-fixture-20260827\",\"summaryMode\":\"none\",\"selectedExtensions\":[\"css\",\"html\",\"js\",\"json\",\"md\",\"py\",\"rs\",\"ts\",\"tsx\",\"txt\"],\"selectedPaths\":[],\"excludedPaths\":[]}",
+          "phase": "discovering",
+          "status": "running",
+          "pauseReason": null,
+          "cursor": 68,
+          "frontierLength": 100,
+          "indexed": 68,
+          "excluded": 1,
+          "unreadable": 0,
+          "summarized": 0,
+          "summaryEligible": 0,
+          "createdNodes": 13,
+          "failed": 0,
+          "skipped": 0,
+          "inputTokens": "[redacted]",
+          "outputTokens": "[redacted]",
+          "totalTokens": "[redacted]",
+          "tokenProvenance": "[redacted]",
+          "summaryProviderId": null,
+          "summaryConnectionId": null,
+          "summaryModelId": null,
+          "phaseStartedAt": 1787943889791,
+          "rateSamples": [
+            {
+              "at": 1787943837292,
+              "processed": 13
+            }
+          ],
+          "discoverySamples": [
+            {
+              "at": 1787943949791,
+              "processed": 20,
+              "frontierRemaining": 80,
+              "discovered": 100
+            },
+            {
+              "at": 1787943964791,
+              "processed": 44,
+              "frontierRemaining": 56,
+              "discovered": 100
+            },
+            {
+              "at": 1787943979791,
+              "processed": 68,
+              "frontierRemaining": 32,
+              "discovered": 100
+            }
+          ],
+          "estimatedPercent": 68,
+          "estimatedEtaSeconds": 180,
+          "reconciledAt": null,
+          "pendingNativeNodeIds": [],
+          "startupDisposition": null,
+          "startupDispositionAt": null,
+          "pausedMs": 202213,
+          "startedAt": 1787943859791,
+          "updatedAt": 1787943986569,
+          "completedAt": null,
+          "summaryEffort": null
+        },
+        "manifest": {
+          "version": 1,
+          "projectId": "prj_leBT3oqNPBtoSMmf",
+          "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787879279455",
+          "sourceRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+          "notebookId": "20260823111107-czbgf4r",
+          "rootDocumentId": "20260827200803-5gqj8rz",
+          "revision": 35,
+          "status": "paused",
+          "sourcePolicy": {
+            "readOnly": true,
+            "excludedPaths": []
+          },
+          "summaryPolicy": {
+            "mode": "none",
+            "selectedExtensions": [
+              "css",
+              "html",
+              "js",
+              "json",
+              "md",
+              "py",
+              "rs",
+              "ts",
+              "tsx",
+              "txt"
+            ],
+            "selectedPaths": []
+          },
+          "summaryModel": {
+            "kind": "none"
+          },
+          "cloudSummaryApproval": null,
+          "counts": {
+            "indexed": 13,
+            "excluded": 1,
+            "unreadable": 0,
+            "summarized": 0
+          },
+          "nodeBindings": {
+            "path:assets": "20260827200805-jautdig",
+            "path:binary": "20260827200806-xmk74fc",
+            "path:excluded": "20260827200806-59ylpby",
+            "path:nested": "20260827200808-pdzs9tz",
+            "path:nested/deeper": "20260827200810-m6r1r7q",
+            "path:src": "20260827200810-zbjdpho",
+            "path:web": "20260827200809-uglsoam"
+          },
+          "updatedAt": 1787943985810
+        }
+      }
+    }
+  },
+  "completedAt": "2026-08-28T19:06:30.339Z"
+}

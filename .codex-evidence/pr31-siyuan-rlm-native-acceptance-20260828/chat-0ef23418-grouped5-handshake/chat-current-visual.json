@@ -1,0 +1,82 @@
+{
+  "status": "failed",
+  "head": "0ef23418a8e0191ee3bc7b2bc6d5c1726ada0c41",
+  "startedAt": "2026-08-29T03:49:26.195Z",
+  "assertions": [
+    {
+      "name": "one official jarvis process",
+      "passed": true,
+      "jarvis": [
+        {
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "official native page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "name": "canonical successful GitHub action renders one truthful plugin-use card",
+      "passed": true,
+      "text": "GH\nPLUGIN\nGitHub\nRepositories · Issues · Pull Requests\nConnected\n1"
+    },
+    {
+      "name": "01-chat-collapsed-plugin-card.png direct 1586x992",
+      "passed": true,
+      "width": 1586,
+      "height": 992
+    },
+    {
+      "name": "ordered activity contains Read ChatThread.tsx",
+      "passed": false,
+      "next": -1,
+      "last": -1
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-0ef23418-grouped5-handshake\\01-chat-collapsed-plugin-card.png",
+      "width": 1586,
+      "height": 992,
+      "state": {
+        "ledger": "collapsed",
+        "eventCount": 6,
+        "plugin": "github.identity success"
+      }
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe"
+        }
+      ]
+    }
+  ],
+  "failure": "Error: assertion_failed:ordered activity contains Read ChatThread.tsx\n    at check (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/chat-current-visual.mjs:34:22)\n    at file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/chat-current-visual.mjs:159:67",
+  "completedAt": "2026-08-29T03:50:07.368Z"
+}

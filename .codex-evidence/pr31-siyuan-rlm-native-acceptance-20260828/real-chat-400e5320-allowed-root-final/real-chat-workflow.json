@@ -1,0 +1,145 @@
+{
+  "status": "failed",
+  "head": "400e5320b782d50ed938a8835c59b81596c109a4",
+  "route": {
+    "providerId": "opencode",
+    "connectionId": "opencode-cli",
+    "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+  },
+  "chatId": "chat_pr31_real_workflow_1787980279885",
+  "startedAt": "2026-08-29T05:11:19.885Z",
+  "assertions": [
+    {
+      "name": "isolated fixture starts at exact draft bytes",
+      "passed": true,
+      "sha256": "f63221160dc2cbe317b5e8fd6615b5c567c60a39b92c51d93d2e5503e09eaffc"
+    },
+    {
+      "name": "one official jarvis process",
+      "passed": true,
+      "jarvis": [
+        {
+          "ProcessId": 16772,
+          "ParentProcessId": 2984,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-b53-siyuan-native\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "official native page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "name": "composer visibly retains exact DeepSeek selection",
+      "passed": true,
+      "visibleLabel": "opencode · opencode-go/deepseek-v4-flash-vision-exp"
+    },
+    {
+      "name": "exact DeepSeek route selected and persisted",
+      "passed": true,
+      "connection": {
+        "providerId": "opencode",
+        "id": "opencode-cli",
+        "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+        "mode": "external-cli",
+        "authSource": "opencode-provider-session"
+      },
+      "selection": {
+        "mode": "none"
+      }
+    },
+    {
+      "name": "one files.read proposal",
+      "passed": true,
+      "proposals": [
+        {
+          "action": "files.read",
+          "status": "pending",
+          "params": {
+            "path": "C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\Projects\\.vibespace-native-acceptance\\brief.md"
+          }
+        }
+      ]
+    },
+    {
+      "name": "read streamed",
+      "passed": true,
+      "firstTextAt": 29985
+    },
+    {
+      "name": "read no duplicate tool dispatch",
+      "passed": true,
+      "callIds": []
+    },
+    {
+      "name": "read durable tool lifecycle balanced",
+      "passed": true,
+      "toolCalls": 0,
+      "toolResults": 0
+    },
+    {
+      "name": "read short turn skips RLM and SiYuan",
+      "passed": true,
+      "toolNames": []
+    },
+    {
+      "name": "read observed execution identity is exact DeepSeek OpenCode route",
+      "passed": false,
+      "observedUsage": []
+    }
+  ],
+  "turns": [],
+  "artifacts": [
+    {
+      "name": "FAIL-real-chat-workflow.png",
+      "width": 1600,
+      "height": 1025,
+      "state": {
+        "failure": "Error: assertion_failed:read observed execution identity is exact DeepSeek OpenCode route\n    at check (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:40:136)\n    at runTurn (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:171:3)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:207:3"
+      }
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 16772,
+          "ParentProcessId": 2984,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-b53-siyuan-native\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "read:before",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 16772,
+          "ParentProcessId": 2984,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-b53-siyuan-native\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 16772,
+          "ParentProcessId": 2984,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-b53-siyuan-native\\debug\\jarvis.exe"
+        }
+      ]
+    }
+  ],
+  "failure": "Error: assertion_failed:read observed execution identity is exact DeepSeek OpenCode route\n    at check (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:40:136)\n    at runTurn (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:171:3)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:207:3",
+  "completedAt": "2026-08-29T05:12:03.598Z"
+}

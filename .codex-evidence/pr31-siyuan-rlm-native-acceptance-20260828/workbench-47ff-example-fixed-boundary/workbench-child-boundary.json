@@ -1,0 +1,187 @@
+{
+  "status": "failed",
+  "head": "528e55545212c6fa92c7dc5a9a7196c8da103e01",
+  "startedAt": "2026-08-29T06:37:27.748Z",
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2606148007. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 324633914. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1860020884. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2606148007. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 324633914. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1860020884. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2606148007. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 324633914. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1860020884. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 2606148007. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 324633914. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "warning",
+      "text": "[TAURI] Couldn't find callback id 1860020884. This might happen when the app is reloaded while Rust is running an asynchronous operation."
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_0BnyA2be5xO_"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_uXlacpAm1R7Q"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_rkKe_xkZlO6i"
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io"
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io"
+    }
+  ],
+  "pageErrors": [],
+  "assertions": [
+    {
+      "name": "example navigation uses bounded native surface",
+      "passed": true
+    },
+    {
+      "name": "example navigation is stable without app error",
+      "passed": false,
+      "details": {
+        "address": "https://example.com/",
+        "text": "Page could not open\nThe page could not open.\n\nREMOTE PAGES STAY INSIDE A CAPABILITY-FREE VIBESPACE CHILD WEBVIEW.",
+        "surfaceCount": 1
+      }
+    },
+    {
+      "name": "single official CDP listener remains authoritative",
+      "passed": true,
+      "details": [
+        {
+          "LocalAddress": "127.0.0.1",
+          "OwningProcess": 12616
+        }
+      ]
+    },
+    {
+      "name": "child browser does not inherit main CDP endpoint",
+      "passed": false,
+      "details": [
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 12616,
+          "ParentProcessId": 4684,
+          "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --js-flags=--max-old-space-size=1536 --remote-debugging-address=127.0.0.1 --remote-debugging-port=9223 --lang=en-US --mojo-named-platform-channel-pipe=4684.20052.515329019478686350 /pfhostedapp:46c5fc76a556ed1b85e162257f1e47cd7fbc7c40"
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 6664,
+          "ParentProcessId": 4684,
+          "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-e6727cc0-96aa-4a5d-9ca0-11f0ceb50a6c\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=4684.20052.9212496512570537092 /pfhostedapp:3c2b3f602f66b470aa06478ffaea88d5842ab963"
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 37380,
+          "ParentProcessId": 4684,
+          "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-13618e87-29cd-470b-aae3-48a84d255610\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=4684.20052.1003241311195717554 /pfhostedapp:192a2e8b561e08e4b4412e110746cebb05610a4c"
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 36832,
+          "ParentProcessId": 4684,
+          "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-3052c3f3-6e70-4609-820c-9cd4a687e1b3\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=4684.20052.5252615796413065590 /pfhostedapp:b6b847c193ad0b652d8ffbd16f24682c069d28d1"
+        }
+      ]
+    },
+    {
+      "name": "zero Ollama and 11434",
+      "passed": true
+    }
+  ],
+  "panel": {
+    "address": "https://example.com/",
+    "text": "Page could not open\nThe page could not open.\n\nREMOTE PAGES STAY INSIDE A CAPABILITY-FREE VIBESPACE CHILD WEBVIEW.",
+    "surfaceCount": 1
+  },
+  "processes": {
+    "tree": [
+      {
+        "Name": "jarvis.exe",
+        "ProcessId": 4684,
+        "ParentProcessId": 31036,
+        "CommandLine": "\"D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-47ff\\debug\\jarvis.exe\" "
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 12616,
+        "ParentProcessId": 4684,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --js-flags=--max-old-space-size=1536 --remote-debugging-address=127.0.0.1 --remote-debugging-port=9223 --lang=en-US --mojo-named-platform-channel-pipe=4684.20052.515329019478686350 /pfhostedapp:46c5fc76a556ed1b85e162257f1e47cd7fbc7c40"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 6664,
+        "ParentProcessId": 4684,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-e6727cc0-96aa-4a5d-9ca0-11f0ceb50a6c\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=4684.20052.9212496512570537092 /pfhostedapp:3c2b3f602f66b470aa06478ffaea88d5842ab963"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 37380,
+        "ParentProcessId": 4684,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-13618e87-29cd-470b-aae3-48a84d255610\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=4684.20052.1003241311195717554 /pfhostedapp:192a2e8b561e08e4b4412e110746cebb05610a4c"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 36832,
+        "ParentProcessId": 4684,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-3052c3f3-6e70-4609-820c-9cd4a687e1b3\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=4684.20052.5252615796413065590 /pfhostedapp:b6b847c193ad0b652d8ffbd16f24682c069d28d1"
+      }
+    ],
+    "listeners": [
+      {
+        "LocalAddress": "127.0.0.1",
+        "OwningProcess": 12616
+      }
+    ],
+    "ollama": 0,
+    "port11434": 0
+  },
+  "completedAt": "2026-08-29T06:37:45.177Z"
+}

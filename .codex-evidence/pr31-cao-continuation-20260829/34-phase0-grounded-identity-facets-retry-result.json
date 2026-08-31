@@ -1,0 +1,158 @@
+{
+  "capturedAt": "2026-08-30T07:08:11.497Z",
+  "identity": {
+    "jarvisPid": 34752,
+    "webViewPid": 18496,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-30T02:08:08.1452197-05:00"
+  },
+  "state": {
+    "activeChatId": "cht_E75imwxUe5tCxlgp",
+    "selection": {
+      "providerId": "opencode",
+      "connectionId": "opencode-cli",
+      "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+    },
+    "runtime": {
+      "settings": {
+        "effort": "high",
+        "fastMode": "off",
+        "performance": "balanced",
+        "rlmEnabled": true
+      },
+      "access": "full",
+      "approveAllForRun": false
+    },
+    "probe": {
+      "sends": [
+        {
+          "at": 1788073485191,
+          "chatId": "cht_SCBtrkST5yoqKOKu",
+          "modelSelectionOverride": {
+            "mode": "single",
+            "providerId": "opencode",
+            "connectionId": "opencode-cli",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "reasoningPreference": {
+            "effortOverride": "high"
+          },
+          "runtimeSettings": {
+            "effort": "high",
+            "performance": "balanced",
+            "fastMode": "off",
+            "rlmEnabled": true
+          },
+          "approveAllForRun": false
+        },
+        {
+          "at": 1788073626461,
+          "chatId": "cht_E75imwxUe5tCxlgp",
+          "modelSelectionOverride": {
+            "mode": "single",
+            "providerId": "opencode",
+            "connectionId": "opencode-cli",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "reasoningPreference": {
+            "effortOverride": "high"
+          },
+          "runtimeSettings": {
+            "effort": "high",
+            "performance": "balanced",
+            "fastMode": "off",
+            "rlmEnabled": true
+          },
+          "approveAllForRun": false
+        }
+      ],
+      "runs": [
+        {
+          "at": 1788073485813,
+          "chatId": "cht_SCBtrkST5yoqKOKu",
+          "status": "running",
+          "errorCode": null
+        },
+        {
+          "at": 1788073521359,
+          "chatId": "cht_SCBtrkST5yoqKOKu",
+          "status": "done",
+          "errorCode": null
+        },
+        {
+          "at": 1788073626991,
+          "chatId": "cht_E75imwxUe5tCxlgp",
+          "status": "running",
+          "errorCode": null
+        },
+        {
+          "at": 1788073665257,
+          "chatId": "cht_E75imwxUe5tCxlgp",
+          "status": "done",
+          "errorCode": null
+        }
+      ]
+    },
+    "finalAnswers": [
+      "**Offiical native acceptance identity** (retrieved via Context Gateway/RLM, SiYuan node `[unverified link omitted]`, source `official-native-acceptance.md`, contentHash `726fad04dc7a0eed19476cfa4b4be103f9d8a823c5e19e39fc1482bbfb4725b0`, trust=app_verified): - **Process** must be the exact worktree binary `app/src-tauri/target/debug/jarvis.exe`. - **WebView/profile** — the accepted browser target is a descendant `msedgewebview2.exe` owned by that `jarvis.exe`; its WebView2 user-data profile must normalize to `%LOCALAPPDATA%/ai.jarvis.desktop/EBWebView`. - **CDP port** — the official WebView must expose CDP on loopback `9223`; the development renderer is served from loopback `5173`. - **Page must** be titled `VibeSpace`, have `document.readyState === \"complete\"`, contain `#root`, expose `window.__TAURI_INTERNALS__`, and present the public main/navigation surface. - **Zero-Ollama safety** — `ollama` is prohibited for PR31 Phase 0: no `ollama` process and no listener on port `11434` may exist before attachment, d"
+    ],
+    "finalAnswerMetrics": [
+      {
+        "length": 2004,
+        "containsFixtureName": true,
+        "containsContextGateway": true,
+        "containsJarvisExecutable": true,
+        "containsOllamaInvariant": true,
+        "ending": "search` → pointer `[unverified link omitted]` (process + WebView start) - `search` → pointer `[unverified link omitted]` (profile, CDP 9223/5173, page/root/`__TAURI_INTERNALS__`) - `search` → pointer `[unverified link omitted]` (Ollama/11434 prohibition + excluded agents) All three point to the same RLM record `[unverified link omitted]`; `[unverified link omitted]`, `[unverified link omitted]`. No empty result, so no boundary was broken; no files [unverified output location omitted] **Provider/model/effort route observed this [unverified link omitted] provider `opencode`, model `opencode-go/deepseek-v4-flash-vision-exp`. No effort field was surfaced in this route's capability snapshot (the \"medium\" effort reference pertains to subagent spawns, not this main turn), so effort is unreported."
+      }
+    ],
+    "finalAnswerLinks": [],
+    "checkpoints": [
+      {
+        "kind": "final",
+        "text": "**Offiical native acceptance identity** (retrieved via Context Gateway/RLM, SiYuan node `[unverified link omitted]`, source `official-native-acceptance.md`, contentHash `726fad04dc7a0eed19476cfa4b4be103f9d8a823c5e19e39fc1482bbfb4725b0`, trust=app_verified): - **Process** must be the exact worktree binary `app/src-tauri/target/debug/jarvis.exe`. - **WebView/profile** — the accepted browser target is a descendant `msedgewebview2.exe` owned by that `jarvis.exe`; its WebView2 user-data profile must normalize to `%LOCALAPPDATA%/ai.jarvis.desktop/EBWebView`. - **CDP port** — the official WebView must expose CDP on loopback `9223`; the development renderer is served from loopback `5173`. - **Page must** be titled `VibeSpace`, have `document.readyState === \"complete\"`, contain `#root`, expose `window.__TAURI_INTERNALS__`, and present the public main/navigation surface. - **Zero-Ollama safety** — `ollama` is prohibited for PR31 Phase 0: no `ollama` process and no listener on port `11434` may exist before attachment, d"
+      }
+    ],
+    "activity": [
+      "Show activity details 6 actions"
+    ],
+    "context": [],
+    "approvals": [],
+    "visibleControls": [
+      "Open session details",
+      "0 subagents",
+      "Chat console settings",
+      "Show full prompt",
+      "Collapse completed work details",
+      "Show activity details 6 actions",
+      "Choose model",
+      "Connection details for Opencode Go",
+      "Agent Mode. Open permissions panel.",
+      "Upgrade prompt with Prompt Forge",
+      "Configure Prompt Forge",
+      "Start dictation",
+      "Send message"
+    ],
+    "counts": {
+      "finalAnswers": 1,
+      "checkpoints": 1,
+      "activity": 1,
+      "context": 0,
+      "approvals": 0,
+      "send": 1,
+      "stop": 0
+    }
+  },
+  "safety": {
+    "label": "phase0:result",
+    "capturedAt": "2026-08-30T02:08:11.3867168-05:00",
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  },
+  "events": []
+}

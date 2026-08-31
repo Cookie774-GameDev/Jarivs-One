@@ -1,0 +1,121 @@
+{
+  "capturedAt": "2026-08-30T05:16:11.233Z",
+  "identity": {
+    "jarvisPid": 25708,
+    "webViewPid": 29660,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-30T00:16:05.5815735-05:00"
+  },
+  "state": {
+    "activeChatId": "cht_8-uTuPB1nCWkbkoG",
+    "selection": {
+      "providerId": "opencode",
+      "connectionId": "opencode-cli",
+      "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+    },
+    "runtime": {
+      "settings": {
+        "effort": "high",
+        "fastMode": "off",
+        "performance": "balanced",
+        "rlmEnabled": true
+      },
+      "access": "full",
+      "approveAllForRun": false
+    },
+    "probe": {
+      "sends": [
+        {
+          "at": 1788066847561,
+          "chatId": "cht_8-uTuPB1nCWkbkoG",
+          "modelSelectionOverride": {
+            "mode": "single",
+            "providerId": "opencode",
+            "connectionId": "opencode-cli",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "reasoningPreference": {
+            "effortOverride": "high"
+          },
+          "runtimeSettings": {
+            "effort": "high",
+            "performance": "balanced",
+            "fastMode": "off",
+            "rlmEnabled": true
+          },
+          "approveAllForRun": false
+        }
+      ],
+      "runs": [
+        {
+          "at": 1788066848202,
+          "chatId": "cht_8-uTuPB1nCWkbkoG",
+          "status": "running",
+          "errorCode": null
+        },
+        {
+          "at": 1788066890429,
+          "chatId": "cht_8-uTuPB1nCWkbkoG",
+          "status": "done",
+          "errorCode": null
+        }
+      ]
+    },
+    "finalAnswers": [
+      "**Answer:** For official Playwright acceptance, this VibeSpace repository requires: - **Native [unverified link omitted] the exact worktree binary at `app/src-tauri/target/debug/jarvis.exe`. - **WebView [unverified link omitted] the accepted target is a descendant `msedgewebview2.exe` owned by that `jarvis.exe`, whose user-data profile normalizes to `%LOCALAPPDATA%/ai.jarvis.desktop/EBWebView`. - **CDP [unverified link omitted] the official WebView must expose CDP on loopback port `9223` (dev renderer on loopback `5173`). Page must be titled `VibeSpace`, `document.readyState === \"complete\"`, contain `#root`, expose `window.__TAURI_INTERNALS__`, and present the public main/navigation surface. - **Zero-Ollama [unverified link omitted] no `ollama` process and no listener on port `11434` before, during, or after the scenario. Standalone Chromium, headless browser, Vite preview, and mock DOM fixtures do **not** count as official native evidence. **Evidence / provenance (Context Gateway/SiYuan):** - Indexed file ve"
+    ],
+    "checkpoints": [
+      {
+        "kind": "true",
+        "text": "Found the indexed source. Let me open the full record via Context Gateway."
+      },
+      {
+        "kind": "final",
+        "text": "**Answer:** For official Playwright acceptance, this VibeSpace repository requires: - **Native [unverified link omitted] the exact worktree binary at `app/src-tauri/target/debug/jarvis.exe`. - **WebView [unverified link omitted] the accepted target is a descendant `msedgewebview2.exe` owned by that `jarvis.exe`, whose user-data profile normalizes to `%LOCALAPPDATA%/ai.jarvis.desktop/EBWebView`. - **CDP [unverified link omitted] the official WebView must expose CDP on loopback port `9223` (dev renderer on loopback `5173`). Page must be titled `VibeSpace`, `document.readyState === \"complete\"`, contain `#root`, expose `window.__TAURI_INTERNALS__`, and present the public main/navigation surface. - **Zero-Ollama [unverified link omitted] no `ollama` process and no listener on port `11434` before, during, or after the scenario. Standalone Chromium, headless browser, Vite preview, and mock DOM fixtures do **not** count as official native evidence. **Evidence / provenance (Context Gateway/SiYuan):** - Indexed file ve"
+      }
+    ],
+    "activity": [
+      "Show activity details 2 actions",
+      "Show activity details 5 actions"
+    ],
+    "context": [],
+    "approvals": [],
+    "visibleControls": [
+      "Open session details",
+      "0 subagents",
+      "Chat console settings",
+      "Show full prompt",
+      "Collapse completed work details",
+      "Show activity details 2 actions",
+      "Show activity details 5 actions",
+      "Choose model",
+      "Connection details for Opencode Go",
+      "Agent Mode. Open permissions panel.",
+      "Upgrade prompt with Prompt Forge",
+      "Configure Prompt Forge",
+      "Start dictation",
+      "Send message"
+    ],
+    "counts": {
+      "finalAnswers": 1,
+      "checkpoints": 2,
+      "activity": 2,
+      "context": 0,
+      "approvals": 0,
+      "send": 1,
+      "stop": 0
+    }
+  },
+  "safety": {
+    "label": "phase0:result",
+    "capturedAt": "2026-08-30T00:16:11.0518666-05:00",
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  },
+  "events": []
+}

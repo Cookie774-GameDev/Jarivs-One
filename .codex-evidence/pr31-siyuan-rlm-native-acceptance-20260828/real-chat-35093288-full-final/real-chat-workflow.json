@@ -1,0 +1,119 @@
+{
+  "status": "failed",
+  "head": "3509328805fd0309a681b5aa423b1de9c6a6d741",
+  "route": {
+    "providerId": "opencode",
+    "connectionId": "opencode-cli",
+    "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+  },
+  "chatId": "chat_pr31_real_workflow_1787982394613",
+  "startedAt": "2026-08-29T05:46:34.613Z",
+  "assertions": [
+    {
+      "name": "isolated fixture starts at exact draft bytes",
+      "passed": true,
+      "sha256": "f63221160dc2cbe317b5e8fd6615b5c567c60a39b92c51d93d2e5503e09eaffc"
+    },
+    {
+      "name": "one official jarvis process",
+      "passed": true,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "official native page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=context"
+    },
+    {
+      "name": "composer visibly retains exact DeepSeek selection",
+      "passed": true,
+      "visibleLabel": "opencode · opencode-go/deepseek-v4-flash-vision-exp"
+    },
+    {
+      "name": "exact DeepSeek route selected and persisted",
+      "passed": true,
+      "connection": {
+        "providerId": "opencode",
+        "id": "opencode-cli",
+        "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+        "mode": "external-cli",
+        "authSource": "opencode-provider-session"
+      },
+      "selection": {
+        "mode": "none"
+      }
+    },
+    {
+      "name": "one files.read proposal",
+      "passed": true,
+      "proposals": [
+        {
+          "action": "files.read",
+          "status": "pending",
+          "params": {
+            "path": "C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\Projects\\.vibespace-native-acceptance\\brief.md"
+          }
+        }
+      ]
+    }
+  ],
+  "turns": [],
+  "artifacts": [
+    {
+      "name": "FAIL-real-chat-workflow.png",
+      "width": 1600,
+      "height": 1025,
+      "state": {
+        "failure": "Error: semantic_timeout:first streamed assistant text:[{\"id\":\"msg_XWLgRKel-rN79E_r\",\"role\":\"user\",\"createdAt\":1787982421673,\"updatedAt\":1787982421673,\"parts\":[{\"kind\":\"text\",\"text\":\"Read the existing file C:\\\\Users\\\\viper\\\\AppData\\\\Roaming\\\\ai.jarvis.desktop\\\\Projects\\\\.vibespace-native-acceptance\\\\brief.md with the registered files.read action. Do not use RLM, SiYuan, a terminal, or a substitute path. After the approved read, summarize its Status and Evidence in one short sentence.\"}],\"usage\":null},{\"id\":\"msg_jreq_60297ccd-0ace-4150-b154-b3f30c6392ae\",\"role\":\"assistant\",\"createdAt\":1787982437366,\"updatedAt\":1787982439398,\"parts\":[{\"kind\":\"action_proposal\",\"call_id\":\"jarvisapproval:jappr_3282d10f-3020-45a9-9f47-e5b30956c55a\",\"action_id\":\"files.read\",\"params\":{\"path\":\"C:\\\\Users\\\\viper\\\\AppData\\\\Roaming\\\\ai.jarvis.desktop\\\\Projects\\\\.vibespace-native-acceptance\\\\brief.md\"},\"rationale\":\"Read the approved acceptance brief file via the registered read action.\",\"status\":\"success\",\"result\":{\"ok\":true,\"summary\":\"Read C:\\\\Users\\\\viper\\\\AppData\\\\Roaming\\\\ai.jarvis.desktop\\\\Projects\\\\.vibespace-native-acceptance\\\\brief.md.\",\"data\":{\"path\":\"C:\\\\Users\\\\viper\\\\AppData\\\\Roaming\\\\ai.jarvis.desktop\\\\Projects\\\\.vibespace-native-acceptance\\\\brief.md\",\"c\n    at waitFor (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:59:9)\n    at async runTurn (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:157:23)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:207:3"
+      }
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "read:before",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 35588,
+          "ParentProcessId": 11084,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-workbench-617\\debug\\jarvis.exe"
+        }
+      ]
+    }
+  ],
+  "failure": "Error: semantic_timeout:first streamed assistant text:[{\"id\":\"msg_XWLgRKel-rN79E_r\",\"role\":\"user\",\"createdAt\":1787982421673,\"updatedAt\":1787982421673,\"parts\":[{\"kind\":\"text\",\"text\":\"Read the existing file C:\\\\Users\\\\viper\\\\AppData\\\\Roaming\\\\ai.jarvis.desktop\\\\Projects\\\\.vibespace-native-acceptance\\\\brief.md with the registered files.read action. Do not use RLM, SiYuan, a terminal, or a substitute path. After the approved read, summarize its Status and Evidence in one short sentence.\"}],\"usage\":null},{\"id\":\"msg_jreq_60297ccd-0ace-4150-b154-b3f30c6392ae\",\"role\":\"assistant\",\"createdAt\":1787982437366,\"updatedAt\":1787982439398,\"parts\":[{\"kind\":\"action_proposal\",\"call_id\":\"jarvisapproval:jappr_3282d10f-3020-45a9-9f47-e5b30956c55a\",\"action_id\":\"files.read\",\"params\":{\"path\":\"C:\\\\Users\\\\viper\\\\AppData\\\\Roaming\\\\ai.jarvis.desktop\\\\Projects\\\\.vibespace-native-acceptance\\\\brief.md\"},\"rationale\":\"Read the approved acceptance brief file via the registered read action.\",\"status\":\"success\",\"result\":{\"ok\":true,\"summary\":\"Read C:\\\\Users\\\\viper\\\\AppData\\\\Roaming\\\\ai.jarvis.desktop\\\\Projects\\\\.vibespace-native-acceptance\\\\brief.md.\",\"data\":{\"path\":\"C:\\\\Users\\\\viper\\\\AppData\\\\Roaming\\\\ai.jarvis.desktop\\\\Projects\\\\.vibespace-native-acceptance\\\\brief.md\",\"c\n    at waitFor (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:59:9)\n    at async runTurn (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:157:23)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:207:3",
+  "completedAt": "2026-08-29T05:49:29.496Z"
+}

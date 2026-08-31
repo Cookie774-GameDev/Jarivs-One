@@ -4,6 +4,8 @@ import type { JarvisKernelTurnResult } from '@/lib/jarvis/kernel';
 import type { EventRow } from '@/types/event';
 import type { WorkspaceId } from '@/types/common';
 import type { ScheduledJarvisAttemptResult } from './jarvisScheduleDispatch';
+import type { ChatSupervisionOccurrenceReceipt } from './jarvisScheduleDispatch';
+import type { ChatSupervisionBindingV1 } from './chatSupervision';
 import {
   buildJarvisScheduleEventInput,
   parseJarvisScheduleMetadata,
@@ -22,6 +24,17 @@ import {
 const ACCOUNT = 'acct_schedule_runner';
 const WORKSPACE = 'wks_test' as WorkspaceId;
 const BASE_NOW = new Date(2026, 6, 8, 8, 0, 0, 0).getTime();
+
+const chatSupervision: ChatSupervisionBindingV1 = {
+  version: 1,
+  sourceChatId: 'chat-source',
+  supervisingChatId: 'chat-supervisor',
+  originatingMessageId: 'message-origin',
+  originatingCardMessageId: 'message-card',
+  handoffPolicyVersion: 1,
+  instruction: 'Review current progress and identify blockers.',
+  allowReplyToSource: false,
+};
 
 let eventSeq = 0;
 
@@ -118,6 +131,12 @@ function buildDeps(
   const updates: Array<{ id: string; patch: Partial<EventRow> }> = [];
   const chats: Array<{ id: string; title: string }> = [];
   const dispatches: Array<{ accountId: string; eventId: string; dueAt: number }> = [];
+  const supervisionRuns: Array<{
+    scheduleId: string;
+    occurrenceId: string;
+    binding: ChatSupervisionBindingV1;
+    previousReceipt?: JarvisScheduleMetadata['runHistory'][number];
+  }> = [];
   let outcomeIndex = 0;
   const deps: JarvisScheduleRunnerDeps = {
     listEvents: async () => events,
@@ -133,11 +152,25 @@ function buildDeps(
       dispatches.push(input);
       return outcomes[Math.min(outcomeIndex++, outcomes.length - 1)]!;
     },
+    runChatSupervisionOccurrence: vi.fn(async (input) => {
+      supervisionRuns.push(input);
+      return {
+        scheduleId: input.scheduleId,
+        occurrenceId: input.occurrenceId,
+        dispatchKey: `${input.scheduleId}:${input.occurrenceId}`,
+        status: 'dispatched',
+        targetChatId: input.binding.supervisingChatId,
+        messageId: `message-${input.occurrenceId}`,
+        replyToSourceAllowed: input.binding.allowReplyToSource,
+        startedAt: BASE_NOW - 10,
+        completedAt: BASE_NOW,
+      } satisfies ChatSupervisionOccurrenceReceipt;
+    }),
     recoverCaoScheduledLearning: vi.fn(async () => null),
     runCaoScheduledLearning: vi.fn(async () => ({ status: 'completed' as const })),
     now: () => BASE_NOW,
   };
-  return { deps, updates, chats, dispatches };
+  return { deps, updates, chats, dispatches, supervisionRuns };
 }
 
 describe('computeNextJarvisRunAt', () => {
@@ -215,6 +248,7 @@ describe('runDueJarvisSchedules', () => {
       | 'updateEvent'
       | 'createChat'
       | 'dispatchScheduledOccurrence'
+      | 'runChatSupervisionOccurrence'
       | 'recoverCaoScheduledLearning'
       | 'runCaoScheduledLearning'
       | 'now'
@@ -226,6 +260,123 @@ describe('runDueJarvisSchedules', () => {
         eventId: string;
         dueAt: number;
       }>();
+  });
+
+  it('runs a due chat supervision occurrence without creating an output chat or using kernel dispatch', async () => {
+    const event = buildEvent({
+      startAt: BASE_NOW - 60_000,
+      recurrence: 'daily',
+      metadataPatch: { chatSupervision },
+    });
+    const { deps, chats, dispatches, supervisionRuns } = buildDeps([event]);
+
+    await runDueJarvisSchedules(ACCOUNT, WORKSPACE, deps);
+
+    expect(chats).toEqual([]);
+    expect(dispatches).toEqual([]);
+    expect(supervisionRuns).toEqual([
+      {
+        scheduleId: String(event.id),
+        occurrenceId: String(event.start_at),
+        binding: chatSupervision,
+        previousReceipt: undefined,
+      },
+    ]);
+    const metadata = parseJarvisScheduleMetadata(event)!;
+    expect(metadata.lastRunAt).toBe(BASE_NOW);
+    expect(metadata.nextRunAt).toBe(event.start_at + 24 * 60 * 60 * 1000);
+    expect(metadata.runHistory).toEqual([
+      {
+        schemaVersion: 1,
+        at: BASE_NOW,
+        runId: `chat-supervision:${event.id}:${event.start_at}`,
+        requestId: `message-${event.start_at}`,
+        status: 'dispatched',
+        summary: 'Chat supervision dispatched to chat-supervisor.',
+      },
+    ]);
+  });
+
+  it('passes the previous durable supervision receipt into the next occurrence', async () => {
+    const event = buildEvent({
+      startAt: BASE_NOW - 60_000,
+      metadataPatch: { chatSupervision },
+    });
+    const prior = {
+      schemaVersion: 1 as const,
+      at: BASE_NOW - 60_000,
+      runId: `chat-supervision:${event.id}:prior`,
+      requestId: 'message-prior',
+      status: 'completed' as const,
+      summary: 'Prior supervision completed.',
+    };
+    const unrelated = {
+      schemaVersion: 1 as const,
+      at: BASE_NOW - 30_000,
+      runId: 'jrun-unrelated',
+      requestId: 'jreq-unrelated',
+      status: 'completed' as const,
+    };
+    Object.assign(
+      event,
+      withJarvisScheduleMetadata(event, {
+        ...parseJarvisScheduleMetadata(event)!,
+        runHistory: [prior, unrelated],
+      }),
+    );
+    const { deps, supervisionRuns } = buildDeps([event]);
+
+    await runDueJarvisSchedules(ACCOUNT, WORKSPACE, deps);
+
+    expect(supervisionRuns[0]?.previousReceipt).toEqual(prior);
+  });
+
+  it('records a truthful failed receipt and advances without targeting another chat', async () => {
+    const event = buildEvent({
+      startAt: BASE_NOW - 60_000,
+      recurrence: 'daily',
+      metadataPatch: { chatSupervision },
+    });
+    const { deps, dispatches } = buildDeps([event]);
+    deps.runChatSupervisionOccurrence = vi.fn(async () => ({
+      scheduleId: String(event.id),
+      occurrenceId: String(event.start_at),
+      dispatchKey: `${event.id}:${event.start_at}`,
+      status: 'rejected' as const,
+      targetChatId: chatSupervision.supervisingChatId,
+      reason: 'chat_unavailable',
+      replyToSourceAllowed: false,
+      startedAt: BASE_NOW - 10,
+      completedAt: BASE_NOW,
+    }));
+
+    await runDueJarvisSchedules(ACCOUNT, WORKSPACE, deps);
+
+    expect(dispatches).toEqual([]);
+    expect(parseJarvisScheduleMetadata(event)?.runHistory.at(-1)).toEqual({
+      schemaVersion: 1,
+      at: BASE_NOW,
+      runId: `chat-supervision:${event.id}:${event.start_at}`,
+      requestId: `${event.id}:${event.start_at}`,
+      status: 'failed',
+      summary: 'Chat supervision failed: chat_unavailable.',
+    });
+  });
+
+  it('cancels a supervision schedule at its end condition without dispatch', async () => {
+    const event = buildEvent({
+      startAt: BASE_NOW - 60_000,
+      recurrence: 'daily',
+      metadataPatch: { chatSupervision: { ...chatSupervision, endsAt: BASE_NOW } },
+    });
+    const { deps, chats, dispatches, supervisionRuns } = buildDeps([event]);
+
+    await runDueJarvisSchedules(ACCOUNT, WORKSPACE, deps);
+
+    expect(event.status).toBe('cancelled');
+    expect(chats).toEqual([]);
+    expect(dispatches).toEqual([]);
+    expect(supervisionRuns).toEqual([]);
   });
 
   it('runs and recovers learning only for an explicit dedicated CAO supervision schedule', async () => {

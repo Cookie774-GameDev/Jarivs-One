@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-28T08:22:35.2720943-05:00",
+  "captureMethod": "Read-only Microsoft Playwright/CDP evaluation of the official jarvis.exe-owned WebView on 127.0.0.1:9223; no provider request was sent.",
+  "page": {
+    "title": "VibeSpace",
+    "url": "http://localhost:5173/?route=chat"
+  },
+  "savedSelection": {
+    "mode": "single",
+    "providerId": "opencode",
+    "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+    "connectionId": "opencode-cli",
+    "connectionMode": "external-cli",
+    "authSource": "opencode-provider-session"
+  },
+  "reasoningIdentity": {
+    "mode": "normal",
+    "savedEffortOverride": null,
+    "effectiveEffort": "auto (provider default)",
+    "basis": "The active chat has no per-chat effort override in vibespace.chat-reasoning.v1. The product therefore uses its explicit Auto/provider-default policy; no effort was inferred or substituted."
+  },
+  "visiblePickerIdentity": {
+    "composite": "DeepSeek V4 Flash Vision Exp · Opencode Go provider connection",
+    "active": true,
+    "rawRouteShownInPicker": false,
+    "boundary": "The friendly composite is the semantic picker identity. The exact raw route remains independently persisted as modelId and is visible elsewhere in the native Chat state."
+  },
+  "safety": {
+    "providerRequestSent": false,
+    "substituteSelected": false,
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "status": "failed",
+  "head": "0ef23418a8e0191ee3bc7b2bc6d5c1726ada0c41",
+  "route": {
+    "providerId": "opencode",
+    "connectionId": "opencode-cli",
+    "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+  },
+  "chatId": "chat_pr31_real_workflow_1787975821499",
+  "startedAt": "2026-08-29T03:57:01.499Z",
+  "assertions": [
+    {
+      "name": "isolated fixture starts at exact draft bytes",
+      "passed": true,
+      "sha256": "f63221160dc2cbe317b5e8fd6615b5c567c60a39b92c51d93d2e5503e09eaffc"
+    },
+    {
+      "name": "one official jarvis process",
+      "passed": true,
+      "jarvis": [
+        {
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "official native page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    }
+  ],
+  "turns": [],
+  "artifacts": [
+    {
+      "name": "FAIL-real-chat-workflow.png",
+      "width": 1588,
+      "height": 993,
+      "state": {
+        "failure": "locator.waitFor: Error: strict mode violation: getByText('PR31 Real Read Write Refine Upgrade', { exact: true }) resolved to 2 elements:\n    1) <span class=\"min-w-0 flex-1 truncate text-left\">PR31 Real Read Write Refine Upgrade</span> aka getByLabel('Navigation', { exact: true }).getByRole('button', { name: 'PR31 Real Read Write Refine Upgrade', exact: true })\n    2) <span class=\"block truncate\">PR31 Real Read Write Refine Upgrade</span> aka getByLabel('Open chats').getByRole('button', { name: 'PR31 Real Read Write Refine Upgrade', exact: true })\n\nCall log:\n\u001b[2m  - waiting for getByText('PR31 Real Read Write Refine Upgrade', { exact: true }) to be visible\u001b[22m\n\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\real-chat-workflow.mjs:172:48"
+      }
+    }
+  ],
+  "console": [],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe"
+        }
+      ]
+    }
+  ],
+  "failure": "locator.waitFor: Error: strict mode violation: getByText('PR31 Real Read Write Refine Upgrade', { exact: true }) resolved to 2 elements:\n    1) <span class=\"min-w-0 flex-1 truncate text-left\">PR31 Real Read Write Refine Upgrade</span> aka getByLabel('Navigation', { exact: true }).getByRole('button', { name: 'PR31 Real Read Write Refine Upgrade', exact: true })\n    2) <span class=\"block truncate\">PR31 Real Read Write Refine Upgrade</span> aka getByLabel('Open chats').getByRole('button', { name: 'PR31 Real Read Write Refine Upgrade', exact: true })\n\nCall log:\n\u001b[2m  - waiting for getByText('PR31 Real Read Write Refine Upgrade', { exact: true }) to be visible\u001b[22m\n\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\real-chat-workflow.mjs:172:48",
+  "completedAt": "2026-08-29T03:57:14.437Z"
+}

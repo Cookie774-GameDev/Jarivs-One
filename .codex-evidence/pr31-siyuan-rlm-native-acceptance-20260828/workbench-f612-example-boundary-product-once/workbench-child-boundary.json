@@ -1,0 +1,84 @@
+{
+  "status": "failed",
+  "head": "f612182470e7984285e47dce30ec98e10d2866ef",
+  "startedAt": "2026-08-29T09:15:13.825Z",
+  "console": [],
+  "pageErrors": [],
+  "assertions": [
+    {
+      "name": "example navigation uses bounded native surface",
+      "passed": true
+    },
+    {
+      "name": "example navigation is stable without app error",
+      "passed": false,
+      "details": {
+        "address": "https://example.com/",
+        "text": "Loading…\n\nREMOTE PAGES STAY INSIDE A CAPABILITY-FREE VIBESPACE CHILD WEBVIEW.",
+        "surfaceCount": 1
+      }
+    },
+    {
+      "name": "single official CDP listener remains authoritative",
+      "passed": true,
+      "details": [
+        {
+          "LocalAddress": "127.0.0.1",
+          "OwningProcess": 11988
+        }
+      ]
+    },
+    {
+      "name": "child browser does not inherit main CDP endpoint",
+      "passed": true,
+      "details": [
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 12988,
+          "ParentProcessId": 34968,
+          "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-a3b6094c-3872-496d-9fe2-af4007c6402d\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=34968.36668.15077454997726793053 /pfhostedapp:6a9847710be8251a9961721880a932238f03588d"
+        }
+      ]
+    },
+    {
+      "name": "zero Ollama and 11434",
+      "passed": true
+    }
+  ],
+  "panel": {
+    "address": "https://example.com/",
+    "text": "Loading…\n\nREMOTE PAGES STAY INSIDE A CAPABILITY-FREE VIBESPACE CHILD WEBVIEW.",
+    "surfaceCount": 1
+  },
+  "processes": {
+    "tree": [
+      {
+        "Name": "jarvis.exe",
+        "ProcessId": 34968,
+        "ParentProcessId": 38276,
+        "CommandLine": "\"D:\\VibeSpace-Testing\\codex-targets\\pr31-unified-994\\debug\\jarvis.exe\" "
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 11988,
+        "ParentProcessId": 34968,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --js-flags=--max-old-space-size=1536 --remote-debugging-address=127.0.0.1 --remote-debugging-port=9223 --lang=en-US --mojo-named-platform-channel-pipe=34968.36668.5192878007319826353 /pfhostedapp:46c5fc76a556ed1b85e162257f1e47cd7fbc7c40"
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 12988,
+        "ParentProcessId": 34968,
+        "CommandLine": "\"C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe\" --embedded-browser-webview=1 --webview-exe-name=jarvis.exe --webview-exe-version=1.5.0 --user-data-dir=\"C:\\Users\\viper\\AppData\\Roaming\\ai.jarvis.desktop\\workbench-browser\\browser-a3b6094c-3872-496d-9fe2-af4007c6402d\\EBWebView\" --noerrdialogs --embedded-browser-webview-dpi-awareness=2 --autoplay-policy=no-user-gesture-required --disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --lang=en-US --mojo-named-platform-channel-pipe=34968.36668.15077454997726793053 /pfhostedapp:6a9847710be8251a9961721880a932238f03588d"
+      }
+    ],
+    "listeners": [
+      {
+        "LocalAddress": "127.0.0.1",
+        "OwningProcess": 11988
+      }
+    ],
+    "ollama": 0,
+    "port11434": 0
+  },
+  "completedAt": "2026-08-29T09:15:25.792Z"
+}

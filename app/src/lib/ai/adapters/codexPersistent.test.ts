@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ProviderConnection } from './types';
-import { createCodexPersistentAdapter } from './codexPersistent';
+import { createCodexPersistentAdapter, resolveCodexExecutable } from './codexPersistent';
 
 const connection: ProviderConnection = {
   id: 'openai-codex',
@@ -98,13 +98,95 @@ async function* frames() {
 }
 
 describe('persistent Codex app-server adapter', () => {
+  it('refreshes and prefers the verified managed executable identity on every start', async () => {
+    let executableId = 'cli-executable-managed-1';
+    const refresh = vi.fn(async () => {
+      executableId = executableId.endsWith('-1')
+        ? 'cli-executable-managed-2'
+        : 'cli-executable-managed-3';
+    });
+    const findSystem = vi.fn(async () => ({
+      executableId: 'cli-executable-system',
+      executablePath: 'C:\\trusted\\codex.exe',
+    }));
+    const manager = {
+      refresh,
+      getSnapshot: () => ({
+        kind: 'ready' as const,
+        codexVersion: '0.151.0',
+        openCodexVersion: '5.0.0',
+        executableId,
+      }),
+    };
+
+    await expect(resolveCodexExecutable({ manager, findSystem })).resolves.toEqual({
+      executableId: 'cli-executable-managed-2',
+    });
+    await expect(resolveCodexExecutable({ manager, findSystem })).resolves.toEqual({
+      executableId: 'cli-executable-managed-3',
+    });
+    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(findSystem).not.toHaveBeenCalled();
+  });
+
+  it('falls back only to the existing trusted scan and fails closed when neither exists', async () => {
+    const trusted = {
+      executableId: 'cli-executable-system',
+      executablePath: 'C:\\trusted\\codex.exe',
+    };
+    const missingManager = {
+      refresh: vi.fn(async () => undefined),
+      getSnapshot: () => ({ kind: 'missing' as const }),
+    };
+    await expect(
+      resolveCodexExecutable({
+        manager: missingManager,
+        findSystem: vi.fn(async () => trusted),
+      }),
+    ).resolves.toEqual(trusted);
+    await expect(
+      resolveCodexExecutable({
+        manager: missingManager,
+        findSystem: vi.fn(async () => undefined),
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('does not start the native server when neither executable authority resolves', async () => {
+    const start = vi.fn(async () => ({ generation: 'must-not-start' }));
+    const adapter = createCodexPersistentAdapter({
+      findExecutable: async () => undefined,
+      start,
+      frames: () => ({ stream: frames(), ready: Promise.resolve() }),
+      write: vi.fn(async () => undefined),
+      stop: vi.fn(async () => true),
+    });
+    const consume = async () => {
+      for await (const _event of adapter.send!({
+        requestId: 'request_missing_authority',
+        connection,
+        chatId: 'chat_missing_authority',
+        prompt: 'Hello',
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        workingDirectory: 'C:\\workspace',
+        interactionMode: 'ask',
+      })) {
+        // No native frame may be observed without an executable authority.
+      }
+    };
+
+    await expect(consume()).rejects.toThrow('Codex CLI is not installed.');
+    expect(start).not.toHaveBeenCalled();
+  });
+
   it('subscribes before dispatch and projects the exact OpenCodex model incrementally', async () => {
     const calls: string[] = [];
     const writes: Array<Record<string, unknown>> = [];
     const adapter = createCodexPersistentAdapter({
       findExecutable: async () => ({ executableId: 'trusted-codex', executablePath: 'codex.exe' }),
-      start: async (_executableId, _ownerId, modelId) => {
+      start: async (executableId, _ownerId, modelId) => {
         calls.push('start');
+        expect(executableId).toBe('trusted-codex');
         expect(modelId).toBe('opencode-go/deepseek-v4-flash-vision-exp');
         return { generation: 'codex-generation-1' };
       },
@@ -182,9 +264,7 @@ describe('persistent Codex app-server adapter', () => {
       yield {
         id: 'request_1_model_1',
         result: {
-          data: [
-            { model: 'different/model', supportedReasoningEfforts: [], serviceTiers: [] },
-          ],
+          data: [{ model: 'different/model', supportedReasoningEfforts: [], serviceTiers: [] }],
           nextCursor: null,
         },
       };

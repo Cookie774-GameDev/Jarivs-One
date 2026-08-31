@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "pr31-deepseek-native-terminal-latency-v1",
+  "generatedAt": "2026-08-29T08:11:14.613Z",
+  "status": "incomplete",
+  "rawOutputStored": false,
+  "expectedModelId": "opencode-go/deepseek-v4-flash-vision-exp",
+  "environment": {
+    "kind": "terminal-opencode",
+    "cliVersion": "1.18.23",
+    "authority": {
+      "requestedModelId": "opencode-go/deepseek-v4-flash-vision-exp",
+      "observedProviderId": "opencode-go",
+      "observedModelId": "deepseek-v4-flash-vision-exp"
+    }
+  },
+  "failure": {
+    "code": "quality_failed_disposable-write_warm",
+    "rawErrorStored": false
+  },
+  "featureEvidence": {
+    "rlm": {
+      "requested": false,
+      "observed": false,
+      "evidence": "not reached or not observable"
+    },
+    "siyuan": {
+      "requested": false,
+      "observed": false,
+      "evidence": "not reached or not observable"
+    }
+  },
+  "comparisonBoundary": {
+    "status": "terminal-incomplete",
+    "requiredEnvironment": "terminal-opencode"
+  }
+}

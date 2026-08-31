@@ -1,0 +1,33 @@
+{
+  "status": "failed",
+  "head": "24572dc41b7b1a93317dbf85005dfcff2dfc3259",
+  "startedAt": "2026-08-29T11:17:30.339Z",
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FILE_NOT_FOUND"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_OALKdVp751It"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_OvvrJJC77WRl"
+    },
+    {
+      "type": "log",
+      "text": "[Jarvis] Spawned new PTY session: tty_dqrfIJfizt7b"
+    },
+    {
+      "type": "warning",
+      "text": "[Jarvis] terminal snapshot save failed: snapshot_io"
+    }
+  ],
+  "pageErrors": [
+    "TypeError: Cannot read properties of undefined (reading 'handlerId')"
+  ],
+  "assertions": [],
+  "failure": "locator.waitFor: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[data-kind=\"browser\"][data-panel-id=\"browser-46660ce0-7d5c-448f-9ed0-16bac0303b11\"]').getByTestId('workbench-browser-panel').getByRole('alert') to be visible\u001b[22m\n\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\workbench-child-boundary.mjs:47:30",
+  "completedAt": "2026-08-29T11:18:24.128Z"
+}

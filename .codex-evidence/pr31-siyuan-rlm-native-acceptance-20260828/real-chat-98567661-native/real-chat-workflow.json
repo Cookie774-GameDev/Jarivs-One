@@ -1,0 +1,32 @@
+{
+  "status": "failed",
+  "head": "617b7a56e5a9e143a3412343eef7ff16799bb9a4",
+  "route": {
+    "providerId": "opencode",
+    "connectionId": "opencode-cli",
+    "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+  },
+  "chatId": "chat_pr31_real_workflow_1787978721897",
+  "startedAt": "2026-08-29T04:45:21.897Z",
+  "assertions": [],
+  "turns": [],
+  "artifacts": [],
+  "console": [],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 16772,
+          "ParentProcessId": 2984,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-b53-siyuan-native\\debug\\jarvis.exe"
+        }
+      ]
+    }
+  ],
+  "failure": "Error: immutable_head_mismatch:98567661384d97919de6b10224ebb2f93d7ba9e2:617b7a56e5a9e143a3412343eef7ff16799bb9a4\n    at file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:179:55",
+  "completedAt": "2026-08-29T04:45:24.656Z"
+}

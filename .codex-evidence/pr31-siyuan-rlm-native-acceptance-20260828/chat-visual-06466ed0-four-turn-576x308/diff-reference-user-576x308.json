@@ -1,0 +1,15 @@
+{
+  "status": "failed",
+  "referencePath": "C:\\Users\\viper\\Pictures\\Screenshots\\Screenshot 2026-08-26 200616.png",
+  "actualPath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-visual-06466ed0-four-turn-576x308\\01-chat-collapsed-four-turn.png",
+  "diffPath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-visual-06466ed0-four-turn-576x308\\diff-reference-user-576x308.png",
+  "width": 576,
+  "height": 308,
+  "totalPixels": 177408,
+  "mismatchedPixels": 100993,
+  "mismatchRatio": 0.5692697059884559,
+  "pixelThreshold": 0.1,
+  "maxMismatchRatio": 0,
+  "referenceSha256": "6b15301c756077b1a965bcad586b1b3fcebd0509b5f8f45d77f6002da8b369df",
+  "actualSha256": "8b73af541941f151ca946a546208dc90482b79b6184af9a3a0c918bd8bc4b6c7"
+}

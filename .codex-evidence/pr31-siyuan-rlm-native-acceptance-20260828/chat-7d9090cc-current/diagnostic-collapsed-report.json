@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "referencePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\docs\\operations\\PR31_CHAT_ACTIVITY_LEDGER_HANDOFF\\vibespace-chat-activity-ledger\\assets\\01-collapsed-continuous-response.png",
+  "actualPath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-7d9090cc-current\\FAIL-chat-current-visual.png",
+  "diffPath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-7d9090cc-current\\diagnostic-collapsed-diff.png",
+  "width": 1586,
+  "height": 992,
+  "totalPixels": 1573312,
+  "mismatchedPixels": 219845,
+  "mismatchRatio": 0.13973388622218608,
+  "pixelThreshold": 0.1,
+  "maxMismatchRatio": 1,
+  "referenceSha256": "428d05ab435ce65b2e309cc4593485d8c608a009ea7c797ad62f17d1fab267f4",
+  "actualSha256": "29e25ef2d5bbc97b699f575a0c53da06590f326925b5fa48508db15adfeee231"
+}

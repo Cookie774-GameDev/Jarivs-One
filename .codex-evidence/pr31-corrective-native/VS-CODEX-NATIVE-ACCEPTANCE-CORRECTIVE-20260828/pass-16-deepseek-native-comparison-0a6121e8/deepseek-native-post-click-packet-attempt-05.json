@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-DEEPSEEK-NATIVE-ATTEMPT-05-POST-CLICK-PACKET",
+  "capturedAt": "2026-08-28T18:20:43.045Z",
+  "captureHead": "a1574bd222d00317d680a856d8c6b3795d17fb1b",
+  "classification": "product_failure_denial_persistence_implementation",
+  "observed": {
+    "chatIdSha256": "bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e",
+    "messageIdSha256": "ccab367f73976e8253b7bb627cbace740e0908352b2e8129dc2af50a1ac0feef",
+    "callIdSha256": "da56a4766929b4bfd4469d15dd353585be8a7be98579b4bc1d72c0c09a940a6b",
+    "actionId": "files.create",
+    "persistedStatus": "pending",
+    "params": {
+      "wrongPathMatches": true,
+      "contentCharCount": 214,
+      "rootPresent": true
+    },
+    "card": {
+      "visible": true,
+      "actionId": "files.create",
+      "approvalKind": "canonical",
+      "status": "pending",
+      "buttons": [
+        {
+          "name": "Approve fixed action",
+          "disabled": false,
+          "submitState": "failed"
+        },
+        {
+          "name": "Deny action",
+          "disabled": false,
+          "submitState": null
+        }
+      ],
+      "alertText": "Approval decision could not be saved. Refresh protected state before retrying.",
+      "alertTextSha256": "5bf6a881503812df5e26a49cf1ba9fd7f4fc632a80c6323d1a0f224aa84ce5a7"
+    }
+  },
+  "observability": {
+    "loadedModule": {
+      "status": 200,
+      "charCount": 44956,
+      "containsPersistVerifiedDenial": true,
+      "containsPersistBeforeRelease": true,
+      "sha256": "0edc04abeb2d1e64af9a76ed509bb9bac993a520279216fbaa096095c17c6c65"
+    },
+    "localSourceSha256": "197f619147663887fbeb97d9cf4d21e795e985e61738d5c203bce5fea64e76e2",
+    "localSourceContainsPersistVerifiedDenial": true,
+    "repositoryUpdateError": "No raw repository exception is exposed by the card. The public fail-closed alert is the only observable persistence error.",
+    "consoleErrorObservedByAttempt05": false
+  },
+  "files": {
+    "requestedOutput": {
+      "exists": false,
+      "size": 0,
+      "sha256": null
+    },
+    "wrongTarget": {
+      "exists": false,
+      "size": 0,
+      "sha256": null
+    }
+  },
+  "artifact": {
+    "name": "12-stale-wrong-approval-post-click-packet-attempt-05.png",
+    "width": 1983,
+    "height": 1240
+  },
+  "safety": {
+    "before": {
+      "label": "attempt05-post-click:before",
+      "capturedAt": "2026-08-28T13:20:39.3975964-05:00",
+      "jarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 19612,
+          "ParentProcessId": 12924,
+          "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe"
+        }
+      ],
+      "cdp": [
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 9688,
+          "ParentProcessId": 19612
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 7372,
+          "ParentProcessId": 9688
+        }
+      ],
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    "after": {
+      "label": "attempt05-post-click:after",
+      "capturedAt": "2026-08-28T13:20:42.9826054-05:00",
+      "jarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 19612,
+          "ParentProcessId": 12924,
+          "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe"
+        }
+      ],
+      "cdp": [
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 9688,
+          "ParentProcessId": 19612
+        },
+        {
+          "Name": "msedgewebview2.exe",
+          "ProcessId": 7372,
+          "ParentProcessId": 9688
+        }
+      ],
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  },
+  "interactionBoundary": "Read-only post-click capture. Attempt-05 issued one Deny action; this packet issued no click, approval, model dispatch, restart, or developer-state mutation.",
+  "counts": {
+    "modelDispatch": 0,
+    "approvalClick": 0,
+    "postClickPacketClicks": 0
+  },
+  "rawBodyStored": false,
+  "credentialsStored": false
+}

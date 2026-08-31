@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-NATIVE-ACCEPTANCE-HARNESS-SMOKE",
+  "startedAt": "2026-08-30T11:35:00.211Z",
+  "status": "failed",
+  "captureHead": "274337ba81f6fe12034c3bbc9ed37f9b7215ab37",
+  "identity": {
+    "jarvisPid": 7608,
+    "webViewPid": 616,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-30T06:34:59.9801961-05:00"
+  },
+  "safety": [
+    {
+      "label": "smoke:before",
+      "capturedAt": "2026-08-30T06:34:59.9801961-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "smoke:after",
+      "capturedAt": "2026-08-30T06:35:14.0837554-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [],
+  "artifacts": [],
+  "events": [],
+  "firstFailure": {
+    "code": "semantic_wait_timeout",
+    "stage": "wait",
+    "name": "NativeAcceptanceHarnessError",
+    "details": {
+      "description": "one stable official VibeSpace page",
+      "attempts": 92,
+      "elapsedMs": 10025,
+      "lastValue": {
+        "accepted": false,
+        "candidateCount": 0,
+        "pageCount": 1
+      }
+    }
+  },
+  "metadata": {
+    "boundary": "read-only current official public identity; no navigation or dispatch"
+  },
+  "completedAt": "2026-08-30T11:35:14.149Z"
+}

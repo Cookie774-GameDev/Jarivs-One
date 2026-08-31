@@ -1,0 +1,95 @@
+{
+  "status": "failed",
+  "identity": {
+    "jarvisPid": 25708,
+    "webViewPid": 29660,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-30T00:01:10.1393603-05:00"
+  },
+  "expectedRoot": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-cao-continuation-20260829\\phase0-context-fixture",
+  "beforeSafety": {
+    "label": "direct-retry:before",
+    "capturedAt": "2026-08-30T00:01:13.0385966-05:00",
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  },
+  "result": {
+    "outcome": "rejected",
+    "mapId": "map-1d0fhy8-c-users-viper-vibespace-unifiedchungus-final-codex-evidence-pr31-cao-continuatio-1788065716038",
+    "reasonType": "string",
+    "reasonTag": null,
+    "reasonConstructor": null,
+    "reasonKeys": [],
+    "reasonMessage": "siyuan_transport_unavailable",
+    "reasonName": null,
+    "reasonCode": null,
+    "reasonStack": null,
+    "job": {
+      "schemaVersion": 1,
+      "scope": "prj_leBT3oqNPBtoSMmf\u0000map-1d0fhy8-c-users-viper-vibespace-unifiedchungus-final-codex-evidence-pr31-cao-continuatio-1788065716038",
+      "accountId": "92bc58f9-0cb6-4fd3-821e-8da689484491",
+      "projectId": "prj_leBT3oqNPBtoSMmf",
+      "mapId": "map-1d0fhy8-c-users-viper-vibespace-unifiedchungus-final-codex-evidence-pr31-cao-continuatio-1788065716038",
+      "canonicalRoot": "C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-cao-continuation-20260829/phase0-context-fixture",
+      "policyFingerprint": "{\"schemaVersion\":2,\"root\":\"c:/users/viper/vibespace-unifiedchungus-final/.codex-evidence/pr31-cao-continuation-20260829/phase0-context-fixture\",\"summaryMode\":\"selected\",\"selectedExtensions\":[],\"selectedPaths\":[\".\"],\"excludedPaths\":[]}",
+      "phase": "creating_nodes",
+      "status": "failed",
+      "pauseReason": null,
+      "cursor": 1,
+      "frontierLength": 1,
+      "indexed": 1,
+      "excluded": 0,
+      "unreadable": 0,
+      "summarized": 0,
+      "summaryEligible": 0,
+      "createdNodes": 1,
+      "failed": 0,
+      "skipped": 0,
+      "inputTokens": "[redacted]",
+      "outputTokens": "[redacted]",
+      "totalTokens": "[redacted]",
+      "tokenProvenance": "[redacted]",
+      "summaryProviderId": null,
+      "summaryConnectionId": null,
+      "summaryModelId": null,
+      "phaseStartedAt": 1788065719814,
+      "rateSamples": [
+        {
+          "at": 1788065719814,
+          "processed": 0
+        }
+      ],
+      "discoverySamples": [
+        {
+          "at": 1788065719571,
+          "processed": 1,
+          "frontierRemaining": 0,
+          "discovered": 1
+        }
+      ],
+      "estimatedPercent": 90,
+      "estimatedEtaSeconds": null,
+      "reconciledAt": 1788065723282,
+      "pendingNativeNodeIds": [],
+      "startupDisposition": null,
+      "startupDispositionAt": null,
+      "pausedMs": 2084,
+      "startedAt": 1788065719517,
+      "updatedAt": 1788066076969,
+      "completedAt": null,
+      "summaryEffort": null
+    }
+  },
+  "afterSafety": {
+    "label": "direct-retry:after",
+    "capturedAt": "2026-08-30T00:01:20.1584345-05:00",
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  },
+  "failure": null
+}

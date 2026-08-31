@@ -1,0 +1,563 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-DEEPSEEK-NATIVE-COMPARISON-EVIDENCE",
+  "startedAt": "2026-08-28T17:09:55.304Z",
+  "failedAt": "2026-08-28T17:13:08.894Z",
+  "status": "failed",
+  "captureHead": "33614b56bea608c0651631dd29024d34e41e7275",
+  "failure": "locator.waitFor: Timeout 35000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('button', { name: 'Send message' }) to be visible\u001b[22m\n\n    at runSample (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-corrective-native\\VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828\\pass-16-deepseek-native-comparison-0a6121e8\\deepseek-native-comparison-driver.mjs:360:6)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-corrective-native/VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828/pass-16-deepseek-native-comparison-0a6121e8/deepseek-native-comparison-driver.mjs:514:18",
+  "completedPromptReports": [
+    {
+      "id": "bounded-reasoning",
+      "promptSha256": "707baa2049870e56c63af21ddd1f8ce89a8fb21dbf260b1b0eee1940caaf4a17",
+      "bounds": {
+        "timeoutMs": 35000,
+        "maxOutputChars": 2000
+      },
+      "samples": {
+        "cold": {
+          "phase": "cold",
+          "status": "completed",
+          "durationMs": 6570,
+          "timeToFirstTextMs": 815,
+          "identity": {
+            "providerId": "opencode",
+            "connectionId": "opencode-cli",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "output": {
+            "sha256": "01e253f3c56cb0e45bcb191452e63743ecaded09f218a12cc6292db3a6029e80",
+            "charCount": 26
+          },
+          "quality": {
+            "passed": true,
+            "checks": [
+              {
+                "id": "response_bounded",
+                "passed": true
+              },
+              {
+                "id": "required_markers",
+                "passed": true
+              },
+              {
+                "id": "no_failure_language",
+                "passed": true
+              }
+            ]
+          },
+          "usage": null
+        },
+        "warm": {
+          "phase": "warm",
+          "status": "completed",
+          "durationMs": 5383,
+          "timeToFirstTextMs": 2380,
+          "identity": {
+            "providerId": "opencode",
+            "connectionId": "opencode-cli",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "output": {
+            "sha256": "01e253f3c56cb0e45bcb191452e63743ecaded09f218a12cc6292db3a6029e80",
+            "charCount": 26
+          },
+          "quality": {
+            "passed": true,
+            "checks": [
+              {
+                "id": "response_bounded",
+                "passed": true
+              },
+              {
+                "id": "required_markers",
+                "passed": true
+              },
+              {
+                "id": "no_failure_language",
+                "passed": true
+              }
+            ]
+          },
+          "sessionContinuity": true,
+          "sessionEvidence": {
+            "boundary": "same official-native Chat ID and persisted exact connection",
+            "chatIdSha256": "86ce377441b000baf68431892236758a941effd462a81357e89b91f810d2ac87"
+          },
+          "usage": null
+        }
+      }
+    },
+    {
+      "id": "disposable-read",
+      "promptSha256": "95961f04768cf28ed6f2ce2cabb14742a32b209bfe71461c1a6bdddc818fc416",
+      "bounds": {
+        "timeoutMs": 35000,
+        "maxOutputChars": 2000
+      },
+      "samples": {
+        "cold": {
+          "phase": "cold",
+          "status": "completed",
+          "durationMs": 10617,
+          "timeToFirstTextMs": 528,
+          "identity": {
+            "providerId": "opencode",
+            "connectionId": "opencode-cli",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "output": {
+            "sha256": "4072387c53e6107d1ae2d708734c70776d1994c31aebbbdf30b22bcff180e880",
+            "charCount": 30
+          },
+          "quality": {
+            "passed": true,
+            "checks": [
+              {
+                "id": "response_bounded",
+                "passed": true
+              },
+              {
+                "id": "required_markers",
+                "passed": true
+              },
+              {
+                "id": "no_failure_language",
+                "passed": true
+              }
+            ]
+          },
+          "usage": null
+        },
+        "warm": {
+          "phase": "warm",
+          "status": "completed",
+          "durationMs": 14351,
+          "timeToFirstTextMs": 583,
+          "identity": {
+            "providerId": "opencode",
+            "connectionId": "opencode-cli",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+          },
+          "output": {
+            "sha256": "4072387c53e6107d1ae2d708734c70776d1994c31aebbbdf30b22bcff180e880",
+            "charCount": 30
+          },
+          "quality": {
+            "passed": true,
+            "checks": [
+              {
+                "id": "response_bounded",
+                "passed": true
+              },
+              {
+                "id": "required_markers",
+                "passed": true
+              },
+              {
+                "id": "no_failure_language",
+                "passed": true
+              }
+            ]
+          },
+          "sessionContinuity": true,
+          "sessionEvidence": {
+            "boundary": "same official-native Chat ID and persisted exact connection",
+            "chatIdSha256": "5ed6aa10f8ca516487a770961870550e02418ce396b8db4b19cb6386d29ff651"
+          },
+          "usage": null
+        }
+      },
+      "fileEvidence": {
+        "inputRead": true,
+        "inputSha256": "51ef1fb954f9943798b2c7fe07373cdf36a25d8c7c1023fe460fe2742f17ba11"
+      }
+    }
+  ],
+  "assertions": [
+    {
+      "name": "contract commit is an ancestor and committed contract files are unchanged",
+      "passed": true,
+      "contractCommit": "0a6121e81fcdcbbc1b1a03212ad21a321fbf2015",
+      "captureHead": "33614b56bea608c0651631dd29024d34e41e7275"
+    },
+    {
+      "name": "native disposable input matches terminal bytes",
+      "passed": true,
+      "inputSha256": "51ef1fb954f9943798b2c7fe07373cdf36a25d8c7c1023fe460fe2742f17ba11",
+      "inputCharCount": 17
+    },
+    {
+      "name": "one official jarvis process is running",
+      "passed": true,
+      "jarvis": [
+        {
+          "Name": "jarvis.exe",
+          "ProcessId": 19612,
+          "ParentProcessId": 12924,
+          "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+          "CommandLine": "\"C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe\""
+        }
+      ]
+    },
+    {
+      "name": "CDP root is the official jarvis WebView child",
+      "passed": true,
+      "rootWebView": {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 9688,
+        "ParentProcessId": 19612,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      "listeners9223": [
+        {
+          "LocalAddress": "127.0.0.1",
+          "LocalPort": 9223,
+          "OwningProcess": 9688
+        }
+      ]
+    },
+    {
+      "name": "official VibeSpace page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "name": "official Chat project root is the claimed disposable root",
+      "passed": true,
+      "projectEvidence": {
+        "workspaceId": "wks_SIY0XpxdDdLY4ndp",
+        "projectId": "prj_leBT3oqNPBtoSMmf",
+        "projectRoot": "\\\\?\\C:\\Users\\viper\\Documents\\Codex\\2026-08-21"
+      }
+    },
+    {
+      "name": "bounded-reasoning chat exposes exact native route before dispatch",
+      "passed": true,
+      "identity": {
+        "selection": {
+          "mode": "single",
+          "providerId": "opencode",
+          "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+          "connectionId": "opencode-cli",
+          "connectionMode": "external-cli",
+          "authSource": "opencode-provider-session",
+          "capabilities": {
+            "text": true,
+            "images": false,
+            "files": false,
+            "tools": false,
+            "modelSelection": true,
+            "structuredOutput": true,
+            "streaming": true,
+            "cancellation": true,
+            "resumeSession": false,
+            "systemPrompt": false,
+            "workingDirectory": true,
+            "usage": true,
+            "subscriptionQuota": false,
+            "localOnly": false
+          }
+        }
+      }
+    },
+    {
+      "name": "disposable-read chat exposes exact native route before dispatch",
+      "passed": true,
+      "identity": {
+        "selection": {
+          "mode": "single",
+          "providerId": "opencode",
+          "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+          "connectionId": "opencode-cli",
+          "connectionMode": "external-cli",
+          "authSource": "opencode-provider-session",
+          "capabilities": {
+            "text": true,
+            "images": false,
+            "files": false,
+            "tools": false,
+            "modelSelection": true,
+            "structuredOutput": true,
+            "streaming": true,
+            "cancellation": true,
+            "resumeSession": false,
+            "systemPrompt": false,
+            "workingDirectory": true,
+            "usage": true,
+            "subscriptionQuota": false,
+            "localOnly": false
+          }
+        }
+      }
+    },
+    {
+      "name": "disposable-write chat exposes exact native route before dispatch",
+      "passed": true,
+      "identity": {
+        "selection": {
+          "mode": "single",
+          "providerId": "opencode",
+          "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+          "connectionId": "opencode-cli",
+          "connectionMode": "external-cli",
+          "authSource": "opencode-provider-session",
+          "capabilities": {
+            "text": true,
+            "images": false,
+            "files": false,
+            "tools": false,
+            "modelSelection": true,
+            "structuredOutput": true,
+            "streaming": true,
+            "cancellation": true,
+            "resumeSession": false,
+            "systemPrompt": false,
+            "workingDirectory": true,
+            "usage": true,
+            "subscriptionQuota": false,
+            "localOnly": false
+          }
+        }
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "01-deepseek-native-exact-route.png",
+      "width": 1983,
+      "height": 1240
+    },
+    {
+      "name": "02-bounded-reasoning-warm-complete.png",
+      "width": 1983,
+      "height": 1240
+    },
+    {
+      "name": "03-disposable-read-warm-complete.png",
+      "width": 1983,
+      "height": 1240
+    }
+  ],
+  "safety": [
+    {
+      "label": "deepseek-native:start",
+      "capturedAt": "2026-08-28T12:09:58.6183992-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "public-route-to-chat:before",
+      "capturedAt": "2026-08-28T12:10:01.6896020-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "public-route-to-chat:after",
+      "capturedAt": "2026-08-28T12:10:04.8021904-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "seed-chat:bounded-reasoning:before",
+      "capturedAt": "2026-08-28T12:10:07.7419695-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "seed-chat:bounded-reasoning:after",
+      "capturedAt": "2026-08-28T12:10:11.0344933-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "agent-write-mode:bounded-reasoning:before",
+      "capturedAt": "2026-08-28T12:10:14.0429016-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "agent-write-mode:bounded-reasoning:after",
+      "capturedAt": "2026-08-28T12:10:17.6181051-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "exact-route:bounded-reasoning:before",
+      "capturedAt": "2026-08-28T12:10:20.7892844-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "exact-route:bounded-reasoning:after",
+      "capturedAt": "2026-08-28T12:10:24.4802399-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:01-deepseek-native-exact-route.png:before",
+      "capturedAt": "2026-08-28T12:10:27.7381879-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:01-deepseek-native-exact-route.png:after",
+      "capturedAt": "2026-08-28T12:10:31.6621104-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "bounded-reasoning:cold:before",
+      "capturedAt": "2026-08-28T12:10:34.9168126-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "bounded-reasoning:cold:after",
+      "capturedAt": "2026-08-28T12:10:44.9028080-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "bounded-reasoning:warm:before",
+      "capturedAt": "2026-08-28T12:10:48.5251001-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "bounded-reasoning:warm:after",
+      "capturedAt": "2026-08-28T12:10:57.1297959-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:02-bounded-reasoning-warm-complete.png:before",
+      "capturedAt": "2026-08-28T12:11:00.4127039-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:02-bounded-reasoning-warm-complete.png:after",
+      "capturedAt": "2026-08-28T12:11:04.3592807-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "seed-chat:disposable-read:before",
+      "capturedAt": "2026-08-28T12:11:07.4300694-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "seed-chat:disposable-read:after",
+      "capturedAt": "2026-08-28T12:11:10.6349907-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "agent-write-mode:disposable-read:before",
+      "capturedAt": "2026-08-28T12:11:13.7250762-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "agent-write-mode:disposable-read:after",
+      "capturedAt": "2026-08-28T12:11:17.0952100-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "exact-route:disposable-read:before",
+      "capturedAt": "2026-08-28T12:11:20.3186496-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "exact-route:disposable-read:after",
+      "capturedAt": "2026-08-28T12:11:24.1024416-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "disposable-read:cold:before",
+      "capturedAt": "2026-08-28T12:11:27.5479042-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "disposable-read:cold:after",
+      "capturedAt": "2026-08-28T12:11:41.3426112-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "disposable-read:warm:before",
+      "capturedAt": "2026-08-28T12:11:44.3789540-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "disposable-read:warm:after",
+      "capturedAt": "2026-08-28T12:12:01.9498814-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:03-disposable-read-warm-complete.png:before",
+      "capturedAt": "2026-08-28T12:12:04.9649315-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "screenshot:03-disposable-read-warm-complete.png:after",
+      "capturedAt": "2026-08-28T12:12:08.6895325-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "seed-chat:disposable-write:before",
+      "capturedAt": "2026-08-28T12:12:11.6978920-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "seed-chat:disposable-write:after",
+      "capturedAt": "2026-08-28T12:12:15.0402656-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "agent-write-mode:disposable-write:before",
+      "capturedAt": "2026-08-28T12:12:18.4317262-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "agent-write-mode:disposable-write:after",
+      "capturedAt": "2026-08-28T12:12:22.0927834-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "exact-route:disposable-write:before",
+      "capturedAt": "2026-08-28T12:12:25.1351723-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "exact-route:disposable-write:after",
+      "capturedAt": "2026-08-28T12:12:28.9232478-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "disposable-write:cold:before",
+      "capturedAt": "2026-08-28T12:12:32.2175927-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "console": [],
+  "pageErrors": []
+}

@@ -1,0 +1,23 @@
+{
+  "capturedAt": "2026-08-30T22:52:09.9406486-05:00",
+  "sourceSha": "3d32febe8ca7e0b13ea2f9910772704764f5f784",
+  "jarvisPid": 2740,
+  "jarvisPath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Verify\\app\\src-tauri\\target-native-2caa0ff3\\debug\\jarvis.exe",
+  "jarvisResponding": true,
+  "jarvisTitle": "VibeSpace",
+  "artifactBytes": 155426816,
+  "artifactSha256": "5473C46BC1B3CFC79F700BA49181FBED7F77B1BAEE4983756F18C8B919A0570A",
+  "cdpPort": 9223,
+  "cdpOwnerPid": 24060,
+  "embeddedOrigin": "http://tauri.localhost/?route=account&tab=profile",
+  "listeners5173Or11434": [],
+  "accountCommitAncestry": {
+    "68ad798fd76a11766f81235bbc687f6ad463bb2f": true,
+    "2eba084782c1eb8af12c619b36595c2a386e6490": true,
+    "cca4e986a18d263312cf0be25f62e705ec076c36": true,
+    "c0448b994e02450d72bc1a3d42d610a78edfeb8f": true,
+    "e31e58f4bf56d49279abc794462ed97f7691c932": true,
+    "1add2ad6c7055d62ced9a7d01dc830b2d66c0896": true,
+    "143fcea27b251f7afce556be30680fc0240be7cb": true
+  }
+}

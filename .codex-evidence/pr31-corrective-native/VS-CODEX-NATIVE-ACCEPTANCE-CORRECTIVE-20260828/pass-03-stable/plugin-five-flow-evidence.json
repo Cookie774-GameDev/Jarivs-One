@@ -1,0 +1,68 @@
+[
+  {
+    "id": "github",
+    "name": "GitHub",
+    "status": "error",
+    "catalogText": "Settings\n\nConfigure providers, appearance, voice, hotkeys, plans, and telemetry. Profile and billing live in Account Center.\n\nSettings\nGeneral\nAdmin\nPlans\nProviders\nAI Connectors\nAll About Me\nPlugins\nLocal Models\nBrowser Agent\nAppearance\nVoice\nSpeech to Text\nPhone & Voice\nAmbient\nNotifications\nTelemetry\nAccessibility\nHotkeys\nJarvis Actions\nAbout\nPlugins\n\nConnect external services and expose controlled capabilities to Jarvis agents working in terminals. Credentials stay in the operating-system keychain on desktop (browser preview keeps them in memory for the session only).\n\n0 connected\n\nTerminals receive plugin names and permitted tool descriptions only. Tokens are never copied into prompts, terminal environment variables, localStorage, or Supabase.\n\nAll\nAvailable\nConnected\nPlanned\nGH\nGitHub\n\nDeveloper Tools\n\nError\n\nRepositories, issues, pull requests, actions, and authenticated account context.\n\nGitHub authorization requires a registered VibeSpace OAuth client.\n\n7 tools declared\nConnect\nClose"
+  },
+  {
+    "id": "supabase",
+    "name": "Supabase",
+    "status": "not-connected",
+    "catalogText": "Settings\n\nConfigure providers, appearance, voice, hotkeys, plans, and telemetry. Profile and billing live in Account Center.\n\nSettings\nGeneral\nAdmin\nPlans\nProviders\nAI Connectors\nAll About Me\nPlugins\nLocal Models\nBrowser Agent\nAppearance\nVoice\nSpeech to Text\nPhone & Voice\nAmbient\nNotifications\nTelemetry\nAccessibility\nHotkeys\nJarvis Actions\nAbout\nPlugins\n\nConnect external services and expose controlled capabilities to Jarvis agents working in terminals. Credentials stay in the operating-system keychain on desktop (browser preview keeps them in memory for the session only).\n\n0 connected\n\nTerminals receive plugin names and permitted tool descriptions only. Tokens are never copied into prompts, terminal environment variables, localStorage, or Supabase.\n\nAll\nAvailable\nConnected\nPlanned\nSU\nSupabase\n\nDatabases\n\nNot connected\n\nDatabase, authentication, storage, edge functions, and project API context.\n\n2 tools declared\nConnect\nClose",
+    "detailText": "SU\nConnect Supabase\n\nEnter the project URL and a publishable/anon API key. VibeSpace rejects privileged service-role or secret keys before calling the REST root.\n\nWHAT THIS PLUGIN DOES\n\nDatabase, authentication, storage, edge functions, and project API context.\n\nProvider: Supabase · Auth: api key\n\nAuthorization capability: manual fallback\n\nOfficial provider account page\n\nSign in or create your Supabase account on the provider-owned page. Keep this panel open to finish the supported credential fallback.\n\nOpen Supabase account page\n\nSETUP STEPS\n\nOpen your Supabase project → Settings → API.\nCopy the project URL and publishable/anon key.\nPaste both values and test.\n\nSecure credential storage\n\nValues saved here go to the OS keychain on desktop (session-only memory in browser preview). VibeSpace does not print them in logs or terminal context.\n\nProject URL\nProject API key\n\nUse a publishable/anon key for read-only context. Service-role and secret keys are rejected.\n\nDECLARED TOOLS\n\nconnection_info · read-only\nschema_context · read-only\nOpen connection documentation\nClose\nConnect\nClose",
+    "credentialFields": [
+      {
+        "type": "text",
+        "aria": null,
+        "placeholder": "https://your-project.supabase.co",
+        "valueLength": 0
+      },
+      {
+        "type": "password",
+        "aria": null,
+        "placeholder": "sb_publishable_... or anon JWT",
+        "valueLength": 0
+      }
+    ],
+    "credentialsEntered": false
+  },
+  {
+    "id": "gmail",
+    "name": "Gmail",
+    "status": "error",
+    "catalogText": "Settings\n\nConfigure providers, appearance, voice, hotkeys, plans, and telemetry. Profile and billing live in Account Center.\n\nSettings\nGeneral\nAdmin\nPlans\nProviders\nAI Connectors\nAll About Me\nPlugins\nLocal Models\nBrowser Agent\nAppearance\nVoice\nSpeech to Text\nPhone & Voice\nAmbient\nNotifications\nTelemetry\nAccessibility\nHotkeys\nJarvis Actions\nAbout\nPlugins\n\nConnect external services and expose controlled capabilities to Jarvis agents working in terminals. Credentials stay in the operating-system keychain on desktop (browser preview keeps them in memory for the session only).\n\n0 connected\n\nTerminals receive plugin names and permitted tool descriptions only. Tokens are never copied into prompts, terminal environment variables, localStorage, or Supabase.\n\nAll\nAvailable\nConnected\nPlanned\nGM\nGmail\n\nGoogle Workspace\n\nError\n\nSearch and read bounded Gmail context, create drafts, prepare replies, and send an existing draft only after explicit approval.\n\nProvider authorization is not registered for this plugin.\n\n6 tools declared\nConnect\nClose"
+  },
+  {
+    "id": "stripe",
+    "name": "Stripe",
+    "status": "not-connected",
+    "catalogText": "Settings\n\nConfigure providers, appearance, voice, hotkeys, plans, and telemetry. Profile and billing live in Account Center.\n\nSettings\nGeneral\nAdmin\nPlans\nProviders\nAI Connectors\nAll About Me\nPlugins\nLocal Models\nBrowser Agent\nAppearance\nVoice\nSpeech to Text\nPhone & Voice\nAmbient\nNotifications\nTelemetry\nAccessibility\nHotkeys\nJarvis Actions\nAbout\nPlugins\n\nConnect external services and expose controlled capabilities to Jarvis agents working in terminals. Credentials stay in the operating-system keychain on desktop (browser preview keeps them in memory for the session only).\n\n0 connected\n\nTerminals receive plugin names and permitted tool descriptions only. Tokens are never copied into prompts, terminal environment variables, localStorage, or Supabase.\n\nAll\nAvailable\nConnected\nPlanned\nST\nStripe\n\nPayments\n\nNot connected\n\nStripe integration for payments workflows, agent context, and MCP-style tools.\n\n1 tools declared\nConnect\nClose",
+    "detailText": "ST\nConnect Stripe\n\nOpen the official provider page, create the narrowest credential available, then test the connection.\n\nWHAT THIS PLUGIN DOES\n\nStripe integration for payments workflows, agent context, and MCP-style tools.\n\nProvider: Stripe · Auth: api key\n\nAuthorization capability: manual fallback\n\nOfficial provider account page\n\nSign in or create your Stripe account on the provider-owned page. Keep this panel open to finish the supported credential fallback.\n\nOpen Stripe account page\n\nSETUP STEPS\n\nOpen Stripe Dashboard → Developers → API keys.\nCopy the secret key (test or live).\nPaste and test.\n\nSecure credential storage\n\nValues saved here go to the OS keychain on desktop (session-only memory in browser preview). VibeSpace does not print them in logs or terminal context.\n\nSecret key\n\nUse a restricted key when possible.\n\nDECLARED TOOLS\n\nbilling_context · read-only\nOpen connection documentation\nClose\nConnect\nClose",
+    "credentialFields": [
+      {
+        "type": "password",
+        "aria": null,
+        "placeholder": "<stripe-restricted-key>",
+        "valueLength": 0
+      }
+    ],
+    "credentialsEntered": false
+  },
+  {
+    "id": "cloudflare",
+    "name": "Cloudflare",
+    "status": "not-connected",
+    "catalogText": "Settings\n\nConfigure providers, appearance, voice, hotkeys, plans, and telemetry. Profile and billing live in Account Center.\n\nSettings\nGeneral\nAdmin\nPlans\nProviders\nAI Connectors\nAll About Me\nPlugins\nLocal Models\nBrowser Agent\nAppearance\nVoice\nSpeech to Text\nPhone & Voice\nAmbient\nNotifications\nTelemetry\nAccessibility\nHotkeys\nJarvis Actions\nAbout\nPlugins\n\nConnect external services and expose controlled capabilities to Jarvis agents working in terminals. Credentials stay in the operating-system keychain on desktop (browser preview keeps them in memory for the session only).\n\n0 connected\n\nTerminals receive plugin names and permitted tool descriptions only. Tokens are never copied into prompts, terminal environment variables, localStorage, or Supabase.\n\nAll\nAvailable\nConnected\nPlanned\nCL\nCloudflare\n\nCloud & Hosting\n\nNot connected\n\nCloudflare integration for cloud & hosting workflows, agent context, and MCP-style tools.\n\n1 tools declared\nConnect\nClose",
+    "detailText": "CL\nConnect Cloudflare\n\nOpen the official provider page, create the narrowest credential available, then test the connection.\n\nWHAT THIS PLUGIN DOES\n\nCloudflare integration for cloud & hosting workflows, agent context, and MCP-style tools.\n\nProvider: Cloudflare · Auth: token\n\nAuthorization capability: manual fallback\n\nOfficial provider account page\n\nSign in or create your Cloudflare account on the provider-owned page. Keep this panel open to finish the supported credential fallback.\n\nOpen Cloudflare account page\n\nSETUP STEPS\n\nCreate a Cloudflare API token.\nPaste and test.\n\nSecure credential storage\n\nValues saved here go to the OS keychain on desktop (session-only memory in browser preview). VibeSpace does not print them in logs or terminal context.\n\nAPI token\n\nCreate a token with Account read access.\n\nDECLARED TOOLS\n\ncloud_context · read-only\nOpen connection documentation\nClose\nConnect\nClose",
+    "credentialFields": [
+      {
+        "type": "password",
+        "aria": null,
+        "placeholder": "...",
+        "valueLength": 0
+      }
+    ],
+    "credentialsEntered": false
+  }
+]

@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-CORRECTIVE-NATIVE-ACCEPTANCE",
+  "agent": "VS-CODEX-NATIVE-ACCEPTANCE-CORRECTIVE-20260828",
+  "evidenceHead": "b698b064a19b2a7ae9337318a041a842541a840b",
+  "finalRepositoryHead": "009ccd6aec54797a202cbdb19fdecb2fb7d93de7",
+  "headBoundary": "Canonical official-native captures are pinned to stable app evidence HEAD b698b064. Later shared commits 5a5e8f75, 48f0cb91, and 009ccd6a changed the corrective matrix plus focused ProviderModelSelect/voice/navigation/model-option regressions after capture; they were not silently treated as part of this native pass. The official app remains safely running against the shared Vite working tree, while scenario conclusions and screenshots remain explicitly SHA-bound to b698b064.",
+  "branch": "integration/UnifiedChungus-final",
+  "canonicalEvidence": {
+    "guardedGrouped": "pass-08-guarded-final/acceptance-report.json",
+    "cleanChat": "pass-10-chat-clean/acceptance-report.json",
+    "ollamaContainmentAndPrevention": "pass-07-ollama-safety/ollama-process-port-before-after.json",
+    "workbench": "pass-08-guarded-final/workbench-browser-evidence.json",
+    "plugins": "pass-08-guarded-final/plugin-five-flow-evidence.json",
+    "supabaseOpenCodeMcp": "pass-08-guarded-final/opencode-mcp-supabase-read-only-status.json",
+    "chat": "pass-10-chat-clean/chat-whole-app-evidence.json",
+    "modelAndEffortIdentity": "final-native-model-effort-identity.json",
+    "accessibility": "pass-10-chat-clean/chat-accessibility-axe.json",
+    "visualBoundary": "pass-10-chat-clean/activity-ledger-visual-boundary.json"
+  },
+  "scenarioTotals": {
+    "passed": 4,
+    "verificationFailed": 1,
+    "externallyBlocked": 0,
+    "fatalHarnessFailures": 0
+  },
+  "scenarios": [
+    {
+      "name": "official-native-identity-and-reconnect",
+      "status": "passed",
+      "evidence": [
+        "pass-08-guarded-final/official-native-webview-identity.json",
+        "pass-07-ollama-safety/ollama-process-port-before-after.json",
+        "pass-10-chat-clean/official-native-final-running.png"
+      ],
+      "result": "Official VibeSpace target is a jarvis.exe-owned Microsoft WebView2 page on CDP 9223. Restart persisted Chat and the exact OpenCode route without a provider request."
+    },
+    {
+      "name": "workbench-browser",
+      "status": "verification_failed",
+      "classification": "locked sandbox-policy defect; not externally blocked",
+      "passedSubstates": [
+        "address entry",
+        "two ordinary-site externalization policies",
+        "back",
+        "forward",
+        "reload",
+        "loading",
+        "stop",
+        "blocked non-HTTP(S) input",
+        "error recovery",
+        "loopback refused-to-connect",
+        "refused recovery"
+      ],
+      "failure": "The approved https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ child frame reaches title YouTube but renders black. The iframe sandbox is 'allow-forms allow-modals allow-popups allow-scripts' and omits allow-same-origin; WebView logs Cache Storage SecurityError and YouTube writeEmbed failures.",
+      "policyBoundary": "Ordinary remote sites are intentionally externalized with zero iframes. The loopback chrome-error://chromewebdata/ state is a transport refusal. The YouTube failure is specifically the app's approved-embed sandbox policy, not an ordinary-site iframe policy or external prerequisite.",
+      "ownershipBoundary": "Workbench/browser source is read-only under active lock VS-CODEX-WORKBENCH-WALLPAPER-BROWSER-20260823; no source edit was made.",
+      "regressionRecommendation": "Add a focused official-native BrowserPanel test that requires visible youtube-nocookie player content and zero sandbox-origin/cache errors; security-review the minimum sandbox change needed for the privacy embed, including whether allow-same-origin is acceptable for this cross-origin allowlist."
+    },
+    {
+      "name": "chat-whole-app-states",
+      "status": "passed",
+      "states": [
+        "empty",
+        "populated",
+        "streaming",
+        "questions",
+        "plan",
+        "commands",
+        "mode",
+        "model",
+        "restart/reconnect",
+        "activity ledger",
+        "subagent",
+        "tool",
+        "schedule",
+        "Kanban milestones",
+        "narrow",
+        "normal",
+        "expanded",
+        "accessibility",
+        "reduced motion"
+      ],
+      "modelIdentity": {
+        "providerId": "opencode",
+        "savedRawRoute": "opencode-go/deepseek-v4-flash-vision-exp",
+        "connectionId": "opencode-cli",
+        "connectionMode": "external-cli",
+        "pickerComposite": "DeepSeek V4 Flash Vision Exp · Opencode Go provider connection",
+        "pickerCompositeActive": true,
+        "savedEffortOverride": null,
+        "effectiveEffort": "auto (provider default)",
+        "substituteSelected": false
+      },
+      "accessibility": {
+        "axePasses": 26,
+        "incomplete": 3,
+        "violations": 0
+      },
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "fixtureRemoved": true
+    },
+    {
+      "name": "schedule-kanban-milestones",
+      "status": "passed",
+      "evidence": [
+        "pass-08-guarded-final/chat-schedule-whole-app.png",
+        "pass-08-guarded-final/chat-kanban-milestones-whole-app.png"
+      ]
+    },
+    {
+      "name": "five-plugin-flows",
+      "status": "passed",
+      "flows": {
+        "github": "Error: registered VibeSpace OAuth client required; no authorization click",
+        "supabase": "External blocker: hosted MCP OAuth discovery/callback/token lifecycle missing; local requirements only",
+        "gmail": "Error: provider authorization not registered; no authorization click",
+        "stripe": "Not connected; manual fallback shown with empty credential field",
+        "cloudflare": "Not connected; manual fallback shown with empty credential field"
+      },
+      "supabaseOpenCodeMcp": {
+        "status": "Authorization needed",
+        "configuredUrlVisible": false,
+        "boundary": "The authoritative status UI exposes name/status but no URL. No config or credential-bearing endpoint was queried and Connect was not clicked."
+      },
+      "credentialsEntered": false,
+      "oauthCompleted": false,
+      "externalAccountCompleted": false,
+      "productionMutation": false
+    }
+  ],
+  "ollamaSafetyIncident": {
+    "occurred": true,
+    "beforeContainment": {
+      "jarvisPid": 18744,
+      "ollamaPids": [31948, 16992],
+      "command": "ollama serve",
+      "listener": "127.0.0.1:11434 owned by PID 31948"
+    },
+    "rootCause": "Opening Chat ModelPicker invoked bootstrapOllamaConnection({ force: true }), which reached native ensure_ollama_ready_internal/start_ollama_serve_silent.",
+    "containment": "Stopped only the verified jarvis-owned Ollama tree and preserved jarvis.",
+    "prevention": "Restarted only Vite with VITE_DISABLE_OLLAMA_BOOTSTRAP=true; no product file was edited. Direct bootstrap and actual model-picker open both return phase disabled.",
+    "final": {
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  },
+  "visualComparison": {
+    "tool": "scripts/visual-chat/image-compare.mjs",
+    "tests": "10/10 passed",
+    "pixelmatchThreshold": 0.12,
+    "authoritativeDimensions": "1586x992",
+    "nativeDimensions": "1600x1025",
+    "comparisonExecuted": false,
+    "reason": "The references are complete desktop-window compositions with different synthetic chat/activity content; the native captures are WebView surfaces. Dimensions and content do not match, and no deterministic same-content crop exists, so the comparator correctly remains fail closed and no diff ratio is claimed."
+  },
+  "environmentBoundary": {
+    "nativeRebuild": "Stopped with Windows os error 112 while creating jarvis_lib.lib because C: had about 878 MB free.",
+    "recovery": "Renderer-only final commits were verified with the intact prior debug binary and the safe Vite runtime; binary SHA-256 4CBAD5D0BA3062C72014CAE7EE02807D61FA60BD815D2B668DF10A8EB03FB09D.",
+    "productSourceEditedByThisLane": false
+  },
+  "finalSafety": {
+    "providerRequestSent": false,
+    "credentialsEntered": false,
+    "oauthCompleted": false,
+    "externalAccountCompleted": false,
+    "productionMutation": false,
+    "standaloneBrowserControlled": false,
+    "computerUseUsed": false,
+    "browserMcpUsed": false,
+    "officialAppLeftRunning": true,
+    "finalRoute": "chat",
+    "jarvisPid": 19612,
+    "webViewRootPid": 9688,
+    "cdpPort": 9223,
+    "ollamaProcessCount": 0,
+    "listener11434Count": 0
+  }
+}

@@ -1,0 +1,115 @@
+{
+  "startedAt": "2026-08-29T09:38:38.164Z",
+  "console": [],
+  "pageErrors": [],
+  "panels": [
+    {
+      "index": 0,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "address": "https://example.com/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    },
+    {
+      "index": 1,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "address": "https://developer.mozilla.org/en-US/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    },
+    {
+      "index": 2,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "address": "https://developer.mozilla.org/en-US/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    },
+    {
+      "index": 3,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "address": "https://developer.mozilla.org/en-US/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    },
+    {
+      "index": 4,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "address": "https://example.com/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    },
+    {
+      "index": 5,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "address": "https://developer.mozilla.org/en-US/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    },
+    {
+      "index": 6,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "address": "https://example.com/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    },
+    {
+      "index": 7,
+      "attributes": {
+        "class": "workbench-browser",
+        "data-testid": "workbench-browser-panel"
+      },
+      "parentAttributes": {
+        "class": "workbench-panel-body",
+        "aria-hidden": "false"
+      },
+      "address": "https://developer.mozilla.org/en-US/",
+      "text": "Loading…Remote pages stay inside a capability-free VibeSpace child WebView."
+    }
+  ],
+  "address": "https://developer.mozilla.org/en-US/",
+  "text": "Loading…\n\nREMOTE PAGES STAY INSIDE A CAPABILITY-FREE VIBESPACE CHILD WEBVIEW.",
+  "surfaceCount": 1,
+  "completedAt": "2026-08-29T09:38:47.593Z"
+}

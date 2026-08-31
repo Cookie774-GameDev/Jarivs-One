@@ -1,0 +1,11 @@
+{
+  "status": "failed",
+  "expectedRoot": "C:\\Users\\viper\\projects",
+  "projectId": null,
+  "identity": null,
+  "controls": null,
+  "state": null,
+  "graph": null,
+  "runtimeErrors": [],
+  "failure": "Error:page.evaluate: Execution context was destroyed, most likely because of a navigation"
+}

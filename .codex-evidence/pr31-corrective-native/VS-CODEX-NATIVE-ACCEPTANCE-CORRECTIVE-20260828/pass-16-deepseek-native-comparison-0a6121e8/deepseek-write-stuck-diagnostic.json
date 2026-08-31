@@ -1,0 +1,2046 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31-DEEPSEEK-NATIVE-DISPOSABLE-WRITE-STUCK-DIAGNOSTIC",
+  "captureBoundary": "post-failure read-only; fixture cleanup already completed in attempt-04 finally block",
+  "attemptWindow": {
+    "startedAt": "2026-08-28T17:09:55.304Z",
+    "failedAt": "2026-08-28T17:13:08.894Z"
+  },
+  "processBefore": {
+    "CapturedAt": "2026-08-28T12:23:10.1231277-05:00",
+    "Jarvis": [
+      {
+        "Name": "jarvis.exe",
+        "ProcessId": 19612,
+        "ParentProcessId": 12924,
+        "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+        "CommandLine": "\"C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe\""
+      }
+    ],
+    "WebViews": [
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 9688,
+        "ParentProcessId": 19612,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 4916,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 100,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 20148,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 7372,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 17940,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      }
+    ],
+    "Listeners9223": [
+      {
+        "LocalAddress": "127.0.0.1",
+        "LocalPort": 9223,
+        "OwningProcess": 9688
+      }
+    ],
+    "Ollama": [],
+    "Listeners11434": []
+  },
+  "processAfter": {
+    "CapturedAt": "2026-08-28T12:23:14.6353055-05:00",
+    "Jarvis": [
+      {
+        "Name": "jarvis.exe",
+        "ProcessId": 19612,
+        "ParentProcessId": 12924,
+        "ExecutablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+        "CommandLine": "\"C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe\""
+      }
+    ],
+    "WebViews": [
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 9688,
+        "ParentProcessId": 19612,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 4916,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 100,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 20148,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 7372,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": true
+      },
+      {
+        "Name": "msedgewebview2.exe",
+        "ProcessId": 17940,
+        "ParentProcessId": 9688,
+        "ExecutablePath": "C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\151.0.4129.107\\msedgewebview2.exe",
+        "Cdp9223": false
+      }
+    ],
+    "Listeners9223": [
+      {
+        "LocalAddress": "127.0.0.1",
+        "LocalPort": 9223,
+        "OwningProcess": 9688
+      }
+    ],
+    "Ollama": [],
+    "Listeners11434": []
+  },
+  "officialPage": {
+    "capturedAt": "2026-08-28T17:23:10.476Z",
+    "url": "http://localhost:5173/?route=chat",
+    "title": "VibeSpace",
+    "viewport": {
+      "width": 1586,
+      "height": 992,
+      "dpr": 1.25
+    },
+    "buttons": [
+      {
+        "name": "Approve fixed action",
+        "disabled": false,
+        "pressed": null
+      },
+      {
+        "name": "Deny action",
+        "disabled": false,
+        "pressed": null
+      },
+      {
+        "name": "Stop current request",
+        "disabled": false,
+        "pressed": null
+      }
+    ],
+    "semanticState": {
+      "blockedAwaitingApproval": true,
+      "wrongTargetJarvisNote": true,
+      "requestedOutputPathVisible": true,
+      "approvalActionVisible": true,
+      "denyActionVisible": true,
+      "stopControlVisible": false,
+      "readDeniedVerifiedSource": true
+    }
+  },
+  "openCodeSystemLog": {
+    "version": 1,
+    "updatedAt": 1787937152809,
+    "steps": [
+      {
+        "ts": 1787937035369,
+        "kind": "warning",
+        "title": "Project context could not be added",
+        "summary": "The model was kept separate from unverified context. The engineering log has details.",
+        "status": "warning",
+        "durationMs": 9,
+        "repeatCount": null
+      },
+      {
+        "ts": 1787937048918,
+        "kind": "warning",
+        "title": "Project context could not be added",
+        "summary": "The model was kept separate from unverified context. The engineering log has details.",
+        "status": "warning",
+        "durationMs": 4,
+        "repeatCount": null
+      },
+      {
+        "ts": 1787937152809,
+        "kind": "context",
+        "title": "Project context is ready",
+        "summary": "The direct Context route answered without a recursive search",
+        "status": "success",
+        "durationMs": 1,
+        "repeatCount": null
+      }
+    ]
+  },
+  "devConsoleEntries": [
+    {
+      "id": 5893,
+      "ts": 1787937035254,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:send",
+      "detail": {
+        "type": "jarvis:send",
+        "detail": {
+          "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+          "cancellationKey": "[redacted]",
+          "text": "[content omitted]",
+          "mentionedAgentIds": [],
+          "filePaths": [],
+          "imageAttachments": [],
+          "terminalRefs": [],
+          "contextNodes": [],
+          "pluginIds": [],
+          "skillIds": [],
+          "forceAllAboutMeUpdate": false,
+          "interactionMode": "agent",
+          "speakReply": false,
+          "autoApproveActions": false,
+          "modelSelectionOverride": {
+            "mode": "single",
+            "providerId": "opencode",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+            "connectionId": "opencode-cli",
+            "connectionMode": "external-cli",
+            "authSource": "opencode-provider-session",
+            "capabilities": {
+              "text": "[content omitted]",
+              "images": false,
+              "files": false,
+              "tools": false,
+              "modelSelection": true,
+              "structuredOutput": true,
+              "streaming": true,
+              "cancellation": true,
+              "resumeSession": false,
+              "systemPrompt": false,
+              "workingDirectory": true,
+              "usage": true,
+              "subscriptionQuota": false,
+              "localOnly": false
+            }
+          },
+          "reasoningPreference": {
+            "mode": "normal",
+            "effortOverride": null
+          },
+          "runtimeSettings": {
+            "effort": "auto",
+            "fastMode": "auto",
+            "performance": "quality",
+            "rlmEnabled": true
+          },
+          "accessLevel": "full",
+          "approveAllForRun": false,
+          "tokenOptimizationMode": "[redacted]",
+          "tokenOptimizationOutputLimit": "[redacted]",
+          "showTokenOptimizationReport": "[redacted]",
+          "allowStructuralCodeCompression": true,
+          "automaticModelRoutingEligible": false
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 5894,
+      "ts": 1787937035369,
+      "channel": "ai",
+      "level": "warn",
+      "message": "Adaptive VibeSpace Context/RLM retrieval failed safely",
+      "detail": {
+        "error": "Invalid repository retrieval request."
+      },
+      "durationMs": 9
+    },
+    {
+      "id": 5899,
+      "ts": 1787937035632,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:run-state",
+      "detail": {
+        "type": "jarvis:run-state",
+        "detail": {
+          "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+          "status": "running"
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 5901,
+      "ts": 1787937035901,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5681",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 47.9
+    },
+    {
+      "id": 5907,
+      "ts": 1787937037108,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5682",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 1153.2
+    },
+    {
+      "id": 5909,
+      "ts": 1787937037431,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5688",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 177.3
+    },
+    {
+      "id": 5910,
+      "ts": 1787937037523,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5690",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 24.1
+    },
+    {
+      "id": 5912,
+      "ts": 1787937037656,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5692",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 51.4
+    },
+    {
+      "id": 5913,
+      "ts": 1787937037726,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_event_stream → 200",
+      "detail": {
+        "operationId": "fetch-5693",
+        "url": "http://ipc.localhost/opencode_server_event_stream",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 6.5
+    },
+    {
+      "id": 5916,
+      "ts": 1787937038380,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5696",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 17
+    },
+    {
+      "id": 5919,
+      "ts": 1787937038983,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5698",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 57.6
+    },
+    {
+      "id": 5921,
+      "ts": 1787937039588,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5701",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 20.4
+    },
+    {
+      "id": 5924,
+      "ts": 1787937040194,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5703",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 59.4
+    },
+    {
+      "id": 5926,
+      "ts": 1787937040729,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5706",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 21.9
+    },
+    {
+      "id": 5929,
+      "ts": 1787937040860,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_event_cancel → 200",
+      "detail": {
+        "operationId": "fetch-5708",
+        "url": "http://ipc.localhost/opencode_server_event_cancel",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 47.9
+    },
+    {
+      "id": 5931,
+      "ts": 1787937041168,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:run-state",
+      "detail": {
+        "type": "jarvis:run-state",
+        "detail": {
+          "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+          "status": "done"
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 5958,
+      "ts": 1787937045737,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5727",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 2080.7
+    },
+    {
+      "id": 5962,
+      "ts": 1787937047187,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5728",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 3529.4
+    },
+    {
+      "id": 5970,
+      "ts": 1787937048819,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:send",
+      "detail": {
+        "type": "jarvis:send",
+        "detail": {
+          "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+          "cancellationKey": "[redacted]",
+          "text": "[content omitted]",
+          "mentionedAgentIds": [],
+          "filePaths": [],
+          "imageAttachments": [],
+          "terminalRefs": [],
+          "contextNodes": [],
+          "pluginIds": [],
+          "skillIds": [],
+          "forceAllAboutMeUpdate": false,
+          "interactionMode": "agent",
+          "speakReply": false,
+          "autoApproveActions": false,
+          "modelSelectionOverride": {
+            "mode": "single",
+            "providerId": "opencode",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+            "connectionId": "opencode-cli",
+            "connectionMode": "external-cli",
+            "authSource": "opencode-provider-session",
+            "capabilities": {
+              "text": "[content omitted]",
+              "images": false,
+              "files": false,
+              "tools": false,
+              "modelSelection": true,
+              "structuredOutput": true,
+              "streaming": true,
+              "cancellation": true,
+              "resumeSession": false,
+              "systemPrompt": false,
+              "workingDirectory": true,
+              "usage": true,
+              "subscriptionQuota": false,
+              "localOnly": false
+            }
+          },
+          "reasoningPreference": {
+            "mode": "normal",
+            "effortOverride": null
+          },
+          "runtimeSettings": {
+            "effort": "auto",
+            "fastMode": "auto",
+            "performance": "quality",
+            "rlmEnabled": true
+          },
+          "accessLevel": "full",
+          "approveAllForRun": false,
+          "tokenOptimizationMode": "[redacted]",
+          "tokenOptimizationOutputLimit": "[redacted]",
+          "showTokenOptimizationReport": "[redacted]",
+          "allowStructuralCodeCompression": true,
+          "automaticModelRoutingEligible": false
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 5971,
+      "ts": 1787937048918,
+      "channel": "ai",
+      "level": "warn",
+      "message": "Adaptive VibeSpace Context/RLM retrieval failed safely",
+      "detail": {
+        "error": "Invalid repository retrieval request."
+      },
+      "durationMs": 4
+    },
+    {
+      "id": 5977,
+      "ts": 1787937050223,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:run-state",
+      "detail": {
+        "type": "jarvis:run-state",
+        "detail": {
+          "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+          "status": "running"
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 5978,
+      "ts": 1787937050469,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5746",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 66.2
+    },
+    {
+      "id": 5979,
+      "ts": 1787937050578,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5747",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 48.9
+    },
+    {
+      "id": 5981,
+      "ts": 1787937050785,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5749",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 85.4
+    },
+    {
+      "id": 5982,
+      "ts": 1787937050913,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_event_stream → 200",
+      "detail": {
+        "operationId": "fetch-5750",
+        "url": "http://ipc.localhost/opencode_server_event_stream",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 5.9
+    },
+    {
+      "id": 5985,
+      "ts": 1787937051561,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5753",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 22.1
+    },
+    {
+      "id": 5990,
+      "ts": 1787937052446,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5758",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 25.1
+    },
+    {
+      "id": 5996,
+      "ts": 1787937053480,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5763",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 58.3
+    },
+    {
+      "id": 5998,
+      "ts": 1787937053578,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_event_cancel → 200",
+      "detail": {
+        "operationId": "fetch-5765",
+        "url": "http://ipc.localhost/opencode_server_event_cancel",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 51.5
+    },
+    {
+      "id": 6000,
+      "ts": 1787937053862,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:run-state",
+      "detail": {
+        "type": "jarvis:run-state",
+        "detail": {
+          "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+          "status": "done"
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 6109,
+      "ts": 1787937087948,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:send",
+      "detail": {
+        "type": "jarvis:send",
+        "detail": {
+          "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+          "cancellationKey": "[redacted]",
+          "text": "[content omitted]",
+          "mentionedAgentIds": [],
+          "filePaths": [],
+          "imageAttachments": [],
+          "terminalRefs": [],
+          "contextNodes": [],
+          "pluginIds": [],
+          "skillIds": [],
+          "forceAllAboutMeUpdate": false,
+          "interactionMode": "agent",
+          "speakReply": false,
+          "autoApproveActions": false,
+          "modelSelectionOverride": {
+            "mode": "single",
+            "providerId": "opencode",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+            "connectionId": "opencode-cli",
+            "connectionMode": "external-cli",
+            "authSource": "opencode-provider-session",
+            "capabilities": {
+              "text": "[content omitted]",
+              "images": false,
+              "files": false,
+              "tools": false,
+              "modelSelection": true,
+              "structuredOutput": true,
+              "streaming": true,
+              "cancellation": true,
+              "resumeSession": false,
+              "systemPrompt": false,
+              "workingDirectory": true,
+              "usage": true,
+              "subscriptionQuota": false,
+              "localOnly": false
+            }
+          },
+          "reasoningPreference": {
+            "mode": "normal",
+            "effortOverride": null
+          },
+          "runtimeSettings": {
+            "effort": "auto",
+            "fastMode": "auto",
+            "performance": "quality",
+            "rlmEnabled": true
+          },
+          "accessLevel": "full",
+          "approveAllForRun": false,
+          "tokenOptimizationMode": "[redacted]",
+          "tokenOptimizationOutputLimit": "[redacted]",
+          "showTokenOptimizationReport": "[redacted]",
+          "allowStructuralCodeCompression": true,
+          "automaticModelRoutingEligible": false
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 6110,
+      "ts": 1787937088057,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:run-state",
+      "detail": {
+        "type": "jarvis:run-state",
+        "detail": {
+          "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+          "status": "running"
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 6112,
+      "ts": 1787937088401,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5876",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 82.1
+    },
+    {
+      "id": 6113,
+      "ts": 1787937088502,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5877",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 42.3
+    },
+    {
+      "id": 6115,
+      "ts": 1787937088613,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5879",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 57.8
+    },
+    {
+      "id": 6116,
+      "ts": 1787937088710,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_event_stream → 200",
+      "detail": {
+        "operationId": "fetch-5880",
+        "url": "http://ipc.localhost/opencode_server_event_stream",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 7.2
+    },
+    {
+      "id": 6119,
+      "ts": 1787937089384,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5882",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 57.9
+    },
+    {
+      "id": 6121,
+      "ts": 1787937090126,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5885",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 16.7
+    },
+    {
+      "id": 6124,
+      "ts": 1787937090695,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5888",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 20.4
+    },
+    {
+      "id": 6126,
+      "ts": 1787937091269,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5890",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 18.9
+    },
+    {
+      "id": 6132,
+      "ts": 1787937091919,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5895",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 54.4
+    },
+    {
+      "id": 6140,
+      "ts": 1787937093911,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5904",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 21.3
+    },
+    {
+      "id": 6148,
+      "ts": 1787937095006,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5912",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 17.7
+    },
+    {
+      "id": 6158,
+      "ts": 1787937097561,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5922",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 46.3
+    },
+    {
+      "id": 6161,
+      "ts": 1787937097721,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_event_cancel → 200",
+      "detail": {
+        "operationId": "fetch-5924",
+        "url": "http://ipc.localhost/opencode_server_event_cancel",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 59.7
+    },
+    {
+      "id": 6163,
+      "ts": 1787937098040,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:run-state",
+      "detail": {
+        "type": "jarvis:run-state",
+        "detail": {
+          "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+          "status": "done"
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 6184,
+      "ts": 1787937104681,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:send",
+      "detail": {
+        "type": "jarvis:send",
+        "detail": {
+          "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+          "cancellationKey": "[redacted]",
+          "text": "[content omitted]",
+          "mentionedAgentIds": [],
+          "filePaths": [],
+          "imageAttachments": [],
+          "terminalRefs": [],
+          "contextNodes": [],
+          "pluginIds": [],
+          "skillIds": [],
+          "forceAllAboutMeUpdate": false,
+          "interactionMode": "agent",
+          "speakReply": false,
+          "autoApproveActions": false,
+          "modelSelectionOverride": {
+            "mode": "single",
+            "providerId": "opencode",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+            "connectionId": "opencode-cli",
+            "connectionMode": "external-cli",
+            "authSource": "opencode-provider-session",
+            "capabilities": {
+              "text": "[content omitted]",
+              "images": false,
+              "files": false,
+              "tools": false,
+              "modelSelection": true,
+              "structuredOutput": true,
+              "streaming": true,
+              "cancellation": true,
+              "resumeSession": false,
+              "systemPrompt": false,
+              "workingDirectory": true,
+              "usage": true,
+              "subscriptionQuota": false,
+              "localOnly": false
+            }
+          },
+          "reasoningPreference": {
+            "mode": "normal",
+            "effortOverride": null
+          },
+          "runtimeSettings": {
+            "effort": "auto",
+            "fastMode": "auto",
+            "performance": "quality",
+            "rlmEnabled": true
+          },
+          "accessLevel": "full",
+          "approveAllForRun": false,
+          "tokenOptimizationMode": "[redacted]",
+          "tokenOptimizationOutputLimit": "[redacted]",
+          "showTokenOptimizationReport": "[redacted]",
+          "allowStructuralCodeCompression": true,
+          "automaticModelRoutingEligible": false
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 6185,
+      "ts": 1787937104812,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:run-state",
+      "detail": {
+        "type": "jarvis:run-state",
+        "detail": {
+          "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+          "status": "running"
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 6187,
+      "ts": 1787937105134,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5947",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 59.3
+    },
+    {
+      "id": 6191,
+      "ts": 1787937106369,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5948",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 1187
+    },
+    {
+      "id": 6193,
+      "ts": 1787937106663,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5952",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 132.4
+    },
+    {
+      "id": 6195,
+      "ts": 1787937106787,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5954",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 58.2
+    },
+    {
+      "id": 6197,
+      "ts": 1787937106887,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5957",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 52.4
+    },
+    {
+      "id": 6199,
+      "ts": 1787937106999,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_event_stream → 200",
+      "detail": {
+        "operationId": "fetch-5959",
+        "url": "http://ipc.localhost/opencode_server_event_stream",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 52.2
+    },
+    {
+      "id": 6202,
+      "ts": 1787937107643,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5962",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 90.4
+    },
+    {
+      "id": 6205,
+      "ts": 1787937108318,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5965",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 17.4
+    },
+    {
+      "id": 6209,
+      "ts": 1787937109432,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5969",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 20.6
+    },
+    {
+      "id": 6216,
+      "ts": 1787937110435,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5976",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 22.7
+    },
+    {
+      "id": 6245,
+      "ts": 1787937116483,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5996",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 2873.8
+    },
+    {
+      "id": 6247,
+      "ts": 1787937116559,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6003",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 1526.5
+    },
+    {
+      "id": 6248,
+      "ts": 1787937116606,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-5997",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 2996.5
+    },
+    {
+      "id": 6257,
+      "ts": 1787937117869,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6009",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 123
+    },
+    {
+      "id": 6261,
+      "ts": 1787937118055,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_event_cancel → 200",
+      "detail": {
+        "operationId": "fetch-6013",
+        "url": "http://ipc.localhost/opencode_server_event_cancel",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 57
+    },
+    {
+      "id": 6262,
+      "ts": 1787937118396,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:run-state",
+      "detail": {
+        "type": "jarvis:run-state",
+        "detail": {
+          "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+          "status": "done"
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 6369,
+      "ts": 1787937152698,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:send",
+      "detail": {
+        "type": "jarvis:send",
+        "detail": {
+          "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+          "cancellationKey": "[redacted]",
+          "text": "[content omitted]",
+          "mentionedAgentIds": [],
+          "filePaths": [],
+          "imageAttachments": [],
+          "terminalRefs": [],
+          "contextNodes": [],
+          "pluginIds": [],
+          "skillIds": [],
+          "forceAllAboutMeUpdate": false,
+          "interactionMode": "agent",
+          "speakReply": false,
+          "autoApproveActions": false,
+          "modelSelectionOverride": {
+            "mode": "single",
+            "providerId": "opencode",
+            "modelId": "opencode-go/deepseek-v4-flash-vision-exp",
+            "connectionId": "opencode-cli",
+            "connectionMode": "external-cli",
+            "authSource": "opencode-provider-session",
+            "capabilities": {
+              "text": "[content omitted]",
+              "images": false,
+              "files": false,
+              "tools": false,
+              "modelSelection": true,
+              "structuredOutput": true,
+              "streaming": true,
+              "cancellation": true,
+              "resumeSession": false,
+              "systemPrompt": false,
+              "workingDirectory": true,
+              "usage": true,
+              "subscriptionQuota": false,
+              "localOnly": false
+            }
+          },
+          "reasoningPreference": {
+            "mode": "normal",
+            "effortOverride": null
+          },
+          "runtimeSettings": {
+            "effort": "auto",
+            "fastMode": "auto",
+            "performance": "quality",
+            "rlmEnabled": true
+          },
+          "accessLevel": "full",
+          "approveAllForRun": false,
+          "tokenOptimizationMode": "[redacted]",
+          "tokenOptimizationOutputLimit": "[redacted]",
+          "showTokenOptimizationReport": "[redacted]",
+          "allowStructuralCodeCompression": true,
+          "automaticModelRoutingEligible": false
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 6370,
+      "ts": 1787937152809,
+      "channel": "ai",
+      "level": "info",
+      "message": "VibeSpace Context route → direct",
+      "detail": {
+        "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+        "projectId": "[sha256:dbb5ee48ec85fb20723cab5adc5495a5398a10b15f9e5bffa7d05f6f72fdaa6e]",
+        "route": "direct",
+        "candidateCount": 0,
+        "hydratedCount": 0,
+        "evidenceCount": 0,
+        "childCalls": 0,
+        "maxDepth": 0,
+        "truncated": false,
+        "trace": [],
+        "evidenceSources": []
+      },
+      "durationMs": 1
+    },
+    {
+      "id": 6375,
+      "ts": 1787937153065,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:run-state",
+      "detail": {
+        "type": "jarvis:run-state",
+        "detail": {
+          "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+          "status": "running"
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 6376,
+      "ts": 1787937153339,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6124",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 76.5
+    },
+    {
+      "id": 6378,
+      "ts": 1787937153502,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6126",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 54.9
+    },
+    {
+      "id": 6380,
+      "ts": 1787937153688,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6128",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 66.7
+    },
+    {
+      "id": 6382,
+      "ts": 1787937153839,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_event_stream → 200",
+      "detail": {
+        "operationId": "fetch-6130",
+        "url": "http://ipc.localhost/opencode_server_event_stream",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 55.4
+    },
+    {
+      "id": 6385,
+      "ts": 1787937154401,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6133",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 11.8
+    },
+    {
+      "id": 6389,
+      "ts": 1787937155443,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6137",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 14.6
+    },
+    {
+      "id": 6401,
+      "ts": 1787937158413,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6149",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 11.9
+    },
+    {
+      "id": 6404,
+      "ts": 1787937159245,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6152",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 10.5
+    },
+    {
+      "id": 6408,
+      "ts": 1787937159915,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6155",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 58.8
+    },
+    {
+      "id": 6410,
+      "ts": 1787937160014,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_event_cancel → 200",
+      "detail": {
+        "operationId": "fetch-6157",
+        "url": "http://ipc.localhost/opencode_server_event_cancel",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 54.3
+    },
+    {
+      "id": 6411,
+      "ts": 1787937160142,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:task-notification",
+      "detail": {
+        "type": "jarvis:task-notification",
+        "detail": {
+          "title": "Jarvis task needs approval",
+          "status": "awaiting_approval"
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 6416,
+      "ts": 1787937160703,
+      "channel": "event",
+      "level": "info",
+      "message": "dispatch jarvis:run-state",
+      "detail": {
+        "type": "jarvis:run-state",
+        "detail": {
+          "chatId": "[sha256:bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e]",
+          "status": "running"
+        }
+      },
+      "durationMs": null
+    },
+    {
+      "id": 6510,
+      "ts": 1787937186517,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6246",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 2843.4
+    },
+    {
+      "id": 6513,
+      "ts": 1787937186707,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6245",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 3034.3
+    },
+    {
+      "id": 6515,
+      "ts": 1787937187034,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6251",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 2353
+    },
+    {
+      "id": 6526,
+      "ts": 1787937189570,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6261",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 1463.6
+    },
+    {
+      "id": 6745,
+      "ts": 1787937256601,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6476",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 3114.6
+    },
+    {
+      "id": 6747,
+      "ts": 1787937256744,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/opencode_server_request → 200",
+      "detail": {
+        "operationId": "fetch-6475",
+        "url": "http://ipc.localhost/opencode_server_request",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "ok"
+        }
+      },
+      "durationMs": 3258.3
+    }
+  ],
+  "dispatchIdentifierHashes": [
+    {
+      "ts": 1787937035254,
+      "chatIdSha256": "bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e",
+      "turnHandleSha256": "a2c646143d1a56a558808b022149e878e02df970133d49a1cc676afdbba79e17"
+    },
+    {
+      "ts": 1787937048819,
+      "chatIdSha256": "bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e",
+      "turnHandleSha256": "b277ae722a0766ff99f05a8e0314a629f2639b57d131f7d4ee3623c753c9dc07"
+    },
+    {
+      "ts": 1787937087948,
+      "chatIdSha256": "bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e",
+      "turnHandleSha256": "f2b5e475e52f08b5ba39cf25dc2972bd38e62964ce63a00a04ba18937a7215fb"
+    },
+    {
+      "ts": 1787937104681,
+      "chatIdSha256": "bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e",
+      "turnHandleSha256": "0c18ec362a7d55fc77db41509aeb4f165b020326af07be46102785e2289cce6c"
+    },
+    {
+      "ts": 1787937152698,
+      "chatIdSha256": "bc1782fe77982e926fc94684e4129111b024b3a6a029b009d44b6723d15fdd4e",
+      "turnHandleSha256": "e01bfe60b7fc190d9b3e30f453635d4faec13a5ba0d279db787e0899b97e6780"
+    }
+  ],
+  "fixtureCleanupEvidence": {
+    "remainingFixtureChatCount": 0,
+    "remainingFixtureMessageCount": 0,
+    "chats": [],
+    "messages": []
+  },
+  "artifact": "04-disposable-write-post-failure-state.png"
+}

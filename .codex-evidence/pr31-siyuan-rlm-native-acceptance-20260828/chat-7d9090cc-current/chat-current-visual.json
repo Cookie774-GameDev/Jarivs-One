@@ -1,0 +1,95 @@
+{
+  "status": "failed",
+  "head": "7d9090cc3bdbb2e9c2881271fa50c903056be6e2",
+  "startedAt": "2026-08-29T03:33:55.323Z",
+  "assertions": [
+    {
+      "name": "one official jarvis process",
+      "passed": true,
+      "jarvis": [
+        {
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "official native page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    },
+    {
+      "name": "canonical successful GitHub action renders one truthful plugin-use card",
+      "passed": true,
+      "text": "GH\nPLUGIN\nGitHub\nRepositories · Issues · Pull Requests\nConnected\n1"
+    },
+    {
+      "name": "FAIL-chat-current-visual.png direct 1586x992",
+      "passed": true,
+      "width": 1586,
+      "height": 992
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-7d9090cc-current\\FAIL-chat-current-visual.png",
+      "width": 1586,
+      "height": 992,
+      "state": {
+        "failure": "page.screenshot: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n\u001b[2m    - disabled all CSS animations\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\n    at shot (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-current-visual.mjs:37:14)\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-current-visual.mjs:130:9"
+      }
+    }
+  ],
+  "console": [
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/styles/globals.css"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/features/chat/activity-ledger/AssistantActivityLedger.tsx"
+    },
+    {
+      "type": "info",
+      "text": "Images loaded lazily and replaced with placeholders. Load events are deferred. See https://go.microsoft.com/fwlink/?linkid=2048113"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/styles/globals.css"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/features/chat/agentic-console/AgenticConsole.tsx"
+    }
+  ],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe"
+        }
+      ]
+    }
+  ],
+  "failure": "page.screenshot: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n\u001b[2m    - disabled all CSS animations\u001b[22m\n\u001b[2m  - waiting for fonts to load...\u001b[22m\n\u001b[2m  - fonts loaded\u001b[22m\n\n    at shot (C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-current-visual.mjs:37:14)\n    at C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\.codex-evidence\\pr31-siyuan-rlm-native-acceptance-20260828\\chat-current-visual.mjs:130:9",
+  "completedAt": "2026-08-29T03:35:23.172Z"
+}

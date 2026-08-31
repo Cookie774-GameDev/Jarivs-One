@@ -1,0 +1,207 @@
+{
+  "accountId": "usr_uC_BDHkQsSNV_Jd9",
+  "workspaceId": "wks_SIY0XpxdDdLY4ndp",
+  "projectId": "prj_leBT3oqNPBtoSMmf",
+  "maps": [
+    {
+      "id": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959652569",
+      "name": "vibespace-pr31-context-fixture-20260827 Context Map",
+      "rootDir": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+      "status": "deleted",
+      "sourceType": "local_folder"
+    },
+    {
+      "id": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+      "name": "vibespace-pr31-context-fixture-20260827 Context Map",
+      "rootDir": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+      "status": "active",
+      "sourceType": "local_folder"
+    }
+  ],
+  "selectedMapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+  "jobs": [
+    {
+      "projectId": "prj_leBT3oqNPBtoSMmf",
+      "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959652569",
+      "canonicalRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+      "status": "paused",
+      "phase": "creating_nodes",
+      "indexed": 13,
+      "createdNodes": 7
+    },
+    {
+      "projectId": "prj_leBT3oqNPBtoSMmf",
+      "mapId": "map-1d0fhy8-c-users-viper-appdata-local-temp-vibespace-pr31-context-fixture-20260827-1787959713298",
+      "canonicalRoot": "C:\\Users\\viper\\AppData\\Local\\Temp\\vibespace-pr31-context-fixture-20260827",
+      "status": "running",
+      "phase": "creating_nodes",
+      "indexed": 13,
+      "createdNodes": 7
+    }
+  ],
+  "recentDevConsole": [
+    {
+      "timestamp": null,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/siyuan_start → 200",
+      "detail": {
+        "operationId": "fetch-69",
+        "url": "http://ipc.localhost/siyuan_start",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "error"
+        }
+      }
+    },
+    {
+      "timestamp": null,
+      "channel": "ai",
+      "level": "warn",
+      "message": "SiYuan Context vault prewarm failed safely",
+      "detail": {
+        "error": "siyuan_lifecycle_invalid"
+      }
+    },
+    {
+      "timestamp": null,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/siyuan_start → 200",
+      "detail": {
+        "operationId": "fetch-500",
+        "url": "http://ipc.localhost/siyuan_start",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "error"
+        }
+      }
+    },
+    {
+      "timestamp": null,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/siyuan_start → 200",
+      "detail": {
+        "operationId": "fetch-1344",
+        "url": "http://ipc.localhost/siyuan_start",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "error"
+        }
+      }
+    },
+    {
+      "timestamp": null,
+      "channel": "ai",
+      "level": "warn",
+      "message": "SiYuan Context vault prewarm failed safely",
+      "detail": {
+        "error": "siyuan_lifecycle_invalid"
+      }
+    },
+    {
+      "timestamp": null,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/siyuan_start → 200",
+      "detail": {
+        "operationId": "fetch-1349",
+        "url": "http://ipc.localhost/siyuan_start",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "error"
+        }
+      }
+    },
+    {
+      "timestamp": null,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/siyuan_start → 200",
+      "detail": {
+        "operationId": "fetch-3953",
+        "url": "http://ipc.localhost/siyuan_start",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "error"
+        }
+      }
+    },
+    {
+      "timestamp": null,
+      "channel": "ai",
+      "level": "warn",
+      "message": "SiYuan Context vault prewarm failed safely",
+      "detail": {
+        "error": "siyuan_lifecycle_invalid"
+      }
+    },
+    {
+      "timestamp": null,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/siyuan_start → 200",
+      "detail": {
+        "operationId": "fetch-3973",
+        "url": "http://ipc.localhost/siyuan_start",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "error"
+        }
+      }
+    },
+    {
+      "timestamp": null,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/siyuan_start → 200",
+      "detail": {
+        "operationId": "fetch-3981",
+        "url": "http://ipc.localhost/siyuan_start",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "error"
+        }
+      }
+    },
+    {
+      "timestamp": null,
+      "channel": "fetch",
+      "level": "info",
+      "message": "POST ipc.localhost/siyuan_start → 200",
+      "detail": {
+        "operationId": "fetch-3987",
+        "url": "http://ipc.localhost/siyuan_start",
+        "method": "POST",
+        "status": 200,
+        "statusText": "OK",
+        "responseHeaders": {
+          "content-type": "application/json",
+          "tauri-response": "error"
+        }
+      }
+    }
+  ]
+}

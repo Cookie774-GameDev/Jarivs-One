@@ -1,0 +1,405 @@
+{
+  "schemaVersion": 1,
+  "taskId": "PR31-DEEPSEEK-ATTEMPT-11-STAGE-INSTRUMENTED-DENY",
+  "startedAt": "2026-08-28T20:55:33.724Z",
+  "status": "failed",
+  "captureHead": "b076b8af230c53e6b906177d668d7961e6163222",
+  "identity": {
+    "jarvisPid": 5076,
+    "webViewPid": 16336,
+    "executablePath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "profile": "C:\\Users\\viper\\AppData\\Local\\ai.jarvis.desktop\\EBWebView",
+    "cdpPort": 9223,
+    "endpoint": "http://127.0.0.1:9223",
+    "ownership": "jarvis_descendant_exact_official_profile",
+    "listenerAddress": "127.0.0.1",
+    "capturedAt": "2026-08-28T15:55:33.5973205-05:00"
+  },
+  "safety": [
+    {
+      "label": "attach:before",
+      "capturedAt": "2026-08-28T15:55:29.8937602-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attach:after",
+      "capturedAt": "2026-08-28T15:55:33.5973205-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attempt11:before",
+      "capturedAt": "2026-08-28T15:55:36.7398896-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attempt11:after-reload",
+      "capturedAt": "2026-08-28T15:55:55.4551578-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    },
+    {
+      "label": "attempt11:failure-final",
+      "capturedAt": "2026-08-28T15:56:25.1511039-05:00",
+      "ollamaProcessCount": 0,
+      "listener11434Count": 0
+    }
+  ],
+  "assertions": [
+    {
+      "name": "one full WebView reload preserved exact official process ownership",
+      "passed": true,
+      "details": {
+        "processBefore": {
+          "label": "attempt11:before",
+          "capturedAt": "2026-08-28T15:55:36.7398896-05:00",
+          "jarvisPid": 5076,
+          "jarvisParentPid": 6324,
+          "jarvisParentAlive": false,
+          "webViewPid": 16336,
+          "webViewParentPid": 5076,
+          "webViewOwnedByJarvis": true,
+          "cdpPort": 9223,
+          "cdpOwnerExact": true,
+          "openCodePid": 20688,
+          "openCodeParentPid": 5076,
+          "openCodeOwnedByJarvis": true,
+          "openCodeLoopbackPort": 59856,
+          "openCodeLoopbackExact": true,
+          "ollamaProcessCount": 0,
+          "listener11434Count": 0
+        },
+        "processAfterReload": {
+          "label": "attempt11:after-reload",
+          "capturedAt": "2026-08-28T15:55:55.4551578-05:00",
+          "jarvisPid": 5076,
+          "jarvisParentPid": 6324,
+          "jarvisParentAlive": false,
+          "webViewPid": 16336,
+          "webViewParentPid": 5076,
+          "webViewOwnedByJarvis": true,
+          "cdpPort": 9223,
+          "cdpOwnerExact": true,
+          "openCodePid": 20688,
+          "openCodeParentPid": 5076,
+          "openCodeOwnedByJarvis": true,
+          "openCodeLoopbackPort": 59856,
+          "openCodeLoopbackExact": true,
+          "ollamaProcessCount": 0,
+          "listener11434Count": 0
+        }
+      }
+    },
+    {
+      "name": "instrumented kernelHost source was stable before and after boot refresh",
+      "passed": true,
+      "details": {
+        "stableModuleBefore": {
+          "value": {
+            "ok": true,
+            "digest": "6493415c560ff683f1505319a6793f06c0a168fe00326b486eefb8e5506c4b26",
+            "hasSanitizer": true,
+            "hasDiagnostic": true,
+            "hasApprovalConflictCode": true,
+            "hasStageCodes": true,
+            "stableObservations": 2
+          },
+          "attempts": 2,
+          "elapsedMs": 154
+        },
+        "stableModuleAfter": {
+          "value": {
+            "ok": true,
+            "digest": "6493415c560ff683f1505319a6793f06c0a168fe00326b486eefb8e5506c4b26",
+            "hasSanitizer": true,
+            "hasDiagnostic": true,
+            "hasApprovalConflictCode": true,
+            "hasStageCodes": true,
+            "stableObservations": 2
+          },
+          "attempts": 2,
+          "elapsedMs": 2529
+        },
+        "viteConnectedObserved": true
+      }
+    },
+    {
+      "name": "exact hash-selected stale approval is the only open pending approval",
+      "passed": true,
+      "details": {
+        "capturedAt": "2026-08-28T20:55:57.329Z",
+        "identity": {
+          "ready": true,
+          "source": "supabase",
+          "matchesRunAccount": true
+        },
+        "target": {
+          "approvalIdSha256": "518594a0061e1c94f3d7ece548c470b33af0ba92fe4686f97782ad8648ba2e00",
+          "runIdSha256": "733303c95d5451ae40a463e7adbb9aa6aa97b3c5ec715df9a12eca4a6791b766",
+          "requestIdSha256": "fc764e047c342e9563a2c87ab9af6aad81f84cee5de958a9ac875998455c2cf9",
+          "messageIdSha256": "ccab367f73976e8253b7bb627cbace740e0908352b2e8129dc2af50a1ac0feef",
+          "callIdSha256": "da56a4766929b4bfd4469d15dd353585be8a7be98579b4bc1d72c0c09a940a6b",
+          "actionId": "files.create",
+          "attemptNumber": 1
+        },
+        "approval": {
+          "status": "pending",
+          "createdAt": 1787937160082,
+          "expiresAt": 1787937760060,
+          "decidedAt": null,
+          "consumedAt": null
+        },
+        "run": {
+          "status": "awaiting_approval",
+          "source": "typed_chat",
+          "updatedAt": 1787937160082,
+          "transportAttemptCount": 0
+        },
+        "messagePart": {
+          "status": "pending",
+          "actionId": "files.create"
+        },
+        "card": {
+          "present": true,
+          "status": "pending",
+          "submitState": "idle",
+          "approveControlCount": 1,
+          "denyControlCount": 1,
+          "alertSha256": null,
+          "alertCharCount": 0,
+          "decisionResponseCategory": null
+        },
+        "openApprovalCount": 1,
+        "exactTargetIsOnlyOpen": true,
+        "eventTailSeq": 9,
+        "kernelStatus": {
+          "kind": "approval_state",
+          "status": "pending",
+          "accountMatches": true,
+          "approvalMatches": true,
+          "unavailableReason": null,
+          "unavailableRequestKind": null
+        }
+      }
+    },
+    {
+      "name": "requested and wrong targets are absent before Deny",
+      "passed": true,
+      "details": {
+        "requestedTarget": {
+          "exists": false,
+          "byteCount": 0,
+          "sha256": null
+        },
+        "wrongTarget": {
+          "exists": false,
+          "byteCount": 0,
+          "sha256": null
+        }
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "name": "15-stale-wrong-approval-instrumented-deny-attempt-11.png",
+      "width": 1600,
+      "height": 1025,
+      "byteCount": 1190055,
+      "sha256": "bb9c6600042e3e82ed8ee871bb2c0f91ff3378fb5134e90ab6f24e330052d274"
+    }
+  ],
+  "events": [
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "network",
+      "type": "ERR_ABORTED",
+      "resourceType": "fetch"
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "af1885a87d9dc26134a5c35237ab2c54e1c0f56748b99eb60c372c33fdfed02d",
+      "charCount": 709
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "af1885a87d9dc26134a5c35237ab2c54e1c0f56748b99eb60c372c33fdfed02d",
+      "charCount": 709
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "30af3df2b64aa586308db6055b96590561eabd7d77636cbe4011953a75c7e4b5",
+      "charCount": 603
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "af1885a87d9dc26134a5c35237ab2c54e1c0f56748b99eb60c372c33fdfed02d",
+      "charCount": 709
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "bf9d8286faab992d6d6055cde51775f607e1720012798ea90239ae6832518f7a",
+      "charCount": 594
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "af1885a87d9dc26134a5c35237ab2c54e1c0f56748b99eb60c372c33fdfed02d",
+      "charCount": 709
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "bc3deca31b9e9a7ad304b762bff08102c8cb9eeb521c59f58f8891f1b63d736b",
+      "charCount": 690
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "3f9a016ec5e90449fc8cb9139d867dca8a7187fa2eb6f06eb7c0eb516d5a71ee",
+      "charCount": 764
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "af1885a87d9dc26134a5c35237ab2c54e1c0f56748b99eb60c372c33fdfed02d",
+      "charCount": 709
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "ec449d9ae9b71a0908d967ac062e528a48aa67af026fb0ee0d64654d99b129c5",
+      "charCount": 136
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "c05905a643c7aa27e71973059c56f664a9f6c3bdf005349078fb8ce851a54638",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "0949061b01c8da1657a0d0b6e294db7850310ed25186a7c1cb7f88547a455ad4",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "5876b95da244e5ec442b436db01088ed3b8ccccd4ca9221b01a7f8871630b850",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "850f7e2f2e75cd809c35a279b113d30e25653ebdd161823c57439b14f752ccd1",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "3b0d04676dfb2ee5cd557f10b673e3461001be20bd4b3f1097aa0dc598d4dfb5",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "3f3888e1ee34cd04a7c32211923abb0ef29de5e8b3aae5d4e51c1ceae4d23531",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "c24535f4774c33260ed061a6296104d7e45054ace52152aa70010823b795c10a",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "warning",
+      "textSha256": "8858004605eea22dac17844bf8fae4cca40dc9da1ab74f4d05d42c2232c3e3e2",
+      "charCount": 137
+    },
+    {
+      "source": "console",
+      "type": "error",
+      "textSha256": "be3180416310eb750f5ff396974c2445881cabb1073f8851f9e3562cf6a387de",
+      "charCount": 69
+    },
+    {
+      "source": "console",
+      "type": "error",
+      "textSha256": "eedcfcd0bfdeac2dd2ff12a8bf09b91ba6051e386a905d4aacf736e1a88f251a",
+      "charCount": 69
+    },
+    {
+      "source": "console",
+      "type": "error",
+      "textSha256": "3ec0ded327acf0c4c5dd348f350a5dfb41a07910cd02e2d9180e9c7abf79ce4c",
+      "charCount": 105
+    }
+  ],
+  "firstFailure": {
+    "code": "native_acceptance_unexpected_failure",
+    "stage": "instrumented_deny",
+    "name": "Error",
+    "details": null
+  },
+  "metadata": {
+    "scenario": "one b076 stage-instrumented boot-refreshed Deny of the exact stale wrong-file approval",
+    "reloadCount": 0,
+    "denialClickCount": 0,
+    "modelDispatchCount": 0,
+    "approvalClickCount": 0,
+    "fileMutationCount": 0,
+    "processMutationCount": 0,
+    "rawPathsInReport": false,
+    "rawContentInReport": false,
+    "rawAccountIdsInReport": false
+  },
+  "completedAt": "2026-08-28T20:56:25.252Z"
+}

@@ -1,0 +1,88 @@
+{
+  "status": "failed",
+  "head": "0ef23418a8e0191ee3bc7b2bc6d5c1726ada0c41",
+  "route": {
+    "providerId": "opencode",
+    "connectionId": "opencode-cli",
+    "modelId": "opencode-go/deepseek-v4-flash-vision-exp"
+  },
+  "chatId": "chat_pr31_real_workflow_1787976082279",
+  "startedAt": "2026-08-29T04:01:22.279Z",
+  "assertions": [
+    {
+      "name": "isolated fixture starts at exact draft bytes",
+      "passed": true,
+      "sha256": "f63221160dc2cbe317b5e8fd6615b5c567c60a39b92c51d93d2e5503e09eaffc"
+    },
+    {
+      "name": "one official jarvis process",
+      "passed": true,
+      "jarvis": [
+        {
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "name": "official native page attached",
+      "passed": true,
+      "url": "http://localhost:5173/?route=chat"
+    }
+  ],
+  "turns": [],
+  "artifacts": [
+    {
+      "name": "FAIL-real-chat-workflow.png",
+      "width": 1588,
+      "height": 993,
+      "state": {
+        "failure": "Error: semantic_timeout:exact model selection persisted:{\"connection\":{\"providerId\":\"opencode\",\"id\":\"opencode-cli\",\"modelId\":\"opencode-go/deepseek-v4-flash-vision-exp\",\"mode\":\"external-cli\",\"authSource\":\"opencode-provider-session\"},\"selection\":{\"mode\":\"none\"}}\n    at waitFor (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:59:9)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:190:20"
+      }
+    }
+  ],
+  "console": [
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/styles/globals.css"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/features/chat/activity-ledger/AssistantActivityLedger.tsx"
+    },
+    {
+      "type": "debug",
+      "text": "[vite] hot updated: /src/styles/globals.css"
+    }
+  ],
+  "pageErrors": [],
+  "safety": [
+    {
+      "label": "start",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe"
+        }
+      ]
+    },
+    {
+      "label": "final",
+      "ollama": 0,
+      "port11434": 0,
+      "jarvis": [
+        {
+          "ProcessId": 9084,
+          "ParentProcessId": 26768,
+          "ExecutablePath": "D:\\VibeSpace-Testing\\codex-targets\\pr31-log-reconcile-88088d7b\\debug\\jarvis.exe"
+        }
+      ]
+    }
+  ],
+  "failure": "Error: semantic_timeout:exact model selection persisted:{\"connection\":{\"providerId\":\"opencode\",\"id\":\"opencode-cli\",\"modelId\":\"opencode-go/deepseek-v4-flash-vision-exp\",\"mode\":\"external-cli\",\"authSource\":\"opencode-provider-session\"},\"selection\":{\"mode\":\"none\"}}\n    at waitFor (file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:59:9)\n    at async file:///C:/Users/viper/VibeSpace-UnifiedChungus-Final/.codex-evidence/pr31-siyuan-rlm-native-acceptance-20260828/real-chat-workflow.mjs:190:20",
+  "completedAt": "2026-08-29T04:02:19.490Z"
+}

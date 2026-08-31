@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "task": "PR31 Task 10 QA-only loopback CDP native build",
+  "recordedUtc": "2026-08-30T10:38:30Z",
+  "repository": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final",
+  "branch": "integration/UnifiedChungus-final",
+  "head": "765809978ebd6bc395f20a7d07a73cd762bcaaed",
+  "command": "npm --prefix app run tauri:build -- --debug --no-bundle --config src-tauri/tauri.cdp.conf.json",
+  "successfulAttempt": {
+    "preflightUtc": "2026-08-30T10:33:29.8288791Z",
+    "commandObservedUtc": "2026-08-30T10:33:36Z",
+    "processesGoneUtc": "2026-08-30T10:37:03.9138023Z",
+    "exitCode": 0,
+    "finalOutput": "Finished dev profile [unoptimized + debuginfo] target(s) in 1m 22s; Built application at app/src-tauri/target/debug/jarvis.exe",
+    "minimumIndependentlyObservedCFreeGiB": 5.076,
+    "failClosedFloorGiB": 3,
+    "appOrWebViewObservedDuringBuild": false,
+    "port9223ObservedDuringBuild": false,
+    "ollamaOrPort11434ObservedDuringBuild": false
+  },
+  "binary": {
+    "rootPath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\jarvis.exe",
+    "depsPath": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\src-tauri\\target\\debug\\deps\\jarvis.exe",
+    "bytes": 154924544,
+    "lastWriteUtc": "2026-08-30T10:37:00.5140123Z",
+    "sha256": "98D82E78A23BF7B6AB52F85CC4FCBAF0823746931CFCB94643DE136F6A33464A",
+    "rootDepsParity": true
+  },
+  "dist": {
+    "path": "C:\\Users\\viper\\VibeSpace-UnifiedChungus-Final\\app\\dist",
+    "files": 643,
+    "bytes": 128390103,
+    "newestUtc": "2026-08-30T10:35:36.4778235Z",
+    "canonicalManifestSha256": "B3BFFA10A587429AE4AD424567F87C7062BB5EB7C3CB26159EA9C8407D1D902F",
+    "indexHtmlSha256": "DBA0C85DB870612B8677465682BBF00CDB243053BADFAB6FF2DDF6DD354806B9"
+  },
+  "inputs": {
+    "tauriBaseSha256": "3745CF44574B9DDE51ED0F00EF606E96A372CD7EB529478E5CEB77C570FFF743",
+    "tauriCdpOverlaySha256": "FCA8549FBFCD3EE5B8EEFBE8825EA122EFA523D9EC0A586EC9675389DFD6011D",
+    "appPackageSha256": "E0AF3FC4A39E269FB05CB86C0E8AF128BF2BDA1CC80172D301554BAA3CC75A1F",
+    "rootPackageSha256": "EEE39CD6CE0769BB73E6AB4CCE6C983BDF515525509E9987E398B075B4F1D45D",
+    "mainAdditionalBrowserArgs": "--js-flags=--max-old-space-size=1536 --remote-debugging-address=127.0.0.1 --remote-debugging-port=9223"
+  },
+  "git": {
+    "buildScopeStatusCount": 0,
+    "fullStatusCount": 1013,
+    "fullStatusSha256": "5C223ADB943D4498A5E00C59A14E1666BE5FB3CFD875D0A8D25FF344B2B7BCCD"
+  },
+  "storageRecovery": {
+    "movedToD": [
+      { "name": "jarvis_lib.lib", "bytes": 1780975556 },
+      { "name": "libjarvis_lib.rlib", "bytes": 357225332 },
+      { "name": "jarvis.pdb", "bytes": 389238784 }
+    ],
+    "movedDestination": "D:\\CodexTemp\\pr31-failed-build-cache-20260830-1010\\stale-root-outputs-0922",
+    "deletedReproducible": [
+      { "path": "app/src-tauri/target/debug/deps/.tmpRp8x9U.temp-archive/tmp.a", "bytes": 1669849523, "reason": "incomplete archive from aborted rustc" },
+      { "path": "app/src-tauri/target/debug/incremental/jarvis_lib-1cwsdziksnjyw", "bytes": 1756464674, "reason": "unrelated reproducible Cargo incremental cache" }
+    ],
+    "postBuildCFreeBytes": 5646663680,
+    "postBuildDFreeBytes": 818049024
+  },
+  "failedSafeAttempts": [
+    {
+      "startedUtc": "2026-08-30T10:10:23.3332918Z",
+      "result": "aborted below 3 GiB C: free floor",
+      "acceptedArtifact": false
+    },
+    {
+      "startedUtc": "2026-08-30T10:21:56.1658273Z",
+      "result": "aborted below 3 GiB C: free floor",
+      "acceptedArtifact": false
+    }
+  ],
+  "independentVerdict": "PASS"
+}

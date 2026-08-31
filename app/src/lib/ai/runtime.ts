@@ -43,6 +43,10 @@ import {
   type RunAgentRequest,
 } from './router';
 import {
+  dexieChatBackendPersistence,
+  lockChatBackendForDispatch,
+} from './backend/chatBackendPersistence';
+import {
   runBoundedLocalFinalBossRevision,
   shouldRunLocalFinalBossRevision,
 } from './localFinalBossRevision';
@@ -4744,12 +4748,18 @@ export function startRuntimeListener(
 
     const authState = useAuthStore.getState();
     let chatRecord: Chat | undefined;
+    let chatBackendAffinity: Awaited<ReturnType<typeof lockChatBackendForDispatch>>;
     let continuationProviderText: string | undefined;
     let continuationOutcome: 'success' | 'error' | undefined;
     try {
       chatRecord = await chatRepo.getById(chatId as ChatId);
+      chatBackendAffinity = await lockChatBackendForDispatch(
+        dexieChatBackendPersistence,
+        String(chatId),
+        Date.now(),
+      );
     } catch {
-      toast.error('Cannot send', 'The selected chat connection could not be verified.');
+      toast.error('Cannot send', 'The selected chat backend could not be verified.');
       releaseVoiceTurnWithoutReply(detail, chatId);
       dispatchCurrentRunState('error', 'kernel_runtime_chat_unavailable');
       releaseOperationTracking();
@@ -6838,6 +6848,7 @@ export function startRuntimeListener(
       let caoProviderSessionId: string | null = null;
       let caoCompletionEvidence: Readonly<ProviderCompletionEvidence> | null = null;
       const providerRequest: RunAgentRequest = {
+        backend: chatBackendAffinity.backend,
         agent: runnable,
         chatId: String(chatId),
         ...(explicitReadRoot || detail.caoAuthority ? { requestId: String(placeholder.id) } : {}),
@@ -6850,14 +6861,16 @@ export function startRuntimeListener(
         max_output_tokens: optimizedOutputTokenLimit,
         provider_options: reasoningPolicy?.providerOptions,
         connectionId:
-          chatModelSelection.mode === 'single'
-            ? (chatModelSelection.connectionId ??
-              (persistedConnection?.providerId === chatModelSelection.providerId &&
-              (!persistedConnection.modelId ||
-                persistedConnection.modelId === chatModelSelection.modelId)
-                ? persistedConnection.id
-                : undefined))
-            : undefined,
+          chatBackendAffinity.backend === 'codex'
+            ? 'openai-codex'
+            : chatModelSelection.mode === 'single'
+              ? (chatModelSelection.connectionId ??
+                (persistedConnection?.providerId === chatModelSelection.providerId &&
+                (!persistedConnection.modelId ||
+                  persistedConnection.modelId === chatModelSelection.modelId)
+                  ? persistedConnection.id
+                  : undefined))
+              : undefined,
         connectionRequirements: {
           images: (detail.imageAttachments?.length ?? 0) > 0,
           files: (detail.filePaths?.length ?? 0) > 0,
