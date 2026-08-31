@@ -1368,15 +1368,13 @@ fn retire_failed_pet_overlay(app: &AppHandle, created: bool, reason: &str) {
 
 /// Show the pet overlay (create visibility). Single instance by label.
 #[tauri::command]
-pub fn pet_show_overlay(app: AppHandle) -> Result<PetOverlayShowResult, String> {
+pub async fn pet_show_overlay(app: AppHandle) -> Result<PetOverlayShowResult, String> {
     #[cfg(debug_assertions)]
     eprintln!("[pets] pet_show_overlay invoked");
 
-    // Dynamic Windows hosts must be built from the synchronous Tauri command
-    // boundary. RuntimeHandle::create_window called from spawn_blocking queues
-    // creation and returns only a detached registration, so creation failures
-    // cannot reach this command and the label can exist without an HWND.
-    show_pet_overlay_blocking(app)
+    tauri::async_runtime::spawn_blocking(move || show_pet_overlay_blocking(app))
+        .await
+        .map_err(|_| "pet overlay worker failed".to_string())?
 }
 
 fn show_pet_overlay_blocking(app: AppHandle) -> Result<PetOverlayShowResult, String> {
@@ -1443,6 +1441,17 @@ fn show_pet_overlay_blocking(app: AppHandle) -> Result<PetOverlayShowResult, Str
         }
     };
 
+    if created {
+        // RuntimeHandle::create_window queues the native/WebView2 work on the
+        // event loop and immediately returns a detached registration. Yield
+        // this command before sending dispatcher setters or HWND getters; the
+        // renderer's bounded retry configures the materialized host.
+        return Ok(PetOverlayShowResult::failed_after_create(
+            true,
+            "not_visible",
+        ));
+    }
+
     match show_existing_pet_overlay(app.clone(), x, y, created) {
         Ok(result) => Ok(result),
         Err(reason) => {
@@ -1453,7 +1462,9 @@ fn show_pet_overlay_blocking(app: AppHandle) -> Result<PetOverlayShowResult, Str
 }
 
 fn schedule_pet_overlay_restore(app: AppHandle) {
-    let _ = pet_show_overlay(app);
+    tauri::async_runtime::spawn(async move {
+        let _ = pet_show_overlay(app).await;
+    });
 }
 
 fn show_existing_pet_overlay(
@@ -1791,13 +1802,17 @@ pub async fn pet_snap_overlay_to_edge(app: AppHandle) -> Result<(), String> {
 /// (`pet_is_panel_visible`), so a failed panel open cannot leave the
 /// user with neither sprite nor panel.
 #[tauri::command]
-pub fn pet_open_or_focus_panel(
+pub async fn pet_open_or_focus_panel(
     app: AppHandle,
     near_x: Option<f64>,
     near_y: Option<f64>,
     panel_mode: Option<PetPanelMode>,
 ) -> Result<PetPanelOpenResult, String> {
-    open_or_focus_pet_panel_blocking(app, near_x, near_y, panel_mode)
+    tauri::async_runtime::spawn_blocking(move || {
+        open_or_focus_pet_panel_blocking(app, near_x, near_y, panel_mode)
+    })
+    .await
+    .map_err(|_| "pet panel worker failed".to_string())?
 }
 
 fn open_or_focus_pet_panel_blocking(
@@ -1828,10 +1843,7 @@ fn open_or_focus_pet_panel_blocking(
         }
     };
     if created {
-        // A newly created WebView2 host is registered before all native window
-        // operations are ready. Let the Windows event loop finish that handoff
-        // before applying geometry, visibility, focus, and topmost state.
-        std::thread::sleep(std::time::Duration::from_millis(120));
+        return Ok(PetPanelOpenResult::failed(true, "not_visible"));
     }
     let panel_mode = panel_mode.unwrap_or_default();
 
@@ -1984,7 +1996,7 @@ fn open_or_focus_pet_panel_blocking(
 
 /// Minimize panel only — sessions keep running. Restores the pet sprite.
 #[tauri::command]
-pub fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
+pub async fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
         let _ = win.minimize();
     }
@@ -1992,20 +2004,20 @@ pub fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
         *open = false;
     }
     // Bring pet sprite back
-    let _ = pet_show_overlay(app.clone());
+    let _ = pet_show_overlay(app.clone()).await;
     Ok(())
 }
 
 /// Hide panel without killing sessions (close after user confirms in UI). Restores pet.
 #[tauri::command]
-pub fn pet_hide_panel(app: AppHandle) -> Result<(), String> {
+pub async fn pet_hide_panel(app: AppHandle) -> Result<(), String> {
     let win = match app.get_webview_window(PET_MINI_PANEL_LABEL) {
         Some(win) => win,
         None => {
             if let Ok(mut open) = app.state::<PetWindowState>().panel_open.lock() {
                 *open = false;
             }
-            let _ = pet_show_overlay(app.clone());
+            let _ = pet_show_overlay(app.clone()).await;
             return Ok(());
         }
     };
@@ -2025,7 +2037,7 @@ pub fn pet_hide_panel(app: AppHandle) -> Result<(), String> {
     if let Ok(mut open) = app.state::<PetWindowState>().panel_open.lock() {
         *open = false;
     }
-    let _ = pet_show_overlay(app.clone());
+    let _ = pet_show_overlay(app.clone()).await;
     Ok(())
 }
 
@@ -2182,32 +2194,53 @@ mod tests {
     }
 
     #[test]
-    fn detached_pet_creation_runs_in_the_synchronous_tauri_command_boundary() {
+    fn detached_pet_creation_yields_before_native_host_configuration() {
         let source = include_str!("pets.rs");
         let tests_start = source.find("mod tests {").expect("test module exists");
         let production = &source[..tests_start];
 
         let overlay_start = production
-            .find("pub fn pet_show_overlay")
-            .expect("synchronous overlay command exists");
+            .find("pub async fn pet_show_overlay")
+            .expect("asynchronous overlay command exists");
         let overlay_end = production[overlay_start..]
             .find("fn schedule_pet_overlay_restore")
             .map(|offset| overlay_start + offset)
             .expect("overlay command has a bounded source slice");
         let overlay_command = &production[overlay_start..overlay_end];
-        assert!(!overlay_command.contains("tauri::async_runtime::spawn_blocking"));
-        assert!(overlay_command.contains("show_pet_overlay_blocking(app)"));
+        assert!(overlay_command.contains("tauri::async_runtime::spawn_blocking"));
+        let overlay_created = overlay_command
+            .find("if created {")
+            .expect("new overlay yields pending truth");
+        let overlay_configure = overlay_command
+            .find("show_existing_pet_overlay")
+            .expect("existing overlay configures natively");
+        assert!(overlay_created < overlay_configure);
 
         let panel_start = production
-            .find("pub fn pet_open_or_focus_panel")
-            .expect("synchronous panel command exists");
+            .find("pub async fn pet_open_or_focus_panel")
+            .expect("asynchronous panel command exists");
         let panel_end = production[panel_start..]
             .find("fn open_or_focus_pet_panel_blocking")
             .map(|offset| panel_start + offset)
             .expect("panel command has a bounded source slice");
         let panel_command = &production[panel_start..panel_end];
-        assert!(!panel_command.contains("tauri::async_runtime::spawn_blocking"));
-        assert!(panel_command.contains("open_or_focus_pet_panel_blocking("));
+        assert!(panel_command.contains("tauri::async_runtime::spawn_blocking"));
+
+        let panel_helper_start = production
+            .find("fn open_or_focus_pet_panel_blocking")
+            .expect("panel helper exists");
+        let panel_helper_end = production[panel_helper_start..]
+            .find("/// Minimize panel only")
+            .map(|offset| panel_helper_start + offset)
+            .expect("panel helper has a bounded source slice");
+        let panel_helper = &production[panel_helper_start..panel_helper_end];
+        let panel_created = panel_helper
+            .find("if created {")
+            .expect("new panel yields pending truth");
+        let panel_configure = panel_helper
+            .find("configure_pet_surface_until_ready")
+            .expect("existing panel configures natively");
+        assert!(panel_created < panel_configure);
 
         let restore_start = production
             .find("fn schedule_pet_overlay_restore")
@@ -2216,10 +2249,10 @@ mod tests {
             .find("fn show_existing_pet_overlay")
             .map(|offset| restore_start + offset)
             .expect("native-close restore has a bounded source slice");
-        assert!(!production[restore_start..restore_end].contains("async_runtime"));
+        assert!(production[restore_start..restore_end].contains("async_runtime"));
 
-        assert!(production.contains("pub fn pet_minimize_panel"));
-        assert!(production.contains("pub fn pet_hide_panel"));
+        assert!(production.contains("pub async fn pet_minimize_panel"));
+        assert!(production.contains("pub async fn pet_hide_panel"));
     }
 
     #[test]
@@ -2450,11 +2483,11 @@ mod tests {
         assert!(panel_open.contains("panel_lifecycle.lock()"));
 
         let minimize_and_hide = source
-            .split("pub fn pet_minimize_panel")
+            .split("pub async fn pet_minimize_panel")
             .nth(1)
             .and_then(|tail| tail.split("pub async fn pet_is_panel_visible").next())
             .expect("panel restore commands have a bounded source slice");
-        assert!(minimize_and_hide.contains("pet_show_overlay(app.clone())"));
+        assert!(minimize_and_hide.contains("pet_show_overlay(app.clone()).await"));
         assert!(!minimize_and_hide.contains("show_pet_overlay_blocking(app.clone())"));
     }
 
