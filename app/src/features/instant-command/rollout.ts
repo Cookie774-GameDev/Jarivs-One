@@ -10,19 +10,32 @@ export type InstantCommandRolloutDecision = Readonly<{
   }>;
 }>;
 
+const MAX_COMMAND_ID_LENGTH = 128;
+
+function canonicalCommandId(value: unknown): string | undefined {
+  return typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= MAX_COMMAND_ID_LENGTH &&
+    /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u.test(value)
+    ? value
+    : undefined;
+}
+
 export function decideInstantCommandRollout(input: {
   featureEnabled: boolean;
   accountEnabled: boolean;
   matchedCommandId?: string;
   legacyMatchedCommandId?: string;
-  authorityAvailable?: boolean;
-  hardGatesPassed?: boolean;
+  authorityAvailable: boolean;
+  hardGatesPassed: boolean;
 }): InstantCommandRolloutDecision {
-  const catalogMatched = Boolean(input.matchedCommandId);
-  const legacyMatched = Boolean(input.legacyMatchedCommandId);
+  const matchedCommandId = canonicalCommandId(input.matchedCommandId);
+  const legacyMatchedCommandId = canonicalCommandId(input.legacyMatchedCommandId);
+  const catalogMatched = matchedCommandId !== undefined;
+  const legacyMatched = legacyMatchedCommandId !== undefined;
   const agreement =
     catalogMatched && legacyMatched
-      ? input.matchedCommandId === input.legacyMatchedCommandId
+      ? matchedCommandId === legacyMatchedCommandId
         ? 'same'
         : 'different'
       : catalogMatched
@@ -32,17 +45,17 @@ export function decideInstantCommandRollout(input: {
           : 'none';
   const blocker = !catalogMatched
     ? 'unmatched'
-    : !input.featureEnabled || !input.accountEnabled
+    : input.featureEnabled !== true || input.accountEnabled !== true
       ? 'rollout_disabled'
-      : input.authorityAvailable === false
+      : input.authorityAvailable !== true
         ? 'unavailable'
-        : input.hardGatesPassed === false
+        : input.hardGatesPassed !== true
           ? 'hard_gates'
           : undefined;
   const execute = blocker === undefined;
   const localComparison = Object.freeze({
-    ...(input.matchedCommandId ? { commandId: input.matchedCommandId } : {}),
-    ...(input.legacyMatchedCommandId ? { legacyCommandId: input.legacyMatchedCommandId } : {}),
+    ...(matchedCommandId ? { commandId: matchedCommandId } : {}),
+    ...(legacyMatchedCommandId ? { legacyCommandId: legacyMatchedCommandId } : {}),
     matched: catalogMatched,
     agreement,
   });
