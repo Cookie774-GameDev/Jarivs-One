@@ -8,6 +8,7 @@ import {
 } from '@/features/jarvis-memory/caoScheduledLearning';
 import {
   createCaoScheduledLearningDexiePersistence,
+  getCaoScheduledLearningStatus,
   subscribeCaoScheduledLearningStatus,
   type CaoScheduledLearningRuntimeStatus,
 } from '@/features/jarvis-memory/caoScheduledLearningRuntime';
@@ -16,12 +17,14 @@ type SnapshotState =
   | { state: 'loading' }
   | { state: 'empty' }
   | { state: 'unavailable' }
-  | { state: 'ready'; snapshot: CaoScheduledLearningSnapshot };
+  | { state: 'ready'; snapshot: CaoScheduledLearningSnapshot }
+  | { state: 'degraded'; snapshot: CaoScheduledLearningSnapshot };
 
 export interface CaoOperationsFloorProjectionProps {
   scope: CaoScheduledLearningScope;
   scheduleState: 'active' | 'paused';
   loadSnapshot?: (scope: CaoScheduledLearningScope) => Promise<unknown>;
+  getStatus?: () => CaoScheduledLearningRuntimeStatus;
   subscribeStatus?: (listener: (status: CaoScheduledLearningRuntimeStatus) => void) => () => void;
 }
 
@@ -86,16 +89,30 @@ function formatDuration(milliseconds: number): string {
   return `${Number((seconds / 60).toFixed(1))} min`;
 }
 
+function RetryOperationalTruth({ onRetry }: { onRetry: () => void }) {
+  return (
+    <button
+      className="rounded-md border border-current/30 px-2 py-1 font-medium transition-colors hover:bg-current/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-cyan"
+      onClick={onRetry}
+      type="button"
+    >
+      Retry operational truth
+    </button>
+  );
+}
+
 export function CaoOperationsFloorProjection({
   scope,
   scheduleState,
   loadSnapshot = loadProductionSnapshot,
+  getStatus = getCaoScheduledLearningStatus,
   subscribeStatus = subscribeCaoScheduledLearningStatus,
 }: CaoOperationsFloorProjectionProps) {
   const [snapshotState, setSnapshotState] = React.useState<SnapshotState>({ state: 'loading' });
   const [runtimeStatus, setRuntimeStatus] = React.useState<
     CaoScheduledLearningRuntimeStatus | undefined
   >();
+  const hydrateRef = React.useRef<(showLoading: boolean) => void>(() => undefined);
 
   React.useEffect(() => {
     let disposed = false;
@@ -104,6 +121,12 @@ export function CaoOperationsFloorProjection({
     const hydrate = async (showLoading: boolean) => {
       const generation = ++loadGeneration;
       if (showLoading) setSnapshotState({ state: 'loading' });
+      const markUnavailable = () =>
+        setSnapshotState((current) =>
+          !showLoading && (current.state === 'ready' || current.state === 'degraded')
+            ? { state: 'degraded', snapshot: current.snapshot }
+            : { state: 'unavailable' },
+        );
       try {
         const raw = await loadSnapshot(scope);
         if (disposed || generation !== loadGeneration) return;
@@ -112,19 +135,25 @@ export function CaoOperationsFloorProjection({
           return;
         }
         const parsed = parseCaoScheduledLearningSnapshot(raw);
-        setSnapshotState(
-          parsed && snapshotMatchesScope(parsed, scope)
-            ? { state: 'ready', snapshot: parsed }
-            : { state: 'unavailable' },
-        );
+        if (parsed && snapshotMatchesScope(parsed, scope)) {
+          setSnapshotState({ state: 'ready', snapshot: parsed });
+        } else {
+          markUnavailable();
+        }
       } catch {
         if (!disposed && generation === loadGeneration) {
-          setSnapshotState({ state: 'unavailable' });
+          markUnavailable();
         }
       }
     };
 
-    setRuntimeStatus(undefined);
+    hydrateRef.current = (showLoading) => void hydrate(showLoading);
+    try {
+      const currentStatus = getStatus();
+      setRuntimeStatus(sameScope(currentStatus.scope, scope) ? currentStatus : undefined);
+    } catch {
+      setRuntimeStatus(undefined);
+    }
     void hydrate(true);
     const unsubscribe = subscribeStatus((status) => {
       if (!sameScope(status.scope, scope)) return;
@@ -135,12 +164,18 @@ export function CaoOperationsFloorProjection({
     return () => {
       disposed = true;
       loadGeneration += 1;
+      hydrateRef.current = () => undefined;
       unsubscribe();
     };
-  }, [loadSnapshot, scope, subscribeStatus]);
+  }, [getStatus, loadSnapshot, scope, subscribeStatus]);
+
+  const retry = () => hydrateRef.current(snapshotState.state !== 'degraded');
 
   const runtime = runtimeLabel(runtimeStatus);
-  const snapshot = snapshotState.state === 'ready' ? snapshotState.snapshot : undefined;
+  const snapshot =
+    snapshotState.state === 'ready' || snapshotState.state === 'degraded'
+      ? snapshotState.snapshot
+      : undefined;
   const latestCompletion = snapshot?.completions.at(-1);
   const visibleCompletions = snapshot ? [...snapshot.completions].slice(-5).reverse() : [];
 
@@ -174,18 +209,36 @@ export function CaoOperationsFloorProjection({
         </p>
       ) : snapshotState.state === 'unavailable' ? (
         <div
-          className="flex items-center gap-2 px-3 py-3 text-metadata text-destructive"
+          aria-label="CAO operational truth health"
+          className="flex flex-wrap items-center justify-between gap-2 px-3 py-3 text-metadata text-destructive"
           role="status"
         >
-          <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-          Operational truth unavailable
+          <span className="flex items-center gap-2">
+            <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+            Operational truth unavailable
+          </span>
+          <RetryOperationalTruth onRetry={retry} />
         </div>
       ) : snapshotState.state === 'empty' ? (
-        <p className="px-3 py-3 text-metadata text-muted-foreground">
-          No durable learning snapshot yet. The first verified check will create one.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-3 text-metadata text-muted-foreground">
+          <p>No durable learning snapshot yet. The first verified check will create one.</p>
+          <RetryOperationalTruth onRetry={retry} />
+        </div>
       ) : snapshot ? (
         <div className="space-y-3 px-3 py-3">
+          {snapshotState.state === 'degraded' ? (
+            <div
+              aria-label="CAO operational truth health"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent-copper/40 bg-accent-copper/5 px-2.5 py-2 text-metadata text-accent-copper"
+              role="status"
+            >
+              <span className="flex items-center gap-2">
+                <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+                Operational truth degraded. Showing the last verified snapshot.
+              </span>
+              <RetryOperationalTruth onRetry={retry} />
+            </div>
+          ) : null}
           <dl className="grid grid-cols-2 gap-2 text-metadata sm:grid-cols-4">
             <div>
               <dt className="text-muted-foreground">Learning cursor</dt>
@@ -242,20 +295,43 @@ export function CaoOperationsFloorProjection({
             </div>
           </div>
 
+          {snapshot.pending ? (
+            <details className="rounded-md border border-accent-copper/30 bg-accent-copper/5 px-2.5 py-2 text-metadata">
+              <summary className="cursor-pointer font-display text-ui-strong text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-cyan">
+                Recovery details
+              </summary>
+              <div className="mt-2 grid gap-1 font-mono text-foreground sm:grid-cols-2">
+                <span>Request: {snapshot.pending.requestId}</span>
+                <span>Pass: {snapshot.pending.passId}</span>
+                <span>
+                  Cursor: {snapshot.pending.fromSeqExclusive} →{' '}
+                  {snapshot.pending.throughSeqInclusive}
+                </span>
+                <span>Trigger: {formatTrigger(snapshot.pending.trigger)}</span>
+                <span>
+                  Requested:{' '}
+                  <time dateTime={new Date(snapshot.pending.requestedAt).toISOString()}>
+                    {formatTimestamp(snapshot.pending.requestedAt)}
+                  </time>
+                </span>
+              </div>
+            </details>
+          ) : null}
+
           {visibleCompletions.length > 0 ? (
-            <section aria-labelledby="cao-verified-history-heading">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <h4
-                  className="font-display text-ui-strong text-foreground"
-                  id="cao-verified-history-heading"
-                >
+            <details className="rounded-md border border-border/70 bg-panel/25 px-2.5 py-2">
+              <summary className="flex cursor-pointer items-center justify-between gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-cyan">
+                <span className="font-display text-ui-strong text-foreground">
                   Verified completion history
-                </h4>
+                </span>
                 <span className="text-metadata text-muted-foreground">
                   Showing {visibleCompletions.length} of {snapshot.completions.length}
                 </span>
-              </div>
-              <ol aria-label="Verified completion history" className="space-y-1.5 text-metadata">
+              </summary>
+              <ol
+                aria-label="Verified completion history"
+                className="mt-2 space-y-1.5 text-metadata"
+              >
                 {visibleCompletions.map((completion) => (
                   <li
                     className="rounded-md border border-border/60 bg-panel/35 px-2.5 py-2"
@@ -286,7 +362,7 @@ export function CaoOperationsFloorProjection({
                   </li>
                 ))}
               </ol>
-            </section>
+            </details>
           ) : null}
         </div>
       ) : null}

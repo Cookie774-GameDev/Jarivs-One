@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { CaoScheduledLearningRuntimeStatus } from '@/features/jarvis-memory/caoScheduledLearningRuntime';
 import type {
@@ -44,6 +44,43 @@ function snapshot(
 }
 
 describe('CaoOperationsFloorProjection', () => {
+  it('restores only the exact scoped canonical runtime status after reload', async () => {
+    const { rerender } = render(
+      <CaoOperationsFloorProjection
+        scope={scope}
+        scheduleState="active"
+        loadSnapshot={async () => snapshot()}
+        getStatus={() => ({
+          state: 'running',
+          trigger: 'learning_threshold',
+          scope,
+          updatedAt: scope.scheduleAnchorAt + 30_000,
+        })}
+        subscribeStatus={() => vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('Running · Learning threshold')).toBeTruthy();
+
+    rerender(
+      <CaoOperationsFloorProjection
+        scope={{ ...scope, scheduleId: 'schedule-foreign' }}
+        scheduleState="active"
+        loadSnapshot={async () => snapshot({ scheduleId: 'schedule-foreign' })}
+        getStatus={() => ({
+          state: 'running',
+          trigger: 'manual_force',
+          scope,
+          updatedAt: scope.scheduleAnchorAt + 40_000,
+        })}
+        subscribeStatus={() => vi.fn()}
+      />,
+    );
+
+    await screen.findByText('Revision 4');
+    expect(screen.queryByText('Running · Manual force')).toBeNull();
+  });
+
   it('hydrates exact scoped durable truth and follows only matching live runtime status', async () => {
     const loadSnapshot = vi.fn(async () => snapshot());
     let publish: ((status: CaoScheduledLearningRuntimeStatus) => void) | undefined;
@@ -152,6 +189,66 @@ describe('CaoOperationsFloorProjection', () => {
     expect(await screen.findByText('Operational truth unavailable')).toBeTruthy();
   });
 
+  it('retries canonical hydration from empty and unavailable states', async () => {
+    const loadSnapshot = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('storage offline'))
+      .mockResolvedValueOnce(snapshot({ revision: 6, lastLearningSeqConsumed: 18 }));
+
+    render(
+      <CaoOperationsFloorProjection
+        scope={scope}
+        scheduleState="active"
+        loadSnapshot={loadSnapshot}
+        subscribeStatus={() => vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText(/No durable learning snapshot yet/u)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry operational truth' }));
+    expect(await screen.findByText('Operational truth unavailable')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry operational truth' }));
+    expect(await screen.findByText('18')).toBeTruthy();
+    expect(screen.getByText('Revision 6')).toBeTruthy();
+    expect(loadSnapshot).toHaveBeenCalledTimes(3);
+  });
+
+  it('preserves last verified truth when terminal refresh degrades and recovers on retry', async () => {
+    const loadSnapshot = vi
+      .fn()
+      .mockResolvedValueOnce(snapshot())
+      .mockRejectedValueOnce(new Error('reload unavailable'))
+      .mockResolvedValueOnce(snapshot({ revision: 5, lastLearningSeqConsumed: 16 }));
+    let publish: ((status: CaoScheduledLearningRuntimeStatus) => void) | undefined;
+
+    render(
+      <CaoOperationsFloorProjection
+        scope={scope}
+        scheduleState="active"
+        loadSnapshot={loadSnapshot}
+        subscribeStatus={(listener) => {
+          publish = listener;
+          return vi.fn();
+        }}
+      />,
+    );
+    expect(await screen.findByText('12')).toBeTruthy();
+
+    await act(async () => {
+      publish?.({ state: 'completed', trigger: 'manual_force', scope, updatedAt: Date.now() });
+    });
+
+    expect(
+      (await screen.findByRole('status', { name: 'CAO operational truth health' })).textContent,
+    ).toContain('Operational truth degraded. Showing the last verified snapshot.');
+    expect(screen.getByText('12')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry operational truth' }));
+    expect(await screen.findByText('16')).toBeTruthy();
+    expect(screen.getByText('Revision 5')).toBeTruthy();
+    expect(screen.queryByText(/Operational truth degraded/u)).toBeNull();
+  });
+
   it('projects a pending durable pass as recovery-required without synthetic progress', async () => {
     render(
       <CaoOperationsFloorProjection
@@ -175,6 +272,13 @@ describe('CaoOperationsFloorProjection', () => {
 
     expect(await screen.findByText('Recovery required')).toBeTruthy();
     expect(screen.getByText('pass-pending')).toBeTruthy();
+    const recoverySummary = screen.getByText('Recovery details');
+    expect((recoverySummary.closest('details') as HTMLDetailsElement).open).toBe(false);
+    fireEvent.click(recoverySummary);
+    expect((recoverySummary.closest('details') as HTMLDetailsElement).open).toBe(true);
+    expect(screen.getByText('Request: request-pending')).toBeTruthy();
+    expect(screen.getByText('Cursor: 12 → 15')).toBeTruthy();
+    expect(screen.getByText('Trigger: Manual force')).toBeTruthy();
     expect(screen.queryByText(/%/u)).toBeNull();
   });
 
@@ -204,7 +308,11 @@ describe('CaoOperationsFloorProjection', () => {
       />,
     );
 
-    const history = await screen.findByRole('list', { name: 'Verified completion history' });
+    const historySummary = await screen.findByText('Verified completion history');
+    expect((historySummary.closest('details') as HTMLDetailsElement).open).toBe(false);
+    fireEvent.click(historySummary);
+    expect((historySummary.closest('details') as HTMLDetailsElement).open).toBe(true);
+    const history = screen.getByRole('list', { name: 'Verified completion history' });
     const rows = within(history).getAllByRole('listitem');
 
     expect(rows).toHaveLength(5);
