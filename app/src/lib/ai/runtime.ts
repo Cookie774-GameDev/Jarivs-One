@@ -318,6 +318,7 @@ import {
 import { getModelOptions } from './models';
 import { localIntelligenceTelemetryRuntime } from './intelligenceTelemetryRuntime';
 import { browserGoalLaunchRuntime } from '@/features/browser/browserGoalLaunchRuntime';
+import { projectOpenCodeLiveToolActivity } from './openCodeLiveToolActivity';
 
 /** Resolve only the live-catalog lookup key; never rewrite the captured dispatch identity. */
 export function liveVariantLookupForChatSelection(selection: {
@@ -1654,13 +1655,17 @@ export async function installJarvisKernelRuntimeHost(
                 ) {
                   return;
                 }
+                let projected: ReturnType<typeof projectOpenCodeLiveToolActivity>;
+                try {
+                  projected = projectOpenCodeLiveToolActivity({
+                    name,
+                    status: activity.status,
+                    ...(activity.fileLabel ? { fileLabel: activity.fileLabel } : {}),
+                  });
+                } catch {
+                  return;
+                }
                 let activityId = liveToolActivityIds.get(callId);
-                const status =
-                  activity.status === 'started'
-                    ? ('running' as const)
-                    : activity.status === 'completed'
-                      ? ('done' as const)
-                      : ('error' as const);
                 if (!activityId) {
                   activityId = createChatActivityId('tool');
                   liveToolActivityIds.set(callId, activityId);
@@ -1668,31 +1673,19 @@ export async function installJarvisKernelRuntimeHost(
                     id: activityId,
                     chatId: scope.chatId,
                     kind: 'tool',
-                    category: 'file',
-                    status,
-                    title: activity.status === 'started' ? `Running ${name}` : `Ran ${name}`,
-                    ...(activity.fileLabel ? { subtitle: activity.fileLabel } : {}),
+                    ...projected.event,
                     ts: now(),
                     startedAt: now(),
-                    ...(status === 'running' ? {} : { endedAt: now() }),
+                    ...(projected.event.status === 'running' ? {} : { endedAt: now() }),
                   });
                 } else {
                   useChatActivityStore.getState().update(scope.chatId, activityId, {
-                    status,
-                    title: activity.status === 'started' ? `Running ${name}` : `Ran ${name}`,
-                    ...(activity.fileLabel ? { subtitle: activity.fileLabel } : {}),
-                    ...(status === 'running' ? {} : { endedAt: now() }),
+                    ...projected.event,
+                    ...(projected.event.status === 'running' ? {} : { endedAt: now() }),
                     ts: now(),
                   });
                 }
-                setLiveAgentActivityRunPhase(providerInput.runId, {
-                  category: 'file',
-                  title:
-                    activity.status === 'started'
-                      ? `Jarvis is running ${name}`
-                      : `Jarvis ran ${name}`,
-                  ...(activity.fileLabel ? { subtitle: activity.fileLabel } : {}),
-                });
+                setLiveAgentActivityRunPhase(providerInput.runId, projected.phase);
               };
               const modelSnapshotRef = `jmodel_${providerInput.model.providerId}_${providerInput.model.modelId}_${providerInput.model.capturedAt}`;
               const response = runExplicitRootEvidenceSynthesis(
