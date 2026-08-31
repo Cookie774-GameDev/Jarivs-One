@@ -278,6 +278,8 @@ describe('Jarvis learning event listener', () => {
     });
 
     await vi.waitFor(() => expect(statuses).toContain('error'));
+    await vi.waitFor(() => expect(statuses).toContain('recovered'));
+    expect(useJarvisLearningStore.getState().currentEvidence()).toEqual([]);
     window.removeEventListener('jarvis:memory-status', onStatus);
   });
 

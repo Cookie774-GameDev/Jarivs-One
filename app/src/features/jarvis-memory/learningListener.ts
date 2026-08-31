@@ -3,6 +3,7 @@ import { useJarvisLearningStore } from './learningStore';
 import type { JarvisMemoryCategory, MemoryEvidenceItem } from './types';
 import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
 import { clearJarvisMemoryStatus, publishJarvisMemoryStatus } from './memoryStatusRuntime';
+import { reconcileDurableEvidence } from './evidencePersistenceRecovery';
 
 interface LearningSendDetail {
   chatId?: string;
@@ -204,9 +205,21 @@ export function startJarvisLearningListener(
           if (!currentById.has(item.id)) await evidenceRepository.delete(active, item.id);
         }
       })
-      .catch((error) => {
+      .catch(async (error) => {
         publishStatus(undefined, 'error');
         report(bindings, error);
+        try {
+          const recovery = await reconcileDurableEvidence({
+            ownerId: active,
+            list: (ownerId) => evidenceRepository.list(ownerId),
+            isCurrent: () => !disposed && bindings.getAccountId().trim() === active,
+            apply: (items) => store.getState().hydrateEvidence(active, items),
+          });
+          if (recovery === 'reconciled') publishStatus(undefined, 'recovered');
+        } catch (recoveryError) {
+          publishStatus(undefined, 'error');
+          report(bindings, recoveryError);
+        }
       });
     writeQueue = pending;
   };
