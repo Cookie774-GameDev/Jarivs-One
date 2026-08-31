@@ -32,6 +32,9 @@ import { readChatReasoningPreference } from './reasoningSlashStore';
 const DISPATCH_VERSION = 1 as const;
 const MAX_PROJECTION_BYTES = 256_000;
 const ACCEPTANCE_TIMEOUT_MS = 10_000;
+const UNSAFE_SCHEME_MAX_DECODE_PASSES = 32;
+const UNSAFE_SCHEME_MAX_OUTPUT_UNITS = MAX_PROJECTION_BYTES;
+const UNSAFE_SCHEME_MAX_WORK_UNITS = MAX_PROJECTION_BYTES * 2;
 
 export type ChatToChatDispatchInput = Readonly<{
   sourceChatId: string;
@@ -186,39 +189,64 @@ function exactKeys(record: Record<string, unknown>, keys: readonly string[]): bo
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 
-function decodeUnsafeSchemeProbe(value: string): string {
-  let probe = value.normalize('NFKC');
-  for (let pass = 0; pass < 3; pass += 1) {
-    const decodedEntities = probe
-      .replace(/&#(\d{1,7});?/gu, (_match, digits: string) => {
-        const codePoint = Number.parseInt(digits, 10);
-        return Number.isSafeInteger(codePoint) && codePoint <= 0x10ffff
-          ? String.fromCodePoint(codePoint)
-          : '\ufffd';
-      })
-      .replace(/&#x([\da-f]{1,6});?/giu, (_match, digits: string) => {
-        const codePoint = Number.parseInt(digits, 16);
-        return Number.isSafeInteger(codePoint) && codePoint <= 0x10ffff
-          ? String.fromCodePoint(codePoint)
-          : '\ufffd';
-      })
-      .replace(/&(colon|tab|newline);/giu, (_match, entity: string) =>
-        entity.toLowerCase() === 'colon' ? ':' : entity.toLowerCase() === 'tab' ? '\t' : '\n',
-      );
-    let decodedPercent = decodedEntities;
+function decodeUnsafeHtmlEntities(value: string): string {
+  return value
+    .replace(/&#(\d{1,7});?/gu, (_match, digits: string) => {
+      const codePoint = Number.parseInt(digits, 10);
+      return Number.isSafeInteger(codePoint) && codePoint <= 0x10ffff
+        ? String.fromCodePoint(codePoint)
+        : '\ufffd';
+    })
+    .replace(/&#x([\da-f]{1,6});?/giu, (_match, digits: string) => {
+      const codePoint = Number.parseInt(digits, 16);
+      return Number.isSafeInteger(codePoint) && codePoint <= 0x10ffff
+        ? String.fromCodePoint(codePoint)
+        : '\ufffd';
+    })
+    .replace(/&(colon|tab|newline);/giu, (_match, entity: string) =>
+      entity.toLowerCase() === 'colon' ? ':' : entity.toLowerCase() === 'tab' ? '\t' : '\n',
+    );
+}
+
+function decodeUnsafePercentRuns(value: string): string {
+  return value.replace(/(?:%[\da-f]{2})+/giu, (run) => {
     try {
-      decodedPercent = decodeURIComponent(decodedEntities);
+      return decodeURIComponent(run);
     } catch {
-      // Malformed encodings remain visible to the exact byte checks below.
+      return run.replace(/%([\da-f]{2})/giu, (token, digits: string) => {
+        const byte = Number.parseInt(digits, 16);
+        return byte <= 0x7f ? String.fromCharCode(byte) : token;
+      });
     }
-    if (decodedPercent === probe) break;
-    probe = decodedPercent;
-  }
-  return probe;
+  });
+}
+
+function unsafeSchemeInProbe(value: string): boolean {
+  const urlParserProbe = value.replace(/[\u0000-\u001f\u007f]/gu, '');
+  return /(?:^|[=\s"'(<\[{,:])(?:data|blob)\s*:/iu.test(urlParserProbe);
 }
 
 function containsUnsafeEmbeddedScheme(value: string): boolean {
-  return /(?:^|[=\s"'(<\[{,:])(?:data|blob)\s*:/iu.test(decodeUnsafeSchemeProbe(value));
+  let probe = value.normalize('NFKC');
+  let work = 0;
+  for (let pass = 0; pass < UNSAFE_SCHEME_MAX_DECODE_PASSES; pass += 1) {
+    work += probe.length;
+    if (
+      probe.length > UNSAFE_SCHEME_MAX_OUTPUT_UNITS ||
+      work > UNSAFE_SCHEME_MAX_WORK_UNITS ||
+      unsafeSchemeInProbe(probe)
+    ) {
+      return true;
+    }
+    const decoded = decodeUnsafePercentRuns(decodeUnsafeHtmlEntities(probe)).normalize('NFKC');
+    work += decoded.length;
+    if (decoded.length > UNSAFE_SCHEME_MAX_OUTPUT_UNITS || work > UNSAFE_SCHEME_MAX_WORK_UNITS) {
+      return true;
+    }
+    if (decoded === probe) return false;
+    probe = decoded;
+  }
+  return true;
 }
 
 function safeText(value: unknown, maximumLength: number): string | null {

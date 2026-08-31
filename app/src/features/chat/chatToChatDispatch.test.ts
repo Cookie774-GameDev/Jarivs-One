@@ -443,6 +443,49 @@ describe('dispatchChatToChat', () => {
       { ...PROJECTION, olderDigest: 'href=b&#108;ob&#58;https://example.test/private-id' },
     ],
     [
+      'percent-encoded tab inside data scheme',
+      { ...PROJECTION, olderDigest: 'href=d%09ata:application/octet-stream;base64,AAAA' },
+    ],
+    [
+      'numeric-entity tab inside blob scheme',
+      { ...PROJECTION, olderDigest: 'href=b&#9;lob:https://example.test/private-id' },
+    ],
+    [
+      'named tab inside data scheme',
+      { ...PROJECTION, olderDigest: 'href=d&Tab;ata:application/octet-stream;base64,AAAA' },
+    ],
+    [
+      'named newline inside blob scheme',
+      { ...PROJECTION, olderDigest: 'href=b&NewLine;lob:https://example.test/private-id' },
+    ],
+    [
+      'percent-encoded carriage return inside data scheme',
+      { ...PROJECTION, olderDigest: 'href=d%0Data:application/octet-stream;base64,AAAA' },
+    ],
+    [
+      'percent-encoded null inside blob scheme',
+      { ...PROJECTION, olderDigest: 'href=b%00lob:https://example.test/private-id' },
+    ],
+    [
+      'malformed percent beside encoded data scheme',
+      {
+        ...PROJECTION,
+        olderDigest: 'broken%=x src=%64%61%74%61%3Aapplication/octet-stream;base64,AAAA',
+      },
+    ],
+    [
+      'mixed entity and percent encoding inside data scheme',
+      { ...PROJECTION, olderDigest: 'href=d%26%239%3Bata%3Atext/plain,private' },
+    ],
+    [
+      'eight-layer encoded data scheme',
+      {
+        ...PROJECTION,
+        olderDigest:
+          'href=data%252525252525253Aapplication%252525252525252Foctet-stream%252525252525253Bbase64%252525252525252CAAAA',
+      },
+    ],
+    [
       'serialized tool-result data payload',
       {
         ...PROJECTION,
@@ -466,6 +509,23 @@ describe('dispatchChatToChat', () => {
       ),
     ).resolves.toMatchObject({ status: 'rejected', reason: 'projection_unsafe' });
     expect(harness.claimChatDispatch).not.toHaveBeenCalled();
+    expect(harness.dispatchKernel).not.toHaveBeenCalled();
+  });
+
+  it('preserves benign percent signs and ordinary data/blob words', async () => {
+    const harness = createHarness();
+    const benignText =
+      'Database notes cover blob storage and 50% growth; malformed %= stays literal.';
+
+    await expect(
+      dispatchChatToChat(
+        { ...INPUT, projection: { ...PROJECTION, olderDigest: benignText } },
+        harness.deps,
+      ),
+    ).resolves.toMatchObject({ status: 'dispatched' });
+
+    expect(JSON.stringify([...harness.messages.values()])).toContain(benignText);
+    expect(harness.dispatches[0]?.text).toContain(benignText);
   });
 
   it('persists failed runtime truth and never re-emits it after retry/reload', async () => {
