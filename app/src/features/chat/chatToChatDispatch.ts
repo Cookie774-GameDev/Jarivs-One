@@ -1,12 +1,14 @@
 import { readChatRuntimePolicyState } from '@/features/chat/runtime/chatRuntimeSettingsStore';
 import type { ChatRuntimePolicyState } from '@/features/chat/runtime/chatRuntimeSettingsStore';
+import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import type { SendDetail } from '@/lib/ai/runtime';
 import { selectionFromOption, type ChatModelSelection } from '@/lib/ai/modelSelection';
 import type { ReasoningPreference } from '@/lib/ai/reasoningControls';
-import { chatRepo, messageRepo } from '@/lib/db/repositories';
+import { chatRepo, messageRepo, projectRepo, workspaceRepo } from '@/lib/db/repositories';
+import type { Project, Workspace } from '@/lib/db/schema';
 import { useAuthStore } from '@/stores/auth';
 import type { Chat, Message, Part } from '@/types/chat';
-import type { ChatId, MessageId, ProviderId } from '@/types/common';
+import type { ChatId, MessageId, ProjectId, ProviderId, WorkspaceId } from '@/types/common';
 
 import {
   renderChatHandoffPrompt,
@@ -16,6 +18,10 @@ import {
 } from './chatHandoffProjection';
 import { readChatReasoningPreference } from './reasoningSlashStore';
 
+const DISPATCH_VERSION = 1 as const;
+const MAX_PROJECTION_BYTES = 256_000;
+const ACCEPTANCE_TIMEOUT_MS = 10_000;
+
 export type ChatToChatDispatchInput = Readonly<{
   sourceChatId: string;
   targetChatId: string;
@@ -24,13 +30,19 @@ export type ChatToChatDispatchInput = Readonly<{
   dispatchKey: string;
 }>;
 
+type TerminalDispatchReceipt = Readonly<{
+  dispatchKey: string;
+  targetChatId: string;
+  messageId: string;
+}>;
+
 export type ChatToChatDispatchReceipt =
-  | Readonly<{
-      status: 'dispatched';
-      dispatchKey: string;
-      targetChatId: string;
-      messageId: string;
-    }>
+  | (TerminalDispatchReceipt & Readonly<{ status: 'dispatched' }>)
+  | (TerminalDispatchReceipt &
+      Readonly<{
+        status: 'pending' | 'failed';
+        reason?: 'runtime_rejected' | 'runtime_timeout' | 'runtime_cancelled' | 'authority_revoked';
+      }>)
   | Readonly<{
       status: 'rejected';
       reason:
@@ -39,38 +51,107 @@ export type ChatToChatDispatchReceipt =
         | 'chat_unavailable'
         | 'access_denied'
         | 'projection_mismatch'
+        | 'projection_unsafe'
         | 'dispatch_key_conflict';
       dispatchKey: string;
       targetChatId: string;
     }>;
 
+export type ActiveDispatchScope = Readonly<{
+  accountId: string;
+  identitySource: 'supabase' | 'local';
+  workspaceId: string | null;
+  projectId: string | null;
+  epoch: number;
+}>;
+
 type PersistedUserMessageInput = Readonly<{
+  id: MessageId;
   chat_id: ChatId;
   role: 'user';
   parts: Part[];
 }>;
 
-export type ChatToChatDispatchDeps = Readonly<{
+export type ChatToChatDispatchDeps = {
   getChat: (id: string) => Promise<Chat | undefined>;
-  listMessages: (chatId: string) => Promise<readonly Message[]>;
+  getWorkspace: (id: string) => Promise<Workspace | undefined>;
+  getProject: (id: string) => Promise<Project | undefined>;
+  getMessage: (id: string) => Promise<Message | undefined>;
   persistMessage: (input: PersistedUserMessageInput) => Promise<Message>;
-  canAccess: (source: Chat, target: Chat) => boolean;
+  updateMessageParts: (id: string, parts: Part[]) => Promise<Message>;
+  readActiveScope: () => ActiveDispatchScope | null;
   readModelSelection: (target: Chat) => ChatModelSelection | undefined;
   readReasoningPreference: (chatId: string) => ReasoningPreference;
   readRuntimePolicy: (chatId: string) => ChatRuntimePolicyState;
-  dispatchKernel: (detail: SendDetail) => void;
+  dispatchKernel: (detail: SendDetail) => Promise<void>;
+  now?: () => number;
+  digest?: (value: string) => Promise<string>;
+};
+
+type AuthoritySnapshot = Readonly<{
+  accountId: string;
+  identitySource: ActiveDispatchScope['identitySource'];
+  activeWorkspaceId: string | null;
+  activeProjectId: string | null;
+  epoch: number;
+  sourceChatId: string;
+  sourceWorkspaceId: string;
+  sourceWorkspaceRevision: number;
+  sourceProjectId: string | null;
+  sourceProjectRevision: number | null;
+  targetChatId: string;
+  targetWorkspaceId: string;
+  targetWorkspaceRevision: number;
+  targetProjectId: string | null;
+  targetProjectRevision: number | null;
 }>;
 
-type AccessResult =
-  | Readonly<{ ok: true; source: Chat; target: Chat }>
+type AuthorityResult =
+  | Readonly<{ ok: true; source: Chat; target: Chat; snapshot: AuthoritySnapshot }>
   | Readonly<{ ok: false; reason: 'chat_unavailable' | 'access_denied' }>;
 
-type DispatchMarkerResult =
-  | Readonly<{ kind: 'none' }>
-  | Readonly<{ kind: 'existing'; messageId: string }>
-  | Readonly<{ kind: 'conflict' }>;
+type DispatchState = 'pending' | 'accepted' | 'failed';
+type DispatchFailure =
+  'runtime_rejected' | 'runtime_timeout' | 'runtime_cancelled' | 'authority_revoked';
 
-function stableValue(value: string, maximumLength: number): boolean {
+type DispatchMarkerV1 = Readonly<{
+  version: 1;
+  accountId: string;
+  sourceChatId: string;
+  targetChatId: string;
+  dispatchKey: string;
+  messageId: string;
+  projectionDigest: string;
+  promptDigest: string;
+  state: DispatchState;
+  failure?: DispatchFailure;
+}>;
+
+type DurableHandoffV1 = ChatHandoffMessagePartV1 & Readonly<{ dispatch: DispatchMarkerV1 }>;
+
+type CanonicalEnvelope = Readonly<{
+  text: string;
+  handoffBase: ChatHandoffMessagePartV1;
+  projectionDigest: string;
+  promptDigest: string;
+}>;
+
+let activeScopeEpoch = 0;
+useAuthStore.subscribe((current, previous) => {
+  const currentIdentity = resolveAccountIdentity(current);
+  const previousIdentity = resolveAccountIdentity(previous);
+  if (
+    currentIdentity?.accountId !== previousIdentity?.accountId ||
+    currentIdentity?.source !== previousIdentity?.source ||
+    String(current.workspaceId ?? '') !== String(previous.workspaceId ?? '') ||
+    String(current.projectId ?? '') !== String(previous.projectId ?? '')
+  ) {
+    activeScopeEpoch += 1;
+  }
+});
+
+function stableValue(value: unknown, maximumLength: number): value is string {
+  if (typeof value !== 'string') return false;
   const clean = value.trim();
   return (
     clean.length > 0 &&
@@ -80,19 +161,157 @@ function stableValue(value: string, maximumLength: number): boolean {
   );
 }
 
-function projectId(chat: Chat): string | null {
-  return chat.project_id ? String(chat.project_id) : null;
+function plainRecord(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
-function projectionMatchesSource(input: ChatToChatDispatchInput, source: Chat): boolean {
-  return (
-    input.projection.version === 1 &&
-    input.projection.policyVersion === 1 &&
-    input.projection.source.chatId === input.sourceChatId &&
-    String(source.id) === input.sourceChatId &&
-    input.projection.source.workspaceId === String(source.workspace_id) &&
-    input.projection.source.projectId === projectId(source)
-  );
+function exactKeys(record: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(record).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+function safeText(value: unknown, maximumLength: number): string | null {
+  if (typeof value !== 'string' || value.length > maximumLength) return null;
+  if (
+    /(?:^|[\s"'(])(?:data:[^\s,;]{1,200};base64,|blob:)/iu.test(value) ||
+    /[\u0000\ufffd]/u.test(value)
+  )
+    return null;
+  return sanitizeChatHandoffText(value);
+}
+
+function safeNullableText(value: unknown, maximumLength: number): string | null | undefined {
+  return value === null ? null : (safeText(value, maximumLength) ?? undefined);
+}
+
+function safeStringArray(value: unknown, maximumItems: number): readonly string[] | null {
+  if (!Array.isArray(value) || value.length > maximumItems) return null;
+  const output: string[] = [];
+  for (const item of value) {
+    const safe = safeText(item, 2_000);
+    if (safe === null) return null;
+    output.push(safe);
+  }
+  return Object.freeze(output);
+}
+
+function validTimestamp(value: unknown, now: number): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= now + 300_000;
+}
+
+function canonicalProjection(value: unknown, now: number): ChatHandoffProjectionV1 | null {
+  if (
+    !plainRecord(value) ||
+    !exactKeys(value, [
+      'version',
+      'policyVersion',
+      'source',
+      'snapshotAt',
+      'boundaryAt',
+      'boundaryMessageId',
+      'goal',
+      'status',
+      'lastMeaningfulActivity',
+      'recentSections',
+      'olderDigest',
+      'summaries',
+    ]) ||
+    value.version !== 1 ||
+    value.policyVersion !== 1 ||
+    !validTimestamp(value.snapshotAt, now) ||
+    !validTimestamp(value.boundaryAt, now) ||
+    Number(value.boundaryAt) > Number(value.snapshotAt)
+  )
+    return null;
+  if (
+    !plainRecord(value.source) ||
+    !exactKeys(value.source, ['chatId', 'title', 'workspaceId', 'projectId'])
+  )
+    return null;
+  const sourceChatId = safeText(value.source.chatId, 512);
+  const title = safeText(value.source.title, 1_000);
+  const workspaceId = safeText(value.source.workspaceId, 512);
+  const projectId = safeNullableText(value.source.projectId, 512);
+  const boundaryMessageId = safeNullableText(value.boundaryMessageId, 512);
+  const goal = safeNullableText(value.goal, 4_000);
+  const status = safeText(value.status, 1_000);
+  const lastMeaningfulActivity = safeNullableText(value.lastMeaningfulActivity, 4_000);
+  const olderDigest = safeText(value.olderDigest, 12_000);
+  if (
+    !sourceChatId ||
+    title === null ||
+    !workspaceId ||
+    projectId === undefined ||
+    boundaryMessageId === undefined ||
+    goal === undefined ||
+    status === null ||
+    lastMeaningfulActivity === undefined ||
+    olderDigest === null
+  )
+    return null;
+  if (!Array.isArray(value.recentSections) || value.recentSections.length > 256) return null;
+  const recentSections: ChatHandoffProjectionV1['recentSections'][number][] = [];
+  for (const section of value.recentSections) {
+    if (
+      !plainRecord(section) ||
+      !exactKeys(section, ['messageId', 'role', 'createdAt', 'visibleText', 'chunks']) ||
+      !stableValue(section.messageId, 512) ||
+      !['user', 'assistant', 'agent', 'system', 'tool'].includes(String(section.role)) ||
+      !validTimestamp(section.createdAt, now) ||
+      Number(section.createdAt) > Number(value.snapshotAt)
+    )
+      return null;
+    const visibleText = safeText(section.visibleText, 64_000);
+    const chunks = safeStringArray(section.chunks, 128);
+    if (
+      visibleText === null ||
+      chunks === null ||
+      chunks.some((chunk) => chunk.length > 8_000) ||
+      chunks.join('') !== visibleText
+    )
+      return null;
+    recentSections.push(
+      Object.freeze({
+        messageId: section.messageId,
+        role: section.role as Message['role'],
+        createdAt: Number(section.createdAt),
+        visibleText,
+        chunks,
+      }),
+    );
+  }
+  if (
+    !plainRecord(value.summaries) ||
+    !exactKeys(value.summaries, ['files', 'tools', 'actions', 'decisions', 'blockers', 'results'])
+  )
+    return null;
+  const summaries = {
+    files: safeStringArray(value.summaries.files, 256),
+    tools: safeStringArray(value.summaries.tools, 256),
+    actions: safeStringArray(value.summaries.actions, 256),
+    decisions: safeStringArray(value.summaries.decisions, 256),
+    blockers: safeStringArray(value.summaries.blockers, 256),
+    results: safeStringArray(value.summaries.results, 256),
+  };
+  if (Object.values(summaries).some((entry) => entry === null)) return null;
+  const projection: ChatHandoffProjectionV1 = Object.freeze({
+    version: 1,
+    policyVersion: 1,
+    source: Object.freeze({ chatId: sourceChatId, title, workspaceId, projectId }),
+    snapshotAt: Number(value.snapshotAt),
+    boundaryAt: Number(value.boundaryAt),
+    boundaryMessageId,
+    goal,
+    status,
+    lastMeaningfulActivity,
+    recentSections: Object.freeze(recentSections),
+    olderDigest,
+    summaries: Object.freeze(summaries as ChatHandoffProjectionV1['summaries']),
+  });
+  return JSON.stringify(projection).length <= MAX_PROJECTION_BYTES ? projection : null;
 }
 
 function rejected(
@@ -107,10 +326,17 @@ function rejected(
   });
 }
 
-async function resolveAccess(
+function projectId(chat: Chat): string | null {
+  return chat.project_id ? String(chat.project_id) : null;
+}
+
+async function resolveAuthority(
   input: ChatToChatDispatchInput,
   deps: ChatToChatDispatchDeps,
-): Promise<AccessResult> {
+): Promise<AuthorityResult> {
+  const activeBefore = deps.readActiveScope();
+  if (!activeBefore || !stableValue(activeBefore.accountId, 512))
+    return { ok: false, reason: 'access_denied' };
   let source: Chat | undefined;
   let target: Chat | undefined;
   try {
@@ -121,32 +347,259 @@ async function resolveAccess(
   } catch {
     return { ok: false, reason: 'chat_unavailable' };
   }
-  if (!source || !target) return { ok: false, reason: 'chat_unavailable' };
-  if (String(source.id) !== input.sourceChatId || String(target.id) !== input.targetChatId) {
+  if (
+    !source ||
+    !target ||
+    String(source.id) !== input.sourceChatId ||
+    String(target.id) !== input.targetChatId
+  )
     return { ok: false, reason: 'chat_unavailable' };
-  }
+  if (source.archived || target.archived) return { ok: false, reason: 'access_denied' };
+  const sourceWorkspaceId = String(source.workspace_id);
+  const targetWorkspaceId = String(target.workspace_id);
+  // No canonical cross-workspace handoff policy exists yet, so cross-workspace dispatch fails closed.
+  if (sourceWorkspaceId !== targetWorkspaceId) return { ok: false, reason: 'access_denied' };
+  let sourceWorkspace: Workspace | undefined;
+  let targetWorkspace: Workspace | undefined;
+  let sourceProject: Project | undefined;
+  let targetProject: Project | undefined;
   try {
-    if (!deps.canAccess(source, target)) return { ok: false, reason: 'access_denied' };
+    [sourceWorkspace, targetWorkspace, sourceProject, targetProject] = await Promise.all([
+      deps.getWorkspace(sourceWorkspaceId),
+      deps.getWorkspace(targetWorkspaceId),
+      source.project_id ? deps.getProject(String(source.project_id)) : Promise.resolve(undefined),
+      target.project_id ? deps.getProject(String(target.project_id)) : Promise.resolve(undefined),
+    ]);
   } catch {
     return { ok: false, reason: 'access_denied' };
   }
-  return { ok: true, source, target };
+  if (
+    !sourceWorkspace ||
+    !targetWorkspace ||
+    String(sourceWorkspace.id) !== sourceWorkspaceId ||
+    String(targetWorkspace.id) !== targetWorkspaceId ||
+    sourceWorkspace.owner_id !== activeBefore.accountId ||
+    targetWorkspace.owner_id !== activeBefore.accountId
+  )
+    return { ok: false, reason: 'access_denied' };
+  if (
+    (source.project_id &&
+      (!sourceProject ||
+        String(sourceProject.id) !== String(source.project_id) ||
+        String(sourceProject.workspace_id) !== sourceWorkspaceId)) ||
+    (target.project_id &&
+      (!targetProject ||
+        String(targetProject.id) !== String(target.project_id) ||
+        String(targetProject.workspace_id) !== targetWorkspaceId))
+  )
+    return { ok: false, reason: 'access_denied' };
+  const activeAfter = deps.readActiveScope();
+  if (!activeAfter || JSON.stringify(activeAfter) !== JSON.stringify(activeBefore))
+    return { ok: false, reason: 'access_denied' };
+  return {
+    ok: true,
+    source,
+    target,
+    snapshot: Object.freeze({
+      accountId: activeBefore.accountId,
+      identitySource: activeBefore.identitySource,
+      activeWorkspaceId: activeBefore.workspaceId,
+      activeProjectId: activeBefore.projectId,
+      epoch: activeBefore.epoch,
+      sourceChatId: input.sourceChatId,
+      sourceWorkspaceId,
+      sourceWorkspaceRevision: sourceWorkspace.updated_at,
+      sourceProjectId: projectId(source),
+      sourceProjectRevision: sourceProject?.updated_at ?? null,
+      targetChatId: input.targetChatId,
+      targetWorkspaceId,
+      targetWorkspaceRevision: targetWorkspace.updated_at,
+      targetProjectId: projectId(target),
+      targetProjectRevision: targetProject?.updated_at ?? null,
+    }),
+  };
 }
 
-function dispatchMarker(
-  messages: readonly Message[],
+async function sha256(value: string): Promise<string> {
+  const result = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return [...new Uint8Array(result)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function canonicalEnvelope(
   input: ChatToChatDispatchInput,
-): DispatchMarkerResult {
-  let existingMessageId: string | null = null;
-  for (const message of messages) {
-    if (String(message.chat_id) !== input.targetChatId || message.role !== 'user') continue;
-    for (const part of message.parts) {
-      if (part.kind !== 'chat_handoff' || part.handoff.dispatchKey !== input.dispatchKey) continue;
-      if (part.handoff.sourceChatId !== input.sourceChatId) return { kind: 'conflict' };
-      existingMessageId ??= String(message.id);
-    }
+  source: Chat,
+  now: number,
+  digest: (value: string) => Promise<string>,
+): Promise<CanonicalEnvelope | null> {
+  const projection = canonicalProjection(input.projection, now);
+  if (
+    !projection ||
+    projection.source.chatId !== input.sourceChatId ||
+    String(source.id) !== input.sourceChatId ||
+    projection.source.workspaceId !== String(source.workspace_id) ||
+    projection.source.projectId !== projectId(source)
+  )
+    return null;
+  const instruction = safeText(input.instruction.trim(), 8_000);
+  if (!instruction?.trim()) return null;
+  const text = renderChatHandoffPrompt(projection, instruction);
+  const handoffBase: ChatHandoffMessagePartV1 = Object.freeze({
+    version: 1,
+    sourceChatId: input.sourceChatId,
+    sourceTitle: projection.source.title,
+    snapshotAt: projection.snapshotAt,
+    boundaryMessageId: projection.boundaryMessageId,
+    instruction,
+    projection,
+    dispatchKey: input.dispatchKey,
+  });
+  return Object.freeze({
+    text,
+    handoffBase,
+    projectionDigest: await digest(JSON.stringify(projection)),
+    promptDigest: await digest(text),
+  });
+}
+
+function markerFor(
+  authority: AuthoritySnapshot,
+  input: ChatToChatDispatchInput,
+  messageId: string,
+  envelope: CanonicalEnvelope,
+  state: DispatchState,
+  failure?: DispatchFailure,
+): DispatchMarkerV1 {
+  return Object.freeze({
+    version: DISPATCH_VERSION,
+    accountId: authority.accountId,
+    sourceChatId: input.sourceChatId,
+    targetChatId: input.targetChatId,
+    dispatchKey: input.dispatchKey,
+    messageId,
+    projectionDigest: envelope.projectionDigest,
+    promptDigest: envelope.promptDigest,
+    state,
+    ...(failure ? { failure } : {}),
+  });
+}
+
+function partsFor(envelope: CanonicalEnvelope, marker: DispatchMarkerV1): Part[] {
+  const handoff: DurableHandoffV1 = Object.freeze({ ...envelope.handoffBase, dispatch: marker });
+  return [
+    { kind: 'text', text: envelope.text },
+    { kind: 'chat_handoff', handoff },
+  ];
+}
+
+function parseExistingClaim(
+  message: Message,
+  expectedId: string,
+  authority: AuthoritySnapshot,
+  input: ChatToChatDispatchInput,
+  envelope: CanonicalEnvelope,
+): { kind: 'valid'; marker: DispatchMarkerV1 } | { kind: 'conflict' } {
+  if (
+    !stableValue(String(message.id), 512) ||
+    String(message.id) !== expectedId ||
+    String(message.chat_id) !== input.targetChatId ||
+    message.role !== 'user' ||
+    message.parts.length !== 2 ||
+    message.parts[0]?.kind !== 'text' ||
+    message.parts[1]?.kind !== 'chat_handoff' ||
+    message.parts[0].text !== envelope.text
+  )
+    return { kind: 'conflict' };
+  const handoff = message.parts[1].handoff as unknown;
+  if (
+    !plainRecord(handoff) ||
+    !exactKeys(handoff, [...Object.keys(envelope.handoffBase), 'dispatch']) ||
+    !plainRecord(handoff.dispatch)
+  )
+    return { kind: 'conflict' };
+  const markerKeys = handoff.dispatch.failure
+    ? [
+        'version',
+        'accountId',
+        'sourceChatId',
+        'targetChatId',
+        'dispatchKey',
+        'messageId',
+        'projectionDigest',
+        'promptDigest',
+        'state',
+        'failure',
+      ]
+    : [
+        'version',
+        'accountId',
+        'sourceChatId',
+        'targetChatId',
+        'dispatchKey',
+        'messageId',
+        'projectionDigest',
+        'promptDigest',
+        'state',
+      ];
+  if (!exactKeys(handoff.dispatch, markerKeys)) return { kind: 'conflict' };
+  const marker = handoff.dispatch as unknown as DispatchMarkerV1;
+  const validFailure =
+    marker.failure === undefined ||
+    ['runtime_rejected', 'runtime_timeout', 'runtime_cancelled', 'authority_revoked'].includes(
+      marker.failure,
+    );
+  const baseHandoff = { ...handoff };
+  delete baseHandoff.dispatch;
+  if (
+    marker.version !== 1 ||
+    marker.accountId !== authority.accountId ||
+    marker.sourceChatId !== input.sourceChatId ||
+    marker.targetChatId !== input.targetChatId ||
+    marker.dispatchKey !== input.dispatchKey ||
+    marker.messageId !== expectedId ||
+    marker.projectionDigest !== envelope.projectionDigest ||
+    marker.promptDigest !== envelope.promptDigest ||
+    !['pending', 'accepted', 'failed'].includes(marker.state) ||
+    (marker.state === 'failed') !== Boolean(marker.failure) ||
+    !validFailure ||
+    JSON.stringify(baseHandoff) !== JSON.stringify(envelope.handoffBase)
+  )
+    return { kind: 'conflict' };
+  return { kind: 'valid', marker };
+}
+
+function receiptFromMarker(
+  input: ChatToChatDispatchInput,
+  marker: DispatchMarkerV1,
+): ChatToChatDispatchReceipt {
+  const base = {
+    dispatchKey: input.dispatchKey,
+    targetChatId: input.targetChatId,
+    messageId: marker.messageId,
+  };
+  if (marker.state === 'accepted') return Object.freeze({ status: 'dispatched' as const, ...base });
+  if (marker.state === 'failed')
+    return Object.freeze({ status: 'failed' as const, ...base, reason: marker.failure });
+  return Object.freeze({ status: 'pending' as const, ...base });
+}
+
+async function persistState(
+  deps: ChatToChatDispatchDeps,
+  authority: AuthoritySnapshot,
+  input: ChatToChatDispatchInput,
+  envelope: CanonicalEnvelope,
+  messageId: string,
+  state: DispatchState,
+  failure?: DispatchFailure,
+): Promise<boolean> {
+  try {
+    const updated = await deps.updateMessageParts(
+      messageId,
+      partsFor(envelope, markerFor(authority, input, messageId, envelope, state, failure)),
+    );
+    return parseExistingClaim(updated, messageId, authority, input, envelope).kind === 'valid';
+  } catch {
+    return false;
   }
-  return existingMessageId ? { kind: 'existing', messageId: existingMessageId } : { kind: 'none' };
 }
 
 function defaultModelSelection(target: Chat): ChatModelSelection | undefined {
@@ -163,15 +616,71 @@ function defaultModelSelection(target: Chat): ChatModelSelection | undefined {
     : undefined;
 }
 
+function readBrowserActiveScope(): ActiveDispatchScope | null {
+  const auth = useAuthStore.getState();
+  const identity = resolveAccountIdentity(auth);
+  if (!identity) return null;
+  return Object.freeze({
+    accountId: identity.accountId,
+    identitySource: identity.source,
+    workspaceId: auth.workspaceId ? String(auth.workspaceId) : null,
+    projectId: auth.projectId ? String(auth.projectId) : null,
+    epoch: activeScopeEpoch,
+  });
+}
+
+export function dispatchJarvisSendWithAcceptance(
+  detail: SendDetail,
+  timeoutMs = ACCEPTANCE_TIMEOUT_MS,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('jarvis:run-state', onRunState as EventListener);
+      clearTimeout(timeout);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onRunState = (event: Event) => {
+      const state = (
+        event as CustomEvent<{ chatId?: string; cancellationKey?: string; status?: string }>
+      ).detail;
+      if (
+        String(state?.chatId ?? '') !== String(detail.chatId) ||
+        String(state?.cancellationKey ?? '') !== String(detail.cancellationKey ?? '')
+      )
+        return;
+      if (state?.status === 'running') finish();
+      else if (state?.status === 'cancelled') finish(new Error('CHAT_HANDOFF_RUNTIME_CANCELLED'));
+      else if (state?.status === 'error') finish(new Error('CHAT_HANDOFF_RUNTIME_REJECTED'));
+    };
+    const timeout = setTimeout(
+      () => finish(new Error('CHAT_HANDOFF_RUNTIME_TIMEOUT')),
+      Math.max(1, timeoutMs),
+    );
+    window.addEventListener('jarvis:run-state', onRunState as EventListener);
+    try {
+      window.dispatchEvent(new CustomEvent('jarvis:send', { detail }));
+    } catch (error) {
+      finish(error instanceof Error ? error : new Error('CHAT_HANDOFF_RUNTIME_REJECTED'));
+    }
+  });
+}
+
 const browserChatToChatDispatchDeps: ChatToChatDispatchDeps = Object.freeze({
   getChat: (id) => chatRepo.getById(id as ChatId),
-  listMessages: (chatId) => messageRepo.listByChat(chatId as ChatId),
+  getWorkspace: (id) => workspaceRepo.getById(id as WorkspaceId),
+  getProject: (id) => projectRepo.getById(id as ProjectId),
+  getMessage: (id) => messageRepo.getById(id as MessageId),
   persistMessage: (input) => messageRepo.create(input),
-  canAccess: (source, target) => !source.archived && !target.archived,
+  updateMessageParts: (id, parts) => messageRepo.update(id as MessageId, { parts }),
+  readActiveScope: readBrowserActiveScope,
   readModelSelection: defaultModelSelection,
   readReasoningPreference: (chatId) => readChatReasoningPreference(chatId),
   readRuntimePolicy: (chatId) => readChatRuntimePolicyState(chatId),
-  dispatchKernel: (detail) => window.dispatchEvent(new CustomEvent('jarvis:send', { detail })),
+  dispatchKernel: (detail) => dispatchJarvisSendWithAcceptance(detail),
 });
 
 export async function dispatchChatToChat(
@@ -182,79 +691,143 @@ export async function dispatchChatToChat(
     !stableValue(input.sourceChatId, 512) ||
     !stableValue(input.targetChatId, 512) ||
     !stableValue(input.dispatchKey, 1_024) ||
-    !input.instruction.trim()
-  ) {
+    typeof input.instruction !== 'string' ||
+    !input.instruction.trim() ||
+    input.instruction.length > 8_000
+  )
     return rejected(input, 'invalid_input');
-  }
   if (input.sourceChatId === input.targetChatId) return rejected(input, 'same_chat');
-
-  const initialAccess = await resolveAccess(input, deps);
-  if (!initialAccess.ok) return rejected(input, initialAccess.reason);
-  if (!projectionMatchesSource(input, initialAccess.source)) {
-    return rejected(input, 'projection_mismatch');
-  }
-
-  let messages: readonly Message[];
+  const initialAuthority = await resolveAuthority(input, deps);
+  if (!initialAuthority.ok) return rejected(input, initialAuthority.reason);
+  const digest = deps.digest ?? sha256;
+  const now = (deps.now ?? Date.now)();
+  const envelope = await canonicalEnvelope(input, initialAuthority.source, now, digest);
+  if (!envelope)
+    return rejected(
+      input,
+      canonicalProjection(input.projection, now) ? 'projection_mismatch' : 'projection_unsafe',
+    );
+  const messageId = `msg_handoff_${await digest(`chat-handoff-v${DISPATCH_VERSION}\0${initialAuthority.snapshot.accountId}\0${input.dispatchKey}`)}`;
+  if (!stableValue(messageId, 512)) return rejected(input, 'invalid_input');
+  let existing: Message | undefined;
   try {
-    messages = await deps.listMessages(input.targetChatId);
+    existing = await deps.getMessage(messageId);
   } catch {
     return rejected(input, 'chat_unavailable');
   }
-  const marker = dispatchMarker(messages, input);
-
-  const currentAccess = await resolveAccess(input, deps);
-  if (!currentAccess.ok) return rejected(input, currentAccess.reason);
-  if (!projectionMatchesSource(input, currentAccess.source)) {
-    return rejected(input, 'projection_mismatch');
+  if (existing) {
+    const claim = parseExistingClaim(
+      existing,
+      messageId,
+      initialAuthority.snapshot,
+      input,
+      envelope,
+    );
+    return claim.kind === 'valid'
+      ? receiptFromMarker(input, claim.marker)
+      : rejected(input, 'dispatch_key_conflict');
   }
-  if (marker.kind === 'conflict') return rejected(input, 'dispatch_key_conflict');
-  if (marker.kind === 'existing') {
-    return Object.freeze({
-      status: 'dispatched' as const,
-      dispatchKey: input.dispatchKey,
-      targetChatId: input.targetChatId,
-      messageId: marker.messageId,
+  let modelSelection: ChatModelSelection | undefined;
+  let reasoningPreference: ReasoningPreference;
+  let runtimePolicy: ChatRuntimePolicyState;
+  try {
+    modelSelection = deps.readModelSelection(initialAuthority.target);
+    reasoningPreference = deps.readReasoningPreference(input.targetChatId);
+    runtimePolicy = deps.readRuntimePolicy(input.targetChatId);
+  } catch {
+    return rejected(input, 'access_denied');
+  }
+  const pendingMarker = markerFor(initialAuthority.snapshot, input, messageId, envelope, 'pending');
+  let persisted: Message;
+  try {
+    persisted = await deps.persistMessage({
+      id: messageId as MessageId,
+      chat_id: initialAuthority.target.id,
+      role: 'user',
+      parts: partsFor(envelope, pendingMarker),
     });
+  } catch (error) {
+    let winner: Message | undefined;
+    try {
+      winner = await deps.getMessage(messageId);
+    } catch {
+      /* preserve original */
+    }
+    if (!winner) throw error;
+    const claim = parseExistingClaim(winner, messageId, initialAuthority.snapshot, input, envelope);
+    return claim.kind === 'valid'
+      ? receiptFromMarker(input, claim.marker)
+      : rejected(input, 'dispatch_key_conflict');
   }
-
-  const instruction = sanitizeChatHandoffText(input.instruction.trim());
-  const text = renderChatHandoffPrompt(input.projection, instruction);
-  const handoff: ChatHandoffMessagePartV1 = Object.freeze({
-    version: 1,
-    sourceChatId: input.sourceChatId,
-    sourceTitle: input.projection.source.title,
-    snapshotAt: input.projection.snapshotAt,
-    boundaryMessageId: input.projection.boundaryMessageId,
-    instruction,
-    projection: input.projection,
-    dispatchKey: input.dispatchKey,
-  });
-  const modelSelection = deps.readModelSelection(currentAccess.target);
-  const reasoningPreference = deps.readReasoningPreference(input.targetChatId);
-  const runtimePolicy = deps.readRuntimePolicy(input.targetChatId);
-  const persisted = await deps.persistMessage({
-    chat_id: currentAccess.target.id,
-    role: 'user',
-    parts: [
-      { kind: 'text', text },
-      { kind: 'chat_handoff', handoff },
-    ],
-  });
+  if (
+    parseExistingClaim(persisted, messageId, initialAuthority.snapshot, input, envelope).kind !==
+    'valid'
+  )
+    return rejected(input, 'dispatch_key_conflict');
+  const finalAuthority = await resolveAuthority(input, deps);
+  if (
+    !finalAuthority.ok ||
+    JSON.stringify(initialAuthority.snapshot) !== JSON.stringify(finalAuthority.snapshot)
+  ) {
+    await persistState(
+      deps,
+      initialAuthority.snapshot,
+      input,
+      envelope,
+      messageId,
+      'failed',
+      'authority_revoked',
+    );
+    return rejected(input, finalAuthority.ok ? 'access_denied' : finalAuthority.reason);
+  }
   const detail: SendDetail = {
     chatId: input.targetChatId,
-    cancellationKey: persisted.id as MessageId,
-    text,
+    cancellationKey: messageId as MessageId,
+    text: envelope.text,
     ...(modelSelection ? { modelSelectionOverride: modelSelection } : {}),
     reasoningPreference,
     runtimeSettings: runtimePolicy.settings,
     accessLevel: runtimePolicy.access,
     automaticModelRoutingEligible: false,
   };
-  deps.dispatchKernel(detail);
+  try {
+    await deps.dispatchKernel(detail);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    const failure: DispatchFailure = message.includes('TIMEOUT')
+      ? 'runtime_timeout'
+      : message.includes('CANCELLED')
+        ? 'runtime_cancelled'
+        : 'runtime_rejected';
+    const failed = await persistState(
+      deps,
+      finalAuthority.snapshot,
+      input,
+      envelope,
+      messageId,
+      'failed',
+      failure,
+    );
+    return Object.freeze({
+      status: failed ? ('failed' as const) : ('pending' as const),
+      dispatchKey: input.dispatchKey,
+      targetChatId: input.targetChatId,
+      messageId,
+      ...(failed ? { reason: failure } : {}),
+    });
+  }
+  const accepted = await persistState(
+    deps,
+    finalAuthority.snapshot,
+    input,
+    envelope,
+    messageId,
+    'accepted',
+  );
   return Object.freeze({
-    status: 'dispatched' as const,
+    status: accepted ? ('dispatched' as const) : ('pending' as const),
     dispatchKey: input.dispatchKey,
     targetChatId: input.targetChatId,
-    messageId: String(persisted.id),
+    messageId,
   });
 }

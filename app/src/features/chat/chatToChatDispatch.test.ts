@@ -1,12 +1,16 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { ChatModelSelection } from '@/lib/ai/modelSelection';
-import type { Chat, Message } from '@/types/chat';
+import { createJarvisDb, type JarvisDexie } from '@/lib/db';
+import type { Project, Workspace } from '@/lib/db/schema';
+import { TEST_INDEXED_DB, uniqueTestDbName } from '@/test/indexedDb';
+import type { Chat, Message, Part } from '@/types/chat';
 import type { ChatId, MessageId, ProjectId, WorkspaceId } from '@/types/common';
 
 import type { ChatHandoffProjectionV1 } from './chatHandoffProjection';
 import {
   dispatchChatToChat,
+  dispatchJarvisSendWithAcceptance,
+  type ActiveDispatchScope,
   type ChatToChatDispatchDeps,
   type ChatToChatDispatchInput,
 } from './chatToChatDispatch';
@@ -33,6 +37,22 @@ const TARGET_CHAT = Object.freeze({
   updated_at: 21,
 }) satisfies Chat;
 
+const WORKSPACE = Object.freeze({
+  id: 'workspace-1' as WorkspaceId,
+  name: 'Workspace',
+  owner_id: 'account-a',
+  created_at: 1,
+  updated_at: 1,
+}) satisfies Workspace;
+
+const PROJECT = Object.freeze({
+  id: 'project-1' as ProjectId,
+  workspace_id: WORKSPACE.id,
+  name: 'Project',
+  created_at: 1,
+  updated_at: 1,
+}) satisfies Project;
+
 const PROJECTION = Object.freeze({
   version: 1,
   policyVersion: 1,
@@ -49,7 +69,7 @@ const PROJECTION = Object.freeze({
   status: 'idle',
   lastMeaningfulActivity: null,
   recentSections: Object.freeze([]),
-  olderDigest: 'Older visible history: none.',
+  olderDigest: 'No older visible history.',
   summaries: Object.freeze({
     files: Object.freeze([]),
     tools: Object.freeze([]),
@@ -68,352 +88,469 @@ const INPUT = Object.freeze({
   dispatchKey: 'schedule-42:occurrence-7',
 }) satisfies ChatToChatDispatchInput;
 
-const CANONICAL_PROMPT = [
-  'Review the latest progress and provide guidance.',
-  'Chat handoff from “Source chat” (source)',
-  'Snapshot at: 0 (1970-01-01T00:00:00.000Z)',
-  'Three-day boundary at: 0 (1970-01-01T00:00:00.000Z)',
-  'Boundary message: none',
-  'Status: idle',
-  'Complete visible transcript from the most recent three calendar days:',
-  '(No visible recent messages.)',
-  'Older visible history: none.',
-].join('\n\n');
-
 type HarnessOptions = Readonly<{
-  sourceReads?: readonly (Chat | undefined)[];
-  targetReads?: readonly (Chat | undefined)[];
-  messages?: readonly Message[];
   persistenceError?: Error;
-  canAccess?: (source: Chat, target: Chat) => boolean;
+  runtimeError?: Error;
+  updateError?: Error;
 }>;
 
-function persistedMessage(
-  id: string,
-  dispatchKey: string = INPUT.dispatchKey,
-  sourceChatId: string = INPUT.sourceChatId,
-): Message {
-  return {
-    id: id as MessageId,
-    chat_id: TARGET_CHAT.id,
-    role: 'user',
-    parts: [
-      { kind: 'text', text: CANONICAL_PROMPT },
-      {
-        kind: 'chat_handoff',
-        handoff: {
-          version: 1,
-          sourceChatId,
-          sourceTitle: PROJECTION.source.title,
-          snapshotAt: PROJECTION.snapshotAt,
-          boundaryMessageId: PROJECTION.boundaryMessageId,
-          instruction: INPUT.instruction,
-          projection: PROJECTION,
-          dispatchKey,
-        },
-      },
-    ],
-    created_at: 30,
-    updated_at: 30,
-  };
+function clone<T>(value: T): T {
+  return structuredClone(value);
 }
 
 function createHarness(options: HarnessOptions = {}) {
-  const calls: string[] = [];
-  const persistedInputs: Array<Parameters<ChatToChatDispatchDeps['persistMessage']>[0]> = [];
-  const dispatchedDetails: Array<Parameters<ChatToChatDispatchDeps['dispatchKernel']>[0]> = [];
-  const sourceReads = [...(options.sourceReads ?? [SOURCE_CHAT, SOURCE_CHAT])];
-  const targetReads = [...(options.targetReads ?? [TARGET_CHAT, TARGET_CHAT])];
-  const modelSelection: ChatModelSelection = {
-    mode: 'single',
-    providerId: 'openai',
-    modelId: 'gpt-5.5',
+  const chats = new Map<string, Chat>([
+    [String(SOURCE_CHAT.id), clone(SOURCE_CHAT)],
+    [String(TARGET_CHAT.id), clone(TARGET_CHAT)],
+  ]);
+  const workspaces = new Map<string, Workspace>([[String(WORKSPACE.id), clone(WORKSPACE)]]);
+  const projects = new Map<string, Project>([[String(PROJECT.id), clone(PROJECT)]]);
+  const messages = new Map<string, Message>();
+  const dispatches: Parameters<ChatToChatDispatchDeps['dispatchKernel']>[0][] = [];
+  let scope: ActiveDispatchScope = {
+    accountId: 'account-a',
+    identitySource: 'local',
+    workspaceId: 'workspace-1',
+    projectId: 'project-1',
+    epoch: 0,
   };
-  const getChat = vi.fn(async (id: string) => {
-    calls.push(`get-${id}`);
-    return id === INPUT.sourceChatId ? sourceReads.shift() : targetReads.shift();
+  const persistMessage = vi.fn(
+    async (input: Parameters<ChatToChatDispatchDeps['persistMessage']>[0]) => {
+      if (options.persistenceError) throw options.persistenceError;
+      if (messages.has(String(input.id))) throw new Error('ConstraintError');
+      await Promise.resolve();
+      const row: Message = { ...clone(input), created_at: 30, updated_at: 30 };
+      if (messages.has(String(row.id))) throw new Error('ConstraintError');
+      messages.set(String(row.id), row);
+      return clone(row);
+    },
+  );
+  const updateMessageParts = vi.fn(async (id: string, parts: Part[]) => {
+    if (options.updateError) throw options.updateError;
+    const current = messages.get(id);
+    if (!current) throw new Error('missing');
+    const updated = { ...current, parts: clone(parts), updated_at: current.updated_at + 1 };
+    messages.set(id, updated);
+    return clone(updated);
   });
-  const listMessages = vi.fn(async (chatId: string) => {
-    calls.push(`list-${chatId}`);
-    return options.messages ?? [];
+  const dispatchKernel = vi.fn(async (detail) => {
+    dispatches.push(detail);
+    if (options.runtimeError) throw options.runtimeError;
   });
-  const persistMessage = vi.fn(async (message) => {
-    calls.push('persist-message');
-    persistedInputs.push(message);
-    if (options.persistenceError) throw options.persistenceError;
-    return {
-      ...message,
-      id: 'message-1' as MessageId,
-      created_at: 30,
-      updated_at: 30,
-    } satisfies Message;
-  });
-  const readModelSelection = vi.fn(() => {
-    calls.push('read-model-selection');
-    return modelSelection;
-  });
-  const readReasoningPreference = vi.fn(() => {
-    calls.push('read-reasoning');
-    return { mode: 'normal' as const, effortOverride: 'high' as const };
-  });
-  const readRuntimePolicy = vi.fn(() => {
-    calls.push('read-runtime-policy');
-    return {
-      settings: {
-        effort: 'high' as const,
-        fastMode: 'off' as const,
-        performance: 'quality' as const,
-        rlmEnabled: true,
-      },
-      access: 'write' as const,
+  const deps: ChatToChatDispatchDeps = {
+    getChat: async (id) => clone(chats.get(id)),
+    getWorkspace: async (id) => clone(workspaces.get(id)),
+    getProject: async (id) => clone(projects.get(id)),
+    getMessage: async (id) => clone(messages.get(id)),
+    persistMessage,
+    updateMessageParts,
+    readActiveScope: () => clone(scope),
+    readModelSelection: () => ({ mode: 'single', providerId: 'openai', modelId: 'gpt-5.5' }),
+    readReasoningPreference: () => ({ mode: 'normal', effortOverride: 'high' }),
+    readRuntimePolicy: () => ({
+      settings: { effort: 'high', fastMode: 'off', performance: 'quality', rlmEnabled: true },
+      access: 'write',
       approveAllForRun: true,
-    };
-  });
-  const dispatchKernel = vi.fn((detail) => {
-    calls.push('dispatch-kernel');
-    dispatchedDetails.push(detail);
-  });
-  const deps = {
-    getChat,
-    listMessages,
-    persistMessage,
-    canAccess: options.canAccess ?? ((source, target) => !source.archived && !target.archived),
-    readModelSelection,
-    readReasoningPreference,
-    readRuntimePolicy,
+    }),
     dispatchKernel,
-  } satisfies ChatToChatDispatchDeps;
+    now: () => 0,
+  };
   return {
-    calls,
-    deps,
-    dispatchedDetails,
-    getChat,
-    listMessages,
+    chats,
+    workspaces,
+    projects,
+    messages,
+    dispatches,
     persistMessage,
-    persistedInputs,
-    readModelSelection,
-    readReasoningPreference,
-    readRuntimePolicy,
+    updateMessageParts,
+    dispatchKernel,
+    deps,
+    setScope(next: ActiveDispatchScope) {
+      scope = next;
+    },
+    scope: () => scope,
   };
 }
 
-describe('dispatchChatToChat', () => {
-  it('persists one visible canonical user handoff before dispatching the exact target turn', async () => {
-    const harness = createHarness();
+function durablePart(message: Message) {
+  const part = message.parts.find((candidate) => candidate.kind === 'chat_handoff');
+  expect(part?.kind).toBe('chat_handoff');
+  return part?.kind === 'chat_handoff'
+    ? (part.handoff as typeof part.handoff & {
+        dispatch: { state: string; failure?: string; targetChatId: string; messageId: string };
+      })
+    : undefined;
+}
 
+describe('dispatchChatToChat', () => {
+  it('persists the exact two-part user envelope before exact-target runtime acceptance', async () => {
+    const harness = createHarness();
     const receipt = await dispatchChatToChat(INPUT, harness.deps);
 
-    expect(harness.calls).toEqual([
-      'get-source',
-      'get-supervisor',
-      'list-supervisor',
-      'get-source',
-      'get-supervisor',
-      'read-model-selection',
-      'read-reasoning',
-      'read-runtime-policy',
-      'persist-message',
-      'dispatch-kernel',
-    ]);
-    expect(receipt).toEqual({
-      status: 'dispatched',
-      dispatchKey: 'schedule-42:occurrence-7',
-      targetChatId: 'supervisor',
-      messageId: 'message-1',
-    });
-    expect(harness.persistedInputs).toEqual([
-      {
-        chat_id: 'supervisor',
-        role: 'user',
-        parts: [
-          { kind: 'text', text: CANONICAL_PROMPT },
-          {
-            kind: 'chat_handoff',
-            handoff: {
-              version: 1,
-              sourceChatId: 'source',
-              sourceTitle: 'Source chat',
-              snapshotAt: 0,
-              boundaryMessageId: null,
-              instruction: 'Review the latest progress and provide guidance.',
-              projection: PROJECTION,
-              dispatchKey: 'schedule-42:occurrence-7',
-            },
-          },
-        ],
-      },
-    ]);
-    expect(harness.dispatchedDetails).toEqual([
-      {
-        chatId: 'supervisor',
-        cancellationKey: 'message-1',
-        text: CANONICAL_PROMPT,
-        modelSelectionOverride: {
-          mode: 'single',
-          providerId: 'openai',
-          modelId: 'gpt-5.5',
-        },
-        reasoningPreference: { mode: 'normal', effortOverride: 'high' },
-        runtimeSettings: {
-          effort: 'high',
-          fastMode: 'off',
-          performance: 'quality',
-          rlmEnabled: true,
-        },
-        accessLevel: 'write',
-        automaticModelRoutingEligible: false,
-      },
-    ]);
-    expect(harness.dispatchedDetails[0]).not.toHaveProperty('approveAllForRun');
-    expect(harness.dispatchedDetails[0]).not.toHaveProperty('autoApproveActions');
-  });
-
-  it('returns the persisted receipt for the same dispatch key without a second write or event', async () => {
-    const existing = persistedMessage('message-existing');
-    const harness = createHarness({ messages: [existing] });
-
-    await expect(dispatchChatToChat(INPUT, harness.deps)).resolves.toEqual({
-      status: 'dispatched',
-      dispatchKey: 'schedule-42:occurrence-7',
-      targetChatId: 'supervisor',
-      messageId: 'message-existing',
-    });
-
-    expect(harness.getChat).toHaveBeenCalledTimes(4);
-    expect(harness.listMessages).toHaveBeenCalledWith('supervisor');
-    expect(harness.persistMessage).not.toHaveBeenCalled();
-    expect(harness.dispatchedDetails).toEqual([]);
-    expect(harness.readModelSelection).not.toHaveBeenCalled();
-    expect(harness.readReasoningPreference).not.toHaveBeenCalled();
-    expect(harness.readRuntimePolicy).not.toHaveBeenCalled();
-  });
-
-  it('emits no event when persistence fails', async () => {
-    const persistenceError = new Error('disk unavailable');
-    const harness = createHarness({ persistenceError });
-
-    await expect(dispatchChatToChat(INPUT, harness.deps)).rejects.toBe(persistenceError);
-
+    expect(receipt.status).toBe('dispatched');
     expect(harness.persistMessage).toHaveBeenCalledOnce();
-    expect(harness.dispatchedDetails).toEqual([]);
+    expect(harness.dispatchKernel).toHaveBeenCalledOnce();
+    const message = [...harness.messages.values()][0]!;
+    expect(message.role).toBe('user');
+    expect(message.chat_id).toBe(TARGET_CHAT.id);
+    expect(message.parts.map((part) => part.kind)).toEqual(['text', 'chat_handoff']);
+    const handoff = durablePart(message)!;
+    expect(handoff.dispatch).toMatchObject({
+      state: 'accepted',
+      targetChatId: 'supervisor',
+      messageId: String(message.id),
+    });
+    expect(harness.dispatches[0]).toMatchObject({
+      chatId: 'supervisor',
+      cancellationKey: String(message.id),
+      automaticModelRoutingEligible: false,
+    });
+    expect(harness.dispatches[0]).not.toHaveProperty('approveAllForRun');
   });
 
-  it('sanitizes the scheduled instruction before it enters the visible message or event', async () => {
+  it('returns the durable accepted receipt for the same key without a second write or event', async () => {
     const harness = createHarness();
+    const first = await dispatchChatToChat(INPUT, harness.deps);
+    const second = await dispatchChatToChat(INPUT, harness.deps);
+    expect(second).toEqual(first);
+    expect(harness.persistMessage).toHaveBeenCalledOnce();
+    expect(harness.dispatchKernel).toHaveBeenCalledOnce();
+  });
 
-    await dispatchChatToChat(
-      { ...INPUT, instruction: 'Use api_key=raw-secret and continue.' },
-      harness.deps,
-    );
+  it('emits nothing when persistence fails', async () => {
+    const failure = new Error('disk unavailable');
+    const harness = createHarness({ persistenceError: failure });
+    await expect(dispatchChatToChat(INPUT, harness.deps)).rejects.toBe(failure);
+    expect(harness.dispatchKernel).not.toHaveBeenCalled();
+  });
 
-    const persisted = JSON.stringify(harness.persistedInputs);
-    const dispatched = JSON.stringify(harness.dispatchedDetails);
-    expect(persisted).not.toContain('raw-secret');
-    expect(dispatched).not.toContain('raw-secret');
-    expect(harness.persistedInputs[0]?.parts[1]).toMatchObject({
-      kind: 'chat_handoff',
-      handoff: { instruction: 'Use [REDACTED] and continue.' },
+  it('fails closed for wrong-account ownership, project deletion/move, and cross-workspace targets', async () => {
+    const wrongOwner = createHarness();
+    wrongOwner.workspaces.set('workspace-1', { ...WORKSPACE, owner_id: 'account-b' });
+    await expect(dispatchChatToChat(INPUT, wrongOwner.deps)).resolves.toMatchObject({
+      status: 'rejected',
+      reason: 'access_denied',
     });
-    expect(harness.dispatchedDetails[0]?.text).toContain('Use [REDACTED] and continue.');
+
+    const deletedProject = createHarness();
+    deletedProject.projects.clear();
+    await expect(dispatchChatToChat(INPUT, deletedProject.deps)).resolves.toMatchObject({
+      status: 'rejected',
+      reason: 'access_denied',
+    });
+
+    const movedProject = createHarness();
+    movedProject.projects.set('project-1', {
+      ...PROJECT,
+      workspace_id: 'workspace-2' as WorkspaceId,
+    });
+    await expect(dispatchChatToChat(INPUT, movedProject.deps)).resolves.toMatchObject({
+      status: 'rejected',
+      reason: 'access_denied',
+    });
+
+    const crossWorkspace = createHarness();
+    crossWorkspace.chats.set('supervisor', {
+      ...TARGET_CHAT,
+      workspace_id: 'workspace-2' as WorkspaceId,
+    });
+    await expect(dispatchChatToChat(INPUT, crossWorkspace.deps)).resolves.toMatchObject({
+      status: 'rejected',
+      reason: 'access_denied',
+    });
+  });
+
+  it('detects account A to B to A epoch changes and emits nothing after persistence', async () => {
+    const harness = createHarness();
+    harness.deps.persistMessage = vi.fn(async (input) => {
+      const row: Message = { ...clone(input), created_at: 30, updated_at: 30 };
+      harness.messages.set(String(row.id), row);
+      harness.setScope({ ...harness.scope(), accountId: 'account-b', epoch: 1 });
+      harness.setScope({ ...harness.scope(), accountId: 'account-a', epoch: 2 });
+      return clone(row);
+    });
+
+    await expect(dispatchChatToChat(INPUT, harness.deps)).resolves.toMatchObject({
+      status: 'rejected',
+      reason: 'access_denied',
+    });
+    expect(harness.dispatchKernel).not.toHaveBeenCalled();
+    expect(durablePart([...harness.messages.values()][0]!)?.dispatch).toMatchObject({
+      state: 'failed',
+      failure: 'authority_revoked',
+    });
+  });
+
+  it('revalidates archive and project membership immediately after persistence', async () => {
+    const archived = createHarness();
+    archived.deps.persistMessage = vi.fn(async (input) => {
+      const row: Message = { ...clone(input), created_at: 30, updated_at: 30 };
+      archived.messages.set(String(row.id), row);
+      archived.chats.set('supervisor', { ...TARGET_CHAT, archived: true });
+      return clone(row);
+    });
+    await expect(dispatchChatToChat(INPUT, archived.deps)).resolves.toMatchObject({
+      status: 'rejected',
+      reason: 'access_denied',
+    });
+    expect(archived.dispatchKernel).not.toHaveBeenCalled();
+
+    const moved = createHarness();
+    moved.deps.persistMessage = vi.fn(async (input) => {
+      const row: Message = { ...clone(input), created_at: 30, updated_at: 30 };
+      moved.messages.set(String(row.id), row);
+      moved.projects.set('project-1', { ...PROJECT, workspace_id: 'workspace-2' as WorkspaceId });
+      return clone(row);
+    });
+    await expect(dispatchChatToChat(INPUT, moved.deps)).resolves.toMatchObject({
+      status: 'rejected',
+      reason: 'access_denied',
+    });
+    expect(moved.dispatchKernel).not.toHaveBeenCalled();
+  });
+
+  it('treats forged extra parts, prompt changes, marker changes, and cross-target key reuse as conflicts', async () => {
+    for (const mutate of [
+      (message: Message) => message.parts.push({ kind: 'text', text: 'extra' }),
+      (message: Message) => message.parts.push(clone(message.parts[1]!)),
+      (message: Message) => ((message.parts[0] as { kind: 'text'; text: string }).text = 'forged'),
+      (message: Message) => {
+        (durablePart(message)! as { version: number }).version = 2;
+      },
+      (message: Message) => {
+        (durablePart(message)! as { instruction: string }).instruction = 'forged';
+      },
+      (message: Message) => {
+        (durablePart(message)!.projection as { status: string }).status = 'forged';
+      },
+      (message: Message) => {
+        durablePart(message)!.dispatch.targetChatId = 'other';
+      },
+    ]) {
+      const harness = createHarness();
+      await dispatchChatToChat(INPUT, harness.deps);
+      mutate([...harness.messages.values()][0]!);
+      await expect(dispatchChatToChat(INPUT, harness.deps)).resolves.toMatchObject({
+        status: 'rejected',
+        reason: 'dispatch_key_conflict',
+      });
+      expect(harness.dispatchKernel).toHaveBeenCalledOnce();
+    }
+
+    const crossTarget = createHarness();
+    await dispatchChatToChat(INPUT, crossTarget.deps);
+    crossTarget.chats.set('supervisor-2', { ...TARGET_CHAT, id: 'supervisor-2' as ChatId });
+    await expect(
+      dispatchChatToChat({ ...INPUT, targetChatId: 'supervisor-2' }, crossTarget.deps),
+    ).resolves.toMatchObject({ status: 'rejected', reason: 'dispatch_key_conflict' });
+  });
+
+  it('deep-copies and sanitizes nested projection strings without persisting caller bytes', async () => {
+    const harness = createHarness();
+    const unsafe = {
+      ...PROJECTION,
+      summaries: { ...PROJECTION.summaries, tools: ['result api_key=raw-nested-secret'] },
+    } satisfies ChatHandoffProjectionV1;
+    await dispatchChatToChat({ ...INPUT, projection: unsafe }, harness.deps);
+    const serialized = JSON.stringify([...harness.messages.values()]);
+    expect(serialized).not.toContain('raw-nested-secret');
+    expect(serialized).toContain('[REDACTED]');
   });
 
   it.each([
-    ['missing source', [undefined, undefined], [TARGET_CHAT, TARGET_CHAT]],
-    ['missing target', [SOURCE_CHAT, SOURCE_CHAT], [undefined, undefined]],
-  ] as const)('fails closed for a %s chat', async (_label, sourceReads, targetReads) => {
-    const harness = createHarness({ sourceReads, targetReads });
-
-    await expect(dispatchChatToChat(INPUT, harness.deps)).resolves.toEqual({
-      status: 'rejected',
-      reason: 'chat_unavailable',
-      dispatchKey: 'schedule-42:occurrence-7',
-      targetChatId: 'supervisor',
-    });
-
-    expect(harness.listMessages).not.toHaveBeenCalled();
+    ['unknown nested reasoning', { ...PROJECTION, reasoning: 'hidden' }],
+    [
+      'binary data URL',
+      { ...PROJECTION, olderDigest: 'data:application/octet-stream;base64,AAAA' },
+    ],
+    [
+      'oversized collection',
+      { ...PROJECTION, recentSections: Array.from({ length: 257 }, () => ({})) },
+    ],
+    ['invalid timestamp', { ...PROJECTION, snapshotAt: Number.NaN }],
+  ])('rejects unsafe projection shape: %s', async (_label, projection) => {
+    const harness = createHarness();
+    await expect(
+      dispatchChatToChat(
+        { ...INPUT, projection: projection as ChatHandoffProjectionV1 },
+        harness.deps,
+      ),
+    ).resolves.toMatchObject({ status: 'rejected', reason: 'projection_unsafe' });
     expect(harness.persistMessage).not.toHaveBeenCalled();
-    expect(harness.dispatchedDetails).toEqual([]);
   });
 
-  it('fails closed when current access is denied', async () => {
-    const harness = createHarness({ canAccess: () => false });
-
-    await expect(dispatchChatToChat(INPUT, harness.deps)).resolves.toEqual({
-      status: 'rejected',
-      reason: 'access_denied',
-      dispatchKey: 'schedule-42:occurrence-7',
-      targetChatId: 'supervisor',
+  it('persists failed runtime truth and never re-emits it after retry/reload', async () => {
+    const harness = createHarness({ runtimeError: new Error('runtime rejected') });
+    const first = await dispatchChatToChat(INPUT, harness.deps);
+    expect(first).toMatchObject({ status: 'failed', reason: 'runtime_rejected' });
+    expect(durablePart([...harness.messages.values()][0]!)?.dispatch).toMatchObject({
+      state: 'failed',
+      failure: 'runtime_rejected',
     });
-
-    expect(harness.listMessages).not.toHaveBeenCalled();
-    expect(harness.persistMessage).not.toHaveBeenCalled();
-    expect(harness.dispatchedDetails).toEqual([]);
+    expect(await dispatchChatToChat(INPUT, harness.deps)).toEqual(first);
+    expect(harness.dispatchKernel).toHaveBeenCalledOnce();
   });
 
-  it('revalidates source and target after the marker read and fails closed on revoked access', async () => {
-    const revokedTarget = { ...TARGET_CHAT, archived: true } satisfies Chat;
-    const harness = createHarness({ targetReads: [TARGET_CHAT, revokedTarget] });
-
-    await expect(dispatchChatToChat(INPUT, harness.deps)).resolves.toEqual({
-      status: 'rejected',
-      reason: 'access_denied',
-      dispatchKey: 'schedule-42:occurrence-7',
-      targetChatId: 'supervisor',
-    });
-
-    expect(harness.listMessages).toHaveBeenCalledOnce();
-    expect(harness.persistMessage).not.toHaveBeenCalled();
-    expect(harness.dispatchedDetails).toEqual([]);
+  it('leaves durable pending truth when final state persistence fails and does not re-emit', async () => {
+    const harness = createHarness({ updateError: new Error('disk unavailable') });
+    const first = await dispatchChatToChat(INPUT, harness.deps);
+    expect(first.status).toBe('pending');
+    expect(durablePart([...harness.messages.values()][0]!)?.dispatch.state).toBe('pending');
+    expect((await dispatchChatToChat(INPUT, harness.deps)).status).toBe('pending');
+    expect(harness.dispatchKernel).toHaveBeenCalledOnce();
   });
 
-  it('rejects a repository result whose canonical target ID is not the requested target', async () => {
-    const wrongTarget = { ...TARGET_CHAT, id: 'different-target' as ChatId } satisfies Chat;
-    const harness = createHarness({ targetReads: [wrongTarget, wrongTarget] });
+  it('uses durable uniqueness for simultaneous claims without an in-memory mutex', async () => {
+    const harness = createHarness();
+    const receipts = await Promise.all([
+      dispatchChatToChat(INPUT, harness.deps),
+      dispatchChatToChat(INPUT, harness.deps),
+    ]);
+    expect(harness.messages).toHaveLength(1);
+    expect(harness.dispatchKernel).toHaveBeenCalledOnce();
+    expect(receipts.every((receipt) => ['dispatched', 'pending'].includes(receipt.status))).toBe(
+      true,
+    );
+  });
+});
 
-    await expect(dispatchChatToChat(INPUT, harness.deps)).resolves.toEqual({
-      status: 'rejected',
-      reason: 'chat_unavailable',
-      dispatchKey: 'schedule-42:occurrence-7',
-      targetChatId: 'supervisor',
+describe('dispatchJarvisSendWithAcceptance', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('accepts only the exact chat ID and cancellation key and rejects exact cancellation', async () => {
+    const send = vi.fn((event: Event) => {
+      const detail = (event as CustomEvent<{ chatId: string; cancellationKey: string }>).detail;
+      window.dispatchEvent(
+        new CustomEvent('jarvis:run-state', {
+          detail: { ...detail, chatId: 'wrong', status: 'running' },
+        }),
+      );
+      window.dispatchEvent(
+        new CustomEvent('jarvis:run-state', {
+          detail: { ...detail, cancellationKey: 'wrong', status: 'running' },
+        }),
+      );
+      window.dispatchEvent(
+        new CustomEvent('jarvis:run-state', { detail: { ...detail, status: 'running' } }),
+      );
     });
+    window.addEventListener('jarvis:send', send);
+    await expect(
+      dispatchJarvisSendWithAcceptance(
+        { chatId: 'supervisor', cancellationKey: 'message-1' as MessageId, text: 'hello' },
+        50,
+      ),
+    ).resolves.toBeUndefined();
+    window.removeEventListener('jarvis:send', send);
 
-    expect(harness.listMessages).not.toHaveBeenCalled();
-    expect(harness.persistMessage).not.toHaveBeenCalled();
-    expect(harness.dispatchedDetails).toEqual([]);
+    const cancel = (event: Event) => {
+      const detail = (event as CustomEvent<{ chatId: string; cancellationKey: string }>).detail;
+      window.dispatchEvent(
+        new CustomEvent('jarvis:run-state', { detail: { ...detail, status: 'cancelled' } }),
+      );
+    };
+    window.addEventListener('jarvis:send', cancel);
+    await expect(
+      dispatchJarvisSendWithAcceptance(
+        { chatId: 'supervisor', cancellationKey: 'message-2' as MessageId, text: 'hello' },
+        50,
+      ),
+    ).rejects.toThrow('CANCELLED');
+    window.removeEventListener('jarvis:send', cancel);
   });
 
-  it('rejects a projection whose canonical source scope no longer matches the source chat', async () => {
-    const movedSource = {
-      ...SOURCE_CHAT,
-      workspace_id: 'workspace-2' as WorkspaceId,
-    } satisfies Chat;
-    const harness = createHarness({ sourceReads: [movedSource, movedSource] });
+  it('rejects when the exact runtime acceptance times out', async () => {
+    vi.useFakeTimers();
+    const acceptance = dispatchJarvisSendWithAcceptance(
+      {
+        chatId: 'supervisor',
+        cancellationKey: 'message-timeout' as MessageId,
+        text: 'hello',
+      },
+      10,
+    );
+    const rejection = expect(acceptance).rejects.toThrow('TIMEOUT');
+    await vi.advanceTimersByTimeAsync(11);
+    await rejection;
+  });
+});
 
-    await expect(dispatchChatToChat(INPUT, harness.deps)).resolves.toEqual({
-      status: 'rejected',
-      reason: 'projection_mismatch',
-      dispatchKey: 'schedule-42:occurrence-7',
-      targetChatId: 'supervisor',
-    });
-
-    expect(harness.listMessages).not.toHaveBeenCalled();
-    expect(harness.persistMessage).not.toHaveBeenCalled();
-    expect(harness.dispatchedDetails).toEqual([]);
+describe('durable IndexedDB claim integration', () => {
+  let opened: JarvisDexie[] = [];
+  afterEach(async () => {
+    const databases = opened.splice(0);
+    for (const database of databases.slice(1)) database.close();
+    if (databases[0]) await databases[0].delete();
   });
 
-  it('fails closed when a persisted dispatch key belongs to another source chat', async () => {
-    const harness = createHarness({
-      messages: [persistedMessage('message-collision', INPUT.dispatchKey, 'another-source')],
-    });
+  function databaseDeps(
+    database: JarvisDexie,
+    dispatchKernel: ChatToChatDispatchDeps['dispatchKernel'],
+  ): ChatToChatDispatchDeps {
+    return {
+      getChat: (id) => database.chats.get(id as ChatId),
+      getWorkspace: (id) => database.workspaces.get(id as WorkspaceId),
+      getProject: (id) => database.projects.get(id as ProjectId),
+      getMessage: (id) => database.messages.get(id as MessageId),
+      persistMessage: async (input) => {
+        const row: Message = { ...clone(input), created_at: 30, updated_at: 30 };
+        await database.messages.add(row);
+        return row;
+      },
+      updateMessageParts: async (id, parts) => {
+        await database.messages.update(id as MessageId, { parts: clone(parts), updated_at: 31 });
+        const row = await database.messages.get(id as MessageId);
+        if (!row) throw new Error('missing');
+        return row;
+      },
+      readActiveScope: () => ({
+        accountId: 'account-a',
+        identitySource: 'local',
+        workspaceId: 'workspace-1',
+        projectId: 'project-1',
+        epoch: 0,
+      }),
+      readModelSelection: () => undefined,
+      readReasoningPreference: () => ({ mode: 'normal', effortOverride: 'high' }),
+      readRuntimePolicy: () => ({
+        settings: { effort: 'high', fastMode: 'off', performance: 'balanced', rlmEnabled: false },
+        access: 'write',
+        approveAllForRun: false,
+      }),
+      dispatchKernel,
+      now: () => 0,
+    };
+  }
 
-    await expect(dispatchChatToChat(INPUT, harness.deps)).resolves.toEqual({
-      status: 'rejected',
-      reason: 'dispatch_key_conflict',
-      dispatchKey: 'schedule-42:occurrence-7',
-      targetChatId: 'supervisor',
+  it('admits one concurrent claimant and remains idempotent after database reopen', async () => {
+    const name = uniqueTestDbName('chat-dispatch-claim');
+    const first = createJarvisDb(name, TEST_INDEXED_DB);
+    const second = createJarvisDb(name, TEST_INDEXED_DB);
+    opened = [first, second];
+    await Promise.all([first.open(), second.open()]);
+    await first.workspaces.put(WORKSPACE);
+    await first.projects.put(PROJECT);
+    await first.chats.bulkPut([SOURCE_CHAT, TARGET_CHAT]);
+    const sends: string[] = [];
+    const dispatchKernel = vi.fn(async (detail) => {
+      sends.push(String(detail.cancellationKey));
     });
+    const receipts = await Promise.all([
+      dispatchChatToChat(INPUT, databaseDeps(first, dispatchKernel)),
+      dispatchChatToChat(INPUT, databaseDeps(second, dispatchKernel)),
+    ]);
+    expect(await first.messages.count()).toBe(1);
+    expect(dispatchKernel).toHaveBeenCalledOnce();
+    expect(receipts.map((receipt) => receipt.status).sort()).toEqual(['dispatched', 'pending']);
 
-    expect(harness.persistMessage).not.toHaveBeenCalled();
-    expect(harness.dispatchedDetails).toEqual([]);
+    first.close();
+    second.close();
+    const reopened = createJarvisDb(name, TEST_INDEXED_DB);
+    opened.push(reopened);
+    await reopened.open();
+    const replay = await dispatchChatToChat(INPUT, databaseDeps(reopened, dispatchKernel));
+    expect(replay.status).toBe('dispatched');
+    expect(await reopened.messages.count()).toBe(1);
+    expect(sends).toHaveLength(1);
   });
 });
