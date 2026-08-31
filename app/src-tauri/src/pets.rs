@@ -28,6 +28,7 @@ const TOPMOST_WATCHDOG_INTERVAL_MS: u64 = 1000;
 const PET_CREATED_SURFACE_READY_ATTEMPTS: usize = 50;
 const PET_CREATED_SURFACE_READY_POLL_MS: u64 = 20;
 const PET_DETACHED_BUILD_DELAY_MS: u64 = 80;
+const PET_SETUP_OFFSCREEN_POSITION: (f64, f64) = (-32_000.0, -32_000.0);
 const PET_NATIVE_FRAME_STYLE_BITS: isize = 0x00CF_0000;
 const PET_NATIVE_FRAME_EX_STYLE_BITS: isize = 0x0002_0301;
 
@@ -1281,19 +1282,36 @@ fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
 fn ensure_detached_pet_hosts_materialized(app: &AppHandle) {
     // `load_geometry` is called from Tauri's setup hook while the runtime still
     // owns an authoritative event-loop target. Create both renderer-attached
-    // hosts hidden here; command-time `create_window` dispatch is intentionally
-    // fire-and-forget in tauri-runtime-wry and cannot report native creation
-    // failure back to the caller.
+    // hosts initially visible and offscreen here; WebView2 does not materialize
+    // a native host for a window whose initial visibility is false. Hide each
+    // host immediately after setup-time creation so command-time show reuses an
+    // authoritative HWND without flashing on the user's desktop.
     if app.get_webview_window(PET_OVERLAY_LABEL).is_none() {
-        if let Err(error) = build_pet_overlay(app, false) {
-            #[cfg(debug_assertions)]
-            eprintln!("[pets] setup pet-overlay build failed: {error}");
+        match build_pet_overlay(app, true, Some(PET_SETUP_OFFSCREEN_POSITION)) {
+            Ok(window) => {
+                if let Err(error) = window.hide() {
+                    #[cfg(debug_assertions)]
+                    eprintln!("[pets] setup pet-overlay hide failed: {error}");
+                }
+            }
+            Err(error) => {
+                #[cfg(debug_assertions)]
+                eprintln!("[pets] setup pet-overlay build failed: {error}");
+            }
         }
     }
     if app.get_webview_window(PET_MINI_PANEL_LABEL).is_none() {
-        if let Err(error) = build_pet_panel(app, false) {
-            #[cfg(debug_assertions)]
-            eprintln!("[pets] setup pet-mini-panel build failed: {error}");
+        match build_pet_panel(app, true, Some(PET_SETUP_OFFSCREEN_POSITION)) {
+            Ok(window) => {
+                if let Err(error) = window.hide() {
+                    #[cfg(debug_assertions)]
+                    eprintln!("[pets] setup pet-mini-panel hide failed: {error}");
+                }
+            }
+            Err(error) => {
+                #[cfg(debug_assertions)]
+                eprintln!("[pets] setup pet-mini-panel build failed: {error}");
+            }
         }
     }
 }
@@ -1319,7 +1337,7 @@ fn schedule_pet_overlay_build(app: &AppHandle) -> Result<(), String> {
                 {
                     return;
                 }
-                if let Err(error) = build_pet_overlay(&app_for_build, true) {
+                if let Err(error) = build_pet_overlay(&app_for_build, true, None) {
                     #[cfg(debug_assertions)]
                     eprintln!("[pets] pet-overlay main-thread build failed: {error}");
                 }
@@ -1332,25 +1350,35 @@ fn schedule_pet_overlay_build(app: &AppHandle) -> Result<(), String> {
         .map_err(|error| format!("failed to schedule pet-overlay window: {error}"))
 }
 
-fn build_pet_overlay(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
-    WebviewWindowBuilder::new(app, PET_OVERLAY_LABEL, pet_webview_url(app, "pet-overlay")?)
-        .title("VibeSpace Pet")
-        .inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
-        .min_inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
-        .max_inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
-        .resizable(false)
-        .decorations(false)
-        .transparent(true)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        // A hidden WebViewWindow can be registered before WebView2 creates its
-        // native host. Materialize the detached host during the main-thread
-        // build; the bounded configure path immediately applies final geometry
-        // and visibility, and later hide/show calls reuse the same surface.
-        .visible(visible)
-        .focused(false)
-        .shadow(false)
-        .background_color(tauri::window::Color(0, 0, 0, 0))
+fn build_pet_overlay(
+    app: &AppHandle,
+    visible: bool,
+    initial_position: Option<(f64, f64)>,
+) -> Result<WebviewWindow, String> {
+    let builder =
+        WebviewWindowBuilder::new(app, PET_OVERLAY_LABEL, pet_webview_url(app, "pet-overlay")?)
+            .title("VibeSpace Pet")
+            .inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
+            .min_inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
+            .max_inner_size(OVERLAY_SIZE as f64, OVERLAY_SIZE as f64)
+            .resizable(false)
+            .decorations(false)
+            .transparent(true)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            // A hidden WebViewWindow can be registered before WebView2 creates its
+            // native host. Materialize the detached host during the main-thread
+            // build; the bounded configure path immediately applies final geometry
+            // and visibility, and later hide/show calls reuse the same surface.
+            .visible(visible)
+            .focused(false)
+            .shadow(false)
+            .background_color(tauri::window::Color(0, 0, 0, 0));
+    let builder = match initial_position {
+        Some((x, y)) => builder.position(x, y),
+        None => builder,
+    };
+    builder
         .build()
         .map_err(|e| format!("failed to create pet-overlay window: {e}"))
 }
@@ -1402,7 +1430,7 @@ fn schedule_pet_panel_build(app: &AppHandle, visible: bool) -> Result<(), String
                 {
                     return;
                 }
-                if let Err(error) = build_pet_panel(&app_for_build, visible) {
+                if let Err(error) = build_pet_panel(&app_for_build, visible, None) {
                     #[cfg(debug_assertions)]
                     eprintln!("[pets] pet-mini-panel main-thread build failed: {error}");
                 }
@@ -1415,8 +1443,12 @@ fn schedule_pet_panel_build(app: &AppHandle, visible: bool) -> Result<(), String
         .map_err(|error| format!("failed to schedule pet-mini-panel window: {error}"))
 }
 
-fn build_pet_panel(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
-    WebviewWindowBuilder::new(
+fn build_pet_panel(
+    app: &AppHandle,
+    visible: bool,
+    initial_position: Option<(f64, f64)>,
+) -> Result<WebviewWindow, String> {
+    let builder = WebviewWindowBuilder::new(
         app,
         PET_MINI_PANEL_LABEL,
         pet_webview_url(app, "pet-mini-panel")?,
@@ -1430,9 +1462,14 @@ fn build_pet_panel(app: &AppHandle, visible: bool) -> Result<WebviewWindow, Stri
     .always_on_top(true)
     .skip_taskbar(true)
     .visible(visible)
-    .focused(false)
-    .build()
-    .map_err(|e| format!("failed to create pet-mini-panel window: {e}"))
+    .focused(false);
+    let builder = match initial_position {
+        Some((x, y)) => builder.position(x, y),
+        None => builder,
+    };
+    builder
+        .build()
+        .map_err(|e| format!("failed to create pet-mini-panel window: {e}"))
 }
 
 fn should_preserve_pending_pet_overlay(reason: &str) -> bool {
@@ -2232,10 +2269,12 @@ mod tests {
         }
         let overlay_builder = &source[overlay_start..overlay_end];
         assert!(overlay_builder.contains(".visible(visible)"));
-        assert!(source.contains("build_pet_overlay(app, false)"));
-        assert!(source.contains("build_pet_overlay(&app_for_build, true)"));
+        assert!(overlay_builder.contains("Some((x, y)) => builder.position(x, y)"));
+        assert!(source.contains("build_pet_overlay(app, true, Some(PET_SETUP_OFFSCREEN_POSITION))"));
+        assert!(source.contains("build_pet_overlay(&app_for_build, true, None)"));
         let panel_builder = &source[panel_start..panel_end];
         assert!(panel_builder.contains(".visible(visible)"));
+        assert!(panel_builder.contains("Some((x, y)) => builder.position(x, y)"));
         assert!(source.contains("schedule_pet_panel_build(app, true)?"));
     }
 
@@ -2433,8 +2472,12 @@ mod tests {
             .map(|offset| materialize_start + offset)
             .expect("setup materializer is bounded");
         let materialize = &production[materialize_start..materialize_end];
-        assert!(materialize.contains("build_pet_overlay(app, false)"));
-        assert!(materialize.contains("build_pet_panel(app, false)"));
+        assert!(materialize
+            .contains("build_pet_overlay(app, true, Some(PET_SETUP_OFFSCREEN_POSITION))"));
+        assert!(
+            materialize.contains("build_pet_panel(app, true, Some(PET_SETUP_OFFSCREEN_POSITION))")
+        );
+        assert_eq!(materialize.matches(".hide()").count(), 2);
         assert!(!materialize.contains("run_on_main_thread"));
         assert!(!materialize.contains("spawn"));
     }
