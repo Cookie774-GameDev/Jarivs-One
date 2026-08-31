@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { executeFabricCommand } from './terminalPeerFabric';
+import { executeFabricCommand, isTerminalPeerFabricReady } from './terminalPeerFabric';
 import type { TerminalPeerFabricCommandPort } from '@/features/tools/terminal-peer-fabric/terminalPeerFabricTool';
 
 function port(
@@ -13,6 +13,24 @@ function port(
 }
 
 describe('Terminal Peer Fabric command seam', () => {
+  it('reports readiness only for the compatible complete bundled capability', async () => {
+    await expect(
+      isTerminalPeerFabricReady(
+        port({ available: true, version: '2.1.0', operations: ['connect', 'team.status'] }),
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      isTerminalPeerFabricReady(
+        port({ available: true, version: '2.1.0', operations: ['connect'] }),
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      isTerminalPeerFabricReady(
+        port({ available: true, version: '1.9.0', operations: ['connect', 'team.status'] }),
+      ),
+    ).resolves.toBe(false);
+  });
+
   it('fails closed until a compatible bundled native capability is ready', async () => {
     const commandPort = port({
       available: true,

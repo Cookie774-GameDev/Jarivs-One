@@ -35,6 +35,22 @@ function compatible(version: string | undefined): boolean {
   return typeof version === 'string' && /^2\.\d+\.\d+(?:[-+][a-z0-9.-]+)?$/iu.test(version);
 }
 
+export async function isTerminalPeerFabricReady(
+  port: TerminalPeerFabricCommandPort = terminalPeerFabricCommandPort,
+): Promise<boolean> {
+  try {
+    const capability = await port.capability();
+    return Boolean(
+      capability.available &&
+      compatible(capability.version) &&
+      capability.operations?.includes('connect') &&
+      capability.operations.includes('team.status'),
+    );
+  } catch {
+    return false;
+  }
+}
+
 function requiredOperation(id: string): TerminalPeerFabricOperation | 'delivery' | null {
   if (id === 'team.connect') return 'connect';
   if (id === 'team.status' || id === 'team.list') return 'team.status';

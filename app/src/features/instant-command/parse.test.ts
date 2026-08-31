@@ -150,4 +150,22 @@ describe('parseInstantCommand', () => {
       reason: 'That Instant Command is not available yet.',
     });
   });
+
+  it.each([
+    ['connect terminals one and two as a team', 'team.connect'],
+    ['list teams', 'team.list'],
+    ['team status team alpha', 'team.status'],
+    ['tell team alpha to run the release audit', 'team.message'],
+    ['broadcast team alpha release is ready', 'team.broadcast'],
+  ])('admits capability-gated Fabric commands to the deterministic boundary: %s', (input, id) => {
+    expect(classifyInstantCommandInput(input)).toMatchObject({
+      status: 'matched',
+      command: {
+        kind: 'catalog',
+        id,
+        family: 'team',
+        authority: 'terminal-peer-fabric',
+      },
+    });
+  });
 });

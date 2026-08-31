@@ -22,6 +22,7 @@ import {
 } from './authorities/terminalCommands';
 import {
   executeFabricCommand,
+  isTerminalPeerFabricReady,
   type FabricAuthorityRequest,
 } from './authorities/terminalPeerFabric';
 import type {
@@ -48,6 +49,7 @@ export type InstantCommandDependencies = Readonly<{
     signal?: AbortSignal,
   ) => Promise<InstantResult>;
   openFabricSetup?: () => void;
+  isFabricReady?: () => Promise<boolean>;
   executeFabric?: (request: FabricAuthorityRequest) => Promise<InstantResult>;
 }>;
 
@@ -82,6 +84,7 @@ const defaultDependencies: InstantCommandDependencies = {
     useUIStore.getState().setRoute('tools');
     setTimeout(() => window.dispatchEvent(new Event('jarvis:terminal-peer-fabric:open')), 0);
   },
+  isFabricReady: () => isTerminalPeerFabricReady(),
   executeFabric: (request) => executeFabricCommand(request),
 };
 
@@ -120,6 +123,14 @@ export async function executeInstantCommand(
       return executeTerminalDependency({ id: command.id, slots: command.slots }, signal);
     }
     if (command.family === 'team') {
+      const ready = await (dependencies.isFabricReady ?? defaultDependencies.isFabricReady!)();
+      if (!ready) {
+        return {
+          ok: false,
+          code: 'queue_failed',
+          message: 'Terminal Peer Fabric requires the compatible bundled native capability.',
+        };
+      }
       if (command.id === 'team.connect') {
         (dependencies.openFabricSetup ?? defaultDependencies.openFabricSetup!)();
         return { ok: true, code: 'opened', message: 'Opened Terminal Peer Fabric setup.' };

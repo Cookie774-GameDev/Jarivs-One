@@ -199,7 +199,7 @@ function parseInstantCommandInternal(input: string): InstantCommand | null {
   const catalogMatches = mostSpecificCatalogMatches(original);
   if (catalogMatches.length === 1) {
     const match = catalogMatches[0]!;
-    if (match.definition.availability === 'available') {
+    if (match.definition.availability !== 'blocked') {
       const parsed = match.definition.parseSlots(match, original);
       if (parsed.status === 'parsed') {
         return {
@@ -234,7 +234,7 @@ export function classifyInstantCommandInput(input: string): InstantInputClassifi
     }
     if (matches.length === 1) {
       const match = matches[0]!;
-      if (match.definition.availability !== 'available') {
+      if (match.definition.availability === 'blocked') {
         return { status: 'rejected', reason: 'That Instant Command is not available yet.' };
       }
       const parsed = match.definition.parseSlots(match, source);

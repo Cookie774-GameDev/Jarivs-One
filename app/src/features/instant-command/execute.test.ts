@@ -35,6 +35,7 @@ function dependencies(targets: LiveTerminalTarget[] = [codex]) {
     message: 'Opened terminal.',
   }));
   const openFabricSetup = vi.fn();
+  const isFabricReady = vi.fn(async () => true);
   const executeFabric = vi.fn(async () => ({
     ok: true as const,
     code: 'opened' as const,
@@ -48,6 +49,7 @@ function dependencies(targets: LiveTerminalTarget[] = [codex]) {
     readTargets,
     executeNavigation,
     openFabricSetup,
+    isFabricReady,
     executeFabric,
   };
   return {
@@ -59,6 +61,7 @@ function dependencies(targets: LiveTerminalTarget[] = [codex]) {
     readTargets,
     executeNavigation,
     openFabricSetup,
+    isFabricReady,
     executeFabric,
   };
 }
@@ -145,6 +148,7 @@ describe('executeInstantCommand', () => {
       ),
     ).resolves.toMatchObject({ ok: true, code: 'opened' });
     expect(h.openFabricSetup).toHaveBeenCalledOnce();
+    expect(h.isFabricReady).toHaveBeenCalledOnce();
 
     const context = {
       correlationId: 'team-read-1',
@@ -172,6 +176,29 @@ describe('executeInstantCommand', () => {
       targetIds: [],
     });
   });
+
+  it.each(['team.connect', 'team.message', 'team.broadcast'] as const)(
+    'fails %s closed before setup or confirmation when the bundled capability is unavailable',
+    async (id) => {
+      const h = dependencies();
+      h.isFabricReady.mockResolvedValue(false);
+      await expect(
+        executeInstantCommand(
+          {
+            kind: 'catalog',
+            id,
+            family: 'team',
+            authority: 'terminal-peer-fabric',
+            safety: 'approval',
+            slots: {},
+          },
+          h.deps,
+        ),
+      ).resolves.toMatchObject({ ok: false, code: 'queue_failed' });
+      expect(h.openFabricSetup).not.toHaveBeenCalled();
+      expect(h.executeFabric).not.toHaveBeenCalled();
+    },
+  );
 
   it('queues exact pane/session refs and reports queued rather than delivered', async () => {
     const h = dependencies();
