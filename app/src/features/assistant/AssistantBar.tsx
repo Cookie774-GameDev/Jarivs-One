@@ -364,6 +364,7 @@ function pushRecent(cmd: string): string[] {
 
 export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
   const [value, setValue] = React.useState('');
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = React.useState(-1);
   const [recent, setRecent] = React.useState<string[]>(() => readRecent());
   const inputRef = React.useRef<HTMLInputElement>(null);
   const executionInFlightRef = React.useRef(false);
@@ -448,14 +449,39 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
   }, [intent, onOpenChange, value]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const selectableIndexes = instantSuggestions
+        .map((suggestion, index) => (suggestion.disabled ? -1 : index))
+        .filter((index) => index >= 0);
+      if (selectableIndexes.length > 0) {
+        e.preventDefault();
+        const currentPosition = selectableIndexes.indexOf(activeSuggestionIndex);
+        const nextPosition =
+          currentPosition === -1
+            ? e.key === 'ArrowDown'
+              ? 0
+              : selectableIndexes.length - 1
+            : (currentPosition + (e.key === 'ArrowDown' ? 1 : -1) + selectableIndexes.length) %
+              selectableIndexes.length;
+        setActiveSuggestionIndex(selectableIndexes[nextPosition] ?? -1);
+      }
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
+      const activeSuggestion = instantSuggestions[activeSuggestionIndex];
+      if (activeSuggestion && !activeSuggestion.disabled) {
+        setValue(activeSuggestion.label);
+        setActiveSuggestionIndex(-1);
+        return;
+      }
       void handleExecute();
     }
   };
 
   const onPillClick = (cmd: string) => {
     setValue(cmd);
+    setActiveSuggestionIndex(-1);
     inputRef.current?.focus();
   };
 
@@ -507,7 +533,10 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
               ref={inputRef}
               type="text"
               value={value}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(e) => {
+                setValue(e.target.value);
+                setActiveSuggestionIndex(-1);
+              }}
               onKeyDown={onKeyDown}
               placeholder="Tell Jarvis what to do…"
               autoFocus
@@ -515,6 +544,16 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
               autoComplete="off"
               disabled={executionInFlight}
               aria-busy={executionInFlight}
+              aria-autocomplete="list"
+              aria-controls={
+                instantSuggestions.length > 0 ? 'instant-command-suggestions' : undefined
+              }
+              aria-expanded={instantSuggestions.length > 0}
+              aria-activedescendant={
+                activeSuggestionIndex >= 0
+                  ? `instant-command-option-${instantSuggestions[activeSuggestionIndex]?.id.replaceAll('.', '-')}`
+                  : undefined
+              }
               className={cn(
                 'w-full bg-transparent border-0 outline-none ring-0',
                 'text-page-title text-foreground placeholder:text-muted-foreground/70',
@@ -540,9 +579,19 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
             </div>
 
             {instantSuggestions.length > 0 ? (
-              <ul aria-label="Instant Command suggestions" className="mt-2 space-y-1">
-                {instantSuggestions.map((suggestion) => (
-                  <li key={suggestion.id}>
+              <ul
+                id="instant-command-suggestions"
+                role="listbox"
+                aria-label="Instant Command suggestions"
+                className="mt-2 space-y-1"
+              >
+                {instantSuggestions.map((suggestion, index) => (
+                  <li
+                    key={suggestion.id}
+                    id={`instant-command-option-${suggestion.id.replaceAll('.', '-')}`}
+                    role="option"
+                    aria-selected={index === activeSuggestionIndex}
+                  >
                     <button
                       type="button"
                       aria-label={`Use suggestion: ${suggestion.label}`}
@@ -553,6 +602,7 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
                         'hover:bg-panel focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper',
                         'disabled:cursor-not-allowed disabled:opacity-45',
                         '[[data-theme=monochrome]_&]:rounded-sm',
+                        index === activeSuggestionIndex && 'bg-panel ring-1 ring-accent-copper',
                       )}
                     >
                       <span className="truncate text-secondary text-foreground">

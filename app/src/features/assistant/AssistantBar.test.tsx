@@ -175,7 +175,7 @@ describe('AssistantBar instant fast lane', () => {
 
     fireEvent.change(input, { target: { value: 'connect terminals' } });
 
-    expect(screen.getByRole('list', { name: 'Instant Command suggestions' })).toBeTruthy();
+    expect(screen.getByRole('listbox', { name: 'Instant Command suggestions' })).toBeTruthy();
     expect(screen.getByText(/approval · capability-gated/i)).toBeTruthy();
     fireEvent.click(
       screen.getByRole('button', {
@@ -185,6 +185,34 @@ describe('AssistantBar instant fast lane', () => {
     expect((input as HTMLInputElement).value).toBe('connect terminals one and two as a team');
     expect(mocks.executeIntent).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it('navigates suggestions with combobox semantics and selects without executing', () => {
+    render(<AssistantBar open onOpenChange={vi.fn()} />);
+    const input = screen.getByRole('textbox', { name: 'Jarvis Assistant command' });
+    fireEvent.change(input, { target: { value: 'connect terminals' } });
+    const listbox = screen.getByRole('listbox', { name: 'Instant Command suggestions' });
+
+    expect(input.getAttribute('aria-controls')).toBe(listbox.id);
+    expect(input.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(input.getAttribute('aria-activedescendant')).toBe('instant-command-option-team-connect');
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect((input as HTMLInputElement).value).toBe('connect terminals one and two as a team');
+    expect(mocks.submitInstantCommand).not.toHaveBeenCalled();
+    expect(mocks.executeIntent).not.toHaveBeenCalled();
+  });
+
+  it('does not activate or select a blocked catalog suggestion', async () => {
+    render(<AssistantBar open onOpenChange={vi.fn()} />);
+    const input = screen.getByRole('textbox', { name: 'Jarvis Assistant command' });
+    fireEvent.change(input, { target: { value: 'rename terminal' } });
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(input.getAttribute('aria-activedescendant')).toBeNull();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect((input as HTMLInputElement).value).toBe('rename terminal');
+    await waitFor(() => expect(mocks.submitInstantCommand).toHaveBeenCalledOnce());
   });
 
   it('previews the canonical catalog action, bounded target, safety, and capability before execution', () => {
