@@ -625,7 +625,7 @@ describe('AgenticConsole', () => {
     expect(screen.queryByRole('button', { name: /show activity details/i })).toBeNull();
   });
 
-  it('shows canonical live work immediately after the prompt and removes it at terminal state', () => {
+  it('shows pre-event thinking, hands off to canonical live work, and removes it at terminal state', () => {
     const providerSecret = ['sk', 'proj', '1234567890abcdefghijklmnop'].join('-');
     const baseActivity: ChatActivityEvent = {
       id: 'phase',
@@ -640,14 +640,14 @@ describe('AgenticConsole', () => {
     const rendered = renderConsole({
       chatId: 'chat-console',
       messages: [message('user-live', 'user', 5, [{ kind: 'text', text: 'Read the project.' }])],
-      activity: [baseActivity],
+      activity: [],
       compact: true,
       sessionEvidence: { status: 'running', currentOperation: 'Working' },
     });
 
     const prompt = screen.getByText('Read the project.').closest('.agentic-prompt-band');
-    const liveStatus = rendered.container.querySelector('[data-live-turn-status]');
-    expect(liveStatus?.textContent).toContain('Working');
+    let liveStatus = rendered.container.querySelector('[data-live-turn-status]');
+    expect(liveStatus?.textContent).toContain('Jarvis is thinking');
     expect(
       liveStatus?.querySelector('[data-agent-motion]')?.getAttribute('data-agent-motion'),
     ).toBe('cursor-forge');
@@ -659,6 +659,24 @@ describe('AgenticConsole', () => {
       ),
     ).toBe(true);
     expect(document.body.textContent).not.toContain('Reasoning');
+
+    rendered.rerender(
+      <TooltipProvider>
+        <AgenticConsole
+          chatId="chat-console"
+          messages={[
+            message('user-live', 'user', 5, [{ kind: 'text', text: 'Read the project.' }]),
+          ]}
+          activity={[baseActivity]}
+          compact
+          sessionEvidence={{ status: 'running', currentOperation: 'Working' }}
+        />
+      </TooltipProvider>,
+    );
+    liveStatus = rendered.container.querySelector('[data-live-turn-status]');
+    expect(rendered.container.querySelectorAll('[data-live-turn-status]')).toHaveLength(1);
+    expect(liveStatus?.textContent).toContain('Working');
+    expect(liveStatus?.textContent).not.toContain('Jarvis is thinking');
 
     rendered.rerender(
       <TooltipProvider>

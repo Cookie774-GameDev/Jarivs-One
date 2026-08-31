@@ -498,6 +498,43 @@ function LiveTurnStatus({ event, compact }: { event: ChatActivityEvent; compact?
   );
 }
 
+type ActiveSessionStatus = Extract<
+  AgenticSessionSummary['status'],
+  'queued' | 'planning' | 'running' | 'recovering'
+>;
+
+function PreEventTurnStatus({
+  status,
+  compact,
+}: {
+  status: ActiveSessionStatus;
+  compact?: boolean;
+}) {
+  const label =
+    status === 'queued'
+      ? 'Jarvis is queued…'
+      : status === 'planning'
+        ? 'Jarvis is planning…'
+        : status === 'recovering'
+          ? 'Jarvis is reconnecting…'
+          : 'Jarvis is thinking…';
+  const motion = resolveAgentMotion({ status: 'running', activityCategory: 'thinking' });
+
+  return (
+    <div
+      className="agentic-live-status"
+      role="status"
+      aria-live="polite"
+      data-live-turn-status
+      data-live-turn-category={status}
+      data-live-turn-source="session"
+    >
+      <PerceptibleAgentMotionIndicator motion={motion} compact={compact} />
+      <span className="agentic-live-status__text">{label}</span>
+    </div>
+  );
+}
+
 function copyText(text: string) {
   void navigator.clipboard
     ?.writeText(text)
@@ -1206,8 +1243,12 @@ export function AgenticConsole({
 
   const turnTopMatter = (
     <>
-      {latestPromptBlockId && sessionIsActive && liveTurnActivity ? (
-        <LiveTurnStatus event={liveTurnActivity} compact={compact} />
+      {latestPromptBlockId && sessionIsActive ? (
+        liveTurnActivity ? (
+          <LiveTurnStatus event={liveTurnActivity} compact={compact} />
+        ) : (
+          <PreEventTurnStatus status={summary.status as ActiveSessionStatus} compact={compact} />
+        )
       ) : null}
       {showTurnCompletionAudit && turnAuditLedger ? (
         <SessionCompletionAudit
