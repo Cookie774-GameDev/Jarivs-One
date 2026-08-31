@@ -4,14 +4,21 @@ import { emojisEnabledFromLearning, startJarvisLearningListener } from './learni
 import { useJarvisLearningStore } from './learningStore';
 import type { MemoryEvidenceItem } from './types';
 
-function deferred(): { promise: Promise<void>; resolve: () => void } {
-  let resolve: (() => void) | undefined;
-  const promise = new Promise<void>((done) => {
+function deferred<T = void>(): {
+  promise: Promise<T>;
+  resolve: (value?: T) => void;
+  reject: (error: unknown) => void;
+} {
+  let resolve: ((value: T) => void) | undefined;
+  let reject: ((error: unknown) => void) | undefined;
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
   return {
     promise,
-    resolve: () => resolve?.(),
+    resolve: (value) => resolve?.(value as T),
+    reject: (error) => reject?.(error),
   };
 }
 
@@ -407,6 +414,74 @@ describe('Jarvis learning event listener', () => {
     expect(useJarvisLearningStore.getState().exportMarkdown()).toContain('durable answers');
     expect(useJarvisLearningStore.getState().exportMarkdown()).not.toContain('optimistic answers');
     window.removeEventListener('jarvis:memory-status', onStatus);
+  });
+
+  it('cancels stale profile writes across recovery and permits fresh durable work afterward', async () => {
+    useJarvisLearningStore.getState().setAccount('account-a');
+    useJarvisLearningStore.getState().remember({
+      value: 'Keep the durable profile',
+      category: 'workflow',
+      source: { kind: 'explicit' },
+    });
+    const durable = useJarvisLearningStore.getState().exportMarkdown();
+    useJarvisLearningStore.getState().clearForTests();
+    const firstWrite = deferred();
+    const recoveryLoad = deferred<string>();
+    const load = vi
+      .fn<() => Promise<string | null>>()
+      .mockResolvedValueOnce(durable)
+      .mockImplementationOnce(() => recoveryLoad.promise);
+    const save = vi
+      .fn<(_accountId: string, _markdown: string) => Promise<void>>()
+      .mockImplementationOnce(() => firstWrite.promise)
+      .mockResolvedValue(undefined);
+    stop = startJarvisLearningListener({
+      getAccountId: () => 'account-a',
+      load,
+      save,
+      debounceMs: 0,
+      onError: vi.fn(),
+    });
+    await vi.waitFor(() =>
+      expect(useJarvisLearningStore.getState().exportMarkdown()).toContain('durable profile'),
+    );
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId: 'chat-1', text: 'Remember that the first optimistic write fails.' },
+      }),
+    );
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId: 'chat-1', text: 'Remember that this queued snapshot is stale.' },
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(useJarvisLearningStore.getState().exportMarkdown()).toContain('queued snapshot'),
+    );
+
+    firstWrite.reject(new Error('write unavailable'));
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    useJarvisLearningStore.getState().remember({
+      value: 'This reconciliation-time snapshot is stale',
+      category: 'workflow',
+      source: { kind: 'explicit' },
+    });
+    recoveryLoad.resolve(durable);
+    await vi.waitFor(() =>
+      expect(useJarvisLearningStore.getState().exportMarkdown()).toContain('durable profile'),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(save).toHaveBeenCalledTimes(1);
+
+    useJarvisLearningStore.getState().remember({
+      value: 'Fresh work after recovery persists',
+      category: 'workflow',
+      source: { kind: 'explicit' },
+    });
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    expect(save.mock.calls[1]?.[1]).toContain('Fresh work after recovery persists');
   });
 
   it('keeps automatic learning memory-only through nineteen messages and writes on message twenty', async () => {

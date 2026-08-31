@@ -87,12 +87,14 @@ export function startJarvisLearningListener(
   const debounceMs = bindings.debounceMs ?? 300;
   const loadingAccounts = new Set<string>();
   const evidenceWriteAuthority = createMemoryEvidenceWriteAuthority();
+  const profileWriteAuthority = createMemoryEvidenceWriteAuthority();
   let suppressAutomaticProfilePersistence = 0;
   const timers = new Map<
     string,
     {
       timer: ReturnType<typeof setTimeout>;
       markdown: string;
+      writeToken: ReturnType<typeof profileWriteAuthority.token>;
     }
   >();
   let writeQueue: Promise<void> = Promise.resolve();
@@ -145,13 +147,16 @@ export function startJarvisLearningListener(
     markdown: string,
     chatId?: string,
     announceCompletion = false,
+    writeToken = profileWriteAuthority.token(active),
   ): Promise<void> => {
     const pending = writeQueue
-      .then(() => save(active, markdown))
-      .then(() => {
+      .then(async () => {
+        if (!profileWriteAuthority.canWrite(writeToken)) return;
+        await save(active, markdown);
         if (announceCompletion) publishStatus(chatId, 'updated');
       })
       .catch(async (error) => {
+        profileWriteAuthority.beginRecovery(active);
         publishStatus(chatId, 'error');
         report(bindings, error);
         try {
@@ -165,6 +170,8 @@ export function startJarvisLearningListener(
         } catch (recoveryError) {
           publishStatus(chatId, 'error');
           report(bindings, recoveryError);
+        } finally {
+          profileWriteAuthority.endRecovery(active);
         }
       });
     writeQueue = pending;
@@ -176,7 +183,7 @@ export function startJarvisLearningListener(
       if (active && accountId !== active) continue;
       clearTimeout(pending.timer);
       timers.delete(accountId);
-      writeProfile(accountId, pending.markdown);
+      writeProfile(accountId, pending.markdown, undefined, false, pending.writeToken);
     }
     return writeQueue;
   };
@@ -184,11 +191,12 @@ export function startJarvisLearningListener(
   const persistProfile = (active: string, markdown: string) => {
     const existing = timers.get(active);
     if (existing) clearTimeout(existing.timer);
+    const writeToken = profileWriteAuthority.token(active);
     const timer = setTimeout(() => {
       timers.delete(active);
-      void writeProfile(active, markdown);
+      void writeProfile(active, markdown, undefined, false, writeToken);
     }, debounceMs);
-    timers.set(active, { timer, markdown });
+    timers.set(active, { timer, markdown, writeToken });
   };
 
   const persistProfileNow = (active: string, markdown: string, chatId?: string) => {
@@ -197,7 +205,7 @@ export function startJarvisLearningListener(
       clearTimeout(existing.timer);
       timers.delete(active);
     }
-    void writeProfile(active, markdown, chatId, true);
+    void writeProfile(active, markdown, chatId, true, profileWriteAuthority.token(active));
   };
 
   const persistEvidence = (
@@ -271,14 +279,16 @@ export function startJarvisLearningListener(
     if (next === previous) return;
     evidenceWriteAuthority.invalidate(previous);
     hydrationAuthority.invalidate();
+    const pendingFlush = flushScheduled(previous).finally(() => {
+      profileWriteAuthority.invalidate(previous);
+    });
     if (!next) {
       clearJarvisMemoryStatus();
-      const pendingFlush = flushScheduled(previous);
       store.getState().clearAccountScope();
       void pendingFlush;
       return;
     }
-    void flushScheduled(previous).then(() => {
+    void pendingFlush.then(() => {
       if (!disposed && bindings.getAccountId().trim() === next) {
         void hydrationAuthority.ready(next);
       }
