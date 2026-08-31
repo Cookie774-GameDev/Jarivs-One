@@ -42,7 +42,13 @@ const ROUTE_ALIASES = {
 
 export const PAGE_TARGET_ALIASES: Readonly<Record<Route, readonly string[]>> = Object.freeze(
   Object.fromEntries(
-    APP_ROUTES.map((route) => [route, Object.freeze([...ROUTE_ALIASES[route]])]),
+    APP_ROUTES.map((route) => {
+      const supportsTargetlessSlash = route !== 'agent-detail' && route !== 'project-detail';
+      return [
+        route,
+        Object.freeze([...ROUTE_ALIASES[route], ...(supportsTargetlessSlash ? [`/${route}`] : [])]),
+      ];
+    }),
   ) as Record<Route, readonly string[]>,
 );
 
@@ -176,13 +182,23 @@ export const NAVIGATION_COMMAND_INPUTS: readonly NavigationCommandInput[] = Obje
     }),
     ...(
       [
-        ['page.back', ['go back', 'go back a page'], 'ui.route', 'read'],
-        ['page.forward', ['go forward', 'go forward a page'], 'ui.route', 'read'],
-        ['page.home', ['go home', 'go to home page'], 'ui.route', 'read'],
-        ['settings.open', ['open Jarvis settings', 'open settings'], 'ui.route', 'read'],
+        ['page.back', ['go back', 'go back a page', '/back'], 'ui.route', 'read'],
+        ['page.forward', ['go forward', 'go forward a page', '/forward'], 'ui.route', 'read'],
+        ['page.home', ['go home', 'go to home page', '/home'], 'ui.route', 'read'],
+        [
+          'settings.open',
+          ['open Jarvis settings', 'open settings', '/settings'],
+          'ui.route',
+          'read',
+        ],
         ['settings.close', ['close settings'], 'ui.route', 'read'],
-        ['palette.open', ['open command palette'], 'ui.route', 'read'],
-        ['launcher.open', ['open quick launcher', 'open launcher'], 'ui.route', 'read'],
+        ['palette.open', ['open command palette', '/palette'], 'ui.route', 'read'],
+        [
+          'launcher.open',
+          ['open quick launcher', 'open launcher', '/launcher'],
+          'ui.route',
+          'read',
+        ],
       ] as const
     ).map(([id, aliases, authority, safety]) =>
       Object.freeze({

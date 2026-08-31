@@ -22,6 +22,53 @@ describe('navigation command catalog', () => {
     expect(PAGE_TARGET_ALIASES['model-foundry']).toContain('open model foundry');
   });
 
+  it('gives every targetless top-level route one exact slash alias within the fixed bound', () => {
+    const pageOpen = NAVIGATION_COMMAND_INPUTS.find((command) => command.id === 'page.open')!;
+    const topLevelRoutes = APP_ROUTES.filter(
+      (route) => route !== 'agent-detail' && route !== 'project-detail',
+    );
+    for (const route of topLevelRoutes) {
+      const alias = `/${route}`;
+      expect(PAGE_TARGET_ALIASES[route]).toContain(alias);
+      expect(
+        pageOpen.parseSlots?.(
+          {
+            definition: undefined as never,
+            alias,
+            sourceStart: 0,
+            sourceEnd: alias.length,
+            remainder: '',
+          },
+          alias,
+        ),
+      ).toEqual({ status: 'parsed', slots: { route } });
+    }
+    expect(pageOpen.aliases).toHaveLength(64);
+    expect(PAGE_TARGET_ALIASES['agent-detail']).not.toContain('/agent-detail');
+    expect(PAGE_TARGET_ALIASES['project-detail']).not.toContain('/project-detail');
+  });
+
+  it('maps bounded slash controls through existing navigation commands without collisions', () => {
+    const expected = {
+      'page.back': '/back',
+      'page.forward': '/forward',
+      'page.home': '/home',
+      'settings.open': '/settings',
+      'palette.open': '/palette',
+      'launcher.open': '/launcher',
+    } as const;
+    for (const [id, alias] of Object.entries(expected)) {
+      expect(NAVIGATION_COMMAND_INPUTS.find((command) => command.id === id)?.aliases).toContain(
+        alias,
+      );
+    }
+    const aliases = NAVIGATION_COMMAND_INPUTS.flatMap((command) => command.aliases).map((alias) =>
+      alias.trim().toLocaleLowerCase(),
+    );
+    expect(new Set(aliases).size).toBe(aliases.length);
+    expect(aliases.filter((alias) => alias === '/connect')).toEqual(['/connect']);
+  });
+
   it('declares every canonical navigation command as locally available', () => {
     expect(NAVIGATION_COMMAND_INPUTS.map((command) => command.id)).toEqual([
       'page.open',
