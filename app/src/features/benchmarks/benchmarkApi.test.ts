@@ -86,6 +86,25 @@ describe('benchmark API contract', () => {
     ).toThrow(/duplicate row identities/i);
   });
 
+  it('rejects duplicate logical variants even when the backend gives them different ids', () => {
+    expect(() =>
+      parseBenchmarkResponse(
+        payload({
+          dataset: { ...(payload().dataset as object), rowCount: 2 },
+          rows: [
+            row,
+            {
+              ...row,
+              id: 'backend-alias-for-the-same-row',
+              rank: 2,
+              intelligenceIndex: 60,
+            },
+          ],
+        }),
+      ),
+    ).toThrow(/duplicate logical benchmark variants/i);
+  });
+
   it('keeps reasoning-effort variants separate', () => {
     const xhigh = {
       ...row,
@@ -118,11 +137,12 @@ describe('benchmark API contract', () => {
   });
 
   it('keeps last-known-good D1 data when a later refetch fails', async () => {
-    const success = vi.fn(async () =>
-      new Response(JSON.stringify(payload()), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+    const success = vi.fn(
+      async () =>
+        new Response(JSON.stringify(payload()), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
     );
     const live = await fetchBenchmarkLeaderboard('https://bench.example', { fetcher: success });
     expect(live.fromCache).toBe(false);

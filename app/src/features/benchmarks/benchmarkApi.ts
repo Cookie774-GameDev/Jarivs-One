@@ -163,9 +163,7 @@ function parseFreshness(value: unknown): BenchmarkFreshness {
   const warning = optionalString(record, 'warning');
   return {
     state: state as BenchmarkFreshnessState,
-    ...(record.ageMs !== undefined
-      ? { ageMs: optionalNonNegativeNumber(record, 'ageMs') }
-      : {}),
+    ...(record.ageMs !== undefined ? { ageMs: optionalNonNegativeNumber(record, 'ageMs') } : {}),
     ...(warning ? { warning } : {}),
   };
 }
@@ -261,12 +259,12 @@ function parseLatestRun(value: unknown): BenchmarkLatestRun | null {
   return {
     status: requiredString(record, 'status'),
     completedAt:
-      record.completedAt === null
-        ? null
-        : isoTimestamp(requiredString(record, 'completedAt')),
+      record.completedAt === null ? null : isoTimestamp(requiredString(record, 'completedAt')),
     datasetId: optionalString(record, 'datasetId'),
     pagination:
-      record.pagination && typeof record.pagination === 'object' && !Array.isArray(record.pagination)
+      record.pagination &&
+      typeof record.pagination === 'object' &&
+      !Array.isArray(record.pagination)
         ? (record.pagination as Record<string, unknown>)
         : undefined,
     errorCodes,
@@ -312,17 +310,33 @@ function parseRow(value: unknown): BenchmarkModelRow {
   };
 }
 
+function normalizedIdentityPart(value: string | undefined): string {
+  return (value ?? '').trim().replace(/\s+/gu, ' ').toLocaleLowerCase('en-US');
+}
+
+function logicalBenchmarkIdentity(row: BenchmarkModelRow): string {
+  return [row.provider, row.model, row.variantLabel, row.effort]
+    .map(normalizedIdentityPart)
+    .join('\u001f');
+}
+
 export function parseBenchmarkResponse(payload: unknown): BenchmarkApiResponse {
   const root = asRecord(payload);
   const rowsValue = root.rows;
   if (!Array.isArray(rowsValue)) throw new Error('Benchmark response is malformed.');
   const rows = rowsValue.map(parseRow).sort((left, right) => left.rank - right.rank);
   const ids = new Set<string>();
+  const logicalIdentities = new Set<string>();
   let priorScore = Number.POSITIVE_INFINITY;
   for (let index = 0; index < rows.length; index += 1) {
     const row = rows[index]!;
     if (ids.has(row.id)) throw new Error('Benchmark response contains duplicate row identities.');
     ids.add(row.id);
+    const logicalIdentity = logicalBenchmarkIdentity(row);
+    if (logicalIdentities.has(logicalIdentity)) {
+      throw new Error('Benchmark response contains duplicate logical benchmark variants.');
+    }
+    logicalIdentities.add(logicalIdentity);
     if (row.rank !== index + 1) throw new Error('Benchmark response ranks are not contiguous.');
     if (row.intelligenceIndex > priorScore) {
       throw new Error('Benchmark response is not monotonic by rank.');
@@ -370,7 +384,9 @@ export function intelligencePerDollar(row: BenchmarkModelRow): number | null {
   return row.intelligenceIndex / cost;
 }
 
-export function clearLegacyBenchmarkCaches(storage: Pick<Storage, 'removeItem'> | null = null): void {
+export function clearLegacyBenchmarkCaches(
+  storage: Pick<Storage, 'removeItem'> | null = null,
+): void {
   const target = storage ?? (typeof localStorage === 'undefined' ? null : localStorage);
   if (!target) return;
   for (const key of LEGACY_CACHE_KEYS) target.removeItem(key);

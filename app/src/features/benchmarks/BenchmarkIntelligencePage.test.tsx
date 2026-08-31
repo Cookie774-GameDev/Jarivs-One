@@ -138,6 +138,51 @@ describe('BenchmarkIntelligencePage', () => {
     });
   });
 
+  it('disambiguates genuine upstream variants with the same provider and model label', async () => {
+    const sameLabelVariants = [
+      {
+        ...rows[0]!,
+        id: 'anthropic|claude-opus-5|max',
+        model: 'Claude Opus 5',
+        variantLabel: 'Adaptive Reasoning',
+        effort: 'max',
+      },
+      {
+        ...rows[0]!,
+        id: 'anthropic|claude-opus-5|xhigh',
+        rank: 2,
+        model: 'Claude Opus 5',
+        variantLabel: 'Adaptive Reasoning',
+        effort: 'xhigh',
+        intelligenceIndex: 60,
+      },
+    ];
+    api.fetchBenchmarkLeaderboard.mockResolvedValueOnce({
+      generatedAt: '2026-08-14T23:08:00.000Z',
+      freshness: { state: 'fresh', ageMs: 60000 },
+      dataset: {
+        source: 'Artificial Analysis',
+        metric: 'Artificial Analysis Intelligence Index',
+        sourceUrl: 'https://artificialanalysis.ai/leaderboards/models',
+        sourceObservedAt: '2026-08-14T23:00:00.000Z',
+        ingestedAt: '2026-08-14T23:07:00.000Z',
+        rowCount: 2,
+      },
+      rows: sameLabelVariants,
+      fromCache: false,
+    });
+
+    render(<BenchmarkIntelligencePage />);
+
+    expect(
+      await screen.findAllByText('Claude Opus 5 — Adaptive Reasoning · effort: max'),
+    ).toHaveLength(2);
+    expect(screen.getAllByText('Claude Opus 5 — Adaptive Reasoning · effort: xhigh')).toHaveLength(
+      2,
+    );
+    expect(screen.queryByText(/^Claude Opus 5$/u)).toBeNull();
+  });
+
   it('contains every filter control inside its responsive grid track', async () => {
     const { container } = render(<BenchmarkIntelligencePage />);
     await screen.findAllByText('Claude Opus 5 (Max Effort)');

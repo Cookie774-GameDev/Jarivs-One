@@ -84,6 +84,32 @@ export function sortBenchmarkRows(
   });
 }
 
+function normalizedDisplayIdentity(value: string): string {
+  return value.trim().replace(/\s+/gu, ' ').toLocaleLowerCase('en-US');
+}
+
+export function benchmarkDisplayNames(
+  rows: readonly BenchmarkModelRow[],
+): ReadonlyMap<string, string> {
+  const groupCounts = new Map<string, number>();
+  for (const row of rows) {
+    const groupKey = `${normalizedDisplayIdentity(row.provider)}\u001f${normalizedDisplayIdentity(row.model)}`;
+    groupCounts.set(groupKey, (groupCounts.get(groupKey) ?? 0) + 1);
+  }
+
+  return new Map(
+    rows.map((row) => {
+      const groupKey = `${normalizedDisplayIdentity(row.provider)}\u001f${normalizedDisplayIdentity(row.model)}`;
+      if ((groupCounts.get(groupKey) ?? 0) < 2) return [row.id, row.model] as const;
+      const qualifiers = [
+        row.variantLabel,
+        row.effort ? `effort: ${row.effort}` : undefined,
+      ].filter((value): value is string => Boolean(value));
+      return [row.id, `${row.model} — ${qualifiers.join(' · ')}`] as const;
+    }),
+  );
+}
+
 function money(value: number | undefined | null, maximumFractionDigits = 3): string {
   if (value == null) return '—';
   return `$${value.toLocaleString(undefined, { maximumFractionDigits })}`;
@@ -172,6 +198,10 @@ export function BenchmarkIntelligencePage() {
         ...new Set((result?.rows ?? []).map((row) => row.effort).filter(Boolean) as string[]),
       ].sort(),
     [result],
+  );
+  const displayNames = React.useMemo(
+    () => benchmarkDisplayNames(result?.rows ?? []),
+    [result?.rows],
   );
 
   const filteredRows = React.useMemo(() => {
@@ -343,7 +373,9 @@ export function BenchmarkIntelligencePage() {
                   className="grid grid-cols-[minmax(130px,240px)_1fr_3rem] items-center gap-3"
                 >
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-foreground">{row.model}</div>
+                    <div className="truncate text-sm font-medium text-foreground">
+                      {displayNames.get(row.id) ?? row.model}
+                    </div>
                     <div className="truncate text-[11px] text-muted-foreground">{row.provider}</div>
                   </div>
                   <div className="h-2.5 overflow-hidden rounded-full bg-muted">
@@ -474,7 +506,9 @@ export function BenchmarkIntelligencePage() {
                   >
                     <td className="px-2 py-3 font-mono text-muted-foreground">#{row.rank}</td>
                     <td className="px-2 py-3">
-                      <div className="font-medium text-foreground">{row.model}</div>
+                      <div className="font-medium text-foreground">
+                        {displayNames.get(row.id) ?? row.model}
+                      </div>
                       <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] text-muted-foreground">
                         <span>{row.provider}</span>
                         {row.variantLabel ? <span>{row.variantLabel}</span> : null}
