@@ -130,4 +130,76 @@ describe('createCaoScheduledTargetExecution', () => {
     expect(execute).toHaveBeenCalledTimes(1);
     expect(Object.keys(scoped)).toEqual(['execute']);
   });
+
+  it('executes the exact input snapshot verified before asynchronous recovery', async () => {
+    let resolveVerify!: (value: CaoTargetLeaseV1) => void;
+    const verify = vi.fn(
+      () =>
+        new Promise<CaoTargetLeaseV1>((resolve) => {
+          resolveVerify = resolve;
+        }),
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 'completed', receiptId: 'receipt-1' });
+    const scoped = createCaoScheduledTargetExecution({ authority: { verify }, execute });
+    const mutable = structuredClone(input());
+    const expectedExecution = structuredClone(mutable.execution);
+
+    const pending = scoped.execute(mutable);
+    mutable.execution.targetId = 'terminal-mutated';
+    mutable.execution.requestId = 'request-mutated';
+    mutable.runId = 'run-mutated';
+    mutable.leaseId = 'lease-mutated';
+    mutable.targetRevision = 99;
+    resolveVerify(lease());
+
+    await expect(pending).resolves.toEqual({ status: 'completed', receiptId: 'receipt-1' });
+    expect(verify).toHaveBeenCalledWith({
+      accountId: execution.accountId,
+      workspaceId: execution.workspaceId,
+      projectId: execution.projectId,
+      runId: 'run-1',
+      leaseId: 'lease-1',
+    });
+    expect(execute).toHaveBeenCalledWith(expectedExecution);
+  });
+
+  it.each([
+    [
+      'duplicate target identity',
+      lease({
+        selectionMode: 'explicit_set',
+        targets: [
+          { kind: 'terminal', targetId: execution.targetId, revision: 7 },
+          { kind: 'terminal', targetId: execution.targetId, revision: 7 },
+        ],
+      }),
+    ],
+    ['invalid temporal bounds', lease({ acquiredAt: 1_600 })],
+  ])('rejects a recovered lease with %s before execution', async (_case, malformed) => {
+    const execute = vi.fn();
+    const scoped = createCaoScheduledTargetExecution({
+      authority: { verify: vi.fn().mockResolvedValue(malformed) },
+      execute,
+    });
+
+    await expect(scoped.execute(input())).rejects.toMatchObject({
+      code: 'cao_learning_target_lease_invalid',
+    } satisfies Partial<CaoScheduledTargetAuthorityError>);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('collapses unknown recovery failures without exposing raw authority details', async () => {
+    const execute = vi.fn();
+    const scoped = createCaoScheduledTargetExecution({
+      authority: {
+        verify: vi.fn().mockRejectedValue(new Error('private registry path and payload')),
+      },
+      execute,
+    });
+
+    const failure = await scoped.execute(input()).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ code: 'cao_learning_target_authority_unavailable' });
+    expect(String(failure)).not.toContain('private registry path');
+    expect(execute).not.toHaveBeenCalled();
+  });
 });
