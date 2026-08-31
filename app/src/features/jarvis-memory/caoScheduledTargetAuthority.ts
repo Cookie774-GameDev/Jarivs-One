@@ -18,6 +18,8 @@ const EXECUTION_KEYS = new Set([
   'requestedAt',
   'scheduledDueAt',
 ]);
+const COMPLETED_RESULT_KEYS = new Set(['status', 'receiptId']);
+const INCOMPLETE_RESULT_KEYS = new Set(['status']);
 
 export type CaoScheduledTargetAuthorityErrorCode =
   | 'cao_learning_execution_input_invalid'
@@ -68,6 +70,9 @@ function validId(value: string): boolean {
 }
 
 function requireExplicitAuthority(input: CaoScheduledTargetExecutionInput): void {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    throw new CaoScheduledTargetAuthorityError('cao_learning_execution_input_invalid');
+  }
   if (Object.keys(input).some((key) => !INPUT_KEYS.has(key))) {
     throw new CaoScheduledTargetAuthorityError('cao_learning_execution_input_invalid');
   }
@@ -76,6 +81,9 @@ function requireExplicitAuthority(input: CaoScheduledTargetExecutionInput): void
   }
   if (!Number.isSafeInteger(input.targetRevision) || input.targetRevision < 0) {
     throw new CaoScheduledTargetAuthorityError('cao_learning_target_revision_stale');
+  }
+  if (input.targetKind !== 'chat' && input.targetKind !== 'terminal') {
+    throw new CaoScheduledTargetAuthorityError('cao_learning_execution_input_invalid');
   }
   const { execution } = input;
   if (
@@ -142,12 +150,25 @@ function snapshotExecutionResult(value: unknown): CaoLearningExecutionResult {
     }
     const candidate = value as { status?: unknown; receiptId?: unknown };
     if (candidate.status === 'completed') {
-      if (typeof candidate.receiptId !== 'string' || !validId(candidate.receiptId)) {
+      const keys = Object.keys(candidate);
+      if (
+        keys.length !== COMPLETED_RESULT_KEYS.size ||
+        keys.some((key) => !COMPLETED_RESULT_KEYS.has(key)) ||
+        typeof candidate.receiptId !== 'string' ||
+        !validId(candidate.receiptId)
+      ) {
         throw new CaoScheduledTargetAuthorityError('cao_learning_execution_result_invalid');
       }
       return { status: 'completed', receiptId: candidate.receiptId };
     }
     if (candidate.status === 'failed' || candidate.status === 'cancelled') {
+      const keys = Object.keys(candidate);
+      if (
+        keys.length !== INCOMPLETE_RESULT_KEYS.size ||
+        keys.some((key) => !INCOMPLETE_RESULT_KEYS.has(key))
+      ) {
+        throw new CaoScheduledTargetAuthorityError('cao_learning_execution_result_invalid');
+      }
       return { status: candidate.status };
     }
   } catch (error) {

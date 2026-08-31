@@ -85,6 +85,22 @@ describe('createCaoScheduledTargetExecution', () => {
   });
 
   it.each([
+    ['null envelope', null],
+    ['null execution', input({ execution: null })],
+    ['unsupported target kind', input({ targetKind: 'canvas' })],
+  ])('rejects a recovered %s with a stable input error', async (_case, recovered) => {
+    const verify = vi.fn();
+    const execute = vi.fn();
+    const scoped = createCaoScheduledTargetExecution({ authority: { verify }, execute });
+
+    await expect(scoped.execute(recovered as never)).rejects.toMatchObject({
+      code: 'cao_learning_execution_input_invalid',
+    });
+    expect(verify).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it.each([
     [
       'target identity',
       lease({ targets: [{ kind: 'terminal', targetId: 'terminal-2', revision: 7 }] }),
@@ -345,6 +361,11 @@ describe('createCaoScheduledTargetExecution', () => {
   it.each([
     ['blank completed receipt', { status: 'completed', receiptId: '' }],
     ['unknown result status', { status: 'recovered', receiptId: 'receipt-1' }],
+    [
+      'completed result with an extra private field',
+      { status: 'completed', receiptId: 'receipt-1', privatePath: 'private/result/path' },
+    ],
+    ['failed result carrying a receipt', { status: 'failed', receiptId: 'receipt-1' }],
   ])('rejects a %s before it can become durable completion truth', async (_case, result) => {
     const verify = vi.fn().mockResolvedValue(lease());
     const scoped = createCaoScheduledTargetExecution({
