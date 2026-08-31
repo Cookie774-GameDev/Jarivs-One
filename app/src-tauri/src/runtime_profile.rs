@@ -46,10 +46,11 @@ pub const DENIED_EFFECT_MANIFEST_HASH: &str =
 
 const ORDINARY_APP_IDENTIFIER: &str = "ai.jarvis.desktop";
 const MONOCHROME_APP_IDENTIFIER_PREFIX: &str = "ai.vibespace.monochrome.test";
-const PRODUCTION_CAPABILITY_IDENTIFIERS: [&str; 9] = [
+const PRODUCTION_CAPABILITY_IDENTIFIERS: [&str; 10] = [
     "browser-chat-host",
     "cold-start-intro",
     "default",
+    "jarvis-ambient-overlay",
     "opencode-system-log",
     "pet-mini-panel",
     "pet-overlay",
@@ -679,6 +680,7 @@ mod tests {
             "browser-chat-host",
             "cold-start-intro",
             "default",
+            "jarvis-ambient-overlay",
             "opencode-system-log",
             "pet-mini-panel",
             "pet-overlay",
@@ -982,6 +984,7 @@ mod tests {
             "workbench-window",
             "browser-chat-host",
             "default",
+            "jarvis-ambient-overlay",
             "opencode-system-log",
             "pet-overlay",
             "taskbar-usage",
@@ -992,6 +995,21 @@ mod tests {
 
         let context = resolve_startup_context(None, None, "ai.jarvis.desktop", &capabilities)
             .expect("production capability equality must be independent of input order");
+
+        assert_eq!(context.profile, RuntimeProfile::Ordinary);
+        assert_eq!(context.capability_identifier, None);
+    }
+
+    #[test]
+    fn ordinary_startup_accepts_the_shipped_ambient_overlay_capability() {
+        let capabilities = ordinary_capabilities();
+        assert!(capabilities.iter().any(|entry| matches!(
+            entry,
+            CapabilityEntry::Reference(identifier) if identifier == "jarvis-ambient-overlay"
+        )));
+
+        let context = resolve_startup_context(None, None, "ai.jarvis.desktop", &capabilities)
+            .expect("the shipped ambient overlay must be part of ordinary capability policy");
 
         assert_eq!(context.profile, RuntimeProfile::Ordinary);
         assert_eq!(context.capability_identifier, None);
