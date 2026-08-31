@@ -129,13 +129,20 @@ describe('Account profile editing', () => {
     );
   });
 
-  it('explains the local id as an offline ownership namespace instead of a secret', () => {
+  it('explains the local id as an offline ownership namespace and retains copy behavior', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
     render(<Account profileOnly />);
 
     expect(screen.getByRole('heading', { name: 'Local data ownership' })).toBeTruthy();
     expect(screen.getByText(/offline data-ownership namespace/i)).toBeTruthy();
     expect(screen.getByText(/not a password or recovery secret/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Copy local user id' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy local user id' }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('local-1'));
   });
 
   it('writes display_name through Supabase profiles when signed in', async () => {

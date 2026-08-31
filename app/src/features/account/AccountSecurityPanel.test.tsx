@@ -118,6 +118,90 @@ describe('AccountSecurityPanel', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  it('clears secret and error state across a session-only account switch', () => {
+    render(<AccountSecurityPanel accountId="account-a" />);
+    fireEvent.click(screen.getByRole('button', { name: /change password/i }));
+    fireEvent.change(screen.getByLabelText('New account password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.change(screen.getByLabelText('Confirm account password'), {
+      target: { value: 'Different9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save new password/i }));
+    expect(screen.getByRole('alert').textContent).toMatch(/passwords do not match/i);
+
+    act(() => {
+      useAuthStore.setState({
+        cloudSession: {
+          user_id: 'account-b',
+          email: 'grace@example.test',
+          expires_at: 2_000_000_100,
+        },
+      });
+    });
+    act(() => {
+      useAuthStore.setState({
+        cloudSession: {
+          user_id: 'account-a',
+          email: 'ada-returned@example.test',
+          expires_at: 2_000_000_200,
+        },
+      });
+    });
+
+    expect(screen.queryByLabelText('New account password')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /change password/i }));
+    expect((screen.getByLabelText('New account password') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Confirm account password') as HTMLInputElement).value).toBe('');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('invalidates a delayed response across a session-only A to B to A switch', async () => {
+    let resolveUpdate: ((value: { data: object; error: null }) => void) | undefined;
+    updateUser.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveUpdate = resolve;
+      }),
+    );
+    render(<AccountSecurityPanel accountId="account-a" />);
+    fireEvent.click(screen.getByRole('button', { name: /change password/i }));
+    fireEvent.change(screen.getByLabelText('New account password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.change(screen.getByLabelText('Confirm account password'), {
+      target: { value: 'SecurePass9' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save new password/i }));
+    await waitFor(() => expect(updateUser).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      useAuthStore.setState({
+        cloudSession: {
+          user_id: 'account-b',
+          email: 'grace@example.test',
+          expires_at: 2_000_000_100,
+        },
+      });
+    });
+    act(() => {
+      useAuthStore.setState({
+        cloudSession: {
+          user_id: 'account-a',
+          email: 'ada-returned@example.test',
+          expires_at: 2_000_000_200,
+        },
+      });
+    });
+    await act(async () => {
+      resolveUpdate?.({ data: {}, error: null });
+    });
+
+    expect(screen.queryByText('Password updated.')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(toastSuccess).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
   it('ignores a delayed password response after switching accounts', async () => {
     let resolveUpdate: ((value: { data: object; error: null }) => void) | undefined;
     updateUser.mockReturnValueOnce(

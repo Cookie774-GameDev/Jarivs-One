@@ -38,7 +38,7 @@ export function AccountSecurityPanel({ accountId }: { accountId: string }) {
       accountRef.current = '';
       generationRef.current += 1;
     };
-  }, [normalizedAccountId]);
+  }, [activeSessionId, normalizedAccountId]);
 
   if (!ownsActiveSession) {
     const guidance =
