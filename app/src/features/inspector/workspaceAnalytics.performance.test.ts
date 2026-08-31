@@ -95,6 +95,12 @@ describe('workspace analytics background rollup', () => {
         actualCostUsd: 0.2,
         estimatedCostUsd: 0.03,
         costUsd: 0.23,
+        requests: 7,
+        completed: 4,
+        failed: 2,
+        cancelled: 1,
+        linesAdded: 18,
+        linesRemoved: 6,
         models: [],
       }),
     ).toMatchObject({
@@ -106,6 +112,38 @@ describe('workspace analytics background rollup', () => {
       actualTotalCostUsd: 0.2,
       estimatedTotalCostUsd: 0.03,
       recordedTotalCostUsd: 0.23,
+      requestCount: 7,
+      completedRunCount: 4,
+      failedRunCount: 2,
+      cancelledRunCount: 1,
+      linesAdded: 18,
+      linesRemoved: 6,
+    });
+  });
+
+  it('keeps retries, concurrent outcomes, cancellations, and missing receipts literal', () => {
+    expect(
+      projectStatusUsage({
+        requests: 5,
+        completed: 2,
+        failed: 1,
+        cancelled: 2,
+      }),
+    ).toMatchObject({
+      requestCount: 5,
+      completedRunCount: 2,
+      failedRunCount: 1,
+      cancelledRunCount: 2,
+    });
+    expect(projectStatusUsage(null)).toMatchObject({
+      totalTokens: 0,
+      recordedTotalCostUsd: 0,
+      requestCount: 0,
+      completedRunCount: 0,
+      failedRunCount: 0,
+      cancelledRunCount: 0,
+      linesAdded: 0,
+      linesRemoved: 0,
     });
   });
 

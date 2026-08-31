@@ -30,6 +30,12 @@ export type WorkspaceUsageAnalytics = {
   actualTotalCostUsd: number;
   estimatedTotalCostUsd: number;
   recordedTotalCostUsd: number;
+  requestCount: number;
+  completedRunCount: number;
+  failedRunCount: number;
+  cancelledRunCount: number;
+  linesAdded: number;
+  linesRemoved: number;
   byModel: ModelUsageRow[];
   foregroundActiveMs: number;
   backgroundRunningMs: number;
@@ -55,6 +61,12 @@ const defaults: WorkspaceUsageAnalytics = {
   actualTotalCostUsd: 0,
   estimatedTotalCostUsd: 0,
   recordedTotalCostUsd: 0,
+  requestCount: 0,
+  completedRunCount: 0,
+  failedRunCount: 0,
+  cancelledRunCount: 0,
+  linesAdded: 0,
+  linesRemoved: 0,
   byModel: [],
   foregroundActiveMs: 0,
   backgroundRunningMs: 0,
@@ -82,6 +94,12 @@ type StatusUsageSource = Readonly<{
   actualCostUsd?: number;
   estimatedCostUsd?: number;
   costUsd?: number;
+  requests?: number;
+  completed?: number;
+  failed?: number;
+  cancelled?: number;
+  linesAdded?: number;
+  linesRemoved?: number;
   models?: readonly unknown[];
 }> | null;
 
@@ -105,6 +123,12 @@ export function projectStatusUsage(summary: StatusUsageSource) {
     actualTotalCostUsd: nonNegative(summary?.actualCostUsd),
     estimatedTotalCostUsd: nonNegative(summary?.estimatedCostUsd),
     recordedTotalCostUsd: nonNegative(summary?.costUsd),
+    requestCount: nonNegative(summary?.requests),
+    completedRunCount: nonNegative(summary?.completed),
+    failedRunCount: nonNegative(summary?.failed),
+    cancelledRunCount: nonNegative(summary?.cancelled),
+    linesAdded: nonNegative(summary?.linesAdded),
+    linesRemoved: nonNegative(summary?.linesRemoved),
   };
 }
 
@@ -195,6 +219,12 @@ export const useWorkspaceAnalyticsStore = create<AnalyticsState>()(
           actualTotalCostUsd: s.actualTotalCostUsd,
           estimatedTotalCostUsd: s.estimatedTotalCostUsd,
           recordedTotalCostUsd: s.recordedTotalCostUsd,
+          requestCount: s.requestCount,
+          completedRunCount: s.completedRunCount,
+          failedRunCount: s.failedRunCount,
+          cancelledRunCount: s.cancelledRunCount,
+          linesAdded: s.linesAdded,
+          linesRemoved: s.linesRemoved,
           byModel: s.byModel,
           foregroundActiveMs: s.foregroundActiveMs,
           backgroundRunningMs: s.backgroundRunningMs,

@@ -34,6 +34,12 @@ export function InspectorActiveWorkPanel({ workspaceId }: InspectorActiveWorkPan
   const actualTotalCostUsd = useWorkspaceAnalyticsStore((s) => s.actualTotalCostUsd);
   const estimatedTotalCostUsd = useWorkspaceAnalyticsStore((s) => s.estimatedTotalCostUsd);
   const recordedTotalCostUsd = useWorkspaceAnalyticsStore((s) => s.recordedTotalCostUsd);
+  const requestCount = useWorkspaceAnalyticsStore((s) => s.requestCount);
+  const completedRunCount = useWorkspaceAnalyticsStore((s) => s.completedRunCount);
+  const failedRunCount = useWorkspaceAnalyticsStore((s) => s.failedRunCount);
+  const cancelledRunCount = useWorkspaceAnalyticsStore((s) => s.cancelledRunCount);
+  const linesAdded = useWorkspaceAnalyticsStore((s) => s.linesAdded);
+  const linesRemoved = useWorkspaceAnalyticsStore((s) => s.linesRemoved);
   const foregroundActiveMs = useWorkspaceAnalyticsStore((s) => s.foregroundActiveMs);
   const backgroundRunningMs = useWorkspaceAnalyticsStore((s) => s.backgroundRunningMs);
   const completedMilestones = useWorkspaceAnalyticsStore((s) => s.completedMilestones);
@@ -124,17 +130,22 @@ export function InspectorActiveWorkPanel({ workspaceId }: InspectorActiveWorkPan
           />
           <Row label="Foreground" value={formatDurationMs(foregroundActiveMs)} />
           <Row label="Background" value={formatDurationMs(backgroundRunningMs)} />
+          <Row label="Requests" value={String(requestCount)} />
+          <Row label="Completed runs" value={String(completedRunCount)} />
+          <Row label="Failed runs" value={String(failedRunCount)} />
+          <Row label="Cancelled runs" value={String(cancelledRunCount)} />
+          <Row label="File changes" value={`+${linesAdded} / −${linesRemoved}`} />
           <Row label="Milestones done" value={String(completedMilestones)} />
           <Row label="Tool runs" value={String(toolRunCount)} />
           {byModel.length > 0 ? (
             <div className="pt-1 border-t border-border/60">
               <p className="text-metadata uppercase tracking-wide text-muted-foreground mb-1">
-                By provider
+                By model
               </p>
               {byModel.slice(0, 4).map((row) => (
                 <Row
-                  key={row.providerName}
-                  label={row.providerName}
+                  key={`${row.providerName}:${row.modelName}`}
+                  label={`${row.providerName} · ${row.modelName}`}
                   value={`${row.totalTokens.toLocaleString()} tok`}
                 />
               ))}
