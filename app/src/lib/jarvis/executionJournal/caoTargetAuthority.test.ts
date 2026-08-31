@@ -593,6 +593,64 @@ describe('CAO explicit target authority', () => {
     expect(registryFailure.rows).toEqual([]);
   });
 
+  it.each([
+    ['null claim', null],
+    ['claim with null targets', { applied: true, targets: null }],
+  ])('reconciles a malformed %s without retaining ambiguous ownership', async (_case, result) => {
+    const h = harness();
+    vi.mocked(h.registry.claimExact).mockImplementationOnce(async (request) => {
+      h.targets.set('chat:chat-a', {
+        ...target(),
+        ownerLeaseId: request.leaseId,
+      });
+      return result as never;
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_registry_invalid$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+    expect(h.rows).toEqual([]);
+  });
+
+  it('rejects a malformed journal page without exposing repository details', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.deps.events.listByRun.mockResolvedValueOnce(null as never);
+    vi.mocked(h.registry.readExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).verify({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_journal_invalid$/);
+    expect(h.registry.readExact).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed live registry read without releasing valid durable authority', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    vi.mocked(h.registry.readExact).mockResolvedValueOnce(null as never);
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).verify({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_registry_invalid$/);
+    expect(h.registry.releaseExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
   it('requires an explicit set for multiple targets and preserves exact chat/terminal isolation', async () => {
     const h = harness([
       target(),

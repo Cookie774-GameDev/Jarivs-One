@@ -183,6 +183,16 @@ function registryFailure(reason: string): never {
   fail(code ?? 'cao_target_registry_rejected');
 }
 
+function validRegistryClaim(
+  value: unknown,
+): value is Awaited<ReturnType<CaoTargetRegistry['claimExact']>> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const claim = value as { applied?: unknown; targets?: unknown; reason?: unknown };
+  return claim.applied === true
+    ? Array.isArray(claim.targets)
+    : claim.applied === false && typeof claim.reason === 'string';
+}
+
 function assertLiveTargets(
   rows: readonly CaoLiveTarget[],
   requested: readonly CaoTargetIdentity[],
@@ -265,6 +275,7 @@ async function findLease(
     } catch {
       fail('cao_target_journal_unavailable');
     }
+    if (!Array.isArray(page)) fail('cao_target_journal_invalid');
     for (const event of page) {
       if (
         event.runId !== scope.runId ||
@@ -350,6 +361,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     } catch {
       fail('cao_target_registry_unavailable');
     }
+    if (!Array.isArray(rows)) fail('cao_target_registry_invalid');
     if (rows.length !== lease.targets.length) fail('cao_target_missing');
     const byIdentity = new Map<string, CaoLiveTarget>();
     for (const row of rows) {
@@ -425,6 +437,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     } catch {
       fail('cao_target_registry_unavailable');
     }
+    if (!Array.isArray(liveRows)) fail('cao_target_registry_invalid');
     try {
       assertLiveTargets(
         liveRows,
@@ -500,6 +513,23 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       claim = await dependencies.registry.claimExact(registryRequest);
     } catch {
       fail('cao_target_registry_unavailable');
+    }
+    if (!validRegistryClaim(claim)) {
+      const provisionalLease: CaoTargetLeaseV1 = {
+        schemaVersion: 1,
+        kind: 'cao_target_lease',
+        leaseId,
+        accountId: input.accountId,
+        workspaceId: input.workspaceId,
+        projectId: input.projectId,
+        runId: input.runId,
+        selectionMode: input.selection.mode,
+        targets: requested.map(({ kind, targetId }) => ({ kind, targetId, revision: 0 })),
+        acquiredAt,
+        expiresAt,
+      };
+      await releaseVerifiedLease(verifyRequest(input, leaseId), provisionalLease);
+      fail('cao_target_registry_invalid');
     }
     if (!claim.applied) registryFailure(claim.reason);
     let exactClaimTargets: readonly CaoLiveTarget[];
