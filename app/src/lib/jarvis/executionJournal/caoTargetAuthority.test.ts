@@ -1256,6 +1256,85 @@ describe('CAO explicit target authority', () => {
     expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
   });
 
+  it('releases exact persisted authority when restart recovery finds its run missing', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.deps.runs.getRun.mockReset();
+    h.deps.runs.getRun.mockResolvedValueOnce(undefined as never);
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_run_missing$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('reconciles ambiguously successful missing-run cleanup before reporting missing truth', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.deps.runs.getRun.mockReset();
+    h.deps.runs.getRun.mockResolvedValueOnce(undefined as never);
+    vi.mocked(h.registry.releaseExact).mockImplementationOnce(async () => {
+      h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: undefined });
+      throw new Error('private missing-run cleanup transport payload');
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_run_missing$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('reports registry unavailability when missing-run cleanup retains ownership', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.deps.runs.getRun.mockReset();
+    h.deps.runs.getRun.mockResolvedValueOnce(undefined as never);
+    vi.mocked(h.registry.releaseExact).mockRejectedValueOnce(
+      new Error('private missing-run cleanup failure payload'),
+    );
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_registry_unavailable$/);
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
+  it('reports journal unavailability when missing-run recovery cannot resolve its lease', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.deps.runs.getRun.mockReset();
+    h.deps.runs.getRun.mockResolvedValueOnce(undefined as never);
+    h.deps.events.listByRun.mockRejectedValueOnce(
+      new Error('private missing-run recovery journal payload'),
+    );
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_journal_unavailable$/);
+    expect(h.registry.releaseExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
   it('fails closed on expiry, target revision drift, and run scope/status drift after reload', async () => {
     const h = harness();
     const authority = createCaoTargetAuthority(h.deps);
