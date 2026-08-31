@@ -35,17 +35,29 @@ export function JarvisPanel({ panel, onUpdate }: JarvisPanelProps) {
   onUpdateRef.current = onUpdate;
   statusRef.current = panel.status;
 
-  const chats = useLiveQuery(
-    async () => {
-      if (!workspaceId) return [];
-      const rows = await db.chats.where('workspace_id').equals(workspaceId).toArray();
-      const filtered = projectId
-        ? rows.filter((c) => c.project_id === projectId || !c.project_id)
-        : rows;
-      return filtered.sort((a, b) => b.updated_at - a.updated_at).slice(0, 80);
-    },
-    [workspaceId, projectId],
-    [],
+  const queriedChats = useLiveQuery(async () => {
+    if (!workspaceId) return [];
+    const rows = await db.chats.where('workspace_id').equals(workspaceId).toArray();
+    const filtered = projectId
+      ? rows.filter((chat) => chat.project_id === projectId)
+      : rows.filter((chat) => !chat.project_id);
+    return filtered.sort((a, b) => b.updated_at - a.updated_at).slice(0, 80);
+  }, [workspaceId, projectId]);
+  const chats = React.useMemo(
+    () =>
+      (queriedChats ?? [])
+        .filter(
+          (chat) =>
+            String(chat.workspace_id) === String(workspaceId ?? '') &&
+            String(chat.project_id ?? '') === String(projectId ?? ''),
+        )
+        .sort((a, b) => b.updated_at - a.updated_at)
+        .slice(0, 80),
+    [projectId, queriedChats, workspaceId],
+  );
+  const chatsHydrated = queriedChats !== undefined;
+  const activeChatIsAccessible = Boolean(
+    activeChatId && chats.some((chat) => String(chat.id) === String(activeChatId)),
   );
 
   const setStatusIfChanged = React.useCallback((status: WorkbenchPanel['status']) => {
@@ -55,7 +67,18 @@ export function JarvisPanel({ panel, onUpdate }: JarvisPanelProps) {
   }, []);
 
   React.useEffect(() => {
-    if (activeChatId) {
+    if (!workspaceId) {
+      setEnsuring(false);
+      setFailed(true);
+      setStatusIfChanged('attention');
+      return;
+    }
+    if (!chatsHydrated) {
+      setEnsuring(true);
+      setFailed(false);
+      return;
+    }
+    if (activeChatIsAccessible) {
       setEnsuring(false);
       setFailed(false);
       setStatusIfChanged('ready');
@@ -64,7 +87,7 @@ export function JarvisPanel({ panel, onUpdate }: JarvisPanelProps) {
     let cancelled = false;
     setEnsuring(true);
     setFailed(false);
-    void ensureActiveChat()
+    void ensureActiveChat({ navigateToChat: false })
       .then((id) => {
         if (cancelled) return;
         if (!id) {
@@ -86,7 +109,14 @@ export function JarvisPanel({ panel, onUpdate }: JarvisPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [activeChatId, setStatusIfChanged]);
+  }, [
+    activeChatId,
+    activeChatIsAccessible,
+    chatsHydrated,
+    projectId,
+    setStatusIfChanged,
+    workspaceId,
+  ]);
 
   const createNewChat = React.useCallback(async () => {
     if (creating) return;
@@ -94,7 +124,7 @@ export function JarvisPanel({ panel, onUpdate }: JarvisPanelProps) {
     setFailed(false);
     try {
       // Same path as the rest of the app (Ctrl+N / EmptyChat / jarvis:new-chat).
-      const chatId = await ensureActiveChat({ forceNew: true });
+      const chatId = await ensureActiveChat({ forceNew: true, navigateToChat: false });
       if (!chatId) {
         toast.warning('Still loading', 'Workspace is initializing — try again in a moment.');
         setFailed(true);
@@ -128,13 +158,13 @@ export function JarvisPanel({ panel, onUpdate }: JarvisPanelProps) {
         <select
           id={`workbench-chat-select-${panel.id}`}
           aria-label="Select chat"
-          value={activeChatId ?? ''}
+          value={activeChatIsAccessible ? (activeChatId ?? '') : ''}
           onChange={(event) => {
             const next = event.target.value;
             if (next) setActiveChat(next);
           }}
         >
-          {!activeChatId ? <option value="">Select a chat…</option> : null}
+          {!activeChatIsAccessible ? <option value="">Select a chat…</option> : null}
           {chats.map((chat) => (
             <option key={chat.id} value={chat.id}>
               {chat.title?.trim() || 'Untitled chat'}
@@ -153,7 +183,7 @@ export function JarvisPanel({ panel, onUpdate }: JarvisPanelProps) {
           <Plus aria-hidden="true" strokeWidth={2.25} />
         </button>
       </div>
-      {activeChatId ? (
+      {activeChatId && activeChatIsAccessible ? (
         <div className="workbench-jarvis-body relative min-h-0" data-token-boss-host="true">
           <ChatThread chatId={activeChatId} compact />
           <Composer chatId={activeChatId} compact disableRouteSlashCommands />
