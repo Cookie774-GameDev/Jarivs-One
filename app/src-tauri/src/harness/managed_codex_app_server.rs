@@ -10,6 +10,101 @@ pub const CODEX_APP_SERVER_INITIALIZED: &str = "initialized";
 /// Public progress may use `item/reasoning/summaryTextDelta` instead.
 pub const CODEX_APP_SERVER_PRIVATE_REASONING_METHODS: &[&str] = &["item/reasoning/textDelta"];
 
+/// Codex app-server messages can contain bounded public activity details, but a single
+/// untrusted stdout frame must never grow the native process without limit.
+pub const CODEX_APP_SERVER_MAX_FRAME_BYTES: usize = 4 * 1024 * 1024;
+pub const CODEX_APP_SERVER_MAX_FRAMES_PER_PUSH: usize = 1_024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodexAppServerFrameError {
+    Poisoned,
+    EmptyFrame,
+    FrameTooLarge,
+    TooManyFrames,
+    InvalidJson,
+    NonObject,
+    IncompleteFrame,
+}
+
+#[derive(Debug, Default)]
+pub struct CodexAppServerFrameDecoder {
+    buffer: Vec<u8>,
+    poisoned: bool,
+}
+
+impl CodexAppServerFrameDecoder {
+    fn fail<T>(&mut self, error: CodexAppServerFrameError) -> Result<T, CodexAppServerFrameError> {
+        self.buffer.clear();
+        self.poisoned = true;
+        Err(error)
+    }
+
+    fn decode_buffer(&mut self) -> Result<Option<serde_json::Value>, CodexAppServerFrameError> {
+        if self.buffer.last() == Some(&b'\r') {
+            self.buffer.pop();
+        }
+        if self.buffer.is_empty() {
+            return self.fail(CodexAppServerFrameError::EmptyFrame);
+        }
+        let value: serde_json::Value = match serde_json::from_slice(&self.buffer) {
+            Ok(value) => value,
+            Err(_) => return self.fail(CodexAppServerFrameError::InvalidJson),
+        };
+        self.buffer.clear();
+        let Some(object) = value.as_object() else {
+            return self.fail(CodexAppServerFrameError::NonObject);
+        };
+        let is_private_reasoning = object
+            .get("method")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|method| CODEX_APP_SERVER_PRIVATE_REASONING_METHODS.contains(&method));
+        Ok((!is_private_reasoning).then_some(value))
+    }
+
+    /// Accepts arbitrary stdout chunks and returns only complete safe JSON object frames.
+    /// Any protocol error permanently poisons this decoder so callers cannot resume from an
+    /// ambiguous byte boundary.
+    pub fn push(
+        &mut self,
+        bytes: &[u8],
+    ) -> Result<Vec<serde_json::Value>, CodexAppServerFrameError> {
+        if self.poisoned {
+            return Err(CodexAppServerFrameError::Poisoned);
+        }
+        let mut frames = Vec::new();
+        let mut frame_count = 0_usize;
+        for &byte in bytes {
+            if byte == b'\n' {
+                frame_count += 1;
+                if frame_count > CODEX_APP_SERVER_MAX_FRAMES_PER_PUSH {
+                    return self.fail(CodexAppServerFrameError::TooManyFrames);
+                }
+                if let Some(frame) = self.decode_buffer()? {
+                    frames.push(frame);
+                }
+                continue;
+            }
+            if self.buffer.len() == CODEX_APP_SERVER_MAX_FRAME_BYTES {
+                return self.fail(CodexAppServerFrameError::FrameTooLarge);
+            }
+            self.buffer.push(byte);
+        }
+        Ok(frames)
+    }
+
+    /// JSONL requires every terminal frame to end with a newline. A partial frame at EOF is
+    /// ambiguous and therefore fails closed rather than being guessed or repaired.
+    pub fn finish(&mut self) -> Result<Vec<serde_json::Value>, CodexAppServerFrameError> {
+        if self.poisoned {
+            return Err(CodexAppServerFrameError::Poisoned);
+        }
+        if self.buffer.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.fail(CodexAppServerFrameError::IncompleteFrame)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodexAppServerHandshake {
     pub initialize: Vec<u8>,
@@ -143,7 +238,8 @@ pub fn managed_codex_app_server_launch(
 mod tests {
     use super::{
         codex_app_server_handshake, managed_codex_app_server_launch, AppServerStdio,
-        CODEX_APP_SERVER_INITIALIZE, CODEX_APP_SERVER_INITIALIZED,
+        CodexAppServerFrameDecoder, CodexAppServerFrameError, CODEX_APP_SERVER_INITIALIZE,
+        CODEX_APP_SERVER_INITIALIZED, CODEX_APP_SERVER_MAX_FRAME_BYTES,
         CODEX_APP_SERVER_PRIVATE_REASONING_METHODS,
     };
     use crate::harness::managed_cli_manifest::{embedded_managed_release, ManagedCliKind};
@@ -281,5 +377,76 @@ mod tests {
             )
             .is_err());
         }
+    }
+
+    #[test]
+    fn jsonl_decoder_streams_split_and_multiple_object_frames_in_order() {
+        let mut decoder = CodexAppServerFrameDecoder::default();
+        assert!(decoder.push(br#"{"method":"turn/sta"#).unwrap().is_empty());
+        let frames = decoder
+            .push(b"rted\",\"params\":{\"threadId\":\"thread_1\"}}\r\n{\"id\":2,\"result\":{}}\n")
+            .unwrap();
+        assert_eq!(frames.len(), 2);
+        assert_eq!(frames[0]["method"], "turn/started");
+        assert_eq!(frames[0]["params"]["threadId"], "thread_1");
+        assert_eq!(frames[1]["id"], 2);
+        assert!(decoder.finish().unwrap().is_empty());
+    }
+
+    #[test]
+    fn jsonl_decoder_suppresses_private_reasoning_before_projection() {
+        let mut decoder = CodexAppServerFrameDecoder::default();
+        let frames = decoder
+            .push(
+                br#"{"method":"item/reasoning/textDelta","params":{"delta":"private"}}
+{"method":"item/reasoning/summaryTextDelta","params":{"delta":"public"}}
+"#,
+            )
+            .unwrap();
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0]["method"], "item/reasoning/summaryTextDelta");
+        assert!(!serde_json::to_string(&frames).unwrap().contains("private"));
+    }
+
+    #[test]
+    fn jsonl_decoder_fails_closed_and_stays_poisoned_after_bad_frames() {
+        for (frame, expected) in [
+            (b"[]\n".as_slice(), CodexAppServerFrameError::NonObject),
+            (
+                b"not-json\n".as_slice(),
+                CodexAppServerFrameError::InvalidJson,
+            ),
+            (b"\n".as_slice(), CodexAppServerFrameError::EmptyFrame),
+        ] {
+            let mut decoder = CodexAppServerFrameDecoder::default();
+            assert_eq!(decoder.push(frame), Err(expected));
+            assert_eq!(
+                decoder.push(b"{\"id\":1}\n"),
+                Err(CodexAppServerFrameError::Poisoned)
+            );
+        }
+    }
+
+    #[test]
+    fn jsonl_decoder_rejects_oversized_and_incomplete_terminal_frames() {
+        let mut oversized = CodexAppServerFrameDecoder::default();
+        assert_eq!(
+            oversized.push(&vec![b'x'; CODEX_APP_SERVER_MAX_FRAME_BYTES + 1]),
+            Err(CodexAppServerFrameError::FrameTooLarge)
+        );
+
+        let mut incomplete = CodexAppServerFrameDecoder::default();
+        assert!(incomplete.push(b"{\"id\":1}").unwrap().is_empty());
+        assert_eq!(
+            incomplete.finish(),
+            Err(CodexAppServerFrameError::IncompleteFrame)
+        );
+        assert_eq!(incomplete.finish(), Err(CodexAppServerFrameError::Poisoned));
+
+        let mut many = CodexAppServerFrameDecoder::default();
+        assert_eq!(
+            many.push(b"{}\n".repeat(1_025).as_slice()),
+            Err(CodexAppServerFrameError::TooManyFrames)
+        );
     }
 }
