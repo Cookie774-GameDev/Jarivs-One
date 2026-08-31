@@ -279,12 +279,45 @@ impl OwnedProcessGuard {
         // failing, dropping that guard terminates the complete tree while ownership remains for a
         // later reap attempt.
         self.lifetime_guards.clear();
+        // Job close is synchronous for termination, and this final stop observes/reaps that exit.
+        let _ = self.stop();
     }
 }
 
 impl Drop for OwnedProcessGuard {
     fn drop(&mut self) {
         let _ = self.stop();
+    }
+}
+
+struct LaunchProxyLifecycle<R> {
+    process: Option<OwnedProcessGuard>,
+    runtime: Option<R>,
+}
+
+impl<R> LaunchProxyLifecycle<R> {
+    fn new(process: OwnedProcessGuard, runtime: R) -> Self {
+        Self {
+            process: Some(process),
+            runtime: Some(runtime),
+        }
+    }
+
+    fn into_parts(mut self) -> (OwnedProcessGuard, R) {
+        let process = self.process.take().expect("launch proxy process");
+        let runtime = self.runtime.take().expect("launch proxy runtime");
+        (process, runtime)
+    }
+}
+
+impl<R> Drop for LaunchProxyLifecycle<R> {
+    fn drop(&mut self) {
+        if let Some(mut process) = self.process.take() {
+            process.terminate_fail_closed();
+            drop(process);
+        }
+        // Runtime seal/DACL/file handles are deliberately released only after process cleanup.
+        self.runtime.take();
     }
 }
 
@@ -525,6 +558,7 @@ fn launch_server(
     proxy_process: OwnedProcessGuard,
     proxy_runtime: SealedReviewedOpenCodexRuntime,
 ) -> Result<RunningCodexServer, String> {
+    let proxy = LaunchProxyLifecycle::new(proxy_process, proxy_runtime);
     let mut command = Command::new(&launch.executable);
     command
         .args(&launch.arguments)
@@ -597,6 +631,7 @@ fn launch_server(
 
     let (sender, receiver) = mpsc::sync_channel(READER_CHANNEL_CAPACITY);
     let reader_task = spawn_stdout_reader(reader, handshake.decoder, sender);
+    let (proxy_process, proxy_runtime) = proxy.into_parts();
     Ok(RunningCodexServer {
         executable_id,
         model_id,
@@ -1059,6 +1094,31 @@ mod tests {
         }
     }
 
+    struct RuntimeSealDropProbe {
+        termination_observed: Arc<AtomicBool>,
+        seal_active: Arc<AtomicBool>,
+        entry_path: PathBuf,
+    }
+
+    impl Drop for RuntimeSealDropProbe {
+        fn drop(&mut self) {
+            assert!(self.termination_observed.load(Ordering::Acquire));
+            self.seal_active.store(false, Ordering::Release);
+            fs::write(&self.entry_path, b"created after proxy reap")
+                .expect("entry creation after seal release");
+        }
+    }
+
+    fn try_create_runtime_entry(seal_active: &AtomicBool, path: &Path) -> std::io::Result<()> {
+        if seal_active.load(Ordering::Acquire) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "runtime seal denies new entries",
+            ));
+        }
+        fs::write(path, b"created").map(|_| ())
+    }
+
     impl OwnedCodexProcess for RetryableStopProcess {
         fn has_exited(&mut self) -> Result<bool, String> {
             Ok(false)
@@ -1332,9 +1392,53 @@ mod tests {
 
         guard.terminate_fail_closed();
 
-        assert_eq!(attempts.load(Ordering::Acquire), SHUTDOWN_STOP_ATTEMPTS);
+        assert_eq!(attempts.load(Ordering::Acquire), SHUTDOWN_STOP_ATTEMPTS + 1);
         assert!(dropped.load(Ordering::Acquire));
         assert!(!guard.stopped);
+    }
+
+    #[test]
+    fn handshake_failure_reaps_proxy_before_releasing_runtime_seal() {
+        let root = std::env::temp_dir().join(format!(
+            "vibespace-codex-launch-seal-order-{}",
+            nanoid::nanoid!(12)
+        ));
+        fs::create_dir_all(&root).expect("temporary launch root");
+        let entry_path = root.join("new-entry.js");
+        let termination_observed = Arc::new(AtomicBool::new(false));
+        let seal_active = Arc::new(AtomicBool::new(true));
+        let mut process = OwnedProcessGuard::new(Box::new(RetryableStopProcess {
+            attempts: Arc::new(AtomicUsize::new(0)),
+            failures_remaining: SHUTDOWN_STOP_ATTEMPTS,
+        }));
+        process.hold_for_lifetime(Box::new(DropSignal(termination_observed.clone())));
+        let lifecycle = LaunchProxyLifecycle::new(
+            process,
+            RuntimeSealDropProbe {
+                termination_observed: termination_observed.clone(),
+                seal_active: seal_active.clone(),
+                entry_path: entry_path.clone(),
+            },
+        );
+
+        let result: Result<(), String> = (|| {
+            let _proxy_must_outlive_handshake = lifecycle;
+            assert!(seal_active.load(Ordering::Acquire));
+            assert_eq!(
+                try_create_runtime_entry(&seal_active, &entry_path)
+                    .unwrap_err()
+                    .kind(),
+                std::io::ErrorKind::PermissionDenied
+            );
+            assert!(!entry_path.exists());
+            Err("injected handshake failure".to_string())
+        })();
+
+        assert_eq!(result.err().as_deref(), Some("injected handshake failure"));
+        assert!(termination_observed.load(Ordering::Acquire));
+        assert!(!seal_active.load(Ordering::Acquire));
+        assert_eq!(fs::read(&entry_path).unwrap(), b"created after proxy reap");
+        fs::remove_dir_all(root).expect("remove temporary launch root");
     }
 
     #[cfg(windows)]
