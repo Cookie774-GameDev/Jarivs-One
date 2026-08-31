@@ -37,7 +37,12 @@ describe('AccountSecurityPanel', () => {
   it('shows the exact active cloud identity and session boundary', () => {
     render(<AccountSecurityPanel accountId="account-a" />);
 
-    expect(screen.getByRole('heading', { name: 'Active cloud session' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Account security', level: 3 })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Active cloud session', level: 4 })).toBeTruthy();
+    expect(screen.getAllByRole('heading').map((heading) => heading.textContent)).toEqual([
+      'Account security',
+      'Active cloud session',
+    ]);
     expect(screen.getByText('ada@example.test')).toBeTruthy();
     expect(screen.getByText(/account-a/)).toBeTruthy();
     expect(screen.getByText(/session expires/i)).toBeTruthy();

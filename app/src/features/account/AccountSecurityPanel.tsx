@@ -103,21 +103,6 @@ export function AccountSecurityPanel({ accountId }: { accountId: string }) {
 
   return (
     <section className="mt-5 rounded-2xl border border-border/70 bg-background/45 p-4">
-      <div className="mb-4 rounded-xl border border-border/60 bg-muted/30 p-3">
-        <h4 className="text-ui-strong text-foreground">Active cloud session</h4>
-        <p className="mt-1 text-secondary text-foreground">
-          {cloudSession?.email?.trim() || 'Email unavailable'}
-        </p>
-        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-metadata text-muted-foreground">
-          <span>Account ID: {normalizedAccountId}</span>
-          <span>
-            Session expires:{' '}
-            {cloudSession?.expires_at
-              ? new Date(cloudSession.expires_at * 1000).toLocaleString()
-              : 'not reported'}
-          </span>
-        </div>
-      </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <KeyRound className="h-4 w-4 text-accent-copper" />
@@ -142,6 +127,21 @@ export function AccountSecurityPanel({ accountId }: { accountId: string }) {
           Change password
           <ChevronDown className={expanded ? 'h-3.5 w-3.5 rotate-180' : 'h-3.5 w-3.5'} />
         </Button>
+      </div>
+      <div className="mt-4 rounded-xl border border-border/60 bg-muted/30 p-3">
+        <h4 className="text-ui-strong text-foreground">Active cloud session</h4>
+        <p className="mt-1 text-secondary text-foreground">
+          {cloudSession?.email?.trim() || 'Email unavailable'}
+        </p>
+        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-metadata text-muted-foreground">
+          <span>Account ID: {normalizedAccountId}</span>
+          <span>
+            Session expires:{' '}
+            {cloudSession?.expires_at
+              ? new Date(cloudSession.expires_at * 1000).toLocaleString()
+              : 'not reported'}
+          </span>
+        </div>
       </div>
       {expanded ? (
         <div id="account-password-form" className="mt-4 border-t border-border/50 pt-4">
