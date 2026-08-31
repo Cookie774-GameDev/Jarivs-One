@@ -62,15 +62,64 @@ function unavailable(message: string): InstantResult {
   return { ok: false, code: 'queue_failed', message };
 }
 
+function stableIdentifier(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 256 &&
+    value === value.trim() &&
+    !/[\u0000-\u001f\u007f]/u.test(value)
+  );
+}
+
 function deliveryPeerRef(ref: FabricPeerRef | FabricDeliveryPeerRef): ref is FabricDeliveryPeerRef {
   const candidate = ref as Partial<FabricDeliveryPeerRef>;
   return (
-    typeof candidate.processInstanceId === 'string' &&
-    candidate.processInstanceId.length > 0 &&
+    stableIdentifier(candidate.paneId) &&
+    stableIdentifier(candidate.sessionId) &&
+    stableIdentifier(candidate.projectId) &&
+    stableIdentifier(candidate.runtimeGeneration) &&
+    stableIdentifier(candidate.processInstanceId) &&
     Number.isSafeInteger(candidate.pid) &&
     Number(candidate.pid) > 0 &&
     Number.isSafeInteger(candidate.processStartedAt) &&
     Number(candidate.processStartedAt) > 0
+  );
+}
+
+function validDeliveryRefs(
+  id: string,
+  refs: readonly (FabricPeerRef | FabricDeliveryPeerRef)[],
+): refs is readonly FabricDeliveryPeerRef[] {
+  if (
+    refs.length === 0 ||
+    refs.length > 8 ||
+    (id === 'team.message' && refs.length !== 1) ||
+    (id === 'team.broadcast' && refs.length < 2) ||
+    !refs.every(deliveryPeerRef)
+  ) {
+    return false;
+  }
+  return (
+    new Set(refs.map((ref) => `${ref.projectId}\u0000${ref.sessionId}`)).size === refs.length &&
+    new Set(refs.map((ref) => `${ref.projectId}\u0000${ref.paneId}\u0000${ref.runtimeGeneration}`))
+      .size === refs.length
+  );
+}
+
+function validReceiptTargets(value: unknown): value is readonly string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= 8 &&
+    value.every(stableIdentifier) &&
+    new Set(value).size === value.length
+  );
+}
+
+function sameTargets(actual: readonly string[], expected: readonly string[]): boolean {
+  return (
+    actual.length === expected.length &&
+    [...actual].sort().every((target, index) => target === [...expected].sort()[index])
   );
 }
 
@@ -86,10 +135,15 @@ export async function executeFabricCommand(
   }) => FabricTerminalDeliveryState = enqueueFabricTerminalDelivery,
 ): Promise<InstantResult> {
   const operation = requiredOperation(request.id);
-  if (!operation) {
-    return unavailable(`Team command ${request.id} is not available in this Fabric capability.`);
+  if (!operation || !stableIdentifier(request.correlationId)) {
+    return unavailable('Team command is not available.');
   }
-  const capability = await port.capability();
+  let capability: Awaited<ReturnType<TerminalPeerFabricCommandPort['capability']>>;
+  try {
+    capability = await port.capability();
+  } catch {
+    return unavailable('Terminal Peer Fabric capability is unavailable.');
+  }
   if (
     !capability.available ||
     !compatible(capability.version) ||
@@ -106,9 +160,7 @@ export async function executeFabricCommand(
       !payload.trim() ||
       payload.length > 32_768 ||
       /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(payload) ||
-      refs.length === 0 ||
-      (request.id === 'team.broadcast' && refs.length < 2) ||
-      !refs.every(deliveryPeerRef)
+      !validDeliveryRefs(request.id, refs)
     ) {
       return unavailable(`Team command rejected (${request.correlationId}).`);
     }
@@ -129,13 +181,12 @@ export async function executeFabricCommand(
         message: 'A selected terminal is blocked by an interactive prompt.',
       };
     }
-    const deliveryRefs = refs.filter(deliveryPeerRef);
     const state = deliver({
       accountId: request.accountId,
       runId: request.correlationId,
       executionId: request.correlationId,
       command: payload,
-      refs: deliveryRefs.map((ref) => ({
+      refs: refs.map((ref) => ({
         paneId: ref.paneId,
         sessionId: ref.sessionId,
         projectId: ref.projectId,
@@ -148,6 +199,9 @@ export async function executeFabricCommand(
         },
       })),
     });
+    if (!['queued', 'stored', 'rejected'].includes(state)) {
+      return unavailable('Team delivery state is unavailable.');
+    }
     return state === 'rejected'
       ? unavailable(`Team command rejected (${request.correlationId}).`)
       : {
@@ -169,6 +223,19 @@ export async function executeFabricCommand(
             correlationId: request.correlationId,
             targetIds: request.targetIds ?? [],
           });
+    const expectedTargets =
+      operation === 'connect'
+        ? (request.terminalRefs ?? []).map((ref) => ref.sessionId)
+        : (request.targetIds ?? []);
+    if (
+      !receipt ||
+      receipt.correlationId !== request.correlationId ||
+      !['completed', 'queued', 'stored', 'rejected'].includes(receipt.status) ||
+      !validReceiptTargets(receipt.targetIds) ||
+      (request.id !== 'team.list' && !sameTargets(receipt.targetIds, expectedTargets))
+    ) {
+      return unavailable('Team command receipt is unavailable.');
+    }
     if (receipt.status === 'rejected') {
       return unavailable(`Team command rejected (${receipt.correlationId}).`);
     }
