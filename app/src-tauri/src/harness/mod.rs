@@ -1,10 +1,11 @@
 pub mod download;
 pub mod managed_bun_manifest;
 pub mod managed_bun_materializer;
-pub mod managed_codex_materializer;
 pub mod managed_cli_lock;
 pub mod managed_cli_manifest;
 pub mod managed_cli_runtime;
+pub mod managed_codex_app_server;
+pub mod managed_codex_materializer;
 pub mod managed_opencodex_materializer;
 pub mod manifest;
 pub mod runtime;
