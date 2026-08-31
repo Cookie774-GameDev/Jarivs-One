@@ -59,7 +59,8 @@ import {
 } from '@/features/inspector';
 import { useMilestonesStore } from '@/features/inspector/milestonesStore';
 import { isMilestoneKind } from '@/features/inspector/types';
-import { runAction } from '@/lib/actions';
+import { getBuiltinActions, runAction, type ActionDef } from '@/lib/actions';
+import { useToolStore, type CustomTool } from '@/features/tools';
 import { useToolRunsStore } from '@/features/inspector/toolRunsStore';
 import { chatRepo, messageRepo, taskRepo, terminalSessionRepo, db } from '@/lib/db';
 import { toast } from '@/components/ui/toast';
@@ -113,14 +114,47 @@ import { usePinnedStore } from '@/features/inspector/pinnedStore';
 import { openExternal, isTauri } from '@/lib/tauri';
 import { TokenReactiveLoading } from '@/features/loading-animation';
 
-interface InspectorCustomTool {
-  slug: string;
-  name: string;
+export interface InspectorToolInventoryItem {
+  id: string;
+  title: string;
   description: string;
-  baseAction: string;
-  steps?: unknown[];
-  emoji?: string;
-  updatedAt: number;
+  origin: 'built-in' | 'custom';
+  availability: 'available' | 'unavailable';
+  action?: ActionDef;
+  customTool?: CustomTool;
+}
+
+export function projectInspectorTools(
+  builtins: readonly ActionDef[],
+  customTools: readonly CustomTool[],
+): InspectorToolInventoryItem[] {
+  const builtinIds = new Set(builtins.map((action) => action.id));
+  const builtinItems = builtins.map((action) => ({
+    id: action.id,
+    title: action.label,
+    description: action.description,
+    origin: 'built-in' as const,
+    availability: 'available' as const,
+    action,
+  }));
+  const customItems = [...customTools]
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+    .map((tool) => {
+      const steps = tool.steps ?? [];
+      const available =
+        steps.length > 0
+          ? steps.every((step) => builtinIds.has(step.action))
+          : builtinIds.has(tool.baseAction);
+      return {
+        id: `custom.${tool.slug}`,
+        title: tool.name,
+        description: tool.description,
+        origin: 'custom' as const,
+        availability: available ? ('available' as const) : ('unavailable' as const),
+        customTool: tool,
+      };
+    });
+  return [...builtinItems, ...customItems];
 }
 
 function useContextPersistenceState(projectId: string | null): ContextPersistenceState | null {
@@ -886,17 +920,23 @@ function ContextMenuItem({ label, onClick }: { label: string; onClick: () => voi
 function InspectorToolsPanel() {
   const setRoute = useUIStore((s) => s.setRoute);
   const projectId = useAuthStore((s) => s.projectId);
-  const tools = useStoredInspectorTools();
+  const customTools = useToolStore((state) => state.tools);
   const startRun = useToolRunsStore((s) => s.startRun);
   const finishRun = useToolRunsStore((s) => s.finishRun);
   const activeRunId = useToolRunsStore((s) => s.activeRunId);
-  const sortedTools = React.useMemo(
-    () => [...tools].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8),
-    [tools],
+  const builtins = React.useMemo(
+    () => getBuiltinActions().filter((action) => action.category !== 'custom'),
+    [],
   );
+  const inventory = React.useMemo(
+    () => projectInspectorTools(builtins, customTools),
+    [builtins, customTools],
+  );
+  const builtinItems = inventory.filter((item) => item.origin === 'built-in').slice(0, 8);
+  const customItems = inventory.filter((item) => item.origin === 'custom').slice(0, 8);
 
   const runTool = React.useCallback(
-    async (tool: InspectorCustomTool) => {
+    async (tool: CustomTool) => {
       if (activeRunId) {
         toast.warning('Tool running', 'Wait for the current tool run to finish.');
         return;
@@ -914,11 +954,36 @@ function InspectorToolsPanel() {
   return (
     <div className="flex flex-col gap-4">
       <Section
+        label="Built-in tools"
+        icon={<Boxes className="h-3.5 w-3.5" />}
+        hint={String(builtins.length)}
+      >
+        <ul className="flex flex-col gap-1.5">
+          {builtinItems.map((item) => {
+            const Icon = item.action?.icon ?? Wrench;
+            return (
+              <li key={item.id}>
+                <ToolResourceRow
+                  title={item.title}
+                  actionId={item.id}
+                  description={item.description}
+                  icon={<Icon className="h-3.5 w-3.5" />}
+                  projectId={projectId}
+                  origin="Built-in"
+                  availability="Available"
+                  onOpen={() => setRoute('tools')}
+                />
+              </li>
+            );
+          })}
+        </ul>
+      </Section>
+      <Section
         label="Custom tools"
         icon={<Wrench className="h-3.5 w-3.5" />}
-        hint={String(tools.length)}
+        hint={String(customTools.length)}
       >
-        {sortedTools.length === 0 ? (
+        {customItems.length === 0 ? (
           <div className="flex flex-col gap-2">
             <EmptyState text="No custom tools saved yet." />
             <Button
@@ -933,14 +998,15 @@ function InspectorToolsPanel() {
           </div>
         ) : (
           <ul className="flex flex-col gap-1.5">
-            {sortedTools.map((tool) => (
-              <li key={tool.slug}>
+            {customItems.map((item) => (
+              <li key={item.id}>
                 <CustomToolResourceRow
-                  tool={tool}
+                  tool={item.customTool!}
                   projectId={projectId}
                   running={activeRunId !== null}
+                  availability={item.availability}
                   onOpen={() => setRoute('tools')}
-                  onRun={() => void runTool(tool)}
+                  onRun={() => void runTool(item.customTool!)}
                 />
               </li>
             ))}
@@ -949,65 +1015,6 @@ function InspectorToolsPanel() {
       </Section>
     </div>
   );
-}
-
-function useStoredInspectorTools(): InspectorCustomTool[] {
-  const [tick, setTick] = React.useState(0);
-  React.useEffect(() => {
-    const refresh = () => setTick((cur) => cur + 1);
-    const onStorage = (event: StorageEvent) => {
-      if (!event.key || event.key === 'jarvis-tools') refresh();
-    };
-    window.addEventListener('jarvis:tools-updated', refresh);
-    window.addEventListener('storage', onStorage);
-    window.addEventListener('focus', refresh);
-    document.addEventListener('visibilitychange', refresh);
-    return () => {
-      window.removeEventListener('jarvis:tools-updated', refresh);
-      window.removeEventListener('storage', onStorage);
-      window.removeEventListener('focus', refresh);
-      document.removeEventListener('visibilitychange', refresh);
-    };
-  }, []);
-  return React.useMemo(() => loadStoredInspectorTools(), [tick]);
-}
-
-function loadStoredInspectorTools(): InspectorCustomTool[] {
-  if (typeof window === 'undefined') return [];
-  const raw = window.localStorage.getItem('jarvis-tools');
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    const state = isPlainRecord(parsed) ? parsed.state : null;
-    const candidate = isPlainRecord(state)
-      ? state.tools
-      : isPlainRecord(parsed)
-        ? parsed.tools
-        : null;
-    if (!Array.isArray(candidate)) return [];
-    return candidate
-      .map(normalizeInspectorTool)
-      .filter((tool): tool is InspectorCustomTool => Boolean(tool));
-  } catch {
-    return [];
-  }
-}
-
-function normalizeInspectorTool(raw: unknown): InspectorCustomTool | null {
-  if (!isPlainRecord(raw)) return null;
-  const slug = typeof raw.slug === 'string' ? raw.slug.trim() : '';
-  const name = typeof raw.name === 'string' ? raw.name.trim() : '';
-  const baseAction = typeof raw.baseAction === 'string' ? raw.baseAction.trim() : '';
-  if (!slug || !name) return null;
-  return {
-    slug,
-    name,
-    baseAction,
-    description: typeof raw.description === 'string' ? raw.description : '',
-    steps: Array.isArray(raw.steps) ? raw.steps : undefined,
-    emoji: typeof raw.emoji === 'string' ? raw.emoji : undefined,
-    updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : 0,
-  };
 }
 
 function InspectorReferencesPanel({ workspaceId }: { workspaceId: WorkspaceId | null }) {
@@ -1160,6 +1167,8 @@ function ToolResourceRow({
   onOpen,
   onRun,
   running,
+  origin,
+  availability,
 }: {
   title: string;
   actionId: string;
@@ -1169,6 +1178,8 @@ function ToolResourceRow({
   onOpen: () => void;
   onRun?: () => void;
   running?: boolean;
+  origin: 'Built-in' | 'Custom';
+  availability: 'Available' | 'Unavailable';
 }) {
   const attachment = React.useMemo(
     () => toolAttachment({ title, actionId, description, projectId }),
@@ -1187,6 +1198,11 @@ function ToolResourceRow({
       <span className="min-w-0 flex-1">
         <span className="block truncate text-secondary text-foreground">{title}</span>
         <span className="block truncate text-metadata text-muted-foreground">{actionId}</span>
+        <span className="block truncate text-[10px] text-muted-foreground">
+          <span aria-label={`Origin: ${origin}`}>{origin}</span>
+          {' · '}
+          <span aria-label={`Availability: ${availability}`}>{availability}</span>
+        </span>
       </span>
       {onRun ? (
         <span
@@ -1217,12 +1233,14 @@ function CustomToolResourceRow({
   onOpen,
   onRun,
   running,
+  availability,
 }: {
-  tool: InspectorCustomTool;
+  tool: CustomTool;
   projectId: string | null;
   onOpen: () => void;
   onRun: () => void;
   running: boolean;
+  availability: 'available' | 'unavailable';
 }) {
   const actionId = `custom.${tool.slug}`;
   const stepCount = tool.steps?.length ?? 0;
@@ -1239,8 +1257,10 @@ function CustomToolResourceRow({
       icon={<Wrench className="h-3.5 w-3.5" />}
       projectId={projectId}
       onOpen={onOpen}
-      onRun={onRun}
+      onRun={availability === 'available' ? onRun : undefined}
       running={running}
+      origin="Custom"
+      availability={availability === 'available' ? 'Available' : 'Unavailable'}
     />
   );
 }
@@ -1386,10 +1406,6 @@ function setContextDragData(
     'text/plain',
     filePath || formatContextAttachmentForTerminal(attachment),
   );
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
 const resourceButtonClass = cn(
