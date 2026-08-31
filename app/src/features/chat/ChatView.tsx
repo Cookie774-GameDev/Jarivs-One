@@ -234,45 +234,6 @@ export function ChatView() {
   ]);
 
   useEffect(() => {
-    if (!isTauri || !activeChatId) return;
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-    const handleNativeDrop = createNativeChatFileDropHandler({
-      devicePixelRatio: window.devicePixelRatio,
-      hitTest: (clientX, clientY) =>
-        document.elementFromPoint(clientX, clientY)?.closest('[data-vibespace-page="chat"]') !==
-        null,
-      onHoverChange: (hovering) => setDropKind(hovering ? 'os-files' : null),
-      onDropPaths: (paths) => {
-        const targetChatId = layoutRef.current?.focusedChatId ?? String(activeChatId);
-        for (const path of paths) {
-          window.dispatchEvent(
-            new CustomEvent('jarvis:file:attach', {
-              detail: { path, chatId: targetChatId },
-            }),
-          );
-        }
-      },
-    });
-
-    void import('@tauri-apps/api/webview')
-      .then(({ getCurrentWebview }) =>
-        getCurrentWebview().onDragDropEvent((event) => handleNativeDrop(event.payload)),
-      )
-      .then((stopListening) => {
-        if (disposed) stopListening();
-        else unlisten = stopListening;
-      })
-      .catch(() => {
-        // Browser preview and unavailable native bridges keep the existing DOM drop path.
-      });
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
-  }, [activeChatId]);
-
-  useEffect(() => {
     if (activeChatId || isVisualEmptyChat) return;
     let cancelled = false;
     setEnsuringChat(true);
@@ -394,6 +355,83 @@ export function ChatView() {
           );
         })();
   const focusedChatId = isVisualEmptyChat ? undefined : effectiveLayout?.focusedChatId;
+  const canonicalNativeDropChatId =
+    !visualChatFixture &&
+    focusedChatId &&
+    accessibleChats?.some((chat) => String(chat.id) === focusedChatId)
+      ? focusedChatId
+      : undefined;
+  const nativeDropAuthorityRef = useRef({
+    scopeKey: null as string | null,
+    chatId: null as string | null,
+    epoch: 0,
+  });
+  const nativeDropScopeKey = canonicalNativeDropChatId && scopeKey ? scopeKey : null;
+  if (
+    nativeDropAuthorityRef.current.scopeKey !== nativeDropScopeKey ||
+    nativeDropAuthorityRef.current.chatId !== (canonicalNativeDropChatId ?? null)
+  ) {
+    nativeDropAuthorityRef.current = {
+      scopeKey: nativeDropScopeKey,
+      chatId: canonicalNativeDropChatId ?? null,
+      epoch: nativeDropAuthorityRef.current.epoch + 1,
+    };
+  }
+  const nativeDropAuthorityEpoch = nativeDropAuthorityRef.current.epoch;
+
+  useEffect(() => {
+    if (!isTauri || !canonicalNativeDropChatId || !scopeKey) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    const listenerScopeKey = scopeKey;
+    const listenerEpoch = nativeDropAuthorityEpoch;
+    const isCurrentListener = () =>
+      !disposed &&
+      activeScopeKeyRef.current === listenerScopeKey &&
+      nativeDropAuthorityRef.current.scopeKey === listenerScopeKey &&
+      nativeDropAuthorityRef.current.chatId === canonicalNativeDropChatId &&
+      nativeDropAuthorityRef.current.epoch === listenerEpoch;
+    const handleNativeDrop = createNativeChatFileDropHandler({
+      devicePixelRatio: window.devicePixelRatio,
+      hitTest: (clientX, clientY) => {
+        if (!isCurrentListener()) return false;
+        const dropRoot = document
+          .elementFromPoint(clientX, clientY)
+          ?.closest('[data-vibespace-page="chat"][data-terminal-drop="chat"]');
+        return dropRoot?.getAttribute('data-terminal-drop-chat-id') === canonicalNativeDropChatId;
+      },
+      onHoverChange: (hovering) => setDropKind(hovering ? 'os-files' : null),
+      onDropPaths: (paths) => {
+        if (!isCurrentListener()) return;
+        for (const path of paths) {
+          window.dispatchEvent(
+            new CustomEvent('jarvis:file:attach', {
+              detail: { path, chatId: canonicalNativeDropChatId },
+            }),
+          );
+        }
+      },
+    });
+
+    void import('@tauri-apps/api/webview')
+      .then(({ getCurrentWebview }) =>
+        getCurrentWebview().onDragDropEvent((event) => {
+          if (isCurrentListener()) handleNativeDrop(event.payload);
+        }),
+      )
+      .then((stopListening) => {
+        if (disposed) stopListening();
+        else unlisten = stopListening;
+      })
+      .catch(() => {
+        // Browser preview and unavailable native bridges keep the existing DOM drop path.
+      });
+    return () => {
+      disposed = true;
+      setDropKind(null);
+      unlisten?.();
+    };
+  }, [canonicalNativeDropChatId, nativeDropAuthorityEpoch, scopeKey]);
 
   return (
     <TooltipProvider delayDuration={400}>

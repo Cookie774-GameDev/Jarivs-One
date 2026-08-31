@@ -25,6 +25,18 @@ const testState = vi.hoisted(() => ({
   getChat: vi.fn(),
   listMessages: vi.fn(),
   ensureActiveChat: vi.fn(),
+  nativeDropHandler: undefined as ((event: { payload: unknown }) => void) | undefined,
+  onDragDropEvent: vi.fn(),
+  stopNativeDropListening: vi.fn(),
+}));
+
+vi.mock('@/lib/utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/utils')>();
+  return { ...actual, isTauri: true };
+});
+
+vi.mock('@tauri-apps/api/webview', () => ({
+  getCurrentWebview: () => ({ onDragDropEvent: testState.onDragDropEvent }),
 }));
 
 vi.mock('dexie-react-hooks', () => ({ useLiveQuery: () => testState.liveChats }));
@@ -135,6 +147,15 @@ describe('ChatView handoff workspace integration', () => {
     testState.listMessages.mockResolvedValue([]);
     testState.ensureActiveChat.mockReset();
     testState.ensureActiveChat.mockResolvedValue(null);
+    testState.nativeDropHandler = undefined;
+    testState.stopNativeDropListening.mockReset();
+    testState.onDragDropEvent.mockReset();
+    testState.onDragDropEvent.mockImplementation(
+      async (handler: (event: { payload: unknown }) => void) => {
+        testState.nativeDropHandler = handler;
+        return testState.stopNativeDropListening;
+      },
+    );
     useAuthStore.setState({
       localUserId: 'account-a',
       cloudSession: null,
@@ -310,6 +331,112 @@ describe('ChatView handoff workspace integration', () => {
     expect(screen.queryByTestId('thread-stale-chat')).toBeNull();
     expect(remounted.container.querySelector('[data-composer-drop-zone="true"]')).toBeNull();
     expect(localStorage.getItem(key)).toBeNull();
+  });
+
+  it('registers native drops only for canonical focus and rejects a detached stale-scope listener', async () => {
+    const key = chatWorkspaceStorageKey(scope);
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        version: 1,
+        chatIds: ['stale-chat'],
+        focusedChatId: 'stale-chat',
+      }),
+    );
+    testState.liveChats = undefined;
+    useUIStore.setState({ activeChatId: 'stale-chat' });
+    const received: CustomEvent[] = [];
+    const onAttach = (event: Event) => received.push(event as CustomEvent);
+    window.addEventListener('jarvis:file:attach', onAttach);
+
+    const view = render(<ChatView />);
+    await settleComposerEffects();
+    expect(testState.onDragDropEvent).not.toHaveBeenCalled();
+    expect(received).toEqual([]);
+
+    testState.liveChats = [];
+    view.rerender(<ChatView />);
+    await settleComposerEffects();
+    expect(testState.onDragDropEvent).not.toHaveBeenCalled();
+    expect(received).toEqual([]);
+
+    testState.liveChats = [chats[0]];
+    act(() => {
+      useUIStore.setState({ activeChatId: 'chat-1' });
+      view.rerender(<ChatView />);
+    });
+    await waitFor(() => expect(testState.onDragDropEvent).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(testState.stopNativeDropListening.mock.calls.length).toBe(
+        testState.onDragDropEvent.mock.calls.length - 1,
+      ),
+    );
+    const firstScopeHandler = testState.nativeDropHandler;
+    const firstScopeRegistrationCount = testState.onDragDropEvent.mock.calls.length;
+
+    const chatRoot = view.container.querySelector(
+      '[data-vibespace-page="chat"][data-terminal-drop-chat-id="chat-1"]',
+    );
+    expect(chatRoot).not.toBeNull();
+    const originalElementFromPoint = Object.getOwnPropertyDescriptor(document, 'elementFromPoint');
+    const elementFromPoint = vi.fn(() => chatRoot as Element);
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: elementFromPoint,
+    });
+
+    act(() => {
+      testState.nativeDropHandler?.({
+        payload: {
+          type: 'drop',
+          paths: ['C:\\fixtures\\canonical.md'],
+          position: { x: 20, y: 20 },
+        },
+      });
+    });
+    expect(received.map((event) => event.detail)).toEqual([
+      { path: 'C:\\fixtures\\canonical.md', chatId: 'chat-1' },
+    ]);
+
+    testState.liveChats = undefined;
+    act(() => {
+      useAuthStore.setState({
+        localUserId: 'account-b',
+        workspaceId: 'workspace-b' as never,
+        projectId: 'project-b' as never,
+      });
+      useUIStore.setState({ activeChatId: 'chat-b' });
+      view.rerender(<ChatView />);
+    });
+    await waitFor(() =>
+      expect(testState.stopNativeDropListening).toHaveBeenCalledTimes(firstScopeRegistrationCount),
+    );
+    expect(testState.onDragDropEvent).toHaveBeenCalledTimes(firstScopeRegistrationCount);
+
+    const detachedStaleRoot = document.createElement('div');
+    detachedStaleRoot.setAttribute('data-vibespace-page', 'chat');
+    detachedStaleRoot.setAttribute('data-terminal-drop', 'chat');
+    detachedStaleRoot.setAttribute('data-terminal-drop-chat-id', 'chat-1');
+    elementFromPoint.mockReturnValue(detachedStaleRoot);
+    act(() => {
+      firstScopeHandler?.({
+        payload: {
+          type: 'drop',
+          paths: ['C:\\fixtures\\stale-scope.md'],
+          position: { x: 20, y: 20 },
+        },
+      });
+    });
+    expect(received.map((event) => event.detail)).toEqual([
+      { path: 'C:\\fixtures\\canonical.md', chatId: 'chat-1' },
+    ]);
+
+    window.removeEventListener('jarvis:file:attach', onAttach);
+    if (originalElementFromPoint) {
+      Object.defineProperty(document, 'elementFromPoint', originalElementFromPoint);
+    } else {
+      delete (document as Partial<Document>).elementFromPoint;
+    }
   });
 
   it('rejects an in-flight open-beside result after the account scope changes', async () => {
