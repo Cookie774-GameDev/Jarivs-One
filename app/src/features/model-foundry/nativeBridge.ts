@@ -44,7 +44,11 @@ export interface FoundryModelDownloadResult {
   readonly manifestPath: string;
   readonly sizeBytes: number;
   readonly resumed: boolean;
-  readonly files: readonly { readonly path: string; readonly sha256: string; readonly sizeBytes: number }[];
+  readonly files: readonly {
+    readonly path: string;
+    readonly sha256: string;
+    readonly sizeBytes: number;
+  }[];
 }
 
 export interface FoundryNativeTrainingExample {
@@ -64,6 +68,7 @@ export interface FoundryNativeTrainingRequest {
   readonly validationExamples: readonly FoundryNativeTrainingExample[];
   readonly trainingConfig: {
     readonly method: 'lora' | 'qlora';
+    readonly computeDevice: 'gpu' | 'cpu';
     readonly seed: number;
     readonly epochs: number;
     /** Optional bounded step cap for short local runs and advanced workflows. */
@@ -111,7 +116,14 @@ export interface FoundryRealEvaluationReport {
   readonly delta: number;
   readonly safetyFailures: readonly string[];
   readonly gate: 'pass' | 'blocked';
-  readonly caseEvidence: readonly { readonly caseId: string; readonly hidden?: boolean; readonly baseScore: number; readonly candidateScore: number; readonly championScore: number | null; readonly evidenceHash: string }[];
+  readonly caseEvidence: readonly {
+    readonly caseId: string;
+    readonly hidden?: boolean;
+    readonly baseScore: number;
+    readonly candidateScore: number;
+    readonly championScore: number | null;
+    readonly evidenceHash: string;
+  }[];
 }
 
 export interface FoundryArtifactEvaluation {
@@ -147,7 +159,12 @@ export interface FoundryWorkerProbe {
   readonly protocolVersion: number;
 }
 
-export interface FoundryPrivateEvaluationCase { readonly id: string; readonly prompt: string; readonly expectedCompletion: string; readonly hidden: boolean }
+export interface FoundryPrivateEvaluationCase {
+  readonly id: string;
+  readonly prompt: string;
+  readonly expectedCompletion: string;
+  readonly hidden: boolean;
+}
 
 interface CurrentHardwareProfile {
   readonly cpu: string;
@@ -161,6 +178,7 @@ interface CurrentHardwareProfile {
 
 interface CurrentFoundryJob {
   readonly id: string;
+  readonly projectId?: string | null;
   readonly name: string;
   readonly baseModelId: string;
   readonly method: string;
@@ -196,6 +214,20 @@ interface CurrentTrainingCatalogEntry {
   readonly verified: boolean;
   readonly installedBytes: number;
   readonly status: string;
+}
+
+const PROJECT_BY_JOB_LIMIT = 128;
+const projectByJobId = new Map<string, string>();
+
+function rememberJobProject(jobId: string, projectId: string): void {
+  if (!jobId || !projectId) return;
+  projectByJobId.delete(jobId);
+  projectByJobId.set(jobId, projectId);
+  while (projectByJobId.size > PROJECT_BY_JOB_LIMIT) {
+    const oldest = projectByJobId.keys().next().value;
+    if (typeof oldest !== 'string') break;
+    projectByJobId.delete(oldest);
+  }
 }
 
 async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -239,7 +271,10 @@ export async function getFoundryHardwareProfile(): Promise<FoundryHardwareProfil
     logicalCores: typeof navigator === 'undefined' ? 1 : navigator.hardwareConcurrency || 1,
     ramBytes: Number.isFinite(profile.ramGb) ? Math.round(profile.ramGb * 1024 ** 3) : null,
     acceleratorStatus: accelerators.length > 0 ? 'available' : 'unavailable',
-    acceleratorDetail: accelerators.length > 0 ? accelerators.join(', ') : profile.gpu ?? 'No accelerator detected.',
+    acceleratorDetail:
+      accelerators.length > 0
+        ? accelerators.join(', ')
+        : (profile.gpu ?? 'No accelerator detected.'),
     detectionComplete: true,
     recommendedMode: accelerators.length > 0 ? 'native_accelerated' : 'cpu_only',
     warnings: [],
@@ -257,12 +292,24 @@ function mapWorkerRuntimeStatus(status: CurrentTrainingWorkerStatus): FoundryWor
     python: status.python,
     workerInstalled: status.installed,
     protocolVersion: status.protocol,
-    detail: status.reason ?? (status.attested ? 'Attested local training worker is installed.' : 'Training worker is not attested yet.'),
+    detail:
+      status.reason ??
+      (status.attested
+        ? 'Attested local training worker is installed.'
+        : 'Training worker is not attested yet.'),
   };
 }
 
 export async function getFoundryRuntimeStatus(): Promise<FoundryWorkerRuntimeStatus> {
-  if (!isTauri) return { ready: false, root: 'browser:unavailable', python: null, workerInstalled: false, protocolVersion: 1, detail: 'Native worker runtime is available only in the desktop app.' };
+  if (!isTauri)
+    return {
+      ready: false,
+      root: 'browser:unavailable',
+      python: null,
+      workerInstalled: false,
+      protocolVersion: 1,
+      detail: 'Native worker runtime is available only in the desktop app.',
+    };
   return mapWorkerRuntimeStatus(await readWorkerStatus());
 }
 
@@ -276,16 +323,27 @@ export async function prepareFoundryRuntime(): Promise<FoundryWorkerRuntimeStatu
 }
 
 export async function getFoundryTrainingRuntimeStatus(): Promise<FoundryTrainingRuntimeStatus> {
-  if (!isTauri) return { installed: false, qloraInstalled: false, detail: 'Real LoRA training is available only in the desktop app.' };
+  if (!isTauri)
+    return {
+      installed: false,
+      qloraInstalled: false,
+      detail: 'Real LoRA training is available only in the desktop app.',
+    };
   const status = await readWorkerStatus();
   return {
     installed: status.installed,
     qloraInstalled: status.methods.includes('qlora'),
-    detail: status.reason ?? (status.installed ? 'Local training runtime is installed.' : 'Local training runtime is not installed yet.'),
+    detail:
+      status.reason ??
+      (status.installed
+        ? 'Local training runtime is installed.'
+        : 'Local training runtime is not installed yet.'),
   };
 }
 
-export async function installFoundryTrainingDependencies(includeQlora = false): Promise<FoundryTrainingRuntimeStatus> {
+export async function installFoundryTrainingDependencies(
+  includeQlora = false,
+): Promise<FoundryTrainingRuntimeStatus> {
   if (!isTauri) throw new Error('Real LoRA training is available only in the desktop app.');
   const status = await invoke<CurrentTrainingWorkerStatus>(
     'model_foundry_install_training_worker',
@@ -294,17 +352,26 @@ export async function installFoundryTrainingDependencies(includeQlora = false): 
   return {
     installed: status.installed,
     qloraInstalled: status.methods.includes('qlora'),
-    detail: status.reason ?? (status.installed ? 'Local training runtime is installed.' : 'Local training runtime installation failed.'),
+    detail:
+      status.reason ??
+      (status.installed
+        ? 'Local training runtime is installed.'
+        : 'Local training runtime installation failed.'),
   };
 }
 
 function serializeDatasetJsonl(examples: readonly FoundryNativeTrainingExample[]): string {
-  return examples.map((example) => JSON.stringify({ prompt: example.prompt, completion: example.completion })).join('\n');
+  return examples
+    .map((example) => JSON.stringify({ prompt: example.prompt, completion: example.completion }))
+    .join('\n');
 }
 
-export async function startFoundryTraining(request: FoundryNativeTrainingRequest): Promise<FoundryNativeTrainingStart> {
+export async function startFoundryTraining(
+  request: FoundryNativeTrainingRequest,
+): Promise<FoundryNativeTrainingStart> {
   if (!isTauri) throw new Error('Real LoRA training is available only in the desktop app.');
-  if (!request.datasetApproved) throw new Error('Dataset approval is required before local training can start.');
+  if (!request.datasetApproved)
+    throw new Error('Dataset approval is required before local training can start.');
   if (request.trainExamples.length === 0) {
     throw new Error('At least one approved training example is required.');
   }
@@ -316,6 +383,7 @@ export async function startFoundryTraining(request: FoundryNativeTrainingRequest
   const created = await invoke<CurrentFoundryJob>('model_foundry_start_training', {
     request: {
       schemaVersion: 2,
+      projectId: request.projectId,
       name: 'Foundry ' + request.jobId,
       description: 'Dataset Studio training run for project ' + request.projectId,
       purpose: 'Local adapter training from a reviewed Dataset Studio version.',
@@ -337,16 +405,33 @@ export async function startFoundryTraining(request: FoundryNativeTrainingRequest
       localOnly: true,
     },
   });
-  return { started: true, projectId: request.projectId, jobId: created.id, jobDir: 'private-application-directory' };
+  rememberJobProject(created.id, request.projectId);
+  return {
+    started: true,
+    projectId: request.projectId,
+    jobId: created.id,
+    jobDir: 'private-application-directory',
+  };
 }
 
-export async function resumeFoundryTraining(projectId: string, jobId: string): Promise<FoundryNativeTrainingStart> {
+export async function resumeFoundryTraining(
+  projectId: string,
+  jobId: string,
+): Promise<FoundryNativeTrainingStart> {
   if (!isTauri) throw new Error('Real LoRA training is available only in the desktop app.');
   const resumed = await invoke<CurrentFoundryJob>('model_foundry_resume_job', { jobId });
-  return { started: resumed.resumeAvailable || resumed.status !== 'failed', projectId, jobId: resumed.id, jobDir: 'private-application-directory' };
+  return {
+    started: resumed.resumeAvailable || resumed.status !== 'failed',
+    projectId,
+    jobId: resumed.id,
+    jobDir: 'private-application-directory',
+  };
 }
 
-export async function inspectFoundryArtifact(projectId: string, jobId: string): Promise<FoundryRealArtifactSummary> {
+export async function inspectFoundryArtifact(
+  projectId: string,
+  jobId: string,
+): Promise<FoundryRealArtifactSummary> {
   if (!isTauri) throw new Error('Real training artifacts are available only in the desktop app.');
   const jobs = await invoke<CurrentFoundryJob[]>('model_foundry_list_jobs');
   const job = jobs.find((entry) => entry.id === jobId);
@@ -368,19 +453,31 @@ export async function inspectFoundryArtifact(projectId: string, jobId: string): 
   };
 }
 
-async function chatWithArtifact(artifactId: string, prompt: string, maxNewTokens?: number): Promise<string> {
+async function chatWithArtifact(
+  artifactId: string,
+  prompt: string,
+  maxNewTokens?: number,
+): Promise<string> {
   const requestId = 'foundry-bridge-' + crypto.randomUUID();
   await invoke('model_foundry_prepare_chat', { artifactId, query: prompt, limit: null });
-  const response = await invoke<{ text?: string; content?: string; message?: string }>('model_foundry_chat', {
-    requestId,
-    artifactId,
-    messages: [{ role: 'user', content: prompt }],
-    maxOutputTokens: maxNewTokens ?? null,
-  });
+  const response = await invoke<{ text?: string; content?: string; message?: string }>(
+    'model_foundry_chat',
+    {
+      requestId,
+      artifactId,
+      messages: [{ role: 'user', content: prompt }],
+      maxOutputTokens: maxNewTokens ?? null,
+    },
+  );
   return response.text ?? response.content ?? response.message ?? '';
 }
 
-export async function generateFromFoundryArtifact(args: { projectId: string; jobId: string; prompt: string; maxNewTokens?: number }): Promise<FoundryArtifactGeneration> {
+export async function generateFromFoundryArtifact(args: {
+  projectId: string;
+  jobId: string;
+  prompt: string;
+  maxNewTokens?: number;
+}): Promise<FoundryArtifactGeneration> {
   if (!isTauri) throw new Error('Local adapter inference is available only in the desktop app.');
   const text = await chatWithArtifact(args.jobId, args.prompt, args.maxNewTokens);
   const jobs = await invoke<CurrentFoundryJob[]>('model_foundry_list_jobs');
@@ -393,20 +490,41 @@ export async function generateFromFoundryArtifact(args: { projectId: string; job
   };
 }
 
-export async function evaluateFoundryArtifact(args: { projectId: string; jobId: string; championJobId?: string; maxCases?: number; maxNewTokens?: number; cases?: readonly FoundryPrivateEvaluationCase[] }): Promise<FoundryArtifactEvaluation> {
+export async function evaluateFoundryArtifact(args: {
+  projectId: string;
+  jobId: string;
+  championJobId?: string;
+  maxCases?: number;
+  maxNewTokens?: number;
+  cases?: readonly FoundryPrivateEvaluationCase[];
+}): Promise<FoundryArtifactEvaluation> {
   if (!isTauri) throw new Error('Local adapter evaluation is available only in the desktop app.');
   const cases = (args.cases ?? []).slice(0, args.maxCases ?? 32);
-  if (cases.length === 0) throw new Error('Evaluation requires at least one reviewed private case.');
+  if (cases.length === 0)
+    throw new Error('Evaluation requires at least one reviewed private case.');
   const jobs = await invoke<CurrentFoundryJob[]>('model_foundry_list_jobs');
   const job = jobs.find((entry) => entry.id === args.jobId);
   if (!job) throw new Error('Model Foundry artifact was not found.');
-  const evidence: { caseId: string; hidden?: boolean; baseScore: number; candidateScore: number; championScore: number | null; evidenceHash: string }[] = [];
+  const evidence: {
+    caseId: string;
+    hidden?: boolean;
+    baseScore: number;
+    candidateScore: number;
+    championScore: number | null;
+    evidenceHash: string;
+  }[] = [];
   let passed = 0;
   for (const evaluationCase of cases) {
     const output = await chatWithArtifact(args.jobId, evaluationCase.prompt, args.maxNewTokens);
     const normalizedOutput = output.trim().toLowerCase();
     const normalizedExpected = evaluationCase.expectedCompletion.trim().toLowerCase();
-    const score = normalizedOutput === normalizedExpected ? 1 : normalizedOutput.includes(normalizedExpected) || normalizedExpected.includes(normalizedOutput) ? 0.5 : 0;
+    const score =
+      normalizedOutput === normalizedExpected
+        ? 1
+        : normalizedOutput.includes(normalizedExpected) ||
+            normalizedExpected.includes(normalizedOutput)
+          ? 0.5
+          : 0;
     if (score >= 0.5) passed += 1;
     evidence.push({
       caseId: evaluationCase.id,
@@ -441,21 +559,33 @@ export async function cancelFoundryTraining(projectId: string, jobId: string): P
   return job.status === 'cancelled' || job.status === 'interrupted';
 }
 
-export async function stopFoundryTrainingAfterCheckpoint(projectId: string, jobId: string): Promise<boolean> {
+export async function stopFoundryTrainingAfterCheckpoint(
+  projectId: string,
+  jobId: string,
+): Promise<boolean> {
   // The canonical engine cancels bounded training immediately; checkpoint
   // artifacts already written to the private job directory remain intact.
   return cancelFoundryTraining(projectId, jobId);
 }
 
-export async function listenFoundryWorkerMessages(listener: (event: FoundryWorkerMessage) => void): Promise<() => void> {
+export async function listenFoundryWorkerMessages(
+  listener: (event: FoundryWorkerMessage) => void,
+): Promise<() => void> {
   if (!isTauri) return () => undefined;
   const event = await import('@tauri-apps/api/event');
-  const unlisten = await event.listen<CurrentFoundryJob>('model-foundry:job-updated', ({ payload }) =>
-    listener({
-      projectId: '',
-      jobId: payload.id,
-      message: { type: 'job-updated', status: payload.status, progress: payload.progress },
-    }),
+  const unlisten = await event.listen<CurrentFoundryJob>(
+    'model-foundry:job-updated',
+    ({ payload }) => {
+      const projectId = payload.projectId?.trim() || projectByJobId.get(payload.id) || '';
+      listener({
+        projectId,
+        jobId: payload.id,
+        message: { type: 'job-updated', status: payload.status, progress: payload.progress },
+      });
+      if (['completed', 'failed', 'cancelled'].includes(payload.status)) {
+        projectByJobId.delete(payload.id);
+      }
+    },
   );
   return unlisten;
 }
@@ -472,14 +602,22 @@ export async function probeFoundryWorker(projectId: string): Promise<FoundryWork
   };
 }
 
-export async function downloadFoundryModel(request: FoundryModelDownloadRequest): Promise<FoundryModelDownloadResult> {
+export async function downloadFoundryModel(
+  request: FoundryModelDownloadRequest,
+): Promise<FoundryModelDownloadResult> {
   if (!isTauri) throw new Error('Verified model downloads are available only in the desktop app.');
-  if (!request.licenseApproved) throw new Error('Model license approval is required before download.');
-  const result = await invoke<FoundryModelDownloadResult>('model_foundry_download_model', { request });
+  if (!request.licenseApproved)
+    throw new Error('Model license approval is required before download.');
+  const result = await invoke<FoundryModelDownloadResult>('model_foundry_download_model', {
+    request,
+  });
   return result;
 }
 
-export async function cancelFoundryModelDownload(projectId: string, modelId: string): Promise<boolean> {
+export async function cancelFoundryModelDownload(
+  projectId: string,
+  modelId: string,
+): Promise<boolean> {
   if (!isTauri) return false;
   return invoke<boolean>('model_foundry_cancel_download', { projectId, modelId });
 }

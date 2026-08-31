@@ -15,9 +15,11 @@ export interface HardwareProfile {
 
 export type TrainingModality = 'text' | 'image' | 'video' | 'audio';
 export type TrainingPrecision = 'fp32' | 'fp16' | 'bf16' | 'int8' | 'int4';
+export type TrainingComputeDevice = 'gpu' | 'cpu';
 
 export interface FoundryTrainingConfiguration {
   method: Exclude<TrainingMethod, 'knowledge'>;
+  computeDevice: TrainingComputeDevice;
   seed: number;
   epochs: number;
   maxSteps?: number;
@@ -143,6 +145,7 @@ export function defaultFoundryTrainingConfiguration(
 ): FoundryTrainingConfiguration {
   return {
     method,
+    computeDevice: 'gpu',
     seed: 7,
     epochs: 1,
     batchSize: 1,
@@ -208,8 +211,8 @@ export function estimateFoundryTrainingDuration(input: {
   const processedTokens = optimizationSteps * effectiveBatch * averageTokensPerExample;
   const parametersB = Math.max(0.1, input.parametersB);
   const methodCost = input.method === 'full' ? 3.5 : input.method === 'qlora' ? 1.15 : 1;
-  const acceleratorCapacity =
-    input.hardware.vramGb > 0 ? Math.max(1, input.hardware.vramGb / 4) : 0;
+  const useGpu = input.configuration.computeDevice === 'gpu';
+  const acceleratorCapacity = useGpu ? Math.max(1, input.hardware.vramGb / 4) : 0;
   const tokenRate =
     acceleratorCapacity > 0
       ? (1_250 * acceleratorCapacity) / (parametersB * methodCost)
@@ -249,7 +252,7 @@ export function estimateFoundryTrainingDuration(input: {
       roundedHours(centralSeconds * 1.8),
     ),
     optimizationSteps,
-    basis: `${examples} measured example${examples === 1 ? '' : 's'}, ${measuredTextTokens.toLocaleString()} measured text tokens${visualBasis}, ${optimizationSteps.toLocaleString()} optimization steps, and the detected ${acceleratorCapacity > 0 ? 'GPU' : 'CPU'}.`,
+    basis: `${examples} measured example${examples === 1 ? '' : 's'}, ${measuredTextTokens.toLocaleString()} measured text tokens${visualBasis}, ${optimizationSteps.toLocaleString()} optimization steps, and the selected ${useGpu ? 'GPU' : 'CPU'}.`,
     disclaimer:
       'Calibrated prediction from the selected data and requested settings. It tightens after real training telemetry exists; cooling, drivers, and other computer activity can still change the result.',
   };
@@ -258,6 +261,12 @@ export function estimateFoundryTrainingDuration(input: {
 export function validateFoundryTrainingConfiguration(
   configuration: FoundryTrainingConfiguration,
 ): string | null {
+  if (configuration.computeDevice !== 'gpu' && configuration.computeDevice !== 'cpu') {
+    return 'Training device must be GPU only or CPU only.';
+  }
+  if (configuration.method === 'qlora' && configuration.computeDevice !== 'gpu') {
+    return 'QLoRA requires GPU-only training.';
+  }
   const integerBounds: ReadonlyArray<[keyof FoundryTrainingConfiguration, string, number, number]> =
     [
       ['seed', 'Seed', 0, 0xffff_ffff],
@@ -335,6 +344,7 @@ export function planLocalTrainingMethod(input: {
   parametersB: number;
   hardware: HardwareProfile;
   worker: TrainingWorkerCapability | null;
+  computeDevice?: TrainingComputeDevice;
 }): LocalTrainingPlan {
   const parametersB = Math.max(0.1, Number.isFinite(input.parametersB) ? input.parametersB : 0.1);
   const requirements =
@@ -355,9 +365,9 @@ export function planLocalTrainingMethod(input: {
               workload: 'moderate' as const,
             }
           : {
-              vram: Math.max(12, parametersB * 16),
-              ram: Math.max(32, parametersB * 32),
-              storage: Math.max(30, parametersB * 40),
+              vram: Math.max(4, parametersB * 16),
+              ram: Math.max(8, parametersB * 32),
+              storage: Math.max(4, parametersB * 40),
               workload: 'heavy' as const,
             };
   const requiredVramGb = roundedRequirement(requirements.vram);
@@ -414,13 +424,22 @@ export function planLocalTrainingMethod(input: {
   }
 
   const memoryFits =
-    reportedMemoryMeets(input.hardware.vramGb, requiredVramGb) ||
-    reportedMemoryMeets(input.hardware.ramGb, requiredRamGb);
+    input.computeDevice === 'gpu'
+      ? reportedMemoryMeets(input.hardware.vramGb, requiredVramGb)
+      : input.computeDevice === 'cpu'
+        ? reportedMemoryMeets(input.hardware.ramGb, requiredRamGb)
+        : reportedMemoryMeets(input.hardware.vramGb, requiredVramGb) ||
+          reportedMemoryMeets(input.hardware.ramGb, requiredRamGb);
   if (!memoryFits) {
     return {
       ...base,
       available: false,
-      reason: `Requires about ${requiredVramGb} GB VRAM or ${requiredRamGb} GB system RAM for this model.`,
+      reason:
+        input.computeDevice === 'gpu'
+          ? `GPU-only training requires about ${requiredVramGb} GB verified CUDA VRAM for this model.`
+          : input.computeDevice === 'cpu'
+            ? `CPU-only training requires about ${requiredRamGb} GB system RAM for this model.`
+            : `Requires about ${requiredVramGb} GB VRAM or ${requiredRamGb} GB system RAM for this model.`,
     };
   }
 
@@ -739,6 +758,7 @@ export function mayStartTraining(input: {
   hardware: HardwareProfile;
   sources: ClassifiedSource[];
   worker?: TrainingWorkerCapability | null;
+  configuration?: FoundryTrainingConfiguration;
 }): string | null {
   if (!input.name.trim()) return 'Name the model before training.';
   const methodAvailability = modelFoundryMethodAvailability(input.method, input.worker ?? null);
@@ -751,6 +771,7 @@ export function mayStartTraining(input: {
       parametersB: input.model.parametersB,
       hardware: input.hardware,
       worker: input.worker ?? null,
+      computeDevice: input.configuration?.computeDevice,
     });
     if (!plan.available) return plan.reason;
   }
@@ -812,6 +833,30 @@ export function saveJobs(storage: Pick<Storage, 'setItem'>, jobs: FoundryJob[]):
   storage.setItem(JOB_KEY, JSON.stringify(jobs.slice(0, 50)));
 }
 
+const NATIVE_ARTIFACT_JOB_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+function nativeArtifactModelId(jobId: string): string {
+  if (!NATIVE_ARTIFACT_JOB_ID.test(jobId)) {
+    throw new Error('The verified native artifact has an invalid identity.');
+  }
+  return `artifact--${jobId}`;
+}
+
+export function foundryAgentModelSelection(job: FoundryJob): {
+  readonly providerChoice: 'foundry';
+  readonly provider: 'foundry';
+  readonly model: string;
+} {
+  if (job.status !== 'completed' || job.artifactVerified !== true || !job.artifactPath) {
+    throw new Error('Only a verified completed native artifact can be selected.');
+  }
+  return {
+    providerChoice: 'foundry',
+    provider: 'foundry',
+    model: nativeArtifactModelId(job.id),
+  };
+}
+
 export function foundryModelOptions(jobs: unknown): Array<{
   id: string;
   label: string;
@@ -823,6 +868,7 @@ export function foundryModelOptions(jobs: unknown): Array<{
       (job) =>
         job.status === 'completed' && job.artifactVerified === true && Boolean(job.artifactPath),
     )
+    .filter((job) => NATIVE_ARTIFACT_JOB_ID.test(job.id))
     .map((job) => {
       const baseModel = TRAINABLE_MODELS.find((candidate) => candidate.id === job.baseModelId);
       const artifactKind =
@@ -830,7 +876,7 @@ export function foundryModelOptions(jobs: unknown): Array<{
           ? 'knowledge'
           : `${job.method === 'lora' ? 'LoRA' : job.method === 'qlora' ? 'QLoRA' : 'full-weight'} model`;
       return {
-        id: `foundry:${job.id}`,
+        id: nativeArtifactModelId(job.id),
         label: job.name,
         subtitle: `Verified local ${artifactKind} · ${baseModel?.label ?? job.baseModelId}`,
       };

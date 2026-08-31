@@ -86,6 +86,7 @@ import { BuildYourOwnAIHub } from '@/features/model-foundry';
 import { RecycleBinConfirmDialog } from '@/features/recycle-bin/RecycleBinConfirmDialog';
 import { recycleBinService } from '@/features/recycle-bin/recycleBinService';
 import {
+  foundryAgentModelSelection,
   foundryModelOptions,
   loadJobs as loadFoundryJobs,
   type FoundryJob,
@@ -260,13 +261,7 @@ type SaveErrorState = {
 };
 
 type EditorStatus =
-  | 'idle'
-  | 'unsaved'
-  | 'saving'
-  | 'saved'
-  | 'conflict'
-  | 'validation-error'
-  | 'error';
+  'idle' | 'unsaved' | 'saving' | 'saved' | 'conflict' | 'validation-error' | 'error';
 
 type ProtectedProfileState =
   | { status: 'idle'; requestGeneration: number }
@@ -503,15 +498,18 @@ export function AgentManager() {
   const modelOptions = React.useMemo(() => {
     if (!draft || draft.providerChoice === 'default') return [];
     const providerModels = getModelsForProvider(draft.providerChoice, providerCtx);
+    if (draft.providerChoice === 'foundry') {
+      const persisted = foundryModelOptions(loadFoundryJobs(window.localStorage));
+      const activated = activatedFoundryJob ? foundryModelOptions([activatedFoundryJob]) : [];
+      const foundry = [...persisted, ...activated].filter(
+        (option, index, all) => all.findIndex((candidate) => candidate.id === option.id) === index,
+      );
+      return [...foundry, ...providerModels];
+    }
     if (draft.providerChoice !== 'ollama' && draft.providerChoice !== 'local') {
       return providerModels;
     }
-    const persisted = foundryModelOptions(loadFoundryJobs(window.localStorage));
-    const activated = activatedFoundryJob ? foundryModelOptions([activatedFoundryJob]) : [];
-    const foundry = [...persisted, ...activated].filter(
-      (option, index, all) => all.findIndex((candidate) => candidate.id === option.id) === index,
-    );
-    return [...foundry, ...providerModels];
+    return providerModels;
   }, [activatedFoundryJob, draft, providerCtx, ollamaOptions]);
 
   const visibleProtectedProfile =
@@ -1791,14 +1789,7 @@ export function AgentManager() {
         onActivateArtifact={(job) => {
           setActivatedFoundryJob(job);
           setDraft((current) =>
-            current
-              ? {
-                  ...current,
-                  providerChoice: 'ollama',
-                  provider: 'ollama',
-                  model: `foundry:${job.id}`,
-                }
-              : current,
+            current ? { ...current, ...foundryAgentModelSelection(job) } : current,
           );
           setModelFoundryOpen(false);
           toast.success('Local AI selected', `${job.name} is ready to save on this agent.`);

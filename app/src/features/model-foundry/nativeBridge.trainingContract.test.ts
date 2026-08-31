@@ -1,15 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const invokeMock = vi.hoisted(() => vi.fn());
+const { invokeMock, listenMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+  listenMock: vi.fn(),
+}));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
+vi.mock('@tauri-apps/api/event', () => ({ listen: listenMock }));
 vi.mock('../../lib/utils', () => ({ isTauri: true }));
 
-import { startFoundryTraining, type FoundryNativeTrainingRequest } from './nativeBridge';
+import {
+  listenFoundryWorkerMessages,
+  startFoundryTraining,
+  type FoundryNativeTrainingRequest,
+} from './nativeBridge';
 
 describe('Model Foundry TrainingRequestV2 bridge', () => {
   beforeEach(() => {
     invokeMock.mockReset();
+    listenMock.mockReset();
     invokeMock.mockResolvedValue({ id: 'job_native_1' });
   });
 
@@ -26,6 +35,7 @@ describe('Model Foundry TrainingRequestV2 bridge', () => {
       validationExamples: [{ prompt: 'Validation prompt', completion: 'Validation completion' }],
       trainingConfig: {
         method: 'lora',
+        computeDevice: 'gpu',
         seed: 23,
         epochs: 3,
         maxSteps: 77,
@@ -46,6 +56,7 @@ describe('Model Foundry TrainingRequestV2 bridge', () => {
     expect(invokeMock).toHaveBeenCalledWith('model_foundry_start_training', {
       request: expect.objectContaining({
         schemaVersion: 2,
+        projectId: 'project-1',
         datasetVersionId: 'dataset-v3',
         datasetJsonl: JSON.stringify({ prompt: 'Train prompt', completion: 'Train completion' }),
         validationDatasetJsonl: JSON.stringify({
@@ -56,6 +67,33 @@ describe('Model Foundry TrainingRequestV2 bridge', () => {
         targetModules: ['q_proj', 'v_proj'],
       }),
     });
+  });
+
+  it('preserves the owning project on native job updates', async () => {
+    const listener = vi.fn();
+    const unlisten = vi.fn();
+    let nativeListener: ((event: { payload: Record<string, unknown> }) => void) | undefined;
+    listenMock.mockImplementation(async (_eventName, callback) => {
+      nativeListener = callback;
+      return unlisten;
+    });
+
+    await expect(listenFoundryWorkerMessages(listener)).resolves.toBe(unlisten);
+    nativeListener?.({
+      payload: {
+        id: 'job_native_1',
+        projectId: 'project-1',
+        status: 'completed',
+        progress: 100,
+      },
+    });
+
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'project-1',
+        jobId: 'job_native_1',
+      }),
+    );
   });
 
   it('refuses an empty validation split instead of training without evaluation truth', async () => {
@@ -71,6 +109,7 @@ describe('Model Foundry TrainingRequestV2 bridge', () => {
       validationExamples: [],
       trainingConfig: {
         method: 'lora' as const,
+        computeDevice: 'gpu' as const,
         seed: 23,
         epochs: 3,
         batchSize: 2,

@@ -71,6 +71,8 @@ impl Drop for ActiveJobGuard {
 pub struct StartRequest {
     #[serde(default)]
     schema_version: Option<u8>,
+    #[serde(default)]
+    project_id: Option<String>,
     name: String,
     description: String,
     purpose: String,
@@ -122,6 +124,8 @@ fn default_planned_frames() -> u8 {
 #[serde(rename_all = "camelCase")]
 pub struct FoundryJob {
     id: String,
+    #[serde(default)]
+    project_id: Option<String>,
     name: String,
     base_model_id: String,
     method: String,
@@ -1712,6 +1716,10 @@ pub fn model_foundry_start_training(
     if request.schema_version.is_some_and(|version| version != 2) {
         return Err("Unsupported Model Foundry training request version.".into());
     }
+    if let Some(project_id) = request.project_id.as_deref() {
+        validated_job_id(project_id)
+            .map_err(|_| "Invalid Model Foundry project identifier.".to_string())?;
+    }
     if request.name.trim().is_empty() || request.name.chars().count() > 80 {
         return Err("Model name must contain 1 to 80 characters.".into());
     }
@@ -1880,6 +1888,7 @@ pub fn model_foundry_start_training(
     let timestamp = now();
     let job = FoundryJob {
         id,
+        project_id: request.project_id.clone(),
         name: request.name.clone(),
         base_model_id: request.base_model_id.clone(),
         method: request.method.clone(),
@@ -2453,6 +2462,7 @@ pub fn model_foundry_duplicate_artifact(
     let timestamp = now();
     let job = FoundryJob {
         id,
+        project_id: source_job.project_id,
         name: name.to_string(),
         base_model_id: artifact.base_model_id,
         method: source_job.method,
@@ -2929,6 +2939,7 @@ mod tests {
             .unwrap();
         let job = FoundryJob {
             id: "job_123456".into(),
+            project_id: Some("project-1".into()),
             name: "Release adapter".into(),
             base_model_id: "qwen2.5-1.5b-instruct".into(),
             method: "lora".into(),
@@ -2956,6 +2967,32 @@ mod tests {
     }
 
     #[test]
+    fn preserves_project_identity_in_serialized_job_events() {
+        let job = FoundryJob {
+            id: "job_123456".into(),
+            project_id: Some("project-123".into()),
+            name: "Release adapter".into(),
+            base_model_id: "qwen2.5-1.5b-instruct".into(),
+            method: "lora".into(),
+            status: "training".into(),
+            progress: 50,
+            artifact_path: None,
+            artifact_verified: false,
+            artifact_sha256: None,
+            storage_bytes: 0,
+            source_count: 1,
+            version: 1,
+            resume_available: false,
+            error: None,
+            created_at: "1".into(),
+            updated_at: "2".into(),
+        };
+
+        let serialized = serde_json::to_value(job).unwrap();
+        assert_eq!(serialized["projectId"], "project-123");
+    }
+
+    #[test]
     fn refuses_tampered_weight_artifacts_before_chat_activation() {
         let root = std::env::temp_dir().join(format!("vibespace-foundry-{}", nanoid::nanoid!()));
         let artifact = root.join("weight-artifact");
@@ -2967,6 +3004,7 @@ mod tests {
         fs::write(&weight, b"tampered adapter").unwrap();
         let job = FoundryJob {
             id: "job_123456".into(),
+            project_id: Some("project-1".into()),
             name: "Release adapter".into(),
             base_model_id: "qwen2.5-1.5b-instruct".into(),
             method: "lora".into(),

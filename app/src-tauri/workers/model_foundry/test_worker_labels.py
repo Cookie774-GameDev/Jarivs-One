@@ -43,6 +43,61 @@ class CompletionOnlyLabelsTests(unittest.TestCase):
         self.assertEqual(self.worker.completion_only_labels([], 5), [])
 
 
+class ExplicitTrainingDeviceTests(unittest.TestCase):
+    def setUp(self):
+        self.worker = load_worker()
+
+    def test_gpu_only_requires_cuda_and_never_falls_back_to_cpu(self):
+        fake_torch = type(
+            "FakeTorch",
+            (),
+            {"cuda": type("Cuda", (), {"is_available": staticmethod(lambda: False)})()},
+        )()
+        with self.assertRaisesRegex(ValueError, "GPU-only.*CUDA"):
+            self.worker._require_training_device(fake_torch, "gpu")
+
+    def test_cpu_only_is_explicit(self):
+        fake_torch = type(
+            "FakeTorch",
+            (),
+            {"cuda": type("Cuda", (), {"is_available": staticmethod(lambda: True)})()},
+        )()
+        self.assertEqual(self.worker._require_training_device(fake_torch, "cpu"), "cpu")
+
+
+class TrainingArgumentsCompatibilityTests(unittest.TestCase):
+    def setUp(self):
+        self.worker = load_worker()
+
+    def test_drops_only_the_removed_overwrite_output_dir_argument(self):
+        class CurrentTrainingArguments:
+            def __init__(self, output_dir, use_cpu=False):
+                del output_dir, use_cpu
+
+        self.assertEqual(
+            self.worker._compatible_training_arguments(
+                CurrentTrainingArguments,
+                {
+                    "output_dir": "D:/bounded-output",
+                    "use_cpu": False,
+                    "overwrite_output_dir": False,
+                },
+            ),
+            {"output_dir": "D:/bounded-output", "use_cpu": False},
+        )
+
+    def test_rejects_any_other_unexpected_training_argument(self):
+        class CurrentTrainingArguments:
+            def __init__(self, output_dir):
+                del output_dir
+
+        with self.assertRaisesRegex(ValueError, "unsupported training arguments"):
+            self.worker._compatible_training_arguments(
+                CurrentTrainingArguments,
+                {"output_dir": "D:/bounded-output", "silentFallback": True},
+            )
+
+
 class ExampleShapingTests(unittest.TestCase):
     def setUp(self):
         self.worker = load_worker()

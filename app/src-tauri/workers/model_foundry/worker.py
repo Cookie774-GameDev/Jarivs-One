@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import inspect
 import json
 import os
 import sys
@@ -43,6 +44,7 @@ ALLOWED_REQUEST_KEYS = frozenset(
 ALLOWED_TRAINING_CONFIG_KEYS = frozenset(
     (
         "method",
+        "computeDevice",
         "seed",
         "epochs",
         "maxSteps",
@@ -227,6 +229,7 @@ def _read_request(request_path: str) -> tuple[dict[str, Any], dict[str, Any]]:
             _fail("Training method and trainingConfig method must match.")
         config = {
             "method": method,
+            "computeDevice": _training_compute_device(raw_config.get("computeDevice")),
             "seed": _bounded_integer(raw_config.get("seed"), "seed", 0, 2**32 - 1),
             "epochs": _bounded_integer(raw_config.get("epochs"), "epochs", 1, 20),
             "maxSteps": (
@@ -267,6 +270,7 @@ def _read_request(request_path: str) -> tuple[dict[str, Any], dict[str, Any]]:
         )
         config = {
             "method": method,
+            "computeDevice": "gpu",
             "seed": 7,
             "epochs": epochs,
             "maxSteps": max_steps,
@@ -278,6 +282,8 @@ def _read_request(request_path: str) -> tuple[dict[str, Any], dict[str, Any]]:
             "loraAlpha": 32,
             "loraDropout": 0.05,
         }
+    if method == "qlora" and config["computeDevice"] != "gpu":
+        _fail("QLoRA requires computeDevice gpu.")
     target_modules = payload.get("targetModules")
     if target_modules is not None and (
         not isinstance(target_modules, list)
@@ -480,6 +486,8 @@ def train(request_path: str) -> int:
 
     method = str(request["method"])
     config = request["trainingConfig"]
+    training_device = _require_training_device(torch, str(config["computeDevice"]))
+    use_gpu = training_device == "gpu"
     model_path = str(request["baseModelPath"])
     output_dir = Path(str(request["outputDir"]))
     resume_checkpoint = request.get("resumeFromCheckpoint")
@@ -505,8 +513,6 @@ def train(request_path: str) -> int:
         "trust_remote_code": False,
     }
     if method == "qlora":
-        if not torch.cuda.is_available():
-            _fail("QLoRA requires a compatible local CUDA GPU.")
         try:
             from transformers import BitsAndBytesConfig
             import bitsandbytes  # noqa: F401
@@ -523,8 +529,10 @@ def train(request_path: str) -> int:
                 else torch.float16
             ),
         )
-        model_kwargs["device_map"] = "auto"
-    elif torch.cuda.is_available():
+        # `auto` may offload weights to host RAM. A GPU-only request must keep
+        # the complete trainable model on the selected CUDA device or fail.
+        model_kwargs["device_map"] = {"": 0}
+    elif use_gpu:
         model_kwargs["torch_dtype"] = (
             torch.bfloat16
             if hasattr(torch.cuda, "is_bf16_supported")
@@ -669,31 +677,39 @@ def train(request_path: str) -> int:
             return batch
     output_dir.mkdir(parents=True, exist_ok=bool(resume_checkpoint))
     use_bf16 = bool(
-        torch.cuda.is_available()
+        use_gpu
         and hasattr(torch.cuda, "is_bf16_supported")
         and torch.cuda.is_bf16_supported()
     )
     arguments = TrainingArguments(
-        output_dir=str(output_dir),
-        overwrite_output_dir=False,
-        num_train_epochs=float(config["epochs"]),
-        max_steps=(int(config["maxSteps"]) if config["maxSteps"] is not None else -1),
-        per_device_train_batch_size=int(config["batchSize"]),
-        per_device_eval_batch_size=int(config["batchSize"]),
-        gradient_accumulation_steps=int(config["gradientAccumulation"]),
-        learning_rate=float(config["learningRate"]),
-        seed=int(config["seed"]),
-        data_seed=int(config["seed"]),
-        do_eval=True,
-        eval_strategy="epoch",
-        logging_steps=1,
-        save_strategy="steps",
-        save_steps=max(1, min(50, int(config["maxSteps"] or 50))),
-        save_total_limit=2,
-        report_to=[],
-        dataloader_num_workers=0,
-        fp16=bool(torch.cuda.is_available() and not use_bf16),
-        bf16=use_bf16,
+        **_compatible_training_arguments(
+            TrainingArguments,
+            {
+                "output_dir": str(output_dir),
+                "overwrite_output_dir": False,
+                "num_train_epochs": float(config["epochs"]),
+                "max_steps": (
+                    int(config["maxSteps"]) if config["maxSteps"] is not None else -1
+                ),
+                "per_device_train_batch_size": int(config["batchSize"]),
+                "per_device_eval_batch_size": int(config["batchSize"]),
+                "gradient_accumulation_steps": int(config["gradientAccumulation"]),
+                "learning_rate": float(config["learningRate"]),
+                "seed": int(config["seed"]),
+                "data_seed": int(config["seed"]),
+                "do_eval": True,
+                "eval_strategy": "epoch",
+                "logging_steps": 1,
+                "save_strategy": "steps",
+                "save_steps": max(1, min(50, int(config["maxSteps"] or 50))),
+                "save_total_limit": 2,
+                "report_to": [],
+                "dataloader_num_workers": 0,
+                "use_cpu": not use_gpu,
+                "fp16": bool(use_gpu and not use_bf16),
+                "bf16": use_bf16,
+            },
+        )
     )
     trainer = Trainer(
         model=model,
@@ -730,7 +746,7 @@ def train(request_path: str) -> int:
                         "bf16"
                         if use_bf16
                         else "fp16"
-                        if torch.cuda.is_available()
+                        if use_gpu
                         else "fp32"
                     ),
                 },
@@ -982,6 +998,36 @@ def _absolute_path(value: Any, field: str) -> Path:
     if not path.is_absolute():
         _fail(f"{field} must be an absolute path.")
     return path.resolve(strict=False)
+
+
+def _training_compute_device(value: Any) -> str:
+    if value not in ("gpu", "cpu"):
+        _fail("computeDevice must be either gpu or cpu.")
+    return str(value)
+
+
+def _require_training_device(torch_module: Any, requested: str) -> str:
+    device = _training_compute_device(requested)
+    if device == "gpu" and not bool(torch_module.cuda.is_available()):
+        _fail("GPU-only training requires a compatible local CUDA GPU and runtime.")
+    return device
+
+
+def _compatible_training_arguments(
+    training_arguments_type: Any, requested: dict[str, Any]
+) -> dict[str, Any]:
+    parameters = inspect.signature(training_arguments_type.__init__).parameters
+    if any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()):
+        return dict(requested)
+    unsupported = set(requested) - set(parameters)
+    unexpected = unsupported - {"overwrite_output_dir"}
+    if unexpected:
+        _fail(
+            "The installed Transformers runtime has unsupported training arguments: "
+            + ", ".join(sorted(unexpected))
+            + "."
+        )
+    return {key: value for key, value in requested.items() if key not in unsupported}
 
 
 def _bounded_integer(value: Any, field: str, minimum: int, maximum: int) -> int:

@@ -6,14 +6,20 @@ import { isTauri } from '@/lib/utils';
 
 const MODEL_ID = /^([A-Za-z0-9_-]{1,64})--([A-Za-z0-9_-]{1,64})$/;
 
-function parseArtifactModelId(model: string): { projectId: string; jobId: string } {
+function parseArtifactModelId(model: string): {
+  projectId: string;
+  jobId: string;
+  nativeArtifact: boolean;
+} {
   const match = MODEL_ID.exec(model);
   if (!match) throw new Error('Choose a verified Foundry adapter before sending.');
-  return { projectId: match[1]!, jobId: match[2]! };
+  return { projectId: match[1]!, jobId: match[2]!, nativeArtifact: match[1] === 'artifact' };
 }
 
 function buildPrompt(req: LLMRequest): string {
-  const turns = req.messages.slice(-12).map((message) => `${message.role.toUpperCase()}: ${llmContentToText(message.content)}`);
+  const turns = req.messages
+    .slice(-12)
+    .map((message) => `${message.role.toUpperCase()}: ${llmContentToText(message.content)}`);
   return [req.agent.system_prompt?.trim(), ...turns, 'ASSISTANT:'].filter(Boolean).join('\n\n');
 }
 
@@ -23,9 +29,15 @@ export const foundryProvider: LLMProvider = {
   isAvailable: () => isTauri,
   async run(req): Promise<LLMResponse> {
     if (req.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    const { projectId, jobId } = parseArtifactModelId(req.agent.model.model);
-    if (typeof window === 'undefined' || !canRoutePromotedAdapter(window.localStorage, projectId, jobId)) {
-      throw new Error('Choose a promoted Foundry adapter that has passed its current local evaluation.');
+    const { projectId, jobId, nativeArtifact } = parseArtifactModelId(req.agent.model.model);
+    if (
+      !nativeArtifact &&
+      (typeof window === 'undefined' ||
+        !canRoutePromotedAdapter(window.localStorage, projectId, jobId))
+    ) {
+      throw new Error(
+        'Choose a promoted Foundry adapter that has passed its current local evaluation.',
+      );
     }
     const prompt = buildPrompt(req);
     const response = await generateFromFoundryArtifact({
@@ -39,7 +51,11 @@ export const foundryProvider: LLMProvider = {
     req.onChunk?.({ delta: '', done: true });
     return {
       text: response.text,
-      usage: { input_tokens: response.inputTokens || estimateInputTokens(prompt), output_tokens: response.outputTokens, cost_usd: 0 },
+      usage: {
+        input_tokens: response.inputTokens || estimateInputTokens(prompt),
+        output_tokens: response.outputTokens,
+        cost_usd: 0,
+      },
       provider: 'foundry',
       model: req.agent.model.model,
       finish_reason: 'stop',

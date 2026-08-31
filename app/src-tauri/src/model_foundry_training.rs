@@ -493,6 +493,8 @@ pub(crate) struct TrainingArtifactEvidence {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct TrainingConfiguration {
     pub(crate) method: String,
+    #[serde(default = "default_training_compute_device")]
+    pub(crate) compute_device: String,
     pub(crate) seed: u64,
     pub(crate) epochs: u8,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -510,6 +512,8 @@ impl TrainingConfiguration {
     pub(crate) fn validated(self, method: &str) -> Result<Self, String> {
         if self.method != method
             || !matches!(method, "lora" | "qlora" | "full")
+            || !matches!(self.compute_device.as_str(), "gpu" | "cpu")
+            || (method == "qlora" && self.compute_device != "gpu")
             || !(1..=20).contains(&self.epochs)
             || self
                 .max_steps
@@ -536,6 +540,7 @@ impl TrainingConfiguration {
     ) -> Result<Self, String> {
         Self {
             method: method.to_string(),
+            compute_device: default_training_compute_device(),
             seed: 7,
             epochs: epochs.unwrap_or(1),
             max_steps,
@@ -549,6 +554,10 @@ impl TrainingConfiguration {
         }
         .validated(method)
     }
+}
+
+fn default_training_compute_device() -> String {
+    "gpu".into()
 }
 
 #[derive(Debug, Serialize)]
@@ -2090,6 +2099,7 @@ mod tests {
     fn versioned_training_configuration_rejects_method_drift_and_unsafe_bounds() {
         let valid = TrainingConfiguration {
             method: "lora".into(),
+            compute_device: "gpu".into(),
             seed: 23,
             epochs: 3,
             max_steps: Some(77),
@@ -2103,6 +2113,12 @@ mod tests {
         };
         assert!(valid.clone().validated("lora").is_ok());
         assert!(valid.clone().validated("qlora").is_err());
+        assert!(TrainingConfiguration {
+            compute_device: "auto".into(),
+            ..valid.clone()
+        }
+        .validated("lora")
+        .is_err());
         assert!(TrainingConfiguration {
             batch_size: 0,
             ..valid

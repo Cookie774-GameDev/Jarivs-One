@@ -11,6 +11,7 @@ import {
   validateFoundryTrainingConfiguration,
   formatFoundryStorageBytes,
   foundryModelOptions,
+  foundryAgentModelSelection,
   newlyCompletedJobId,
   loadJobs,
   mayStartTraining,
@@ -44,6 +45,7 @@ describe('model foundry domain', () => {
   it('creates an explicit reproducible baseline instead of relying on worker defaults', () => {
     expect(defaultFoundryTrainingConfiguration('lora')).toEqual({
       method: 'lora',
+      computeDevice: 'gpu',
       seed: 7,
       epochs: 1,
       batchSize: 1,
@@ -64,6 +66,12 @@ describe('model foundry domain', () => {
         learningRate: Number.NaN,
       }),
     ).toMatch(/Learning rate/);
+    expect(
+      validateFoundryTrainingConfiguration({
+        ...defaultFoundryTrainingConfiguration('lora'),
+        computeDevice: 'auto' as 'gpu',
+      }),
+    ).toMatch(/training device/i);
   });
 
   it('applies real low-memory, balanced, and faster compute profiles', () => {
@@ -131,6 +139,76 @@ describe('model foundry domain', () => {
     expect(lowMemory.maximumHours).toBeGreaterThan(faster.maximumHours);
     expect(lowMemory.basis).toMatch(/2 measured examples/i);
     expect(lowMemory.disclaimer).toMatch(/calibrated prediction/i);
+  });
+
+  it('estimates the explicitly selected device and never treats GPU-only as a CPU fallback', () => {
+    const measurement = measureTrainingText('reviewed local sample');
+    const gpu = estimateFoundryTrainingDuration({
+      method: 'lora',
+      parametersB: 7,
+      configuration: {
+        ...defaultFoundryTrainingConfiguration('lora'),
+        computeDevice: 'gpu',
+      },
+      hardware: workstation,
+      measurement,
+    });
+    const cpu = estimateFoundryTrainingDuration({
+      method: 'lora',
+      parametersB: 7,
+      configuration: {
+        ...defaultFoundryTrainingConfiguration('lora'),
+        computeDevice: 'cpu',
+      },
+      hardware: workstation,
+      measurement,
+    });
+
+    expect(gpu.basis).toMatch(/selected GPU/i);
+    expect(cpu.basis).toMatch(/selected CPU/i);
+    expect(cpu.maximumHours).toBeGreaterThan(gpu.maximumHours);
+  });
+
+  it('preflights only the explicitly selected compute device', () => {
+    const worker = {
+      installed: true,
+      attested: true,
+      version: '1',
+      methods: ['lora', 'qlora', 'full'] as const,
+      modalities: ['text'] as const,
+      precisions: ['bf16', 'int4'] as const,
+    };
+    expect(
+      planLocalTrainingMethod({
+        method: 'lora',
+        parametersB: 0.135,
+        hardware: { ...workstation, vramGb: 0 },
+        worker,
+        computeDevice: 'gpu',
+      }).reason,
+    ).toMatch(/GPU-only/i);
+    expect(
+      validateFoundryTrainingConfiguration({
+        ...defaultFoundryTrainingConfiguration('qlora'),
+        computeDevice: 'cpu',
+      }),
+    ).toMatch(/QLoRA requires GPU-only/i);
+  });
+
+  it('exposes all four build modes when the verified worker attests every weight method', () => {
+    const worker = {
+      installed: true,
+      attested: true,
+      version: '1',
+      methods: ['lora', 'qlora', 'full'] as const,
+      modalities: ['text'] as const,
+      precisions: ['bf16', 'int4'] as const,
+    };
+    expect(
+      (['knowledge', 'lora', 'qlora', 'full'] as const).map(
+        (method) => modelFoundryMethodAvailability(method, worker).available,
+      ),
+    ).toEqual([true, true, true, true]);
   });
 
   it('recommends the strongest model that genuinely fits', () => {
@@ -323,6 +401,37 @@ describe('model foundry domain', () => {
     expect(result.fallbackMethod).toBeNull();
   });
 
+  it('sizes full-weight GPU requirements from the selected model instead of a workstation-class floor', () => {
+    const worker = {
+      installed: true,
+      attested: true,
+      version: '1.0.0',
+      methods: ['full'] as const,
+      modalities: ['text'] as const,
+      precisions: ['bf16'] as const,
+    };
+
+    expect(
+      planLocalTrainingMethod({
+        method: 'full',
+        parametersB: 0.135,
+        hardware: { ...workstation, vramGb: 6, ramGb: 16, freeStorageGb: 12 },
+        worker,
+        computeDevice: 'gpu',
+      }),
+    ).toMatchObject({ available: true, requiredVramGb: 4 });
+
+    expect(
+      planLocalTrainingMethod({
+        method: 'full',
+        parametersB: 1,
+        hardware: { ...workstation, vramGb: 6, ramGb: 16, freeStorageGb: 40 },
+        worker,
+        computeDevice: 'gpu',
+      }),
+    ).toMatchObject({ available: false, requiredVramGb: 16 });
+  });
+
   it('fails closed when the local training worker is missing or unattested', () => {
     expect(
       planLocalTrainingMethod({
@@ -423,16 +532,43 @@ describe('model foundry domain', () => {
       ]),
     ).toEqual([
       {
-        id: 'foundry:job_12345',
+        id: 'artifact--job_12345',
         label: 'Release specialist',
         subtitle: 'Verified local knowledge · Qwen 2.5 1.5B Instruct',
       },
       {
-        id: 'foundry:job_weight',
+        id: 'artifact--job_weight',
         label: 'Release adapter',
         subtitle: 'Verified local LoRA model · Qwen 2.5 1.5B Instruct',
       },
     ]);
+  });
+
+  it('builds a dedicated Foundry selection only for a verified completed native artifact', () => {
+    const completed = {
+      id: 'job_12345',
+      name: 'Release specialist',
+      baseModelId: TRAINABLE_MODELS[0].id,
+      method: 'knowledge' as const,
+      progress: 100,
+      artifactPath: 'C:\\private\\artifact.json',
+      artifactVerified: true,
+      status: 'completed' as const,
+      createdAt: '1',
+      updatedAt: '2',
+    };
+
+    expect(foundryAgentModelSelection(completed)).toEqual({
+      providerChoice: 'foundry',
+      provider: 'foundry',
+      model: 'artifact--job_12345',
+    });
+    expect(() => foundryAgentModelSelection({ ...completed, artifactVerified: false })).toThrow(
+      /verified completed/i,
+    );
+    expect(() => foundryAgentModelSelection({ ...completed, id: '../escape' })).toThrow(
+      /identity/i,
+    );
   });
 
   it('fails closed when the native job response is malformed', () => {

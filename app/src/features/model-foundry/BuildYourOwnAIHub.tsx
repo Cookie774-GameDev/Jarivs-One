@@ -329,6 +329,7 @@ export function BuildYourOwnAIHub({
         parametersB: item.model.parametersB,
         hardware,
         worker: trainingWorkerCapability,
+        computeDevice: trainingConfig.computeDevice,
       });
       return {
         ...item,
@@ -342,7 +343,7 @@ export function BuildYourOwnAIHub({
       .sort((left, right) => right.model.parametersB - left.model.parametersB)[0];
     if (best) best.recommended = true;
     return planned;
-  }, [availableModels, hardware, method, trainingWorkerCapability]);
+  }, [availableModels, hardware, method, trainingConfig.computeDevice, trainingWorkerCapability]);
   const validationError = mayStartTraining({
     name,
     model: selectedModel,
@@ -350,6 +351,7 @@ export function BuildYourOwnAIHub({
     hardware,
     sources,
     worker: trainingWorkerCapability,
+    configuration: method === 'knowledge' ? undefined : trainingConfig,
   });
   const selectedModelInstalled =
     method === 'knowledge'
@@ -416,14 +418,16 @@ export function BuildYourOwnAIHub({
     setTrainingConfig((current) => ({ ...current, ...update }));
   };
 
-  const setupWeightTraining = async () => {
+  const setupWeightTraining = async (includeQlora = true) => {
     setTrainingSetupBusy(true);
     setTrainingSetupError(null);
     try {
       setResolvedTrainingWorker(
         await installLocalTrainingWorker({
-          includeQlora: true,
-          ...(requestedStorageRoot ? { storageRoot: requestedStorageRoot } : {}),
+          includeQlora,
+          ...((requestedStorageRoot ?? hardware.recommendedStorageRoot)
+            ? { storageRoot: (requestedStorageRoot ?? hardware.recommendedStorageRoot)! }
+            : {}),
         }),
       );
       setHardware(await detectHardware());
@@ -957,12 +961,15 @@ export function BuildYourOwnAIHub({
                     <button
                       key={id}
                       type="button"
-                      disabled={!availability.available}
+                      disabled={trainingSetupBusy}
                       onClick={() => {
                         setMethod(id);
                         if (id !== 'knowledge') {
                           setComputePresetId('balanced');
                           setTrainingConfig(defaultFoundryTrainingConfiguration(id));
+                          if (!availability.available) {
+                            void setupWeightTraining(id === 'qlora');
+                          }
                         }
                       }}
                       className={cn(
@@ -1322,6 +1329,47 @@ export function BuildYourOwnAIHub({
                       Start with a profile, then use Advanced settings only if you want exact
                       control.
                     </p>
+                    <div className="mt-3" role="group" aria-label="Training device">
+                      <p className="text-metadata font-medium text-muted-foreground">
+                        Model compute device
+                      </p>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {(
+                          [
+                            [
+                              'gpu',
+                              'GPU only',
+                              'Requires CUDA and never falls back to CPU training.',
+                            ],
+                            ['cpu', 'CPU only', 'Uses CPU training even when a GPU is present.'],
+                          ] as const
+                        ).map(([device, label, copy]) => (
+                          <button
+                            key={device}
+                            type="button"
+                            disabled={method === 'qlora' && device === 'cpu'}
+                            aria-pressed={trainingConfig.computeDevice === device}
+                            onClick={() =>
+                              setTrainingConfig((current) => ({
+                                ...current,
+                                computeDevice: device,
+                              }))
+                            }
+                            className={cn(
+                              'rounded-lg border p-3 text-left transition-colors',
+                              trainingConfig.computeDevice === device
+                                ? 'border-accent-cyan bg-accent-cyan/10'
+                                : 'border-border hover:bg-muted',
+                            )}
+                          >
+                            <strong className="block">{label}</strong>
+                            <span className="mt-1 block text-metadata text-muted-foreground">
+                              {copy}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <div className="mt-3 grid gap-2 sm:grid-cols-3">
                       {TRAINING_COMPUTE_PRESETS.map((preset) => (
                         <button

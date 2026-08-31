@@ -185,7 +185,7 @@ export function FoundryPage({ storage = browserStorage, dependencies = defaultDe
   const previousMetadataSyncEnabled = React.useRef(metadataSyncEnabled);
   const [showCustomCreator, setShowCustomCreator] = React.useState(false);
   const [customDraft, setCustomDraft] = React.useState({ name: '', purpose: '', input: '', output: '', constraints: '', language: 'English', forbiddenAction: 'invent unsupported facts or actions', commercialIntent: 'personal' as SpecialistDefinition['commercialIntent'], latencyMs: 8000, memoryMb: 1024, threshold: 0.8 });
-  const [realConfig, setRealConfig] = React.useState({ method: 'lora' as 'lora' | 'qlora', seed: 7, epochs: 1, batchSize: 1, gradientAccumulation: 4, maxSequenceLength: 256, learningRate: 0.0002, loraRank: 8, loraAlpha: 16, loraDropout: 0.05 });
+  const [realConfig, setRealConfig] = React.useState({ method: 'lora' as 'lora' | 'qlora', computeDevice: 'gpu' as const, seed: 7, epochs: 1, batchSize: 1, gradientAccumulation: 4, maxSequenceLength: 256, learningRate: 0.0002, loraRank: 8, loraAlpha: 16, loraDropout: 0.05 });
   const projectId = snapshot?.project.id;
 
   const persistProjectCatalog = React.useCallback((next: readonly ProjectSnapshot[]) => {

@@ -45,6 +45,7 @@ class TrainingRequestV2Tests(unittest.TestCase):
             "maxSteps": 77,
             "trainingConfig": {
                 "method": "lora",
+                "computeDevice": "gpu",
                 "seed": 23,
                 "epochs": 3,
                 "maxSteps": 77,
@@ -68,6 +69,7 @@ class TrainingRequestV2Tests(unittest.TestCase):
         self.assertEqual(normalized["trainingConfig"]["gradientAccumulation"], 8)
         self.assertEqual(normalized["trainingConfig"]["learningRate"], 0.00008)
         self.assertEqual(normalized["trainingConfig"]["loraRank"], 32)
+        self.assertEqual(normalized["trainingConfig"]["computeDevice"], "gpu")
         self.assertEqual(normalized["targetModules"], ["q_proj", "v_proj"])
         self.assertEqual(normalized["validationDatasetPath"], str(self.validation.resolve()))
         self.assertEqual(summary["validationExamples"], 1)
@@ -86,6 +88,14 @@ class TrainingRequestV2Tests(unittest.TestCase):
         self.request_path.write_text(json.dumps(request), encoding="utf-8")
 
         with self.assertRaisesRegex(ValueError, "closed trainingConfig"):
+            _read_request(str(self.request_path))
+
+    def test_rejects_an_implicit_or_unknown_training_device(self) -> None:
+        request = self.request()
+        request["trainingConfig"]["computeDevice"] = "auto"  # type: ignore[index]
+        self.request_path.write_text(json.dumps(request), encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "computeDevice"):
             _read_request(str(self.request_path))
 
     def test_accepts_hash_verified_media_only_for_declared_model_modality(self) -> None:

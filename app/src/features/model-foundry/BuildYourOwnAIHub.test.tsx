@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BuildYourOwnAIHub } from './BuildYourOwnAIHub';
 import { saveJobs, TRAINABLE_MODELS } from './modelHub';
-import type { VerifiedTrainingModel } from './trainingRuntime';
+import type { LocalTrainingWorkerStatus, VerifiedTrainingModel } from './trainingRuntime';
 
 const tauriInvoke = vi.hoisted(() => vi.fn());
 const getTrainingWorkerStatus = vi.hoisted(() => vi.fn());
@@ -244,25 +244,102 @@ describe('BuildYourOwnAIHub', () => {
     expect(getTrainingWorkerStatus).toHaveBeenCalledTimes(1);
   });
 
-  it('disables training methods without an installed verified worker', async () => {
+  it('automatically installs the verified worker when a weight-training method is selected', async () => {
+    installTrainingWorker.mockResolvedValue({
+      installed: true,
+      attested: true,
+      localOnly: true,
+      protocol: 1,
+      sourceSha256: 'a'.repeat(64),
+      python: 'python',
+      methods: ['lora', 'full'],
+      modalities: ['text'],
+      precisions: ['bf16'],
+      reason: null,
+    });
     render(<BuildYourOwnAIHub open onOpenChange={vi.fn()} />);
 
-    expect(
-      (screen.getByRole('button', { name: /^LoRA fine-tuning/i }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    expect(
-      (screen.getByRole('button', { name: /^QLoRA fine-tuning/i }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    expect(
-      (
-        screen.getByRole('button', {
-          name: /Advanced full fine-tuning/i,
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
-    expect(
-      screen.getAllByText(/verified local training worker is not installed/i).length,
-    ).toBeGreaterThan(0);
+    const lora = screen.getByRole('button', { name: /^LoRA fine-tuning/i });
+    expect((lora as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(lora);
+
+    await waitFor(() =>
+      expect(installTrainingWorker).toHaveBeenCalledWith({ includeQlora: false }),
+    );
+  });
+
+  it('requests the CUDA QLoRA worker automatically only for QLoRA', async () => {
+    installTrainingWorker.mockResolvedValue({
+      installed: true,
+      attested: true,
+      localOnly: true,
+      protocol: 1,
+      sourceSha256: 'a'.repeat(64),
+      python: 'python',
+      methods: ['lora', 'qlora', 'full'],
+      modalities: ['text'],
+      precisions: ['bf16', 'int4'],
+      reason: null,
+    });
+    render(<BuildYourOwnAIHub open onOpenChange={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^QLoRA fine-tuning/i }));
+
+    await waitFor(() => expect(installTrainingWorker).toHaveBeenCalledWith({ includeQlora: true }));
+  });
+
+  it('lets users choose GPU-only or CPU-only training and keeps QLoRA GPU-only', async () => {
+    const worker: LocalTrainingWorkerStatus = {
+      installed: true,
+      attested: true,
+      localOnly: true,
+      protocol: 1,
+      sourceSha256: 'a'.repeat(64),
+      python: 'python',
+      methods: ['lora', 'qlora', 'full'],
+      modalities: ['text'],
+      precisions: ['bf16', 'int4'],
+      reason: null,
+    };
+    const view = render(
+      <BuildYourOwnAIHub
+        open
+        onOpenChange={vi.fn()}
+        trainingWorker={worker}
+        verifiedTrainingModels={[{ ...verifiedModel, installed: true, verified: true }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^LoRA fine-tuning/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    const gpuOnly = screen.getByRole('button', { name: /^GPU only/i });
+    const cpuOnly = screen.getByRole('button', { name: /^CPU only/i });
+    expect(gpuOnly.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(cpuOnly);
+    expect(cpuOnly.getAttribute('aria-pressed')).toBe('true');
+    expect(gpuOnly.getAttribute('aria-pressed')).toBe('false');
+
+    view.unmount();
+    render(
+      <BuildYourOwnAIHub
+        open
+        onOpenChange={vi.fn()}
+        trainingWorker={worker}
+        verifiedTrainingModels={[{ ...verifiedModel, installed: true, verified: true }]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^QLoRA fine-tuning/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByRole('button', { name: /^GPU only/i }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    expect((screen.getByRole('button', { name: /^CPU only/i }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
   });
 
   it('activates only a verified completed artifact', () => {
