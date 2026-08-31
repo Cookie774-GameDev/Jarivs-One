@@ -110,6 +110,20 @@ describe('chatWorkspaceLayout', () => {
     );
   });
 
+  it('uses collision-free tagged scope segments for null, sentinels, and delimiters', () => {
+    const variants: ChatWorkspaceScope[] = [
+      { ...scope, projectId: null },
+      { ...scope, projectId: '~' },
+      { ...scope, projectId: 'null:' },
+      { ...scope, projectId: 'value:project:a:b' },
+      { ...scope, accountId: 'account:a', projectId: null },
+      { ...scope, workspaceId: 'workspace:a', projectId: null },
+    ];
+    const keys = variants.map(chatWorkspaceStorageKey);
+
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
   it('recovers corrupt, unsupported, duplicate, and empty persisted state to the primary pane', () => {
     const key = chatWorkspaceStorageKey(scope);
     for (const stored of [
@@ -136,6 +150,27 @@ describe('chatWorkspaceLayout', () => {
       focusedChatId: 'chat-1',
     });
     expect(pruneChatWorkspaceLayout(layout, ['chat-1'], 'chat-1')).toEqual(onePane);
+    expect(pruneChatWorkspaceLayout(layout, [], 'chat-1')).toBeNull();
+  });
+
+  it('treats throwing storage as unavailable without breaking the in-memory layout', () => {
+    const throwingStorage = {
+      getItem: vi.fn(() => {
+        throw new Error('disabled');
+      }),
+      setItem: vi.fn(() => {
+        throw new Error('quota');
+      }),
+      removeItem: vi.fn(() => {
+        throw new Error('disabled');
+      }),
+    };
+
+    expect(loadChatWorkspaceLayout(scope, throwingStorage)).toEqual(onePane);
+    expect(saveChatWorkspaceLayout(scope, onePane, throwingStorage)).toEqual({
+      ok: false,
+      reason: 'storage_unavailable',
+    });
   });
 
   it('replaces the primary pane for global navigation without disturbing other bindings', () => {

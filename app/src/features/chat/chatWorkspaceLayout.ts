@@ -18,6 +18,9 @@ export type ChatWorkspaceLayoutV1 = Readonly<{
 export type AddChatPaneResult =
   ChatWorkspaceLayoutV1 | Readonly<{ ok: false; reason: 'pane_limit' }>;
 
+export type SaveChatWorkspaceLayoutResult =
+  Readonly<{ ok: true }> | Readonly<{ ok: false; reason: 'storage_unavailable' }>;
+
 type WorkspaceStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 const SAFE_CHAT_ID = /^[^\u0000-\u001f\u007f]{1,512}$/;
@@ -66,7 +69,9 @@ function availableStorage(storage?: WorkspaceStorage): WorkspaceStorage | undefi
 }
 
 function scopePart(value: string | null): string {
-  return value === null ? '~' : encodeURIComponent(value);
+  if (value === null) return 'null:0:';
+  const encoded = encodeURIComponent(value);
+  return `value:${encoded.length}:${encoded}`;
 }
 
 export function chatWorkspaceStorageKey(
@@ -88,7 +93,12 @@ export function loadChatWorkspaceLayout(
   const target = availableStorage(storage);
   if (!target) return fallback;
   const key = chatWorkspaceStorageKey(scope);
-  const stored = target.getItem(key);
+  let stored: string | null;
+  try {
+    stored = target.getItem(key);
+  } catch {
+    return fallback;
+  }
   if (!stored) return fallback;
   try {
     const parsed = parseLayout(JSON.parse(stored));
@@ -96,7 +106,11 @@ export function loadChatWorkspaceLayout(
   } catch {
     // Corrupt local state is discarded below and never blocks Chat startup.
   }
-  target.removeItem(key);
+  try {
+    target.removeItem(key);
+  } catch {
+    // Disabled storage is equivalent to no storage; the fallback remains usable.
+  }
   return fallback;
 }
 
@@ -104,13 +118,17 @@ export function saveChatWorkspaceLayout(
   scope: ChatWorkspaceScope,
   layout: ChatWorkspaceLayoutV1,
   storage?: WorkspaceStorage,
-): void {
+): SaveChatWorkspaceLayoutResult {
   const parsed = parseLayout(layout);
   if (!parsed) throw new Error('Invalid chat workspace layout.');
   const target = availableStorage(storage);
-  if (!target) return;
+  if (!target) return { ok: false, reason: 'storage_unavailable' };
   const key = chatWorkspaceStorageKey(scope);
-  target.setItem(key, JSON.stringify(parsed));
+  try {
+    target.setItem(key, JSON.stringify(parsed));
+  } catch {
+    return { ok: false, reason: 'storage_unavailable' };
+  }
   if (typeof window !== 'undefined' && target === window.localStorage) {
     window.dispatchEvent(
       new CustomEvent(CHAT_WORKSPACE_LAYOUT_STORAGE_EVENT, {
@@ -118,6 +136,7 @@ export function saveChatWorkspaceLayout(
       }),
     );
   }
+  return { ok: true };
 }
 
 export function addChatPane(layout: ChatWorkspaceLayoutV1, chatId: string): AddChatPaneResult {
@@ -171,10 +190,10 @@ export function pruneChatWorkspaceLayout(
   layout: ChatWorkspaceLayoutV1,
   accessibleChatIds: readonly string[],
   primaryChatId: string,
-): ChatWorkspaceLayoutV1 {
+): ChatWorkspaceLayoutV1 | null {
   const accessible = new Set(accessibleChatIds);
   const chatIds = layout.chatIds.filter((chatId) => accessible.has(chatId));
-  if (chatIds.length === 0) return defaultLayout(primaryChatId);
+  if (chatIds.length === 0) return null;
   const focusedChatId = chatIds.includes(layout.focusedChatId)
     ? layout.focusedChatId
     : chatIds.includes(primaryChatId)

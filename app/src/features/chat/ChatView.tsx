@@ -130,6 +130,12 @@ export function ChatView() {
       : null;
   const layoutRef = useRef(workspaceLayout);
   layoutRef.current = workspaceLayout;
+  const activeScopeKeyRef = useRef(scopeKey);
+  const operationEpochRef = useRef(0);
+  if (activeScopeKeyRef.current !== scopeKey) {
+    activeScopeKeyRef.current = scopeKey;
+    operationEpochRef.current += 1;
+  }
 
   const accessibleChats = useLiveQuery(
     () =>
@@ -147,10 +153,12 @@ export function ChatView() {
 
   const commitLayout = useCallback(
     (next: ChatWorkspaceLayoutV1) => {
-      if (!scope || !scopeKey) return;
+      if (!scope || !scopeKey || activeScopeKeyRef.current !== scopeKey) return false;
+      operationEpochRef.current += 1;
       layoutRef.current = next;
       setLayoutState({ key: scopeKey, layout: next });
       saveChatWorkspaceLayout(scope, next);
+      return true;
     },
     [scope, scopeKey],
   );
@@ -170,6 +178,8 @@ export function ChatView() {
   useEffect(() => {
     if (!scope || !scopeKey) return;
     return subscribeChatWorkspaceLayout(scope, (layout) => {
+      if (activeScopeKeyRef.current !== scopeKey) return;
+      operationEpochRef.current += 1;
       layoutRef.current = layout;
       setLayoutState({ key: scopeKey, layout });
     });
@@ -177,18 +187,48 @@ export function ChatView() {
 
   useEffect(() => {
     if (!activeChatId || !workspaceLayout || visualChatFixture) return;
+    if (
+      accessibleChats !== undefined &&
+      !accessibleChats.some((chat) => String(chat.id) === String(activeChatId))
+    )
+      return;
     const next = replacePrimaryChatPane(workspaceLayout, String(activeChatId));
     if (!sameLayout(workspaceLayout, next)) commitLayout(next);
-  }, [activeChatId, commitLayout, visualChatFixture, workspaceLayout]);
+  }, [accessibleChats, activeChatId, commitLayout, visualChatFixture, workspaceLayout]);
 
   useEffect(() => {
     if (!activeChatId || !workspaceLayout || accessibleChats === undefined || visualChatFixture)
       return;
     const accessibleIds = accessibleChats.map((chat) => String(chat.id));
-    if (!accessibleIds.includes(String(activeChatId))) accessibleIds.push(String(activeChatId));
-    const next = pruneChatWorkspaceLayout(workspaceLayout, accessibleIds, String(activeChatId));
+    const activeIsAccessible = accessibleIds.includes(String(activeChatId));
+    const fallbackChatId = activeIsAccessible ? String(activeChatId) : accessibleIds[0];
+    const pruned = pruneChatWorkspaceLayout(workspaceLayout, accessibleIds, fallbackChatId);
+    const next =
+      pruned ??
+      (fallbackChatId
+        ? ({
+            version: 1,
+            chatIds: [fallbackChatId],
+            focusedChatId: fallbackChatId,
+          } satisfies ChatWorkspaceLayoutV1)
+        : null);
+    if (!next) {
+      operationEpochRef.current += 1;
+      layoutRef.current = null;
+      setLayoutState(null);
+      setActiveChat(null);
+      return;
+    }
     if (!sameLayout(workspaceLayout, next)) commitLayout(next);
-  }, [accessibleChats, activeChatId, commitLayout, visualChatFixture, workspaceLayout]);
+    if (!activeIsAccessible) setActiveChat(next.focusedChatId);
+  }, [
+    accessibleChats,
+    activeChatId,
+    commitLayout,
+    setActiveChat,
+    visualChatFixture,
+    workspaceLayout,
+  ]);
 
   useEffect(() => {
     if (!isTauri || !activeChatId) return;
@@ -259,20 +299,13 @@ export function ChatView() {
   }, [accessibleChats, visualChatFixture]);
 
   const openBeside = useCallback(
-    async (
-      payload: ChatDragPayloadV1,
-      destinationChatId: string,
-    ): Promise<ChatWorkspaceOpenResult> => {
+    async (payload: unknown, destinationChatId: string): Promise<ChatWorkspaceOpenResult> => {
       const current = layoutRef.current;
-      if (!current) return { ok: false, reason: 'chat_unavailable' };
-      if (current.chatIds.includes(payload.chatId)) {
-        const next = focusChatPane(current, payload.chatId);
-        commitLayout(next);
-        setActiveChat(payload.chatId);
-        return { ok: true, paneCount: next.chatIds.length };
-      }
+      const startScopeKey = activeScopeKeyRef.current;
+      const startEpoch = operationEpochRef.current;
+      if (!current || !startScopeKey) return { ok: false, reason: 'chat_unavailable' };
       const accepted = await resolveAcceptedChatDrop(
-        { payload, targetChatId: destinationChatId },
+        { payload: payload as ChatDragPayloadV1, targetChatId: destinationChatId },
         {
           getChat: (id) => chatRepo.getById(id as ChatId),
           canAccess: (source, target) =>
@@ -282,17 +315,52 @@ export function ChatView() {
             String(source.project_id ?? '') === String(projectId ?? ''),
         },
       );
+      let canonicalChat;
       if (!accepted.ok) {
+        if (accepted.reason === 'same_chat') {
+          const parsedPayload = payload as ChatDragPayloadV1;
+          const target = await chatRepo.getById(destinationChatId as ChatId);
+          if (
+            !target ||
+            target.archived ||
+            String(target.workspace_id) !== String(workspaceId ?? '') ||
+            String(target.project_id ?? '') !== String(projectId ?? '') ||
+            String(target.workspace_id) !== parsedPayload.workspaceId ||
+            (target.project_id ? String(target.project_id) : null) !== parsedPayload.projectId
+          ) {
+            return { ok: false, reason: 'chat_unavailable' };
+          }
+          canonicalChat = target;
+        } else {
+          return { ok: false, reason: accepted.reason };
+        }
+      } else {
+        canonicalChat = accepted.chat;
+      }
+      if (
+        activeScopeKeyRef.current !== startScopeKey ||
+        operationEpochRef.current !== startEpoch ||
+        layoutRef.current !== current
+      ) {
         return {
           ok: false,
-          reason: accepted.reason === 'same_chat' ? 'invalid_payload' : accepted.reason,
+          reason: 'chat_unavailable',
         };
       }
-      const next = addChatPane(layoutRef.current ?? current, String(accepted.chat.id));
-      if ('ok' in next) return next;
-      commitLayout(next);
+      const canonicalId = String(canonicalChat.id);
+      const source = {
+        chatId: canonicalId,
+        title: canonicalChat.title?.trim() || 'Untitled chat',
+      };
+      const action = current.chatIds.includes(canonicalId) ? 'focused_existing' : 'opened';
+      const next =
+        action === 'focused_existing'
+          ? focusChatPane(current, canonicalId)
+          : addChatPane(current, canonicalId);
+      if ('ok' in next) return { ...next, source };
+      if (!commitLayout(next)) return { ok: false, reason: 'chat_unavailable' };
       setActiveChat(next.focusedChatId);
-      return { ok: true, paneCount: next.chatIds.length };
+      return { ok: true, paneCount: next.chatIds.length, action, source };
     },
     [commitLayout, projectId, setActiveChat, workspaceId],
   );
@@ -303,7 +371,25 @@ export function ChatView() {
         chatIds: [visualChatFixture.activeConversationId],
         focusedChatId: visualChatFixture.activeConversationId,
       } satisfies ChatWorkspaceLayoutV1)
-    : workspaceLayout;
+    : accessibleChats === undefined
+      ? workspaceLayout
+      : (() => {
+          if (!workspaceLayout) return null;
+          const accessibleIds = accessibleChats.map((chat) => String(chat.id));
+          const fallbackChatId = accessibleIds.includes(String(activeChatId))
+            ? String(activeChatId)
+            : accessibleIds[0];
+          return (
+            pruneChatWorkspaceLayout(workspaceLayout, accessibleIds, fallbackChatId) ??
+            (fallbackChatId
+              ? ({
+                  version: 1,
+                  chatIds: [fallbackChatId],
+                  focusedChatId: fallbackChatId,
+                } satisfies ChatWorkspaceLayoutV1)
+              : null)
+          );
+        })();
   const focusedChatId = effectiveLayout?.focusedChatId ?? activeChatId ?? undefined;
 
   return (

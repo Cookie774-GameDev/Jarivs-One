@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Chat } from '@/types/chat';
+import { useAuthStore } from '@/stores/auth';
 import { useUIStore } from '@/stores/ui';
 import { VIBESPACE_CHAT_MIME, CHAT_OPEN_BESIDE_EVENT } from './chatDragPayload';
 import { chatWorkspaceStorageKey } from './chatWorkspaceLayout';
@@ -12,43 +13,55 @@ const chats = vi.hoisted(() =>
     workspace_id: 'workspace-a' as Chat['workspace_id'],
     project_id: 'project-a' as NonNullable<Chat['project_id']>,
     title: `Chat ${index + 1}`,
-    mode: 'chat',
+    mode: 'chat' as const,
     active_agent_ids: [],
     created_at: index + 1,
     updated_at: index + 1,
   })),
 );
 
-vi.mock('dexie-react-hooks', () => ({ useLiveQuery: () => chats }));
-
-vi.mock('@/stores/auth', () => ({
-  useAuthStore: (selector: (state: object) => unknown) =>
-    selector({
-      localUserId: 'account-a',
-      cloudSession: null,
-      workspaceId: 'workspace-a',
-      projectId: 'project-a',
-    }),
+const testState = vi.hoisted(() => ({
+  liveChats: undefined as unknown[] | undefined,
+  getChat: vi.fn(),
+  listMessages: vi.fn(),
+  ensureActiveChat: vi.fn(),
 }));
 
-vi.mock('@/lib/db', () => ({
-  chatRepo: {
-    list: vi.fn(async () => chats),
-    getById: vi.fn(async (id: string) => chats.find((chat) => String(chat.id) === String(id))),
-  },
-}));
+vi.mock('dexie-react-hooks', () => ({ useLiveQuery: () => testState.liveChats }));
 
-vi.mock('./chatLifecycle', () => ({ ensureActiveChat: vi.fn() }));
+vi.mock('@/lib/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/db')>();
+  return {
+    ...actual,
+    chatRepo: {
+      ...actual.chatRepo,
+      list: vi.fn(async () => testState.liveChats),
+      getById: (...args: unknown[]) => testState.getChat(...args),
+    },
+    messageRepo: {
+      ...actual.messageRepo,
+      listByChat: (...args: unknown[]) => testState.listMessages(...args),
+    },
+  };
+});
+
+vi.mock('./chatLifecycle', () => ({ ensureActiveChat: () => testState.ensureActiveChat() }));
 vi.mock('./ChatThread', () => ({
   ChatThread: ({ chatId }: { chatId: string }) => (
     <div data-testid={`thread-${chatId}`} data-chat-id={chatId} />
   ),
 }));
-vi.mock('./Composer', () => ({
-  Composer: ({ chatId }: { chatId: string }) => (
-    <div data-testid={`composer-${chatId}`} data-chat-id={chatId} />
-  ),
-}));
+vi.mock('./HarnessReadinessGate', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./HarnessReadinessGate')>();
+  return {
+    ...actual,
+    useHarnessRuntimeState: () => ({
+      kind: 'ready' as const,
+      source: 'managed' as const,
+      version: 'test-runtime',
+    }),
+  };
+});
 vi.mock('@/features/browser/BrowserGoalStatus', () => ({
   BrowserGoalStatus: ({ chatId }: { chatId: string }) => (
     <div data-testid={`goal-${chatId}`} data-chat-id={chatId} />
@@ -62,7 +75,11 @@ vi.mock('@/features/browser-chat', () => ({
 vi.mock('./OrigamiChatDecor', () => ({ OrigamiChatDecor: () => null }));
 vi.mock('./WarmChatWelcome', () => ({ WarmChatWelcome: () => null }));
 vi.mock('./TokenBossCinematic', () => ({ TokenBossCinematic: () => null }));
-vi.mock('./ChatOutputPanel', () => ({ ChatOutputPanel: () => null }));
+vi.mock('./ChatOutputPanel', () => ({
+  ChatOutputPanel: ({ chatId, open }: { chatId: string; open: boolean }) => (
+    <div data-testid={`output-${chatId}`} data-open={String(open)} />
+  ),
+}));
 vi.mock('./EmptyChat', () => ({ EmptyChat: () => <div data-testid="empty-chat" /> }));
 
 function typedTransfer(chatId: string) {
@@ -83,15 +100,47 @@ function typedTransfer(chatId: string) {
   };
 }
 
+function openBesideDetail(chatId: string, title = `Forged ${chatId}`) {
+  return {
+    version: 1,
+    chatId,
+    workspaceId: 'workspace-a',
+    projectId: 'project-a',
+    title,
+  };
+}
+
 const scope = {
   accountId: 'account-a',
   workspaceId: 'workspace-a',
   projectId: 'project-a',
 };
 
+async function settleComposerEffects() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 describe('ChatView handoff workspace integration', () => {
   beforeEach(() => {
     localStorage.clear();
+    testState.liveChats = chats;
+    testState.getChat.mockReset();
+    testState.getChat.mockImplementation(async (id: string) =>
+      chats.find((chat) => String(chat.id) === String(id)),
+    );
+    testState.listMessages.mockReset();
+    testState.listMessages.mockResolvedValue([]);
+    testState.ensureActiveChat.mockReset();
+    testState.ensureActiveChat.mockResolvedValue(null);
+    useAuthStore.setState({
+      localUserId: 'account-a',
+      cloudSession: null,
+      workspaceId: 'workspace-a' as never,
+      projectId: 'project-a' as never,
+    });
     useUIStore.setState({ activeChatId: 'chat-1' });
     delete document.documentElement.dataset.monochromeChatState;
     delete document.documentElement.dataset.monochromeChatFixture;
@@ -103,6 +152,7 @@ describe('ChatView handoff workspace integration', () => {
 
   it('opens a typed conversation-area drop beside the current chat and restores it from persistence', async () => {
     const first = render(<ChatView />);
+    await settleComposerEffects();
 
     fireEvent.drop(screen.getByTestId('chat-conversation-region-chat-1'), {
       dataTransfer: typedTransfer('chat-2'),
@@ -117,18 +167,32 @@ describe('ChatView handoff workspace integration', () => {
     });
 
     first.unmount();
-    render(<ChatView />);
+    const restored = render(<ChatView />);
+    await settleComposerEffects();
     expect(screen.getAllByTestId(/^chat-pane-/)).toHaveLength(2);
-    expect(screen.getByTestId('composer-chat-1').getAttribute('data-chat-id')).toBe('chat-1');
-    expect(screen.getByTestId('composer-chat-2').getAttribute('data-chat-id')).toBe('chat-2');
+    expect(
+      restored.container.querySelector(
+        '[data-composer-drop-zone="true"][data-terminal-drop-chat-id="chat-1"]',
+      ),
+    ).not.toBeNull();
+    expect(
+      restored.container.querySelector(
+        '[data-composer-drop-zone="true"][data-terminal-drop-chat-id="chat-2"]',
+      ),
+    ).not.toBeNull();
   });
 
   it('keeps composer drops out of open-beside handling while the conversation region accepts them', async () => {
-    render(<ChatView />);
+    const { container } = render(<ChatView />);
 
-    fireEvent.drop(screen.getByTestId('composer-chat-1'), {
-      dataTransfer: typedTransfer('chat-2'),
-    });
+    fireEvent.drop(
+      container.querySelector(
+        '[data-composer-drop-zone="true"][data-terminal-drop-chat-id="chat-1"]',
+      )!,
+      {
+        dataTransfer: typedTransfer('chat-2'),
+      },
+    );
     expect(screen.queryByTestId('chat-pane-chat-2')).toBeNull();
 
     fireEvent.drop(screen.getByTestId('chat-conversation-region-chat-1'), {
@@ -179,5 +243,157 @@ describe('ChatView handoff workspace integration', () => {
     expect(useUIStore.getState().activeChatId).toBe('chat-2');
     expect(cancelled).not.toHaveBeenCalled();
     window.removeEventListener('jarvis:cancel', cancelled);
+  });
+
+  it.each([
+    ['missing', 'missing-chat'],
+    ['archived', 'archived-chat'],
+    ['wrong-project', 'wrong-project-chat'],
+  ])(
+    'never mounts an inaccessible %s active chat and chooses a canonical fallback',
+    async (_, id) => {
+      testState.liveChats = [chats[0]];
+      useUIStore.setState({ activeChatId: id });
+
+      render(<ChatView />);
+
+      await waitFor(() => expect(useUIStore.getState().activeChatId).toBe('chat-1'));
+      expect(screen.queryByTestId(`thread-${id}`)).toBeNull();
+      expect(screen.getByTestId('thread-chat-1')).toBeTruthy();
+    },
+  );
+
+  it('falls through to the existing empty-chat creation flow when no canonical chat exists', async () => {
+    testState.liveChats = [];
+    useUIStore.setState({ activeChatId: 'missing-chat' });
+
+    render(<ChatView />);
+
+    await waitFor(() => expect(useUIStore.getState().activeChatId).toBeNull());
+    await waitFor(() => expect(testState.ensureActiveChat).toHaveBeenCalled());
+    expect(screen.queryByTestId('thread-missing-chat')).toBeNull();
+  });
+
+  it('rejects an in-flight open-beside result after the account scope changes', async () => {
+    let resolveSource!: (chat: Chat) => void;
+    const sourcePending = new Promise<Chat>((resolve) => {
+      resolveSource = resolve;
+    });
+    testState.getChat.mockImplementation((id: string) => {
+      if (id === 'chat-2') return sourcePending;
+      return Promise.resolve(chats.find((chat) => String(chat.id) === id));
+    });
+    const view = render(<ChatView />);
+    window.dispatchEvent(
+      new CustomEvent(CHAT_OPEN_BESIDE_EVENT, { detail: openBesideDetail('chat-2') }),
+    );
+
+    const nextScopeChat: Chat = {
+      ...chats[0],
+      id: 'chat-b' as Chat['id'],
+      workspace_id: 'workspace-b' as Chat['workspace_id'],
+      project_id: 'project-b' as NonNullable<Chat['project_id']>,
+      title: 'Chat B',
+    };
+    testState.liveChats = [nextScopeChat];
+    act(() => {
+      useAuthStore.setState({
+        localUserId: 'account-b',
+        workspaceId: 'workspace-b' as never,
+        projectId: 'project-b' as never,
+      });
+      useUIStore.getState().setActiveChat('chat-b');
+    });
+    view.rerender(<ChatView />);
+    resolveSource(chats[1]);
+
+    await waitFor(() => expect(screen.getByTestId('chat-pane-chat-b')).toBeTruthy());
+    expect(screen.queryByTestId('chat-pane-chat-2')).toBeNull();
+    const nextScopeKey = chatWorkspaceStorageKey({
+      accountId: 'account-b',
+      workspaceId: 'workspace-b',
+      projectId: 'project-b',
+    });
+    expect(localStorage.getItem(nextScopeKey) ?? '').not.toContain('chat-2');
+  });
+
+  it('validates duplicate and malformed events and announces only canonical metadata/actions', async () => {
+    render(<ChatView />);
+    window.dispatchEvent(
+      new CustomEvent(CHAT_OPEN_BESIDE_EVENT, {
+        detail: openBesideDetail('chat-2', 'Forged title'),
+      }),
+    );
+    await screen.findByTestId('chat-pane-chat-2');
+    expect(screen.getByRole('status').textContent).toContain('Chat 2 opened beside Chat 1');
+    expect(screen.getByRole('status').textContent).not.toContain('Forged title');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Focus Chat 1' }));
+    testState.getChat.mockImplementation(async (id: string) =>
+      id === 'chat-2' ? undefined : chats.find((chat) => String(chat.id) === id),
+    );
+    window.dispatchEvent(
+      new CustomEvent(CHAT_OPEN_BESIDE_EVENT, {
+        detail: openBesideDetail('chat-2', 'Stale duplicate'),
+      }),
+    );
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('unavailable'));
+    expect(useUIStore.getState().activeChatId).toBe('chat-1');
+    expect(screen.getByRole('status').textContent).not.toContain('Stale duplicate');
+
+    window.dispatchEvent(new CustomEvent(CHAT_OPEN_BESIDE_EVENT, { detail: { title: 17 } }));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('unavailable'));
+    expect(screen.getAllByTestId(/^chat-pane-/)).toHaveLength(2);
+  });
+
+  it('focuses a canonical existing pane and reports the focused-existing action', async () => {
+    render(<ChatView />);
+    window.dispatchEvent(
+      new CustomEvent(CHAT_OPEN_BESIDE_EVENT, { detail: openBesideDetail('chat-2') }),
+    );
+    await screen.findByTestId('chat-pane-chat-2');
+    fireEvent.click(screen.getByRole('button', { name: 'Focus Chat 1' }));
+    window.dispatchEvent(
+      new CustomEvent(CHAT_OPEN_BESIDE_EVENT, { detail: openBesideDetail('chat-2') }),
+    );
+
+    await waitFor(() => expect(useUIStore.getState().activeChatId).toBe('chat-2'));
+    expect(screen.getByRole('status').textContent).toContain('Focused existing Chat 2');
+    expect(screen.getAllByTestId(/^chat-pane-/)).toHaveLength(2);
+  });
+
+  it('keeps output events isolated per chat in a multipane workspace', async () => {
+    render(<ChatView />);
+    fireEvent.drop(screen.getByTestId('chat-conversation-region-chat-1'), {
+      dataTransfer: typedTransfer('chat-2'),
+    });
+    await screen.findByTestId('chat-pane-chat-2');
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('jarvis:chat:output', { detail: { chatId: 'chat-1' } }));
+    });
+    expect(screen.getByTestId('output-chat-1').getAttribute('data-open')).toBe('true');
+    expect(screen.getByTestId('output-chat-2').getAttribute('data-open')).toBe('false');
+  });
+
+  it('keeps a handoff drop inside the real Composer boundary instead of opening a pane', async () => {
+    testState.listMessages.mockResolvedValue([
+      {
+        id: 'message-1',
+        chat_id: 'chat-2',
+        role: 'assistant',
+        parts: [{ kind: 'text', text: 'Canonical handoff activity' }],
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]);
+    const { container } = render(<ChatView />);
+
+    const dropZone = container.querySelector('[data-composer-drop-zone="true"]');
+    expect(dropZone).not.toBeNull();
+    fireEvent.drop(dropZone!, { dataTransfer: typedTransfer('chat-2') });
+
+    await screen.findByLabelText('Pending handoff from Chat 2');
+    expect(screen.queryByTestId('chat-pane-chat-2')).toBeNull();
   });
 });

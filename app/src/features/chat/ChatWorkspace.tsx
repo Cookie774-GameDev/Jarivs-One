@@ -12,16 +12,25 @@ import {
   CHAT_OPEN_BESIDE_EVENT,
   VIBESPACE_CHAT_MIME,
   readChatDragPayload,
-  type ChatDragPayloadV1,
 } from './chatDragPayload';
 import { layoutClassForPaneCount, type ChatWorkspaceLayoutV1 } from './chatWorkspaceLayout';
 import type { Message } from '@/types/chat';
 
 export type ChatWorkspaceOpenResult =
-  | Readonly<{ ok: true; paneCount: number }>
+  | Readonly<{
+      ok: true;
+      paneCount: number;
+      action: 'opened' | 'focused_existing';
+      source: Readonly<{ chatId: string; title: string }>;
+    }>
   | Readonly<{
       ok: false;
-      reason: 'pane_limit' | 'invalid_payload' | 'chat_unavailable' | 'access_denied';
+      reason: 'pane_limit';
+      source: Readonly<{ chatId: string; title: string }>;
+    }>
+  | Readonly<{
+      ok: false;
+      reason: 'invalid_payload' | 'chat_unavailable' | 'access_denied';
     }>;
 
 export interface ChatWorkspaceProps {
@@ -31,13 +40,17 @@ export interface ChatWorkspaceProps {
   readonly onFocus: (chatId: string) => void;
   readonly onClose: (chatId: string) => void;
   readonly onOpenBeside: (
-    payload: ChatDragPayloadV1,
+    payload: unknown,
     destinationChatId: string,
   ) => ChatWorkspaceOpenResult | Promise<ChatWorkspaceOpenResult>;
 }
 
 function paneTitle(chatTitles: Readonly<Record<string, string>>, chatId: string): string {
   return chatTitles[chatId]?.trim() || 'Untitled chat';
+}
+
+function isPaneActionTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('[data-chat-pane-action="true"]') !== null;
 }
 
 function NativeChatSurface({
@@ -161,8 +174,12 @@ function ChatPane({
       data-chat-id={chatId}
       data-focused={focused ? 'true' : 'false'}
       data-chat-drag-over={dragOver ? 'true' : 'false'}
-      onPointerDownCapture={onFocus}
-      onFocusCapture={onFocus}
+      onPointerDownCapture={(event) => {
+        if (!isPaneActionTarget(event.target)) onFocus();
+      }}
+      onFocusCapture={(event) => {
+        if (!isPaneActionTarget(event.target)) onFocus();
+      }}
       className={cn(
         'relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-background transition-[box-shadow,border-color] duration-150 motion-reduce:transition-none',
         multiPane && 'border border-border/70',
@@ -176,6 +193,7 @@ function ChatPane({
         <header className="flex h-8 shrink-0 items-center gap-2 border-b border-border/70 bg-panel/80 px-2">
           <button
             type="button"
+            data-chat-pane-action="true"
             aria-label={`Focus ${title}`}
             aria-pressed={focused}
             onClick={onFocus}
@@ -190,6 +208,7 @@ function ChatPane({
           ) : null}
           <button
             type="button"
+            data-chat-pane-action="true"
             aria-label={`Close ${title}`}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
@@ -216,35 +235,38 @@ export function ChatWorkspace({
   onOpenBeside,
 }: ChatWorkspaceProps) {
   const focusedTitle = paneTitle(chatTitles, layout.focusedChatId);
-  const [announcement, setAnnouncement] = useState(`Focused ${focusedTitle}.`);
+  const focusedPaneOrdinal = layout.chatIds.indexOf(layout.focusedChatId) + 1;
+  const focusAnnouncement = `Focused ${focusedTitle}, pane ${focusedPaneOrdinal} of ${layout.chatIds.length}.`;
+  const [announcement, setAnnouncement] = useState(focusAnnouncement);
 
   useEffect(() => {
-    setAnnouncement(`Focused ${focusedTitle}.`);
-  }, [focusedTitle]);
+    setAnnouncement(focusAnnouncement);
+  }, [focusAnnouncement, layout.focusedChatId]);
 
   const openBeside = useCallback(
-    async (payload: ChatDragPayloadV1, destinationChatId = layout.focusedChatId) => {
+    async (payload: unknown, destinationChatId = layout.focusedChatId) => {
       const destinationTitle = paneTitle(chatTitles, destinationChatId);
-      const sourceTitle = payload.title.trim() || paneTitle(chatTitles, payload.chatId);
       try {
         const result = await onOpenBeside(payload, destinationChatId);
         if (result.ok) {
           setAnnouncement(
-            `${sourceTitle} opened beside ${destinationTitle}. ${result.paneCount} chats open.`,
+            result.action === 'focused_existing'
+              ? `Focused existing ${result.source.title}. ${result.paneCount} chats open.`
+              : `${result.source.title} opened beside ${destinationTitle}. ${result.paneCount} chats open.`,
           );
           return;
         }
         if (result.reason === 'pane_limit') {
           setAnnouncement(
-            `Cannot open ${sourceTitle} beside ${destinationTitle}. This workspace supports up to four chats.`,
+            `Cannot open ${result.source.title} beside ${destinationTitle}. This workspace supports up to four chats.`,
           );
           return;
         }
         setAnnouncement(
-          `Cannot open ${sourceTitle} beside ${destinationTitle}. The chat is unavailable or inaccessible.`,
+          `Cannot open a chat beside ${destinationTitle}. The chat is unavailable or inaccessible.`,
         );
       } catch {
-        setAnnouncement(`Cannot open ${sourceTitle} beside ${destinationTitle}. Please try again.`);
+        setAnnouncement(`Cannot open a chat beside ${destinationTitle}. Please try again.`);
       }
     },
     [chatTitles, layout.focusedChatId, onOpenBeside],
@@ -252,8 +274,7 @@ export function ChatWorkspace({
 
   useEffect(() => {
     const onSidebarOpenBeside = (event: Event) => {
-      const payload = (event as CustomEvent<ChatDragPayloadV1>).detail;
-      if (payload) void openBeside(payload);
+      void openBeside((event as CustomEvent<unknown>).detail);
     };
     window.addEventListener(CHAT_OPEN_BESIDE_EVENT, onSidebarOpenBeside as EventListener);
     return () =>

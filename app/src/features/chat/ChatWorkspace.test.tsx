@@ -65,18 +65,26 @@ function typedTransfer(chatId: string, title = titles[chatId] ?? chatId) {
   };
 }
 
-function WorkspaceHarness({ initial }: { initial: ChatWorkspaceLayoutV1 }) {
+function WorkspaceHarness({
+  initial,
+  chatTitles = titles,
+}: {
+  initial: ChatWorkspaceLayoutV1;
+  chatTitles?: Readonly<Record<string, string>>;
+}) {
   const [layout, setLayout] = useState(initial);
-  const openBeside = (payload: ChatDragPayloadV1): ChatWorkspaceOpenResult => {
+  const openBeside = (input: unknown): ChatWorkspaceOpenResult => {
+    const payload = input as ChatDragPayloadV1;
     const next = addChatPane(layout, payload.chatId);
-    if ('ok' in next) return next;
+    const source = { chatId: payload.chatId, title: titles[payload.chatId] ?? payload.chatId };
+    if ('ok' in next) return { ...next, source };
     setLayout(next);
-    return { ok: true, paneCount: next.chatIds.length };
+    return { ok: true, paneCount: next.chatIds.length, action: 'opened', source };
   };
   return (
     <ChatWorkspace
       layout={layout}
-      chatTitles={titles}
+      chatTitles={chatTitles}
       onFocus={(chatId) => setLayout((current) => focusChatPane(current, chatId))}
       onClose={(chatId) => setLayout((current) => closeChatPane(current, chatId))}
       onOpenBeside={openBeside}
@@ -163,6 +171,33 @@ describe('ChatWorkspace', () => {
     expect(screen.queryByTestId('chat-pane-chat-2')).toBeNull();
     expect(cancelled).not.toHaveBeenCalled();
     window.removeEventListener('jarvis:cancel', cancelled);
+  });
+
+  it('does not steal focus when a real pointer sequence closes a non-focused middle pane', () => {
+    render(<WorkspaceHarness initial={layout('chat-1', 'chat-2', 'chat-3')} />);
+    const close = screen.getByRole('button', { name: 'Close Beta' });
+
+    fireEvent.pointerDown(close);
+    fireEvent.focus(close);
+    fireEvent.click(close);
+
+    expect(screen.queryByTestId('chat-pane-chat-2')).toBeNull();
+    expect(screen.getByTestId('chat-pane-chat-1').getAttribute('data-focused')).toBe('true');
+    expect(screen.getByRole('status').textContent).toContain('Focused Alpha');
+  });
+
+  it('announces equal-title focus changes with a distinct pane ordinal', () => {
+    render(
+      <WorkspaceHarness
+        initial={layout('chat-1', 'chat-2')}
+        chatTitles={{ 'chat-1': 'Same title', 'chat-2': 'Same title' }}
+      />,
+    );
+    const focusButtons = screen.getAllByRole('button', { name: 'Focus Same title' });
+
+    expect(screen.getByRole('status').textContent).toContain('pane 1 of 2');
+    fireEvent.click(focusButtons[1]);
+    expect(screen.getByRole('status').textContent).toContain('pane 2 of 2');
   });
 
   it('shows a structural drag-over state on the conversation target and clears it on leave', () => {
