@@ -423,9 +423,7 @@ async function executePersistentCodex(req: Readonly<RunAgentRequest>): Promise<L
             textParts.push(event.delta);
           } else {
             textParts[index] =
-              event.mode === 'replace'
-                ? event.delta
-                : (textParts[index] ?? '') + event.delta;
+              event.mode === 'replace' ? event.delta : (textParts[index] ?? '') + event.delta;
           }
           text = textParts.join('');
         } else {
@@ -1259,10 +1257,7 @@ async function runAgentDispatch(req: RunAgentRequest): Promise<LLMResponse> {
   if (req.agent.model.provider === 'foundry') {
     return runFoundryDispatch(req);
   }
-  if (
-    req.backend === 'codex' ||
-    (req.backend === undefined && req.connectionId === 'openai-codex')
-  ) {
+  if (req.backend === 'codex') {
     return executePersistentCodex(req);
   }
   return dispatchThroughOpenCode(req);

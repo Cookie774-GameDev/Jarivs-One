@@ -125,9 +125,13 @@ describe('explicit Chat backend routing', () => {
     expect(codexSend).not.toHaveBeenCalled();
   });
 
-  it('uses the selected Codex connection for legacy callers until durable affinity is present', async () => {
+  it('does not treat the legacy Codex subscription connection as Codex backend affinity', async () => {
+    const legacySubscriptionAgent: Agent = {
+      ...agent,
+      model: { provider: 'openai', model: 'gpt-5.6-sol' },
+    };
     const result = await runAgent({
-      agent,
+      agent: legacySubscriptionAgent,
       chatId: 'chat_legacy_codex_1',
       requestId: 'request_legacy_codex_1',
       connectionId: 'openai-codex',
@@ -136,8 +140,8 @@ describe('explicit Chat backend routing', () => {
       messages: [{ role: 'user', content: 'Read game.js.' }],
     });
 
-    expect(result.text).toBe('codex complete');
-    expect(codexSend).toHaveBeenCalledOnce();
-    expect(openCodeSend).not.toHaveBeenCalled();
+    expect(result.text).toBe('opencode complete');
+    expect(openCodeSend).toHaveBeenCalledOnce();
+    expect(codexSend).not.toHaveBeenCalled();
   });
 });
