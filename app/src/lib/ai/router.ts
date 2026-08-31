@@ -1,8 +1,8 @@
 /**
  * Canonical PR31 AI router.
  *
- * All ordinary production turns cross the persistent OpenCode boundary.
- * Exactly two bounded direct executors exist: (1) the explicitly gated
+ * Ordinary production turns cross the immutable per-chat OpenCode or Codex
+ * backend boundary. Exactly two bounded direct executors also exist: (1) the explicitly gated
  * Shared Intelligence Kernel smoke provider (debug-only native smoke
  * qualification), and (2) the Model Foundry local adapter executor, which is
  * desktop-only, credential-free, and fails closed on unverified adapters. Provider/model selection, VibeSpace scope, runtime controls,
@@ -42,6 +42,8 @@ import type {
 } from './adapters/types';
 import { CONNECTION_MODEL_OPTIONS, getProviderConnectionDescriptor } from './adapters/catalog';
 import { openCodePersistentAdapter } from './adapters/opencodePersistent';
+import { codexPersistentAdapter } from './adapters/codexPersistent';
+import type { ChatBackend } from './backend/chatBackend';
 import { kernelSmokeCliAdapter } from './adapters/cliBridge';
 import { foundryProvider } from './providers/foundry';
 import { isKernelSmokeEnabled } from '@/lib/jarvis/smoke/config';
@@ -288,6 +290,8 @@ function runtimeEffortForVariant(
 }
 
 export interface RunAgentRequest {
+  /** Authoritative immutable Chat backend. Legacy callers remain OpenCode. */
+  backend?: ChatBackend;
   agent: Agent;
   messages: LLMMessage[];
   purpose?: AiPurpose;
@@ -343,6 +347,179 @@ export interface RunAgentRequest {
     requestId: string;
     attemptNumber: number;
   }>;
+}
+
+function codexQualifiedModel(req: Readonly<RunAgentRequest>): string {
+  const model = req.agent.model.model.trim();
+  if (!model) throw new NoModelSelectedError();
+  return model.includes('/') ? model : req.agent.model.provider + '/' + model;
+}
+
+function codexGatewayConnection(req: Readonly<RunAgentRequest>): ProviderConnection {
+  if (req.connectionId !== 'openai-codex') {
+    throw new Error('Codex-backed Chat requires the exact Codex connection.');
+  }
+  const descriptor = getProviderConnectionDescriptor(req.connectionId);
+  if (!descriptor.enabled) throw new Error('Codex connection is disabled.');
+  return Object.freeze({
+    ...descriptor,
+    adapterId: codexPersistentAdapter.id,
+    providerId: req.agent.model.provider,
+    authSource: 'opencode-provider-session',
+    promptTransport: 'native-system',
+  });
+}
+
+async function executePersistentCodex(req: Readonly<RunAgentRequest>): Promise<LLMResponse> {
+  if (req.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
+  if (!codexPersistentAdapter.send) throw new Error('Persistent Codex transport is unavailable.');
+  const requestId = req.requestId ?? globalThis.crypto?.randomUUID?.() ?? 'req-' + Date.now();
+  const connection = codexGatewayConnection(req);
+  const modelId = codexQualifiedModel(req);
+  let text = '';
+  const textParts: string[] = [];
+  const textPartIndexes = new Map<string, number>();
+  let first = true;
+  let finishReason: string | undefined;
+  let usage: UsageSnapshot | undefined;
+  let sessionId: string | undefined;
+  let terminalObserved = false;
+  let anyToolObserved = false;
+  let completedReadOnlyFilesystem = false;
+  const providerRequest: ProviderRequest = {
+    requestId,
+    connection,
+    chatId: req.chatId ?? req.parentChatId ?? requestId,
+    accountId: req.accountId,
+    workspaceId: req.workspaceId,
+    projectId: req.projectId,
+    worktreeId: req.worktreeId,
+    prompt: promptForOpenCode(req.messages),
+    modelId,
+    reasoningEffort: resolveOpenCodeVariant(req.provider_options),
+    systemPrompt: req.compiledPrompt?.systemText ?? req.agent.system_prompt,
+    workingDirectory: req.workingDirectory,
+    sessionId: req.expectedSessionId,
+    runtimeSettings: req.runtimeSettings,
+    interactionMode: req.interactionMode,
+    accessLevel: req.accessLevel,
+    approveAllForRun: req.approveAllForRun,
+    tools: req.tools,
+    signal: req.signal,
+    onApprovalRequested: req.onApprovalRequested,
+  };
+  const iterator = codexPersistentAdapter.send(providerRequest)[Symbol.asyncIterator]();
+  try {
+    while (true) {
+      const next = await iterator.next();
+      if (next.done) break;
+      const event = next.value;
+      if (req.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
+      if (event.type === 'text') {
+        if (event.streamPartId) {
+          const index = textPartIndexes.get(event.streamPartId);
+          if (index === undefined) {
+            textPartIndexes.set(event.streamPartId, textParts.length);
+            textParts.push(event.delta);
+          } else {
+            textParts[index] =
+              event.mode === 'replace'
+                ? event.delta
+                : (textParts[index] ?? '') + event.delta;
+          }
+          text = textParts.join('');
+        } else {
+          text += event.delta;
+        }
+        req.onChunk?.({
+          delta: event.delta,
+          first,
+          ...(event.mode === 'replace' ? { mode: 'replace' as const } : {}),
+          ...(event.streamPartId ? { streamPartId: event.streamPartId } : {}),
+        });
+        first = false;
+      } else if (event.type === 'usage') {
+        usage = mergeUsageSnapshots(usage, event.usage);
+      } else if (event.type === 'session') {
+        if (
+          (req.expectedSessionId && req.expectedSessionId !== event.sessionId) ||
+          (sessionId && sessionId !== event.sessionId)
+        ) {
+          throw new Error('provider_completion_session_mismatch');
+        }
+        sessionId = event.sessionId;
+        await req.onHarnessSessionBound?.({ sessionId: event.sessionId });
+      } else if (event.type === 'question') {
+        if (!sessionId || event.request.sessionId !== sessionId) {
+          throw new Error('provider_question_session_mismatch');
+        }
+        const projection = projectOpenCodeQuestionEvent(event, sessionId);
+        if (!projection || !req.onQuestionRequested) {
+          throw new Error('provider_question_handler_missing');
+        }
+        await req.onQuestionRequested(projection);
+      } else if (event.type === 'tool') {
+        anyToolObserved = true;
+        if (event.status === 'completed' && READ_ONLY_FILESYSTEM_TOOL_NAMES.has(event.name)) {
+          completedReadOnlyFilesystem = true;
+        }
+        await req.onToolActivity?.({
+          name: event.name,
+          status: event.status,
+          ...(event.callId ? { callId: event.callId } : {}),
+          ...(event.fileLabel ? { fileLabel: event.fileLabel } : {}),
+        });
+      } else if (event.type === 'error') {
+        terminalObserved = true;
+        throw new Error(event.message);
+      } else if (event.type === 'done') {
+        terminalObserved = true;
+        finishReason = event.finishReason;
+      }
+    }
+  } finally {
+    await iterator.return?.();
+  }
+  if (!terminalObserved) throw new Error('provider_completion_terminal_missing');
+  if (!sessionId) throw new Error('provider_completion_session_missing');
+  req.onChunk?.({ delta: '', done: true });
+  const response: LLMResponse = {
+    text,
+    usage: {
+      input_tokens: usageNumber(usage?.inputTokens),
+      output_tokens: usageNumber(usage?.outputTokens),
+      cost_usd: usageNumber(usage?.costUsd),
+    },
+    provider: req.agent.model.provider as ProviderId,
+    model: req.agent.model.model,
+    ...(finishReason ? { finish_reason: finishReason } : {}),
+    tool_evidence: Object.freeze({
+      completedReadOnlyFilesystem,
+      anyToolObserved,
+      rootInventoryObserved: false,
+      boundedSearchObserved: false,
+      representativeReadCount: 0,
+    }),
+  };
+  useAgentStore
+    .getState()
+    .addTokens(
+      req.agent.id,
+      response.usage.input_tokens,
+      response.usage.output_tokens,
+      response.usage.cost_usd,
+    );
+  recordConnectionUsage({
+    connectionId: connection.id,
+    providerId: response.provider,
+    modelId: response.model,
+    timestamp: Date.now(),
+    inputTokens: response.usage.input_tokens,
+    cachedInputTokens: 0,
+    outputTokens: response.usage.output_tokens,
+    costUsd: response.usage.cost_usd,
+  });
+  return response;
 }
 
 type OpenCodeSelection = Readonly<{
@@ -1081,6 +1258,12 @@ async function runAgentDispatch(req: RunAgentRequest): Promise<LLMResponse> {
   }
   if (req.agent.model.provider === 'foundry') {
     return runFoundryDispatch(req);
+  }
+  if (
+    req.backend === 'codex' ||
+    (req.backend === undefined && req.connectionId === 'openai-codex')
+  ) {
+    return executePersistentCodex(req);
   }
   return dispatchThroughOpenCode(req);
 }

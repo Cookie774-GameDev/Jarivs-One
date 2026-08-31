@@ -201,7 +201,10 @@ impl CliBridgeState {
         })
     }
 
-    fn resolve_trusted_executable(&self, executable_id: &str) -> Result<PathBuf, String> {
+    pub(crate) fn resolve_trusted_executable(
+        &self,
+        executable_id: &str,
+    ) -> Result<PathBuf, String> {
         Ok(self
             .resolve_trusted_executable_entry(executable_id)?
             .canonical_path)

@@ -1,0 +1,307 @@
+import {
+  nativeCodexFrames,
+  startNativeCodexAppServer,
+  stopNativeCodexAppServer,
+  writeNativeCodexFrame,
+} from '@/lib/harness/codexNativeTransport';
+import {
+  buildCodexModelListRequest,
+  buildCodexThreadResumeRequest,
+  buildCodexThreadStartRequest,
+  buildCodexTurnInterruptRequest,
+  buildCodexTurnStartRequest,
+  validateCodexModelListResponse,
+  validateCodexThreadStartResponse,
+  type CodexBackendIdentity,
+  type CodexExecutionMode,
+} from './codexAppServerProtocol';
+import {
+  normalizeCodexAppServerMessage,
+  normalizeCodexThreadBindingResponse,
+} from './codexAppServer';
+import { findCliExecutable } from './cliBridge';
+import type { DetectedExecutable } from './cliBridge';
+import type { ProviderAdapter, ProviderEvent, ProviderRequest } from './types';
+
+type NativeFrame = Record<string, unknown>;
+
+export interface CodexPersistentDependencies {
+  findExecutable(): Promise<DetectedExecutable | undefined>;
+  start(executableId: string, ownerId: string): Promise<Readonly<{ generation: string }>>;
+  frames(generation: string): Readonly<{
+    stream: AsyncIterable<NativeFrame>;
+    ready: Promise<void>;
+  }>;
+  write(generation: string, message: NativeFrame): Promise<void>;
+  stop(generation: string): Promise<boolean>;
+}
+
+const defaultDependencies: CodexPersistentDependencies = {
+  findExecutable: () => findCliExecutable('codex'),
+  start: startNativeCodexAppServer,
+  frames: (generation) => {
+    let subscribed!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      subscribed = resolve;
+    });
+    return {
+      stream: nativeCodexFrames(generation, undefined, undefined, subscribed),
+      ready,
+    };
+  },
+  write: writeNativeCodexFrame,
+  stop: stopNativeCodexAppServer,
+};
+
+function recordOf(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function promptText(request: Readonly<ProviderRequest>): string {
+  const system = request.systemPrompt?.trim();
+  return system ? system + '\n\n' + request.prompt : request.prompt;
+}
+
+function effort(request: Readonly<ProviderRequest>): string | null {
+  const value = request.reasoningEffort ?? request.runtimeSettings?.effort;
+  if (!value || value === 'auto' || value === 'minimal') return null;
+  if (value === 'ultra') return 'max';
+  return value;
+}
+
+function executionMode(request: Readonly<ProviderRequest>): CodexExecutionMode {
+  const mode = request.interactionMode ?? 'agent';
+  if (mode === 'ask' || mode === 'plan') return { kind: mode };
+  const cwd = request.workingDirectory;
+  if (!cwd) throw new Error('Codex Agent mode requires an exact working directory.');
+  if (request.accessLevel === 'read-only') return { kind: 'ask' };
+  return {
+    kind: 'agent',
+    approvalPolicy: request.approveAllForRun ? 'never' : 'on-request',
+    sandbox: {
+      kind: 'workspace-write',
+      writableRoots: [cwd],
+      networkAccess: false,
+    },
+  };
+}
+
+function identity(request: Readonly<ProviderRequest>): CodexBackendIdentity {
+  if (!request.modelId) throw new Error('Codex requires an exact selected model.');
+  if (!request.workingDirectory) throw new Error('Codex requires an exact working directory.');
+  return {
+    modelProvider: 'openai',
+    model: request.modelId,
+    effort: effort(request),
+    serviceTier: request.runtimeSettings?.fastMode === 'on' ? 'fast' : null,
+    cwd: request.workingDirectory,
+  };
+}
+
+function requestId(base: string, suffix: string): string {
+  const normalized = base.replace(/[^A-Za-z0-9._:@/+/-]/gu, '_').slice(0, 220);
+  if (!normalized) throw new Error('Codex request identity is invalid.');
+  return normalized + '_' + suffix;
+}
+
+async function nextFrame(
+  iterator: AsyncIterator<NativeFrame>,
+  failure: string,
+): Promise<NativeFrame> {
+  const next = await iterator.next();
+  if (next.done) throw new Error(failure);
+  return next.value;
+}
+
+async function responseFrame(
+  iterator: AsyncIterator<NativeFrame>,
+  id: string,
+): Promise<NativeFrame> {
+  for (let count = 0; count < 4_096; count += 1) {
+    const frame = await nextFrame(iterator, 'Codex app-server ended before its response.');
+    if (frame.id === id) return frame;
+    if (frame.method === 'error') throw new Error('Codex app-server rejected the request.');
+  }
+  throw new Error('Codex app-server response exceeded its safe event bound.');
+}
+
+async function validateModelCapability(
+  generation: string,
+  iterator: AsyncIterator<NativeFrame>,
+  exactIdentity: Readonly<CodexBackendIdentity>,
+  write: CodexPersistentDependencies['write'],
+  baseRequestId: string,
+): Promise<void> {
+  let cursor: string | undefined;
+  for (let page = 0; page < 32; page += 1) {
+    const id = requestId(baseRequestId, 'model_' + String(page + 1));
+    await write(generation, buildCodexModelListRequest({ requestId: id, cursor }));
+    const validation = validateCodexModelListResponse(
+      await responseFrame(iterator, id),
+      id,
+      exactIdentity,
+    );
+    if (validation.ok) return;
+    if (validation.reason === 'next_page') {
+      cursor = validation.cursor;
+      continue;
+    }
+    throw new Error('Codex model capability mismatch: ' + validation.field + '.');
+  }
+  throw new Error('Codex model capability pagination exceeded its safe bound.');
+}
+
+async function* sendCodexRequest(
+  request: ProviderRequest,
+  dependencies: CodexPersistentDependencies,
+): AsyncGenerator<ProviderEvent> {
+  if (request.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
+  if (request.connection.id !== 'openai-codex') {
+    throw new Error('Codex backend requires the exact Codex connection.');
+  }
+  const executable = await dependencies.findExecutable();
+  if (!executable) throw new Error('Codex CLI is not installed.');
+  const ownerId = request.chatId ?? request.requestId;
+  const { generation } = await dependencies.start(executable.executableId, ownerId);
+  const subscription = dependencies.frames(generation);
+  const iterator = subscription.stream[Symbol.asyncIterator]();
+  let prefetched: Promise<IteratorResult<NativeFrame>> | undefined = iterator.next();
+  await subscription.ready;
+  const reader: AsyncIterator<NativeFrame> = {
+    next: () => {
+      if (prefetched) {
+        const next = prefetched;
+        prefetched = undefined;
+        return next;
+      }
+      return iterator.next();
+    },
+    return: (value) => iterator.return?.(value) ?? Promise.resolve({ done: true, value }),
+  };
+  const exactIdentity = identity(request);
+  const mode = executionMode(request);
+  let threadId: string | undefined;
+  let turnId: string | undefined;
+  let terminal = false;
+  const abort = () => {
+    if (threadId && turnId) {
+      void dependencies
+        .write(
+          generation,
+          buildCodexTurnInterruptRequest({
+            requestId: requestId(request.requestId, 'interrupt'),
+            threadId,
+            turnId,
+          }),
+        )
+        .catch(() => undefined);
+    }
+    void dependencies.stop(generation).catch(() => false);
+  };
+  request.signal?.addEventListener('abort', abort, { once: true });
+  try {
+    await validateModelCapability(
+      generation,
+      reader,
+      exactIdentity,
+      dependencies.write,
+      request.requestId,
+    );
+    const threadRequestId = requestId(
+      request.requestId,
+      request.sessionId ? 'resume' : 'thread',
+    );
+    const threadRequest = request.sessionId
+      ? buildCodexThreadResumeRequest({
+          requestId: threadRequestId,
+          threadId: request.sessionId,
+          identity: exactIdentity,
+          mode,
+        })
+      : buildCodexThreadStartRequest({
+          requestId: threadRequestId,
+          identity: exactIdentity,
+          mode,
+        });
+    await dependencies.write(generation, threadRequest);
+    const threadResponse = await responseFrame(reader, threadRequestId);
+    if (request.sessionId) {
+      const projection = normalizeCodexThreadBindingResponse(threadResponse, threadRequestId);
+      const session = projection.events.find(
+        (event): event is Extract<ProviderEvent, { type: 'session' }> => event.type === 'session',
+      );
+      threadId = session?.sessionId;
+    } else {
+      const validation = validateCodexThreadStartResponse(
+        threadResponse,
+        threadRequestId,
+        exactIdentity,
+        mode,
+      );
+      if (!validation.ok) {
+        throw new Error('Codex thread identity mismatch: ' + validation.field + '.');
+      }
+      threadId = validation.threadId;
+    }
+    if (!threadId) throw new Error('Codex thread binding is unavailable.');
+    yield { type: 'session', sessionId: threadId };
+    await request.onSessionBound?.({ sessionId: threadId });
+
+    await dependencies.write(
+      generation,
+      buildCodexTurnStartRequest({
+        requestId: requestId(request.requestId, 'turn'),
+        threadId,
+        clientUserMessageId: requestId(request.requestId, 'message'),
+        text: promptText(request),
+        identity: exactIdentity,
+        mode,
+      }),
+    );
+
+    for (let count = 0; count < 65_536; count += 1) {
+      if (request.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
+      const frame = await nextFrame(reader, 'Codex app-server ended before terminal state.');
+      const projection = normalizeCodexAppServerMessage(frame, {
+        scope: {
+          activeGeneration: 1,
+          messageGeneration: 1,
+          threadId,
+          ...(turnId ? { turnId } : {}),
+        },
+      });
+      for (const control of projection.controls) {
+        if (control.type === 'turn_binding') {
+          if (control.threadId !== threadId || (turnId && turnId !== control.turnId)) {
+            throw new Error('Codex turn binding changed unexpectedly.');
+          }
+          turnId = control.turnId;
+        }
+      }
+      for (const event of projection.events) {
+        if (event.type === 'done' || event.type === 'error') terminal = true;
+        yield event;
+      }
+      if (terminal) return;
+    }
+    throw new Error('Codex turn exceeded its safe event bound.');
+  } finally {
+    request.signal?.removeEventListener('abort', abort);
+    await iterator.return?.();
+    await dependencies.stop(generation).catch(() => false);
+  }
+}
+
+export function createCodexPersistentAdapter(
+  dependencies: CodexPersistentDependencies = defaultDependencies,
+): ProviderAdapter {
+  return Object.freeze({
+    id: 'codex-app-server',
+    send: (request: ProviderRequest) => sendCodexRequest(request, dependencies),
+    cancel: async () => undefined,
+  });
+}
+
+export const codexPersistentAdapter = createCodexPersistentAdapter();

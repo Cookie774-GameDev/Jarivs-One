@@ -1,3 +1,4 @@
+pub mod codex_server;
 pub mod download;
 pub mod managed_bun_manifest;
 pub mod managed_bun_materializer;
@@ -9,6 +10,7 @@ pub mod managed_codex_config_snapshot;
 pub mod managed_codex_materializer;
 pub mod managed_opencodex_materializer;
 pub mod managed_opencodex_runtime;
+pub mod opencode_go_auth;
 pub mod manifest;
 pub mod runtime;
 pub mod server;

@@ -435,6 +435,7 @@ fn run_ordinary(
         .manage(harness::runtime::OpenCodeRuntimeState::default())
         .manage(harness::download::OpenCodeDownloadState::default())
         .manage(harness::server::OpenCodeServerState::default())
+        .manage(harness::codex_server::CodexAppServerState::default())
         .manage(harness::tool_gateway::ToolGatewayState::default())
         .manage(cli_bridge::CliBridgeState::default())
         .manage(kernel_host::KernelHostState::default())
@@ -689,6 +690,10 @@ fn run_ordinary(
             harness::server::opencode_server_request,
             harness::server::opencode_server_event_stream,
             harness::server::opencode_server_event_cancel,
+            harness::codex_server::codex_app_server_start,
+            harness::codex_server::codex_app_server_stream,
+            harness::codex_server::codex_app_server_write,
+            harness::codex_server::codex_app_server_stop,
             harness::tool_gateway::tool_gateway_respond,
             command_center_tool::command_center_tool,
             terminal_peer_fabric::terminal_peer_fabric,
@@ -851,6 +856,7 @@ fn run_ordinary(
             if matches!(event, tauri::RunEvent::Exit) {
                 siyuan::shutdown_runtime(app_handle);
                 harness::server::shutdown_owned_server(app_handle);
+                harness::codex_server::shutdown_owned_server(app_handle);
                 kernel_host::release_on_process_exit(app_handle);
                 return;
             }
@@ -983,6 +989,10 @@ harness::server::opencode_server_stop
 harness::server::opencode_server_request
 harness::server::opencode_server_event_stream
 harness::server::opencode_server_event_cancel
+harness::codex_server::codex_app_server_start
+harness::codex_server::codex_app_server_stream
+harness::codex_server::codex_app_server_write
+harness::codex_server::codex_app_server_stop
 harness::tool_gateway::tool_gateway_respond
 command_center_tool::command_center_tool
 terminal_peer_fabric::terminal_peer_fabric
@@ -1295,6 +1305,23 @@ wallpaper_master::wallpaper_full_cache_path";
         assert!(ordinary.contains("harness::tool_gateway::tool_gateway_respond,"));
         assert!(ordinary.contains("harness::tool_gateway::start_tool_gateway_server("));
         assert!(ordinary.contains("harness::server::shutdown_owned_server(app_handle);"));
+    }
+
+    #[test]
+    fn codex_app_server_commands_and_cleanup_are_registered_only_on_the_ordinary_builder() {
+        let source = include_str!("lib.rs");
+        let visual_test =
+            function_source(source, "fn run_monochrome_visual_test(", "fn run_ordinary(");
+        let ordinary = function_source(source, "fn run_ordinary(", "#[cfg(test)]");
+
+        assert!(!visual_test.contains("CodexAppServerState"));
+        assert!(!visual_test.contains("codex_app_server_start"));
+        assert!(ordinary.contains(".manage(harness::codex_server::CodexAppServerState::default())"));
+        assert!(ordinary.contains("harness::codex_server::codex_app_server_start,"));
+        assert!(ordinary.contains("harness::codex_server::codex_app_server_stream,"));
+        assert!(ordinary.contains("harness::codex_server::codex_app_server_write,"));
+        assert!(ordinary.contains("harness::codex_server::codex_app_server_stop,"));
+        assert!(ordinary.contains("harness::codex_server::shutdown_owned_server(app_handle);"));
     }
 
     #[test]
