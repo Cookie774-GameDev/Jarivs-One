@@ -6,6 +6,7 @@ import { clearJarvisMemoryStatus, publishJarvisMemoryStatus } from './memoryStat
 import { reconcileDurableEvidence } from './evidencePersistenceRecovery';
 import { reconcileDurableProfile } from './profilePersistenceRecovery';
 import { createAccountHydrationAuthority } from './accountHydrationAuthority';
+import { createMemoryEvidenceWriteAuthority } from './memoryEvidenceWriteAuthority';
 
 interface LearningSendDetail {
   chatId?: string;
@@ -85,6 +86,7 @@ export function startJarvisLearningListener(
   const evidenceRepository = bindings.evidenceRepository;
   const debounceMs = bindings.debounceMs ?? 300;
   const loadingAccounts = new Set<string>();
+  const evidenceWriteAuthority = createMemoryEvidenceWriteAuthority();
   let suppressAutomaticProfilePersistence = 0;
   const timers = new Map<
     string,
@@ -206,8 +208,10 @@ export function startJarvisLearningListener(
     if (!evidenceRepository) return;
     const previousById = new Map(previous.map((item) => [item.id, item]));
     const currentById = new Map(current.map((item) => [item.id, item]));
+    const writeToken = evidenceWriteAuthority.token(active);
     const pending = writeQueue
       .then(async () => {
+        if (!evidenceWriteAuthority.canWrite(writeToken)) return;
         for (const item of current) {
           const prior = previousById.get(item.id);
           if (!prior) await evidenceRepository.create(active, item);
@@ -220,6 +224,7 @@ export function startJarvisLearningListener(
         }
       })
       .catch(async (error) => {
+        evidenceWriteAuthority.beginRecovery(active);
         publishStatus(undefined, 'error');
         report(bindings, error);
         try {
@@ -234,6 +239,8 @@ export function startJarvisLearningListener(
         } catch (recoveryError) {
           publishStatus(undefined, 'error');
           report(bindings, recoveryError);
+        } finally {
+          evidenceWriteAuthority.endRecovery(active);
         }
       });
     writeQueue = pending;
@@ -262,6 +269,7 @@ export function startJarvisLearningListener(
     const next = bindings.getAccountId().trim();
     const previous = store.getState().activeAccountId;
     if (next === previous) return;
+    evidenceWriteAuthority.invalidate(previous);
     hydrationAuthority.invalidate();
     if (!next) {
       clearJarvisMemoryStatus();

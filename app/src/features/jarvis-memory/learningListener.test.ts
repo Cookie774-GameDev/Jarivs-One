@@ -322,6 +322,55 @@ describe('Jarvis learning event listener', () => {
     window.removeEventListener('jarvis:memory-status', onStatus);
   });
 
+  it('cancels queued and during-recovery evidence writes, then permits fresh post-recovery work', async () => {
+    let finishRecovery: ((items: readonly MemoryEvidenceItem[]) => void) | undefined;
+    let listCalls = 0;
+    const create = vi
+      .fn<(ownerId: string, item: MemoryEvidenceItem) => Promise<unknown>>()
+      .mockRejectedValueOnce(new Error('repository unavailable'))
+      .mockResolvedValue(undefined);
+    const evidenceRepository = {
+      list: vi.fn(async () => {
+        listCalls += 1;
+        if (listCalls === 1) return [];
+        return new Promise<readonly MemoryEvidenceItem[]>((resolve) => {
+          finishRecovery = resolve;
+        });
+      }),
+      create,
+      replace: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+    };
+    stop = startJarvisLearningListener({
+      getAccountId: () => 'account-a',
+      load: async () => null,
+      save: async () => undefined,
+      evidenceRepository,
+      onError: vi.fn(),
+    });
+    await vi.waitFor(() => expect(evidenceRepository.list).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const capture = (id: string) =>
+      useJarvisLearningStore.getState().captureEvidence({
+        workspaceId: 'workspace-a',
+        category: 'correction',
+        content: `Evidence ${id}`,
+        sourceType: 'manual',
+        sourceRef: { kind: 'manual', id, label: id, occurredAt: 1 },
+        confidence: 1,
+        durabilityScore: 1,
+      });
+    capture('first');
+    await vi.waitFor(() => expect(evidenceRepository.list).toHaveBeenCalledTimes(2));
+    capture('during-recovery');
+    finishRecovery?.([]);
+    await vi.waitFor(() => expect(useJarvisLearningStore.getState().currentEvidence()).toEqual([]));
+    expect(create).toHaveBeenCalledTimes(1);
+
+    capture('after-recovery');
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(2));
+  });
+
   it('restores the last durable profile after an optimistic save fails', async () => {
     const statuses: string[] = [];
     const onStatus = (event: Event) =>
