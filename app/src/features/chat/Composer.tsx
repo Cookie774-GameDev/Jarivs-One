@@ -183,6 +183,11 @@ import {
   type CaoPublicStatus,
   type CaoLearnerExecutionIdentity,
 } from '@/features/cao/bootstrap';
+import {
+  resolveCaoControlTargets,
+  type CaoControlCandidate,
+  type CaoControlScope,
+} from '@/features/cao/controlCommand';
 import type { JarvisArtifactV1 } from '@/lib/jarvis/contracts/execution';
 import { jarvisArtifactRepo } from '@/lib/db/jarvisRepositories';
 import {
@@ -935,6 +940,20 @@ export type ComposerCaoBootstrap = Readonly<{
   requestedIdentity: CaoLearnerExecutionIdentity;
   publicStatus: CaoPublicStatus;
 }>;
+
+export function resolveComposerCaoControl(input: {
+  decision: CaoBootstrapDecision | null;
+  scope: CaoControlScope;
+  candidates: readonly CaoControlCandidate[];
+}) {
+  return input.decision?.control
+    ? resolveCaoControlTargets({
+        command: input.decision.control,
+        scope: input.scope,
+        candidates: input.candidates,
+      })
+    : null;
+}
 
 export function resolveComposerCaoBootstrap(input: {
   decision: CaoBootstrapDecision | null;
@@ -3338,6 +3357,62 @@ export function Composer({
       text: rawSendText,
       confirmedReferenceKeys: confirmedReferenceKeysForSend,
     });
+    if (caoDecision?.control) {
+      const accountId = resolveAccountIdentity(useAuthStore.getState())?.accountId ?? '';
+      if (!accountId || !workspaceId || !projectId) {
+        toast.error(
+          'CAO control unavailable',
+          'An exact account, workspace, and project are required.',
+        );
+        return false;
+      }
+      try {
+        const [chats, terminals] = await Promise.all([
+          chatRepo.listByProject(projectId as ProjectId),
+          terminalSessionRepo.listByProject(projectId as ProjectId),
+        ]);
+        resolveComposerCaoControl({
+          decision: caoDecision,
+          scope: { accountId, workspaceId: String(workspaceId), projectId: String(projectId) },
+          candidates: [
+            ...chats.map((chat) => ({
+              accountId,
+              workspaceId: String(chat.workspace_id),
+              projectId: String(chat.project_id),
+              kind: 'chat' as const,
+              targetId: String(chat.id),
+              title: chat.title,
+              revision: chat.updated_at,
+              selected: true,
+              locked: Boolean(chat.archived),
+            })),
+            ...terminals.map((terminal) => ({
+              accountId,
+              workspaceId: String(terminal.workspace_id),
+              projectId: String(terminal.project_id ?? ''),
+              kind: 'terminal' as const,
+              targetId: String(terminal.id),
+              title: terminal.title,
+              revision: terminal.last_active_at,
+              selected: true,
+              locked: terminal.status === 'exited',
+            })),
+          ],
+        });
+      } catch (error) {
+        toast.error(
+          'CAO control unavailable',
+          error instanceof Error && /^cao_control_[a-z0-9_]+$/u.test(error.message)
+            ? error.message
+            : 'cao_control_target_resolution_unavailable',
+        );
+        return false;
+      }
+      // The canonical target registry has not yet been composed in production. Do not let the
+      // provider or an ad-hoc client path execute the command without its durable authority.
+      toast.error('CAO control unavailable', 'cao_control_authority_unavailable');
+      return false;
+    }
 
     const currentReasoning = readChatReasoningPreference(String(chatId));
     const currentRuntime = readChatRuntimePolicyState(String(chatId));

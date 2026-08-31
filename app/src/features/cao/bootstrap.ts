@@ -30,6 +30,7 @@ export type CaoBootstrapDecision = Readonly<{
   requestedIdentity: CaoLearnerExecutionIdentity;
   skillIds: readonly ['jarvis-cao'];
   intent: CaoLearningIntent;
+  control?: CaoControlCommand;
 }>;
 
 export type CaoPublicStatus = Readonly<{
@@ -82,6 +83,16 @@ export function bootstrapCaoLearning(input: {
   text: string;
   confirmedReferenceKeys?: readonly string[];
 }): CaoBootstrapDecision | null {
+  const control = parseCaoControlCommand(input);
+  if (control) {
+    return Object.freeze({
+      nativeIdentity: CAO_NATIVE_IDENTITY,
+      requestedIdentity: CAO_LEARNER_IDENTITY,
+      skillIds: Object.freeze(['jarvis-cao'] as const),
+      intent: Object.freeze({ objective: 'cao-control', source: control.source }),
+      control,
+    });
+  }
   const intent = classifyCaoLearningIntent(input);
   if (!intent) return null;
   return Object.freeze({
@@ -119,3 +130,4 @@ export function assertCaoLearnerExecutionIdentity(input: {
 export function projectCaoPublicStatus(_decision: CaoBootstrapDecision): CaoPublicStatus {
   return Object.freeze({ identity: 'Jarvis CAO', status: 'queued' });
 }
+import { parseCaoControlCommand, type CaoControlCommand } from './controlCommand';

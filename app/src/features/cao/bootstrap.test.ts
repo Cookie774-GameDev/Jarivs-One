@@ -69,6 +69,17 @@ describe('CAO bootstrap authority', () => {
     });
   });
 
+  it('routes bounded controls through the same ingress without reclassifying them as learning', () => {
+    const explicit = bootstrapCaoLearning({ text: '@CAO diagnose chat:chat-1' });
+    const natural = bootstrapCaoLearning({ text: 'Have CAO diagnose chat:chat-1' });
+    expect(explicit?.control).toMatchObject({
+      action: 'diagnose',
+      selectors: [{ kind: 'chat', selector: 'chat-1' }],
+    });
+    expect(natural?.control).toEqual(explicit?.control);
+    expect(explicit?.intent.objective).toBe('cao-control');
+  });
+
   it('requires exact requested-vs-observed learner identity and never substitutes a fallback', () => {
     expect(
       assertCaoLearnerExecutionIdentity({

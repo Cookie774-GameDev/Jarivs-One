@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChatModelSelection } from '@/lib/ai/modelSelection';
 import { OPENCODE_CLI_CONNECTION } from '@/lib/ai/adapters/catalog';
 import type { ProviderId } from '@/types';
-import { resolveComposerCaoBootstrap } from './Composer';
+import { resolveComposerCaoBootstrap, resolveComposerCaoControl } from './Composer';
 import { bootstrapCaoLearning } from '@/features/cao/bootstrap';
 
 const deepSeekSelection: ChatModelSelection = {
@@ -88,5 +88,39 @@ describe('Composer CAO bootstrap', () => {
         skillIds: ['analyze'],
       }),
     ).toBeNull();
+  });
+
+  it('resolves explicit multi-target control only inside the active project scope', () => {
+    const scope = { accountId: 'account-1', workspaceId: 'workspace-1', projectId: 'project-1' };
+    const decision = bootstrapCaoLearning({ text: '@CAO verify chat:chat-1 terminal:terminal-1' });
+    expect(
+      resolveComposerCaoControl({
+        decision,
+        scope,
+        candidates: [
+          {
+            ...scope,
+            kind: 'chat',
+            targetId: 'chat-1',
+            title: 'Chat',
+            revision: 2,
+            selected: true,
+            locked: false,
+          },
+          {
+            ...scope,
+            kind: 'terminal',
+            targetId: 'terminal-1',
+            title: 'Terminal',
+            revision: 3,
+            selected: true,
+            locked: false,
+          },
+        ],
+      })?.targets,
+    ).toEqual([
+      { kind: 'chat', targetId: 'chat-1', revision: 2 },
+      { kind: 'terminal', targetId: 'terminal-1', revision: 3 },
+    ]);
   });
 });
