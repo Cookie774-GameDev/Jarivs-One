@@ -227,7 +227,8 @@ export function startJarvisLearningListener(
             ownerId: active,
             list: (ownerId) => evidenceRepository.list(ownerId),
             isCurrent: () => !disposed && bindings.getAccountId().trim() === active,
-            apply: (items) => store.getState().hydrateEvidence(active, items),
+            apply: (items) =>
+              mutateAutomaticLearning(() => store.getState().hydrateEvidence(active, items)),
           });
           if (recovery === 'reconciled') publishStatus(undefined, 'recovered');
         } catch (recoveryError) {
@@ -248,6 +249,7 @@ export function startJarvisLearningListener(
       persistProfile(active, store.getState().exportMarkdown());
     }
     if (
+      suppressAutomaticProfilePersistence === 0 &&
       active &&
       !loadingAccounts.has(active) &&
       state.evidence[active] !== previous.evidence[active]
