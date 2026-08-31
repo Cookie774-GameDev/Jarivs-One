@@ -22,6 +22,17 @@ const SELECTION_KEYS = new Set(['mode', 'targets']);
 const TARGET_IDENTITY_KEYS = new Set(['kind', 'targetId']);
 const APPLIED_CLAIM_KEYS = new Set(['applied', 'targets']);
 const REJECTED_CLAIM_KEYS = new Set(['applied', 'reason']);
+const LIVE_TARGET_KEYS = new Set([
+  'kind',
+  'targetId',
+  'accountId',
+  'workspaceId',
+  'projectId',
+  'revision',
+  'selected',
+  'locked',
+  'ownerLeaseId',
+]);
 const REGISTRY_REJECTION_REASONS = new Set<string>([
   'missing',
   'scope_mismatch',
@@ -207,10 +218,7 @@ function validRegistryClaim(
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const claim = value as { applied?: unknown; targets?: unknown; reason?: unknown };
   if (claim.applied === true) {
-    return (
-      hasExactKeys(value, APPLIED_CLAIM_KEYS) &&
-      validDependencyArray<CaoLiveTarget>(claim.targets, 32)
-    );
+    return hasExactKeys(value, APPLIED_CLAIM_KEYS) && validLiveTargetArray(claim.targets);
   }
   return (
     claim.applied === false &&
@@ -224,13 +232,27 @@ function validDependencyEntry(value: unknown): value is object {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-function validDependencyArray<T extends object>(
-  value: unknown,
-  maxLength: number,
-): value is readonly T[] {
-  if (!Array.isArray(value) || value.length > maxLength) return false;
+function validLiveTargetRow(value: unknown): value is CaoLiveTarget {
+  if (!validDependencyEntry(value) || !hasOnlyKnownKeys(value, LIVE_TARGET_KEYS)) return false;
+  const row = value as Partial<CaoLiveTarget>;
+  return (
+    (row.kind === 'chat' || row.kind === 'terminal') &&
+    validIdentifier(row.targetId) &&
+    validIdentifier(row.accountId) &&
+    validIdentifier(row.workspaceId) &&
+    validIdentifier(row.projectId) &&
+    Number.isSafeInteger(row.revision) &&
+    (row.revision ?? -1) >= 0 &&
+    typeof row.selected === 'boolean' &&
+    typeof row.locked === 'boolean' &&
+    (row.ownerLeaseId === undefined || validIdentifier(row.ownerLeaseId))
+  );
+}
+
+function validLiveTargetArray(value: unknown): value is readonly CaoLiveTarget[] {
+  if (!Array.isArray(value) || value.length > 32) return false;
   for (let index = 0; index < value.length; index += 1) {
-    if (!validDependencyEntry(value[index])) return false;
+    if (!validLiveTargetRow(value[index])) return false;
   }
   return true;
 }
@@ -466,7 +488,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       fail('cao_target_registry_unavailable');
     }
     const canonicalRows = canonicalDependencyValue(rows);
-    if (!validDependencyArray<CaoLiveTarget>(canonicalRows, 32)) {
+    if (!validLiveTargetArray(canonicalRows)) {
       fail('cao_target_registry_invalid');
     }
     rows = canonicalRows;
@@ -554,7 +576,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       fail('cao_target_registry_unavailable');
     }
     const canonicalRows = canonicalDependencyValue(liveRows);
-    if (!validDependencyArray<CaoLiveTarget>(canonicalRows, 32)) {
+    if (!validLiveTargetArray(canonicalRows)) {
       fail('cao_target_registry_invalid');
     }
     liveRows = canonicalRows;
@@ -709,7 +731,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
         fail('cao_target_registry_unavailable');
       }
       const canonicalTargets = canonicalDependencyValue(currentTargets);
-      if (!validDependencyArray<CaoLiveTarget>(canonicalTargets, 32)) {
+      if (!validLiveTargetArray(canonicalTargets)) {
         fail('cao_target_registry_invalid');
       }
       assertLiveTargets(
