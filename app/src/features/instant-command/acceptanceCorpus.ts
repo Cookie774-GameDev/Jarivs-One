@@ -52,15 +52,24 @@ function expandFixtures(
 ): readonly AcceptanceFixture[] {
   if (seeds.length === 0) throw new Error(`Cannot build ${kind} corpus without fixtures`);
   const count = Math.max(minimum, seeds.length);
+  const occurrences = new Map<string, number>();
   return Object.freeze(
     Array.from({ length: count }, (_, index) => {
       const seed = seeds[index % seeds.length]!;
-      const phrase = seed.phrase.trim();
-      if (!phrase || phrase.length > 512 || CONTROL_CHARACTER.test(phrase)) {
+      const basePhrase = seed.phrase.trim();
+      if (!basePhrase || basePhrase.length > 512 || CONTROL_CHARACTER.test(basePhrase)) {
         throw new Error(`${seed.command.id} has an unsafe ${kind} fixture`);
       }
+      const occurrenceKey = `${seed.command.id}\u0000${basePhrase}`;
+      const occurrence = occurrences.get(occurrenceKey) ?? 0;
+      occurrences.set(occurrenceKey, occurrence + 1);
+      const padding = ' '.repeat(occurrence);
+      const phrase = occurrence === 0 ? basePhrase : `${padding}${basePhrase}${padding}`;
+      if (phrase.length > 512) {
+        throw new Error(`${seed.command.id} cannot expand a bounded unique ${kind} fixture`);
+      }
       return Object.freeze({
-        fixtureId: `${kind}:${String(index + 1).padStart(3, '0')}:${seed.command.id}`,
+        fixtureId: `${kind}:${String(index + 1).padStart(3, '0')}:${seed.command.id}:v${occurrence}`,
         kind,
         commandId: seed.command.id,
         family: seed.command.family,

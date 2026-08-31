@@ -48,6 +48,13 @@ describe('Instant Command exhaustive acceptance corpus', () => {
     ];
 
     expect(new Set(fixtures.map((fixture) => fixture.fixtureId)).size).toBe(fixtures.length);
+    expect(
+      new Set(
+        fixtures.map(
+          (fixture) => `${fixture.kind}\u0000${fixture.commandId}\u0000${fixture.phrase}`,
+        ),
+      ).size,
+    ).toBe(fixtures.length);
     for (const fixture of fixtures) {
       expect(fixture.phrase.length).toBeGreaterThan(0);
       expect(fixture.phrase.length).toBeLessThanOrEqual(512);
