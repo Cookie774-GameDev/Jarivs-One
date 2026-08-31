@@ -5,18 +5,23 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const RUNTIME_RECEIPT_SCHEMA_VERSION: u32 = 1;
+const OPENCODEX_ENTRYPOINT: &str = "node_modules/@bitkyc08/opencodex/bin/ocx.mjs";
+const OPENCODEX_SOURCE_ENTRYPOINT: &str = "node_modules/@bitkyc08/opencodex/src/cli/index.ts";
+const OPENCODEX_PACKAGE_JSON: &str = "node_modules/@bitkyc08/opencodex/package.json";
+const OPENCODEX_BUN_EXECUTABLE: &str = "node_modules/bun/bin/bun.exe";
+const OPENCODEX_DEPENDENCY_LOCK: &str = "bun.lock";
 const OPENCODEX_REQUIRED_FILES: &[&str] = &[
-    "package/src/cli/index.ts",
-    "package/node_modules/.package-lock.json",
-    "package/node_modules/bun/package.json",
-    "package/node_modules/bun/bin/bun.exe",
-    "package/node_modules/@bufbuild/protobuf/package.json",
-    "package/node_modules/@modelcontextprotocol/sdk/package.json",
-    "package/node_modules/@napi-rs/keyring/package.json",
-    "package/node_modules/@napi-rs/keyring-win32-x64-msvc/package.json",
-    "package/node_modules/@napi-rs/keyring-win32-x64-msvc/keyring.win32-x64-msvc.node",
-    "package/node_modules/@oven/bun-windows-x64/package.json",
-    "package/node_modules/zod/package.json",
+    OPENCODEX_SOURCE_ENTRYPOINT,
+    OPENCODEX_DEPENDENCY_LOCK,
+    "node_modules/bun/package.json",
+    OPENCODEX_BUN_EXECUTABLE,
+    "node_modules/@bufbuild/protobuf/package.json",
+    "node_modules/@modelcontextprotocol/sdk/package.json",
+    "node_modules/@napi-rs/keyring/package.json",
+    "node_modules/@napi-rs/keyring-win32-x64-msvc/package.json",
+    "node_modules/@napi-rs/keyring-win32-x64-msvc/keyring.win32-x64-msvc.node",
+    "node_modules/@oven/bun-windows-x64/package.json",
+    "node_modules/zod/package.json",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,7 +99,7 @@ impl ManagedRuntimeReceipt {
             kind: release.kind,
             version: release.version.clone(),
             artifact_sha256: release.sha256.clone(),
-            entrypoint: release.entrypoint.clone(),
+            entrypoint: runtime_entrypoint(release).to_string(),
             entrypoint_sha256: entrypoint_sha256.to_string(),
             dependency_lock_sha256,
             runtime_executable_sha256,
@@ -106,7 +111,7 @@ impl ManagedRuntimeReceipt {
             && self.kind == release.kind
             && self.version == release.version
             && self.artifact_sha256 == release.sha256
-            && self.entrypoint == release.entrypoint
+            && self.entrypoint == runtime_entrypoint(release)
             && is_sha256(&self.entrypoint_sha256)
             && match release.kind {
                 ManagedCliKind::Codex => {
@@ -125,6 +130,13 @@ impl ManagedRuntimeReceipt {
                             .unwrap_or(false)
                 }
             }
+    }
+}
+
+fn runtime_entrypoint(release: &ManagedCliRelease) -> &str {
+    match release.kind {
+        ManagedCliKind::Codex => &release.entrypoint,
+        ManagedCliKind::OpenCodex => OPENCODEX_ENTRYPOINT,
     }
 }
 
@@ -164,7 +176,7 @@ fn inspect_opencodex_closure(
     release: &ManagedCliRelease,
     receipt: &ManagedRuntimeReceipt,
 ) -> Result<(), &'static str> {
-    if package_version(version_root, "package/package.json").as_deref()
+    if package_version(version_root, OPENCODEX_PACKAGE_JSON).as_deref()
         != Some(release.version.as_str())
     {
         return Err("OpenCodex package identity is missing or mismatched.");
@@ -175,33 +187,26 @@ fn inspect_opencodex_closure(
         }
     }
     for (path, version) in [
-        ("package/node_modules/bun/package.json", "1.4.0"),
+        ("node_modules/bun/package.json", "1.4.0"),
+        ("node_modules/@oven/bun-windows-x64/package.json", "1.4.0"),
+        ("node_modules/@napi-rs/keyring/package.json", "1.3.0"),
         (
-            "package/node_modules/@oven/bun-windows-x64/package.json",
-            "1.4.0",
-        ),
-        (
-            "package/node_modules/@napi-rs/keyring/package.json",
+            "node_modules/@napi-rs/keyring-win32-x64-msvc/package.json",
             "1.3.0",
         ),
-        (
-            "package/node_modules/@napi-rs/keyring-win32-x64-msvc/package.json",
-            "1.3.0",
-        ),
-        ("package/node_modules/zod/package.json", "4.4.3"),
+        ("node_modules/zod/package.json", "4.4.3"),
     ] {
         if package_version(version_root, path).as_deref() != Some(version) {
             return Err("OpenCodex direct dependency identity is mismatched.");
         }
     }
-    let lock_path = regular_file_within(version_root, "package/node_modules/.package-lock.json")
+    let lock_path = regular_file_within(version_root, OPENCODEX_DEPENDENCY_LOCK)
         .ok_or("OpenCodex dependency lock is missing.")?;
     if file_sha256(&lock_path).as_deref() != receipt.dependency_lock_sha256.as_deref() {
         return Err("OpenCodex dependency closure checksum is mismatched.");
     }
-    let runtime_executable =
-        regular_file_within(version_root, "package/node_modules/bun/bin/bun.exe")
-            .ok_or("OpenCodex managed Bun runtime is missing.")?;
+    let runtime_executable = regular_file_within(version_root, OPENCODEX_BUN_EXECUTABLE)
+        .ok_or("OpenCodex managed Bun runtime is missing.")?;
     if file_sha256(&runtime_executable).as_deref() != receipt.runtime_executable_sha256.as_deref() {
         return Err("OpenCodex managed Bun runtime checksum is mismatched.");
     }
@@ -274,7 +279,7 @@ pub fn inspect_managed_runtime(
         };
     }
 
-    let Some(entrypoint) = regular_file_within(&version_root, &release.entrypoint) else {
+    let Some(entrypoint) = regular_file_within(&version_root, runtime_entrypoint(release)) else {
         return ManagedCliReadiness::Incomplete {
             reason: "Managed CLI entrypoint is missing or unsafe.",
         };
@@ -303,10 +308,10 @@ pub fn inspect_managed_runtime(
                 .expect("validated OpenCodex dependency lock hash");
             ManagedCliReadiness::ProbeRequired {
                 launch: ManagedCliLaunch {
-                    executable: version_root.join("package/node_modules/bun/bin/bun.exe"),
+                    executable: version_root.join(OPENCODEX_BUN_EXECUTABLE),
                     arguments: vec![
                         version_root
-                            .join("package/src/cli/index.ts")
+                            .join(OPENCODEX_SOURCE_ENTRYPOINT)
                             .to_string_lossy()
                             .into_owned(),
                         "ready".to_string(),
@@ -456,41 +461,47 @@ mod tests {
             .expect("release");
         let version_root = root.path().join("versions").join(&release.version);
         for (path, bytes) in [
-            (&release.entrypoint[..], &b"#!/usr/bin/env node"[..]),
-            ("package/src/cli/index.ts", &b"console.log('fixture')"[..]),
-            ("package/package.json", &b"{\"version\":\"2.36.0\"}"[..]),
-            ("package/node_modules/.package-lock.json", &b"{}"[..]),
             (
-                "package/node_modules/bun/package.json",
+                "node_modules/@bitkyc08/opencodex/bin/ocx.mjs",
+                &b"#!/usr/bin/env node"[..],
+            ),
+            (
+                "node_modules/@bitkyc08/opencodex/src/cli/index.ts",
+                &b"console.log('fixture')"[..],
+            ),
+            (
+                "node_modules/@bitkyc08/opencodex/package.json",
+                &b"{\"version\":\"2.36.0\"}"[..],
+            ),
+            ("bun.lock", &b"{}"[..]),
+            (
+                "node_modules/bun/package.json",
                 &b"{\"version\":\"1.4.0\"}"[..],
             ),
-            ("package/node_modules/bun/bin/bun.exe", &b"MZfixture"[..]),
+            ("node_modules/bun/bin/bun.exe", &b"MZfixture"[..]),
+            ("node_modules/@bufbuild/protobuf/package.json", &b"{}"[..]),
             (
-                "package/node_modules/@bufbuild/protobuf/package.json",
+                "node_modules/@modelcontextprotocol/sdk/package.json",
                 &b"{}"[..],
             ),
             (
-                "package/node_modules/@modelcontextprotocol/sdk/package.json",
-                &b"{}"[..],
-            ),
-            (
-                "package/node_modules/@napi-rs/keyring/package.json",
+                "node_modules/@napi-rs/keyring/package.json",
                 &b"{\"version\":\"1.3.0\"}"[..],
             ),
             (
-                "package/node_modules/@napi-rs/keyring-win32-x64-msvc/package.json",
+                "node_modules/@napi-rs/keyring-win32-x64-msvc/package.json",
                 &b"{\"version\":\"1.3.0\"}"[..],
             ),
             (
-                "package/node_modules/@napi-rs/keyring-win32-x64-msvc/keyring.win32-x64-msvc.node",
+                "node_modules/@napi-rs/keyring-win32-x64-msvc/keyring.win32-x64-msvc.node",
                 &b"MZfixture"[..],
             ),
             (
-                "package/node_modules/@oven/bun-windows-x64/package.json",
+                "node_modules/@oven/bun-windows-x64/package.json",
                 &b"{\"version\":\"1.4.0\"}"[..],
             ),
             (
-                "package/node_modules/zod/package.json",
+                "node_modules/zod/package.json",
                 &b"{\"version\":\"4.4.3\"}"[..],
             ),
         ] {
@@ -512,9 +523,7 @@ mod tests {
         let ManagedCliReadiness::ProbeRequired { launch, .. } = &candidate else {
             panic!("OpenCodex must require a real bounded probe");
         };
-        assert!(launch
-            .executable
-            .ends_with("package/node_modules/bun/bin/bun.exe"));
+        assert!(launch.executable.ends_with("node_modules/bun/bin/bun.exe"));
         assert_eq!(launch.arguments.last().map(String::as_str), Some("--json"));
         assert!(!launch
             .arguments
@@ -550,7 +559,7 @@ mod tests {
             ManagedCliReadiness::Ready { .. }
         ));
 
-        fs::remove_file(version_root.join("package/node_modules/bun/bin/bun.exe")).unwrap();
+        fs::remove_file(version_root.join("node_modules/bun/bin/bun.exe")).unwrap();
         assert!(matches!(
             inspect_managed_runtime(root.path(), &release),
             ManagedCliReadiness::Incomplete { .. }

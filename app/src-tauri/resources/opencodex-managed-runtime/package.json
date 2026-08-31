@@ -1,0 +1,9 @@
+{
+  "name": "vibespace-managed-opencodex-runtime",
+  "version": "0.0.0-private",
+  "private": true,
+  "dependencies": {
+    "@bitkyc08/opencodex": "2.36.0"
+  },
+  "trustedDependencies": []
+}

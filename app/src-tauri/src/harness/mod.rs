@@ -1,4 +1,5 @@
 pub mod download;
+pub mod managed_cli_lock;
 pub mod managed_cli_manifest;
 pub mod managed_cli_runtime;
 pub mod manifest;
