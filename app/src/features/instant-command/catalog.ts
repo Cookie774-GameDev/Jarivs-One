@@ -56,6 +56,13 @@ function command(input: DefinitionInput): CommandDefinition {
   });
 }
 
+function withCanonicalSlashAlias(input: DefinitionInput): DefinitionInput {
+  return Object.freeze({
+    ...input,
+    aliases: Object.freeze([...input.aliases, `/${input.id.replace(/[._]+/gu, '-')}`]),
+  });
+}
+
 const navigationCommands = NAVIGATION_COMMAND_INPUTS.map((input) =>
   command({ ...input, family: 'navigation' }),
 );
@@ -528,7 +535,7 @@ const teamCommands = TEAM_COMMANDS.map((name) =>
   command({
     id: `team.${name}`,
     family: 'team',
-    aliases: TEAM_ALIASES[name],
+    aliases: [...TEAM_ALIASES[name], `/team-${name}`],
     authority: 'terminal-peer-fabric',
     safety: name === 'list' || name === 'status' ? 'read' : 'approval',
     availability: 'capability-gated',
@@ -548,7 +555,9 @@ export const INSTANT_COMMAND_CATALOG: readonly CommandDefinition[] = Object.free
     (input) =>
       (input.family !== 'terminal' && input.family !== 'agent') ||
       ['terminal.open', 'terminal.message', 'terminal.broadcast', 'agent.open'].includes(input.id),
-  ).map(command),
+  )
+    .map(withCanonicalSlashAlias)
+    .map(command),
   ...teamCommands,
 ]);
 

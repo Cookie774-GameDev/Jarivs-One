@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { INSTANT_COMMAND_CATALOG, INSTANT_COMMAND_INDEX } from './catalog';
+import { NAVIGATION_COMMAND_INPUTS } from './catalog/navigation';
+import { TERMINAL_AGENT_COMMAND_INPUTS } from './catalog/terminals';
 
 describe('INSTANT_COMMAND_CATALOG', () => {
   it('covers every canonical route with a locally indexed navigation command', () => {
@@ -77,6 +79,68 @@ describe('INSTANT_COMMAND_CATALOG', () => {
     expect(match!.definition.parseSlots(match!, source)).toEqual({
       status: 'parsed',
       slots: { remainder: 'two: Run NPM --Flag!' },
+    });
+  });
+
+  it('maps every remaining family and team command to one canonical namespaced slash alias', () => {
+    const previouslySpecializedIds = new Set([
+      ...NAVIGATION_COMMAND_INPUTS.map((entry) => entry.id),
+      ...TERMINAL_AGENT_COMMAND_INPUTS.map((entry) => entry.id),
+    ]);
+    const remaining = INSTANT_COMMAND_CATALOG.filter(
+      (entry) => !previouslySpecializedIds.has(entry.id),
+    );
+
+    expect(remaining.length).toBeGreaterThan(0);
+    for (const entry of remaining) {
+      const slashAlias = `/${entry.id.replace(/[._]+/gu, '-')}`;
+      expect(entry.aliases).toContain(slashAlias);
+      expect(entry.aliases[0]).not.toMatch(/^\//u);
+      expect(entry.aliases.filter((alias) => alias === slashAlias)).toHaveLength(1);
+    }
+  });
+
+  it('keeps all normalized aliases unique and bounded while reserving /connect for Providers', () => {
+    const normalizedAliases = INSTANT_COMMAND_CATALOG.flatMap((entry) => entry.aliases).map(
+      (alias) => alias.trim().toLocaleLowerCase(),
+    );
+    expect(new Set(normalizedAliases).size).toBe(normalizedAliases.length);
+    expect(normalizedAliases.filter((alias) => alias === '/connect')).toHaveLength(1);
+    expect(INSTANT_COMMAND_INDEX.match('/connect')[0]).toMatchObject({
+      id: 'connections.open',
+    });
+    expect(INSTANT_COMMAND_INDEX.match('/plugin-connect')[0]?.id).toBe('plugin.connect');
+    expect(INSTANT_COMMAND_INDEX.match('/team-connect')[0]?.id).toBe('team.connect');
+    for (const entry of INSTANT_COMMAND_CATALOG)
+      expect(entry.aliases.length).toBeLessThanOrEqual(64);
+  });
+
+  it('preserves authority, safety, availability, and original-text slots through slash aliases', () => {
+    expect(INSTANT_COMMAND_INDEX.match('/schedule-delete release')[0]).toMatchObject({
+      id: 'schedule.delete',
+      authority: 'schedule.repository',
+      safety: 'confirm',
+      availability: 'blocked',
+    });
+    expect(INSTANT_COMMAND_INDEX.match('/tool-run formatter')[0]).toMatchObject({
+      id: 'tool.run',
+      authority: 'tool.gateway',
+      safety: 'approval',
+      availability: 'blocked',
+    });
+    expect(INSTANT_COMMAND_INDEX.match('/team-status alpha')[0]).toMatchObject({
+      id: 'team.status',
+      authority: 'terminal-peer-fabric',
+      safety: 'read',
+      availability: 'capability-gated',
+    });
+
+    const source = '/plugin-connect OpenCode Provider';
+    const match = INSTANT_COMMAND_INDEX.matchWithOffsets(source)[0];
+    expect(match?.definition.id).toBe('plugin.connect');
+    expect(match?.definition.parseSlots(match, source)).toEqual({
+      status: 'parsed',
+      slots: { remainder: 'OpenCode Provider' },
     });
   });
 });
