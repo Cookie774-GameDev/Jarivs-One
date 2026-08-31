@@ -73,4 +73,65 @@ describe('InstantCommandLedger', () => {
     expect(ledger.consumeConfirmation('token-a', binding)).toBe(true);
     expect(ledger.issueConfirmation(binding, 50)).toBe('token-a');
   });
+
+  it('rejects invalid correlation identities before invoking the operation', () => {
+    const ledger = new InstantCommandLedger();
+    const effect = vi.fn(async () => ({ status: 'queued' as const }));
+
+    for (const correlationId of ['', 'bad id', 'bad\ncorrelation', 'x'.repeat(257)]) {
+      expect(() => ledger.runOnce(correlationId, binding, effect)).toThrow(/correlation/i);
+    }
+    expect(effect).not.toHaveBeenCalled();
+  });
+
+  it('never evicts active execution authority and reclaims only settled records', async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const effect = vi.fn(async () => {
+      await pending;
+      return { status: 'queued' as const };
+    });
+    const ledger = new InstantCommandLedger({ maxExecutions: 2 });
+    const first = ledger.runOnce('corr-a', binding, effect);
+    const second = ledger.runOnce('corr-b', { ...binding, commandId: 'terminal.stop' }, effect);
+
+    await expect(
+      ledger.runOnce('corr-c', { ...binding, commandId: 'terminal.restart' }, effect),
+    ).rejects.toThrow(/capacity/i);
+    expect(ledger.runOnce('corr-a', binding, effect)).toBe(first);
+    expect(effect).toHaveBeenCalledTimes(2);
+
+    release();
+    await Promise.all([first, second]);
+    await expect(
+      ledger.runOnce('corr-c', { ...binding, commandId: 'terminal.restart' }, async () => ({
+        status: 'queued' as const,
+      })),
+    ).resolves.toEqual({ status: 'queued' });
+  });
+
+  it('bounds live confirmations, prunes expiry, and rejects invalid tokens safely', () => {
+    let now = 100;
+    let token = 0;
+    const ledger = new InstantCommandLedger({
+      now: () => now,
+      createToken: () => `token-${++token}`,
+      maxConfirmations: 2,
+    });
+
+    ledger.issueConfirmation(binding, 50);
+    ledger.issueConfirmation({ ...binding, commandId: 'terminal.stop' }, 50);
+    expect(() =>
+      ledger.issueConfirmation({ ...binding, commandId: 'terminal.restart' }, 50),
+    ).toThrow(/capacity/i);
+    expect(ledger.consumeConfirmation('bad token', binding)).toBe(false);
+    expect(() => ledger.issueConfirmation(binding, 300_001)).toThrow(/expiry/i);
+
+    now = 151;
+    expect(ledger.issueConfirmation({ ...binding, commandId: 'terminal.restart' }, 50)).toBe(
+      'token-3',
+    );
+  });
 });
