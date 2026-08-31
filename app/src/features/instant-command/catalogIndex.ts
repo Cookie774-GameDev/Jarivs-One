@@ -1,10 +1,34 @@
-import type { CatalogMatch, CommandCatalogIndex, CommandDefinition } from './catalogTypes';
+import type {
+  CatalogMatch,
+  CatalogParseResult,
+  CommandCatalogIndex,
+  CommandDefinition,
+} from './catalogTypes';
 
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/u;
 const SAFE_CATALOG_IDENTIFIER = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/u;
 const MAX_ALIAS_LENGTH = 200;
 const MAX_FIXTURE_LENGTH = 500;
 const MAX_SOURCE_LENGTH = 4_096;
+const INVALID_SLOTS_REASON = 'That Instant Command is incomplete or invalid.';
+const COMMAND_FAMILIES = new Set([
+  'navigation',
+  'terminal',
+  'agent',
+  'project',
+  'chat',
+  'schedule',
+  'settings',
+  'media',
+  'tools',
+  'files',
+  'tasks',
+  'workbench',
+  'team',
+]);
+const COMMAND_SAFETY = new Set(['read', 'reversible', 'confirm', 'approval']);
+const COMMAND_AVAILABILITY = new Set(['available', 'capability-gated', 'blocked']);
+const SLOT_GRAMMARS = new Set(['none', 'remainder']);
 
 export function normalizeCatalogPhrase(source: string): string {
   return source.trim().toLowerCase().replace(/\s+/gu, ' ');
@@ -27,10 +51,56 @@ function requireFixture(
   }
 }
 
+function safeParseSlots(
+  parser: CommandDefinition['parseSlots'],
+  match: CatalogMatch,
+  source: string,
+): CatalogParseResult {
+  try {
+    const result = parser(match, source);
+    if (!result || typeof result !== 'object') throw new Error('invalid parser result');
+    if (result.status === 'parsed') {
+      if (!result.slots || typeof result.slots !== 'object' || Array.isArray(result.slots)) {
+        throw new Error('invalid parsed slots');
+      }
+      return Object.freeze({ status: 'parsed', slots: Object.freeze({ ...result.slots }) });
+    }
+    if (
+      result.status === 'rejected' &&
+      typeof result.reason === 'string' &&
+      result.reason.trim() &&
+      result.reason.length <= 200 &&
+      !CONTROL_CHARACTER.test(result.reason)
+    ) {
+      return Object.freeze({ status: 'rejected', reason: result.reason });
+    }
+  } catch {
+    // Parser failures are catalog defects, not user-visible backend diagnostics.
+  }
+  return Object.freeze({ status: 'rejected', reason: INVALID_SLOTS_REASON });
+}
+
+function snapshotDefinition(definition: CommandDefinition): CommandDefinition {
+  const parser = definition.parseSlots;
+  return Object.freeze({
+    ...definition,
+    aliases: Object.freeze([...definition.aliases]),
+    examples: Object.freeze([...definition.examples]),
+    fixtures: Object.freeze({
+      negative: Object.freeze([...definition.fixtures.negative]),
+      ambiguity: Object.freeze([...definition.fixtures.ambiguity]),
+      authorization: Object.freeze([...definition.fixtures.authorization]),
+      latencyBudgetMs: definition.fixtures.latencyBudgetMs,
+    }),
+    parseSlots: (match: CatalogMatch, source: string) => safeParseSlots(parser, match, source),
+  });
+}
+
 export function buildCatalogIndex(definitions: readonly CommandDefinition[]): CommandCatalogIndex {
   const ids = new Set<string>();
   const aliases = new Map<string, CommandDefinition>();
   const byFirstToken = new Map<string, Array<{ alias: string; definition: CommandDefinition }>>();
+  const entries: CommandDefinition[] = [];
 
   for (const definition of definitions) {
     const id = definition.id.trim();
@@ -40,6 +110,17 @@ export function buildCatalogIndex(definitions: readonly CommandDefinition[]): Co
     }
     if (ids.has(id)) throw new Error(`Duplicate command id: ${id}`);
     ids.add(id);
+    if (!COMMAND_FAMILIES.has(definition.family)) throw new Error(`${id} has an invalid family`);
+    if (!COMMAND_SAFETY.has(definition.safety)) throw new Error(`${id} has an invalid safety`);
+    if (!COMMAND_AVAILABILITY.has(definition.availability)) {
+      throw new Error(`${id} has an invalid availability`);
+    }
+    if (!SLOT_GRAMMARS.has(definition.slotGrammar)) {
+      throw new Error(`${id} has an invalid slot grammar`);
+    }
+    if (typeof definition.parseSlots !== 'function') {
+      throw new Error(`${id} has an invalid slot parser`);
+    }
     if (
       definition.authority !== definition.authority.trim() ||
       !SAFE_CATALOG_IDENTIFIER.test(definition.authority)
@@ -68,7 +149,10 @@ export function buildCatalogIndex(definitions: readonly CommandDefinition[]): Co
       throw new Error(`${id} has an invalid latency fixture`);
     }
 
-    for (const rawAlias of definition.aliases) {
+    const entry = snapshotDefinition(definition);
+    entries.push(entry);
+
+    for (const rawAlias of entry.aliases) {
       const alias = normalizeCatalogPhrase(rawAlias);
       if (!alias || rawAlias.length > MAX_ALIAS_LENGTH || CONTROL_CHARACTER.test(rawAlias)) {
         throw new Error(`${id} has an invalid alias`);
@@ -78,10 +162,10 @@ export function buildCatalogIndex(definitions: readonly CommandDefinition[]): Co
         if (owner.id === id) throw new Error(`Duplicate alias is unreachable: ${rawAlias}`);
         throw new Error(`Alias collision: ${rawAlias} belongs to ${owner.id} and ${id}`);
       }
-      aliases.set(alias, definition);
+      aliases.set(alias, entry);
       const firstToken = alias.split(' ', 1)[0];
       const bucket = byFirstToken.get(firstToken) ?? [];
-      bucket.push({ alias, definition });
+      bucket.push({ alias, definition: entry });
       byFirstToken.set(firstToken, bucket);
     }
   }
@@ -133,7 +217,7 @@ export function buildCatalogIndex(definitions: readonly CommandDefinition[]): Co
   }
 
   return Object.freeze({
-    entries: Object.freeze([...definitions]),
+    entries: Object.freeze(entries),
     matchWithOffsets,
     match(source: string): readonly CommandDefinition[] {
       return matchWithOffsets(source).map((match) => match.definition);

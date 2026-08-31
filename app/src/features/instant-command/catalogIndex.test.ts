@@ -118,4 +118,75 @@ describe('buildCatalogIndex', () => {
     expect(index.match(`open chat ${'x'.repeat(4_097)}`)).toEqual([]);
     expect(index.match('open chat\u0000hidden')).toEqual([]);
   });
+
+  it('rejects invalid runtime metadata and non-callable slot parsers', () => {
+    expect(() =>
+      buildCatalogIndex([definition({ family: 'invalid' as CommandDefinition['family'] })]),
+    ).toThrow(/family/i);
+    expect(() =>
+      buildCatalogIndex([definition({ safety: 'invalid' as CommandDefinition['safety'] })]),
+    ).toThrow(/safety/i);
+    expect(() =>
+      buildCatalogIndex([
+        definition({ availability: 'invalid' as CommandDefinition['availability'] }),
+      ]),
+    ).toThrow(/availability/i);
+    expect(() =>
+      buildCatalogIndex([
+        definition({ slotGrammar: 'invalid' as CommandDefinition['slotGrammar'] }),
+      ]),
+    ).toThrow(/slot grammar/i);
+    expect(() =>
+      buildCatalogIndex([
+        definition({ parseSlots: null as unknown as CommandDefinition['parseSlots'] }),
+      ]),
+    ).toThrow(/slot parser/i);
+  });
+
+  it('snapshots validated metadata so later caller mutation cannot rewrite routing truth', () => {
+    const mutable = definition() as unknown as {
+      id: string;
+      aliases: string[];
+      examples: string[];
+      fixtures: { negative: string[] };
+    };
+    const index = buildCatalogIndex([mutable as unknown as CommandDefinition]);
+
+    mutable.id = 'navigation.rewritten';
+    mutable.aliases[0] = 'open secrets';
+    mutable.examples[0] = 'open secrets';
+    mutable.fixtures.negative[0] = 'open secrets';
+
+    expect(index.entries[0]).toMatchObject({ id: 'navigation.chat.open', aliases: ['open chat'] });
+    expect(index.match('open chat')[0]?.id).toBe('navigation.chat.open');
+    expect(index.match('open secrets')).toEqual([]);
+    expect(Object.isFrozen(index.entries[0])).toBe(true);
+    expect(Object.isFrozen(index.entries[0]?.fixtures)).toBe(true);
+  });
+
+  it('contains slot parser exceptions and malformed results without exposing private errors', () => {
+    const throwing = buildCatalogIndex([
+      definition({
+        parseSlots: () => {
+          throw new Error('private provider credential detail');
+        },
+      }),
+    ]);
+    const malformed = buildCatalogIndex([
+      definition({
+        parseSlots: (() => ({ status: 'parsed' })) as unknown as CommandDefinition['parseSlots'],
+      }),
+    ]);
+
+    expect(
+      throwing
+        .matchWithOffsets('open chat')[0]
+        ?.definition.parseSlots(throwing.matchWithOffsets('open chat')[0]!, 'open chat'),
+    ).toEqual({ status: 'rejected', reason: 'That Instant Command is incomplete or invalid.' });
+    expect(
+      malformed
+        .matchWithOffsets('open chat')[0]
+        ?.definition.parseSlots(malformed.matchWithOffsets('open chat')[0]!, 'open chat'),
+    ).toEqual({ status: 'rejected', reason: 'That Instant Command is incomplete or invalid.' });
+  });
 });
