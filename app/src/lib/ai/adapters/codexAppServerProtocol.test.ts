@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildCodexApprovalResponse,
+  buildCodexModelListRequest,
   buildCodexQuestionResponse,
   buildCodexThreadResumeRequest,
   buildCodexThreadStartRequest,
   buildCodexTurnInterruptRequest,
   buildCodexTurnStartRequest,
+  validateCodexModelListResponse,
   validateCodexThreadStartResponse,
   type CodexBackendIdentity,
 } from './codexAppServerProtocol';
@@ -33,7 +35,7 @@ describe('Codex app-server request protocol', () => {
       params: {
         model: 'gpt-5.6-sol',
         modelProvider: 'opencodex-vibespace',
-        serviceTier: 'fast',
+        serviceTier: 'priority',
         cwd: 'C:\\workspace\\game',
         approvalPolicy: 'never',
         approvalsReviewer: 'user',
@@ -92,7 +94,7 @@ describe('Codex app-server request protocol', () => {
           excludeSlashTmp: true,
         },
         model: 'gpt-5.6-sol',
-        serviceTierForTurn: 'fast',
+        serviceTierForTurn: 'priority',
         effort: 'high',
         summary: 'concise',
       },
@@ -130,7 +132,7 @@ describe('Codex app-server request protocol', () => {
         threadId: 'thread_1',
         model: 'gpt-5.6-sol',
         modelProvider: 'opencodex-vibespace',
-        serviceTier: 'fast',
+        serviceTier: 'priority',
         cwd: 'C:\\workspace\\game',
         approvalPolicy: 'never',
         approvalsReviewer: 'user',
@@ -148,7 +150,7 @@ describe('Codex app-server request protocol', () => {
         thread: { id: 'thread_1' },
         model: 'gpt-5.6-sol',
         modelProvider: 'opencodex-vibespace',
-        serviceTier: 'fast',
+        serviceTier: 'priority',
         cwd: 'C:\\workspace\\game',
         approvalPolicy: 'never',
         approvalsReviewer: 'user',
@@ -328,5 +330,110 @@ describe('Codex app-server request protocol', () => {
         turnId: 'turn_1\nwrong',
       }),
     ).toThrow(/identifier/iu);
+  });
+});
+
+describe('Codex app-server model capability protocol', () => {
+  const model = {
+    id: 'gpt-5.6-sol',
+    model: 'gpt-5.6-sol',
+    hidden: false,
+    supportedReasoningEfforts: [
+      { reasoningEffort: 'low', description: 'Fast responses' },
+      { reasoningEffort: 'high', description: 'Greater reasoning depth' },
+    ],
+    serviceTiers: [{ id: 'priority', name: 'Fast', description: 'Increased request priority' }],
+  };
+
+  it('requests the complete official model page without inventing a catalog', () => {
+    expect(buildCodexModelListRequest({ requestId: 'models_1' })).toEqual({
+      id: 'models_1',
+      method: 'model/list',
+      params: { limit: 100, includeHidden: true },
+    });
+    expect(buildCodexModelListRequest({ requestId: 'models_2', cursor: 'next/page+2=' })).toEqual({
+      id: 'models_2',
+      method: 'model/list',
+      params: { cursor: 'next/page+2=', limit: 100, includeHidden: true },
+    });
+    expect(() =>
+      buildCodexModelListRequest({ requestId: 'models_2', cursor: 'unsafe\ncursor' }),
+    ).toThrow(/cursor/iu);
+  });
+
+  it('validates the exact selected model, effort, and official Fast service tier', () => {
+    expect(
+      validateCodexModelListResponse(
+        { id: 'models_1', result: { data: [model], nextCursor: null } },
+        'models_1',
+        IDENTITY,
+      ),
+    ).toEqual({
+      ok: true,
+      model: 'gpt-5.6-sol',
+      reasoningEffort: 'high',
+      serviceTier: 'priority',
+    });
+  });
+
+  it('continues pagination before declaring a selected model unavailable', () => {
+    expect(
+      validateCodexModelListResponse(
+        { id: 'models_1', result: { data: [], nextCursor: 'page_2' } },
+        'models_1',
+        IDENTITY,
+      ),
+    ).toEqual({ ok: false, reason: 'next_page', field: 'cursor', cursor: 'page_2' });
+  });
+
+  it('fails closed on request, model, effort, tier, and response-shape mismatch', () => {
+    expect(
+      validateCodexModelListResponse(
+        { id: 'wrong', result: { data: [model], nextCursor: null } },
+        'models_1',
+        IDENTITY,
+      ),
+    ).toEqual({ ok: false, reason: 'request_mismatch', field: 'id' });
+    expect(
+      validateCodexModelListResponse(
+        { id: 'models_1', result: { data: [], nextCursor: null } },
+        'models_1',
+        IDENTITY,
+      ),
+    ).toEqual({ ok: false, reason: 'capability_mismatch', field: 'model' });
+    expect(
+      validateCodexModelListResponse(
+        {
+          id: 'models_1',
+          result: {
+            data: [{ ...model, supportedReasoningEfforts: [] }],
+            nextCursor: null,
+          },
+        },
+        'models_1',
+        IDENTITY,
+      ),
+    ).toEqual({ ok: false, reason: 'capability_mismatch', field: 'reasoningEffort' });
+    expect(
+      validateCodexModelListResponse(
+        { id: 'models_1', result: { data: [{ ...model, serviceTiers: [] }], nextCursor: null } },
+        'models_1',
+        IDENTITY,
+      ),
+    ).toEqual({ ok: false, reason: 'capability_mismatch', field: 'serviceTier' });
+    expect(
+      validateCodexModelListResponse(
+        { id: 'models_1', result: { data: [model, model], nextCursor: null } },
+        'models_1',
+        IDENTITY,
+      ),
+    ).toEqual({ ok: false, reason: 'invalid_response', field: 'model' });
+    expect(
+      validateCodexModelListResponse(
+        { id: 'models_1', result: { data: 'not-an-array', nextCursor: null } },
+        'models_1',
+        IDENTITY,
+      ),
+    ).toEqual({ ok: false, reason: 'invalid_response', field: 'data' });
   });
 });

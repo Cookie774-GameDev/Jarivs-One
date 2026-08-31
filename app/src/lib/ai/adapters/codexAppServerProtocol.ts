@@ -65,12 +65,34 @@ export interface CodexTurnInterruptRequestInput {
   turnId: string;
 }
 
+export interface CodexModelListRequestInput {
+  requestId: string;
+  cursor?: string;
+}
+
+export type CodexModelCapabilityValidation =
+  | {
+      ok: true;
+      model: string;
+      reasoningEffort: string | null;
+      serviceTier: string | null;
+    }
+  | {
+      ok: false;
+      reason: 'invalid_response' | 'request_mismatch' | 'capability_mismatch';
+      field: string;
+    }
+  | { ok: false; reason: 'next_page'; field: 'cursor'; cursor: string };
+
 const MAX_IDENTIFIER = 256;
 const MAX_TEXT = 1_048_576;
 const MAX_WRITABLE_ROOTS = 16;
 const MAX_QUESTIONS = 16;
 const MAX_ANSWERS_PER_QUESTION = 8;
 const MAX_ANSWER_TEXT = 32_768;
+const MAX_MODEL_PAGE = 100;
+const MAX_MODEL_OPTIONS = 32;
+const MAX_CURSOR = 1_024;
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:/+@-]*$/u;
 const UNSAFE_CONTROL = /[\u0000-\u001f\u007f]/u;
 const UNSAFE_ANSWER_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
@@ -118,16 +140,26 @@ function requireAbsolutePath(value: string, label: string): string {
   return value;
 }
 
+function requireCursor(value: string): string {
+  if (!value || value.length > MAX_CURSOR || UNSAFE_CONTROL.test(value)) {
+    throw new Error('Codex model cursor is invalid.');
+  }
+  return value;
+}
+
+function codexServiceTier(value: string | null): string | null {
+  if (value === null) return null;
+  const tier = requireIdentifier(value, 'service tier');
+  return tier.toLocaleLowerCase('en-US') === 'fast' ? 'priority' : tier;
+}
+
 function requireIdentity(identity: Readonly<CodexBackendIdentity>): CodexBackendIdentity {
   return {
     modelProvider: requireIdentifier(identity.modelProvider, 'model provider'),
     model: requireIdentifier(identity.model, 'model'),
     effort:
       identity.effort === null ? null : requireIdentifier(identity.effort, 'reasoning effort'),
-    serviceTier:
-      identity.serviceTier === null
-        ? null
-        : requireIdentifier(identity.serviceTier, 'service tier'),
+    serviceTier: codexServiceTier(identity.serviceTier),
     cwd: requireAbsolutePath(identity.cwd, 'working directory'),
   };
 }
@@ -256,6 +288,100 @@ export function buildCodexTurnStartRequest(input: Readonly<CodexTurnStartRequest
       effort: identity.effort,
       summary: 'concise' as const,
     },
+  };
+}
+
+export function buildCodexModelListRequest(input: Readonly<CodexModelListRequestInput>) {
+  return {
+    id: requireIdentifier(input.requestId, 'request'),
+    method: 'model/list' as const,
+    params: {
+      ...(input.cursor === undefined ? {} : { cursor: requireCursor(input.cursor) }),
+      limit: MAX_MODEL_PAGE,
+      includeHidden: true,
+    },
+  };
+}
+
+export function validateCodexModelListResponse(
+  value: unknown,
+  expectedRequestId: string,
+  expectedIdentity: Readonly<CodexBackendIdentity>,
+): CodexModelCapabilityValidation {
+  const requestId = requireIdentifier(expectedRequestId, 'request');
+  const identity = requireIdentity(expectedIdentity);
+  const envelope = recordOf(value);
+  if (!envelope) return { ok: false, reason: 'invalid_response', field: 'envelope' };
+  if (envelope.id !== requestId) {
+    return { ok: false, reason: 'request_mismatch', field: 'id' };
+  }
+  const result = recordOf(envelope.result);
+  if (!result || !Array.isArray(result.data) || result.data.length > MAX_MODEL_PAGE) {
+    return { ok: false, reason: 'invalid_response', field: 'data' };
+  }
+  let nextCursor: string | null;
+  if (result.nextCursor === null) {
+    nextCursor = null;
+  } else if (typeof result.nextCursor === 'string') {
+    try {
+      nextCursor = requireCursor(result.nextCursor);
+    } catch {
+      return { ok: false, reason: 'invalid_response', field: 'cursor' };
+    }
+  } else {
+    return { ok: false, reason: 'invalid_response', field: 'cursor' };
+  }
+  const records = result.data.map(recordOf);
+  if (
+    records.some(
+      (record) =>
+        !record || typeof record.model !== 'string' || !SAFE_IDENTIFIER.test(record.model),
+    )
+  ) {
+    return { ok: false, reason: 'invalid_response', field: 'model' };
+  }
+  const matching = records.filter((record) => record?.model === identity.model);
+  if (matching.length > 1) {
+    return { ok: false, reason: 'invalid_response', field: 'model' };
+  }
+  if (matching.length === 0) {
+    return nextCursor
+      ? { ok: false, reason: 'next_page', field: 'cursor', cursor: nextCursor }
+      : { ok: false, reason: 'capability_mismatch', field: 'model' };
+  }
+  const selected = matching[0]!;
+  if (
+    !Array.isArray(selected.supportedReasoningEfforts) ||
+    selected.supportedReasoningEfforts.length > MAX_MODEL_OPTIONS
+  ) {
+    return { ok: false, reason: 'invalid_response', field: 'reasoningEffort' };
+  }
+  const efforts = selected.supportedReasoningEfforts.map(recordOf);
+  if (efforts.some((effort) => !effort || typeof effort.reasoningEffort !== 'string')) {
+    return { ok: false, reason: 'invalid_response', field: 'reasoningEffort' };
+  }
+  if (
+    identity.effort !== null &&
+    !efforts.some((effort) => effort?.reasoningEffort === identity.effort)
+  ) {
+    return { ok: false, reason: 'capability_mismatch', field: 'reasoningEffort' };
+  }
+  if (!Array.isArray(selected.serviceTiers) || selected.serviceTiers.length > MAX_MODEL_OPTIONS) {
+    return { ok: false, reason: 'invalid_response', field: 'serviceTier' };
+  }
+  const tiers = selected.serviceTiers.map(recordOf);
+  if (tiers.some((tier) => !tier || typeof tier.id !== 'string')) {
+    return { ok: false, reason: 'invalid_response', field: 'serviceTier' };
+  }
+  const tier = identity.serviceTier;
+  if (tier !== null && tier !== 'default' && !tiers.some((candidate) => candidate?.id === tier)) {
+    return { ok: false, reason: 'capability_mismatch', field: 'serviceTier' };
+  }
+  return {
+    ok: true,
+    model: identity.model,
+    reasoningEffort: identity.effort,
+    serviceTier: tier,
   };
 }
 
