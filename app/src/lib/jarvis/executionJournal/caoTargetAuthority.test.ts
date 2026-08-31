@@ -390,7 +390,7 @@ describe('CAO explicit target authority', () => {
         selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
       }),
     ).resolves.toMatchObject({ leaseId: 'cao_lease_1', targets: [{ revision: 7 }] });
-    expect(h.registry.readExact).toHaveBeenCalledOnce();
+    expect(h.registry.readExact).toHaveBeenCalledTimes(2);
     expect(h.registry.claimExact).toHaveBeenCalledOnce();
   });
 
@@ -1017,6 +1017,115 @@ describe('CAO explicit target authority', () => {
     ).rejects.toThrow(/^cao_target_registry_unavailable$/);
     expect(h.deps.journal.appendEvent).not.toHaveBeenCalled();
     expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe('cao_lease_1');
+  });
+
+  it('does not persist authority when target revision drifts before journal authorization', async () => {
+    const h = harness();
+    h.deps.runs.getRun.mockResolvedValueOnce(run()).mockImplementationOnce(async () => {
+      h.targets.set('chat:chat-a', {
+        ...target({ revision: 8 }),
+        ownerLeaseId: 'cao_lease_1',
+      });
+      return run();
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_revision_stale$/);
+    expect(h.deps.journal.appendEvent).not.toHaveBeenCalled();
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('does not persist authority when target selection drifts before journal authorization', async () => {
+    const h = harness();
+    h.deps.runs.getRun.mockResolvedValueOnce(run()).mockImplementationOnce(async () => {
+      h.targets.set('chat:chat-a', {
+        ...target({ selected: false }),
+        ownerLeaseId: 'cao_lease_1',
+      });
+      return run();
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_unselected$/);
+    expect(h.deps.journal.appendEvent).not.toHaveBeenCalled();
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('does not persist or release when target ownership transfers before authorization', async () => {
+    const h = harness();
+    h.deps.runs.getRun.mockResolvedValueOnce(run()).mockImplementationOnce(async () => {
+      h.targets.set('chat:chat-a', {
+        ...target(),
+        ownerLeaseId: 'cao_lease_other',
+      });
+      return run();
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_lease_conflict$/);
+    expect(h.deps.journal.appendEvent).not.toHaveBeenCalled();
+    expect(h.registry.releaseExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe('cao_lease_other');
+  });
+
+  it('releases provisional ownership when pre-persistence registry read is transiently unavailable', async () => {
+    const h = harness();
+    vi.mocked(h.registry.readExact).mockRejectedValueOnce(
+      new Error('private pre-persistence registry read payload'),
+    );
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_registry_unavailable$/);
+    expect(h.deps.journal.appendEvent).not.toHaveBeenCalled();
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('reconciles ambiguous live-drift cleanup before reporting the stable target error', async () => {
+    const h = harness();
+    h.deps.runs.getRun.mockResolvedValueOnce(run()).mockImplementationOnce(async () => {
+      h.targets.set('chat:chat-a', {
+        ...target({ locked: true }),
+        ownerLeaseId: 'cao_lease_1',
+      });
+      return run();
+    });
+    vi.mocked(h.registry.releaseExact).mockImplementationOnce(async () => {
+      h.targets.set('chat:chat-a', { ...target({ locked: true }), ownerLeaseId: undefined });
+      throw new Error('private pre-persistence live cleanup transport payload');
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_locked$/);
+    expect(h.deps.journal.appendEvent).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
   });
 
   it('rolls back ownership when a journal acknowledgement accessor throws', async () => {

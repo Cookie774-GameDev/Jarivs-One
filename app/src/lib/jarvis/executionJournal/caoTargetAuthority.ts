@@ -650,6 +650,29 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
       fail('cao_target_lease_stale');
     }
+    try {
+      let currentTargets: readonly CaoLiveTarget[];
+      try {
+        currentTargets = await dependencies.registry.readExact(releaseRequest(input, lease));
+      } catch {
+        fail('cao_target_registry_unavailable');
+      }
+      const canonicalTargets = canonicalDependencyValue(currentTargets);
+      if (!Array.isArray(canonicalTargets)) fail('cao_target_registry_invalid');
+      if (canonicalTargets.some((row) => !validDependencyEntry(row))) {
+        fail('cao_target_registry_invalid');
+      }
+      assertLiveTargets(
+        canonicalTargets,
+        requested,
+        input,
+        leaseId,
+        lease.targets.map(({ revision }) => revision),
+      );
+    } catch (error) {
+      await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
+      throw error;
+    }
     let appended: JarvisEvent;
     try {
       appended = await dependencies.journal.appendEvent(input.accountId, input.runId, {
