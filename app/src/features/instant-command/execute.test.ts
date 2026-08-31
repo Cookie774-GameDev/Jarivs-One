@@ -132,6 +132,33 @@ describe('executeInstantCommand', () => {
     expect(h.executeLegacy).not.toHaveBeenCalled();
   });
 
+  it('dispatches typed media slots through only the canonical media authority', async () => {
+    const h = dependencies();
+    const executeMedia = vi.fn(async () => ({
+      ok: true as const,
+      code: 'opened' as const,
+      message: 'Music volume is 42.',
+    }));
+    const signal = new AbortController().signal;
+    await expect(
+      executeInstantCommand(
+        {
+          kind: 'catalog',
+          id: 'music.volume',
+          family: 'media',
+          authority: 'media.player',
+          safety: 'reversible',
+          slots: { value: 42 },
+        },
+        { ...h.deps, executeMedia },
+        signal,
+      ),
+    ).resolves.toEqual({ ok: true, code: 'opened', message: 'Music volume is 42.' });
+    expect(executeMedia).toHaveBeenCalledWith({ id: 'music.volume', value: 42 }, signal);
+    expect(h.executeLegacy).not.toHaveBeenCalled();
+    expect(h.enqueueBatch).not.toHaveBeenCalled();
+  });
+
   it('opens Fabric setup and dispatches only the enabled read lifecycle through its authority', async () => {
     const h = dependencies();
     await expect(

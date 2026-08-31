@@ -143,4 +143,42 @@ describe('INSTANT_COMMAND_CATALOG', () => {
       slots: { remainder: 'OpenCode Provider' },
     });
   });
+
+  it('makes the complete media family available with exact typed slots', () => {
+    const media = INSTANT_COMMAND_CATALOG.filter((entry) => entry.family === 'media');
+    expect(media.map((entry) => entry.id)).toEqual([
+      'music.play',
+      'music.pause',
+      'music.resume',
+      'music.stop',
+      'music.next',
+      'music.previous',
+      'music.track',
+      'music.volume',
+      'music.mute',
+      'music.unmute',
+      'ambient.set',
+    ]);
+    expect(media.every((entry) => entry.availability === 'available')).toBe(true);
+    expect(
+      INSTANT_COMMAND_INDEX.matchWithOffsets('/music-volume 42.5')[0]?.definition.parseSlots(
+        INSTANT_COMMAND_INDEX.matchWithOffsets('/music-volume 42.5')[0]!,
+        '/music-volume 42.5',
+      ),
+    ).toEqual({ status: 'parsed', slots: { value: 42.5 } });
+    for (const [source, expected] of [
+      ['/music-track Northern Lights', { text: 'Northern Lights' }],
+      ['/ambient-set Rain', { text: 'Rain' }],
+    ] as const) {
+      const match = INSTANT_COMMAND_INDEX.matchWithOffsets(source)[0]!;
+      expect(match.definition.parseSlots(match, source)).toEqual({
+        status: 'parsed',
+        slots: expected,
+      });
+    }
+    const invalid = INSTANT_COMMAND_INDEX.matchWithOffsets('/music-play private')[0]!;
+    expect(invalid.definition.parseSlots(invalid, '/music-play private')).toMatchObject({
+      status: 'rejected',
+    });
+  });
 });

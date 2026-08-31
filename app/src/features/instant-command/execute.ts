@@ -20,6 +20,7 @@ import {
   executeTerminalCommand,
   type TerminalCommandRequest,
 } from './authorities/terminalCommands';
+import { executeMediaCommand, type MediaCommandRequest } from './authorities/mediaCommands';
 import {
   executeFabricCommand,
   isTerminalPeerFabricReady,
@@ -48,6 +49,7 @@ export type InstantCommandDependencies = Readonly<{
     request: TerminalCommandRequest,
     signal?: AbortSignal,
   ) => Promise<InstantResult>;
+  executeMedia?: (request: MediaCommandRequest, signal?: AbortSignal) => Promise<InstantResult>;
   openFabricSetup?: () => void;
   isFabricReady?: () => Promise<boolean>;
   executeFabric?: (request: FabricAuthorityRequest) => Promise<InstantResult>;
@@ -80,6 +82,7 @@ const defaultDependencies: InstantCommandDependencies = {
       },
       signal,
     ),
+  executeMedia: (request, signal) => executeMediaCommand(request, undefined, signal),
   openFabricSetup: () => {
     useUIStore.getState().setRoute('tools');
     setTimeout(() => window.dispatchEvent(new Event('jarvis:terminal-peer-fabric:open')), 0);
@@ -121,6 +124,10 @@ export async function executeInstantCommand(
       const executeTerminalDependency =
         dependencies.executeTerminal ?? defaultDependencies.executeTerminal!;
       return executeTerminalDependency({ id: command.id, slots: command.slots }, signal);
+    }
+    if (command.family === 'media') {
+      const executeMediaDependency = dependencies.executeMedia ?? defaultDependencies.executeMedia!;
+      return executeMediaDependency({ ...command.slots, id: command.id }, signal);
     }
     if (command.family === 'team') {
       const ready = await (dependencies.isFabricReady ?? defaultDependencies.isFabricReady!)();

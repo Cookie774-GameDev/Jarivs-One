@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { executeMediaCommand } from './mediaCommands';
+import {
+  createCanonicalMediaCommandPort,
+  executeMediaCommand,
+  resolveMediaTrack,
+} from './mediaCommands';
 
 describe('media command authority', () => {
   it('clamps volume and reports the canonical observed value', async () => {
@@ -10,17 +14,26 @@ describe('media command authority', () => {
     expect(setVolume).toHaveBeenCalledWith(100);
   });
 
-  it('routes only enumerated playback actions', async () => {
+  it.each([
+    ['music.play', 'play'],
+    ['music.pause', 'pause'],
+    ['music.resume', 'resume'],
+    ['music.stop', 'stop'],
+    ['music.next', 'next'],
+    ['music.previous', 'previous'],
+    ['music.mute', 'mute'],
+    ['music.unmute', 'unmute'],
+  ] as const)('routes %s through only the canonical %s action', async (id, expectedAction) => {
     const action = vi.fn(async () => undefined);
     await expect(
-      executeMediaCommand({ id: 'music.next' }, { action, setVolume: vi.fn() }),
+      executeMediaCommand({ id }, { action, setVolume: vi.fn() }),
     ).resolves.toMatchObject({ ok: true, code: 'opened' });
-    expect(action).toHaveBeenCalledWith('next');
+    expect(action).toHaveBeenCalledWith(expectedAction);
   });
 
   it('routes bounded track and ambient selections through explicit capabilities', async () => {
-    const selectTrack = vi.fn(async () => undefined);
-    const setAmbient = vi.fn(async () => undefined);
+    const selectTrack = vi.fn(async () => ({ status: 'selected' as const, canonical: 'music-1' }));
+    const setAmbient = vi.fn(async () => ({ status: 'selected' as const, canonical: 'music-2' }));
     const port = { action: vi.fn(), setVolume: vi.fn(), selectTrack, setAmbient };
 
     await expect(
@@ -34,6 +47,133 @@ describe('media command authority', () => {
       message: 'Ambient sound changed.',
     });
     expect(setAmbient).toHaveBeenCalledWith('Rain');
+  });
+
+  it('resolves a track by exact stable ID then unique normalized label', () => {
+    const tracks = [
+      { id: 'music-1', label: 'Northern Lights' },
+      { id: 'music-2', label: 'Rain' },
+    ] as const;
+    expect(resolveMediaTrack(tracks, 'music-2')).toEqual({ status: 'resolved', id: 'music-2' });
+    expect(resolveMediaTrack(tracks, ' northern   lights ')).toEqual({
+      status: 'resolved',
+      id: 'music-1',
+    });
+    expect(
+      resolveMediaTrack([...tracks, { id: 'music-3', label: 'RAIN' }] as const, 'rain'),
+    ).toEqual({ status: 'ambiguous', candidateIds: ['music-2', 'music-3'] });
+    expect(resolveMediaTrack(tracks, 'missing')).toEqual({ status: 'missing' });
+  });
+
+  it('persists canonical track, volume, and play state and reconstructs unmute after reload', async () => {
+    const state = {
+      ambientTrack: 'music-1',
+      ambientVolume: 55,
+      ambientAlwaysPlay: false,
+      setAmbientTrack(value: string) {
+        this.ambientTrack = value;
+      },
+      setAmbientVolume(value: number) {
+        this.ambientVolume = Math.max(0, Math.min(100, value));
+      },
+      setAmbientAlwaysPlay(value: boolean) {
+        this.ambientAlwaysPlay = value;
+      },
+    };
+    const engine = {
+      play: vi.fn(),
+      stop: vi.fn(),
+      setTrack: vi.fn(),
+      setVolume: vi.fn(),
+    };
+    const tracks = [
+      { id: 'music-1', label: 'Northern Lights' },
+      { id: 'music-2', label: 'Rain' },
+    ] as const;
+    const first = createCanonicalMediaCommandPort({ readState: () => state, engine, tracks });
+
+    await first.setVolume(73);
+    await first.selectTrack?.('Rain');
+    await first.action('play');
+    await first.action('mute');
+    expect(state).toMatchObject({
+      ambientTrack: 'music-2',
+      ambientVolume: 73,
+      ambientAlwaysPlay: true,
+    });
+    expect(engine.setVolume).toHaveBeenLastCalledWith(0);
+
+    const reloadedEngine = {
+      play: vi.fn(),
+      stop: vi.fn(),
+      setTrack: vi.fn(),
+      setVolume: vi.fn(),
+    };
+    const reloaded = createCanonicalMediaCommandPort({
+      readState: () => state,
+      engine: reloadedEngine,
+      tracks,
+    });
+    await reloaded.action('unmute');
+    await reloaded.action('resume');
+    expect(reloadedEngine.setVolume).toHaveBeenCalledWith(73);
+    expect(reloadedEngine.play).toHaveBeenCalledWith('music-2', 73);
+  });
+
+  it('cycles tracks through the persisted canonical selection without inventing a playlist', async () => {
+    const state = {
+      ambientTrack: 'music-2',
+      ambientVolume: 50,
+      ambientAlwaysPlay: true,
+      setAmbientTrack: vi.fn((value: string) => {
+        state.ambientTrack = value;
+      }),
+      setAmbientVolume: vi.fn(),
+      setAmbientAlwaysPlay: vi.fn(),
+    };
+    const engine = {
+      play: vi.fn(),
+      stop: vi.fn(),
+      setTrack: vi.fn(),
+      setVolume: vi.fn(),
+    };
+    const port = createCanonicalMediaCommandPort({
+      readState: () => state,
+      engine,
+      tracks: [
+        { id: 'music-1', label: 'One' },
+        { id: 'music-2', label: 'Two' },
+        { id: 'music-3', label: 'Three' },
+      ],
+    });
+
+    await port.action('next');
+    await port.action('previous');
+    expect(state.setAmbientTrack.mock.calls).toEqual([['music-3'], ['music-2']]);
+    expect(engine.setTrack.mock.calls).toEqual([['music-3'], ['music-2']]);
+  });
+
+  it('fails closed before dispatch and after a cancellation boundary', async () => {
+    const action = vi.fn(async () => undefined);
+    const port = { action, setVolume: vi.fn() };
+    const before = new AbortController();
+    before.abort();
+    await expect(executeMediaCommand({ id: 'music.play' }, port, before.signal)).resolves.toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'The instant command deadline elapsed.',
+    });
+    expect(action).not.toHaveBeenCalled();
+
+    const after = new AbortController();
+    action.mockImplementationOnce(async () => {
+      after.abort();
+    });
+    await expect(executeMediaCommand({ id: 'music.play' }, port, after.signal)).resolves.toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'The instant command deadline elapsed.',
+    });
   });
 
   it.each([
@@ -66,6 +206,29 @@ describe('media command authority', () => {
       message: 'That media capability is unavailable.',
     });
   });
+
+  it.each([
+    [{ status: 'missing' as const }, 'target_missing', 'No media track matches.'],
+    [
+      { status: 'ambiguous' as const, candidateIds: ['music-1', 'music-2'] },
+      'target_ambiguous',
+      'More than one media track matches.',
+    ],
+  ])(
+    'reports unresolved track selection truthfully without echoing the query',
+    async (outcome, code, message) => {
+      const result = await executeMediaCommand(
+        { id: 'music.track', text: 'Private Query' },
+        {
+          action: vi.fn(),
+          setVolume: vi.fn(),
+          selectTrack: vi.fn(async () => outcome),
+        },
+      );
+      expect(result).toEqual({ ok: false, code, message });
+      expect(JSON.stringify(result)).not.toContain('Private Query');
+    },
+  );
 
   it('rejects out-of-range and non-numeric volume observations without inventing state', async () => {
     await expect(

@@ -63,6 +63,43 @@ function withCanonicalSlashAlias(input: DefinitionInput): DefinitionInput {
   });
 }
 
+const MEDIA_TEXT_COMMANDS = new Set(['music.track', 'ambient.set']);
+const MEDIA_VOLUME_COMMAND = 'music.volume';
+
+function mediaSlots(match: CatalogMatch): CatalogParseResult {
+  const remainder = match.remainder.trim();
+  if (match.definition.id === MEDIA_VOLUME_COMMAND) {
+    if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/u.test(remainder)) {
+      return Object.freeze({ status: 'rejected', reason: 'Provide one numeric music volume.' });
+    }
+    const value = Number(remainder);
+    return Number.isFinite(value)
+      ? Object.freeze({ status: 'parsed', slots: Object.freeze({ value }) })
+      : Object.freeze({ status: 'rejected', reason: 'Provide one numeric music volume.' });
+  }
+  if (MEDIA_TEXT_COMMANDS.has(match.definition.id)) {
+    if (!remainder || remainder.length > 200 || /[\u0000-\u001f\u007f]/u.test(remainder)) {
+      return Object.freeze({ status: 'rejected', reason: 'Name one bounded media track.' });
+    }
+    return Object.freeze({ status: 'parsed', slots: Object.freeze({ text: remainder }) });
+  }
+  return remainder
+    ? Object.freeze({ status: 'rejected', reason: 'That media command takes no arguments.' })
+    : Object.freeze({ status: 'parsed', slots: Object.freeze({}) });
+}
+
+function prepareFamilyCommand(input: DefinitionInput): DefinitionInput {
+  if (input.family !== 'media') return withCanonicalSlashAlias(input);
+  return withCanonicalSlashAlias({
+    ...input,
+    availability: 'available',
+    target: 'ambient audio',
+    slotGrammar:
+      input.id === MEDIA_VOLUME_COMMAND || MEDIA_TEXT_COMMANDS.has(input.id) ? 'remainder' : 'none',
+    parseSlots: mediaSlots,
+  });
+}
+
 const navigationCommands = NAVIGATION_COMMAND_INPUTS.map((input) =>
   command({ ...input, family: 'navigation' }),
 );
@@ -556,7 +593,7 @@ export const INSTANT_COMMAND_CATALOG: readonly CommandDefinition[] = Object.free
       (input.family !== 'terminal' && input.family !== 'agent') ||
       ['terminal.open', 'terminal.message', 'terminal.broadcast', 'agent.open'].includes(input.id),
   )
-    .map(withCanonicalSlashAlias)
+    .map(prepareFamilyCommand)
     .map(command),
   ...teamCommands,
 ]);

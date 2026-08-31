@@ -66,6 +66,19 @@ describe('Instant Command catalog help', () => {
     expect(Object.isFrozen(searchInstantCommandHelp(help, ''))).toBe(true);
   });
 
+  it('discovers all available media controls and their canonical slash aliases locally', () => {
+    const media = searchInstantCommandHelp(
+      buildInstantCommandHelp(INSTANT_COMMAND_CATALOG),
+      'media',
+    );
+    expect(media).toHaveLength(11);
+    expect(media.every((item) => item.availability === 'available')).toBe(true);
+    expect(media.flatMap((item) => item.aliases)).toEqual(
+      expect.arrayContaining(['/music-play', '/music-volume', '/ambient-set']),
+    );
+    expect(searchInstantCommandHelp(media, '/connect')).toEqual([]);
+  });
+
   it('fails closed for malformed, control-bearing, or overlength search queries', () => {
     const help = buildInstantCommandHelp(INSTANT_COMMAND_CATALOG);
     expect(searchInstantCommandHelp(help, 42 as unknown as string)).toEqual([]);
