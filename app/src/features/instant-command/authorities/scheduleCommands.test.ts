@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { resolveVersionedEntity } from './scheduleCommands';
+import { describe, expect, it, vi } from 'vitest';
+import { executeScheduleCommand, resolveVersionedEntity } from './scheduleCommands';
 
 const schedules = [
   { id: 'sch_1', name: 'Release Audit', revision: 4 },
@@ -28,5 +28,106 @@ describe('schedule command resolution', () => {
       status: 'stale',
       actualRevision: 7,
     });
+  });
+});
+
+describe('schedule lifecycle authority', () => {
+  function port() {
+    return {
+      list: vi.fn(async () => schedules),
+      open: vi.fn(async () => undefined),
+      mutate: vi.fn(async () => undefined),
+      runNow: vi.fn(async () => ({
+        before: { recurrenceAnchor: '2026-09-01T09:00:00Z', occurrenceCount: 4 },
+        after: { recurrenceAnchor: '2026-09-01T09:00:00Z', occurrenceCount: 4 },
+      })),
+    };
+  }
+
+  it('lists and opens schedules through explicit canonical ports', async () => {
+    const authority = port();
+    await expect(executeScheduleCommand({ id: 'schedule.list' }, authority)).resolves.toEqual({
+      ok: true,
+      code: 'opened',
+      message: '3 schedules.',
+    });
+    await expect(
+      executeScheduleCommand({ id: 'schedule.open', selector: { id: 'sch_3' } }, authority),
+    ).resolves.toEqual({ ok: true, code: 'opened', message: 'Schedule opened.' });
+    expect(authority.open).toHaveBeenCalledWith('sch_3');
+  });
+
+  it.each([
+    ['schedule.pause', 'pause'],
+    ['schedule.resume', 'resume'],
+    ['schedule.enable', 'enable'],
+    ['schedule.disable', 'disable'],
+  ] as const)('dispatches %s by stable revision-bound identity', async (id, action) => {
+    const authority = port();
+    await expect(
+      executeScheduleCommand({ id, selector: { name: 'standup', expectedRevision: 7 } }, authority),
+    ).resolves.toEqual({ ok: true, code: 'opened', message: `Schedule ${action}d.` });
+    expect(authority.mutate).toHaveBeenCalledWith('sch_3', action, 7);
+  });
+
+  it('rejects ambiguous, stale, and unbounded selectors without mutation', async () => {
+    const authority = port();
+    await expect(
+      executeScheduleCommand(
+        { id: 'schedule.pause', selector: { name: 'Release Audit' } },
+        authority,
+      ),
+    ).resolves.toMatchObject({ ok: false, code: 'target_ambiguous' });
+    await expect(
+      executeScheduleCommand(
+        { id: 'schedule.pause', selector: { id: 'sch_3', expectedRevision: 6 } },
+        authority,
+      ),
+    ).resolves.toMatchObject({ ok: false, code: 'target_not_ready' });
+    await expect(
+      executeScheduleCommand(
+        { id: 'schedule.pause', selector: { name: 'x'.repeat(201) } },
+        authority,
+      ),
+    ).resolves.toMatchObject({ ok: false, code: 'target_missing' });
+    expect(authority.mutate).not.toHaveBeenCalled();
+  });
+
+  it('runs now only with recurrence anchors and occurrence counts preserved', async () => {
+    const authority = port();
+    await expect(
+      executeScheduleCommand(
+        { id: 'schedule.run_now', selector: { id: 'sch_3', expectedRevision: 7 } },
+        authority,
+      ),
+    ).resolves.toEqual({ ok: true, code: 'opened', message: 'Schedule run completed.' });
+    expect(authority.runNow).toHaveBeenCalledWith('sch_3', 7, { preserveRecurrence: true });
+
+    authority.runNow.mockResolvedValueOnce({
+      before: { recurrenceAnchor: '2026-09-01T09:00:00Z', occurrenceCount: 4 },
+      after: { recurrenceAnchor: '2026-09-08T09:00:00Z', occurrenceCount: 5 },
+    });
+    await expect(
+      executeScheduleCommand({ id: 'schedule.run_now', selector: { id: 'sch_3' } }, authority),
+    ).resolves.toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Schedule recurrence changed during run-now.',
+    });
+  });
+
+  it('redacts canonical authority failures from receipts', async () => {
+    const authority = port();
+    authority.open.mockRejectedValueOnce(new Error('private repository detail'));
+    const result = await executeScheduleCommand(
+      { id: 'schedule.open', selector: { id: 'sch_3' } },
+      authority,
+    );
+    expect(result).toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Schedule command failed.',
+    });
+    expect(JSON.stringify(result)).not.toContain('private repository detail');
   });
 });
