@@ -197,12 +197,23 @@ function validRegistryClaim(
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const claim = value as { applied?: unknown; targets?: unknown; reason?: unknown };
   return claim.applied === true
-    ? Array.isArray(claim.targets) && claim.targets.every(validDependencyEntry)
+    ? validDependencyArray<CaoLiveTarget>(claim.targets, 32)
     : claim.applied === false && typeof claim.reason === 'string';
 }
 
 function validDependencyEntry(value: unknown): value is object {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validDependencyArray<T extends object>(
+  value: unknown,
+  maxLength: number,
+): value is readonly T[] {
+  if (!Array.isArray(value) || value.length > maxLength) return false;
+  for (let index = 0; index < value.length; index += 1) {
+    if (!validDependencyEntry(value[index])) return false;
+  }
+  return true;
 }
 
 function validRunSnapshot(value: unknown): value is JarvisRun {
@@ -436,8 +447,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       fail('cao_target_registry_unavailable');
     }
     const canonicalRows = canonicalDependencyValue(rows);
-    if (!Array.isArray(canonicalRows)) fail('cao_target_registry_invalid');
-    if (canonicalRows.some((row) => !validDependencyEntry(row))) {
+    if (!validDependencyArray<CaoLiveTarget>(canonicalRows, 32)) {
       fail('cao_target_registry_invalid');
     }
     rows = canonicalRows;
@@ -525,8 +535,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       fail('cao_target_registry_unavailable');
     }
     const canonicalRows = canonicalDependencyValue(liveRows);
-    if (!Array.isArray(canonicalRows)) fail('cao_target_registry_invalid');
-    if (canonicalRows.some((row) => !validDependencyEntry(row))) {
+    if (!validDependencyArray<CaoLiveTarget>(canonicalRows, 32)) {
       fail('cao_target_registry_invalid');
     }
     liveRows = canonicalRows;
@@ -681,8 +690,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
         fail('cao_target_registry_unavailable');
       }
       const canonicalTargets = canonicalDependencyValue(currentTargets);
-      if (!Array.isArray(canonicalTargets)) fail('cao_target_registry_invalid');
-      if (canonicalTargets.some((row) => !validDependencyEntry(row))) {
+      if (!validDependencyArray<CaoLiveTarget>(canonicalTargets, 32)) {
         fail('cao_target_registry_invalid');
       }
       assertLiveTargets(

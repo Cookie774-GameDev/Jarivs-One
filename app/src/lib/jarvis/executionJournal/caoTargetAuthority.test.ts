@@ -2442,4 +2442,102 @@ describe('CAO explicit target authority', () => {
     ).rejects.toThrow(/^cao_target_registry_unavailable$/);
     expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe('cao_lease_1');
   });
+
+  it('rejects a sparse applied claim and clears its exact provisional ownership', async () => {
+    const h = harness();
+    vi.mocked(h.registry.claimExact).mockImplementationOnce(async (request) => {
+      h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: request.leaseId });
+      return { applied: true, targets: new Array<CaoLiveTarget>(1) } as never;
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_registry_invalid$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('rejects an oversized applied claim and clears its exact provisional ownership', async () => {
+    const h = harness();
+    vi.mocked(h.registry.claimExact).mockImplementationOnce(async (request) => {
+      h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: request.leaseId });
+      return {
+        applied: true,
+        targets: Array.from({ length: 33 }, () => ({
+          ...target(),
+          ownerLeaseId: request.leaseId,
+        })),
+      } as never;
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_registry_invalid$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('rejects sparse live verification rows without releasing valid durable ownership', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    vi.mocked(h.registry.readExact).mockResolvedValueOnce(new Array<CaoLiveTarget>(1));
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).verify({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_registry_invalid$/);
+    expect(h.registry.releaseExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
+  it('rejects oversized live verification rows without releasing valid durable ownership', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    vi.mocked(h.registry.readExact).mockResolvedValueOnce(
+      Array.from({ length: 33 }, () => ({
+        ...target(),
+        ownerLeaseId: acquired.leaseId,
+      })),
+    );
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_registry_invalid$/);
+    expect(h.registry.releaseExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
+  it('rejects sparse release-state rows before issuing a registry mutation', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    vi.mocked(h.registry.readExact).mockResolvedValueOnce(new Array<CaoLiveTarget>(1));
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).release({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_registry_invalid$/);
+    expect(h.registry.releaseExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
 });
