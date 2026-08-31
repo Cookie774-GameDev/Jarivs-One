@@ -143,4 +143,107 @@ describe('executeTerminalCommand', () => {
     });
     expect(JSON.stringify(dispatchFailure)).not.toContain('private dispatch detail');
   });
+
+  it.each(['terminal.destroy', 'terminal.open\u0000', `terminal.${'x'.repeat(100)}`])(
+    'rejects an unknown or malformed command before reading targets: %s',
+    async (id) => {
+      const port = authority();
+      await expect(
+        executeTerminalCommand({ id, slots: { selector: { ordinal: 2 } } }, port),
+      ).resolves.toEqual({
+        ok: false,
+        code: 'queue_failed',
+        message: 'Unknown terminal command.',
+      });
+      expect(port.readTargets).not.toHaveBeenCalled();
+      expect(port.dispatch).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects unknown prompt states before reading or dispatching', async () => {
+    const port = authority();
+    await expect(
+      executeTerminalCommand(
+        {
+          id: 'agent.message',
+          slots: { selector: { ordinal: 2 }, payload: 'continue' },
+          promptState: 'idle' as never,
+        },
+        port,
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      code: 'target_not_ready',
+      message: 'Terminal prompt state is unavailable.',
+    });
+    expect(port.readTargets).not.toHaveBeenCalled();
+    expect(port.dispatch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [target, { ...target, paneId: 'pane_3', ordinal: 3 }],
+    [target, { ...target, sessionId: 'sess_3', ordinal: 3 }],
+    [{ ...target, sessionId: '', ordinal: 2 }],
+    Array.from({ length: 1_025 }, (_, index) => ({
+      ...target,
+      sessionId: `sess_${index}`,
+      paneId: `pane_${index}`,
+      ordinal: index + 1,
+    })),
+  ])('fails closed on corrupt or unbounded live-target snapshots', async (...targets) => {
+    const port = authority();
+    vi.mocked(port.readTargets).mockResolvedValueOnce(targets.flat() as LiveTerminalTarget[]);
+
+    await expect(executeTerminalCommand({ id: 'terminal.list', slots: {} }, port)).resolves.toEqual(
+      {
+        ok: false,
+        code: 'queue_failed',
+        message: 'Terminal snapshot is unavailable.',
+      },
+    );
+    expect(port.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('classifies a malformed runtime confirmation as confirmation-required', async () => {
+    const port = authority();
+    await expect(
+      executeTerminalCommand(
+        {
+          id: 'terminal.close',
+          slots: { selector: { ordinal: 2 } },
+          confirmation: {
+            commandId: 'terminal.close',
+            targetId: 'sess_2',
+            nonce: 42 as unknown as string,
+          },
+        },
+        port,
+      ),
+    ).resolves.toEqual({
+      ok: false,
+      code: 'confirmation_required',
+      message: 'Confirm this exact terminal action before it runs.',
+    });
+    expect(port.consumeConfirmation).not.toHaveBeenCalled();
+    expect(port.dispatch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { ok: true, code: 'queue_failed', message: 'Contradictory.' },
+    { ok: false, code: 'queued', message: 'Contradictory.' },
+    { ok: true, code: 'invented', message: 'Invented.' },
+    { ok: true, code: 'queued', message: '' },
+    { ok: true, code: 'queued', message: 'bad\u0000receipt' },
+  ])('does not project malformed dispatch receipts: $code', async (receipt) => {
+    const port = authority();
+    vi.mocked(port.dispatch).mockResolvedValueOnce(receipt as never);
+
+    await expect(
+      executeTerminalCommand({ id: 'terminal.clear', slots: { selector: { ordinal: 2 } } }, port),
+    ).resolves.toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Terminal authority receipt is unavailable.',
+    });
+  });
 });
