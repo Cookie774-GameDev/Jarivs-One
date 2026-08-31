@@ -27,6 +27,7 @@ const PET_AUTOSTART_VALUE_NAME: &str = "VibeSpace";
 const TOPMOST_WATCHDOG_INTERVAL_MS: u64 = 1000;
 const PET_CREATED_SURFACE_READY_ATTEMPTS: usize = 50;
 const PET_CREATED_SURFACE_READY_POLL_MS: u64 = 20;
+const PET_DETACHED_BUILD_DELAY_MS: u64 = 80;
 const PET_NATIVE_FRAME_STYLE_BITS: isize = 0x00CF_0000;
 const PET_NATIVE_FRAME_EX_STYLE_BITS: isize = 0x0002_0301;
 
@@ -1277,21 +1278,37 @@ fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
 }
 
 fn schedule_pet_overlay_build(app: &AppHandle) -> Result<(), String> {
-    let app_for_build = app.clone();
-    app.run_on_main_thread(move || {
-        if app_for_build
-            .get_webview_window(PET_OVERLAY_LABEL)
-            .is_some()
-            || app_for_build.get_window(PET_OVERLAY_LABEL).is_some()
-        {
-            return;
-        }
-        if let Err(error) = build_pet_overlay(&app_for_build) {
-            #[cfg(debug_assertions)]
-            eprintln!("[pets] pet-overlay main-thread build failed: {error}");
-        }
-    })
-    .map_err(|error| format!("failed to schedule pet-overlay window: {error}"))
+    let app_for_schedule = app.clone();
+    std::thread::Builder::new()
+        .name("pet-overlay-create".into())
+        .spawn(move || {
+            // Let the originating invoke finish before WebView2/controller
+            // construction runs on the event loop. Scheduling directly from
+            // the still-awaited worker can register the label while the IPC
+            // dispatch is active, leaving Windows without a materialized HWND.
+            std::thread::sleep(std::time::Duration::from_millis(
+                PET_DETACHED_BUILD_DELAY_MS,
+            ));
+            let app_for_build = app_for_schedule.clone();
+            if let Err(error) = app_for_schedule.run_on_main_thread(move || {
+                if app_for_build
+                    .get_webview_window(PET_OVERLAY_LABEL)
+                    .is_some()
+                    || app_for_build.get_window(PET_OVERLAY_LABEL).is_some()
+                {
+                    return;
+                }
+                if let Err(error) = build_pet_overlay(&app_for_build) {
+                    #[cfg(debug_assertions)]
+                    eprintln!("[pets] pet-overlay main-thread build failed: {error}");
+                }
+            }) {
+                #[cfg(debug_assertions)]
+                eprintln!("[pets] failed to dispatch pet-overlay build: {error}");
+            }
+        })
+        .map(|_| ())
+        .map_err(|error| format!("failed to schedule pet-overlay window: {error}"))
 }
 
 fn build_pet_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
@@ -1348,21 +1365,33 @@ fn get_or_create_pet_panel(app: &AppHandle) -> Result<(Option<WebviewWindow>, bo
 }
 
 fn schedule_pet_panel_build(app: &AppHandle, visible: bool) -> Result<(), String> {
-    let app_for_build = app.clone();
-    app.run_on_main_thread(move || {
-        if app_for_build
-            .get_webview_window(PET_MINI_PANEL_LABEL)
-            .is_some()
-            || app_for_build.get_window(PET_MINI_PANEL_LABEL).is_some()
-        {
-            return;
-        }
-        if let Err(error) = build_pet_panel(&app_for_build, visible) {
-            #[cfg(debug_assertions)]
-            eprintln!("[pets] pet-mini-panel main-thread build failed: {error}");
-        }
-    })
-    .map_err(|error| format!("failed to schedule pet-mini-panel window: {error}"))
+    let app_for_schedule = app.clone();
+    std::thread::Builder::new()
+        .name("pet-mini-panel-create".into())
+        .spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(
+                PET_DETACHED_BUILD_DELAY_MS,
+            ));
+            let app_for_build = app_for_schedule.clone();
+            if let Err(error) = app_for_schedule.run_on_main_thread(move || {
+                if app_for_build
+                    .get_webview_window(PET_MINI_PANEL_LABEL)
+                    .is_some()
+                    || app_for_build.get_window(PET_MINI_PANEL_LABEL).is_some()
+                {
+                    return;
+                }
+                if let Err(error) = build_pet_panel(&app_for_build, visible) {
+                    #[cfg(debug_assertions)]
+                    eprintln!("[pets] pet-mini-panel main-thread build failed: {error}");
+                }
+            }) {
+                #[cfg(debug_assertions)]
+                eprintln!("[pets] failed to dispatch pet-mini-panel build: {error}");
+            }
+        })
+        .map(|_| ())
+        .map_err(|error| format!("failed to schedule pet-mini-panel window: {error}"))
 }
 
 fn build_pet_panel(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
@@ -2325,6 +2354,37 @@ mod tests {
         assert!(panel_schedule.contains("build_pet_panel"));
         assert!(!panel_schedule.contains("channel"));
         assert!(!panel_schedule.contains("recv"));
+    }
+
+    #[test]
+    fn detached_pet_build_is_deferred_past_the_originating_ipc_response() {
+        let source = include_str!("pets.rs");
+        let tests_start = source.find("mod tests {").expect("test module exists");
+        let production = &source[..tests_start];
+
+        let overlay_start = production
+            .find("fn schedule_pet_overlay_build")
+            .expect("overlay build scheduler exists");
+        let overlay_end = production[overlay_start..]
+            .find("fn build_pet_overlay")
+            .map(|offset| overlay_start + offset)
+            .expect("overlay scheduler has a bounded source slice");
+        let overlay = &production[overlay_start..overlay_end];
+        assert!(overlay.contains("pet-overlay-create"));
+        assert!(overlay.contains("PET_DETACHED_BUILD_DELAY_MS"));
+        assert!(overlay.find("sleep").unwrap() < overlay.find("run_on_main_thread").unwrap());
+
+        let panel_start = production
+            .find("fn schedule_pet_panel_build")
+            .expect("panel build scheduler exists");
+        let panel_end = production[panel_start..]
+            .find("fn build_pet_panel")
+            .map(|offset| panel_start + offset)
+            .expect("panel scheduler has a bounded source slice");
+        let panel = &production[panel_start..panel_end];
+        assert!(panel.contains("pet-mini-panel-create"));
+        assert!(panel.contains("PET_DETACHED_BUILD_DELAY_MS"));
+        assert!(panel.find("sleep").unwrap() < panel.find("run_on_main_thread").unwrap());
     }
 
     #[test]
