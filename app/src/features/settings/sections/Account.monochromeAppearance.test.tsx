@@ -39,7 +39,7 @@ describe('Account profile MonoChrome appearance', () => {
 
     // Meaningful product surface and copy are preserved on Account Center.
     expect(screen.getByText('Display name')).toBeTruthy();
-    expect(screen.getByText('Local user ID')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Local data ownership' })).toBeTruthy();
     expect(screen.getByTestId('account-profile-save')).toBeTruthy();
     expect(screen.queryByRole('tab', { name: /Pet/i })).toBeNull();
   });
