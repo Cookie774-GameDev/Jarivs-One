@@ -1,32 +1,63 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModeIndicator } from './ModeIndicator';
+import {
+  readPermissionAccess,
+  setApproveAllForRun,
+  setPermissionAccess,
+} from './permissionAccessStore';
 
 describe('ModeIndicator', () => {
-  it('shows Agent Mode and opens a selectable Agent/Plan/Ask panel', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('offers only Agent, Plan, and Ask, then applies Plan read-only access and closes', async () => {
     const onSelectMode = vi.fn();
-    render(<ModeIndicator mode="agent" onSelectMode={onSelectMode} />);
+    setPermissionAccess('chat-plan', 'full');
+    setApproveAllForRun('chat-plan', true);
+    render(<ModeIndicator mode="agent" chatId="chat-plan" onSelectMode={onSelectMode} />);
 
     expect(screen.getByRole('button', { name: /Agent Mode/i })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Agent Mode/i }));
 
     expect(screen.getByRole('listbox', { name: /Chat modes/i })).toBeTruthy();
+    expect(screen.getAllByRole('option')).toHaveLength(3);
     expect(screen.getByText('Plan Mode')).toBeTruthy();
     expect(screen.getByText('Ask Mode')).toBeTruthy();
+    expect(screen.queryByText('Read Only')).toBeNull();
+    expect(screen.queryByText('Write Access')).toBeNull();
+    expect(screen.queryByText('Full Access')).toBeNull();
+    expect(screen.queryByText(/Approve All for This Run/i)).toBeNull();
 
     fireEvent.click(screen.getByRole('option', { name: /Plan Mode/i }));
     expect(onSelectMode).toHaveBeenCalledWith('plan');
-    expect(screen.getByRole('listbox', { name: /Access and Approve All/i })).toBeTruthy();
-    expect(screen.getByText('Read Only')).toBeTruthy();
-    expect(screen.getByText('Full Access')).toBeTruthy();
-    expect(screen.queryByRole('listbox', { name: /Chat modes/i })).toBeNull();
+    expect(readPermissionAccess('chat-plan')).toEqual({ access: 'read', approveAll: false });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
-  it('highlights Ask Mode when that mode is active', () => {
-    render(<ModeIndicator mode="ask" onSelectMode={vi.fn()} />);
+  it('normalizes active Ask to read-only and clears stale approve-all', async () => {
+    setPermissionAccess('chat-ask', 'full');
+    setApproveAllForRun('chat-ask', true);
+    render(<ModeIndicator mode="ask" chatId="chat-ask" onSelectMode={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /Ask Mode/i }));
     const askOption = screen.getByRole('option', { name: /Ask Mode/i });
     expect(askOption.getAttribute('aria-selected')).toBe('true');
+    fireEvent.click(askOption);
+
+    expect(readPermissionAccess('chat-ask')).toEqual({ access: 'read', approveAll: false });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('normalizes Agent to full access and clears stale approve-all', async () => {
+    setPermissionAccess('chat-agent', 'read');
+    setApproveAllForRun('chat-agent', true);
+    render(<ModeIndicator mode="plan" chatId="chat-agent" onSelectMode={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /Plan Mode/i }));
+    fireEvent.click(screen.getByRole('option', { name: /Agent Mode/i }));
+
+    expect(readPermissionAccess('chat-agent')).toEqual({ access: 'full', approveAll: false });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   it('focuses the selected mode and roves without changing selection until Enter', async () => {
@@ -57,7 +88,7 @@ describe('ModeIndicator', () => {
     expect(onSelectMode).toHaveBeenCalledWith('plan');
   });
 
-  it('activates with Space and returns focus to the trigger on Escape', async () => {
+  it('activates with Space, closes, and returns focus to the trigger', async () => {
     const onSelectMode = vi.fn();
     render(<ModeIndicator mode="agent" onSelectMode={onSelectMode} />);
     const trigger = screen.getByRole('button', { name: /Agent Mode/i });
@@ -71,8 +102,6 @@ describe('ModeIndicator', () => {
     fireEvent.keyDown(plan, { key: ' ' });
     expect(onSelectMode).toHaveBeenCalledWith('plan');
 
-    const accessList = screen.getByRole('listbox', { name: /Access and Approve All/i });
-    fireEvent.keyDown(accessList, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(document.activeElement).toBe(trigger);
   });
