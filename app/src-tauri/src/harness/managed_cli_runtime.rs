@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const RUNTIME_RECEIPT_SCHEMA_VERSION: u32 = 1;
+const RUNTIME_RECEIPT_SCHEMA_VERSION: u32 = 2;
 const OPENCODEX_ENTRYPOINT: &str = "node_modules/@bitkyc08/opencodex/bin/ocx.mjs";
 const OPENCODEX_SOURCE_ENTRYPOINT: &str = "node_modules/@bitkyc08/opencodex/src/cli/index.ts";
 const OPENCODEX_PACKAGE_JSON: &str = "node_modules/@bitkyc08/opencodex/package.json";
@@ -77,11 +77,13 @@ pub struct ManagedRuntimeReceipt {
     dependency_lock_sha256: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     runtime_executable_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    closure_sha256: Option<String>,
 }
 
 impl ManagedRuntimeReceipt {
     pub fn codex(release: &ManagedCliRelease, entrypoint_sha256: &str) -> Self {
-        Self::new(release, entrypoint_sha256, None, None)
+        Self::new(release, entrypoint_sha256, None, None, None)
     }
 
     pub fn opencodex(
@@ -89,12 +91,14 @@ impl ManagedRuntimeReceipt {
         entrypoint_sha256: &str,
         dependency_lock_sha256: &str,
         runtime_executable_sha256: &str,
+        closure_sha256: &str,
     ) -> Self {
         Self::new(
             release,
             entrypoint_sha256,
             Some(dependency_lock_sha256.to_string()),
             Some(runtime_executable_sha256.to_string()),
+            Some(closure_sha256.to_string()),
         )
     }
 
@@ -103,6 +107,7 @@ impl ManagedRuntimeReceipt {
         entrypoint_sha256: &str,
         dependency_lock_sha256: Option<String>,
         runtime_executable_sha256: Option<String>,
+        closure_sha256: Option<String>,
     ) -> Self {
         Self {
             schema_version: RUNTIME_RECEIPT_SCHEMA_VERSION,
@@ -113,6 +118,7 @@ impl ManagedRuntimeReceipt {
             entrypoint_sha256: entrypoint_sha256.to_string(),
             dependency_lock_sha256,
             runtime_executable_sha256,
+            closure_sha256,
         }
     }
 
@@ -127,6 +133,7 @@ impl ManagedRuntimeReceipt {
                 ManagedCliKind::Codex => {
                     self.dependency_lock_sha256.is_none()
                         && self.runtime_executable_sha256.is_none()
+                        && self.closure_sha256.is_none()
                 }
                 ManagedCliKind::OpenCodex => {
                     self.dependency_lock_sha256
@@ -135,6 +142,11 @@ impl ManagedRuntimeReceipt {
                         .unwrap_or(false)
                         && self
                             .runtime_executable_sha256
+                            .as_deref()
+                            .map(is_sha256)
+                            .unwrap_or(false)
+                        && self
+                            .closure_sha256
                             .as_deref()
                             .map(is_sha256)
                             .unwrap_or(false)
@@ -175,6 +187,58 @@ fn file_sha256(path: &Path) -> Option<String> {
     Some(format!("{:x}", Sha256::digest(bytes)))
 }
 
+fn collect_opencodex_closure_files(
+    canonical_root: &Path,
+    directory: &Path,
+    files: &mut Vec<(String, PathBuf)>,
+) -> Option<()> {
+    for entry in fs::read_dir(directory).ok()? {
+        let entry = entry.ok()?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path).ok()?;
+        if metadata.file_type().is_symlink() {
+            return None;
+        }
+        if metadata.is_dir() {
+            collect_opencodex_closure_files(canonical_root, &path, files)?;
+            continue;
+        }
+        if !metadata.is_file() {
+            return None;
+        }
+        let canonical = fs::canonicalize(&path).ok()?;
+        if !canonical.starts_with(canonical_root) {
+            return None;
+        }
+        let relative = canonical.strip_prefix(canonical_root).ok()?;
+        let relative = relative.to_str()?.replace('\\', "/");
+        if relative == "vibespace-runtime.json" {
+            continue;
+        }
+        files.push((relative, canonical));
+    }
+    Some(())
+}
+
+pub(crate) fn opencodex_closure_sha256(version_root: &Path) -> Option<String> {
+    let metadata = fs::symlink_metadata(version_root).ok()?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return None;
+    }
+    let canonical_root = fs::canonicalize(version_root).ok()?;
+    let mut files = Vec::new();
+    collect_opencodex_closure_files(&canonical_root, &canonical_root, &mut files)?;
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut closure = Sha256::new();
+    for (relative, path) in files {
+        let file_hash = file_sha256(&path)?;
+        closure.update((relative.len() as u64).to_le_bytes());
+        closure.update(relative.as_bytes());
+        closure.update(file_hash.as_bytes());
+    }
+    Some(format!("{:x}", closure.finalize()))
+}
+
 fn package_version(version_root: &Path, relative_path: &str) -> Option<String> {
     let path = regular_file_within(version_root, relative_path)?;
     let value: serde_json::Value = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
@@ -186,6 +250,11 @@ fn inspect_opencodex_closure(
     release: &ManagedCliRelease,
     receipt: &ManagedRuntimeReceipt,
 ) -> Result<(), &'static str> {
+    let closure_sha256 = opencodex_closure_sha256(version_root)
+        .ok_or("OpenCodex executable closure is unsafe or unreadable.")?;
+    if Some(closure_sha256.as_str()) != receipt.closure_sha256.as_deref() {
+        return Err("OpenCodex executable closure checksum is mismatched.");
+    }
     if package_version(version_root, OPENCODEX_PACKAGE_JSON).as_deref()
         != Some(release.version.as_str())
     {
@@ -355,8 +424,8 @@ pub fn inspect_managed_runtime(
 #[cfg(test)]
 mod tests {
     use super::{
-        confirm_managed_runtime_probe, inspect_managed_runtime, ManagedCliProbe,
-        ManagedCliReadiness, ManagedRuntimeReceipt,
+        confirm_managed_runtime_probe, inspect_managed_runtime, opencodex_closure_sha256,
+        ManagedCliProbe, ManagedCliReadiness, ManagedRuntimeReceipt,
     };
     use crate::harness::managed_cli_manifest::{embedded_managed_release, ManagedCliKind};
     use sha2::{Digest, Sha256};
@@ -399,6 +468,45 @@ mod tests {
 
     fn sha256(bytes: &[u8]) -> String {
         format!("{:x}", Sha256::digest(bytes))
+    }
+
+    #[test]
+    fn opencodex_closure_digest_covers_imported_js_native_modules_and_extras() {
+        let root = TestRoot::new("closure-digest");
+        let version_root = root.path().join("versions/2.36.0");
+        let js = version_root.join("node_modules/zod/index.js");
+        let native = version_root
+            .join("node_modules/@napi-rs/keyring-win32-x64-msvc/keyring.win32-x64-msvc.node");
+        write_file(&js, b"export const safe = true;");
+        write_file(&native, b"MZsafe");
+        let original = opencodex_closure_sha256(&version_root).expect("regular closure");
+
+        write_file(&js, b"export const exfiltrate = true;");
+        let js_mutated = opencodex_closure_sha256(&version_root).expect("mutated closure");
+        assert_ne!(js_mutated, original);
+        write_file(&js, b"export const safe = true;");
+        write_file(&native, b"MZmutated");
+        let native_mutated = opencodex_closure_sha256(&version_root).expect("mutated closure");
+        assert_ne!(native_mutated, original);
+        write_file(&native, b"MZsafe");
+        write_file(
+            version_root.join("node_modules/unreviewed/index.js"),
+            b"extra",
+        );
+        assert_ne!(
+            opencodex_closure_sha256(&version_root).expect("closure with extra"),
+            original
+        );
+
+        let link = version_root.join("node_modules/unreviewed/link.js");
+        #[cfg(windows)]
+        if let Err(error) = std::os::windows::fs::symlink_file(&js, &link) {
+            assert_eq!(error.raw_os_error(), Some(1314));
+            return;
+        }
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&js, &link).expect("fixture file symlink");
+        assert_eq!(opencodex_closure_sha256(&version_root), None);
     }
 
     #[test]
@@ -479,6 +587,7 @@ mod tests {
                 &sha256(b"#!/usr/bin/env node"),
                 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
             ))
             .unwrap()
             .as_bytes(),
@@ -553,6 +662,7 @@ mod tests {
                 &sha256(b"#!/usr/bin/env node"),
                 &sha256(b"{}"),
                 &sha256(b"MZfixture"),
+                &opencodex_closure_sha256(&version_root).unwrap(),
             ))
             .unwrap()
             .as_bytes(),
@@ -627,6 +737,7 @@ mod tests {
                 &sha256(b"#!/usr/bin/env node"),
                 &sha256(b"{}"),
                 &sha256(b"MZrewritten"),
+                &opencodex_closure_sha256(&version_root).unwrap(),
             ))
             .unwrap()
             .as_bytes(),

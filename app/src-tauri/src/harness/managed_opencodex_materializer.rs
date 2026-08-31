@@ -4,7 +4,7 @@ use crate::harness::managed_cli_lock::{
 };
 use crate::harness::managed_cli_manifest::{embedded_managed_release, ManagedCliKind};
 use crate::harness::managed_cli_runtime::{
-    inspect_managed_runtime, ManagedCliReadiness, ManagedRuntimeReceipt,
+    inspect_managed_runtime, opencodex_closure_sha256, ManagedCliReadiness, ManagedRuntimeReceipt,
 };
 use sha2::{Digest, Sha256};
 use std::fs::{self, File};
@@ -314,6 +314,12 @@ where
         &file_sha256(&entrypoint)?,
         &file_sha256(&lock_path)?,
         &file_sha256(&runtime_executable)?,
+        &opencodex_closure_sha256(&staging).ok_or_else(|| {
+            failure(
+                ManagedOpenCodexFailureKind::Integrity,
+                "Managed OpenCodex executable closure could not be attested.",
+            )
+        })?,
     );
     let receipt_bytes = serde_json::to_vec_pretty(&receipt).map_err(|_| {
         failure(

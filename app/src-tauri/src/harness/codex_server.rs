@@ -388,9 +388,24 @@ fn stop_running(
     if current.caller_label != caller_label || current.generation != generation {
         return Ok(false);
     }
-    running.as_mut().expect("checked above").stop_owned()?;
+    stop_owned_running(running)
+}
+
+fn stop_owned_running(running: &mut Option<RunningCodexServer>) -> Result<bool, String> {
+    let Some(current) = running.as_mut() else {
+        return Ok(false);
+    };
+    current.stop_owned()?;
     running.take();
     Ok(true)
+}
+
+fn retire_exited_running(running: &mut Option<RunningCodexServer>) -> Result<bool, String> {
+    stop_owned_running(running)
+}
+
+fn shutdown_running(running: &mut Option<RunningCodexServer>) -> Result<bool, String> {
+    stop_owned_running(running)
 }
 
 fn spawn_stdout_reader<R: Read + Send + 'static>(
@@ -613,6 +628,14 @@ fn start_owned_opencodex(
         .map_err(|_| "The OpenCode credential store is unavailable.".to_string())?;
     let credential = read_opencode_go_credential(&credential_path)
         .map_err(|_| "OpenCode Go is not connected; connect it in OpenCode first.".to_string())?;
+    let launch_runtime = resolve_reviewed_opencodex_runtime(&managed_base, roaming.as_deref())
+        .map_err(|_| {
+            "Reviewed OpenCodex 2.36.0 changed before launch; run VibeSpace Doctor.".to_string()
+        })?;
+    if launch_runtime != runtime {
+        return Err("Reviewed OpenCodex 2.36.0 changed before launch.".to_string());
+    }
+    let runtime = launch_runtime;
 
     let configure = |command: &mut Command| {
         command
@@ -684,8 +707,8 @@ fn start_internal(
             }
             return Err("Codex app-server is already active for another owner.".to_string());
         }
+        retire_exited_running(&mut inner.running)?;
     }
-    inner.running.take();
 
     let cli_state = app.state::<CliBridgeState>();
     let launch = resolve_launch_request(&request.executable_id, |executable_id| {
@@ -878,9 +901,7 @@ pub fn codex_app_server_stop(
 pub fn shutdown_owned_server(app: &AppHandle) {
     let state = app.state::<CodexAppServerState>();
     if let Ok(mut inner) = state.inner.lock() {
-        if let Some(mut running) = inner.running.take() {
-            let _ = running.stop_owned();
-        }
+        let _ = shutdown_running(&mut inner.running);
     };
 }
 
@@ -1103,6 +1124,44 @@ mod tests {
         assert!(stop_running(&mut running, "main", "codex-generation-01").unwrap());
         assert!(running.is_none());
         assert_eq!(proxy_attempts.load(Ordering::Acquire), 2);
+    }
+
+    #[test]
+    fn exited_server_replacement_retains_repeatedly_failed_proxy_stop() {
+        let proxy_attempts = Arc::new(AtomicUsize::new(0));
+        let mut server = running_fixture(Arc::new(AtomicBool::new(false)));
+        server.proxy_process = Some(OwnedProcessGuard::new(Box::new(RetryableStopProcess {
+            attempts: proxy_attempts.clone(),
+            failures_remaining: 2,
+        })));
+        let mut running = Some(server);
+
+        assert!(retire_exited_running(&mut running).is_err());
+        assert!(running.is_some());
+        assert!(retire_exited_running(&mut running).is_err());
+        assert!(running.is_some());
+        assert!(retire_exited_running(&mut running).unwrap());
+        assert!(running.is_none());
+        assert_eq!(proxy_attempts.load(Ordering::Acquire), 3);
+    }
+
+    #[test]
+    fn shutdown_retains_repeatedly_failed_proxy_stop_for_retry() {
+        let proxy_attempts = Arc::new(AtomicUsize::new(0));
+        let mut server = running_fixture(Arc::new(AtomicBool::new(false)));
+        server.proxy_process = Some(OwnedProcessGuard::new(Box::new(RetryableStopProcess {
+            attempts: proxy_attempts.clone(),
+            failures_remaining: 2,
+        })));
+        let mut running = Some(server);
+
+        assert!(shutdown_running(&mut running).is_err());
+        assert!(running.is_some());
+        assert!(shutdown_running(&mut running).is_err());
+        assert!(running.is_some());
+        assert!(shutdown_running(&mut running).unwrap());
+        assert!(running.is_none());
+        assert_eq!(proxy_attempts.load(Ordering::Acquire), 3);
     }
 
     #[test]

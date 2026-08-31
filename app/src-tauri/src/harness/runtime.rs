@@ -5,7 +5,7 @@ use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{mpsc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
@@ -23,6 +23,7 @@ const MAX_VERSION_OUTPUT_LENGTH: usize = 4_096;
 const VERSION_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const VERSION_PROBE_TIMEOUT_REASON: &str = "OpenCode version probe timed out.";
 const MAX_TRANSIENT_VERSION_PROBE_RETRIES: usize = 1;
+const VERSION_PROBE_PIPE_DRAIN_TIMEOUT: Duration = Duration::from_millis(250);
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -439,6 +440,15 @@ fn read_bounded(mut reader: impl Read, maximum: usize) -> Vec<u8> {
     kept
 }
 
+fn receive_probe_output(
+    receiver: mpsc::Receiver<Vec<u8>>,
+    timeout: Duration,
+) -> Result<Vec<u8>, String> {
+    receiver
+        .recv_timeout(timeout)
+        .map_err(|_| "OpenCode version probe output pipe did not close in time.".to_string())
+}
+
 fn probe_native_version(path: &Path) -> Result<String, String> {
     let mut command = Command::new(path);
     command
@@ -462,8 +472,14 @@ fn probe_native_version(path: &Path) -> Result<String, String> {
         let _ = child.wait();
         return Err("OpenCode version probe stderr was unavailable.".to_string());
     };
-    let stdout_reader = thread::spawn(move || read_bounded(stdout, MAX_VERSION_OUTPUT_LENGTH));
-    let stderr_reader = thread::spawn(move || read_bounded(stderr, MAX_VERSION_OUTPUT_LENGTH));
+    let (stdout_sender, stdout_receiver) = mpsc::sync_channel(1);
+    let (stderr_sender, stderr_receiver) = mpsc::sync_channel(1);
+    thread::spawn(move || {
+        let _ = stdout_sender.send(read_bounded(stdout, MAX_VERSION_OUTPUT_LENGTH));
+    });
+    thread::spawn(move || {
+        let _ = stderr_sender.send(read_bounded(stderr, MAX_VERSION_OUTPUT_LENGTH));
+    });
     let started = Instant::now();
 
     let status = loop {
@@ -473,8 +489,6 @@ fn probe_native_version(path: &Path) -> Result<String, String> {
             Err(error) => {
                 let _ = child.kill();
                 let _ = child.wait();
-                let _ = stdout_reader.join();
-                let _ = stderr_reader.join();
                 return Err(format!(
                     "OpenCode version probe could not be observed: {error}"
                 ));
@@ -483,19 +497,13 @@ fn probe_native_version(path: &Path) -> Result<String, String> {
         if started.elapsed() >= VERSION_PROBE_TIMEOUT {
             let _ = child.kill();
             let _ = child.wait();
-            let _ = stdout_reader.join();
-            let _ = stderr_reader.join();
             return Err(VERSION_PROBE_TIMEOUT_REASON.to_string());
         }
         thread::sleep(Duration::from_millis(20));
     };
 
-    let stdout = stdout_reader
-        .join()
-        .map_err(|_| "OpenCode version probe stdout reader failed.".to_string())?;
-    let stderr = stderr_reader
-        .join()
-        .map_err(|_| "OpenCode version probe stderr reader failed.".to_string())?;
+    let stdout = receive_probe_output(stdout_receiver, VERSION_PROBE_PIPE_DRAIN_TIMEOUT)?;
+    let stderr = receive_probe_output(stderr_receiver, VERSION_PROBE_PIPE_DRAIN_TIMEOUT)?;
     if !status.success() {
         return Err(format!(
             "OpenCode version probe exited with code {}.",
@@ -707,6 +715,8 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
 
     static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -1001,6 +1011,16 @@ mod tests {
         assert_eq!(result.version.as_deref(), Some("1.18.23"));
         assert_eq!(probe_attempts.get(), 2);
         assert_eq!(fingerprint_reads.get(), 3);
+    }
+
+    #[test]
+    fn inherited_probe_pipe_drain_is_deadline_bounded() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let _held_sender = sender;
+        let started = Instant::now();
+
+        assert!(super::receive_probe_output(receiver, Duration::from_millis(20)).is_err());
+        assert!(started.elapsed() < Duration::from_millis(200));
     }
 
     #[test]
