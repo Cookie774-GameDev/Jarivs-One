@@ -476,13 +476,18 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     assertScope(input);
     if (!validIdentifier(input.leaseId)) fail('cao_target_lease_id_invalid');
     const run = await readRun(input.accountId, input.runId);
-    if (run) assertRunIdentity(run, input);
     const lease = await findLease(dependencies.events, input, input.leaseId);
     if (!lease) fail('cao_target_lease_missing');
     exactLeaseScope(lease, input);
     if (!run) {
       await releaseVerifiedLease(input, lease);
       fail('cao_run_missing');
+    }
+    try {
+      assertRunIdentity(run, input);
+    } catch (error) {
+      await releaseVerifiedLease(input, lease);
+      throw error;
     }
     if (!ACTIVE_RUN_STATUSES.has(run.status)) {
       await releaseVerifiedLease(input, lease);
