@@ -662,4 +662,76 @@ describe('CAO explicit target authority', () => {
     );
     expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
   });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, 1.5, Number.MAX_SAFE_INTEGER])(
+    'rejects unsafe acquisition clock %s before claiming a target',
+    async (observedAt) => {
+      const h = harness();
+      h.deps.now.mockReturnValue(observedAt);
+
+      await expect(
+        createCaoTargetAuthority(h.deps).acquire({
+          ...scope,
+          leaseMs: 5_000,
+          selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+        }),
+      ).rejects.toThrow('cao_target_clock_invalid');
+      expect(h.registry.claimExact).not.toHaveBeenCalled();
+      expect(h.rows).toEqual([]);
+    },
+  );
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -1, NOW - 1])(
+    'rejects unsafe or rolled-back recovery clock %s before registry reuse',
+    async (observedAt) => {
+      const h = harness();
+      const acquired = await createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      });
+      vi.mocked(h.registry.readExact).mockClear();
+      h.deps.now.mockReturnValue(observedAt);
+
+      await expect(
+        createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+      ).rejects.toThrow('cao_target_clock_invalid');
+      expect(h.registry.readExact).not.toHaveBeenCalled();
+      expect(h.registry.releaseExact).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['lease collision', { leaseId: 'cao_lease_other' }, scope.runId],
+    ['crossed run acknowledgement', {}, 'jrun-other'],
+    [
+      'changed target revision',
+      { targets: [{ kind: 'chat', targetId: 'chat-a', revision: 8 }] },
+      scope.runId,
+    ],
+  ] as const)(
+    'rejects %s returned by journal append and rolls back live ownership',
+    async (_case, leaseChange, acknowledgedRunId) => {
+      const h = harness();
+      h.deps.journal.appendEvent.mockImplementationOnce(
+        async (_accountId, _runId, event) =>
+          ({
+            ...structuredClone(event),
+            runId: acknowledgedRunId,
+            seq: 1,
+            caoTargetLease: { ...event.caoTargetLease!, ...leaseChange },
+          }) as JarvisEvent,
+      );
+
+      await expect(
+        createCaoTargetAuthority(h.deps).acquire({
+          ...scope,
+          leaseMs: 5_000,
+          selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+        }),
+      ).rejects.toThrow('cao_target_lease_persistence_failed');
+      expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+      expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+    },
+  );
 });

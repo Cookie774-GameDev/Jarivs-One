@@ -246,6 +246,45 @@ function exactLeaseScope(lease: CaoTargetLeaseV1, scope: LeaseScope): void {
   }
 }
 
+function acknowledgesExactLease(
+  event: JarvisEvent,
+  scope: LeaseScope,
+  expected: CaoTargetLeaseV1,
+): boolean {
+  if (
+    event.runId !== scope.runId ||
+    !Number.isSafeInteger(event.seq) ||
+    event.seq <= 0 ||
+    event.idempotencyKey !== `cao-target-lease:${expected.leaseId}` ||
+    !event.caoTargetLease
+  ) {
+    return false;
+  }
+  const validated = validateCaoTargetLease(event.caoTargetLease);
+  if (!validated.ok) return false;
+  const actual = validated.value;
+  return (
+    actual.leaseId === expected.leaseId &&
+    actual.accountId === expected.accountId &&
+    actual.workspaceId === expected.workspaceId &&
+    actual.projectId === expected.projectId &&
+    actual.runId === expected.runId &&
+    actual.selectionMode === expected.selectionMode &&
+    actual.acquiredAt === expected.acquiredAt &&
+    actual.expiresAt === expected.expiresAt &&
+    actual.targets.length === expected.targets.length &&
+    actual.targets.every((target, index) => {
+      const expectedTarget = expected.targets[index];
+      return (
+        expectedTarget !== undefined &&
+        target.kind === expectedTarget.kind &&
+        target.targetId === expectedTarget.targetId &&
+        target.revision === expectedTarget.revision
+      );
+    })
+  );
+}
+
 export function createCaoTargetAuthority(dependencies: Dependencies) {
   async function readReleaseState(
     input: VerifyInput,
@@ -308,7 +347,11 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     const lease = await findLease(dependencies.events, input, input.leaseId);
     if (!lease) fail('cao_target_lease_missing');
     exactLeaseScope(lease, input);
-    if (dependencies.now() >= lease.expiresAt) {
+    const observedAt = dependencies.now();
+    if (!Number.isSafeInteger(observedAt) || observedAt < lease.acquiredAt) {
+      fail('cao_target_clock_invalid');
+    }
+    if (observedAt >= lease.expiresAt) {
       await releaseVerifiedLease(input, lease);
       fail('cao_target_lease_stale');
     }
@@ -351,11 +394,12 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     }
     assertRun(run, input);
     const acquiredAt = dependencies.now();
-    if (!Number.isFinite(acquiredAt) || acquiredAt < 0) fail('cao_target_clock_invalid');
+    if (!Number.isSafeInteger(acquiredAt) || acquiredAt < 0) fail('cao_target_clock_invalid');
     const leaseId = dependencies.newLeaseId();
     if (!validIdentifier(leaseId)) fail('cao_target_lease_id_invalid');
     const requested = input.selection.targets.map(({ kind, targetId }) => ({ kind, targetId }));
     const expiresAt = acquiredAt + input.leaseMs;
+    if (!Number.isSafeInteger(expiresAt)) fail('cao_target_clock_invalid');
     const registryRequest = { ...input, leaseId, expiresAt, targets: requested };
     let claim: Awaited<ReturnType<CaoTargetRegistry['claimExact']>>;
     try {
@@ -384,7 +428,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       expiresAt,
     };
     try {
-      await dependencies.journal.appendEvent(input.accountId, input.runId, {
+      const appended = await dependencies.journal.appendEvent(input.accountId, input.runId, {
         idempotencyKey: `cao-target-lease:${leaseId}`,
         type: 'context',
         title: 'CAO target authority acquired',
@@ -394,6 +438,9 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
         createdAt: acquiredAt,
         caoTargetLease: lease,
       });
+      if (!acknowledgesExactLease(appended, input, lease)) {
+        fail('cao_target_journal_invalid');
+      }
       return structuredClone(lease);
     } catch {
       const committed = await findLease(dependencies.events, input, leaseId).catch(() => undefined);
