@@ -112,11 +112,19 @@ function verifiedArtifactSnapshot(input: {
   };
 }
 
-function ArtifactReferencePanel({ panel }: { panel: WorkbenchPanel }) {
+function ArtifactReferencePanel({
+  panel,
+  onUpdate,
+}: {
+  panel: WorkbenchPanel;
+  onUpdate: (patch: Partial<WorkbenchPanel>) => void;
+}) {
   const authority = React.useContext(ArtifactReferenceResolverContext);
   const artifactId = panel.settings.artifactId;
   const artifactDigest = panel.settings.artifactDigest;
   const [state, setState] = React.useState<ArtifactPreviewState>({ kind: 'loading' });
+  const onUpdateRef = React.useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
 
   React.useEffect(() => {
     let current = true;
@@ -129,6 +137,7 @@ function ArtifactReferencePanel({ panel }: { panel: WorkbenchPanel }) {
       !ARTIFACT_DIGEST.test(artifactDigest)
     ) {
       setState({ kind: 'unavailable' });
+      onUpdateRef.current({ status: 'error' });
       return () => {
         current = false;
       };
@@ -136,7 +145,10 @@ function ArtifactReferencePanel({ panel }: { panel: WorkbenchPanel }) {
 
     const resolveCurrent = (loading: boolean) => {
       const generation = ++requestGeneration;
-      if (loading) setState({ kind: 'loading' });
+      if (loading) {
+        setState({ kind: 'loading' });
+        onUpdateRef.current({ status: 'busy' });
+      }
       void authority
         .resolve({ accountId: authority.accountId, artifactId })
         .then((value) => {
@@ -148,9 +160,13 @@ function ArtifactReferencePanel({ panel }: { panel: WorkbenchPanel }) {
             value,
           });
           setState(artifact ? { kind: 'ready', artifact } : { kind: 'unavailable' });
+          onUpdateRef.current({ status: artifact ? 'ready' : 'error' });
         })
         .catch(() => {
-          if (current && generation === requestGeneration) setState({ kind: 'unavailable' });
+          if (current && generation === requestGeneration) {
+            setState({ kind: 'unavailable' });
+            onUpdateRef.current({ status: 'error' });
+          }
         });
     };
     const revalidate = () => resolveCurrent(false);
@@ -217,7 +233,7 @@ interface ReferencePanelProps {
 
 export function ReferencePanel({ panel, onUpdate }: ReferencePanelProps) {
   if (panel.kind === 'artifact-reference') {
-    return <ArtifactReferencePanel panel={panel} />;
+    return <ArtifactReferencePanel panel={panel} onUpdate={onUpdate} />;
   }
 
   if (panel.kind === 'notes') {

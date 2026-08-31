@@ -15,6 +15,7 @@ import {
 import { findBuiltInTemplate, instantiateTemplate, createWorkbenchId } from './templates';
 import {
   createWorkbenchSyncChannel,
+  documentToTemplatePanels,
   loadWorkbenchDocument,
   saveWorkbenchDocument,
   serializeContentFingerprint,
@@ -323,10 +324,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get) => ({
         description: 'Saved from this Workbench layout.',
         builtIn: false,
         wallpaperId: state.wallpaper.id,
-        panels: state.panels.map(({ id: _id, z: _z, status: _status, ...panel }) => ({
-          ...panel,
-          settings: { ...panel.settings, resourceId: undefined },
-        })),
+        panels: documentToTemplatePanels(state.panels),
       };
       return { customTemplates: [...state.customTemplates, template], updatedAt: Date.now() };
     });

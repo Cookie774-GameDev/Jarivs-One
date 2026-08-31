@@ -56,12 +56,13 @@ function resolvedArtifact(
 function renderArtifactReference(
   resolver: WorkbenchArtifactReferenceResolver,
   panel = artifactPanel(),
+  onUpdate: (patch: Partial<WorkbenchPanel>) => void = () => undefined,
 ) {
   return render(
     React.createElement(
       ArtifactReferenceResolverProvider,
       { accountId: 'account-alpha', resolve: resolver },
-      React.createElement(ReferencePanel, { panel, onUpdate: () => undefined }),
+      React.createElement(ReferencePanel, { panel, onUpdate }),
     ),
   );
 }
@@ -107,6 +108,24 @@ describe('Workbench integration seams', () => {
     const raw = window.localStorage.getItem('vibespace-workbench:v1') ?? '';
     expect(raw).toContain('pty-live-1');
     expect(raw).not.toContain('transcript');
+  });
+
+  it('strips account artifact identity from a saved template before same-session apply', () => {
+    const panelId = useWorkbenchStore.getState().addPanel('artifact-reference', undefined, {
+      artifactId: 'jart_account-only',
+      artifactDigest: ARTIFACT_DIGEST,
+    });
+    expect(panelId).toBeTruthy();
+
+    const templateId = useWorkbenchStore.getState().saveTemplate('Shareable layout');
+    expect(templateId).toBeTruthy();
+    expect(useWorkbenchStore.getState().applyTemplate(templateId!)).toBe(true);
+
+    const restored = useWorkbenchStore
+      .getState()
+      .panels.find((panel) => panel.kind === 'artifact-reference');
+    expect(restored?.settings.artifactId).toBeUndefined();
+    expect(restored?.settings.artifactDigest).toBeUndefined();
   });
 
   it('opens files into an editor panel via the store', () => {
@@ -207,6 +226,26 @@ describe('Workbench integration seams', () => {
     expect((await screen.findByRole('alert')).textContent).toMatch(/artifact preview unavailable/i);
     expect(screen.queryByText('Verified design document')).toBeNull();
     expect(screen.queryByText(/approved content/i)).toBeNull();
+  });
+
+  it('reports resolver status as ready only after digest validation and error on mismatch', async () => {
+    let release: ((value: WorkbenchArtifactReferenceSnapshot) => void) | undefined;
+    const pending = new Promise<WorkbenchArtifactReferenceSnapshot>((resolve) => {
+      release = resolve;
+    });
+    const onUpdate = vi.fn();
+    renderArtifactReference(
+      vi.fn(async () => pending),
+      artifactPanel(),
+      onUpdate,
+    );
+
+    expect(onUpdate).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'ready' }));
+    release?.(resolvedArtifact({ artifactDigest: 'b'.repeat(64) }));
+
+    expect((await screen.findByRole('alert')).textContent).toMatch(/artifact preview unavailable/i);
+    expect(onUpdate).toHaveBeenLastCalledWith({ status: 'error' });
+    expect(onUpdate).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'ready' }));
   });
 
   it('discards a stale resolver response after the panel restores another artifact id', async () => {

@@ -85,7 +85,6 @@ export function WorkbenchPage() {
   const wallpaper = useWorkbenchStore((state) => state.wallpaper);
   const configureWallpaper = useWorkbenchStore((state) => state.configureWallpaper);
   const addPanel = useWorkbenchStore((state) => state.addPanel);
-  const updatePanel = useWorkbenchStore((state) => state.updatePanel);
   const fitView = useWorkbenchStore((state) => state.fitView);
   const undo = useWorkbenchStore((state) => state.undo);
   const redo = useWorkbenchStore((state) => state.redo);
@@ -204,7 +203,6 @@ export function WorkbenchPage() {
       toast.warning('Could not add artifact', 'Panel limit reached.');
       return;
     }
-    updatePanel(id, { status: 'ready' });
     flushPersistence();
     setArtifactPickerOpen(false);
   };
