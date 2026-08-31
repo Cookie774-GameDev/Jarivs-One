@@ -60,6 +60,24 @@ import './sakura-account.css';
 
 const UPGRADE_ORDER: PlanId[] = ['starter', 'pro', 'ultra', 'apex'];
 
+function formatUsageCheckedAt(checkedAt: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(checkedAt));
+}
+
+async function openSupportDestination(label: string, href: string): Promise<void> {
+  try {
+    await openExternal(href);
+  } catch (error) {
+    toast.error(
+      `Could not open ${label}`,
+      error instanceof Error ? error.message : 'Try again in a moment.',
+    );
+  }
+}
+
 const TAB_ICONS: Record<AccountTabId, React.ReactNode> = {
   profile: <User2 className="h-3.5 w-3.5" />,
   status: <Activity className="h-3.5 w-3.5" />,
@@ -86,6 +104,7 @@ export function AccountPage() {
     resolveAccountTabFromSearch(window.location.search),
   );
   const [usage, setUsage] = React.useState<CombinedUsage | null>(null);
+  const [usageCheckedAt, setUsageCheckedAt] = React.useState<string | null>(null);
   const [usageLoading, setUsageLoading] = React.useState(false);
   const [usageError, setUsageError] = React.useState<string | null>(null);
   const accountRef = React.useRef(cloudUserId?.trim() ?? '');
@@ -95,6 +114,7 @@ export function AccountPage() {
     accountRef.current = cloudUserId?.trim() ?? '';
     accountGeneration.current += 1;
     setUsage(null);
+    setUsageCheckedAt(null);
     setUsageError(null);
     setUsageLoading(Boolean(accountRef.current));
   }, [cloudUserId]);
@@ -103,6 +123,7 @@ export function AccountPage() {
     const operationAccount = cloudUserId?.trim() ?? '';
     if (!operationAccount) {
       setUsage(null);
+      setUsageCheckedAt(null);
       setUsageError(null);
       setUsageLoading(false);
       return;
@@ -118,14 +139,13 @@ export function AccountPage() {
       const data = await getCombinedUsage();
       if (!isCurrentOperation()) return;
       if (!data) {
-        setUsage(null);
         setUsageError('Could not load usage. Check your connection and try again.');
       } else {
         setUsage(data);
+        setUsageCheckedAt(new Date().toISOString());
       }
     } catch {
       if (!isCurrentOperation()) return;
-      setUsage(null);
       setUsageError('Could not load usage. Try again in a moment.');
     } finally {
       if (isCurrentOperation()) setUsageLoading(false);
@@ -374,7 +394,10 @@ export function AccountPage() {
                   className="rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-4"
                   data-sakura-state="error"
                 >
-                  <p className="text-sm text-foreground">{usageError}</p>
+                  <p className="text-ui-strong text-foreground">Usage unavailable</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    No verified usage is available for this account. {usageError}
+                  </p>
                   <Button
                     type="button"
                     variant="outline"
@@ -400,8 +423,23 @@ export function AccountPage() {
                   <p className="text-metadata text-muted-foreground">
                     Plan: <span className="text-foreground/90">{usagePlan}</span>
                     {resetLabel ? ` · Resets ${resetLabel}` : null}
-                    {usageError ? ' · Showing last loaded data' : null}
                   </p>
+                  {usageCheckedAt ? (
+                    <p
+                      className={cn(
+                        'text-metadata text-muted-foreground',
+                        usageError &&
+                          'rounded-xl border border-amber-400/35 bg-amber-400/10 px-3 py-2',
+                      )}
+                      data-sakura-state={usageError ? 'stale' : 'verified'}
+                    >
+                      {usageError ? 'Refresh failed · showing last verified usage. ' : null}
+                      <time dateTime={usageCheckedAt}>
+                        {usageError ? 'Verified' : 'Checked'} at{' '}
+                        {formatUsageCheckedAt(usageCheckedAt)}
+                      </time>
+                    </p>
+                  ) : null}
                   <div className="grid gap-2 border-t border-border/60 pt-4 sm:grid-cols-2">
                     <LocalChip
                       icon={<KeyRound className="h-3.5 w-3.5" />}
@@ -528,12 +566,12 @@ export function AccountPage() {
               subtitle="Help, docs, downloads, and device details for this install."
               icon={<LifeBuoy className="h-5 w-5 text-sky-400" />}
             >
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="account-support-grid grid gap-3 sm:grid-cols-2">
                 <SupportCard
                   icon={<Mail className="h-4 w-4" />}
                   title="Email support"
                   body="Reach us at support@vibespaceos.com for account or billing questions."
-                  actionLabel="Copy email"
+                  actionLabel="Copy support email address"
                   onAction={async () => {
                     try {
                       await navigator.clipboard.writeText('support@vibespaceos.com');
@@ -547,7 +585,7 @@ export function AccountPage() {
                   icon={<MessageCircle className="h-4 w-4" />}
                   title="Security reports"
                   body="Please do not open public issues for security bugs. Email security@vibespaceos.com."
-                  actionLabel="Copy security email"
+                  actionLabel="Copy security email address"
                   onAction={async () => {
                     try {
                       await navigator.clipboard.writeText('security@vibespaceos.com');
@@ -561,9 +599,12 @@ export function AccountPage() {
                   icon={<BookOpen className="h-4 w-4" />}
                   title="Documentation"
                   body="Setup guides, plan reference, and product docs on GitHub."
-                  actionLabel="Open docs"
+                  actionLabel="Open documentation"
                   onAction={() =>
-                    void openExternal('https://github.com/Cookie774-GameDev/VibeSpace#readme')
+                    void openSupportDestination(
+                      'documentation',
+                      'https://github.com/Cookie774-GameDev/VibeSpace#readme',
+                    )
                   }
                 />
                 <SupportCard
@@ -578,12 +619,14 @@ export function AccountPage() {
                   title="Downloads"
                   body="Get the latest VibeSpace installer."
                   href="https://github.com/Cookie774-GameDev/VibeSpace/blob/main/DOWNLOAD.md"
+                  actionLabel="Download VibeSpace"
                 />
                 <LinkRow
                   icon={<ScrollText className="h-4 w-4" />}
                   title="License"
                   body="Open-source license for this project."
                   href="https://github.com/Cookie774-GameDev/VibeSpace/blob/main/LICENSE"
+                  actionLabel="Read open-source license"
                 />
                 <LocalChip
                   icon={<KeyRound className="h-3.5 w-3.5" />}
@@ -636,7 +679,11 @@ function PanelCard({
     >
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-elevated">
+          <div
+            aria-hidden="true"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-elevated"
+            data-account-heading-icon
+          >
             {icon}
           </div>
           <div className="min-w-0">
@@ -693,17 +740,20 @@ function LinkRow({
   title,
   body,
   href,
+  actionLabel,
 }: {
   icon: React.ReactNode;
   title: string;
   body: string;
   href: string;
+  actionLabel: string;
 }) {
   return (
     <button
       type="button"
-      onClick={() => void openExternal(href)}
-      className="flex items-start gap-3 rounded-2xl border border-border/70 bg-background/55 p-4 text-left transition-colors hover:bg-background/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      aria-label={actionLabel}
+      onClick={() => void openSupportDestination(title.toLowerCase(), href)}
+      className="account-link-row flex min-w-0 items-start gap-3 rounded-2xl border border-border/70 bg-background/55 p-4 text-left transition-colors hover:bg-background/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
       <span className="mt-0.5 text-accent-copper">{icon}</span>
       <span className="min-w-0">

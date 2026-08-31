@@ -129,10 +129,14 @@ describe('AccountPage account ownership', () => {
         await screen.findByRole('progressbar', { name: 'Shared company credit usage' })
       ).getAttribute('aria-valuenow'),
     ).toBe('25');
+    const accountACheckedAt = screen.getByText(/Checked at /i);
+    expect(accountACheckedAt.tagName).toBe('TIME');
+    expect(accountACheckedAt.getAttribute('datetime')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
 
     act(() => setAccount('account-b'));
     expect(screen.queryByRole('progressbar', { name: 'Shared company credit usage' })).toBeNull();
+    expect(screen.queryByText(/Checked at /i)).toBeNull();
     expect(screen.getByText('Loading usage…')).toBeTruthy();
 
     await act(async () => accountA.resolve(usage('starter', 100, 25)));
@@ -144,6 +148,45 @@ describe('AccountPage account ownership', () => {
         await screen.findByRole('progressbar', { name: 'Shared company credit usage' })
       ).getAttribute('aria-valuenow'),
     ).toBe('20');
+  });
+
+  it('keeps the last verified receipt and marks it stale when refresh fails', async () => {
+    window.history.replaceState({}, '', '/?tab=status');
+    mocks.getCombinedUsage.mockResolvedValue(usage('starter', 100, 25));
+    setAccount('account-a');
+    render(<AccountPage />);
+
+    expect(
+      (
+        await screen.findByRole('progressbar', { name: 'Shared company credit usage' })
+      ).getAttribute('aria-valuenow'),
+    ).toBe('25');
+    const verifiedAt = screen.getByText(/Checked at /i).getAttribute('datetime');
+    expect(verifiedAt).toBeTruthy();
+    await waitFor(() => expect(mocks.getCombinedUsage.mock.calls.length).toBeGreaterThanOrEqual(2));
+
+    mocks.getCombinedUsage.mockRejectedValueOnce(new Error('offline'));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+    expect(await screen.findByText(/Refresh failed · showing last verified usage/i)).toBeTruthy();
+    expect(
+      screen
+        .getByRole('progressbar', { name: 'Shared company credit usage' })
+        .getAttribute('aria-valuenow'),
+    ).toBe('25');
+    expect(screen.getByText(/Verified at /i).getAttribute('datetime')).toBe(verifiedAt);
+  });
+
+  it('shows usage as unavailable when the account has no verified receipt', async () => {
+    window.history.replaceState({}, '', '/?tab=status');
+    mocks.getCombinedUsage.mockResolvedValue(null);
+    setAccount('account-a');
+    render(<AccountPage />);
+
+    expect(await screen.findByText('Usage unavailable')).toBeTruthy();
+    expect(screen.getByText(/No verified usage is available for this account/i)).toBeTruthy();
+    expect(screen.queryByRole('progressbar', { name: 'Shared company credit usage' })).toBeNull();
+    expect(screen.queryByText(/Checked at |Verified at /i)).toBeNull();
   });
 
   it.each([

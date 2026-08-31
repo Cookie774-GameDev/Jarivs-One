@@ -80,6 +80,12 @@ html[data-theme='sakura'] .mc7f-account-page button:disabled {
   opacity: 0.52;
 }
 
+html[data-theme='sakura'] .mc7f-account-page .account-support-grid > *,
+html[data-theme='sakura'] .mc7f-account-page .account-link-row {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 @supports (backdrop-filter: blur(1px)) {
   html[data-theme='sakura'] .mc7f-account-page [data-sakura-surface='account-tabs'] {
     background: hsl(var(--sakura-night-2-hsl) / var(--sakura-panel-alpha));
@@ -97,6 +103,12 @@ html[data-theme='sakura'] .mc7f-account-page button:disabled {
   }
 }
 
+@media (max-width: 639px) {
+  html[data-theme='sakura'] .mc7f-account-page .account-support-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (forced-colors: active) {
   html[data-theme='sakura'] .mc7f-account-page [data-sakura-surface],
   html[data-theme='sakura'] .mc7f-account-page [data-sakura-state],
@@ -105,5 +117,11 @@ html[data-theme='sakura'] .mc7f-account-page button:disabled {
     background: Canvas;
     color: CanvasText;
     box-shadow: none;
+  }
+
+  html[data-theme='sakura'] .mc7f-account-page button:focus-visible,
+  html[data-theme='sakura'] .mc7f-account-page [role='tab']:focus-visible {
+    outline: 2px solid ButtonText;
+    outline-offset: 2px;
   }
 }

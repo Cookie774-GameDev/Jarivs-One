@@ -43,4 +43,21 @@ describe('Sakura Account appearance', () => {
     expect(css).not.toMatch(/url\s*\(/i);
     expect(css).not.toContain('!important');
   });
+
+  it('contains dense account content at narrow widths and keeps visible keyboard focus', async () => {
+    const root = await sheet();
+    const media = root.nodes.filter((node): node is AtRule => node.type === 'atrule');
+    const css = root.toString();
+    const narrow = media.find((rule) => rule.params === '(max-width: 639px)')?.toString();
+    const forcedColors = media
+      .find((rule) => rule.params === '(forced-colors: active)')
+      ?.toString();
+
+    expect(css).toContain('.account-support-grid');
+    expect(css).toContain('.account-link-row');
+    expect(css).toContain('overflow-wrap: anywhere');
+    expect(narrow).toContain('grid-template-columns: minmax(0, 1fr)');
+    expect(forcedColors).toContain(':focus-visible');
+    expect(forcedColors).toContain('outline: 2px solid ButtonText');
+  });
 });
