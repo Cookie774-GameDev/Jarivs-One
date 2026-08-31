@@ -1,12 +1,13 @@
 import type { JarvisDexie } from '@/lib/db/database';
 import type { CaoControlAction, CaoResolvedControlTarget } from './controlCommand';
+import { createProductionCaoControlRecordRepository } from './productionControlRecordRepository';
 import {
-  createProductionCaoControlActionAdapters,
-  type CaoCanonicalActionCapabilities,
-} from './productionControlActionAdapters';
+  createProductionCaoControlCapabilities,
+  type CaoCanonicalControlAuthorities,
+} from './productionControlCapabilityPorts';
+import { createProductionCaoControlActionAdapters } from './productionControlActionAdapters';
 import {
   createProductionCaoControlRuntime,
-  type CaoControlJournalRecordAdapter,
   type ProductionCaoControlRuntimeDependencies,
 } from './productionControlRuntime';
 import { createProductionCaoTargetRegistry } from './productionTargetRegistry';
@@ -17,21 +18,14 @@ export type ProductionCaoControlCompositionDependencies = Omit<
 > &
   Readonly<{
     database: JarvisDexie;
-    records?: CaoControlJournalRecordAdapter;
     cancelRun?: (runId: string) => Promise<void>;
-    capabilities: CaoCanonicalActionCapabilities;
+    authorities: CaoCanonicalControlAuthorities;
   }>;
 
 export function createProductionCaoControlComposition(
   dependencies: ProductionCaoControlCompositionDependencies,
 ) {
-  if (
-    !dependencies?.records ||
-    typeof dependencies.records.load !== 'function' ||
-    typeof dependencies.records.save !== 'function'
-  ) {
-    throw new Error('cao_control_record_repository_unavailable');
-  }
+  const records = createProductionCaoControlRecordRepository(dependencies?.database);
   if (typeof dependencies.cancelRun !== 'function') {
     throw new Error('cao_control_cancellation_authority_unavailable');
   }
@@ -39,10 +33,10 @@ export function createProductionCaoControlComposition(
   const registry = createProductionCaoTargetRegistry(dependencies.database, dependencies.now);
   const actionBundle = createProductionCaoControlActionAdapters({
     registry,
-    capabilities: dependencies.capabilities,
+    capabilities: createProductionCaoControlCapabilities(dependencies.authorities),
   });
   const runtime = createProductionCaoControlRuntime({
-    records: dependencies.records,
+    records,
     journal: dependencies.journal,
     events: dependencies.events,
     approvals: dependencies.approvals,

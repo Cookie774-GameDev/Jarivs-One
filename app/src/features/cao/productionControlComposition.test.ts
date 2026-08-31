@@ -3,15 +3,18 @@ import type { JarvisDexie } from '@/lib/db/database';
 import { createProductionCaoControlComposition } from './productionControlComposition';
 
 function dependencies() {
+  const recordsTable = { get: vi.fn(), add: vi.fn(), put: vi.fn() };
   return {
-    database: { transaction: vi.fn() } as unknown as JarvisDexie,
-    records: { load: vi.fn(), save: vi.fn() },
+    database: {
+      transaction: vi.fn(),
+      cao_control_records: recordsTable,
+    } as unknown as JarvisDexie,
     journal: { getRun: vi.fn(), appendEvent: vi.fn() },
     events: { listByRun: vi.fn() },
     approvals: { getById: vi.fn() },
     requestApproval: vi.fn(),
     cancelRun: vi.fn(),
-    capabilities: {},
+    authorities: { chat: {}, terminal: {} },
     now: () => 1_000,
     newRunId: () => 'run-1',
     newLeaseId: () => 'lease-1',
@@ -22,7 +25,8 @@ function dependencies() {
 describe('production CAO control composition', () => {
   it('fails closed without the canonical durable control-record repository', () => {
     const deps = dependencies();
-    expect(() => createProductionCaoControlComposition({ ...deps, records: undefined })).toThrow(
+    const database = { transaction: vi.fn() } as unknown as JarvisDexie;
+    expect(() => createProductionCaoControlComposition({ ...deps, database })).toThrow(
       'cao_control_record_repository_unavailable',
     );
   });
@@ -51,7 +55,6 @@ describe('production CAO control composition', () => {
         targets: [{ kind: 'chat', targetId: 'chat-1', revision: 1 }],
       }),
     ).rejects.toThrow('cao_control_verify_chat_unavailable');
-    expect(deps.records.load).not.toHaveBeenCalled();
     expect(deps.database.transaction).not.toHaveBeenCalled();
   });
 });
