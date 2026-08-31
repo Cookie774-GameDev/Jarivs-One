@@ -5,8 +5,21 @@ import { INSTANT_COMMAND_CATALOG } from './catalog';
 describe('AUTHORITY_INVENTORY', () => {
   it('maps every catalog authority to one canonical seam', () => {
     const authorities = new Set(AUTHORITY_INVENTORY.map((entry) => entry.id));
+    expect(authorities.size).toBe(AUTHORITY_INVENTORY.length);
     for (const command of INSTANT_COMMAND_CATALOG) {
       expect(authorities.has(command.authority), `${command.id} authority`).toBe(true);
+    }
+  });
+
+  it('projects each stable command ID exactly once without stale blocked duplicates', () => {
+    const commandIds = COMMAND_AUTHORITY_INVENTORY.map((entry) => entry.commandId);
+    expect(new Set(commandIds).size).toBe(commandIds.length);
+
+    for (const command of INSTANT_COMMAND_CATALOG) {
+      const matches = COMMAND_AUTHORITY_INVENTORY.filter((entry) => entry.commandId === command.id);
+      expect(matches, command.id).toHaveLength(1);
+      expect(matches[0]).toMatchObject({ authorityId: command.authority, safety: command.safety });
+      expect(matches[0]?.currentState === 'blocked').toBe(command.availability === 'blocked');
     }
   });
 
@@ -53,6 +66,10 @@ describe('AUTHORITY_INVENTORY', () => {
       expect(entry.requiredContext.length).toBeGreaterThan(0);
       expect(entry.testSeam).toMatch(/instant-command|authority|catalog/i);
       expect(['ready', 'blocked', 'capability-gated']).toContain(entry.currentState);
+      expect(Object.isFrozen(entry)).toBe(true);
+      expect(Object.isFrozen(entry.requiredContext)).toBe(true);
     }
+    expect(Object.isFrozen(AUTHORITY_INVENTORY)).toBe(true);
+    expect(Object.isFrozen(COMMAND_AUTHORITY_INVENTORY)).toBe(true);
   });
 });

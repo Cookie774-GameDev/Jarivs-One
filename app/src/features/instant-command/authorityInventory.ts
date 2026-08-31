@@ -87,6 +87,8 @@ const plannedButUncataloged = Object.freeze([
   ['chat.create', 'chat.lifecycle', 'reversible'],
 ] satisfies readonly (readonly [string, string, CommandSafety])[]);
 
+const catalogCommandIds = new Set(INSTANT_COMMAND_CATALOG.map((command) => command.id));
+
 function blockedPlannedEntry(
   commandId: string,
   authorityId: string,
@@ -126,8 +128,8 @@ export const COMMAND_AUTHORITY_INVENTORY: readonly CommandAuthorityInventoryEntr
               : ('ready' as const),
       });
     }),
-    ...plannedButUncataloged.map(([id, authorityId, safety]) =>
-      blockedPlannedEntry(id, authorityId, safety),
-    ),
+    ...plannedButUncataloged
+      .filter(([id]) => !catalogCommandIds.has(id))
+      .map(([id, authorityId, safety]) => blockedPlannedEntry(id, authorityId, safety)),
   ],
 );
