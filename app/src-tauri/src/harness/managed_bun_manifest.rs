@@ -21,12 +21,10 @@ pub struct ManagedBunRelease {
     pub platform: String,
     pub architecture: String,
     pub version: String,
-    pub package: String,
     pub asset: String,
     pub url: String,
     pub compressed_bytes: u64,
     pub sha256: String,
-    pub npm_integrity: String,
     pub entrypoint: String,
     pub license: String,
     pub maximum_expanded_bytes: u64,
@@ -56,16 +54,6 @@ fn is_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
-fn is_sha512_integrity(value: &str) -> bool {
-    let Some(encoded) = value.strip_prefix("sha512-") else {
-        return false;
-    };
-    encoded.len() >= 88
-        && encoded
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'='))
-}
-
 fn validate_release(release: &ManagedBunRelease) -> Result<(), String> {
     if !is_numeric_version(&release.version) {
         return Err("Managed Bun release version is invalid.".to_string());
@@ -73,13 +61,13 @@ fn validate_release(release: &ManagedBunRelease) -> Result<(), String> {
     if release.platform != "windows" || release.architecture != "x86_64" {
         return Err("Managed Bun platform is unsupported.".to_string());
     }
-    if !is_safe_relative_path(&release.asset) || !release.asset.ends_with(".tgz") {
+    if !is_safe_relative_path(&release.asset) || !release.asset.ends_with(".zip") {
         return Err("Managed Bun asset name is unsafe.".to_string());
     }
     if !is_safe_relative_path(&release.entrypoint) {
         return Err("Managed Bun entrypoint is unsafe.".to_string());
     }
-    if !is_sha256(&release.sha256) || !is_sha512_integrity(&release.npm_integrity) {
+    if !is_sha256(&release.sha256) {
         return Err("Managed Bun artifact integrity is invalid.".to_string());
     }
     if release.compressed_bytes == 0 || release.compressed_bytes > MAX_COMPRESSED_BYTES {
@@ -94,12 +82,14 @@ fn validate_release(release: &ManagedBunRelease) -> Result<(), String> {
         return Err("Managed Bun entry limit is invalid.".to_string());
     }
 
-    let asset = format!("bun-windows-x64-{}.tgz", release.version);
-    let url = format!("https://registry.npmjs.org/@oven/bun-windows-x64/-/{asset}");
-    if release.package != "@oven/bun-windows-x64"
-        || release.asset != asset
+    let asset = "bun-windows-x64.zip".to_string();
+    let url = format!(
+        "https://github.com/oven-sh/bun/releases/download/bun-v{}/{}",
+        release.version, asset
+    );
+    if release.asset != asset
         || release.url != url
-        || release.entrypoint != "package/bin/bun.exe"
+        || release.entrypoint != "bun-windows-x64/bun.exe"
         || release.license != "MIT"
     {
         return Err("Managed Bun artifact identity is invalid.".to_string());
@@ -108,7 +98,7 @@ fn validate_release(release: &ManagedBunRelease) -> Result<(), String> {
     let parsed =
         Url::parse(&release.url).map_err(|_| "Managed Bun release URL is invalid.".to_string())?;
     if parsed.scheme() != "https"
-        || parsed.host_str() != Some("registry.npmjs.org")
+        || parsed.host_str() != Some("github.com")
         || parsed.username() != ""
         || parsed.password().is_some()
         || parsed.query().is_some()
@@ -163,13 +153,11 @@ mod tests {
                 "platform": "windows",
                 "architecture": "x86_64",
                 "version": "1.4.0",
-                "package": "@oven/bun-windows-x64",
-                "asset": "bun-windows-x64-1.4.0.tgz",
-                "url": "https://registry.npmjs.org/@oven/bun-windows-x64/-/bun-windows-x64-1.4.0.tgz",
-                "compressedBytes": 40723290,
-                "sha256": "70ecb8e56cadf21f4280ef8bccca2d7ab6ddd4357325e2bf1530e02fd585c27b",
-                "npmIntegrity": "sha512-jRKv1NPLznMSZY5BEWciMF7zv0Tiyo2pQSxAJ3w+YWJ6y3VWNJQQQdLlV5Jx8lbOFDrJdrc9dD3GV17k3BP41A==",
-                "entrypoint": "package/bin/bun.exe",
+                "asset": "bun-windows-x64.zip",
+                "url": "https://github.com/oven-sh/bun/releases/download/bun-v1.4.0/bun-windows-x64.zip",
+                "compressedBytes": 40060247,
+                "sha256": "e6f093d39da486b20262ca8cdd5ed6a9e8bc9c2f275b78e6d3a0c5b28cc95901",
+                "entrypoint": "bun-windows-x64/bun.exe",
                 "license": "MIT",
                 "maximumExpandedBytes": 134217728,
                 "maximumEntries": 16
@@ -181,21 +169,26 @@ mod tests {
     fn embedded_manifest_pins_the_audited_bun_artifact() {
         let release = embedded_managed_bun_release("windows", "x86_64").expect("Bun release");
         assert_eq!(release.version, "1.4.0");
-        assert_eq!(release.compressed_bytes, 40_723_290);
+        assert_eq!(release.compressed_bytes, 40_060_247);
         assert_eq!(
             release.sha256,
-            "70ecb8e56cadf21f4280ef8bccca2d7ab6ddd4357325e2bf1530e02fd585c27b"
+            "e6f093d39da486b20262ca8cdd5ed6a9e8bc9c2f275b78e6d3a0c5b28cc95901"
         );
-        assert_eq!(release.entrypoint, "package/bin/bun.exe");
+        assert_eq!(release.asset, "bun-windows-x64.zip");
+        assert_eq!(release.entrypoint, "bun-windows-x64/bun.exe");
+        assert_eq!(
+            release.url,
+            "https://github.com/oven-sh/bun/releases/download/bun-v1.4.0/bun-windows-x64.zip"
+        );
     }
 
     #[test]
     fn rejects_wrong_identity_source_integrity_and_unsafe_entrypoint() {
         for (field, value) in [
-            ("package", json!("@attacker/bun")),
             ("url", json!("https://example.com/bun.tgz")),
+            ("asset", json!("bun-windows-x64-1.4.0.tgz")),
             ("entrypoint", json!("../bun.exe")),
-            ("npmIntegrity", json!("sha512-invalid")),
+            ("license", json!("UNKNOWN")),
             ("sha256", json!("ABC123")),
         ] {
             let mut manifest = valid_manifest();
