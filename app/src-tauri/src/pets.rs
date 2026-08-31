@@ -1268,8 +1268,21 @@ fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
     #[cfg(debug_assertions)]
     eprintln!("[pets] creating pet-overlay window");
 
-    build_pet_overlay(app)?;
+    build_pet_overlay_on_main_thread(app)?;
     Ok(PetOverlayAcquire::Ready { created: true })
+}
+
+fn build_pet_overlay_on_main_thread(app: &AppHandle) -> Result<(), String> {
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let app_for_build = app.clone();
+    app.run_on_main_thread(move || {
+        let result = build_pet_overlay(&app_for_build).map(|_| ());
+        let _ = sender.send(result);
+    })
+    .map_err(|error| format!("failed to schedule pet-overlay creation: {error}"))?;
+    receiver
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .map_err(|_| "timed out creating pet-overlay on main thread".to_string())?
 }
 
 fn build_pet_overlay(app: &AppHandle) -> Result<WebviewWindow, String> {
@@ -1317,7 +1330,23 @@ fn get_or_create_pet_panel(app: &AppHandle) -> Result<(WebviewWindow, bool), Str
     #[cfg(debug_assertions)]
     eprintln!("[pets] creating pet-mini-panel window");
 
-    build_pet_panel(app, false).map(|window| (window, true))
+    build_pet_panel_on_main_thread(app, false)?;
+    app.get_webview_window(PET_MINI_PANEL_LABEL)
+        .map(|window| (window, true))
+        .ok_or_else(|| "pet-mini-panel registration missing after creation".to_string())
+}
+
+fn build_pet_panel_on_main_thread(app: &AppHandle, visible: bool) -> Result<(), String> {
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let app_for_build = app.clone();
+    app.run_on_main_thread(move || {
+        let result = build_pet_panel(&app_for_build, visible).map(|_| ());
+        let _ = sender.send(result);
+    })
+    .map_err(|error| format!("failed to schedule pet-mini-panel creation: {error}"))?;
+    receiver
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .map_err(|_| "timed out creating pet-mini-panel on main thread".to_string())?
 }
 
 fn build_pet_panel(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
@@ -2140,7 +2169,49 @@ mod tests {
     }
 
     #[test]
-    fn overlay_and_panel_create_from_the_worker_without_nested_main_thread_dispatch() {
+    fn detached_pet_hosts_are_constructed_on_the_tauri_main_thread() {
+        let source = include_str!("pets.rs");
+        let tests_start = source.find("mod tests {").expect("test module exists");
+        let production = &source[..tests_start];
+        for (helper, next_helper) in [
+            (
+                "fn build_pet_overlay_on_main_thread",
+                "fn build_pet_overlay",
+            ),
+            ("fn build_pet_panel_on_main_thread", "fn build_pet_panel"),
+        ] {
+            let start = production.find(helper).expect("main-thread builder exists");
+            let after_start = start + helper.len();
+            let end = production[after_start..]
+                .find(next_helper)
+                .map(|offset| after_start + offset)
+                .expect("main-thread builder has a bounded source slice");
+            assert!(production[start..end].contains("run_on_main_thread"));
+        }
+
+        let acquire_start = production
+            .find("fn acquire_pet_overlay")
+            .expect("overlay acquire helper exists");
+        let acquire_end = production[acquire_start..]
+            .find("fn build_pet_overlay")
+            .map(|offset| acquire_start + offset)
+            .expect("overlay acquire has a bounded source slice");
+        assert!(production[acquire_start..acquire_end]
+            .contains("build_pet_overlay_on_main_thread(app)?"));
+
+        let panel_start = production
+            .find("fn get_or_create_pet_panel")
+            .expect("panel acquire helper exists");
+        let panel_end = production[panel_start..]
+            .find("fn build_pet_panel")
+            .map(|offset| panel_start + offset)
+            .expect("panel acquire has a bounded source slice");
+        assert!(production[panel_start..panel_end]
+            .contains("build_pet_panel_on_main_thread(app, false)?"));
+    }
+
+    #[test]
+    fn overlay_and_panel_workers_delegate_lifecycle_through_bounded_helpers() {
         let source = include_str!("pets.rs");
         let overlay_start = source
             .find("fn show_pet_overlay_blocking")
@@ -2211,7 +2282,8 @@ mod tests {
         assert!(acquire.contains("PetRegistrationAction::Reuse"));
         assert!(acquire.contains("false,"));
         assert!(acquire.contains("retire_pet_registration(app, PET_MINI_PANEL_LABEL)?;"));
-        assert!(acquire.contains("build_pet_panel(app, false).map(|window| (window, true))"));
+        assert!(acquire.contains("build_pet_panel_on_main_thread(app, false)?;"));
+        assert!(acquire.contains(".map(|window| (window, true))"));
         assert!(source.contains("let (win, created) = match get_or_create_pet_panel(&app)"));
     }
 
