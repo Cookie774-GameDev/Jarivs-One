@@ -104,4 +104,64 @@ describe('executeNavigationCommand', () => {
     });
     expect(JSON.stringify(result)).not.toContain('private provider surface detail');
   });
+
+  it.each(['page.destroy', 'page.open\u0000', `page.${'x'.repeat(100)}`])(
+    'rejects unknown or malformed command IDs before authority access: %s',
+    async (id) => {
+      const port = authority();
+      await expect(executeNavigationCommand({ id, slots: {} }, port)).resolves.toEqual({
+        ok: false,
+        code: 'queue_failed',
+        message: 'That navigation command is not implemented.',
+      });
+      expect(Object.values(port).every((method) => vi.mocked(method).mock.calls.length === 0)).toBe(
+        true,
+      );
+    },
+  );
+
+  it.each([
+    { id: 'page.open', slots: null },
+    { id: 'page.open', slots: [] },
+    { id: 'page.open', slots: { route: 'terminal', apiKey: 'must-not-enter-command' } },
+    { id: 'page.home', slots: { rawMessage: 'private conversation' } },
+    { id: 'settings.open', slots: { section: 'providers' } },
+    { id: 'fullscreen.set', slots: { enabled: true, extra: true } },
+  ])('rejects non-exact slot schemas before authority access: $id', async (request) => {
+    const port = authority();
+    const result = await executeNavigationCommand(request as never, port);
+    expect(result).toEqual({
+      ok: false,
+      code: 'queue_failed',
+      message: 'Navigation command arguments are invalid.',
+    });
+    expect(JSON.stringify(result)).not.toContain('must-not-enter-command');
+    expect(JSON.stringify(result)).not.toContain('private conversation');
+    expect(Object.values(port).every((method) => vi.mocked(method).mock.calls.length === 0)).toBe(
+      true,
+    );
+  });
+
+  it('allows /connect without arguments and still opens only the Providers surface', async () => {
+    const port = authority();
+    await expect(
+      executeNavigationCommand({ id: 'connections.open', slots: {} }, port),
+    ).resolves.toEqual({ ok: true, code: 'opened', message: 'Opened provider connections.' });
+    expect(port.openSettings).toHaveBeenCalledWith('providers');
+  });
+
+  it.each([undefined, null, 'true', 1])(
+    'does not invent fullscreen state from a non-boolean observation: %s',
+    async (observed) => {
+      const port = authority();
+      vi.mocked(port.setFullscreen).mockResolvedValueOnce(observed as never);
+      await expect(
+        executeNavigationCommand({ id: 'fullscreen.set', slots: { enabled: true } }, port),
+      ).resolves.toEqual({
+        ok: false,
+        code: 'queue_failed',
+        message: 'Fullscreen state is unavailable.',
+      });
+    },
+  );
 });

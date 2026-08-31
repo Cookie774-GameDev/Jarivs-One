@@ -25,6 +25,19 @@ export type NavigationAuthorityPort = Readonly<{
 }>;
 
 const ROUTES = new Set<string>(APP_ROUTES);
+const NAVIGATION_COMMANDS = new Set([
+  'page.open',
+  'page.back',
+  'page.forward',
+  'page.home',
+  'settings.open',
+  'settings.close',
+  'settings.section.open',
+  'connections.open',
+  'palette.open',
+  'launcher.open',
+  'fullscreen.set',
+]);
 
 const defaultPort: NavigationAuthorityPort = {
   openRoute: (route) => useUIStore.getState().setRoute(route),
@@ -55,12 +68,41 @@ function invalid(message: string, code: 'target_missing' | 'queue_failed' = 'que
   return { ok: false as const, code, message };
 }
 
+function hasExactKeys(slots: Readonly<Record<string, unknown>>, keys: readonly string[]): boolean {
+  const actual = Object.keys(slots).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+function validSlotSchema(request: NavigationCommandRequest): boolean {
+  if (!request.slots || typeof request.slots !== 'object' || Array.isArray(request.slots)) {
+    return false;
+  }
+  if (request.id === 'page.open') return hasExactKeys(request.slots, ['route']);
+  if (request.id === 'settings.section.open') return hasExactKeys(request.slots, ['section']);
+  if (request.id === 'fullscreen.set') return hasExactKeys(request.slots, ['enabled']);
+  if (request.id === 'connections.open') {
+    return hasExactKeys(request.slots, []) || hasExactKeys(request.slots, ['section']);
+  }
+  return hasExactKeys(request.slots, []);
+}
+
 async function executeNavigationCommandUnsafe(
   request: NavigationCommandRequest,
   port: NavigationAuthorityPort = defaultPort,
   signal?: AbortSignal,
 ): Promise<InstantResult> {
   if (signal?.aborted) return invalid('The instant command deadline elapsed.');
+  if (typeof request.id !== 'string' || !NAVIGATION_COMMANDS.has(request.id)) {
+    return invalid('That navigation command is not implemented.');
+  }
+  if (!validSlotSchema(request)) {
+    return invalid(
+      request.id === 'connections.open'
+        ? 'Provider connections do not accept command arguments.'
+        : 'Navigation command arguments are invalid.',
+    );
+  }
 
   if (request.id === 'page.open') {
     const route = request.slots.route;
@@ -126,6 +168,7 @@ async function executeNavigationCommandUnsafe(
     if (typeof enabled !== 'boolean') return invalid('Say fullscreen on or off.');
     const observed = await port.setFullscreen(enabled);
     if (signal?.aborted) return invalid('The instant command deadline elapsed.');
+    if (typeof observed !== 'boolean') return invalid('Fullscreen state is unavailable.');
     if (observed !== enabled) {
       return invalid(`Fullscreen remained ${observed ? 'on' : 'off'}.`);
     }
