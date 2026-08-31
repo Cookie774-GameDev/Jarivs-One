@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OPENCODE_CLI_CONNECTION } from '@/lib/ai/adapters/catalog';
 import { useAuthStore } from '@/stores/auth';
+import { useJarvisLearningStore } from '@/features/jarvis-memory/learningStore';
 import type { WorkspaceId } from '@/types/common';
 import type { EventRow } from '@/types/event';
 import type { RecurrenceInstance } from './recurrence';
@@ -19,6 +20,7 @@ const {
   getEventById,
   jarvisEventsState,
   runCaoScheduledLearning,
+  recoverCaoScheduledLearning,
   runWorkspaceCaoLearningChecks,
   updateEventIfUpdatedAt,
   updateEvent,
@@ -30,6 +32,7 @@ const {
   getEventById: vi.fn(),
   jarvisEventsState: { rows: [] as EventRow[] },
   runCaoScheduledLearning: vi.fn(),
+  recoverCaoScheduledLearning: vi.fn(),
   runWorkspaceCaoLearningChecks: vi.fn(),
   updateEventIfUpdatedAt: vi.fn(),
   updateEvent: vi.fn(),
@@ -64,7 +67,9 @@ vi.mock('@/features/jarvis-memory/caoScheduledLearningRuntime', () => ({
     load: vi.fn(async () => null),
   }),
   subscribeCaoScheduledLearningStatus: vi.fn(() => vi.fn()),
+  getCaoScheduledLearningStatus: vi.fn(() => ({ state: 'idle' })),
   runCaoScheduledLearning,
+  recoverCaoScheduledLearning,
   runManualCaoLearningChecks: runWorkspaceCaoLearningChecks,
 }));
 
@@ -188,6 +193,7 @@ describe('SchedulePage Jarvis lifecycle', () => {
     deleteEvent.mockReset().mockResolvedValue(undefined);
     getEventById.mockReset();
     runCaoScheduledLearning.mockReset().mockResolvedValue({ status: 'completed' });
+    recoverCaoScheduledLearning.mockReset().mockResolvedValue(null);
     runWorkspaceCaoLearningChecks.mockReset().mockResolvedValue({ status: 'completed' });
     updateEventIfUpdatedAt
       .mockReset()
@@ -235,9 +241,93 @@ describe('SchedulePage Jarvis lifecycle', () => {
     getEventById.mockResolvedValue(event);
     useAuthStore.setState({
       workspaceId: 'workspace_1' as WorkspaceId,
+      projectId: 'project_1' as never,
       localUserId: 'usr_local',
       chatModelSelection: { mode: 'none' },
     });
+    useJarvisLearningStore.getState().clearForTests();
+    useJarvisLearningStore.getState().setAccount('usr_local');
+  });
+
+  it('creates a project-scoped CAO learning schedule from the real Schedule form', async () => {
+    jarvisEventsState.rows = [];
+    upcomingEventsState.rows = [];
+    const view = render(<SchedulePage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jarvis Action' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'CAO supervised learning' }));
+    fireEvent.change(screen.getByLabelText(/action title/i), {
+      target: { value: 'Learning review' },
+    });
+    fireEvent.change(screen.getByLabelText(/instruction/i), {
+      target: { value: 'Review durable learning changes.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Save Jarvis Action/i }));
+
+    await waitFor(() => expect(createEvent).toHaveBeenCalledOnce());
+    const input = createEvent.mock.calls[0]![0];
+    expect(input.id).toMatch(/^evt_/);
+    expect(input.project_id).toBe('project_1');
+    const persisted = parseJarvisScheduleMetadata({
+      ...buildJarvisEvent('scheduled'),
+      ...input,
+      id: input.id,
+    } as EventRow);
+    expect(persisted?.caoSupervision).toEqual({
+      schemaVersion: 1,
+      mode: 'cao_supervision',
+      scheduleId: input.id,
+      policyId: 'quarter-hour-v1',
+      targetId: 'learning-md',
+      projectId: 'project_1',
+    });
+
+    const createdRow = {
+      ...buildJarvisEvent('scheduled'),
+      ...input,
+      id: input.id,
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    } as EventRow;
+    jarvisEventsState.rows = [createdRow];
+    getEventById.mockResolvedValue(createdRow);
+    view.unmount();
+    render(<SchedulePage />);
+    fireEvent.click(screen.getByRole('button', { name: /Jarvis Actions1/i }));
+    fireEvent.click(screen.getByText('Learning review').closest('button')!);
+    fireEvent.click(screen.getByRole('button', { name: 'Run check now' }));
+
+    await waitFor(() => expect(runCaoScheduledLearning).toHaveBeenCalledOnce());
+    expect(runCaoScheduledLearning).toHaveBeenCalledWith({
+      scope: {
+        accountId: 'usr_local',
+        workspaceId: 'workspace_1',
+        projectId: 'project_1',
+        scheduleId: input.id,
+        targetId: 'learning-md',
+        scheduleAnchorAt: input.start_at,
+      },
+      trigger: 'manual_force',
+    });
+  });
+
+  it('does not create CAO metadata after the active project authority disappears', async () => {
+    jarvisEventsState.rows = [];
+    upcomingEventsState.rows = [];
+    render(<SchedulePage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jarvis Action' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'CAO supervised learning' }));
+    fireEvent.change(screen.getByLabelText(/action title/i), {
+      target: { value: 'Learning review' },
+    });
+    act(() => useAuthStore.setState({ projectId: null }));
+    expect((await screen.findByRole('status')).textContent).toMatch(
+      /production scope is unavailable/i,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Save Jarvis Action/i }));
+
+    expect(createEvent).not.toHaveBeenCalled();
   });
 
   it('edits, cancels, and reopens a Jarvis schedule without losing route or run state', async () => {
@@ -369,6 +459,7 @@ describe('SchedulePage Jarvis lifecycle', () => {
   });
 
   it('inspects, manually runs, pauses, and confirms deletion of a CAO schedule', async () => {
+    useAuthStore.setState({ projectId: 'project-a' as never });
     const event = buildCaoEvent();
     jarvisEventsState.rows = [event];
     upcomingEventsState.rows = [];
@@ -428,6 +519,7 @@ describe('SchedulePage Jarvis lifecycle', () => {
   });
 
   it('runs only the clicked active CAO row when two schedules are active', async () => {
+    useAuthStore.setState({ projectId: 'project-a' as never });
     const clicked = buildCaoEvent();
     const siblingMetadata = parseJarvisScheduleMetadata(clicked)!;
     const sibling = {
@@ -467,6 +559,21 @@ describe('SchedulePage Jarvis lifecycle', () => {
       }),
     );
     expect(runWorkspaceCaoLearningChecks).not.toHaveBeenCalled();
+  });
+
+  it('does not manually force a CAO row from another active project', async () => {
+    const event = buildCaoEvent();
+    jarvisEventsState.rows = [event];
+    upcomingEventsState.rows = [];
+    render(<SchedulePage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Jarvis Actions1/i }));
+    fireEvent.click(screen.getByText('CAO learning review').closest('button')!);
+    fireEvent.click(screen.getByRole('button', { name: 'Run check now' }));
+
+    await waitFor(() => expect(screen.getByText('Check failed')).toBeTruthy());
+    expect(updateEventIfUpdatedAt).not.toHaveBeenCalled();
+    expect(runCaoScheduledLearning).not.toHaveBeenCalled();
   });
 
   it.each(['paused', 'deleted', 'retargeted', 'metadata-changed'] as const)(

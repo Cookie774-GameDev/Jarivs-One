@@ -103,8 +103,14 @@ import {
   writeScheduleDraft,
   type ScheduleDraft,
 } from './scheduleDraftPersistence';
-import { runCaoScheduledLearning } from '@/features/jarvis-memory/caoScheduledLearningRuntime';
+import {
+  recoverCaoScheduledLearning,
+  runCaoScheduledLearning,
+} from '@/features/jarvis-memory/caoScheduledLearningRuntime';
+import { useJarvisLearningStore } from '@/features/jarvis-memory/learningStore';
+import { newEventId } from '@/lib/ids';
 import { CaoOperationsFloorProjection } from './CaoOperationsFloorProjection';
+import { createCaoScheduleBootstrap } from './caoScheduleBootstrap';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -411,8 +417,13 @@ export function SchedulePage() {
     () => false,
   );
   const workspaceId = useAuthStore((s) => s.workspaceId) as WorkspaceId | null;
+  const projectId = useAuthStore((s) => s.projectId);
   const localUserId = useAuthStore((s) => s.localUserId);
   const chatModelSelection = useAuthStore((s) => s.chatModelSelection);
+  const learningAccountId = useJarvisLearningStore((state) => state.activeAccountId);
+  const learningEnabled = useJarvisLearningStore(
+    (state) => state.profiles[state.activeAccountId]?.enabled === true,
+  );
   const protectedJarvisAgent = useAgentStore((state) =>
     findProtectedJarvisAgent(Object.values(state.agents)),
   );
@@ -476,6 +487,7 @@ export function SchedulePage() {
   const [caoPolicyId, setCaoPolicyId] = React.useState(
     initialScheduleDraft.editing?.caoSupervision?.policyId ?? '',
   );
+  const [caoSupervisedLearning, setCaoSupervisedLearning] = React.useState(false);
   const [editingJarvisModelSelection, setEditingJarvisModelSelection] =
     React.useState<ChatModelSelection | null>(null);
   const [description, setDescription] = React.useState(initialScheduleDraft.description);
@@ -1005,20 +1017,48 @@ export function SchedulePage() {
             await eventRepo.update(safeEditingJarvisEvent.id, patch);
           }
         } else {
+          const learningState = useJarvisLearningStore.getState();
+          const caoBootstrap = caoSupervisedLearning
+            ? createCaoScheduleBootstrap({
+                accountId: getActiveAccountIdentity()?.accountId,
+                workspaceId: useAuthStore.getState().workspaceId,
+                projectId: useAuthStore.getState().projectId,
+                learningAccountId: learningState.activeAccountId,
+                learningEnabled:
+                  learningState.profiles[learningState.activeAccountId]?.enabled === true,
+                capability: {
+                  run: runCaoScheduledLearning,
+                  recover: recoverCaoScheduledLearning,
+                },
+                newEventId,
+              })
+            : null;
+          if (caoBootstrap?.status === 'unavailable') {
+            throw new Error(
+              `CAO supervised learning is unavailable (${caoBootstrap.missing.join(', ')}).`,
+            );
+          }
+          const eventInput = buildJarvisScheduleEventInput({
+            workspaceId,
+            createdBy: protectedJarvisId,
+            title: title.trim(),
+            prompt: description.trim() || title.trim(),
+            startAt: start,
+            durationMs: end - start,
+            recurrence: jarvisRecurrence,
+            ...(customIntervalMs !== undefined ? { intervalMs: customIntervalMs } : {}),
+            timezone,
+            modelSelection: jarvisModelSelectionForSave!,
+            agentId: protectedJarvisId,
+            ...(caoBootstrap
+              ? {
+                  projectId: caoBootstrap.projectId,
+                  caoSupervision: caoBootstrap.caoSupervision,
+                }
+              : {}),
+          });
           await eventRepo.create(
-            buildJarvisScheduleEventInput({
-              workspaceId,
-              createdBy: protectedJarvisId,
-              title: title.trim(),
-              prompt: description.trim() || title.trim(),
-              startAt: start,
-              durationMs: end - start,
-              recurrence: jarvisRecurrence,
-              ...(customIntervalMs !== undefined ? { intervalMs: customIntervalMs } : {}),
-              timezone,
-              modelSelection: jarvisModelSelectionForSave!,
-              agentId: protectedJarvisId,
-            }),
+            caoBootstrap ? { ...eventInput, id: caoBootstrap.eventId } : eventInput,
           );
         }
       } else {
@@ -1088,6 +1128,7 @@ export function SchedulePage() {
       setJarvisRecurrence('once');
       setIntervalAmount(2);
       setIntervalUnit('hours');
+      setCaoSupervisedLearning(false);
     } catch (err) {
       toast.error('Could not save', err instanceof Error ? err.message : 'Try again.');
     }
@@ -1217,13 +1258,16 @@ export function SchedulePage() {
     const key = String(event.id);
     const accountAtClick = getActiveAccountIdentity();
     const workspaceAtClick = useAuthStore.getState().workspaceId;
+    const projectAtClick = useAuthStore.getState().projectId;
     const renderedMetadataRef = event.source_ref?.context?.id;
     const renderedCao = parseJarvisScheduleMetadata(event)?.caoSupervision;
     if (
       !accountAtClick ||
       !workspaceAtClick ||
+      !projectAtClick ||
       event.status !== 'scheduled' ||
       String(event.workspace_id) !== String(workspaceAtClick) ||
+      renderedCao?.projectId !== String(projectAtClick) ||
       !renderedMetadataRef ||
       !renderedCao
     ) {
@@ -1250,7 +1294,9 @@ export function SchedulePage() {
         return {};
       });
       const activeAccount = getActiveAccountIdentity();
-      const activeWorkspaceId = useAuthStore.getState().workspaceId;
+      const activeAuth = useAuthStore.getState();
+      const activeWorkspaceId = activeAuth.workspaceId;
+      const activeProjectId = activeAuth.projectId;
       const claimedCao = claimed ? parseJarvisScheduleMetadata(claimed)?.caoSupervision : undefined;
       if (
         !claimed ||
@@ -1259,7 +1305,10 @@ export function SchedulePage() {
         activeAccount.accountId !== accountAtClick.accountId ||
         !activeWorkspaceId ||
         String(activeWorkspaceId) !== String(workspaceAtClick) ||
-        String(claimed.workspace_id) !== String(activeWorkspaceId)
+        String(claimed.workspace_id) !== String(activeWorkspaceId) ||
+        !activeProjectId ||
+        String(activeProjectId) !== String(projectAtClick) ||
+        claimedCao.projectId !== String(activeProjectId)
       ) {
         throw new Error('cao_manual_claim_stale');
       }
@@ -1656,7 +1705,36 @@ export function SchedulePage() {
                       </p>
                     </div>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-accent-cyan/25 bg-background/45 p-3">
+                    <div>
+                      <Label htmlFor="cao-supervised-learning" className={SECTION_TITLE_CLASS}>
+                        CAO supervised learning
+                      </Label>
+                      <p className={FIELD_HINT_CLASS}>
+                        Bind this action to the active project’s durable learning.md review using
+                        policy quarter-hour-v1.
+                      </p>
+                      {caoSupervisedLearning &&
+                      (!getActiveAccountIdentity() ||
+                        !workspaceId ||
+                        !projectId ||
+                        learningAccountId !== getActiveAccountIdentity()?.accountId ||
+                        !learningEnabled) ? (
+                        <p role="status" className="mt-1 text-metadata text-destructive">
+                          CAO production scope is unavailable. Restore the active account,
+                          workspace, project, and enabled learning profile before saving.
+                        </p>
+                      ) : null}
+                    </div>
+                    <Switch
+                      id="cao-supervised-learning"
+                      aria-label="CAO supervised learning"
+                      checked={caoSupervisedLearning}
+                      onCheckedChange={setCaoSupervisedLearning}
+                    />
+                  </div>
+                )}
                 <div className="mt-3 space-y-1.5">
                   <Label htmlFor="jarvis-action-model" className={SECTION_TITLE_CLASS}>
                     Model
