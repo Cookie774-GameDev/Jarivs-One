@@ -9,10 +9,9 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Mutex,
 };
-#[cfg(not(target_os = "windows"))]
-use tauri::PhysicalSize;
 use tauri::{
-    AppHandle, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
 };
 
 pub const PET_OVERLAY_LABEL: &str = "pet-overlay";
@@ -1454,6 +1453,21 @@ fn show_existing_pet_overlay(
         .ok_or("window_missing")?;
     #[cfg(target_os = "windows")]
     {
+        let overlay_size = PhysicalSize::new(OVERLAY_SIZE, OVERLAY_SIZE);
+        // Tauri can register a hidden WebView window before WebView2 exposes a
+        // usable HWND. Stage the final geometry through the dispatcher and ask
+        // Tauri to show the host first; native verification below then observes
+        // the real surface instead of destroying an in-flight registration.
+        win.set_position(PhysicalPosition::new(x as i32, y as i32))
+            .map_err(|_| "position_failed")?;
+        win.set_min_size(Some(overlay_size))
+            .map_err(|_| "size_failed")?;
+        win.set_max_size(Some(overlay_size))
+            .map_err(|_| "size_failed")?;
+        win.set_size(overlay_size).map_err(|_| "size_failed")?;
+        win.set_always_on_top(true).map_err(|_| "topmost_failed")?;
+        ensure_pet_overlay_transparent(&win);
+        win.show().map_err(|_| "show_failed")?;
         if !configure_pet_surface_until_ready(
             created,
             PET_CREATED_SURFACE_READY_ATTEMPTS,
@@ -2135,7 +2149,7 @@ mod tests {
         assert!(!panel_open.contains("get_or_create_pet_panel_on_main_thread"));
 
         let production_source = source
-            .split("#[cfg(test)]\nmod tests")
+            .split("#[cfg(test)]")
             .next()
             .expect("production source precedes the test module");
         assert!(!production_source.contains("run_scheduled_native_window_creation"));
@@ -2279,6 +2293,29 @@ mod tests {
 
         assert!(ready);
         assert_eq!(attempts, 3);
+    }
+
+    #[test]
+    fn windows_overlay_stages_and_shows_tauri_surface_before_native_verification() {
+        let source = include_str!("pets.rs");
+        let windows_branch = source
+            .split("fn show_existing_pet_overlay")
+            .nth(1)
+            .and_then(|tail| tail.split("#[cfg(not(target_os = \"windows\"))]").next())
+            .expect("Windows overlay show branch has a bounded source slice");
+
+        let stage = windows_branch
+            .find("win.set_position")
+            .expect("geometry is staged through Tauri before show");
+        let show = windows_branch
+            .find("win.show()")
+            .expect("Tauri creates and shows the host surface");
+        let verify = windows_branch
+            .find("configure_pet_surface_until_ready")
+            .expect("native HWND verification remains bounded");
+
+        assert!(stage < show);
+        assert!(show < verify);
     }
 
     #[test]
