@@ -46,8 +46,17 @@ const commandIds = new Set(
 
 const testFiles = [
   'src/features/instant-command/acceptanceCorpus.test.ts',
+  'src/features/instant-command/executableAcceptance.test.ts',
   'src/features/instant-command/performance.test.ts',
 ];
+const executableScenarios = Object.freeze([
+  'open-codex',
+  'open-opencode',
+  'message-opencode-exactly-once',
+  'connect-providers-securely',
+  'terminal-list',
+  'schedule-list',
+]);
 const npmCli =
   process.env.npm_execpath ??
   path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
@@ -76,6 +85,8 @@ const report = {
     durationMs,
     freshProcess: true,
     warmP95Gate: verificationPassed,
+    warmP95GateSource: 'performance.test.ts',
+    executableScenarios,
     ...(testResult.error ? { failure: 'test_process_error' } : {}),
     ...(testResult.status !== null && testResult.status !== 0
       ? { failure: 'test_process_rejected' }
