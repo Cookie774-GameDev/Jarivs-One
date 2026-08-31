@@ -2314,4 +2314,72 @@ describe('CAO explicit target authority', () => {
     expect(h.registry.releaseExact).toHaveBeenCalledOnce();
     expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
   });
+
+  it('releases provisional ownership when the acknowledged lease is missing on final durable read', async () => {
+    const h = harness();
+    h.deps.events.listByRun.mockResolvedValueOnce([]);
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_lease_missing$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('releases provisional ownership when final durable verification is unavailable', async () => {
+    const h = harness();
+    h.deps.events.listByRun.mockRejectedValueOnce(
+      new Error('private post-ack journal adapter payload'),
+    );
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_journal_unavailable$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('releases provisional ownership when final durable verification is corrupt', async () => {
+    const h = harness();
+    h.deps.events.listByRun.mockImplementationOnce(async () => {
+      const row = structuredClone(h.rows[0]!);
+      row.type = 'result' as never;
+      return [row];
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_journal_invalid$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('reports registry unavailability when post-ack recovery cannot clear retained ownership', async () => {
+    const h = harness();
+    h.deps.events.listByRun.mockResolvedValueOnce([]);
+    h.registry.releaseExact = vi.fn(async () => {
+      throw new Error('private post-ack cleanup payload');
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_registry_unavailable$/);
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe('cao_lease_1');
+  });
 });

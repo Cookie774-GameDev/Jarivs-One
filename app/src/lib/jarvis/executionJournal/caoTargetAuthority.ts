@@ -561,6 +561,18 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     return structuredClone(lease);
   }
 
+  async function verifyAcquiredLease(
+    input: AcquireInput,
+    lease: CaoTargetLeaseV1,
+  ): Promise<CaoTargetLeaseV1> {
+    try {
+      return await verify(verifyRequest(input, lease.leaseId));
+    } catch (error) {
+      await releaseVerifiedLease(verifyRequest(input, lease.leaseId), lease);
+      throw error;
+    }
+  }
+
   async function acquire(input: AcquireInput): Promise<CaoTargetLeaseV1> {
     if (!hasOnlyKnownKeys(input, ACQUIRE_INPUT_KEYS)) fail('cao_target_input_invalid');
     assertScope(input);
@@ -710,7 +722,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       });
     } catch {
       const committed = await findLease(dependencies.events, input, leaseId).catch(() => undefined);
-      if (committed) return verify(verifyRequest(input, leaseId));
+      if (committed) return verifyAcquiredLease(input, lease);
       await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
       fail('cao_target_lease_persistence_failed');
     }
@@ -722,7 +734,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
       fail('cao_target_lease_persistence_failed');
     }
-    return verify(verifyRequest(input, leaseId));
+    return verifyAcquiredLease(input, lease);
   }
 
   async function release(input: VerifyInput): Promise<void> {
