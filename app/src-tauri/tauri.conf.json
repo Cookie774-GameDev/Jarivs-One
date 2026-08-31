@@ -67,7 +67,8 @@
         "workbench-window",
         "taskbar-usage",
         "opencode-system-log",
-        "siyuan-context-vault"
+        "siyuan-context-vault",
+        "jarvis-ambient-overlay"
       ],
       "assetProtocol": {
         "enable": true,

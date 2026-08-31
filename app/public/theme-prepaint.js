@@ -17,8 +17,8 @@
 
   try {
     const view = new URLSearchParams(window.location.search).get('view');
-    if (view === 'pet-overlay') {
-      root.setAttribute('data-vibespace-view', 'pet-overlay');
+    if (view === 'pet-overlay' || view === 'jarvis-ambient-overlay') {
+      root.setAttribute('data-vibespace-view', view);
       root.style.background = 'transparent';
       root.style.backgroundColor = 'transparent';
       root.style.backgroundImage = 'none';

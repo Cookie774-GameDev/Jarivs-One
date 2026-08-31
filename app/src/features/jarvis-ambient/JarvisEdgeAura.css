@@ -1,0 +1,42 @@
+.jarvis-edge-aura {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+  background: transparent;
+}
+
+.jarvis-edge-aura[data-jarvis-ambient-state='idle'] {
+  visibility: hidden;
+}
+
+.jarvis-edge-aura__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  pointer-events: none;
+}
+
+html[data-vibespace-view='jarvis-ambient-overlay'],
+html[data-vibespace-view='jarvis-ambient-overlay'] body,
+html[data-vibespace-view='jarvis-ambient-overlay'] #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jarvis-edge-aura__canvas {
+    animation: none !important;
+  }
+}

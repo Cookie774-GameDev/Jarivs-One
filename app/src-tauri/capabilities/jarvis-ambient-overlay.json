@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "jarvis-ambient-overlay",
+  "description": "Minimal event and window identity surface for transparent Jarvis monitor-edge renderers.",
+  "windows": ["jarvis-ambient-*"],
+  "permissions": ["core:event:default", "core:window:default"]
+}

@@ -6,6 +6,10 @@ import {
   smoothVoiceLevel,
 } from './voiceSignal';
 import { setJarvisPlaybackEnergy } from './jarvisPlaybackEnergy';
+import {
+  resetJarvisInputEnergy,
+  subscribeJarvisInputEnergy,
+} from '@/features/jarvis-ambient/voiceEnergy';
 
 function harness() {
   let nextFrame = 1;
@@ -78,6 +82,9 @@ describe('createVoiceSignalController', () => {
     const levelRef = { current: 0 };
     const controller = createVoiceSignalController(levelRef, test.deps);
 
+    resetJarvisInputEnergy();
+    const published: number[] = [];
+    const unsubscribe = subscribeJarvisInputEnergy((energy) => published.push(energy));
     await controller.startListening();
     expect(test.getUserMedia).toHaveBeenCalledWith({
       audio: {
@@ -90,6 +97,7 @@ describe('createVoiceSignalController', () => {
 
     test.runFrame();
     expect(levelRef.current).toBeGreaterThan(0);
+    expect(published.at(-1)).toBe(levelRef.current);
 
     controller.stop();
     expect(levelRef.current).toBe(0);
@@ -97,6 +105,8 @@ describe('createVoiceSignalController', () => {
     expect(test.source.disconnect).toHaveBeenCalledTimes(1);
     expect(test.analyser.disconnect).toHaveBeenCalledTimes(1);
     expect(test.audioContext.close).toHaveBeenCalledTimes(1);
+    expect(published.at(-1)).toBe(0);
+    unsubscribe();
   });
 
   it('follows real Jarvis playback energy and stays silent without output', () => {

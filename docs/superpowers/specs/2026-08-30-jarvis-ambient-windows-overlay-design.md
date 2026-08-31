@@ -1,10 +1,12 @@
 # Jarvis Ambient Windows Overlay Design
 
-**Status:** Approved in chat on 2026-08-30; implementation requires a separate reviewed plan and clean file ownership.
+**Status:** Approved in chat on 2026-08-30 and updated by the user's edge-only Jarvis directive later the same day.
 
 ## Goal
 
-Port the visual language of the live [Omarchy Ambient Agent demo](https://fjalvarezdd.github.io/omarchy-ambient-agent/) into VibeSpace as a native Windows desktop overlay. Jarvis state must remain visible around the physical screen edge while the user works in another application, without pop-ups, focus theft, mouse interception, or a second app installation.
+Port the visual language of the live [Omarchy Ambient Agent demo](https://fjalvarezdd.github.io/omarchy-ambient-agent/) and the approved local `edge-aura-demo` presets into VibeSpace as a native Windows desktop overlay. Jarvis state must remain visible around the physical screen edge while the user works in another application, without pop-ups, focus theft, mouse interception, or a second app installation.
+
+This edge aura is Jarvis's only visible voice-session presentation. The existing transcription, session binding, microphone, TTS, command, approval, and task authorities remain intact, but the legacy floating voice panel is not rendered during ordinary Jarvis voice use.
 
 The port must preserve the reference's choreography rather than redesign it. Windows implementation details may change, but the visible colors, timing, edge geometry, motion, and state priority must remain faithful.
 
@@ -21,25 +23,29 @@ The live website intentionally contains a richer working-state animation than th
 
 ## Exact state language
 
-| State | Visual behavior | Timing | Reference color |
-| --- | --- | --- | --- |
-| `idle` | Fully transparent; no edge or glow | indefinite | transparent |
-| `working` | One cyan-white lit segment travels clockwise around the full edge. The remainder retains only a faint ambient cyan field. | `2.4s` linear revolution | `#7dcfff`, white head `#eafcff` |
-| `needs` | Complete amber edge and inner glow breathe together. | `1.5s` ease-in-out pulse | `#e0af68` |
-| `done` | Complete steady blue edge with no repeated pulse, followed by idle. | visible for `1.7s` | `#4c8dff` |
-| `error` | Complete red/pink edge pulses with a sharper cadence than `needs`. | `1.1s` ease-in-out pulse | `#f7768e` |
+| State       | Visual behavior                                                                                                                                                          | Timing                                | Reference color           |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- | ------------------------- |
+| `idle`      | Fully transparent; no edge or glow                                                                                                                                       | indefinite                            | transparent               |
+| `listening` | A light-blue full edge reacts to real microphone energy. Louder user speech increases band depth, brightness, glow, and travel speed by up to 150% without changing hue. | energy attack `0.48`, release `0.075` | `#65beff`                 |
+| `speaking`  | A light electric-blue full edge reacts to measured Jarvis playback energy with the same 150% visual gain. It remains calm between syllables.                             | energy attack `0.48`, release `0.075` | `#65beff`                 |
+| `working`   | One solid dark-blue lit segment travels clockwise around the full edge. The remainder retains only a faint dark-blue field.                                              | `2.4s` linear revolution              | `#2784ff`, head `#7dcfff` |
+| `needs`     | A near-solid yellow edge and inner glow fade slowly from black to yellow and back.                                                                                       | `2.2s` ease-in-out pulse              | `#ffbe14`                 |
+| `done`      | Complete steady blue edge with no repeated pulse, followed by idle.                                                                                                      | visible for `1.7s`                    | `#4c8dff`                 |
+| `error`     | A near-solid red edge and inner glow fade from black to red and back.                                                                                                    | `1.8s` ease-in-out pulse              | `#ff1f37`                 |
 
 Shared geometry is a `3px` sharp edge, approximately `26px` inward glow, `16px` corner radius, and a `350–500ms` color transition. The reference glow opacity is `0.40`. No label, pill, toast, text, icon, or decorative dashboard is part of the Windows overlay.
 
 When multiple Jarvis activities overlap, the visible state uses the reference priority:
 
-`needs > error > working > done > idle`
+`needs > error > speaking > listening > working > done > idle`
 
 ## Product behavior
 
 The overlay is global, not confined to the VibeSpace window. It covers every connected monitor with one transparent overlay window per physical monitor.
 
-- `working`: Jarvis is listening, interpreting, speaking, running a command, or executing an agent/task.
+- `listening`: the user's microphone is actively listening.
+- `speaking`: Jarvis audio is actively playing.
+- `working`: Jarvis is interpreting, thinking, running a command, or executing an agent/task.
 - `needs`: an authoritative permission, question, plan review, or other user decision is pending.
 - `done`: the most recent active Jarvis operation completed successfully and no higher-priority state remains.
 - `error`: the most recent active Jarvis operation failed and no `needs` state is pending.
@@ -54,18 +60,20 @@ The overlay is projection only. It does not invent task truth, replace execution
 A small frontend selector consumes existing authoritative VibeSpace state and produces a closed contract:
 
 ```ts
-type JarvisAmbientState = 'idle' | 'working' | 'needs' | 'done' | 'error';
+type JarvisAmbientState =
+  'idle' | 'listening' | 'speaking' | 'working' | 'needs' | 'done' | 'error';
 
 type JarvisAmbientSnapshot = {
   revision: number;
   state: JarvisAmbientState;
   source: 'voice' | 'approval' | 'question' | 'plan' | 'task' | 'agent' | 'command';
   observedAt: number;
+  energy: number;
   transientUntil?: number;
 };
 ```
 
-The selector applies the fixed priority and emits only when the resulting snapshot changes. `done` is transient for 1.7 seconds. `error` remains visible until superseded by new work, acknowledged through an existing product action, or explicitly cleared by the source authority. No model call participates in state selection.
+The selector applies the fixed priority and emits only when the resulting snapshot changes. Energy is clamped to `0..1`, quantized to avoid redundant IPC, and sampled only while `listening` or `speaking`. `done` is transient for 1.7 seconds. `error` remains visible until superseded by new work, acknowledged through an existing product action, or explicitly cleared by the source authority. No model call participates in state selection.
 
 ### 2. Native overlay supervisor
 
@@ -100,7 +108,7 @@ The renderer starts fully transparent and becomes visible only after receiving a
 
 With reduced motion enabled:
 
-- `working` becomes a steady faint cyan edge;
+- `listening`, `speaking`, and `working` become steady state-colored edges;
 - `needs` and `error` become steady amber/red edges;
 - `done` remains steady blue for 1.7 seconds;
 - `idle` remains invisible.
@@ -192,7 +200,7 @@ The upstream repository is MIT licensed. Any adapted CSS/state logic retains the
 
 ## Non-goals
 
-- Replacing the Jarvis voice panel, orb, transcript, or controls.
+- Removing voice/session/transcription/TTS authority. Only the legacy visible panel is replaced.
 - Adding a new task scheduler, agent runtime, approval system, or activity database.
 - Adding labels, notifications, sound, or per-agent desktop widgets.
 - Supporting game injection or guaranteed display above exclusive-fullscreen content.

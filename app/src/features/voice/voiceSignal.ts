@@ -1,5 +1,6 @@
 import type * as React from 'react';
 import { subscribeJarvisPlaybackEnergy } from './jarvisPlaybackEnergy';
+import { setJarvisInputEnergy } from '@/features/jarvis-ambient/voiceEnergy';
 
 interface SignalTrack {
   stop(): void;
@@ -137,6 +138,7 @@ export function createVoiceSignalController(
     unsubscribePlayback = null;
     releaseAudio();
     levelRef.current = 0;
+    setJarvisInputEnergy(0);
   };
 
   const startListening = async () => {
@@ -180,6 +182,7 @@ export function createVoiceSignalController(
         const rms = computeRms(samples);
         const normalized = normalizeVoiceLevel(rms);
         levelRef.current = smoothVoiceLevel(levelRef.current, normalized);
+        setJarvisInputEnergy(levelRef.current);
         frame = dependencies.requestFrame(sample);
       };
       frame = dependencies.requestFrame(sample);
@@ -188,6 +191,7 @@ export function createVoiceSignalController(
         if (stream) releaseAudio();
         else for (const track of acquiredStream?.getTracks() ?? []) track.stop();
         levelRef.current = 0;
+        setJarvisInputEnergy(0);
       }
     }
   };

@@ -107,4 +107,18 @@ describe('theme prepaint startup contract', () => {
     expect(petTransparencyCss).toMatch(/overflow:\s*hidden !important/);
     expect(prepaint).not.toMatch(/\beval\s*\(|new Function|https?:\/\/|from ['"]react['"]/);
   });
+
+  it('marks the Jarvis ambient monitor overlay transparent before React', () => {
+    const result = runPrepaint(null, { search: '?view=jarvis-ambient-overlay' });
+    const transparencyCss = indexHtml.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? '';
+
+    expect(result.attributes.get('data-vibespace-view')).toBe('jarvis-ambient-overlay');
+    expect(result.style).toMatchObject({
+      background: 'transparent',
+      backgroundColor: 'transparent',
+      backgroundImage: 'none',
+    });
+    expect(transparencyCss).toMatch(/html\[data-vibespace-view='jarvis-ambient-overlay'\] body/);
+    expect(transparencyCss).toMatch(/html\[data-vibespace-view='jarvis-ambient-overlay'\] #root/);
+  });
 });

@@ -1,0 +1,332 @@
+use std::collections::HashSet;
+use std::sync::Mutex;
+
+use serde::{Deserialize, Serialize};
+use tauri::{
+    AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
+};
+
+const AMBIENT_EVENT: &str = "jarvis://ambient-snapshot";
+const AMBIENT_PREFIX: &str = "jarvis-ambient-";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum JarvisAmbientState {
+    Idle,
+    Listening,
+    Speaking,
+    Working,
+    Needs,
+    Done,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JarvisAmbientSnapshot {
+    pub revision: u64,
+    pub state: JarvisAmbientState,
+    pub source: String,
+    pub observed_at: i64,
+    pub energy: f64,
+    pub transient_until: Option<i64>,
+}
+
+struct AmbientInner {
+    snapshot: JarvisAmbientSnapshot,
+    ready: HashSet<String>,
+}
+
+pub struct JarvisAmbientOverlayState(Mutex<AmbientInner>);
+
+impl Default for JarvisAmbientOverlayState {
+    fn default() -> Self {
+        Self(Mutex::new(AmbientInner {
+            snapshot: JarvisAmbientSnapshot {
+                revision: 0,
+                state: JarvisAmbientState::Idle,
+                source: "voice".to_owned(),
+                observed_at: 0,
+                energy: 0.0,
+                transient_until: None,
+            },
+            ready: HashSet::new(),
+        }))
+    }
+}
+
+fn parse_coordinate(value: &str) -> bool {
+    value
+        .strip_prefix('n')
+        .unwrap_or(value)
+        .parse::<i32>()
+        .is_ok()
+}
+
+fn trusted_caller(label: &str, renderer: bool) -> bool {
+    if !renderer {
+        return label == "main";
+    }
+    let Some(suffix) = label.strip_prefix(AMBIENT_PREFIX) else {
+        return false;
+    };
+    let parts: Vec<_> = suffix.split('-').collect();
+    parts.len() == 3
+        && parts[0].parse::<usize>().is_ok()
+        && parse_coordinate(parts[1])
+        && parse_coordinate(parts[2])
+}
+
+fn validate_snapshot(
+    snapshot: &JarvisAmbientSnapshot,
+    current_revision: u64,
+) -> Result<(), String> {
+    if snapshot.revision <= current_revision {
+        return Err("jarvis_ambient_revision_stale".to_owned());
+    }
+    if snapshot.observed_at < 0
+        || snapshot.transient_until.is_some_and(|value| value < 0)
+        || !snapshot.energy.is_finite()
+        || !(0.0..=1.0).contains(&snapshot.energy)
+    {
+        return Err("jarvis_ambient_snapshot_invalid".to_owned());
+    }
+    if !matches!(
+        snapshot.source.as_str(),
+        "voice" | "approval" | "question" | "plan" | "task" | "agent" | "command"
+    ) {
+        return Err("jarvis_ambient_source_invalid".to_owned());
+    }
+    Ok(())
+}
+
+fn coordinate_label(value: i32) -> String {
+    if value < 0 {
+        format!("n{}", value.unsigned_abs())
+    } else {
+        value.to_string()
+    }
+}
+
+fn stable_monitor_label(index: usize, x: i32, y: i32) -> String {
+    format!(
+        "{AMBIENT_PREFIX}{index}-{}-{}",
+        coordinate_label(x),
+        coordinate_label(y)
+    )
+}
+
+fn classify_visibility(state: JarvisAmbientState, renderer_ready: bool) -> bool {
+    renderer_ready && state != JarvisAmbientState::Idle
+}
+
+fn should_reconcile_windows(state: JarvisAmbientState, has_existing_window: bool) -> bool {
+    state != JarvisAmbientState::Idle || has_existing_window
+}
+
+#[cfg(target_os = "windows")]
+fn apply_native_overlay_styles(window: &WebviewWindow) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_TOPMOST,
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+        WS_EX_TRANSPARENT,
+    };
+
+    let Ok(raw) = window.hwnd() else { return };
+    let hwnd = HWND(raw.0 as *mut _);
+    unsafe {
+        let current = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        let required =
+            (WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_TRANSPARENT).0 as isize;
+        let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, current | required);
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+        );
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn apply_native_overlay_styles(_window: &WebviewWindow) {}
+
+fn configure_window(
+    window: &WebviewWindow,
+    position: PhysicalPosition<i32>,
+    size: PhysicalSize<u32>,
+) {
+    let _ = window.set_decorations(false);
+    let _ = window.set_shadow(false);
+    let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
+    let _ = window.set_ignore_cursor_events(true);
+    let _ = window.set_always_on_top(true);
+    let _ = window.set_position(position);
+    let _ = window.set_size(size);
+    apply_native_overlay_styles(window);
+}
+
+fn ensure_windows(
+    app: &AppHandle,
+    snapshot: &JarvisAmbientSnapshot,
+    ready: &HashSet<String>,
+) -> Result<(), String> {
+    let has_existing_window = app
+        .webview_windows()
+        .keys()
+        .any(|label| label.starts_with(AMBIENT_PREFIX));
+    if !should_reconcile_windows(snapshot.state, has_existing_window) {
+        return Ok(());
+    }
+    let monitors = app
+        .available_monitors()
+        .map_err(|error| format!("jarvis_ambient_monitors_unavailable:{error}"))?;
+    let mut expected = HashSet::new();
+    for (index, monitor) in monitors.iter().enumerate() {
+        let position = *monitor.position();
+        let size = *monitor.size();
+        let label = stable_monitor_label(index, position.x, position.y);
+        expected.insert(label.clone());
+        let window = if let Some(existing) = app.get_webview_window(&label) {
+            existing
+        } else {
+            let scale = monitor.scale_factor();
+            let built = WebviewWindowBuilder::new(
+                app,
+                &label,
+                WebviewUrl::App("index.html?view=jarvis-ambient-overlay".into()),
+            )
+            .title("VibeSpace Jarvis Aura")
+            .inner_size(size.width as f64 / scale, size.height as f64 / scale)
+            .position(position.x as f64 / scale, position.y as f64 / scale)
+            .resizable(false)
+            .decorations(false)
+            .transparent(true)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .visible(false)
+            .focused(false)
+            .shadow(false)
+            .background_color(tauri::window::Color(0, 0, 0, 0))
+            .build()
+            .map_err(|error| format!("jarvis_ambient_window_create_failed:{error}"))?;
+            configure_window(&built, position, size);
+            built
+        };
+        configure_window(&window, position, size);
+        let _ = app.emit_to(&label, AMBIENT_EVENT, snapshot);
+        if classify_visibility(snapshot.state, ready.contains(&label)) {
+            let _ = window.show();
+        } else {
+            let _ = window.hide();
+        }
+    }
+
+    for (label, window) in app.webview_windows() {
+        if label.starts_with(AMBIENT_PREFIX) && !expected.contains(&label) {
+            let _ = window.close();
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_jarvis_ambient_snapshot(
+    window: WebviewWindow,
+    app: AppHandle,
+    state: State<'_, JarvisAmbientOverlayState>,
+    snapshot: JarvisAmbientSnapshot,
+) -> Result<(), String> {
+    if !trusted_caller(window.label(), false) {
+        return Err("jarvis_ambient_caller_denied".to_owned());
+    }
+    let (accepted, ready) = {
+        let mut inner = state
+            .0
+            .lock()
+            .map_err(|_| "jarvis_ambient_state_poisoned".to_owned())?;
+        validate_snapshot(&snapshot, inner.snapshot.revision)?;
+        inner.snapshot = snapshot.clone();
+        (inner.snapshot.clone(), inner.ready.clone())
+    };
+    ensure_windows(&app, &accepted, &ready)
+}
+
+#[tauri::command]
+pub fn jarvis_ambient_renderer_ready(
+    window: WebviewWindow,
+    app: AppHandle,
+    state: State<'_, JarvisAmbientOverlayState>,
+) -> Result<JarvisAmbientSnapshot, String> {
+    if !trusted_caller(window.label(), true) {
+        return Err("jarvis_ambient_renderer_denied".to_owned());
+    }
+    let (snapshot, ready) = {
+        let mut inner = state
+            .0
+            .lock()
+            .map_err(|_| "jarvis_ambient_state_poisoned".to_owned())?;
+        inner.ready.insert(window.label().to_owned());
+        (inner.snapshot.clone(), inner.ready.clone())
+    };
+    ensure_windows(&app, &snapshot, &ready)?;
+    Ok(snapshot)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        classify_visibility, should_reconcile_windows, stable_monitor_label, trusted_caller,
+        validate_snapshot, JarvisAmbientSnapshot, JarvisAmbientState,
+    };
+
+    fn snapshot(revision: u64, state: JarvisAmbientState) -> JarvisAmbientSnapshot {
+        JarvisAmbientSnapshot {
+            revision,
+            state,
+            source: "voice".to_owned(),
+            observed_at: 100,
+            energy: 0.5,
+            transient_until: None,
+        }
+    }
+
+    #[test]
+    fn validates_bounded_monotonic_snapshots() {
+        assert!(validate_snapshot(&snapshot(2, JarvisAmbientState::Listening), 1).is_ok());
+        assert!(validate_snapshot(&snapshot(1, JarvisAmbientState::Listening), 1).is_err());
+        let mut invalid = snapshot(2, JarvisAmbientState::Speaking);
+        invalid.energy = 1.01;
+        assert!(validate_snapshot(&invalid, 1).is_err());
+        invalid.energy = 0.5;
+        invalid.observed_at = -1;
+        assert!(validate_snapshot(&invalid, 1).is_err());
+    }
+
+    #[test]
+    fn trusts_only_main_and_matching_ambient_renderers() {
+        assert!(trusted_caller("main", false));
+        assert!(trusted_caller("jarvis-ambient-0-0-0", true));
+        assert!(!trusted_caller("pet-overlay", false));
+        assert!(!trusted_caller("jarvis-ambient-spoof", true));
+    }
+
+    #[test]
+    fn labels_monitors_stably_and_hides_idle() {
+        assert_eq!(
+            stable_monitor_label(1, -1920, 0),
+            "jarvis-ambient-1-n1920-0"
+        );
+        assert!(!classify_visibility(JarvisAmbientState::Idle, true));
+        assert!(!classify_visibility(JarvisAmbientState::Working, false));
+        assert!(classify_visibility(JarvisAmbientState::Working, true));
+        assert!(!should_reconcile_windows(JarvisAmbientState::Idle, false));
+        assert!(should_reconcile_windows(JarvisAmbientState::Idle, true));
+        assert!(should_reconcile_windows(JarvisAmbientState::Working, false));
+    }
+}

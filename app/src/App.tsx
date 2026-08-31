@@ -162,6 +162,7 @@ import {
   flushWorkspacePersistenceAndAcknowledge,
 } from '@/lib/persistence/workspaceFlush';
 import { GlobalDictationOverlay } from '@/features/global-dictation/GlobalDictationOverlay';
+import { JarvisAmbientHost, JarvisAmbientOverlayView } from '@/features/jarvis-ambient';
 import { PluginManagementCapabilityProvider } from '@/features/plugins/managementContext';
 import type { PluginManagementCapability } from '@/features/plugins/runtime';
 import type { Agent, AgentId, Message } from '@/types';
@@ -2107,11 +2108,17 @@ function VoiceModuleLifecycle() {
 
 function VoiceModalHost() {
   const open = useUIStore((s) => s.voiceModalOpen);
-  if (!open) return null;
   return (
-    <React.Suspense fallback={null}>
-      <VoiceModal />
-    </React.Suspense>
+    <>
+      <JarvisAmbientHost />
+      {open ? (
+        <div hidden data-jarvis-voice-lifecycle-only="true" aria-hidden="true">
+          <React.Suspense fallback={null}>
+            <VoiceModal />
+          </React.Suspense>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -3249,7 +3256,11 @@ export function MonochromeFixtureController({
  */
 function AppContent({ plan }: { plan: RuntimePlan }) {
   const view = new URLSearchParams(window.location.search).get('view');
-  const auxiliaryView = view === 'dictation' || view === 'pet-overlay' || view === 'pet-mini-panel';
+  const auxiliaryView =
+    view === 'jarvis-ambient-overlay' ||
+    view === 'dictation' ||
+    view === 'pet-overlay' ||
+    view === 'pet-mini-panel';
   const cloudBootQuarantineStarted = React.useRef(false);
   const [cloudBootQuarantined, setCloudBootQuarantined] = React.useState(false);
 
@@ -3266,6 +3277,14 @@ function AppContent({ plan }: { plan: RuntimePlan }) {
   // Commit the fail-closed store state before mounting any child that can
   // subscribe to account identity or plan entitlements.
   if (!auxiliaryView && !cloudBootQuarantined) return null;
+
+  if (view === 'jarvis-ambient-overlay') {
+    return (
+      <ErrorBoundary>
+        <JarvisAmbientOverlayView />
+      </ErrorBoundary>
+    );
+  }
 
   if (view === 'dictation') {
     return (

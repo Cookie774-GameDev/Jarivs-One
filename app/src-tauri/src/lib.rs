@@ -56,6 +56,7 @@ mod dictation;
 mod faster_whisper;
 mod fsread;
 mod harness;
+mod jarvis_ambient_overlay;
 mod jarvis_voice;
 mod kernel_host;
 mod launcher;
@@ -441,6 +442,7 @@ fn run_ordinary(
         .manage(terminal_cli::TerminalCliState::default())
         .manage(terminal_peer_fabric::TerminalPeerFabricState::default())
         .manage(pets::PetWindowState::default())
+        .manage(jarvis_ambient_overlay::JarvisAmbientOverlayState::default())
         .manage(terminal_snapshot::PersistenceFlushState::default())
         .manage(siyuan::SiyuanRuntimeState::default())
         .manage(GlobalDictationShortcutState::default())
@@ -624,6 +626,8 @@ fn run_ordinary(
         })
         .invoke_handler(tauri::generate_handler![
             greet,
+            jarvis_ambient_overlay::set_jarvis_ambient_snapshot,
+            jarvis_ambient_overlay::jarvis_ambient_renderer_ready,
             app_version,
             refresh_app_branding,
             browser_chat_surface::browser_chat_surface_open,
