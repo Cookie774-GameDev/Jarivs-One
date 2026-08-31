@@ -1356,6 +1356,14 @@ fn record_pet_visibility_intent(app: &AppHandle, label: &str) -> u64 {
         .wrapping_add(1)
 }
 
+fn pet_visibility_intent_is_current(
+    state: &PetWindowState,
+    label: &str,
+    intent_generation: u64,
+) -> bool {
+    visibility_generation(state, label).load(Ordering::SeqCst) == intent_generation
+}
+
 fn schedule_setup_pet_hide(
     app: AppHandle,
     window: WebviewWindow,
@@ -2092,9 +2100,9 @@ pub async fn pet_open_or_focus_panel(
     near_y: Option<f64>,
     panel_mode: Option<PetPanelMode>,
 ) -> Result<PetPanelOpenResult, String> {
-    record_pet_visibility_intent(&app, PET_MINI_PANEL_LABEL);
+    let intent_generation = record_pet_visibility_intent(&app, PET_MINI_PANEL_LABEL);
     tauri::async_runtime::spawn_blocking(move || {
-        open_or_focus_pet_panel_blocking(app, near_x, near_y, panel_mode)
+        open_or_focus_pet_panel_blocking(app, near_x, near_y, panel_mode, intent_generation)
     })
     .await
     .map_err(|_| "pet panel worker failed".to_string())?
@@ -2105,6 +2113,7 @@ fn open_or_focus_pet_panel_blocking(
     near_x: Option<f64>,
     near_y: Option<f64>,
     panel_mode: Option<PetPanelMode>,
+    intent_generation: u64,
 ) -> Result<PetPanelOpenResult, String> {
     let state = app.state::<PetWindowState>();
     let _lifecycle = match state.panel_lifecycle.lock() {
@@ -2116,6 +2125,9 @@ fn open_or_focus_pet_panel_blocking(
             ))
         }
     };
+    if !pet_visibility_intent_is_current(&state, PET_MINI_PANEL_LABEL, intent_generation) {
+        return Ok(PetPanelOpenResult::failed(false, "superseded"));
+    }
     let (win, created) = match get_or_create_pet_panel(&app) {
         Ok(acquired) => acquired,
         Err(error) => {
@@ -2286,13 +2298,16 @@ fn open_or_focus_pet_panel_blocking(
 /// Minimize panel only — sessions keep running. Restores the pet sprite.
 #[tauri::command]
 pub async fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
-    record_pet_visibility_intent(&app, PET_MINI_PANEL_LABEL);
+    let intent_generation = record_pet_visibility_intent(&app, PET_MINI_PANEL_LABEL);
     {
         let state = app.state::<PetWindowState>();
         let _lifecycle = state
             .panel_lifecycle
             .lock()
             .map_err(|_| "panel_lifecycle_unavailable".to_string())?;
+        if !pet_visibility_intent_is_current(&state, PET_MINI_PANEL_LABEL, intent_generation) {
+            return Ok(());
+        }
         if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
             let _ = win.minimize();
         }
@@ -2308,13 +2323,16 @@ pub async fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
 /// Hide panel without killing sessions (close after user confirms in UI). Restores pet.
 #[tauri::command]
 pub async fn pet_hide_panel(app: AppHandle) -> Result<(), String> {
-    record_pet_visibility_intent(&app, PET_MINI_PANEL_LABEL);
+    let intent_generation = record_pet_visibility_intent(&app, PET_MINI_PANEL_LABEL);
     {
         let state = app.state::<PetWindowState>();
         let _lifecycle = state
             .panel_lifecycle
             .lock()
             .map_err(|_| "panel_lifecycle_unavailable".to_string())?;
+        if !pet_visibility_intent_is_current(&state, PET_MINI_PANEL_LABEL, intent_generation) {
+            return Ok(());
+        }
         if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
             // Capture size/pos before hide
             if let Ok(mut geo) = state.geometry.lock() {
@@ -3048,8 +3066,11 @@ mod tests {
     }
 
     #[test]
-    fn later_panel_hide_intent_serializes_after_an_inflight_open() {
+    fn panel_visibility_tokens_reject_stale_operations_after_lock_acquisition() {
         let source = include_str!("pets.rs");
+        let open_start = source
+            .find("pub async fn pet_open_or_focus_panel")
+            .expect("panel open command exists");
         let minimize_start = source
             .find("pub async fn pet_minimize_panel")
             .expect("panel minimize command exists");
@@ -3059,53 +3080,70 @@ mod tests {
         let visible_start = source
             .find("pub async fn pet_is_panel_visible")
             .expect("panel visibility command exists");
+        let open_and_worker = &source[open_start..minimize_start];
         let minimize = &source[minimize_start..hide_start];
         let hide = &source[hide_start..visible_start];
-        for command in [minimize, hide] {
-            let intent = command
-                .find("record_pet_visibility_intent(&app, PET_MINI_PANEL_LABEL)")
-                .expect("panel visibility intent is recorded");
-            let lifecycle = command
-                .find(".panel_lifecycle")
-                .expect("panel visibility change uses the panel lifecycle");
-            assert!(intent < lifecycle);
+        for command in [open_and_worker, minimize, hide] {
+            assert!(command.contains(
+                "let intent_generation = record_pet_visibility_intent(&app, PET_MINI_PANEL_LABEL)"
+            ));
+            assert!(command.contains("pet_visibility_intent_is_current("));
+        }
+
+        fn apply_if_current(
+            state: &PetWindowState,
+            visible: &AtomicBool,
+            intent_generation: u64,
+            requested_visibility: bool,
+        ) {
+            let _lifecycle = state.panel_lifecycle.lock().unwrap();
+            if state.panel_visibility_generation.load(Ordering::SeqCst) == intent_generation {
+                visible.store(requested_visibility, Ordering::SeqCst);
+            }
         }
 
         use std::sync::{mpsc, Arc};
         let state = Arc::new(PetWindowState::default());
         let visible = Arc::new(AtomicBool::new(false));
-        let (open_acquired_tx, open_acquired_rx) = mpsc::channel();
+        let stale_open = state
+            .panel_visibility_generation
+            .fetch_add(1, Ordering::SeqCst)
+            .wrapping_add(1);
         let (release_open_tx, release_open_rx) = mpsc::channel();
         let open_state = state.clone();
         let open_visible = visible.clone();
         let open = std::thread::spawn(move || {
-            open_state
-                .panel_visibility_generation
-                .fetch_add(1, Ordering::SeqCst);
-            let _lifecycle = open_state.panel_lifecycle.lock().unwrap();
-            open_acquired_tx.send(()).unwrap();
             release_open_rx.recv().unwrap();
-            open_visible.store(true, Ordering::SeqCst);
+            apply_if_current(&open_state, &open_visible, stale_open, true);
         });
-        open_acquired_rx.recv().unwrap();
+        let current_hide = state
+            .panel_visibility_generation
+            .fetch_add(1, Ordering::SeqCst)
+            .wrapping_add(1);
+        apply_if_current(&state, &visible, current_hide, false);
+        release_open_tx.send(()).unwrap();
+        open.join().unwrap();
+        assert!(!visible.load(Ordering::SeqCst));
 
-        let (hide_recorded_tx, hide_recorded_rx) = mpsc::channel();
+        let stale_hide = state
+            .panel_visibility_generation
+            .fetch_add(1, Ordering::SeqCst)
+            .wrapping_add(1);
+        let (release_hide_tx, release_hide_rx) = mpsc::channel();
         let hide_state = state.clone();
         let hide_visible = visible.clone();
         let hide = std::thread::spawn(move || {
-            hide_state
-                .panel_visibility_generation
-                .fetch_add(1, Ordering::SeqCst);
-            hide_recorded_tx.send(()).unwrap();
-            let _lifecycle = hide_state.panel_lifecycle.lock().unwrap();
-            hide_visible.store(false, Ordering::SeqCst);
+            release_hide_rx.recv().unwrap();
+            apply_if_current(&hide_state, &hide_visible, stale_hide, false);
         });
-        hide_recorded_rx.recv().unwrap();
-        assert_eq!(state.panel_visibility_generation.load(Ordering::SeqCst), 2);
-        release_open_tx.send(()).unwrap();
-        open.join().unwrap();
+        let current_open = state
+            .panel_visibility_generation
+            .fetch_add(1, Ordering::SeqCst)
+            .wrapping_add(1);
+        apply_if_current(&state, &visible, current_open, true);
+        release_hide_tx.send(()).unwrap();
         hide.join().unwrap();
-        assert!(!visible.load(Ordering::SeqCst));
+        assert!(visible.load(Ordering::SeqCst));
     }
 
     #[test]
