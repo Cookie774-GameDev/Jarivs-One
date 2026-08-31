@@ -83,6 +83,7 @@ import {
 } from '@/lib/ai/openCodeQuestionDispatch';
 
 const SESSION_REGISTRY_KEY = 'vibespace.opencode-session-registry.v1';
+const ACCEPTED_TURN_REGISTRY_KEY = 'vibespace.opencode-accepted-turns.v1';
 const AUTH_CACHE_TTL_MS = 60_000;
 const MODEL_CACHE_TTL_MS = 60_000;
 const TURN_IDLE_POLL_MS = 500;
@@ -470,6 +471,54 @@ class LocalStorageSessionRegistry implements OpenCodeSessionRegistry {
   }
 }
 
+type AcceptedOpenCodeTurn = Readonly<{
+  requestId: string;
+  chatId: string;
+  scopeKey: string;
+  sessionId: string;
+  runtimeGeneration: string;
+}>;
+
+class LocalStorageAcceptedTurnRegistry {
+  private read(): readonly AcceptedOpenCodeTurn[] {
+    if (typeof localStorage === 'undefined') return [];
+    try {
+      const value = JSON.parse(localStorage.getItem(ACCEPTED_TURN_REGISTRY_KEY) ?? '[]') as unknown;
+      if (!Array.isArray(value)) return [];
+      return value.flatMap((entry) => {
+        const record = recordOf(entry);
+        const requestId = cleanIdentifier(record?.requestId);
+        const chatId = cleanIdentifier(record?.chatId);
+        const scopeKey = cleanIdentifier(record?.scopeKey, 4_096);
+        const sessionId = cleanIdentifier(record?.sessionId);
+        const runtimeGeneration = cleanIdentifier(record?.runtimeGeneration);
+        return requestId && chatId && scopeKey && sessionId && runtimeGeneration
+          ? [{ requestId, chatId, scopeKey, sessionId, runtimeGeneration }]
+          : [];
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  load(requestId: string): AcceptedOpenCodeTurn | undefined {
+    return this.read().find((entry) => entry.requestId === requestId);
+  }
+
+  save(entry: AcceptedOpenCodeTurn): void {
+    if (typeof localStorage === 'undefined') return;
+    const retained = this.read().filter((candidate) => candidate.requestId !== entry.requestId);
+    try {
+      localStorage.setItem(
+        ACCEPTED_TURN_REGISTRY_KEY,
+        JSON.stringify([...retained, entry].slice(-2_000)),
+      );
+    } catch {
+      /* best effort: the accepted provider turn remains authoritative */
+    }
+  }
+}
+
 export function createPersistentOpenCodeRuntimeSupervisor(
   runtime: HarnessRuntimeManager = harnessRuntimeManager,
 ): OpenCodeRuntimeSupervisor {
@@ -509,6 +558,7 @@ const clientFactory: OpenCodeClientFactory = {
 };
 
 const sessionRegistry = new LocalStorageSessionRegistry();
+const acceptedTurnRegistry = new LocalStorageAcceptedTurnRegistry();
 const sessions = new OpenCodeSessionPool(
   createPersistentOpenCodeRuntimeSupervisor(),
   clientFactory,
@@ -1823,6 +1873,20 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       'OpenCode chat already has an active request. Cancel it before starting another.',
     );
   }
+  const scopeKey = openCodeScopeKey(scope);
+  const acceptedTurn = acceptedTurnRegistry.load(request.requestId);
+  if (acceptedTurn) {
+    if (acceptedTurn.chatId !== chatId || acceptedTurn.scopeKey !== scopeKey) {
+      reportPersistentTurnFailure('turn_binding');
+      throw new Error('OpenCode accepted-turn identity changed after renderer recovery.');
+    }
+    yield {
+      type: 'error',
+      message:
+        'OpenCode response was interrupted by a renderer restart. Retry to continue the persisted session.',
+    };
+    return;
+  }
   const turn = (() => {
     try {
       return turnGate.begin(chatId, request.requestId);
@@ -1920,6 +1984,13 @@ async function* sendPersistent(request: ProviderRequest): AsyncGenerator<Provide
       await client.abort(dispatch.sessionId).catch(() => undefined);
       throw new Error('OpenCode session identity changed after the current-turn baseline.');
     }
+    acceptedTurnRegistry.save({
+      requestId: request.requestId,
+      chatId,
+      scopeKey,
+      sessionId: dispatch.sessionId,
+      runtimeGeneration: session.runtimeGeneration,
+    });
     const requestedVariant = dispatch.controls.variant ?? dispatch.controls.effort;
     const observeAuthoritativeIdentity = (
       identity: Readonly<OpenCodeObservedIdentity>,

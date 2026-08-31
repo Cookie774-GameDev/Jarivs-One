@@ -393,6 +393,50 @@ describe('persistent OpenCode question transport authority', () => {
     );
   });
 
+  it('surfaces an accepted busy turn as interrupted after its renderer observer is reinitialized without redispatching', async () => {
+    const request = questionProviderRequest('request-renderer-reload');
+    configureManagedQuestionTransport([], {
+      sessionStatuses: ['busy'],
+      persistedMessagePolls: [
+        [],
+        [
+          {
+            info: {
+              id: 'msg_renderer_reload_user',
+              role: 'user',
+              time: { created: 1 },
+            },
+            parts: [{ type: 'text', text: 'Keep working on the accepted turn.' }],
+          },
+        ],
+      ],
+    });
+
+    const original = openCodePersistentAdapter.send!(request)[Symbol.asyncIterator]();
+    await expect(original.next()).resolves.toEqual({
+      done: false,
+      value: { type: 'session', sessionId: 'ses_question_exact' },
+    });
+
+    await disposeOpenCodePersistentRuntimes();
+
+    const reinitialized = openCodePersistentAdapter.send!(request)[Symbol.asyncIterator]();
+    await expect(reinitialized.next()).resolves.toEqual({
+      done: false,
+      value: {
+        type: 'error',
+        message:
+          'OpenCode response was interrupted by a renderer restart. Retry to continue the persisted session.',
+      },
+    });
+    await expect(reinitialized.next()).resolves.toEqual({ done: true, value: undefined });
+    expect(
+      nativeOpenCodeMocks.request.mock.calls.filter(([, path]) => path.includes('/prompt_async')),
+    ).toHaveLength(1);
+
+    await original.return?.();
+  });
+
   it('recovers a pending question when the v2 event feed omits question.asked and closes mid-turn', async () => {
     const pending = questionAskedEvent().properties;
     configureManagedQuestionTransport(
