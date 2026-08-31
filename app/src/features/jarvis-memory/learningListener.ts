@@ -5,6 +5,7 @@ import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
 import { clearJarvisMemoryStatus, publishJarvisMemoryStatus } from './memoryStatusRuntime';
 import { reconcileDurableEvidence } from './evidencePersistenceRecovery';
 import { reconcileDurableProfile } from './profilePersistenceRecovery';
+import { createAccountHydrationAuthority } from './accountHydrationAuthority';
 
 interface LearningSendDetail {
   chatId?: string;
@@ -83,7 +84,6 @@ export function startJarvisLearningListener(
   const load = bindings.load ?? defaultAccountLoad;
   const evidenceRepository = bindings.evidenceRepository;
   const debounceMs = bindings.debounceMs ?? 300;
-  const accountLoads = new Map<string, Promise<void>>();
   const loadingAccounts = new Set<string>();
   let suppressAutomaticProfilePersistence = 0;
   const timers = new Map<
@@ -126,16 +126,17 @@ export function startJarvisLearningListener(
       .catch((error) => {
         publishStatus(undefined, 'error');
         report(bindings, error);
+        throw error;
       })
       .finally(() => {
         loadingAccounts.delete(accountId);
       });
-    accountLoads.set(accountId, pending);
     return pending;
   };
 
+  const hydrationAuthority = createAccountHydrationAuthority(loadAccount);
   const accountId = requireAccountId(bindings.getAccountId());
-  loadAccount(accountId);
+  void hydrationAuthority.ready(accountId);
 
   const writeProfile = (
     active: string,
@@ -259,6 +260,7 @@ export function startJarvisLearningListener(
     const next = bindings.getAccountId().trim();
     const previous = store.getState().activeAccountId;
     if (next === previous) return;
+    hydrationAuthority.invalidate();
     if (!next) {
       clearJarvisMemoryStatus();
       const pendingFlush = flushScheduled(previous);
@@ -267,7 +269,9 @@ export function startJarvisLearningListener(
       return;
     }
     void flushScheduled(previous).then(() => {
-      if (!disposed && bindings.getAccountId().trim() === next) loadAccount(next);
+      if (!disposed && bindings.getAccountId().trim() === next) {
+        void hydrationAuthority.ready(next);
+      }
     });
   });
 
@@ -279,9 +283,8 @@ export function startJarvisLearningListener(
     const messageId = detail.messageId;
     const currentAccount = bindings.getAccountId().trim();
     if (!currentAccount) return;
-    const pendingLoad = accountLoads.get(currentAccount) ?? loadAccount(currentAccount);
     void (async () => {
-      await pendingLoad;
+      if (!(await hydrationAuthority.ready(currentAccount))) return;
       if (disposed || bindings.getAccountId().trim() !== currentAccount) return;
       store.getState().setAccount(currentAccount);
       const result = mutateAutomaticLearning(() =>

@@ -201,6 +201,41 @@ describe('Jarvis learning event listener', () => {
     expect(save.mock.calls.at(-1)?.[1]).toContain('I prefer verified results');
   });
 
+  it('does not learn against an empty profile after hydration fails and retries on the next send', async () => {
+    let attempts = 0;
+    const save = vi.fn(async () => undefined);
+    const onError = vi.fn();
+    stop = startJarvisLearningListener({
+      getAccountId: () => 'account-a',
+      load: async () => {
+        attempts += 1;
+        if (attempts <= 2) throw new Error('durable profile unavailable');
+        return null;
+      },
+      save,
+      debounceMs: 0,
+      onError,
+    });
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId: 'chat-1', text: 'Remember that I prefer verified hydration.' },
+      }),
+    );
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(2));
+    expect(attempts).toBe(2);
+    expect(save).not.toHaveBeenCalled();
+    expect(useJarvisLearningStore.getState().exportMarkdown()).not.toContain('verified hydration');
+
+    window.dispatchEvent(
+      new CustomEvent('jarvis:send', {
+        detail: { chatId: 'chat-1', text: 'Remember that I prefer verified hydration.' },
+      }),
+    );
+    await vi.waitFor(() => expect(save).toHaveBeenCalled());
+    expect(attempts).toBe(3);
+  });
+
   it('publishes truthful recovery status after hydrating a repaired durable profile', async () => {
     const statuses: string[] = [];
     const onStatus = (event: Event) =>
