@@ -1661,6 +1661,100 @@ describe('persistent OpenCode live authority', () => {
     expect(JSON.stringify(events)).not.toMatch(/private-request|private project question/iu);
   });
 
+  it('continues the same turn after a precise empty Context boundary and preserves later work', async () => {
+    configureManagedQuestionTransport([], {
+      sessionStatuses: [null],
+      persistedMessages: [
+        {
+          info: {
+            id: 'message-context-empty-continued',
+            role: 'assistant',
+            providerID: 'openai',
+            modelID: 'gpt-question-test',
+            time: { completed: 1 },
+          },
+          parts: [
+            {
+              type: 'tool',
+              tool: 'vibespace_context',
+              callID: 'private-context-call',
+              state: {
+                status: 'completed',
+                input: { operation: 'investigate', query: 'private project question' },
+                output: JSON.stringify({
+                  requestId: 'private-request-id',
+                  ok: false,
+                  code: 'context_unavailable',
+                  message: 'Required VibeSpace project context was unavailable.',
+                  data: { receiptId: 'private-receipt-id', safeFailure: 'retrieval-failed' },
+                }),
+              },
+            },
+            {
+              type: 'text',
+              text: 'No indexed context was available. I continued only the independent build.',
+            },
+            {
+              type: 'tool',
+              tool: 'write',
+              callID: 'private-write-call',
+              state: {
+                status: 'completed',
+                input: { filePath: 'C:\\private\\game\\index.html' },
+                output: 'must-not-survive',
+              },
+            },
+            { type: 'text', text: 'The independent game files are created and verified.' },
+          ],
+        },
+      ],
+    });
+
+    const events: ProviderEvent[] = [];
+    for await (const event of openCodePersistentAdapter.send!(
+      questionProviderRequest('request-context-empty-continued'),
+    )) {
+      events.push(event);
+    }
+
+    expect(events.at(-1)).toMatchObject({ type: 'done' });
+    expect(events.find((event) => event.type === 'public_timeline')).toEqual({
+      type: 'public_timeline',
+      snapshot: {
+        finalText: 'The independent game files are created and verified.',
+        timeline: [
+          {
+            kind: 'tool_call',
+            tool: 'vibespace_context',
+            call_id: 'opencode-tool-1',
+            args: {},
+          },
+          {
+            kind: 'tool_result',
+            call_id: 'opencode-tool-1',
+            error: 'Context unavailable',
+          },
+          {
+            kind: 'text',
+            text: 'No indexed context was available. I continued only the independent build.',
+          },
+          {
+            kind: 'tool_call',
+            tool: 'write',
+            call_id: 'opencode-tool-2',
+            args: { path: 'index.html' },
+          },
+          {
+            kind: 'tool_result',
+            call_id: 'opencode-tool-2',
+            result: { status: 'completed' },
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(events)).not.toMatch(/private-request|private-receipt|private\\game/iu);
+  });
+
   it('recovers the persisted turn when the optional native event iterator rejects', async () => {
     configureManagedQuestionTransport([], {
       sessionStatuses: [null],

@@ -23,7 +23,12 @@ import type { ActionResult } from '@/lib/actions/types';
 import type { RlmContextLease } from '@/features/context/rlmOpenCodeTool';
 import type { JarvisContextItem } from '@/lib/jarvis/contracts';
 import { productionContextGateway } from '@/features/context/gateway/productionContextGateway';
-import type { ToolGatewayDependencies, ToolGatewayExecutionContext } from './toolGatewayRuntime';
+import { ContextRequiredUnavailableError } from '@/features/context/gateway/ContextGateway';
+import {
+  ToolGatewaySemanticError,
+  type ToolGatewayDependencies,
+  type ToolGatewayExecutionContext,
+} from './toolGatewayRuntime';
 import {
   authorizeToolGatewayMutation,
   authorizeToolGatewayRequest,
@@ -569,7 +574,23 @@ export function createProductionToolGatewayDependencies(): ToolGatewayDependenci
               performance: observed.performance,
               ...(context.directory ? { activePaths: [context.directory] } : {}),
             })
-            .then((turn) => enrichAndRememberContextTurn(turn, context, gatewayScope));
+            .then((turn) => enrichAndRememberContextTurn(turn, context, gatewayScope))
+            .catch((error: unknown) => {
+              if (!(error instanceof ContextRequiredUnavailableError)) throw error;
+              const { receipt } = error;
+              throw new ToolGatewaySemanticError({
+                code: 'context_unavailable',
+                message: 'Required VibeSpace project context was unavailable.',
+                data: Object.freeze({
+                  grounded: false,
+                  required: receipt.required,
+                  safeFailure: receipt.safeFailure ?? 'retrieval-failed',
+                  receiptId: receipt.receiptId,
+                  route: receipt.route,
+                  scopeRevision: receipt.scopeRevision,
+                }),
+              });
+            });
         }
         const lease =
           args.operation === 'investigate'

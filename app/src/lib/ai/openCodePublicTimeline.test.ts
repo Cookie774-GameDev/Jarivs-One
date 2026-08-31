@@ -2,6 +2,50 @@ import { describe, expect, it } from 'vitest';
 import { projectOpenCodePublicTimeline } from './openCodePublicTimeline';
 
 describe('projectOpenCodePublicTimeline', () => {
+  it('distinguishes an empty Context boundary from a generic tool failure', () => {
+    const snapshot = projectOpenCodePublicTimeline([
+      {
+        info: { role: 'assistant' },
+        parts: [
+          {
+            type: 'tool',
+            tool: 'vibespace_context',
+            callID: 'private-context-call',
+            state: {
+              status: 'completed',
+              output: JSON.stringify({
+                requestId: 'private-request',
+                ok: false,
+                code: 'context_unavailable',
+                message: 'Required VibeSpace project context was unavailable.',
+                data: {
+                  receiptId: 'private-receipt',
+                  scopeRevision: { projectId: 'private-project' },
+                },
+              }),
+            },
+          },
+          { type: 'text', text: 'No project evidence was available, so I did not guess.' },
+        ],
+      },
+    ]);
+
+    expect(snapshot).toEqual({
+      finalText: 'No project evidence was available, so I did not guess.',
+      timeline: [
+        { kind: 'tool_call', tool: 'vibespace_context', call_id: 'opencode-tool-1', args: {} },
+        {
+          kind: 'tool_result',
+          call_id: 'opencode-tool-1',
+          error: 'Context unavailable',
+        },
+      ],
+    });
+    expect(JSON.stringify(snapshot)).not.toMatch(
+      /private-request|private-receipt|private-project/iu,
+    );
+  });
+
   it('separates the last public OpenCode answer from the ordered checkpoint and tool timeline', () => {
     const snapshot = projectOpenCodePublicTimeline([
       {

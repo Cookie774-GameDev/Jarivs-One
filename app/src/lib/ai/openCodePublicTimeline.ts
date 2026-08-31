@@ -12,7 +12,7 @@ export type OpenCodePublicTimelinePart =
       kind: 'tool_result';
       call_id: string;
       result?: Readonly<{ status: 'completed' }>;
-      error?: 'Tool failed';
+      error?: 'Tool failed' | 'Context unavailable';
     }>;
 
 export interface OpenCodePublicMessageRecord {
@@ -35,6 +35,7 @@ type PublicTimelineEntry =
       callId: string;
       fileLabel?: string;
       status: 'started' | 'completed' | 'failed';
+      error?: 'Tool failed' | 'Context unavailable';
     };
 
 const MAX_MESSAGES = 4_096;
@@ -78,18 +79,28 @@ function toolStatus(value: unknown): 'started' | 'completed' | 'failed' {
 }
 
 export function isFailedVibeSpaceContextOutput(tool: unknown, output: unknown): boolean {
-  if (boundedIdentifier(tool, 256) !== 'vibespace_context') return false;
-  if (typeof output !== 'string' || output.length < 1 || output.length > 128 * 1024) return false;
+  return vibeSpaceContextFailure(output, tool) !== undefined;
+}
+
+function vibeSpaceContextFailure(
+  output: unknown,
+  tool: unknown,
+): 'Tool failed' | 'Context unavailable' | undefined {
+  if (boundedIdentifier(tool, 256) !== 'vibespace_context') return undefined;
+  if (typeof output !== 'string' || output.length < 1 || output.length > 128 * 1024)
+    return undefined;
   try {
     const envelope = recordOf(JSON.parse(output) as unknown);
-    return Boolean(
+    const failed = Boolean(
       envelope?.ok === false &&
       boundedIdentifier(envelope.requestId, 200) &&
       boundedIdentifier(envelope.code, 128) &&
       boundedIdentifier(envelope.message, 2_048),
     );
+    if (!failed) return undefined;
+    return envelope?.code === 'context_unavailable' ? 'Context unavailable' : 'Tool failed';
   } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -147,13 +158,12 @@ export function projectOpenCodePublicTimeline(
       const state = recordOf(part.state);
       const fileLabel = safeFileLabel(state);
       const transportStatus = toolStatus(state?.status ?? part.status);
-      const status =
-        transportStatus === 'completed' && isFailedVibeSpaceContextOutput(tool, state?.output)
-          ? 'failed'
-          : transportStatus;
+      const contextFailure = vibeSpaceContextFailure(state?.output, tool);
+      const status = transportStatus === 'completed' && contextFailure ? 'failed' : transportStatus;
       const existing = toolsByNativeCallId.get(nativeCallId);
       if (existing) {
         if (fileLabel) existing.fileLabel = fileLabel;
+        if (contextFailure) existing.error = contextFailure;
         if (status !== 'started') existing.status = status;
       } else {
         const entry: Extract<PublicTimelineEntry, { kind: 'tool' }> = {
@@ -162,6 +172,7 @@ export function projectOpenCodePublicTimeline(
           callId: requestLocalCallId(nativeCallId),
           ...(fileLabel ? { fileLabel } : {}),
           status,
+          ...(contextFailure ? { error: contextFailure } : {}),
         };
         toolsByNativeCallId.set(nativeCallId, entry);
         entries.push(entry);
@@ -184,7 +195,10 @@ export function projectOpenCodePublicTimeline(
       ];
     }
     if (entry.status === 'failed') {
-      return [call, { kind: 'tool_result', call_id: entry.callId, error: 'Tool failed' }];
+      return [
+        call,
+        { kind: 'tool_result', call_id: entry.callId, error: entry.error ?? 'Tool failed' },
+      ];
     }
     return [call];
   });

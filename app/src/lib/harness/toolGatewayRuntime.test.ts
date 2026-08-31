@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createToolGatewayRuntime, type ToolGatewayDependencies } from './toolGatewayRuntime';
+import {
+  createToolGatewayRuntime,
+  ToolGatewaySemanticError,
+  type ToolGatewayDependencies,
+} from './toolGatewayRuntime';
 import { parseToolGatewayRequest, type ToolGatewayTool } from './toolGatewayProtocol';
 
 function dependencies(approved = true) {
@@ -170,5 +174,34 @@ describe('tool gateway semantic runtime', () => {
     await expect(
       createToolGatewayRuntime(oversized.deps).execute(request('terminal.list')),
     ).resolves.toMatchObject({ ok: false, code: 'response_too_large' });
+  });
+
+  it('preserves a bounded typed semantic failure instead of erasing its recovery boundary', async () => {
+    const { deps } = dependencies();
+    deps.context.rlm = vi.fn(async () => {
+      throw new ToolGatewaySemanticError({
+        code: 'context_unavailable',
+        message: 'Required VibeSpace project context was unavailable.',
+        data: {
+          grounded: false,
+          safeFailure: 'retrieval-failed',
+          receiptId: 'context-receipt-empty-first',
+        },
+      });
+    });
+
+    await expect(
+      createToolGatewayRuntime(deps).execute(request('vibespace_context')),
+    ).resolves.toEqual({
+      requestId: 'request-vibespace_context',
+      ok: false,
+      code: 'context_unavailable',
+      message: 'Required VibeSpace project context was unavailable.',
+      data: {
+        grounded: false,
+        safeFailure: 'retrieval-failed',
+        receiptId: 'context-receipt-empty-first',
+      },
+    });
   });
 });

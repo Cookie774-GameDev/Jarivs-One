@@ -49,6 +49,18 @@ export interface ToolGatewayDependencies {
   app: { navigate: SemanticMethod; getState: SemanticMethod };
 }
 
+export class ToolGatewaySemanticError extends Error {
+  readonly code: string;
+  readonly data?: unknown;
+
+  constructor(input: Readonly<{ code: string; message: string; data?: unknown }>) {
+    super(input.message);
+    this.name = 'ToolGatewaySemanticError';
+    this.code = input.code;
+    if (input.data !== undefined) this.data = input.data;
+  }
+}
+
 function executionContext(
   request: ToolGatewayRequest,
   mutationApproved: boolean,
@@ -128,7 +140,16 @@ export function createToolGatewayRuntime(deps: ToolGatewayDependencies): {
           message: 'The semantic tool completed.',
           ...(data === undefined ? {} : { data }),
         });
-      } catch {
+      } catch (error) {
+        if (error instanceof ToolGatewaySemanticError) {
+          return boundToolGatewayResponse({
+            requestId: request.requestId,
+            ok: false,
+            code: error.code,
+            message: error.message,
+            ...(error.data === undefined ? {} : { data: error.data }),
+          });
+        }
         return {
           requestId: request.requestId,
           ok: false,

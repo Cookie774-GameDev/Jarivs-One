@@ -21,6 +21,8 @@ import {
 } from './toolGatewayAuthority';
 import { parseToolGatewayRequest } from './toolGatewayProtocol';
 import { productionContextGateway } from '@/features/context/gateway/productionContextGateway';
+import { ContextRequiredUnavailableError } from '@/features/context/gateway/ContextGateway';
+import type { ContextReceipt } from '@/features/context/gateway/contextGatewayContracts';
 
 const observedIdentity = Object.freeze({
   transportConnectionId: 'opencode-cli',
@@ -514,6 +516,70 @@ describe('production tool gateway dependencies', () => {
     expect(execute).not.toHaveBeenCalled();
     ask.mockRestore();
     dispose();
+  });
+
+  it('preserves the exact empty-first failure receipt as a continuable semantic boundary', async () => {
+    const authority = captureToolGatewayAuthorityClaim()!;
+    expect(
+      bindToolGatewayObservedExecutionAuthority('session-1', authority, {
+        executionIdentity: observedIdentity,
+        performance: 'quality',
+      }),
+    ).toBe(true);
+    const receipt = Object.freeze({
+      receiptId: 'context-receipt-empty-first',
+      policyVersion: 'vibespace-context-policy-v1',
+      route: 'focused',
+      decision: 'blocked-context-unavailable',
+      required: true,
+      decisionReasons: Object.freeze(['explicit-context'] as const),
+      scopeRevision: Object.freeze({
+        accountId: 'account-a',
+        workspaceId: 'workspace-a',
+        projectId: 'project-a',
+        worktreeId: 'C:\\work\\project',
+        revision: 'session-1:0',
+      }),
+      sourceRevisions: Object.freeze([]),
+      evidenceHandles: Object.freeze([]),
+      cacheStatus: 'not-applicable',
+      queueDepthAtStart: 0,
+      stageTimingsMs: Object.freeze({ decision: 1 }),
+      cancellationGeneration: 0,
+      safeFailure: 'retrieval-failed',
+      executionIdentity: observedIdentity,
+    } as const) satisfies Readonly<ContextReceipt>;
+    const ask = vi
+      .spyOn(productionContextGateway, 'ask')
+      .mockRejectedValue(new ContextRequiredUnavailableError(receipt));
+
+    await expect(
+      Promise.resolve(
+        createProductionToolGatewayDependencies().context.rlm(
+          { operation: 'query', query: 'Find the project evidence, then continue the safe work.' },
+          {
+            requestId: 'request-empty-first',
+            sessionId: 'session-1',
+            messageId: 'message-empty-first',
+            directory: 'C:\\work\\project',
+            mutationApproved: false,
+          },
+        ),
+      ),
+    ).rejects.toMatchObject({
+      name: 'ToolGatewaySemanticError',
+      code: 'context_unavailable',
+      data: {
+        grounded: false,
+        required: true,
+        safeFailure: 'retrieval-failed',
+        receiptId: 'context-receipt-empty-first',
+        route: 'focused',
+        scopeRevision: receipt.scopeRevision,
+      },
+    });
+    expect(consumeToolGatewayContextCitationItems('session-1')).toEqual([]);
+    ask.mockRestore();
   });
 
   it('uses the exact main-checkout directory when OpenCode omits its optional worktree field', async () => {
