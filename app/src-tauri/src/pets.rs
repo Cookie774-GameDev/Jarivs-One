@@ -1656,13 +1656,16 @@ pub async fn pet_show_overlay(app: AppHandle) -> Result<PetOverlayShowResult, St
     #[cfg(debug_assertions)]
     eprintln!("[pets] pet_show_overlay invoked");
 
-    record_pet_visibility_intent(&app, PET_OVERLAY_LABEL);
-    tauri::async_runtime::spawn_blocking(move || show_pet_overlay_blocking(app))
+    let intent_generation = record_pet_visibility_intent(&app, PET_OVERLAY_LABEL);
+    tauri::async_runtime::spawn_blocking(move || show_pet_overlay_blocking(app, intent_generation))
         .await
         .map_err(|_| "pet overlay worker failed".to_string())?
 }
 
-fn show_pet_overlay_blocking(app: AppHandle) -> Result<PetOverlayShowResult, String> {
+fn show_pet_overlay_blocking(
+    app: AppHandle,
+    intent_generation: u64,
+) -> Result<PetOverlayShowResult, String> {
     let state = app.state::<PetWindowState>();
     let _lifecycle = match state.overlay_lifecycle.lock() {
         Ok(lifecycle) => lifecycle,
@@ -1672,6 +1675,16 @@ fn show_pet_overlay_blocking(app: AppHandle) -> Result<PetOverlayShowResult, Str
             ))
         }
     };
+    if !pet_visibility_intent_is_current(&state, PET_OVERLAY_LABEL, intent_generation) {
+        return Ok(PetOverlayShowResult::failed("superseded"));
+    }
+    show_pet_overlay_with_lifecycle_held(app.clone(), &state)
+}
+
+fn show_pet_overlay_with_lifecycle_held(
+    app: AppHandle,
+    state: &PetWindowState,
+) -> Result<PetOverlayShowResult, String> {
     let (x, y) = {
         let mut geo = match state.geometry.lock() {
             Ok(geo) => geo,
@@ -1835,12 +1848,15 @@ pub async fn pet_hide_overlay(app: AppHandle) -> Result<(), String> {
     #[cfg(debug_assertions)]
     eprintln!("[pets] pet_hide_overlay invoked");
 
-    record_pet_visibility_intent(&app, PET_OVERLAY_LABEL);
+    let intent_generation = record_pet_visibility_intent(&app, PET_OVERLAY_LABEL);
     let state = app.state::<PetWindowState>();
     let _lifecycle = state
         .overlay_lifecycle
         .lock()
         .map_err(|_| "overlay_lifecycle_unavailable".to_string())?;
+    if !pet_visibility_intent_is_current(&state, PET_OVERLAY_LABEL, intent_generation) {
+        return Ok(());
+    }
     if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
         hide_pet_window(&win).map_err(str::to_string)?;
     }
@@ -2295,6 +2311,53 @@ fn open_or_focus_pet_panel_blocking(
     }
 }
 
+async fn restore_pet_overlay_for_panel_intent(
+    app: AppHandle,
+    panel_intent_generation: u64,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        restore_pet_overlay_for_panel_intent_blocking(app, panel_intent_generation)
+    })
+    .await
+    .map_err(|_| "pet overlay restore worker failed".to_string())?
+}
+
+fn restore_pet_overlay_for_panel_intent_blocking(
+    app: AppHandle,
+    panel_intent_generation: u64,
+) -> Result<(), String> {
+    let state = app.state::<PetWindowState>();
+    let _panel_lifecycle = state
+        .panel_lifecycle
+        .lock()
+        .map_err(|_| "panel_lifecycle_unavailable".to_string())?;
+    if !pet_visibility_intent_is_current(&state, PET_MINI_PANEL_LABEL, panel_intent_generation) {
+        return Ok(());
+    }
+
+    // Keep the panel intent serialized through the overlay side effect. A
+    // newer panel open records its generation before waiting on this lock, so
+    // the post-show validation below can undo a restore superseded mid-show.
+    let _overlay_lifecycle = state
+        .overlay_lifecycle
+        .lock()
+        .map_err(|_| "overlay_lifecycle_unavailable".to_string())?;
+    if !pet_visibility_intent_is_current(&state, PET_MINI_PANEL_LABEL, panel_intent_generation) {
+        return Ok(());
+    }
+
+    let overlay_intent_generation = record_pet_visibility_intent(&app, PET_OVERLAY_LABEL);
+    let show_result = show_pet_overlay_with_lifecycle_held(app.clone(), &state);
+    if !pet_visibility_intent_is_current(&state, PET_MINI_PANEL_LABEL, panel_intent_generation)
+        && pet_visibility_intent_is_current(&state, PET_OVERLAY_LABEL, overlay_intent_generation)
+    {
+        if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
+            hide_pet_window(&win).map_err(str::to_string)?;
+        }
+    }
+    show_result.map(|_| ())
+}
+
 /// Minimize panel only — sessions keep running. Restores the pet sprite.
 #[tauri::command]
 pub async fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
@@ -2315,8 +2378,7 @@ pub async fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
             *open = false;
         };
     }
-    // Bring pet sprite back
-    let _ = pet_show_overlay(app.clone()).await;
+    let _ = restore_pet_overlay_for_panel_intent(app.clone(), intent_generation).await;
     Ok(())
 }
 
@@ -2352,7 +2414,7 @@ pub async fn pet_hide_panel(app: AppHandle) -> Result<(), String> {
             *open = false;
         };
     }
-    let _ = pet_show_overlay(app.clone()).await;
+    let _ = restore_pet_overlay_for_panel_intent(app.clone(), intent_generation).await;
     Ok(())
 }
 
@@ -3061,7 +3123,8 @@ mod tests {
             .nth(1)
             .and_then(|tail| tail.split("pub async fn pet_is_panel_visible").next())
             .expect("panel restore commands have a bounded source slice");
-        assert!(minimize_and_hide.contains("pet_show_overlay(app.clone()).await"));
+        assert!(minimize_and_hide.contains("restore_pet_overlay_for_panel_intent("));
+        assert!(!minimize_and_hide.contains("pet_show_overlay(app.clone()).await"));
         assert!(!minimize_and_hide.contains("show_pet_overlay_blocking(app.clone())"));
     }
 
@@ -3088,6 +3151,13 @@ mod tests {
                 "let intent_generation = record_pet_visibility_intent(&app, PET_MINI_PANEL_LABEL)"
             ));
             assert!(command.contains("pet_visibility_intent_is_current("));
+        }
+        for command in [minimize, hide] {
+            assert_eq!(
+                command.matches("pet_visibility_intent_is_current(").count(),
+                1
+            );
+            assert!(command.contains("restore_pet_overlay_for_panel_intent("));
         }
 
         fn apply_if_current(
@@ -3144,6 +3214,196 @@ mod tests {
         release_hide_tx.send(()).unwrap();
         hide.join().unwrap();
         assert!(visible.load(Ordering::SeqCst));
+
+        use std::sync::atomic::AtomicUsize;
+        let overlay_show_calls = AtomicUsize::new(0);
+        if state.panel_visibility_generation.load(Ordering::SeqCst) == stale_hide {
+            overlay_show_calls.fetch_add(1, Ordering::SeqCst);
+        }
+        assert_eq!(overlay_show_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn overlay_visibility_and_panel_restore_reject_stale_intents() {
+        let source = include_str!("pets.rs");
+        let show_start = source
+            .find("pub async fn pet_show_overlay")
+            .expect("overlay show command exists");
+        let hide_start = source
+            .find("pub async fn pet_hide_overlay")
+            .expect("overlay hide command exists");
+        let visible_start = source
+            .find("pub async fn pet_is_overlay_visible")
+            .expect("overlay visibility command exists");
+        let show = &source[show_start..hide_start];
+        let hide = &source[hide_start..visible_start];
+        assert!(show.contains(
+            "let intent_generation = record_pet_visibility_intent(&app, PET_OVERLAY_LABEL)"
+        ));
+        assert!(show.contains("pet_visibility_intent_is_current("));
+        assert!(hide.contains(
+            "let intent_generation = record_pet_visibility_intent(&app, PET_OVERLAY_LABEL)"
+        ));
+        assert!(hide.contains("pet_visibility_intent_is_current("));
+
+        let minimize_start = source
+            .find("pub async fn pet_minimize_panel")
+            .expect("panel minimize command exists");
+        let panel_visible_start = source
+            .find("pub async fn pet_is_panel_visible")
+            .expect("panel visibility command exists");
+        let panel_restore = &source[minimize_start..panel_visible_start];
+        assert_eq!(
+            panel_restore
+                .matches("restore_pet_overlay_for_panel_intent(")
+                .count(),
+            2
+        );
+        assert!(!panel_restore.contains("pet_show_overlay(app.clone()).await"));
+        let restore_start = source
+            .find("fn restore_pet_overlay_for_panel_intent_blocking")
+            .expect("conditional panel restore helper exists");
+        let restore_end = source[restore_start..]
+            .find("/// Minimize panel only")
+            .map(|offset| restore_start + offset)
+            .expect("conditional panel restore helper is bounded");
+        let restore_helper = &source[restore_start..restore_end];
+        let panel_lock = restore_helper
+            .find("panel_lifecycle")
+            .expect("panel lifecycle is held across restore");
+        let overlay_lock = restore_helper
+            .find("overlay_lifecycle")
+            .expect("overlay lifecycle serializes the native side effect");
+        let show_overlay = restore_helper
+            .find("show_pet_overlay_with_lifecycle_held")
+            .expect("restore uses the lock-held overlay helper");
+        let cleanup_overlay = restore_helper
+            .find("hide_pet_window")
+            .expect("a restore superseded during show is undone");
+        assert!(panel_lock < overlay_lock);
+        assert!(overlay_lock < show_overlay);
+        assert!(show_overlay < cleanup_overlay);
+
+        use std::sync::{mpsc, Arc};
+        let state = Arc::new(PetWindowState::default());
+        let visible = Arc::new(AtomicBool::new(false));
+        let stale_show = state
+            .overlay_visibility_generation
+            .fetch_add(1, Ordering::SeqCst)
+            .wrapping_add(1);
+        let (release_show_tx, release_show_rx) = mpsc::channel();
+        let show_state = state.clone();
+        let show_visible = visible.clone();
+        let show = std::thread::spawn(move || {
+            release_show_rx.recv().unwrap();
+            let _lifecycle = show_state.overlay_lifecycle.lock().unwrap();
+            if show_state
+                .overlay_visibility_generation
+                .load(Ordering::SeqCst)
+                == stale_show
+            {
+                show_visible.store(true, Ordering::SeqCst);
+            }
+        });
+        let current_hide = state
+            .overlay_visibility_generation
+            .fetch_add(1, Ordering::SeqCst)
+            .wrapping_add(1);
+        {
+            let _lifecycle = state.overlay_lifecycle.lock().unwrap();
+            if state.overlay_visibility_generation.load(Ordering::SeqCst) == current_hide {
+                visible.store(false, Ordering::SeqCst);
+            }
+        }
+        release_show_tx.send(()).unwrap();
+        show.join().unwrap();
+        assert!(!visible.load(Ordering::SeqCst));
+
+        let stale_hide = state
+            .overlay_visibility_generation
+            .fetch_add(1, Ordering::SeqCst)
+            .wrapping_add(1);
+        let (release_hide_tx, release_hide_rx) = mpsc::channel();
+        let hide_state = state.clone();
+        let hide_visible = visible.clone();
+        let hide = std::thread::spawn(move || {
+            release_hide_rx.recv().unwrap();
+            let _lifecycle = hide_state.overlay_lifecycle.lock().unwrap();
+            if hide_state
+                .overlay_visibility_generation
+                .load(Ordering::SeqCst)
+                == stale_hide
+            {
+                hide_visible.store(false, Ordering::SeqCst);
+            }
+        });
+        let current_show = state
+            .overlay_visibility_generation
+            .fetch_add(1, Ordering::SeqCst)
+            .wrapping_add(1);
+        {
+            let _lifecycle = state.overlay_lifecycle.lock().unwrap();
+            if state.overlay_visibility_generation.load(Ordering::SeqCst) == current_show {
+                visible.store(true, Ordering::SeqCst);
+            }
+        }
+        release_hide_tx.send(()).unwrap();
+        hide.join().unwrap();
+        assert!(visible.load(Ordering::SeqCst));
+
+        let stale_restore_before_show = state
+            .panel_visibility_generation
+            .fetch_add(1, Ordering::SeqCst)
+            .wrapping_add(1);
+        state
+            .panel_visibility_generation
+            .fetch_add(1, Ordering::SeqCst);
+        let mut show_started = false;
+        {
+            let _panel = state.panel_lifecycle.lock().unwrap();
+            if state.panel_visibility_generation.load(Ordering::SeqCst) == stale_restore_before_show
+            {
+                let _overlay = state.overlay_lifecycle.lock().unwrap();
+                show_started = true;
+            }
+        }
+        assert!(!show_started);
+
+        let panel_restore_generation = state
+            .panel_visibility_generation
+            .fetch_add(1, Ordering::SeqCst)
+            .wrapping_add(1);
+        let (restore_started_tx, restore_started_rx) = mpsc::channel();
+        let (finish_restore_tx, finish_restore_rx) = mpsc::channel();
+        let restore_state = state.clone();
+        let restore_visible = visible.clone();
+        let restore = std::thread::spawn(move || {
+            let _panel = restore_state.panel_lifecycle.lock().unwrap();
+            let _overlay = restore_state.overlay_lifecycle.lock().unwrap();
+            if restore_state
+                .panel_visibility_generation
+                .load(Ordering::SeqCst)
+                == panel_restore_generation
+            {
+                restore_visible.store(true, Ordering::SeqCst);
+            }
+            restore_started_tx.send(()).unwrap();
+            finish_restore_rx.recv().unwrap();
+            if restore_state
+                .panel_visibility_generation
+                .load(Ordering::SeqCst)
+                != panel_restore_generation
+            {
+                restore_visible.store(false, Ordering::SeqCst);
+            }
+        });
+        restore_started_rx.recv().unwrap();
+        state
+            .panel_visibility_generation
+            .fetch_add(1, Ordering::SeqCst);
+        finish_restore_tx.send(()).unwrap();
+        restore.join().unwrap();
+        assert!(!visible.load(Ordering::SeqCst));
     }
 
     #[test]
