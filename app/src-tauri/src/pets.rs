@@ -1138,13 +1138,12 @@ pub(crate) fn ensure_pet_topmost_watchdog(app: &AppHandle) {
         });
 }
 
-fn pet_webview_url(app: &AppHandle, view: &str) -> Result<WebviewUrl, String> {
-    #[cfg(debug_assertions)]
-    if let Some(mut dev_url) = app.config().build.dev_url.clone() {
-        dev_url.set_query(Some(&format!("view={view}")));
-        return Ok(WebviewUrl::External(dev_url));
-    }
-
+fn pet_webview_url(_app: &AppHandle, view: &str) -> Result<WebviewUrl, String> {
+    // Keep this as an application URL and let Tauri select the active asset
+    // origin. A debug binary can still be built with `tauri/custom-protocol`;
+    // forcing the configured dev URL here would strand detached Pet windows on
+    // an absent Vite server while the main window correctly uses embedded
+    // assets.
     Ok(WebviewUrl::App(format!("index.html?view={view}").into()))
 }
 
@@ -2121,6 +2120,23 @@ mod tests {
         let overlay_builder = &source[overlay_start..overlay_end];
         assert!(overlay_builder.contains(".visible(false)"));
         assert!(!overlay_builder.contains(".visible(true)"));
+    }
+
+    #[test]
+    fn detached_pet_url_uses_tauri_runtime_asset_resolution() {
+        let source = include_str!("pets.rs");
+        let url_start = source
+            .find("fn pet_webview_url")
+            .expect("pet URL resolver exists");
+        let url_end = source[url_start..]
+            .find("fn log_pet_window_metrics")
+            .map(|offset| url_start + offset)
+            .expect("pet URL resolver has a bounded source slice");
+        let url_resolver = &source[url_start..url_end];
+
+        assert!(url_resolver.contains("WebviewUrl::App("));
+        assert!(!url_resolver.contains("dev_url"));
+        assert!(!url_resolver.contains("WebviewUrl::External"));
     }
 
     #[test]
