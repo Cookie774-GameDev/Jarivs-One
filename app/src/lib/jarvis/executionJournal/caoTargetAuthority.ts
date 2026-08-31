@@ -307,11 +307,13 @@ async function findLease(
       fail('cao_target_journal_unavailable');
     }
     const canonicalPage = canonicalDependencyValue(page);
-    if (!Array.isArray(canonicalPage)) fail('cao_target_journal_invalid');
-    if (canonicalPage.some((event) => !validDependencyEntry(event))) {
+    if (!Array.isArray(canonicalPage) || canonicalPage.length > EVENT_PAGE_SIZE) {
       fail('cao_target_journal_invalid');
     }
-    for (const event of canonicalPage) {
+    for (let index = 0; index < canonicalPage.length; index += 1) {
+      const candidate = canonicalPage[index];
+      if (!validDependencyEntry(candidate)) fail('cao_target_journal_invalid');
+      const event = candidate as JarvisEvent;
       if (
         event.runId !== scope.runId ||
         !Number.isSafeInteger(event.seq) ||
@@ -325,6 +327,7 @@ async function findLease(
       if (!validated.ok) fail('cao_target_journal_invalid');
       const lease = validated.value;
       if (
+        lease.runId !== event.runId ||
         event.type !== 'context' ||
         event.idempotencyKey !== `cao-target-lease:${lease.leaseId}` ||
         !Number.isSafeInteger(event.createdAt) ||

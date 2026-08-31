@@ -690,6 +690,80 @@ describe('CAO explicit target authority', () => {
     expect(h.registry.readExact).not.toHaveBeenCalled();
   });
 
+  it('rejects a sparse journal page before registry recovery', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    const sparsePage = new Array<JarvisEvent>(2);
+    sparsePage[1] = structuredClone(h.rows[0]!);
+    h.deps.events.listByRun.mockResolvedValueOnce(sparsePage);
+    vi.mocked(h.registry.readExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_journal_invalid$/);
+    expect(h.registry.readExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
+  it('rejects an oversized journal page before registry recovery', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    const source = structuredClone(h.rows[0]!);
+    delete source.caoTargetLease;
+    const oversizedPage = Array.from({ length: 501 }, (_, index) => ({
+      ...structuredClone(source),
+      seq: index + 1,
+      idempotencyKey: `unrelated:${index + 1}`,
+    }));
+    h.deps.events.listByRun.mockResolvedValueOnce(oversizedPage);
+    vi.mocked(h.registry.readExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).verify({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_journal_invalid$/);
+    expect(h.registry.readExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
+  it('rejects lease payload lineage that disagrees with its journal event', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    const durableLeaseEvent = structuredClone(h.rows[0]!);
+    const unrelatedLease = {
+      ...structuredClone(durableLeaseEvent.caoTargetLease!),
+      leaseId: 'cao_lease_unrelated',
+      runId: 'jrun-other',
+    };
+    h.deps.events.listByRun.mockResolvedValueOnce([
+      {
+        ...durableLeaseEvent,
+        seq: 1,
+        idempotencyKey: `cao-target-lease:${unrelatedLease.leaseId}`,
+        caoTargetLease: unrelatedLease,
+      },
+      { ...durableLeaseEvent, seq: 2 },
+    ]);
+    vi.mocked(h.registry.readExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_journal_invalid$/);
+    expect(h.registry.readExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
   it('reconciles an applied claim containing a null live row', async () => {
     const h = harness();
     vi.mocked(h.registry.claimExact).mockImplementationOnce(async (request) => {
