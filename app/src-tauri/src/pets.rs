@@ -29,6 +29,7 @@ const PET_CREATED_SURFACE_READY_ATTEMPTS: usize = 50;
 const PET_CREATED_SURFACE_READY_POLL_MS: u64 = 20;
 const PET_DETACHED_BUILD_DELAY_MS: u64 = 80;
 const PET_SETUP_OFFSCREEN_POSITION: (f64, f64) = (-32_000.0, -32_000.0);
+const PET_SETUP_MATERIALIZATION_DELAY_MS: u64 = 1_000;
 const PET_NATIVE_FRAME_STYLE_BITS: isize = 0x00CF_0000;
 const PET_NATIVE_FRAME_EX_STYLE_BITS: isize = 0x0002_0301;
 
@@ -1279,19 +1280,41 @@ fn acquire_pet_overlay(app: &AppHandle) -> Result<PetOverlayAcquire, String> {
     Ok(PetOverlayAcquire::Ready { created: true })
 }
 
+fn schedule_setup_pet_hide(window: WebviewWindow, label: &'static str) -> Result<(), String> {
+    std::thread::Builder::new()
+        .name(format!("{label}-setup-hide"))
+        .spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(
+                PET_SETUP_MATERIALIZATION_DELAY_MS,
+            ));
+            let still_offscreen = window
+                .outer_position()
+                .map(|position| position.x <= -31_000 && position.y <= -31_000)
+                .unwrap_or(false);
+            if still_offscreen {
+                if let Err(error) = window.hide() {
+                    #[cfg(debug_assertions)]
+                    eprintln!("[pets] setup {label} hide failed: {error}");
+                }
+            }
+        })
+        .map(|_| ())
+        .map_err(|error| format!("failed to schedule setup {label} hide: {error}"))
+}
+
 fn ensure_detached_pet_hosts_materialized(app: &AppHandle) {
     // `load_geometry` is called from Tauri's setup hook while the runtime still
     // owns an authoritative event-loop target. Create both renderer-attached
     // hosts initially visible and offscreen here; WebView2 does not materialize
     // a native host for a window whose initial visibility is false. Hide each
-    // host immediately after setup-time creation so command-time show reuses an
-    // authoritative HWND without flashing on the user's desktop.
+    // host after a bounded offscreen materialization interval so command-time
+    // show reuses an authoritative HWND without flashing on the desktop.
     if app.get_webview_window(PET_OVERLAY_LABEL).is_none() {
         match build_pet_overlay(app, true, Some(PET_SETUP_OFFSCREEN_POSITION)) {
             Ok(window) => {
-                if let Err(error) = window.hide() {
+                if let Err(error) = schedule_setup_pet_hide(window, PET_OVERLAY_LABEL) {
                     #[cfg(debug_assertions)]
-                    eprintln!("[pets] setup pet-overlay hide failed: {error}");
+                    eprintln!("[pets] {error}");
                 }
             }
             Err(error) => {
@@ -1303,9 +1326,9 @@ fn ensure_detached_pet_hosts_materialized(app: &AppHandle) {
     if app.get_webview_window(PET_MINI_PANEL_LABEL).is_none() {
         match build_pet_panel(app, true, Some(PET_SETUP_OFFSCREEN_POSITION)) {
             Ok(window) => {
-                if let Err(error) = window.hide() {
+                if let Err(error) = schedule_setup_pet_hide(window, PET_MINI_PANEL_LABEL) {
                     #[cfg(debug_assertions)]
-                    eprintln!("[pets] setup pet-mini-panel hide failed: {error}");
+                    eprintln!("[pets] {error}");
                 }
             }
             Err(error) => {
@@ -2477,9 +2500,29 @@ mod tests {
         assert!(
             materialize.contains("build_pet_panel(app, true, Some(PET_SETUP_OFFSCREEN_POSITION))")
         );
-        assert_eq!(materialize.matches(".hide()").count(), 2);
+        assert_eq!(
+            materialize
+                .matches("schedule_setup_pet_hide(window")
+                .count(),
+            2
+        );
+        assert!(!materialize.contains(".hide()"));
         assert!(!materialize.contains("run_on_main_thread"));
         assert!(!materialize.contains("spawn"));
+
+        let hide_start = production
+            .find("fn schedule_setup_pet_hide")
+            .expect("setup hide scheduler exists");
+        let hide_end = production[hide_start..]
+            .find("fn ensure_detached_pet_hosts_materialized")
+            .map(|offset| hide_start + offset)
+            .expect("setup hide scheduler is bounded");
+        let hide = &production[hide_start..hide_end];
+        assert!(hide.contains("PET_SETUP_MATERIALIZATION_DELAY_MS"));
+        assert!(hide.contains("std::thread::sleep"));
+        assert!(hide.contains(".outer_position()"));
+        assert!(hide.contains("if still_offscreen"));
+        assert!(hide.contains("window.hide()"));
     }
 
     #[test]
