@@ -189,4 +189,47 @@ describe('buildCatalogIndex', () => {
         ?.definition.parseSlots(malformed.matchWithOffsets('open chat')[0]!, 'open chat'),
     ).toEqual({ status: 'rejected', reason: 'That Instant Command is incomplete or invalid.' });
   });
+
+  it('deep-snapshots parsed slots so parser-owned mutation cannot retarget execution', () => {
+    const selector = { provider: 'codex', scope: 'one' };
+    const index = buildCatalogIndex([
+      definition({
+        parseSlots: () => ({ status: 'parsed', slots: { selector, payload: 'audit' } }),
+      }),
+    ]);
+    const match = index.matchWithOffsets('open chat')[0]!;
+    const parsed = match.definition.parseSlots(match, 'open chat');
+
+    selector.provider = 'opencode';
+
+    expect(parsed).toEqual({
+      status: 'parsed',
+      slots: { selector: { provider: 'codex', scope: 'one' }, payload: 'audit' },
+    });
+    expect(parsed.status === 'parsed' && Object.isFrozen(parsed.slots.selector)).toBe(true);
+  });
+
+  it('rejects prototype-bearing, accessor, functional, non-finite, and unbounded slot values', () => {
+    const unsafeSlots = [
+      { selector: Object.create({ provider: 'codex' }) },
+      Object.defineProperty({}, 'secret', { enumerable: true, get: () => 'private' }),
+      { callback: () => undefined },
+      { count: Number.POSITIVE_INFINITY },
+      { payload: 'x'.repeat(4_097) },
+      { nested: { one: { two: { three: { four: { five: { six: true } } } } } } },
+    ];
+
+    for (const slots of unsafeSlots) {
+      const index = buildCatalogIndex([
+        definition({
+          parseSlots: (() => ({ status: 'parsed', slots })) as CommandDefinition['parseSlots'],
+        }),
+      ]);
+      const match = index.matchWithOffsets('open chat')[0]!;
+      expect(match.definition.parseSlots(match, 'open chat')).toEqual({
+        status: 'rejected',
+        reason: 'That Instant Command is incomplete or invalid.',
+      });
+    }
+  });
 });

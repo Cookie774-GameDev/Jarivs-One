@@ -29,6 +29,10 @@ const COMMAND_FAMILIES = new Set([
 const COMMAND_SAFETY = new Set(['read', 'reversible', 'confirm', 'approval']);
 const COMMAND_AVAILABILITY = new Set(['available', 'capability-gated', 'blocked']);
 const SLOT_GRAMMARS = new Set(['none', 'remainder']);
+const SAFE_SLOT_KEY = /^[a-zA-Z][a-zA-Z0-9._-]{0,127}$/u;
+const FORBIDDEN_SLOT_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+const MAX_SLOT_DEPTH = 5;
+const MAX_SLOT_ITEMS = 256;
 
 export function normalizeCatalogPhrase(source: string): string {
   return source.trim().toLowerCase().replace(/\s+/gu, ' ');
@@ -51,6 +55,51 @@ function requireFixture(
   }
 }
 
+function snapshotSlotValue(value: unknown, depth: number, budget: { count: number }): unknown {
+  budget.count += 1;
+  if (budget.count > MAX_SLOT_ITEMS || depth > MAX_SLOT_DEPTH) {
+    throw new Error('unbounded slot value');
+  }
+  if (value === null || typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    if (value.length > MAX_SOURCE_LENGTH || CONTROL_CHARACTER.test(value)) {
+      throw new Error('unsafe slot string');
+    }
+    return value;
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('unsafe slot number');
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > 128) throw new Error('unbounded slot array');
+    return Object.freeze(value.map((item) => snapshotSlotValue(item, depth + 1, budget)));
+  }
+  if (typeof value !== 'object') throw new Error('unsafe slot value');
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error('unsafe slot prototype');
+  }
+  const keys = Reflect.ownKeys(value);
+  if (keys.length > 64 || keys.some((key) => typeof key !== 'string')) {
+    throw new Error('unbounded slot object');
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const entries = keys.map((key) => {
+    if (
+      typeof key !== 'string' ||
+      !SAFE_SLOT_KEY.test(key) ||
+      FORBIDDEN_SLOT_KEYS.has(key) ||
+      !descriptors[key]?.enumerable ||
+      !('value' in descriptors[key]!)
+    ) {
+      throw new Error('unsafe slot property');
+    }
+    return [key, snapshotSlotValue(descriptors[key]!.value, depth + 1, budget)] as const;
+  });
+  return Object.freeze(Object.fromEntries(entries));
+}
+
 function safeParseSlots(
   parser: CommandDefinition['parseSlots'],
   match: CatalogMatch,
@@ -63,7 +112,11 @@ function safeParseSlots(
       if (!result.slots || typeof result.slots !== 'object' || Array.isArray(result.slots)) {
         throw new Error('invalid parsed slots');
       }
-      return Object.freeze({ status: 'parsed', slots: Object.freeze({ ...result.slots }) });
+      const slots = snapshotSlotValue(result.slots, 0, { count: 0 });
+      return Object.freeze({
+        status: 'parsed',
+        slots: slots as Readonly<Record<string, unknown>>,
+      });
     }
     if (
       result.status === 'rejected' &&
