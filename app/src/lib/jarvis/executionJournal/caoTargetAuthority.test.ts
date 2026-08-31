@@ -197,6 +197,79 @@ describe('CAO explicit target authority', () => {
     expect(h.deps.events.listByRun).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['acquire', { ...scope, privatePath: 'private/acquire/path' }],
+    ['verify', { ...scope, leaseId: 'lease-a', implicitRenew: true }],
+    ['release', { ...scope, leaseId: 'lease-a', privatePayload: 'private-release' }],
+  ])('rejects unknown %s fields before authority dependencies', async (operation, drifted) => {
+    const h = harness();
+    const authority = createCaoTargetAuthority(h.deps);
+    const pending =
+      operation === 'acquire'
+        ? authority.acquire({
+            ...drifted,
+            leaseMs: 5_000,
+            selection: {
+              mode: 'explicit_single',
+              targets: [{ kind: 'chat', targetId: 'chat-a' }],
+            },
+          } as never)
+        : operation === 'verify'
+          ? authority.verify(drifted as never)
+          : authority.release(drifted as never);
+
+    await expect(pending).rejects.toThrow('cao_target_input_invalid');
+    expect(h.deps.runs.getRun).not.toHaveBeenCalled();
+    expect(h.deps.events.listByRun).not.toHaveBeenCalled();
+    expect(h.registry.claimExact).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'selection metadata',
+      { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }], renew: true },
+    ],
+    [
+      'target metadata',
+      {
+        mode: 'explicit_single',
+        targets: [{ kind: 'chat', targetId: 'chat-a', privatePath: 'private/target' }],
+      },
+    ],
+  ])('rejects unknown %s before run or registry access', async (_case, selection) => {
+    const h = harness();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection,
+      } as never),
+    ).rejects.toThrow('cao_target_selection_invalid');
+    expect(h.deps.runs.getRun).not.toHaveBeenCalled();
+    expect(h.registry.claimExact).not.toHaveBeenCalled();
+  });
+
+  it('sends only the canonical claim contract to the registry', async () => {
+    const h = harness();
+
+    await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+
+    expect(Object.keys(vi.mocked(h.registry.claimExact).mock.calls[0]?.[0] ?? {}).sort()).toEqual([
+      'accountId',
+      'expiresAt',
+      'leaseId',
+      'projectId',
+      'runId',
+      'targets',
+      'workspaceId',
+    ]);
+  });
+
   it('grants no target by default and rejects implicit or malformed multi-target selection', async () => {
     const h = harness([target(), target({ kind: 'terminal', targetId: 'terminal-a' })]);
     const authority = createCaoTargetAuthority(h.deps);

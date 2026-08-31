@@ -9,6 +9,17 @@ import { validateCaoTargetLease } from '@/lib/jarvis/contracts/validators';
 
 export const CAO_TARGET_LEASE_MAX_MS = 60_000 as const;
 const OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const ACQUIRE_INPUT_KEYS = new Set([
+  'accountId',
+  'workspaceId',
+  'projectId',
+  'runId',
+  'selection',
+  'leaseMs',
+]);
+const VERIFY_INPUT_KEYS = new Set(['accountId', 'workspaceId', 'projectId', 'runId', 'leaseId']);
+const SELECTION_KEYS = new Set(['mode', 'targets']);
+const TARGET_IDENTITY_KEYS = new Set(['kind', 'targetId']);
 const EVENT_PAGE_SIZE = 500;
 const MAX_EVENT_PAGES = 20;
 const ACTIVE_RUN_STATUSES = new Set<JarvisRun['status']>([
@@ -92,6 +103,21 @@ function validIdentifier(value: unknown): value is string {
   return typeof value === 'string' && OPAQUE_ID.test(value);
 }
 
+function hasExactKeys(value: unknown, keys: ReadonlySet<string>): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const actual = Object.keys(value);
+  return actual.length === keys.size && actual.every((key) => keys.has(key));
+}
+
+function hasOnlyKnownKeys(value: unknown, keys: ReadonlySet<string>): boolean {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).every((key) => keys.has(key))
+  );
+}
+
 function assertScope(scope: LeaseScope): void {
   if (
     !validIdentifier(scope.accountId) ||
@@ -121,6 +147,7 @@ function assertSelection(
 ): asserts selection is ExplicitSelection {
   if (!selection) fail('cao_target_selection_required');
   if (
+    !hasExactKeys(selection, SELECTION_KEYS) ||
     (selection.mode !== 'explicit_single' && selection.mode !== 'explicit_set') ||
     !Array.isArray(selection.targets) ||
     selection.targets.length === 0 ||
@@ -132,7 +159,7 @@ function assertSelection(
   const identities = new Set<string>();
   for (const target of selection.targets) {
     if (
-      !target ||
+      !hasExactKeys(target, TARGET_IDENTITY_KEYS) ||
       (target.kind !== 'chat' && target.kind !== 'terminal') ||
       !validIdentifier(target.targetId)
     ) {
@@ -202,9 +229,22 @@ function assertLiveTargets(
 
 function releaseRequest(scope: LeaseScope, lease: CaoTargetLeaseV1) {
   return {
-    ...scope,
+    accountId: scope.accountId,
+    workspaceId: scope.workspaceId,
+    projectId: scope.projectId,
+    runId: scope.runId,
     leaseId: lease.leaseId,
     targets: lease.targets.map(({ kind, targetId }) => ({ kind, targetId })),
+  };
+}
+
+function verifyRequest(scope: LeaseScope, leaseId: string): VerifyInput {
+  return {
+    accountId: scope.accountId,
+    workspaceId: scope.workspaceId,
+    projectId: scope.projectId,
+    runId: scope.runId,
+    leaseId,
   };
 }
 
@@ -353,6 +393,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
   }
 
   async function verify(input: VerifyInput): Promise<CaoTargetLeaseV1> {
+    if (!hasExactKeys(input, VERIFY_INPUT_KEYS)) fail('cao_target_input_invalid');
     assertScope(input);
     if (!validIdentifier(input.leaseId)) fail('cao_target_lease_id_invalid');
     let run: JarvisRun | undefined;
@@ -421,6 +462,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
   }
 
   async function acquire(input: AcquireInput): Promise<CaoTargetLeaseV1> {
+    if (!hasOnlyKnownKeys(input, ACQUIRE_INPUT_KEYS)) fail('cao_target_input_invalid');
     assertScope(input);
     assertSelection(input.selection);
     if (
@@ -444,7 +486,15 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     const requested = input.selection.targets.map(({ kind, targetId }) => ({ kind, targetId }));
     const expiresAt = acquiredAt + input.leaseMs;
     if (!Number.isSafeInteger(expiresAt)) fail('cao_target_clock_invalid');
-    const registryRequest = { ...input, leaseId, expiresAt, targets: requested };
+    const registryRequest: RegistryRequest = {
+      accountId: input.accountId,
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+      runId: input.runId,
+      leaseId,
+      expiresAt,
+      targets: requested,
+    };
     let claim: Awaited<ReturnType<CaoTargetRegistry['claimExact']>>;
     try {
       claim = await dependencies.registry.claimExact(registryRequest);
@@ -490,18 +540,19 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       });
     } catch {
       const committed = await findLease(dependencies.events, input, leaseId).catch(() => undefined);
-      if (committed) return verify({ ...input, leaseId });
-      await releaseVerifiedLease({ ...input, leaseId }, lease);
+      if (committed) return verify(verifyRequest(input, leaseId));
+      await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
       fail('cao_target_lease_persistence_failed');
     }
     if (!acknowledgesExactLease(appended, input, lease)) {
-      await releaseVerifiedLease({ ...input, leaseId }, lease);
+      await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
       fail('cao_target_lease_persistence_failed');
     }
-    return verify({ ...input, leaseId });
+    return verify(verifyRequest(input, leaseId));
   }
 
   async function release(input: VerifyInput): Promise<void> {
+    if (!hasExactKeys(input, VERIFY_INPUT_KEYS)) fail('cao_target_input_invalid');
     assertScope(input);
     if (!validIdentifier(input.leaseId)) fail('cao_target_lease_id_invalid');
     const lease = await findLease(dependencies.events, input, input.leaseId);
