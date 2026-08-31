@@ -168,6 +168,18 @@
   background: var(--jarvis-honey);
   box-shadow: 0 0 0 3px hsl(var(--accent-amber) / 0.13);
 }
+.jarvis-voice-error-detail {
+  max-height: 5.25rem;
+  margin: 0;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  border-top: 1px solid hsl(var(--destructive) / 0.24);
+  background: hsl(var(--destructive) / 0.055);
+  padding: 9px 14px 10px;
+  color: var(--jarvis-ink);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
 .jarvis-voice-meter {
   min-width: 58px;
   max-width: 96px;
@@ -368,6 +380,7 @@ html[data-theme='monochrome'] .jarvis-voice-panel {
   .jarvis-voice-close,
   .jarvis-command-disclosure,
   .jarvis-voice-model-selector select,
+  .jarvis-voice-error-detail,
   .jarvis-transcript-card {
     border: 1px solid CanvasText;
     background: Canvas;

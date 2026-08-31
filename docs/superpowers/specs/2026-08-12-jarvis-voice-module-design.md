@@ -116,6 +116,11 @@ Changing the model updates the same persisted chat model selection used by regul
 ## Error and cleanup behavior
 
 - Microphone permission and capture errors retain the existing visible error state.
+- The compact instrument announces only the stable `Voice error` state; the complete actionable
+  reason renders in a separate full-width detail region below the instrument so long provider,
+  permission, or device copy never collapses into the narrow identity column.
+- The detail region uses normal wrapping, bounded vertical overflow, and an assertive alert while
+  the compact state remains the single polite atomic status.
 - Signal metering errors degrade only the animation, not recognition.
 - Model selection failure leaves the previous selection unchanged and exposes existing provider/settings recovery paths.
 - Closing or unmounting stops analyser frames, audio tracks, timers, recognition, and speech through their respective owners.

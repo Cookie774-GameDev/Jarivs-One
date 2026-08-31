@@ -36,6 +36,7 @@ export function JarvisVoiceHeader({
   onPointerUp: React.PointerEventHandler<HTMLDivElement>;
   onPointerCancel: React.PointerEventHandler<HTMLDivElement>;
 }) {
+  const errorDetailId = React.useId();
   const controlLabel =
     state === 'thinking' || state === 'speaking'
       ? 'Stop response'
@@ -58,11 +59,7 @@ export function JarvisVoiceHeader({
             : 'Click to let Jarvis hear you';
 
   const statusLabel =
-    state === 'error' && errorMessage
-      ? errorMessage
-      : state === 'listening'
-        ? 'Listening'
-        : listeningHint;
+    state === 'error' ? 'Voice error' : state === 'listening' ? 'Listening' : listeningHint;
 
   return (
     <div
@@ -102,7 +99,8 @@ export function JarvisVoiceHeader({
             role="status"
             aria-live="polite"
             aria-atomic="true"
-            title={listeningHint}
+            aria-describedby={state === 'error' && errorMessage ? errorDetailId : undefined}
+            title={state === 'error' && errorMessage ? errorMessage : listeningHint}
             className={cn(
               'jarvis-voice-status flex items-center gap-1.5 leading-none text-foreground',
               state === 'error' && 'is-error',
@@ -137,6 +135,11 @@ export function JarvisVoiceHeader({
           </button>
         </div>
       </div>
+      {state === 'error' && errorMessage ? (
+        <p id={errorDetailId} role="alert" className="jarvis-voice-error-detail">
+          {errorMessage}
+        </p>
+      ) : null}
     </div>
   );
 }

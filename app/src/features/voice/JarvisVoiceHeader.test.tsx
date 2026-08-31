@@ -65,13 +65,15 @@ describe('JarvisVoiceHeader accessibility', () => {
     expect(screen.getByTestId('voice-waveform').getAttribute('aria-hidden')).toBe('true');
   });
 
-  it('keeps error copy contrast-safe while retaining a redundant destructive status cue', () => {
+  it('keeps the compact error status concise and exposes complete actionable detail', () => {
+    const errorMessage =
+      'Microphone permission was denied for the selected input device. Open Settings, allow microphone access, then try again.';
     const view = render(
       <JarvisVoiceHeader
         state="error"
         personaName="Jarvis"
         listeningHint="Voice error"
-        errorMessage="Microphone permission was denied."
+        errorMessage={errorMessage}
         voiceAutoListenOnOpen
         voiceCommitPhrase="send it"
         levelRef={{ current: 0 }}
@@ -85,9 +87,13 @@ describe('JarvisVoiceHeader accessibility', () => {
     );
 
     const status = screen.getByRole('status');
-    expect(status.textContent).toContain('Microphone permission was denied.');
+    expect(status.textContent?.trim()).toBe('Voice error');
     expect(status.classList.contains('text-foreground')).toBe(true);
     expect(status.classList.contains('text-destructive')).toBe(false);
+    const detail = screen.getByRole('alert');
+    expect(detail.textContent).toBe(errorMessage);
+    expect(detail.classList.contains('jarvis-voice-error-detail')).toBe(true);
+    expect(status.getAttribute('aria-describedby')).toBe(detail.id);
     expect(view.container.querySelector('.bg-destructive')?.getAttribute('aria-hidden')).toBe(
       'true',
     );
