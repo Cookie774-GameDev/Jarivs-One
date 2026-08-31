@@ -721,7 +721,13 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
         caoTargetLease: lease,
       });
     } catch {
-      const committed = await findLease(dependencies.events, input, leaseId).catch(() => undefined);
+      let committed: CaoTargetLeaseV1 | undefined;
+      try {
+        committed = await findLease(dependencies.events, input, leaseId);
+      } catch (error) {
+        await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
+        throw error;
+      }
       if (committed) return verifyAcquiredLease(input, lease);
       await releaseVerifiedLease(verifyRequest(input, leaseId), lease);
       fail('cao_target_lease_persistence_failed');

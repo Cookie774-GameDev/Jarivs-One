@@ -373,7 +373,67 @@ describe('CAO explicit target authority', () => {
         leaseMs: 5_000,
         selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
       }),
-    ).rejects.toThrow('cao_target_lease_persistence_failed');
+    ).rejects.toThrow('cao_target_journal_invalid');
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('preserves journal-unavailable truth while reconciling an ambiguous append', async () => {
+    const h = harness();
+    h.deps.journal.appendEvent.mockRejectedValueOnce(
+      new Error('private ambiguous append adapter payload'),
+    );
+    h.deps.events.listByRun.mockRejectedValueOnce(
+      new Error('private ambiguous reconciliation payload'),
+    );
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_journal_unavailable$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('reports registry unavailability when ambiguous-journal cleanup retains ownership', async () => {
+    const h = harness();
+    h.deps.journal.appendEvent.mockRejectedValueOnce(
+      new Error('private ambiguous append adapter payload'),
+    );
+    h.deps.events.listByRun.mockRejectedValueOnce(
+      new Error('private ambiguous reconciliation payload'),
+    );
+    h.registry.releaseExact = vi.fn(async () => {
+      throw new Error('private ambiguous cleanup payload');
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_registry_unavailable$/);
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe('cao_lease_1');
+  });
+
+  it('cleans exact ownership when an ambiguous commit disappears on its final durable read', async () => {
+    const h = harness();
+    ambiguouslyCommit(h);
+    h.deps.events.listByRun
+      .mockImplementationOnce(async () => structuredClone(h.rows))
+      .mockRejectedValueOnce(new Error('private second durable read payload'));
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_journal_unavailable$/);
     expect(h.registry.releaseExact).toHaveBeenCalledOnce();
     expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
   });
