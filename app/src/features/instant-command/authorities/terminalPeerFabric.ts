@@ -37,7 +37,7 @@ function compatible(version: string | undefined): boolean {
 
 function requiredOperation(id: string): TerminalPeerFabricOperation | 'delivery' | null {
   if (id === 'team.connect') return 'connect';
-  if (id === 'team.status') return 'team.status';
+  if (id === 'team.status' || id === 'team.list') return 'team.status';
   if (id === 'team.message' || id === 'team.broadcast') return 'delivery';
   return null;
 }

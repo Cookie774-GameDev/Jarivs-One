@@ -514,33 +514,13 @@ const FAMILY_COMMANDS: readonly DefinitionInput[] = [
   },
 ];
 
-const TEAM_COMMANDS = [
-  'connect',
-  'disconnect',
-  'list',
-  'open',
-  'message',
-  'broadcast',
-  'role.assign',
-  'task.assign',
-  'handoff',
-  'pause',
-  'resume',
-  'status',
-] as const;
+const TEAM_COMMANDS = ['connect', 'list', 'message', 'broadcast', 'status'] as const;
 
 const TEAM_ALIASES: Readonly<Record<(typeof TEAM_COMMANDS)[number], readonly string[]>> = {
   connect: ['connect terminals', 'connect team'],
-  disconnect: ['disconnect team'],
   list: ['list teams'],
-  open: ['open team'],
   message: ['tell team', 'message team'],
   broadcast: ['broadcast team'],
-  'role.assign': ['assign team role'],
-  'task.assign': ['assign team task'],
-  handoff: ['handoff'],
-  pause: ['pause team'],
-  resume: ['resume team'],
   status: ['team status'],
 };
 

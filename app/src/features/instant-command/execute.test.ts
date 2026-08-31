@@ -34,6 +34,12 @@ function dependencies(targets: LiveTerminalTarget[] = [codex]) {
     code: 'opened' as const,
     message: 'Opened terminal.',
   }));
+  const openFabricSetup = vi.fn();
+  const executeFabric = vi.fn(async () => ({
+    ok: true as const,
+    code: 'opened' as const,
+    message: 'Team status completed.',
+  }));
   const deps: InstantCommandDependencies = {
     executeLegacy,
     enqueueBatch,
@@ -41,6 +47,8 @@ function dependencies(targets: LiveTerminalTarget[] = [codex]) {
     openModelPicker,
     readTargets,
     executeNavigation,
+    openFabricSetup,
+    executeFabric,
   };
   return {
     deps,
@@ -50,6 +58,8 @@ function dependencies(targets: LiveTerminalTarget[] = [codex]) {
     openModelPicker,
     readTargets,
     executeNavigation,
+    openFabricSetup,
+    executeFabric,
   };
 }
 
@@ -117,6 +127,50 @@ describe('executeInstantCommand', () => {
       undefined,
     );
     expect(h.executeLegacy).not.toHaveBeenCalled();
+  });
+
+  it('opens Fabric setup and dispatches only the enabled read lifecycle through its authority', async () => {
+    const h = dependencies();
+    await expect(
+      executeInstantCommand(
+        {
+          kind: 'catalog',
+          id: 'team.connect',
+          family: 'team',
+          authority: 'terminal-peer-fabric',
+          safety: 'approval',
+          slots: {},
+        },
+        h.deps,
+      ),
+    ).resolves.toMatchObject({ ok: true, code: 'opened' });
+    expect(h.openFabricSetup).toHaveBeenCalledOnce();
+
+    const context = {
+      correlationId: 'team-read-1',
+      accountId: 'account-a',
+      workspaceId: 'workspace-a',
+      projectId: 'project-a',
+    };
+    await executeInstantCommand(
+      {
+        kind: 'catalog',
+        id: 'team.list',
+        family: 'team',
+        authority: 'terminal-peer-fabric',
+        safety: 'read',
+        slots: {},
+      },
+      h.deps,
+      undefined,
+      context,
+    );
+    expect(h.executeFabric).toHaveBeenCalledWith({
+      id: 'team.list',
+      correlationId: 'team-read-1',
+      accountId: 'account-a',
+      targetIds: [],
+    });
   });
 
   it('queues exact pane/session refs and reports queued rather than delivered', async () => {

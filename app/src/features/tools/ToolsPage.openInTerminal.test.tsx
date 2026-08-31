@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const toolState = vi.hoisted(() => ({
@@ -26,6 +26,11 @@ vi.mock('./open-in-terminal/OpenInTerminalDialog', () => ({
     open ? <div role="dialog" aria-label="Open in Terminal fixture" /> : null,
 }));
 
+vi.mock('./terminal-peer-fabric/TerminalPeerFabricSetupDialog', () => ({
+  TerminalPeerFabricSetupDialog: ({ open }: { open: boolean }) =>
+    open ? <div role="dialog" aria-label="Terminal Peer Fabric fixture" /> : null,
+}));
+
 import { ToolsPage } from './ToolsPage';
 
 describe('ToolsPage preloaded Open in Terminal tool', () => {
@@ -40,5 +45,13 @@ describe('ToolsPage preloaded Open in Terminal tool', () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Open in Terminal/i }));
     expect(screen.getByRole('dialog', { name: 'Open in Terminal fixture' })).toBeTruthy();
+  });
+
+  it('opens the preloaded Fabric setup from the deterministic command event', async () => {
+    render(<ToolsPage />);
+    await act(async () => window.dispatchEvent(new Event('jarvis:terminal-peer-fabric:open')));
+    expect(
+      await screen.findByRole('dialog', { name: 'Terminal Peer Fabric fixture' }),
+    ).toBeTruthy();
   });
 });

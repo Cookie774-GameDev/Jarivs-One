@@ -240,6 +240,47 @@ describe('Jarvis learning event listener', () => {
     window.removeEventListener('jarvis:memory-status', onStatus);
   });
 
+  it('publishes unavailable truth when curated evidence persistence fails', async () => {
+    const statuses: string[] = [];
+    const onStatus = (event: Event) =>
+      statuses.push((event as CustomEvent<{ state: string }>).detail.state);
+    window.addEventListener('jarvis:memory-status', onStatus);
+    const evidenceRepository = {
+      list: vi.fn(async () => []),
+      create: vi.fn(async () => {
+        throw new Error('repository unavailable');
+      }),
+      replace: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+    };
+    stop = startJarvisLearningListener({
+      getAccountId: () => 'account-a',
+      save: async () => undefined,
+      load: async () => null,
+      evidenceRepository,
+      onError: vi.fn(),
+    });
+    await vi.waitFor(() => expect(evidenceRepository.list).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    useJarvisLearningStore.getState().captureEvidence({
+      workspaceId: 'workspace-a',
+      category: 'correction',
+      content: 'Keep receipt truth visible.',
+      sourceType: 'manual',
+      sourceRef: {
+        kind: 'manual',
+        id: 'manual-failure',
+        label: 'Persistence failure test',
+        occurredAt: 1,
+      },
+      confidence: 1,
+      durabilityScore: 1,
+    });
+
+    await vi.waitFor(() => expect(statuses).toContain('error'));
+    window.removeEventListener('jarvis:memory-status', onStatus);
+  });
+
   it('keeps automatic learning memory-only through nineteen messages and writes on message twenty', async () => {
     const save = vi.fn(async (_accountId: string, _markdown: string) => undefined);
     stop = startJarvisLearningListener({

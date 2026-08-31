@@ -2,10 +2,14 @@ import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { JarvisMemoryStatus } from './JarvisMemoryStatus';
+import { clearJarvisMemoryStatus, publishJarvisMemoryStatus } from './memoryStatusRuntime';
 
 describe('JarvisMemoryStatus', () => {
   beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    clearJarvisMemoryStatus();
+    vi.useRealTimers();
+  });
 
   it('shows an accessible chat-scoped update and disappears after completion', () => {
     render(<JarvisMemoryStatus chatId="chat-a" />);
@@ -61,5 +65,11 @@ describe('JarvisMemoryStatus', () => {
     const status = screen.getByRole('status');
     expect(status.textContent).toMatch(/memory recovered/i);
     expect(status.textContent).not.toMatch(/backup|private|learning\.md/i);
+  });
+
+  it('replays recovery truth when Chat mounts after hydration completed', () => {
+    publishJarvisMemoryStatus({ state: 'recovered' });
+    render(<JarvisMemoryStatus chatId="chat-a" />);
+    expect(screen.getByRole('status').textContent).toMatch(/memory recovered/i);
   });
 });

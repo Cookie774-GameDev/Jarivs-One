@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Sparkles, TriangleAlert } from 'lucide-react';
-
-type MemoryStatusState = 'updating' | 'updated' | 'recovered' | 'error';
-
-interface MemoryStatusDetail {
-  chatId?: string;
-  state: MemoryStatusState;
-}
+import {
+  readJarvisMemoryStatus,
+  type JarvisMemoryStatusDetail as MemoryStatusDetail,
+  type JarvisMemoryStatusState as MemoryStatusState,
+} from './memoryStatusRuntime';
 
 export function JarvisMemoryStatus({ chatId }: { chatId: string }) {
   const [state, setState] = useState<MemoryStatusState | null>(null);
@@ -23,6 +21,8 @@ export function JarvisMemoryStatus({ chatId }: { chatId: string }) {
       }
     };
     window.addEventListener('jarvis:memory-status', onStatus);
+    const replay = readJarvisMemoryStatus(String(chatId));
+    if (replay) onStatus(new CustomEvent('jarvis:memory-status', { detail: replay }));
     return () => {
       if (hideTimer.current) clearTimeout(hideTimer.current);
       window.removeEventListener('jarvis:memory-status', onStatus);

@@ -602,6 +602,12 @@ export function ToolsPage() {
   const [editing, setEditing] = React.useState<CustomTool | null>(null);
   const [templateSeed, setTemplateSeed] = React.useState<QuickTemplate | null>(null);
 
+  React.useEffect(() => {
+    const openFabric = () => setTerminalPeerFabricOpen(true);
+    window.addEventListener('jarvis:terminal-peer-fabric:open', openFabric);
+    return () => window.removeEventListener('jarvis:terminal-peer-fabric:open', openFabric);
+  }, []);
+
   const openNew = (seed: QuickTemplate | null = null) => {
     setEditing(null);
     setTemplateSeed(seed);

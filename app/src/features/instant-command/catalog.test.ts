@@ -37,16 +37,9 @@ describe('INSTANT_COMMAND_CATALOG', () => {
     );
     expect(teamIds).toEqual([
       'team.connect',
-      'team.disconnect',
       'team.list',
-      'team.open',
       'team.message',
       'team.broadcast',
-      'team.role.assign',
-      'team.task.assign',
-      'team.handoff',
-      'team.pause',
-      'team.resume',
       'team.status',
     ]);
     expect(INSTANT_COMMAND_INDEX.match('connect terminals one and two as a team')[0]?.id).toBe(
@@ -55,6 +48,7 @@ describe('INSTANT_COMMAND_CATALOG', () => {
     expect(INSTANT_COMMAND_INDEX.match('tell team alpha to run the release audit')[0]?.id).toBe(
       'team.message',
     );
+    expect(INSTANT_COMMAND_INDEX.match('pause team')).toEqual([]);
   });
 
   it('marks unproven or destructive commands unavailable or confirmation-gated', () => {

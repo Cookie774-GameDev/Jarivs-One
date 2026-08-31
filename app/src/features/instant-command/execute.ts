@@ -20,6 +20,10 @@ import {
   executeTerminalCommand,
   type TerminalCommandRequest,
 } from './authorities/terminalCommands';
+import {
+  executeFabricCommand,
+  type FabricAuthorityRequest,
+} from './authorities/terminalPeerFabric';
 import type {
   InstantCommand,
   InstantCommandExecutionContext,
@@ -43,6 +47,8 @@ export type InstantCommandDependencies = Readonly<{
     request: TerminalCommandRequest,
     signal?: AbortSignal,
   ) => Promise<InstantResult>;
+  openFabricSetup?: () => void;
+  executeFabric?: (request: FabricAuthorityRequest) => Promise<InstantResult>;
 }>;
 
 const defaultDependencies: InstantCommandDependencies = {
@@ -72,6 +78,11 @@ const defaultDependencies: InstantCommandDependencies = {
       },
       signal,
     ),
+  openFabricSetup: () => {
+    useUIStore.getState().setRoute('tools');
+    setTimeout(() => window.dispatchEvent(new Event('jarvis:terminal-peer-fabric:open')), 0);
+  },
+  executeFabric: (request) => executeFabricCommand(request),
 };
 
 function targetRef(target: LiveTerminalTarget): TerminalRef {
@@ -90,6 +101,7 @@ export async function executeInstantCommand(
   command: InstantCommand,
   dependencies: InstantCommandDependencies = defaultDependencies,
   signal?: AbortSignal,
+  context?: InstantCommandExecutionContext,
 ): Promise<InstantResult> {
   if (signal?.aborted) {
     return { ok: false, code: 'queue_failed', message: 'The instant command deadline elapsed.' };
@@ -106,6 +118,30 @@ export async function executeInstantCommand(
       const executeTerminalDependency =
         dependencies.executeTerminal ?? defaultDependencies.executeTerminal!;
       return executeTerminalDependency({ id: command.id, slots: command.slots }, signal);
+    }
+    if (command.family === 'team') {
+      if (command.id === 'team.connect') {
+        (dependencies.openFabricSetup ?? defaultDependencies.openFabricSetup!)();
+        return { ok: true, code: 'opened', message: 'Opened Terminal Peer Fabric setup.' };
+      }
+      if (command.id === 'team.message' || command.id === 'team.broadcast') {
+        return {
+          ok: false,
+          code: 'confirmation_required',
+          message: 'Approve this exact team prompt from Terminal Peer Fabric before delivery.',
+        };
+      }
+      if (!context) {
+        return { ok: false, code: 'queue_failed', message: 'Team command scope is unavailable.' };
+      }
+      const executeFabricDependency =
+        dependencies.executeFabric ?? defaultDependencies.executeFabric!;
+      return executeFabricDependency({
+        id: command.id,
+        correlationId: context.correlationId,
+        accountId: context.accountId,
+        targetIds: [],
+      });
     }
     {
       return {
@@ -279,7 +315,7 @@ export async function executeInstantCommandWithReceipt(
   try {
     return await ledger.runOnce(context.correlationId, binding, async () => {
       const deadline = await runWithInstantCommandDeadline(
-        (signal) => executeInstantCommand(command, dependencies, signal),
+        (signal) => executeInstantCommand(command, dependencies, signal, context),
         500,
       );
       if (deadline.status === 'timed_out') {

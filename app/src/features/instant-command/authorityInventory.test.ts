@@ -41,8 +41,7 @@ describe('AUTHORITY_INVENTORY', () => {
       task.create task.open task.complete task.reopen task.assign workbench.open
       workbench.template workbench.panel.add workbench.wallpaper.set
       workbench.wallpaper.pause workbench.wallpaper.resume
-      team.connect team.disconnect team.list team.open team.message team.broadcast
-      team.role.assign team.task.assign team.handoff team.pause team.resume team.status
+      team.connect team.list team.message team.broadcast team.status
     `
       .trim()
       .split(/\s+/u);

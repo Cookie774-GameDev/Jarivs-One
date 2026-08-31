@@ -2,6 +2,7 @@ import { loadLearningFile, saveLearningFile, type LearningFileResult } from './l
 import { useJarvisLearningStore } from './learningStore';
 import type { JarvisMemoryCategory, MemoryEvidenceItem } from './types';
 import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
+import { clearJarvisMemoryStatus, publishJarvisMemoryStatus } from './memoryStatusRuntime';
 
 interface LearningSendDetail {
   chatId?: string;
@@ -66,7 +67,7 @@ function publishStatus(
   chatId: string | undefined,
   state: 'updating' | 'updated' | 'recovered' | 'error',
 ): void {
-  window.dispatchEvent(new CustomEvent('jarvis:memory-status', { detail: { chatId, state } }));
+  publishJarvisMemoryStatus({ chatId, state });
 }
 
 export function startJarvisLearningListener(
@@ -103,6 +104,7 @@ export function startJarvisLearningListener(
   };
 
   const loadAccount = (accountId: string) => {
+    clearJarvisMemoryStatus();
     loadingAccounts.add(accountId);
     store.getState().setAccount(accountId);
     const pending = Promise.all([
@@ -202,7 +204,10 @@ export function startJarvisLearningListener(
           if (!currentById.has(item.id)) await evidenceRepository.delete(active, item.id);
         }
       })
-      .catch((error) => report(bindings, error));
+      .catch((error) => {
+        publishStatus(undefined, 'error');
+        report(bindings, error);
+      });
     writeQueue = pending;
   };
 
@@ -229,6 +234,7 @@ export function startJarvisLearningListener(
     const previous = store.getState().activeAccountId;
     if (next === previous) return;
     if (!next) {
+      clearJarvisMemoryStatus();
       const pendingFlush = flushScheduled(previous);
       store.getState().clearAccountScope();
       void pendingFlush;
