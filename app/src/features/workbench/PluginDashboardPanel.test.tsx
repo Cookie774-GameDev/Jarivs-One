@@ -41,11 +41,16 @@ vi.mock('@/features/plugins', () => ({
   }) => state.connectionsByAccount['local-account'] ?? {},
   usePluginStore: (selector: (state: unknown) => unknown) =>
     selector({ connectionsByAccount: { 'local-account': { github: connection } } }),
+  isPluginActive: (_accountId: string, _pluginId: string, projectId?: string | null) =>
+    connection.state === 'connected' &&
+    connection.enabled &&
+    (connection.enabledProjectIds.includes('*') ||
+      Boolean(projectId && connection.enabledProjectIds.includes(projectId))),
 }));
 
 vi.mock('@/stores/auth', () => ({
   useAuthStore: (selector: (state: unknown) => unknown) =>
-    selector({ cloudSession: null, localUserId: 'local-account' }),
+    selector({ cloudSession: null, localUserId: 'local-account', projectId: 'project-b' }),
 }));
 
 vi.mock('@/lib/tauri', () => ({ openExternal: vi.fn() }));
@@ -55,6 +60,7 @@ describe('PluginDashboardPanel', () => {
   beforeEach(() => {
     connection.state = 'not_connected';
     connection.enabled = true;
+    connection.enabledProjectIds = [];
     requestOpenMcpManager.mockReset();
   });
 
@@ -70,6 +76,7 @@ describe('PluginDashboardPanel', () => {
   it('reports enabled agent access only for a connected enabled plugin', () => {
     connection.state = 'connected';
     connection.enabled = true;
+    connection.enabledProjectIds = ['project-b'];
 
     render(<PluginDashboardPanel pluginId="github" />);
 
@@ -77,6 +84,31 @@ describe('PluginDashboardPanel', () => {
     expect(screen.getByText('Enabled')).toBeTruthy();
     expect(screen.getByText('2')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /in Plugins|agent access/u })).toBeNull();
+  });
+
+  it('withholds tools outside the active project and routes project access recovery', () => {
+    connection.state = 'connected';
+    connection.enabled = true;
+    connection.enabledProjectIds = ['project-a'];
+
+    render(<PluginDashboardPanel pluginId="github" />);
+
+    expect(screen.getByText('Project access required')).toBeTruthy();
+    expect(screen.getByText('0')).toBeTruthy();
+    screen.getByRole('button', { name: 'Manage GitHub project access' }).click();
+    expect(requestOpenMcpManager).toHaveBeenCalledOnce();
+  });
+
+  it('honors wildcard project access without a recovery action', () => {
+    connection.state = 'connected';
+    connection.enabled = true;
+    connection.enabledProjectIds = ['*'];
+
+    render(<PluginDashboardPanel pluginId="github" />);
+
+    expect(screen.getByText('Enabled')).toBeTruthy();
+    expect(screen.getByText('2')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /project access/u })).toBeNull();
   });
 
   it('routes disconnected and disabled panels to the canonical Plugins authority', () => {

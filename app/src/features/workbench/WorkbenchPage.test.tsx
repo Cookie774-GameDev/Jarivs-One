@@ -1,8 +1,15 @@
 import * as React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkbenchPage } from './WorkbenchPage';
 import { useWorkbenchStore } from './store';
+import { usePluginStore } from '@/features/plugins';
+import { useAuthStore } from '@/stores/auth';
+import type { ProjectId } from '@/types/common';
+
+const PROJECT_A = 'project-a' as ProjectId;
+const PROJECT_B = 'project-b' as ProjectId;
+const PROJECT_C = 'project-c' as ProjectId;
 
 vi.mock('@/features/terminals/TerminalView', () => ({
   TerminalView: ({ onReady }: { onReady?: (id: string) => void }) => {
@@ -27,6 +34,12 @@ describe('WorkbenchPage', () => {
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => null);
     window.localStorage.clear();
     useWorkbenchStore.getState().resetWorkbench();
+    useAuthStore.setState({ cloudSession: null, localUserId: 'local-account', projectId: null });
+    usePluginStore.setState({
+      connectionsByAccount: {},
+      installedPluginIdsByAccount: {},
+      pinnedPluginIdsByAccount: {},
+    });
   });
 
   afterEach(() => vi.restoreAllMocks());
@@ -86,5 +99,51 @@ describe('WorkbenchPage', () => {
     expect(useWorkbenchStore.getState().panels.some((panel) => panel.kind === 'notes')).toBe(true);
     fireEvent.keyDown(canvas, { key: 'z', ctrlKey: true });
     expect(useWorkbenchStore.getState().panels.some((panel) => panel.kind === 'notes')).toBe(false);
+  });
+
+  it('exposes pinned plugins only within their active project scope and reacts to project changes', () => {
+    useAuthStore.setState({ projectId: PROJECT_B });
+    usePluginStore.setState({
+      connectionsByAccount: {
+        'local-account': {
+          github: {
+            accountId: 'local-account',
+            pluginId: 'github',
+            state: 'connected',
+            enabled: true,
+            enabledProjectIds: ['project-a'],
+            configuredFields: [],
+            updatedAt: 1,
+          },
+        },
+      },
+      installedPluginIdsByAccount: { 'local-account': ['github'] },
+      pinnedPluginIdsByAccount: { 'local-account': ['github'] },
+    });
+
+    render(<WorkbenchPage />);
+    expect(screen.queryByRole('button', { name: 'Add GitHub' })).toBeNull();
+
+    act(() => useAuthStore.setState({ projectId: PROJECT_A }));
+    expect(screen.getByRole('button', { name: 'Add GitHub' })).toBeTruthy();
+
+    act(() => useAuthStore.setState({ projectId: PROJECT_C }));
+    expect(screen.queryByRole('button', { name: 'Add GitHub' })).toBeNull();
+
+    act(() => {
+      usePluginStore.setState((state) => ({
+        connectionsByAccount: {
+          ...state.connectionsByAccount,
+          'local-account': {
+            ...state.connectionsByAccount['local-account'],
+            github: {
+              ...state.connectionsByAccount['local-account']!.github!,
+              enabledProjectIds: ['*'],
+            },
+          },
+        },
+      }));
+    });
+    expect(screen.getByRole('button', { name: 'Add GitHub' })).toBeTruthy();
   });
 });

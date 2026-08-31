@@ -20,6 +20,7 @@ import { resolveAccountIdentity } from '@/lib/accountIdentity';
 import { useAuthStore } from '@/stores/auth';
 import {
   PLUGIN_CATALOG,
+  isPluginActive,
   selectPinnedPluginIdsForAccount,
   selectPluginConnectionsForAccount,
   usePluginStore,
@@ -43,6 +44,7 @@ const WORKBENCH_PALETTE_REVEAL_PX = 72;
 export function WorkbenchPage() {
   const setRoute = useUIStore((state) => state.setRoute);
   const accountId = useAuthStore((state) => resolveAccountIdentity(state)?.accountId ?? '');
+  const projectId = useAuthStore((state) => state.projectId);
   const pinnedPluginIds = usePluginStore((state) =>
     selectPinnedPluginIdsForAccount(state, accountId),
   );
@@ -55,11 +57,9 @@ export function WorkbenchPage() {
         .map((id) => PLUGIN_CATALOG.find((plugin) => plugin.id === id))
         .filter(
           (plugin): plugin is PluginManifest =>
-            plugin !== undefined &&
-            pluginConnections[plugin.id]?.state === 'connected' &&
-            pluginConnections[plugin.id]?.enabled,
+            plugin !== undefined && isPluginActive(accountId, plugin.id, projectId),
         ),
-    [pinnedPluginIds, pluginConnections],
+    [accountId, pinnedPluginIds, pluginConnections, projectId],
   );
   const systemActive = useFullscreenStore((state) => state.systemActive);
   const nativePending = useFullscreenStore((state) => state.nativePending);

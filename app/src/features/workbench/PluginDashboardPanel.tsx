@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { openExternal } from '@/lib/tauri';
 import {
   getPluginManifest,
+  isPluginActive,
   PluginLogo,
   selectPluginConnectionsForAccount,
   usePluginStore,
@@ -18,6 +19,7 @@ const DASHBOARD_URLS: Readonly<Record<string, string>> = {
 
 export function PluginDashboardPanel({ pluginId }: { pluginId?: string }) {
   const accountId = useAuthStore((state) => resolveAccountIdentity(state)?.accountId ?? '');
+  const projectId = useAuthStore((state) => state.projectId);
   const plugin = pluginId ? getPluginManifest(pluginId) : undefined;
   const connection = usePluginStore(
     (state) => selectPluginConnectionsForAccount(state, accountId)[pluginId ?? ''],
@@ -37,9 +39,11 @@ export function PluginDashboardPanel({ pluginId }: { pluginId?: string }) {
   const agentAccess =
     connection?.state !== 'connected'
       ? 'Connection required'
-      : connection.enabled
-        ? 'Enabled'
-        : 'Disabled';
+      : !connection.enabled
+        ? 'Disabled'
+        : isPluginActive(accountId, plugin.id, projectId)
+          ? 'Enabled'
+          : 'Project access required';
   const availableToolCount = agentAccess === 'Enabled' ? plugin.tools.length : 0;
   const declaredTools = plugin.tools.slice(0, 8);
   return (
@@ -81,11 +85,17 @@ export function PluginDashboardPanel({ pluginId }: { pluginId?: string }) {
           aria-label={
             agentAccess === 'Connection required'
               ? `Connect ${plugin.name} in Plugins`
-              : `Manage ${plugin.name} agent access`
+              : agentAccess === 'Project access required'
+                ? `Manage ${plugin.name} project access`
+                : `Manage ${plugin.name} agent access`
           }
         >
           <PlugZap />
-          {agentAccess === 'Connection required' ? 'Connect in Plugins' : 'Manage agent access'}
+          {agentAccess === 'Connection required'
+            ? 'Connect in Plugins'
+            : agentAccess === 'Project access required'
+              ? 'Manage project access'
+              : 'Manage agent access'}
         </Button>
       ) : null}
       {dashboardUrl && (
