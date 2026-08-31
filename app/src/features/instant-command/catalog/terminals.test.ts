@@ -57,6 +57,38 @@ describe('terminal and agent command catalog', () => {
     ).toEqual(['terminal.list', 'terminal.status', 'agent.status']);
   });
 
+  it('maps every lifecycle ID to one collision-free slash alias without replacing human aliases', () => {
+    const aliases = TERMINAL_AGENT_COMMAND_INPUTS.flatMap((entry) => entry.aliases).map((alias) =>
+      alias.trim().toLocaleLowerCase(),
+    );
+    for (const entry of TERMINAL_AGENT_COMMAND_INPUTS) {
+      const slashAlias = `/${entry.id.replace(/[._]+/gu, '-')}`;
+      expect(entry.aliases).toContain(slashAlias);
+      expect(entry.aliases[0]).not.toMatch(/^\//u);
+      expect(entry.aliases.filter((alias) => alias === slashAlias)).toHaveLength(1);
+    }
+    expect(new Set(aliases).size).toBe(aliases.length);
+    expect(aliases).not.toContain('/terminal');
+    expect(aliases).not.toContain('/connect');
+  });
+
+  it('keeps slash list/status locally available and destructive lifecycle commands blocked', () => {
+    expect(
+      TERMINAL_AGENT_COMMAND_INPUTS.filter((entry) =>
+        ['/terminal-list', '/terminal-status', '/agent-status'].some((alias) =>
+          entry.aliases.includes(alias),
+        ),
+      ).map((entry) => [entry.id, entry.availability]),
+    ).toEqual([
+      ['terminal.list', 'available'],
+      ['terminal.status', 'available'],
+      ['agent.status', 'available'],
+    ]);
+    expect(
+      TERMINAL_AGENT_COMMAND_INPUTS.find((entry) => entry.aliases.includes('/terminal-close')),
+    ).toMatchObject({ id: 'terminal.close', safety: 'confirm', availability: 'blocked' });
+  });
+
   it('preserves message payload casing and punctuation after the exact selector', () => {
     const input = TERMINAL_AGENT_COMMAND_INPUTS.find((entry) => entry.id === 'agent.message')!;
     const source = 'message agent terminal two: Review API.ts, please!';
@@ -76,6 +108,26 @@ describe('terminal and agent command catalog', () => {
     });
     expect(Object.isFrozen(parsed)).toBe(true);
     expect(Object.isFrozen(parsed && 'slots' in parsed ? parsed.slots : undefined)).toBe(true);
+  });
+
+  it('preserves payload casing through the slash agent-message alias', () => {
+    const input = TERMINAL_AGENT_COMMAND_INPUTS.find((entry) => entry.id === 'agent.message')!;
+    const source = '/agent-message terminal two: Review API.ts, please!';
+    expect(
+      input.parseSlots?.(
+        {
+          definition: undefined as never,
+          alias: '/agent-message',
+          sourceStart: 0,
+          sourceEnd: '/agent-message'.length,
+          remainder: 'terminal two: Review API.ts, please!',
+        },
+        source,
+      ),
+    ).toEqual({
+      status: 'parsed',
+      slots: { selector: { ordinal: 2 }, payload: 'Review API.ts, please!' },
+    });
   });
 
   it.each([

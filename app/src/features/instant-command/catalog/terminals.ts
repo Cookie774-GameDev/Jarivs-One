@@ -185,7 +185,7 @@ const entries: readonly TerminalAgentCommandInput[] = [
   Object.freeze({
     id,
     family,
-    aliases: Object.freeze([...aliases]),
+    aliases: Object.freeze([...aliases, `/${String(id).replace(/[._]+/gu, '-')}`]),
     authority,
     safety,
     availability,
