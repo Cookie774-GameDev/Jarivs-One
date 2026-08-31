@@ -129,7 +129,10 @@ function assertScope(scope: LeaseScope): void {
   }
 }
 
-function assertRun(run: JarvisRun | undefined, scope: LeaseScope): asserts run is JarvisRun {
+function assertRunIdentity(
+  run: JarvisRun | undefined,
+  scope: LeaseScope,
+): asserts run is JarvisRun {
   if (!run) fail('cao_run_missing');
   if (
     run.accountId !== scope.accountId ||
@@ -139,6 +142,10 @@ function assertRun(run: JarvisRun | undefined, scope: LeaseScope): asserts run i
     fail('cao_run_scope_mismatch');
   }
   if (run.agentId !== 'jarvis-cao') fail('cao_run_not_authorized');
+}
+
+function assertRun(run: JarvisRun | undefined, scope: LeaseScope): asserts run is JarvisRun {
+  assertRunIdentity(run, scope);
   if (!ACTIVE_RUN_STATUSES.has(run.status)) fail('cao_run_inactive');
 }
 
@@ -469,10 +476,14 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     assertScope(input);
     if (!validIdentifier(input.leaseId)) fail('cao_target_lease_id_invalid');
     const run = await readRun(input.accountId, input.runId);
-    assertRun(run, input);
+    assertRunIdentity(run, input);
     const lease = await findLease(dependencies.events, input, input.leaseId);
     if (!lease) fail('cao_target_lease_missing');
     exactLeaseScope(lease, input);
+    if (!ACTIVE_RUN_STATUSES.has(run.status)) {
+      await releaseVerifiedLease(input, lease);
+      fail('cao_run_inactive');
+    }
     const observedAt = readNow();
     if (!Number.isSafeInteger(observedAt) || observedAt < lease.acquiredAt) {
       fail('cao_target_clock_invalid');
