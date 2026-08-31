@@ -109,6 +109,23 @@ describe('AccountPage account ownership', () => {
     window.history.replaceState({}, '', '/');
   });
 
+  it('does not request or project cloud usage without a cloud account', () => {
+    window.history.replaceState({}, '', '/?tab=status');
+    mocks.getCombinedUsage.mockResolvedValue(usage('starter', 100, 25));
+    useAuthStore.setState({ cloudSession: null, plan: 'free' });
+
+    render(<AccountPage />);
+
+    expect(mocks.getCombinedUsage).not.toHaveBeenCalled();
+    expect(screen.getByText('Sign in to view usage')).toBeTruthy();
+    expect(
+      screen.getByText(/Your shared company credit pool appears after you sign in/i),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Go to Profile' })).toBeTruthy();
+    expect(screen.queryByRole('progressbar', { name: 'Shared company credit usage' })).toBeNull();
+    expect(screen.queryByText(/Checked at |Verified at /i)).toBeNull();
+  });
+
   it('clears Account A usage immediately and ignores its delayed result after switching to B', async () => {
     window.history.replaceState({}, '', '/?tab=status');
     const accountA = deferred<CombinedUsage | null>();
