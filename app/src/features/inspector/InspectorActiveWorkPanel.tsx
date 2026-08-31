@@ -29,7 +29,11 @@ export function InspectorActiveWorkPanel({ workspaceId }: InspectorActiveWorkPan
   const terminals = useLiveTerminalStatuses(workspaceId, projectId);
   const chats = useLiveChatStatuses(workspaceId, projectId);
   const totalTokens = useWorkspaceAnalyticsStore((s) => s.totalTokens);
+  const totalReasoningTokens = useWorkspaceAnalyticsStore((s) => s.totalReasoningTokens);
+  const totalCachedTokens = useWorkspaceAnalyticsStore((s) => s.totalCachedTokens);
+  const actualTotalCostUsd = useWorkspaceAnalyticsStore((s) => s.actualTotalCostUsd);
   const estimatedTotalCostUsd = useWorkspaceAnalyticsStore((s) => s.estimatedTotalCostUsd);
+  const recordedTotalCostUsd = useWorkspaceAnalyticsStore((s) => s.recordedTotalCostUsd);
   const foregroundActiveMs = useWorkspaceAnalyticsStore((s) => s.foregroundActiveMs);
   const backgroundRunningMs = useWorkspaceAnalyticsStore((s) => s.backgroundRunningMs);
   const completedMilestones = useWorkspaceAnalyticsStore((s) => s.completedMilestones);
@@ -42,7 +46,11 @@ export function InspectorActiveWorkPanel({ workspaceId }: InspectorActiveWorkPan
 
   return (
     <div className="flex flex-col gap-4">
-      <Section label="Live terminals" icon={<TerminalIcon className="h-3.5 w-3.5" />} hint={String(terminals.length)}>
+      <Section
+        label="Live terminals"
+        icon={<TerminalIcon className="h-3.5 w-3.5" />}
+        hint={String(terminals.length)}
+      >
         {terminals.length === 0 ? (
           <Empty text="No active terminals in this project." />
         ) : (
@@ -63,7 +71,11 @@ export function InspectorActiveWorkPanel({ workspaceId }: InspectorActiveWorkPan
         )}
       </Section>
 
-      <Section label="Active chats" icon={<MessageSquare className="h-3.5 w-3.5" />} hint={String(chats.length)}>
+      <Section
+        label="Active chats"
+        icon={<MessageSquare className="h-3.5 w-3.5" />}
+        hint={String(chats.length)}
+      >
         {chats.length === 0 ? (
           <Empty text="No recent chats in this project." />
         ) : (
@@ -86,10 +98,29 @@ export function InspectorActiveWorkPanel({ workspaceId }: InspectorActiveWorkPan
 
       <Section label="Analytics" icon={<Activity className="h-3.5 w-3.5" />}>
         <div className="rounded-md border border-border bg-elevated px-2.5 py-2 text-secondary space-y-1.5">
-          <Row label="Tokens (local)" value={totalTokens > 0 ? totalTokens.toLocaleString() : 'Not tracked yet'} />
           <Row
-            label="Est. cost"
-            value={estimatedTotalCostUsd > 0 ? `$${estimatedTotalCostUsd.toFixed(4)}` : 'Estimated when usage exists'}
+            label="Tokens (verified)"
+            value={totalTokens > 0 ? totalTokens.toLocaleString() : 'No receipt yet'}
+          />
+          {totalCachedTokens > 0 ? (
+            <Row label="Cached tokens" value={totalCachedTokens.toLocaleString()} />
+          ) : null}
+          {totalReasoningTokens > 0 ? (
+            <Row label="Reasoning tokens" value={totalReasoningTokens.toLocaleString()} />
+          ) : null}
+          {actualTotalCostUsd > 0 ? (
+            <Row label="Actual cost" value={`$${actualTotalCostUsd.toFixed(4)}`} />
+          ) : null}
+          {estimatedTotalCostUsd > 0 ? (
+            <Row label="Estimated cost" value={`~$${estimatedTotalCostUsd.toFixed(4)}`} />
+          ) : null}
+          <Row
+            label="Recorded cost"
+            value={
+              recordedTotalCostUsd > 0
+                ? `$${recordedTotalCostUsd.toFixed(4)}`
+                : 'No verified receipt'
+            }
           />
           <Row label="Foreground" value={formatDurationMs(foregroundActiveMs)} />
           <Row label="Background" value={formatDurationMs(backgroundRunningMs)} />
@@ -97,7 +128,9 @@ export function InspectorActiveWorkPanel({ workspaceId }: InspectorActiveWorkPan
           <Row label="Tool runs" value={String(toolRunCount)} />
           {byModel.length > 0 ? (
             <div className="pt-1 border-t border-border/60">
-              <p className="text-metadata uppercase tracking-wide text-muted-foreground mb-1">By provider</p>
+              <p className="text-metadata uppercase tracking-wide text-muted-foreground mb-1">
+                By provider
+              </p>
               {byModel.slice(0, 4).map((row) => (
                 <Row
                   key={row.providerName}
@@ -110,7 +143,11 @@ export function InspectorActiveWorkPanel({ workspaceId }: InspectorActiveWorkPan
         </div>
       </Section>
 
-      <Section label="Pinned files" icon={<Pin className="h-3.5 w-3.5" />} hint={String(pinnedFiles.length)}>
+      <Section
+        label="Pinned files"
+        icon={<Pin className="h-3.5 w-3.5" />}
+        hint={String(pinnedFiles.length)}
+      >
         {pinnedFiles.length === 0 ? (
           <Empty text="Pin files from Context Files via right-click." />
         ) : (
@@ -129,7 +166,11 @@ export function InspectorActiveWorkPanel({ workspaceId }: InspectorActiveWorkPan
         )}
       </Section>
 
-      <Section label="Pinned context maps" icon={<Boxes className="h-3.5 w-3.5" />} hint={String(pinnedMaps.length)}>
+      <Section
+        label="Pinned context maps"
+        icon={<Boxes className="h-3.5 w-3.5" />}
+        hint={String(pinnedMaps.length)}
+      >
         {pinnedMaps.length === 0 ? (
           <Empty text="Pin a context map from Context Files." />
         ) : (
@@ -169,7 +210,9 @@ function Section({
           <span className="text-accent-copper">{icon}</span>
           {label}
         </span>
-        {hint ? <span className="text-metadata text-muted-foreground tabular-nums">{hint}</span> : null}
+        {hint ? (
+          <span className="text-metadata text-muted-foreground tabular-nums">{hint}</span>
+        ) : null}
       </header>
       {children}
     </section>

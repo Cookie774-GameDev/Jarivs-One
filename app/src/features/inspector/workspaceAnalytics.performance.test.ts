@@ -23,15 +23,31 @@ vi.mock('./milestonesStore', () => ({
 
 vi.mock('./toolRunsStore', () => ({
   useToolRunsStore: {
-    getState: () => ({ runs: [] }),
+    getState: () => ({ runs: [], activeRunId: null }),
   },
 }));
 
-import { useWorkspaceAnalyticsStore } from './workspaceAnalytics';
+import {
+  projectStatusUsage,
+  shouldCountBackgroundTime,
+  useWorkspaceAnalyticsStore,
+} from './workspaceAnalytics';
 
 describe('workspace analytics background rollup', () => {
   beforeEach(() => {
     analyticsHarness.loadStatusSummary.mockReset();
+    useWorkspaceAnalyticsStore.setState({
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalReasoningTokens: 0,
+      totalCachedTokens: 0,
+      totalTokens: 0,
+      actualTotalCostUsd: 0,
+      estimatedTotalCostUsd: 0,
+      recordedTotalCostUsd: 0,
+      foregroundActiveMs: 12_345,
+      backgroundRunningMs: 0,
+    });
   });
 
   it('coalesces overlapping refreshes and permits a fresh run after settlement', async () => {
@@ -66,5 +82,56 @@ describe('workspace analytics background rollup', () => {
       useWorkspaceAnalyticsStore.getState().refreshTokenRollup(),
     ).resolves.toBeUndefined();
     expect(analyticsHarness.loadStatusSummary).toHaveBeenCalledTimes(2);
+  });
+
+  it('projects complete token and cost receipts without relabeling mixed cost as estimated', () => {
+    expect(
+      projectStatusUsage({
+        inputTokens: 100,
+        outputTokens: 50,
+        reasoningTokens: 25,
+        cachedTokens: 10,
+        totalTokens: 185,
+        actualCostUsd: 0.2,
+        estimatedCostUsd: 0.03,
+        costUsd: 0.23,
+        models: [],
+      }),
+    ).toMatchObject({
+      totalInputTokens: 100,
+      totalOutputTokens: 50,
+      totalReasoningTokens: 25,
+      totalCachedTokens: 10,
+      totalTokens: 185,
+      actualTotalCostUsd: 0.2,
+      estimatedTotalCostUsd: 0.03,
+      recordedTotalCostUsd: 0.23,
+    });
+  });
+
+  it('preserves foreground clock evidence when usage rollups refresh', async () => {
+    analyticsHarness.loadStatusSummary.mockResolvedValueOnce({
+      activeTimeMs: 999_999,
+      inputTokens: 1,
+      outputTokens: 2,
+      reasoningTokens: 3,
+      cachedTokens: 4,
+      totalTokens: 10,
+      actualCostUsd: 0,
+      estimatedCostUsd: 0,
+      costUsd: 0,
+      models: [],
+    });
+
+    await useWorkspaceAnalyticsStore.getState().refreshTokenRollup();
+
+    expect(useWorkspaceAnalyticsStore.getState().foregroundActiveMs).toBe(12_345);
+  });
+
+  it('counts hidden time only with real background execution evidence', () => {
+    expect(shouldCountBackgroundTime({}, null)).toBe(false);
+    expect(shouldCountBackgroundTime({ agent: 'done' }, null)).toBe(false);
+    expect(shouldCountBackgroundTime({ agent: 'streaming' }, null)).toBe(true);
+    expect(shouldCountBackgroundTime({}, 'tool-run-1')).toBe(true);
   });
 });

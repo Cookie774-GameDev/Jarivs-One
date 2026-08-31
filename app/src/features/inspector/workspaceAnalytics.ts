@@ -9,6 +9,8 @@ import {
 } from '@/features/account/statusAnalytics';
 import { useMilestonesStore } from './milestonesStore';
 import { useToolRunsStore } from './toolRunsStore';
+import { useAgentStore } from '@/stores/agents';
+import type { AgentRunState } from '@/types/agent';
 
 export type ModelUsageRow = {
   providerName: string;
@@ -16,14 +18,18 @@ export type ModelUsageRow = {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
-  estimatedCostUsd: number;
+  recordedCostUsd: number;
 };
 
 export type WorkspaceUsageAnalytics = {
   totalInputTokens: number;
   totalOutputTokens: number;
+  totalReasoningTokens: number;
+  totalCachedTokens: number;
   totalTokens: number;
+  actualTotalCostUsd: number;
   estimatedTotalCostUsd: number;
+  recordedTotalCostUsd: number;
   byModel: ModelUsageRow[];
   foregroundActiveMs: number;
   backgroundRunningMs: number;
@@ -43,8 +49,12 @@ interface AnalyticsState extends WorkspaceUsageAnalytics {
 const defaults: WorkspaceUsageAnalytics = {
   totalInputTokens: 0,
   totalOutputTokens: 0,
+  totalReasoningTokens: 0,
+  totalCachedTokens: 0,
   totalTokens: 0,
+  actualTotalCostUsd: 0,
   estimatedTotalCostUsd: 0,
+  recordedTotalCostUsd: 0,
   byModel: [],
   foregroundActiveMs: 0,
   backgroundRunningMs: 0,
@@ -61,6 +71,58 @@ let rollupInFlight: Promise<void> | null = null;
 async function loadLocalStatusRollup() {
   const identity = getActiveAccountIdentity();
   return identity ? loadStatusSummary(identity.accountId, '30d') : null;
+}
+
+type StatusUsageSource = Readonly<{
+  inputTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+  cachedTokens?: number;
+  totalTokens?: number;
+  actualCostUsd?: number;
+  estimatedCostUsd?: number;
+  costUsd?: number;
+  models?: readonly unknown[];
+}> | null;
+
+function nonNegative(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+export function projectStatusUsage(summary: StatusUsageSource) {
+  const totalInputTokens = nonNegative(summary?.inputTokens);
+  const totalOutputTokens = nonNegative(summary?.outputTokens);
+  const totalReasoningTokens = nonNegative(summary?.reasoningTokens);
+  const totalCachedTokens = nonNegative(summary?.cachedTokens);
+  return {
+    totalInputTokens,
+    totalOutputTokens,
+    totalReasoningTokens,
+    totalCachedTokens,
+    totalTokens:
+      nonNegative(summary?.totalTokens) ||
+      totalInputTokens + totalOutputTokens + totalReasoningTokens + totalCachedTokens,
+    actualTotalCostUsd: nonNegative(summary?.actualCostUsd),
+    estimatedTotalCostUsd: nonNegative(summary?.estimatedCostUsd),
+    recordedTotalCostUsd: nonNegative(summary?.costUsd),
+  };
+}
+
+function busyRunState(state: string | undefined): boolean {
+  return (
+    state === 'queued' ||
+    state === 'thinking' ||
+    state === 'reading' ||
+    state === 'tool_calling' ||
+    state === 'streaming'
+  );
+}
+
+export function shouldCountBackgroundTime(
+  runStates: Partial<Record<string, AgentRunState | string | undefined>>,
+  activeToolRunId: string | null,
+): boolean {
+  return Boolean(activeToolRunId) || Object.values(runStates).some(busyRunState);
 }
 
 export const useWorkspaceAnalyticsStore = create<AnalyticsState>()(
@@ -82,6 +144,13 @@ export const useWorkspaceAnalyticsStore = create<AnalyticsState>()(
         const delta = now - lastTickAt;
         lastTickAt = now;
         if (delta <= 0 || delta > 60_000) return;
+        if (
+          !shouldCountBackgroundTime(
+            useAgentStore.getState().runStates,
+            useToolRunsStore.getState().activeRunId,
+          )
+        )
+          return;
         set((s) => ({ backgroundRunningMs: s.backgroundRunningMs + delta }));
       },
       refreshTokenRollup: () => {
@@ -96,19 +165,13 @@ export const useWorkspaceAnalyticsStore = create<AnalyticsState>()(
               inputTokens: model.inputTokens,
               outputTokens: model.outputTokens,
               totalTokens: model.totalTokens,
-              estimatedCostUsd: model.costUsd,
+              recordedCostUsd: model.costUsd,
             };
           });
-          const totalInputTokens = byModel.reduce((n, r) => n + r.inputTokens, 0);
-          const totalOutputTokens = byModel.reduce((n, r) => n + r.outputTokens, 0);
-          const estimatedTotalCostUsd = byModel.reduce((n, r) => n + r.estimatedCostUsd, 0);
+          const usage = projectStatusUsage(summary);
           set({
             byModel,
-            totalInputTokens,
-            totalOutputTokens,
-            totalTokens: totalInputTokens + totalOutputTokens,
-            estimatedTotalCostUsd,
-            foregroundActiveMs: summary?.activeTimeMs ?? 0,
+            ...usage,
             completedMilestones: useMilestonesStore
               .getState()
               .items.filter((i) => i.status === 'done').length,
@@ -126,8 +189,12 @@ export const useWorkspaceAnalyticsStore = create<AnalyticsState>()(
         return {
           totalInputTokens: s.totalInputTokens,
           totalOutputTokens: s.totalOutputTokens,
+          totalReasoningTokens: s.totalReasoningTokens,
+          totalCachedTokens: s.totalCachedTokens,
           totalTokens: s.totalTokens,
+          actualTotalCostUsd: s.actualTotalCostUsd,
           estimatedTotalCostUsd: s.estimatedTotalCostUsd,
+          recordedTotalCostUsd: s.recordedTotalCostUsd,
           byModel: s.byModel,
           foregroundActiveMs: s.foregroundActiveMs,
           backgroundRunningMs: s.backgroundRunningMs,
