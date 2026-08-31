@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Sparkles, TriangleAlert } from 'lucide-react';
 
-type MemoryStatusState = 'updating' | 'updated' | 'error';
+type MemoryStatusState = 'updating' | 'updated' | 'recovered' | 'error';
 
 interface MemoryStatusDetail {
   chatId?: string;
@@ -30,12 +30,15 @@ export function JarvisMemoryStatus({ chatId }: { chatId: string }) {
   }, [chatId]);
 
   if (!state) return null;
-  const label = state === 'updating'
-    ? 'Updating Jarvis memory…'
-    : state === 'updated'
-      ? 'Memory updated'
-      : 'Memory update unavailable';
-  const Icon = state === 'updating' ? Sparkles : state === 'updated' ? Check : TriangleAlert;
+  const label =
+    state === 'updating'
+      ? 'Updating Jarvis memory…'
+      : state === 'updated'
+        ? 'Memory updated'
+        : state === 'recovered'
+          ? 'Jarvis memory recovered'
+          : 'Memory update unavailable';
+  const Icon = state === 'updating' ? Sparkles : state === 'error' ? TriangleAlert : Check;
 
   return (
     <div
@@ -45,7 +48,11 @@ export function JarvisMemoryStatus({ chatId }: { chatId: string }) {
     >
       <Icon
         aria-hidden="true"
-        className={state === 'updating' ? 'h-3 w-3 animate-pulse text-accent-cyan motion-reduce:animate-none' : 'h-3 w-3'}
+        className={
+          state === 'updating'
+            ? 'h-3 w-3 animate-pulse text-accent-cyan motion-reduce:animate-none'
+            : 'h-3 w-3'
+        }
       />
       {label}
     </div>

@@ -1,4 +1,4 @@
-import { loadLearningFile, saveLearningFile } from './learningFile';
+import { loadLearningFile, saveLearningFile, type LearningFileResult } from './learningFile';
 import { useJarvisLearningStore } from './learningStore';
 import type { JarvisMemoryCategory, MemoryEvidenceItem } from './types';
 import { safeLocalStorage } from '@/lib/persistence/safeLocalStorage';
@@ -20,7 +20,7 @@ interface LearningListenerBindings {
   getAccountId: () => string;
   subscribeAccount?: (listener: () => void) => () => void;
   save?: (accountId: string, markdown: string) => Promise<unknown>;
-  load?: (accountId: string) => Promise<string | null>;
+  load?: (accountId: string) => Promise<string | LearningFileResult | null>;
   evidenceRepository?: MemoryEvidencePersistencePort;
   debounceMs?: number;
   onError?: (error: unknown) => void;
@@ -47,10 +47,8 @@ function inferredCandidate(text: string): { value: string; category: JarvisMemor
   return { value: clean, category };
 }
 
-function defaultAccountLoad(accountId: string): Promise<string | null> {
-  return loadLearningFile(accountId)
-    .then((result) => result.markdown)
-    .catch(() => null);
+function defaultAccountLoad(accountId: string): Promise<LearningFileResult | null> {
+  return loadLearningFile(accountId);
 }
 
 function report(bindings: LearningListenerBindings, error: unknown): void {
@@ -64,7 +62,10 @@ function requireAccountId(value: string): string {
   return accountId;
 }
 
-function publishStatus(chatId: string | undefined, state: 'updating' | 'updated' | 'error'): void {
+function publishStatus(
+  chatId: string | undefined,
+  state: 'updating' | 'updated' | 'recovered' | 'error',
+): void {
   window.dispatchEvent(new CustomEvent('jarvis:memory-status', { detail: { chatId, state } }));
 }
 
@@ -108,13 +109,20 @@ export function startJarvisLearningListener(
       load(accountId),
       evidenceRepository?.list(accountId) ?? Promise.resolve([]),
     ])
-      .then(([markdown, evidence]) => {
+      .then(([loaded, evidence]) => {
         if (disposed || bindings.getAccountId().trim() !== accountId) return;
         store.getState().setAccount(accountId);
+        const markdown = typeof loaded === 'string' ? loaded : loaded?.markdown;
         if (markdown) store.getState().importMarkdown(markdown);
         if (evidenceRepository) store.getState().hydrateEvidence(accountId, evidence);
+        if (typeof loaded === 'object' && loaded?.recovered) {
+          publishStatus(undefined, 'recovered');
+        }
       })
-      .catch((error) => report(bindings, error))
+      .catch((error) => {
+        publishStatus(undefined, 'error');
+        report(bindings, error);
+      })
       .finally(() => {
         loadingAccounts.delete(accountId);
       });

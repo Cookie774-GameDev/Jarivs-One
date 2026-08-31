@@ -201,6 +201,45 @@ describe('Jarvis learning event listener', () => {
     expect(save.mock.calls.at(-1)?.[1]).toContain('I prefer verified results');
   });
 
+  it('publishes truthful recovery status after hydrating a repaired durable profile', async () => {
+    const statuses: string[] = [];
+    const onStatus = (event: Event) =>
+      statuses.push((event as CustomEvent<{ state: string }>).detail.state);
+    window.addEventListener('jarvis:memory-status', onStatus);
+    stop = startJarvisLearningListener({
+      getAccountId: () => 'account-a',
+      save: async () => undefined,
+      load: async () => ({
+        path: 'private-path-must-not-be-published',
+        markdown: '# Jarvis Learning\n\n## Preferences\n- Recovered preference',
+        recovered: true,
+        recoverySource: 'backup' as const,
+      }),
+    });
+
+    await vi.waitFor(() => expect(statuses).toContain('recovered'));
+    expect(JSON.stringify(statuses)).not.toContain('private-path');
+    window.removeEventListener('jarvis:memory-status', onStatus);
+  });
+
+  it('publishes unavailable truth when durable profile recovery fails', async () => {
+    const statuses: string[] = [];
+    const onStatus = (event: Event) =>
+      statuses.push((event as CustomEvent<{ state: string }>).detail.state);
+    window.addEventListener('jarvis:memory-status', onStatus);
+    stop = startJarvisLearningListener({
+      getAccountId: () => 'account-a',
+      save: async () => undefined,
+      load: async () => {
+        throw new Error('corrupt durable profile');
+      },
+      onError: vi.fn(),
+    });
+
+    await vi.waitFor(() => expect(statuses).toContain('error'));
+    window.removeEventListener('jarvis:memory-status', onStatus);
+  });
+
   it('keeps automatic learning memory-only through nineteen messages and writes on message twenty', async () => {
     const save = vi.fn(async (_accountId: string, _markdown: string) => undefined);
     stop = startJarvisLearningListener({
