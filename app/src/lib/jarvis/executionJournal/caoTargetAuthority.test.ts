@@ -231,6 +231,59 @@ describe('CAO explicit target authority', () => {
     expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
   });
 
+  it('rejects duplicate durable records for one lease identity during reload', async () => {
+    const h = harness();
+    const authority = createCaoTargetAuthority(h.deps);
+    const acquired = await authority.acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.rows.push({ ...structuredClone(h.rows[0]!), seq: 2 } as JarvisEvent);
+    vi.mocked(h.registry.readExact).mockClear();
+
+    await expect(authority.verify({ ...scope, leaseId: acquired.leaseId })).rejects.toThrow(
+      'cao_target_journal_invalid',
+    );
+    expect(h.registry.readExact).not.toHaveBeenCalled();
+  });
+
+  it('rejects crossed event lineage before reusing a valid-looking persisted lease', async () => {
+    const h = harness();
+    const authority = createCaoTargetAuthority(h.deps);
+    const acquired = await authority.acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.rows[0] = { ...h.rows[0]!, runId: 'jrun-other' };
+    vi.mocked(h.registry.readExact).mockClear();
+
+    await expect(authority.verify({ ...scope, leaseId: acquired.leaseId })).rejects.toThrow(
+      'cao_target_journal_invalid',
+    );
+    expect(h.registry.readExact).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-monotonic durable event order before lease recovery', async () => {
+    const h = harness();
+    const authority = createCaoTargetAuthority(h.deps);
+    const acquired = await authority.acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.rows[0] = { ...h.rows[0]!, seq: 2 };
+    const { caoTargetLease: _lease, ...unrelated } = structuredClone(h.rows[0]!);
+    h.rows.unshift({ ...unrelated, seq: 3, idempotencyKey: 'unrelated-context' } as JarvisEvent);
+    vi.mocked(h.registry.readExact).mockClear();
+
+    await expect(authority.verify({ ...scope, leaseId: acquired.leaseId })).rejects.toThrow(
+      'cao_target_journal_invalid',
+    );
+    expect(h.registry.readExact).not.toHaveBeenCalled();
+  });
+
   it('requires an explicit set for multiple targets and preserves exact chat/terminal isolation', async () => {
     const h = harness([
       target(),

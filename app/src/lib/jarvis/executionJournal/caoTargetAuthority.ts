@@ -201,22 +201,31 @@ async function findLease(
   leaseId: string,
 ): Promise<CaoTargetLeaseV1 | undefined> {
   let afterSeq = 0;
+  let match: CaoTargetLeaseV1 | undefined;
   for (let pageNumber = 0; pageNumber < MAX_EVENT_PAGES; pageNumber += 1) {
     const page = await events.listByRun(scope.accountId, scope.runId, {
       afterSeq,
       limit: EVENT_PAGE_SIZE,
     });
     for (const event of page) {
+      if (
+        event.runId !== scope.runId ||
+        !Number.isSafeInteger(event.seq) ||
+        event.seq <= afterSeq
+      ) {
+        fail('cao_target_journal_invalid');
+      }
+      afterSeq = event.seq;
       if (!event.caoTargetLease) continue;
       const validated = validateCaoTargetLease(event.caoTargetLease);
       if (!validated.ok) fail('cao_target_journal_invalid');
       const lease = validated.value;
-      if (lease?.leaseId === leaseId) return structuredClone(lease);
+      if (lease.leaseId === leaseId) {
+        if (match) fail('cao_target_journal_invalid');
+        match = structuredClone(lease);
+      }
     }
-    if (page.length < EVENT_PAGE_SIZE) return undefined;
-    const nextSeq = page[page.length - 1]?.seq;
-    if (nextSeq === undefined || nextSeq <= afterSeq) fail('cao_target_journal_invalid');
-    afterSeq = nextSeq;
+    if (page.length < EVENT_PAGE_SIZE) return match;
   }
   fail('cao_target_journal_scan_exceeded');
 }
