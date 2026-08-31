@@ -1001,6 +1001,104 @@ describe('CAO explicit target authority', () => {
     expect(h.rows).toEqual([]);
   });
 
+  it('reports registry unavailability when invalid applied-claim cleanup cannot release ownership', async () => {
+    const h = harness();
+    vi.mocked(h.registry.claimExact).mockImplementationOnce(async (request) => {
+      h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: request.leaseId });
+      return {
+        applied: true,
+        targets: [{ ...target({ workspaceId: 'workspace-other' }), ownerLeaseId: request.leaseId }],
+      };
+    });
+    vi.mocked(h.registry.releaseExact).mockRejectedValueOnce(
+      new Error('private ambiguous release transport payload'),
+    );
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_registry_unavailable$/);
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe('cao_lease_1');
+    expect(h.rows).toEqual([]);
+  });
+
+  it('recovers an ambiguously successful invalid-claim release before reporting scope drift', async () => {
+    const h = harness();
+    vi.mocked(h.registry.claimExact).mockImplementationOnce(async (request) => {
+      h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: request.leaseId });
+      return {
+        applied: true,
+        targets: [{ ...target({ workspaceId: 'workspace-other' }), ownerLeaseId: request.leaseId }],
+      };
+    });
+    vi.mocked(h.registry.releaseExact).mockImplementationOnce(async (request) => {
+      h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: undefined });
+      expect(request.leaseId).toBe('cao_lease_1');
+      throw new Error('private post-commit transport payload');
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_scope_mismatch$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+    expect(h.rows).toEqual([]);
+  });
+
+  it('does not claim invalid-claim cleanup succeeded when release retains ownership', async () => {
+    const h = harness();
+    vi.mocked(h.registry.claimExact).mockImplementationOnce(async (request) => {
+      h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: request.leaseId });
+      return {
+        applied: true,
+        targets: [{ ...target({ selected: false }), ownerLeaseId: request.leaseId }],
+      };
+    });
+    vi.mocked(h.registry.releaseExact).mockResolvedValueOnce(undefined);
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_registry_unavailable$/);
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe('cao_lease_1');
+    expect(h.rows).toEqual([]);
+  });
+
+  it('reports cleanup read unavailability after an invalid applied claim', async () => {
+    const h = harness();
+    vi.mocked(h.registry.claimExact).mockImplementationOnce(async (request) => {
+      h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: request.leaseId });
+      return {
+        applied: true,
+        targets: [{ ...target({ locked: true }), ownerLeaseId: request.leaseId }],
+      };
+    });
+    vi.mocked(h.registry.readExact).mockRejectedValueOnce(
+      new Error('private cleanup read payload'),
+    );
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_target_registry_unavailable$/);
+    expect(h.registry.releaseExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe('cao_lease_1');
+    expect(h.rows).toEqual([]);
+  });
+
   it('fails closed on expiry, target revision drift, and run scope/status drift after reload', async () => {
     const h = harness();
     const authority = createCaoTargetAuthority(h.deps);

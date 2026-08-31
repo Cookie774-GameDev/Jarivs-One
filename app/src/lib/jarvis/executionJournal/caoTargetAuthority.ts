@@ -565,20 +565,20 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       fail('cao_target_registry_unavailable');
     }
     const canonicalClaim = canonicalDependencyValue(claim);
+    const provisionalLease: CaoTargetLeaseV1 = {
+      schemaVersion: 1,
+      kind: 'cao_target_lease',
+      leaseId,
+      accountId: input.accountId,
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+      runId: input.runId,
+      selectionMode: input.selection.mode,
+      targets: requested.map(({ kind, targetId }) => ({ kind, targetId, revision: 0 })),
+      acquiredAt,
+      expiresAt,
+    };
     if (!validRegistryClaim(canonicalClaim)) {
-      const provisionalLease: CaoTargetLeaseV1 = {
-        schemaVersion: 1,
-        kind: 'cao_target_lease',
-        leaseId,
-        accountId: input.accountId,
-        workspaceId: input.workspaceId,
-        projectId: input.projectId,
-        runId: input.runId,
-        selectionMode: input.selection.mode,
-        targets: requested.map(({ kind, targetId }) => ({ kind, targetId, revision: 0 })),
-        acquiredAt,
-        expiresAt,
-      };
       await releaseVerifiedLease(verifyRequest(input, leaseId), provisionalLease);
       fail('cao_target_registry_invalid');
     }
@@ -588,7 +588,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     try {
       exactClaimTargets = assertLiveTargets(claim.targets, requested, input, leaseId);
     } catch (error) {
-      await dependencies.registry.releaseExact(registryRequest).catch(() => undefined);
+      await releaseVerifiedLease(verifyRequest(input, leaseId), provisionalLease);
       throw error;
     }
     const lease: CaoTargetLeaseV1 = {
