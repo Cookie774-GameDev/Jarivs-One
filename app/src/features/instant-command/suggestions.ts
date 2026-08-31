@@ -18,7 +18,7 @@ export function suggestInstantCommands(
     .map((item) => ({
       id: item.id,
       label: item.examples[0]!,
-      detail: `${item.family} · ${item.safety}${item.argumentHint ? ` · ${item.argumentHint}` : ''}`,
-      disabled: item.availability !== 'available',
+      detail: `${item.family} · ${item.safety} · ${item.availability}${item.argumentHint ? ` · ${item.argumentHint}` : ''}`,
+      disabled: item.availability === 'blocked',
     }));
 }

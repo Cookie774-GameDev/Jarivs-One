@@ -32,6 +32,9 @@ import {
   InstantCommandEntryBoundary,
 } from '@/features/instant-command';
 import type { InstantCommand } from '@/features/instant-command';
+import { INSTANT_COMMAND_CATALOG } from '@/features/instant-command/catalog';
+import { buildInstantCommandHelp } from '@/features/instant-command/help';
+import { suggestInstantCommands } from '@/features/instant-command/suggestions';
 import { parseAssistantInput } from './parse';
 import { executeIntent } from './execute';
 import { JARVIS_COMMAND_CATALOG } from './commands';
@@ -50,6 +53,7 @@ const RECENT_KEY = 'jarvis-assistant-recent';
 /** Cap on how many recent commands we remember. */
 const RECENT_CAP = 5;
 const assistantInstantBoundary = new InstantCommandEntryBoundary();
+const instantCommandHelp = buildInstantCommandHelp(INSTANT_COMMAND_CATALOG);
 
 /** Static example list shown in the footer. Kept here so it stays close
  * to the parser's vocabulary — easy to refresh when we add new verbs. */
@@ -345,6 +349,13 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
   const instantClassification = React.useMemo(() => classifyInstantCommandInput(value), [value]);
   const instantCommand =
     instantClassification.status === 'matched' ? instantClassification.command : null;
+  const instantSuggestions = React.useMemo(
+    () =>
+      value.trim().length >= 2 && !instantCommand
+        ? suggestInstantCommands(instantCommandHelp, value, 4)
+        : [],
+    [instantCommand, value],
+  );
   const intent = React.useMemo<AssistantIntent | null>(
     () => (instantClassification.status === 'unmatched' ? parseAssistantInput(value) : null),
     [instantClassification.status, value],
@@ -493,6 +504,34 @@ export function AssistantBar({ open, onOpenChange }: AssistantBarProps) {
                 </span>
               )}
             </div>
+
+            {instantSuggestions.length > 0 ? (
+              <ul aria-label="Instant Command suggestions" className="mt-2 space-y-1">
+                {instantSuggestions.map((suggestion) => (
+                  <li key={suggestion.id}>
+                    <button
+                      type="button"
+                      aria-label={`Use suggestion: ${suggestion.label}`}
+                      disabled={suggestion.disabled}
+                      onClick={() => onPillClick(suggestion.label)}
+                      className={cn(
+                        'flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left',
+                        'hover:bg-panel focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-copper',
+                        'disabled:cursor-not-allowed disabled:opacity-45',
+                        '[[data-theme=monochrome]_&]:rounded-sm',
+                      )}
+                    >
+                      <span className="truncate text-secondary text-foreground">
+                        {suggestion.label}
+                      </span>
+                      <span className="shrink-0 text-metadata text-muted-foreground">
+                        {suggestion.detail}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
 
           {/* Recent commands */}

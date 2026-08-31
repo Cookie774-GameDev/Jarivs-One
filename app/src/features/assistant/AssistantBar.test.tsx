@@ -167,4 +167,23 @@ describe('AssistantBar instant fast lane', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     await waitFor(() => expect(mocks.executeInstantCommand).toHaveBeenCalledTimes(2));
   });
+
+  it('discovers catalog commands locally and selects an accessible capability-gated suggestion', () => {
+    const onOpenChange = vi.fn();
+    render(<AssistantBar open onOpenChange={onOpenChange} />);
+    const input = screen.getByRole('textbox', { name: 'Jarvis Assistant command' });
+
+    fireEvent.change(input, { target: { value: 'connect terminals' } });
+
+    expect(screen.getByRole('list', { name: 'Instant Command suggestions' })).toBeTruthy();
+    expect(screen.getByText(/approval · capability-gated/i)).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Use suggestion: connect terminals one and two as a team',
+      }),
+    );
+    expect((input as HTMLInputElement).value).toBe('connect terminals one and two as a team');
+    expect(mocks.executeIntent).not.toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
 });
