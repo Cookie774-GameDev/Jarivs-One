@@ -91,31 +91,37 @@ function isStableAuthorityError(error: unknown): error is Error {
 export function createCaoScheduledTargetExecution(dependencies: Dependencies): Readonly<{
   execute(input: CaoScheduledTargetExecutionInput): Promise<CaoLearningExecutionResult>;
 }> {
+  const verifyExact = async (snapshot: CaoScheduledTargetExecutionInput): Promise<void> => {
+    let recovered: CaoTargetLeaseV1;
+    try {
+      recovered = await dependencies.authority.verify({
+        accountId: snapshot.execution.accountId,
+        workspaceId: snapshot.execution.workspaceId,
+        projectId: snapshot.execution.projectId,
+        runId: snapshot.runId,
+        leaseId: snapshot.leaseId,
+      });
+    } catch (error) {
+      if (isStableAuthorityError(error)) throw error;
+      throw new CaoScheduledTargetAuthorityError('cao_learning_target_authority_unavailable');
+    }
+    const validated = validateCaoTargetLease(recovered);
+    if (!validated.ok) {
+      throw new CaoScheduledTargetAuthorityError('cao_learning_target_lease_invalid');
+    }
+    const lease = validated.value;
+    assertExactScope(lease, snapshot);
+    assertExactTarget(lease, snapshot);
+  };
+
   return {
     async execute(input) {
       const snapshot = structuredClone(input);
       requireExplicitAuthority(snapshot);
-      let recovered: CaoTargetLeaseV1;
-      try {
-        recovered = await dependencies.authority.verify({
-          accountId: snapshot.execution.accountId,
-          workspaceId: snapshot.execution.workspaceId,
-          projectId: snapshot.execution.projectId,
-          runId: snapshot.runId,
-          leaseId: snapshot.leaseId,
-        });
-      } catch (error) {
-        if (isStableAuthorityError(error)) throw error;
-        throw new CaoScheduledTargetAuthorityError('cao_learning_target_authority_unavailable');
-      }
-      const validated = validateCaoTargetLease(recovered);
-      if (!validated.ok) {
-        throw new CaoScheduledTargetAuthorityError('cao_learning_target_lease_invalid');
-      }
-      const lease = validated.value;
-      assertExactScope(lease, snapshot);
-      assertExactTarget(lease, snapshot);
-      return dependencies.execute(snapshot.execution);
+      await verifyExact(snapshot);
+      const result = await dependencies.execute(snapshot.execution);
+      if (result.status === 'completed') await verifyExact(snapshot);
+      return result;
     },
   };
 }

@@ -133,12 +133,15 @@ describe('createCaoScheduledTargetExecution', () => {
 
   it('executes the exact input snapshot verified before asynchronous recovery', async () => {
     let resolveVerify!: (value: CaoTargetLeaseV1) => void;
-    const verify = vi.fn(
-      () =>
-        new Promise<CaoTargetLeaseV1>((resolve) => {
-          resolveVerify = resolve;
-        }),
-    );
+    const verify = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<CaoTargetLeaseV1>((resolve) => {
+            resolveVerify = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(lease());
     const execute = vi.fn().mockResolvedValue({ status: 'completed', receiptId: 'receipt-1' });
     const scoped = createCaoScheduledTargetExecution({ authority: { verify }, execute });
     const mutable = structuredClone(input());
@@ -201,5 +204,73 @@ describe('createCaoScheduledTargetExecution', () => {
     expect(failure).toMatchObject({ code: 'cao_learning_target_authority_unavailable' });
     expect(String(failure)).not.toContain('private registry path');
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('revalidates the same exact lease after completed execution before returning success', async () => {
+    const verify = vi.fn().mockResolvedValue(lease());
+    const execute = vi.fn().mockResolvedValue({ status: 'completed', receiptId: 'receipt-1' });
+    const scoped = createCaoScheduledTargetExecution({ authority: { verify }, execute });
+
+    await expect(scoped.execute(input())).resolves.toEqual({
+      status: 'completed',
+      receiptId: 'receipt-1',
+    });
+    expect(verify).toHaveBeenCalledTimes(2);
+    expect(verify.mock.calls[1]).toEqual(verify.mock.calls[0]);
+  });
+
+  it('does not return completed truth when authority expires during execution', async () => {
+    const verify = vi
+      .fn()
+      .mockResolvedValueOnce(lease())
+      .mockRejectedValueOnce(new Error('cao_target_lease_stale'));
+    const execute = vi.fn().mockResolvedValue({ status: 'completed', receiptId: 'receipt-1' });
+    const scoped = createCaoScheduledTargetExecution({ authority: { verify }, execute });
+
+    await expect(scoped.execute(input())).rejects.toThrow('cao_target_lease_stale');
+    expect(execute).toHaveBeenCalledOnce();
+    expect(verify).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects revision drift in the recovered lease after completed execution', async () => {
+    const verify = vi
+      .fn()
+      .mockResolvedValueOnce(lease())
+      .mockResolvedValueOnce(
+        lease({ targets: [{ kind: 'terminal', targetId: execution.targetId, revision: 8 }] }),
+      );
+    const execute = vi.fn().mockResolvedValue({ status: 'completed', receiptId: 'receipt-1' });
+    const scoped = createCaoScheduledTargetExecution({ authority: { verify }, execute });
+
+    await expect(scoped.execute(input())).rejects.toMatchObject({
+      code: 'cao_learning_target_revision_stale',
+    });
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it('redacts unknown completion-time revalidation failures', async () => {
+    const verify = vi
+      .fn()
+      .mockResolvedValueOnce(lease())
+      .mockRejectedValueOnce(new Error('private completion registry payload'));
+    const execute = vi.fn().mockResolvedValue({ status: 'completed', receiptId: 'receipt-1' });
+    const scoped = createCaoScheduledTargetExecution({ authority: { verify }, execute });
+
+    const failure = await scoped.execute(input()).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ code: 'cao_learning_target_authority_unavailable' });
+    expect(String(failure)).not.toContain('private completion registry payload');
+  });
+
+  it('does not revalidate work that already failed or was cancelled', async () => {
+    const verify = vi.fn().mockResolvedValue(lease());
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce({ status: 'failed' })
+      .mockResolvedValueOnce({ status: 'cancelled' });
+    const scoped = createCaoScheduledTargetExecution({ authority: { verify }, execute });
+
+    await expect(scoped.execute(input())).resolves.toEqual({ status: 'failed' });
+    await expect(scoped.execute(input())).resolves.toEqual({ status: 'cancelled' });
+    expect(verify).toHaveBeenCalledTimes(2);
   });
 });

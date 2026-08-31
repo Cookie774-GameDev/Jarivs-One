@@ -122,7 +122,7 @@ describe('authorized CAO scheduled-learning recovery acceptance', () => {
       scheduledOccurrenceCount: 1,
     });
     expect(durable.read()).not.toHaveProperty('pending');
-    expect(verify).toHaveBeenCalledTimes(1);
+    expect(verify).toHaveBeenCalledTimes(2);
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
@@ -156,7 +156,7 @@ describe('authorized CAO scheduled-learning recovery acceptance', () => {
       scheduledOccurrenceCount: 0,
       scheduleAnchorAt: 1_000,
     });
-    expect(verify).toHaveBeenCalledTimes(1);
+    expect(verify).toHaveBeenCalledTimes(2);
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
@@ -194,7 +194,7 @@ describe('authorized CAO scheduled-learning recovery acceptance', () => {
       scheduledOccurrenceCount: 1,
     });
     expect(durable.read()).not.toHaveProperty('pending');
-    expect(verify).toHaveBeenCalledTimes(2);
+    expect(verify).toHaveBeenCalledTimes(4);
     expect(execute.mock.calls.map(([input]) => input.passId)).toEqual([
       'pass-restart',
       'pass-restart',
@@ -206,7 +206,7 @@ describe('authorized CAO scheduled-learning recovery acceptance', () => {
     const verify = vi
       .fn()
       .mockRejectedValueOnce(new Error('cao_target_lease_stale'))
-      .mockResolvedValueOnce(lease());
+      .mockResolvedValue(lease());
     const execute = vi.fn(async () => ({ status: 'completed' as const, receiptId: 'retry-1' }));
     let pass = 0;
     const controller = createCaoScheduledLearningController({
@@ -238,7 +238,7 @@ describe('authorized CAO scheduled-learning recovery acceptance', () => {
     ).resolves.toMatchObject({ status: 'completed', scheduledOccurrenceCount: 0 });
     expect(durable.read()).toMatchObject({ lastLearningSeqConsumed: 9 });
     expect(durable.read()).not.toHaveProperty('pending');
-    expect(verify).toHaveBeenCalledTimes(2);
+    expect(verify).toHaveBeenCalledTimes(3);
     expect(execute).toHaveBeenCalledTimes(1);
   });
 });
