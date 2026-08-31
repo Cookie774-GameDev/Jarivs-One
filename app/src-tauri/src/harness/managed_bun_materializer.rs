@@ -1,4 +1,5 @@
-use crate::harness::managed_bun_manifest::ManagedBunRelease;
+use crate::harness::download::{stream_verified_download, DownloadFailure, DownloadFailureKind};
+use crate::harness::managed_bun_manifest::{embedded_managed_bun_release, ManagedBunRelease};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
@@ -6,6 +7,7 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use zip::ZipArchive;
 
 const RECEIPT_SCHEMA_VERSION: u32 = 1;
@@ -13,7 +15,9 @@ const RECEIPT_SCHEMA_VERSION: u32 = 1;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManagedBunFailureKind {
     Cancelled,
+    Network,
     Disk,
+    Size,
     Hash,
     Archive,
     Existing,
@@ -72,13 +76,32 @@ impl CleanupPath {
 impl Drop for CleanupPath {
     fn drop(&mut self) {
         if self.armed {
-            let _ = fs::remove_dir_all(&self.path);
+            let _ = if self.path.is_dir() {
+                fs::remove_dir_all(&self.path)
+            } else {
+                fs::remove_file(&self.path)
+            };
         }
     }
 }
 
 fn failure(kind: ManagedBunFailureKind, message: &'static str) -> ManagedBunFailure {
     ManagedBunFailure { kind, message }
+}
+
+fn map_download_failure(download: DownloadFailure) -> ManagedBunFailure {
+    let kind = match download.kind {
+        DownloadFailureKind::Cancelled => ManagedBunFailureKind::Cancelled,
+        DownloadFailureKind::Network => ManagedBunFailureKind::Network,
+        DownloadFailureKind::Disk => ManagedBunFailureKind::Disk,
+        DownloadFailureKind::Size => ManagedBunFailureKind::Size,
+        DownloadFailureKind::Hash => ManagedBunFailureKind::Hash,
+        DownloadFailureKind::Archive => ManagedBunFailureKind::Archive,
+    };
+    ManagedBunFailure {
+        kind,
+        message: download.message,
+    }
 }
 
 fn is_safe_version(value: &str) -> bool {
@@ -532,12 +555,129 @@ pub fn install_verified_bun_archive(
     }
 }
 
+pub fn install_managed_bun_from_reader<R, F>(
+    managed_root: &Path,
+    reader: R,
+    release: &ManagedBunRelease,
+    cancellation: &AtomicBool,
+    on_progress: F,
+) -> Result<ManagedBunInstall, ManagedBunFailure>
+where
+    R: Read,
+    F: FnMut(f64),
+{
+    if let ManagedBunReadiness::Ready(installed) = inspect_managed_bun(managed_root, release) {
+        return Ok(installed);
+    }
+    fs::create_dir_all(managed_root).map_err(|_| {
+        failure(
+            ManagedBunFailureKind::Disk,
+            "Managed Bun directory could not be created.",
+        )
+    })?;
+    let root_metadata = fs::symlink_metadata(managed_root).map_err(|_| {
+        failure(
+            ManagedBunFailureKind::Disk,
+            "Managed Bun directory could not be inspected.",
+        )
+    })?;
+    if !root_metadata.is_dir() || root_metadata.file_type().is_symlink() {
+        return Err(failure(
+            ManagedBunFailureKind::Disk,
+            "Managed Bun directory is not a regular directory.",
+        ));
+    }
+
+    let archive_path = managed_root.join(format!(".download-{}.zip", nanoid::nanoid!(20)));
+    let archive_cleanup = CleanupPath::armed(archive_path.clone());
+    let archive_file = File::options()
+        .write(true)
+        .create_new(true)
+        .open(&archive_path)
+        .map_err(|_| {
+            failure(
+                ManagedBunFailureKind::Disk,
+                "Managed Bun download file could not be created.",
+            )
+        })?;
+    stream_verified_download(
+        reader,
+        archive_file,
+        release.compressed_bytes,
+        &release.sha256,
+        cancellation,
+        on_progress,
+    )
+    .map_err(map_download_failure)?;
+    let installed =
+        install_verified_bun_archive(managed_root, &archive_path, release, cancellation)?;
+    drop(archive_cleanup);
+    Ok(installed)
+}
+
+pub fn download_and_install_embedded_bun<F>(
+    managed_root: &Path,
+    cancellation: &AtomicBool,
+    on_progress: F,
+) -> Result<ManagedBunInstall, ManagedBunFailure>
+where
+    F: FnMut(f64),
+{
+    let release = embedded_managed_bun_release("windows", "x86_64").map_err(|_| {
+        failure(
+            ManagedBunFailureKind::Archive,
+            "Managed Bun release manifest is unavailable.",
+        )
+    })?;
+    if let ManagedBunReadiness::Ready(installed) = inspect_managed_bun(managed_root, &release) {
+        return Ok(installed);
+    }
+    if cancellation.load(Ordering::Acquire) {
+        return Err(failure(
+            ManagedBunFailureKind::Cancelled,
+            "Managed Bun installation was cancelled.",
+        ));
+    }
+
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(15 * 60))
+        .build()
+        .map_err(|_| {
+            failure(
+                ManagedBunFailureKind::Network,
+                "Managed Bun download client could not be created.",
+            )
+        })?;
+    let response = client
+        .get(&release.url)
+        .send()
+        .and_then(reqwest::blocking::Response::error_for_status)
+        .map_err(|_| {
+            failure(
+                ManagedBunFailureKind::Network,
+                "Managed Bun download request failed.",
+            )
+        })?;
+    if response.content_length() != Some(release.compressed_bytes) {
+        return Err(failure(
+            ManagedBunFailureKind::Size,
+            "Managed Bun download response size is invalid.",
+        ));
+    }
+    install_managed_bun_from_reader(managed_root, response, &release, cancellation, on_progress)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{inspect_managed_bun, install_verified_bun_archive, ManagedBunReadiness};
+    use super::{
+        download_and_install_embedded_bun, inspect_managed_bun, install_managed_bun_from_reader,
+        install_verified_bun_archive, ManagedBunReadiness,
+    };
     use crate::harness::managed_bun_manifest::{embedded_managed_bun_release, ManagedBunRelease};
     use sha2::{Digest, Sha256};
     use std::fs::{self, File};
+    use std::io::Cursor;
     use std::io::Write;
     use std::path::PathBuf;
     use std::process::Command;
@@ -649,6 +789,42 @@ mod tests {
     }
 
     #[test]
+    fn verified_stream_materializes_without_system_node_or_npm() {
+        let fixture = temp_dir("stream");
+        let managed_root = fixture.join("managed");
+        let (archive, _) = fixture_archive(&fixture, "bun-windows-x64/bun.exe");
+        let release = fixture_release(&archive);
+        let archive_bytes = fs::read(&archive).unwrap();
+        let mut progress = Vec::new();
+        let installed = install_managed_bun_from_reader(
+            &managed_root,
+            Cursor::new(&archive_bytes),
+            &release,
+            &AtomicBool::new(false),
+            |value| progress.push(value),
+        )
+        .expect("streamed install");
+        assert!(installed.executable.is_file());
+        assert_eq!(progress.first(), Some(&0.0));
+        assert_eq!(progress.last(), Some(&1.0));
+
+        let mut wrong_hash = release.clone();
+        wrong_hash.version = "1.4.1".into();
+        wrong_hash.sha256 = "0".repeat(64);
+        assert!(install_managed_bun_from_reader(
+            &managed_root,
+            Cursor::new(&archive_bytes),
+            &wrong_hash,
+            &AtomicBool::new(false),
+            |_| {},
+        )
+        .is_err());
+        assert!(!managed_root.join("1.4.1").exists());
+
+        fs::remove_dir_all(fixture).unwrap();
+    }
+
+    #[test]
     #[ignore = "requires VIBESPACE_MANAGED_BUN_ARCHIVE to name the audited official ZIP"]
     fn audited_official_archive_materializes_and_executes() {
         let archive = PathBuf::from(
@@ -659,6 +835,22 @@ mod tests {
         let installed =
             install_verified_bun_archive(&fixture, &archive, &release, &AtomicBool::new(false))
                 .expect("official archive install");
+        let output = Command::new(&installed.executable)
+            .arg("--version")
+            .output()
+            .expect("managed Bun launch");
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "1.4.0");
+        fs::remove_dir_all(fixture).unwrap();
+    }
+
+    #[test]
+    #[ignore = "downloads the pinned official Bun ZIP"]
+    fn audited_official_download_materializes_and_executes() {
+        let fixture = temp_dir("official-download");
+        let installed =
+            download_and_install_embedded_bun(&fixture, &AtomicBool::new(false), |_| {})
+                .expect("official download and install");
         let output = Command::new(&installed.executable)
             .arg("--version")
             .output()
