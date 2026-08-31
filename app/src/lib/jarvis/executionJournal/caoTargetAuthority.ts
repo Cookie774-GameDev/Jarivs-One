@@ -189,8 +189,12 @@ function validRegistryClaim(
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const claim = value as { applied?: unknown; targets?: unknown; reason?: unknown };
   return claim.applied === true
-    ? Array.isArray(claim.targets)
+    ? Array.isArray(claim.targets) && claim.targets.every(validDependencyEntry)
     : claim.applied === false && typeof claim.reason === 'string';
+}
+
+function validDependencyEntry(value: unknown): value is object {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 function assertLiveTargets(
@@ -276,6 +280,7 @@ async function findLease(
       fail('cao_target_journal_unavailable');
     }
     if (!Array.isArray(page)) fail('cao_target_journal_invalid');
+    if (page.some((event) => !validDependencyEntry(event))) fail('cao_target_journal_invalid');
     for (const event of page) {
       if (
         event.runId !== scope.runId ||
@@ -350,6 +355,22 @@ function acknowledgesExactLease(
 }
 
 export function createCaoTargetAuthority(dependencies: Dependencies) {
+  function readNow(): number {
+    try {
+      return dependencies.now();
+    } catch {
+      fail('cao_target_clock_invalid');
+    }
+  }
+
+  function createLeaseId(): string {
+    try {
+      return dependencies.newLeaseId();
+    } catch {
+      fail('cao_target_lease_id_invalid');
+    }
+  }
+
   async function readReleaseState(
     input: VerifyInput,
     lease: CaoTargetLeaseV1,
@@ -362,6 +383,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       fail('cao_target_registry_unavailable');
     }
     if (!Array.isArray(rows)) fail('cao_target_registry_invalid');
+    if (rows.some((row) => !validDependencyEntry(row))) fail('cao_target_registry_invalid');
     if (rows.length !== lease.targets.length) fail('cao_target_missing');
     const byIdentity = new Map<string, CaoLiveTarget>();
     for (const row of rows) {
@@ -418,7 +440,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     const lease = await findLease(dependencies.events, input, input.leaseId);
     if (!lease) fail('cao_target_lease_missing');
     exactLeaseScope(lease, input);
-    const observedAt = dependencies.now();
+    const observedAt = readNow();
     if (!Number.isSafeInteger(observedAt) || observedAt < lease.acquiredAt) {
       fail('cao_target_clock_invalid');
     }
@@ -438,6 +460,9 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       fail('cao_target_registry_unavailable');
     }
     if (!Array.isArray(liveRows)) fail('cao_target_registry_invalid');
+    if (liveRows.some((row) => !validDependencyEntry(row))) {
+      fail('cao_target_registry_invalid');
+    }
     try {
       assertLiveTargets(
         liveRows,
@@ -462,7 +487,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       await releaseVerifiedLease(input, lease);
       throw error;
     }
-    const returnAt = dependencies.now();
+    const returnAt = readNow();
     if (!Number.isSafeInteger(returnAt) || returnAt < observedAt) {
       await releaseVerifiedLease(input, lease);
       fail('cao_target_clock_invalid');
@@ -492,9 +517,9 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       fail('cao_run_unavailable');
     }
     assertRun(run, input);
-    const acquiredAt = dependencies.now();
+    const acquiredAt = readNow();
     if (!Number.isSafeInteger(acquiredAt) || acquiredAt < 0) fail('cao_target_clock_invalid');
-    const leaseId = dependencies.newLeaseId();
+    const leaseId = createLeaseId();
     if (!validIdentifier(leaseId)) fail('cao_target_lease_id_invalid');
     const requested = input.selection.targets.map(({ kind, targetId }) => ({ kind, targetId }));
     const expiresAt = acquiredAt + input.leaseMs;
