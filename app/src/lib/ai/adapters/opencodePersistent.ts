@@ -59,7 +59,7 @@ import type {
   LiveModelVariant,
 } from '@/features/chat/runtime/runtimeModelControls';
 import { resolveRuntimeModelControls } from '@/features/chat/runtime/runtimeModelControls';
-import { variantReasoningEffort } from '@/lib/ai/catalog/modelVariants';
+import { isFastVariant, variantReasoningEffort } from '@/lib/ai/catalog/modelVariants';
 import type { AccessLevel, InteractionMode } from '@/lib/permissions/OpenCodePermissionProfile';
 import { applySecretPolicy } from '@/lib/security/secretDetector';
 import { decideContextRoute } from '@/features/context/rlm/routeDecision';
@@ -750,12 +750,13 @@ function variantFrom(value: unknown, fallbackId?: string): LiveModelVariant | un
   const id = cleanIdentifier(record?.id ?? fallbackId, 256);
   if (!id) return undefined;
   const normalized = id.toLocaleLowerCase('en-US');
+  const tokens = normalized.split(/[-+_/:.]+/u).filter(Boolean);
   const effort =
     cleanIdentifier(record?.reasoningEffort ?? record?.reasoning_effort, 32) ??
-    (['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(normalized)
-      ? normalized
-      : undefined);
-  const fast = record?.fast === true || normalized === 'fast' || normalized.includes('fast');
+    tokens.find((token) =>
+      ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(token),
+    );
+  const fast = record?.fast === true || tokens.includes('fast');
   return {
     id,
     ...(cleanIdentifier(record?.label, 256) ? { label: cleanIdentifier(record?.label, 256) } : {}),
@@ -769,6 +770,32 @@ function variantFrom(value: unknown, fallbackId?: string): LiveModelVariant | un
           ? { kind: 'reasoning' as const }
           : {}),
   };
+}
+
+function exactBooleanCapability(
+  model: Record<string, unknown>,
+  camelCase: string,
+  snakeCase: string,
+): boolean {
+  const value = model[camelCase] ?? model[snakeCase];
+  if (value === undefined) return false;
+  if (typeof value !== 'boolean') {
+    throw new Error(`OpenCode returned malformed ${camelCase} capability metadata.`);
+  }
+  return value;
+}
+
+function serviceTiersFrom(model: Record<string, unknown>): readonly string[] {
+  const value = model.serviceTiers ?? model.service_tiers;
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 32) {
+    throw new Error('OpenCode returned malformed service tier metadata.');
+  }
+  const tiers = value.map((tier) => cleanIdentifier(tier, 64));
+  if (tiers.some((tier) => !tier)) {
+    throw new Error('OpenCode returned malformed service tier metadata.');
+  }
+  return [...new Set(tiers as string[])];
 }
 
 function variantsFrom(model: Record<string, unknown>): readonly LiveModelVariant[] {
@@ -825,6 +852,16 @@ export function parseOpenCodeLiveModels(value: unknown): readonly OpenCodeLiveMo
       const upstreamModelId = id.slice(providerPrefix.length);
       const label = cleanIdentifier(model.name ?? model.label, 256) ?? id;
       const pricing = parseOpenCodeModelPricing(model.cost);
+      const supportsIndependentReasoningEffort = exactBooleanCapability(
+        model,
+        'supportsIndependentReasoningEffort',
+        'supports_independent_reasoning_effort',
+      );
+      const supportsOpenCodeFastMode = exactBooleanCapability(
+        model,
+        'supportsOpenCodeFastMode',
+        'supports_opencode_fast_mode',
+      );
       result.push({
         id,
         label,
@@ -832,9 +869,9 @@ export function parseOpenCodeLiveModels(value: unknown): readonly OpenCodeLiveMo
         upstreamModelId,
         variants: variantsFrom(model),
         ...(pricing ? { pricing } : {}),
-        supportsIndependentReasoningEffort: false,
-        serviceTiers: [],
-        supportsOpenCodeFastMode: false,
+        supportsIndependentReasoningEffort,
+        serviceTiers: serviceTiersFrom(model),
+        supportsOpenCodeFastMode,
       });
     }
   }
@@ -1297,9 +1334,22 @@ export function buildObservedOpenCodeGatewayAuthority(
     ...(input.controls.serviceTier ? { serviceTier: input.controls.serviceTier } : {}),
     observed: input.observed,
   });
-  const fastVariant = input.controls.openCodeFastMode
-    ? (input.controls.serviceTier ?? input.controls.variant)
-    : 'standard';
+  const observedVariant = input.observed.variant?.trim().toLocaleLowerCase('en-US');
+  const catalogVariant = observedVariant
+    ? input.model.variants.find(
+        (candidate) => candidate.id.trim().toLocaleLowerCase('en-US') === observedVariant,
+      )
+    : undefined;
+  const observedFastVariant =
+    catalogVariant && isFastVariant(catalogVariant) ? catalogVariant.id : undefined;
+  const normalizedServiceTier = input.observed.serviceTier?.trim().toLocaleLowerCase('en-US');
+  const observedFastTier = ['fast', 'priority'].includes(normalizedServiceTier ?? '')
+    ? input.observed.serviceTier
+    : undefined;
+  const fastVariant =
+    observedFastVariant ??
+    observedFastTier ??
+    (input.controls.openCodeFastMode ? undefined : 'standard');
   if (!fastVariant) {
     throw new Error('OpenCode Fast execution completed without an exact observed route variant.');
   }

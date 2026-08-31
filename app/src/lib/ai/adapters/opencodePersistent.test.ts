@@ -852,6 +852,92 @@ describe('persistent OpenCode approval recovery', () => {
 });
 
 describe('persistent OpenCode live authority', () => {
+  it('preserves exact provider capability fields and combined effort/Fast variant semantics', () => {
+    const [model] = parseOpenCodeLiveModels({
+      providers: [
+        {
+          id: 'openai',
+          models: {
+            'gpt-5.6-sol': {
+              variants: { 'high-fast': {} },
+              supportsIndependentReasoningEffort: true,
+              serviceTiers: ['priority', 'fast', 'priority'],
+              supportsOpenCodeFastMode: true,
+            },
+          },
+        },
+      ],
+    });
+
+    expect(model).toMatchObject({
+      supportsIndependentReasoningEffort: true,
+      serviceTiers: ['priority', 'fast'],
+      supportsOpenCodeFastMode: true,
+      variants: [
+        {
+          id: 'high-fast',
+          kind: 'combined',
+          reasoningEffort: 'high',
+          fast: true,
+        },
+      ],
+    });
+  });
+
+  it('rejects malformed live capability claims and does not infer Fast from partial words', () => {
+    const [model] = parseOpenCodeLiveModels({
+      providers: [{ id: 'openai', models: { 'gpt-5.6-sol': { variants: { breakfast: {} } } } }],
+    });
+    expect(model.variants).toEqual([{ id: 'breakfast' }]);
+
+    expect(() =>
+      parseOpenCodeLiveModels({
+        providers: [{ id: 'openai', models: { 'gpt-5.6-sol': { serviceTiers: 'fast' } } }],
+      }),
+    ).toThrow(/malformed service tier metadata/u);
+    expect(() =>
+      parseOpenCodeLiveModels({
+        providers: [
+          {
+            id: 'openai',
+            models: { 'gpt-5.6-sol': { supportsOpenCodeFastMode: 'yes' } },
+          },
+        ],
+      }),
+    ).toThrow(/malformed supportsOpenCodeFastMode capability metadata/u);
+  });
+
+  it('publishes an exact observed combined variant instead of provider-default and standard', () => {
+    const [model] = parseOpenCodeLiveModels({
+      providers: [
+        {
+          id: 'openai',
+          models: { 'gpt-5.6-sol': { variants: { 'high-fast': {} } } },
+        },
+      ],
+    });
+    const authority = buildObservedOpenCodeGatewayAuthority({
+      connection: questionProviderRequest('gateway-combined-fast').connection,
+      model,
+      observed: { providerId: 'openai', modelId: 'gpt-5.6-sol', variant: 'high-fast' },
+      controls: {
+        connectionId: 'opencode-cli',
+        providerId: 'openai',
+        modelId: 'gpt-5.6-sol',
+        variant: 'high-fast',
+        performance: 'quality',
+        rlmEnabled: true,
+      },
+      catalogRevision: `sha256:${'e'.repeat(64)}`,
+    });
+
+    expect(authority.executionIdentity).toMatchObject({
+      effort: 'high',
+      fastVariant: 'high-fast',
+      observedProviderIdentity: 'openai/gpt-5.6-sol',
+    });
+  });
+
   it('derives a deterministic revision from the exact ordered connected catalog', async () => {
     const first = await openCodeCatalogRevision(liveModels);
     const same = await openCodeCatalogRevision(liveModels.map((model) => ({ ...model })));
