@@ -204,7 +204,7 @@ export function WorkbenchPage() {
       toast.warning('Could not add artifact', 'Panel limit reached.');
       return;
     }
-    updatePanel(id, { title: choice.title, status: 'ready' });
+    updatePanel(id, { status: 'ready' });
     flushPersistence();
     setArtifactPickerOpen(false);
   };

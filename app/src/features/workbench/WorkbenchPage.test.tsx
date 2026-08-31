@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkbenchPage } from './WorkbenchPage';
 import { useWorkbenchStore } from './store';
@@ -108,7 +108,9 @@ describe('WorkbenchPage', () => {
       preview: { kind: 'text', text: '# Design MD', truncated: false, sizeBytes: 11 },
     };
     vi.spyOn(jarvisArtifactRepo, 'listByAccount').mockResolvedValue([artifact]);
-    vi.spyOn(jarvisArtifactRepo, 'getById').mockResolvedValue(artifact);
+    vi.spyOn(jarvisArtifactRepo, 'getById').mockImplementation(async (accountId) =>
+      accountId === 'local-account' ? artifact : undefined,
+    );
 
     render(<WorkbenchPage />);
     fireEvent.click(screen.getByRole('button', { name: 'Add Artifact' }));
@@ -121,13 +123,24 @@ describe('WorkbenchPage', () => {
     expect(useWorkbenchStore.getState().panels.at(-1)).toEqual(
       expect.objectContaining({
         kind: 'artifact-reference',
-        title: 'Design MD',
+        title: 'Artifact reference',
         settings: {
           artifactId: 'jart_design-md',
           artifactDigest: 'a'.repeat(64),
         },
       }),
     );
+    expect(window.localStorage.getItem('vibespace-workbench:v1')).not.toContain('Design MD');
+
+    act(() => useAuthStore.setState({ localUserId: 'other-account' }));
+    await waitFor(() => {
+      expect(
+        screen
+          .getAllByRole('alert')
+          .some((alert) => /artifact preview unavailable/i.test(alert.textContent ?? '')),
+      ).toBe(true);
+    });
+    expect(screen.queryByText('Design MD')).toBeNull();
   });
 
   it('supports keyboard zoom and undo on the spatial canvas', () => {
