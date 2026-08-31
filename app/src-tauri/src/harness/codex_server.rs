@@ -337,15 +337,27 @@ impl RunningCodexServer {
         self.active_stream = None;
         self.receiver.take();
         self.stdin.take();
-        let result = self.process.stop();
-        if let Some(proxy) = self.proxy_process.as_mut() {
-            let _ = proxy.stop();
+        let process_result = self.process.stop();
+        let proxy_result = self
+            .proxy_process
+            .as_mut()
+            .map(OwnedProcessGuard::stop)
+            .unwrap_or(Ok(()));
+        if proxy_result.is_ok() {
+            self.proxy_process = None;
         }
-        self.proxy_process = None;
         self.reader_task.take();
         self.stderr_task.take();
-        self.stopped = true;
-        result
+        match (process_result, proxy_result) {
+            (Ok(()), Ok(())) => {
+                self.stopped = true;
+                Ok(())
+            }
+            (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+            (Err(_), Err(_)) => {
+                Err("Codex app-server and proxy processes could not be terminated.".to_string())
+            }
+        }
     }
 }
 
@@ -376,8 +388,8 @@ fn stop_running(
     if current.caller_label != caller_label || current.generation != generation {
         return Ok(false);
     }
-    let mut current = running.take().expect("checked above");
-    current.stop_owned()?;
+    running.as_mut().expect("checked above").stop_owned()?;
+    running.take();
     Ok(true)
 }
 
@@ -881,7 +893,7 @@ mod tests {
     use serde_json::json;
     use std::io::{BufReader, Cursor};
     use std::path::PathBuf;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
@@ -897,6 +909,27 @@ mod tests {
 
         fn terminate(&mut self) -> Result<(), String> {
             self.terminated.store(true, Ordering::Release);
+            Ok(())
+        }
+    }
+
+    #[derive(Debug)]
+    struct RetryableStopProcess {
+        attempts: Arc<AtomicUsize>,
+        failures_remaining: usize,
+    }
+
+    impl OwnedCodexProcess for RetryableStopProcess {
+        fn has_exited(&mut self) -> Result<bool, String> {
+            Ok(false)
+        }
+
+        fn terminate(&mut self) -> Result<(), String> {
+            self.attempts.fetch_add(1, Ordering::AcqRel);
+            if self.failures_remaining > 0 {
+                self.failures_remaining -= 1;
+                return Err("injected termination failure".to_string());
+            }
             Ok(())
         }
     }
@@ -1028,6 +1061,48 @@ mod tests {
         assert!(terminated.load(Ordering::Acquire));
         assert!(running.is_none());
         assert!(!stop_running(&mut running, "main", "codex-generation-01").unwrap());
+    }
+
+    #[test]
+    fn failed_codex_stop_retains_ownership_and_retries_before_removal() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let mut running = Some(RunningCodexServer::new_for_test(
+            "cli-executable-0000000000000001",
+            "main",
+            "chat_session-01",
+            "codex-generation-01",
+            Box::new(RetryableStopProcess {
+                attempts: attempts.clone(),
+                failures_remaining: 1,
+            }),
+        ));
+
+        assert!(stop_running(&mut running, "main", "codex-generation-01").is_err());
+        assert!(running.is_some());
+        assert_eq!(attempts.load(Ordering::Acquire), 1);
+        assert!(stop_running(&mut running, "main", "codex-generation-01").unwrap());
+        assert!(running.is_none());
+        assert_eq!(attempts.load(Ordering::Acquire), 2);
+    }
+
+    #[test]
+    fn failed_proxy_stop_retains_ownership_and_retries_before_removal() {
+        let codex_terminated = Arc::new(AtomicBool::new(false));
+        let proxy_attempts = Arc::new(AtomicUsize::new(0));
+        let mut server = running_fixture(codex_terminated.clone());
+        server.proxy_process = Some(OwnedProcessGuard::new(Box::new(RetryableStopProcess {
+            attempts: proxy_attempts.clone(),
+            failures_remaining: 1,
+        })));
+        let mut running = Some(server);
+
+        assert!(stop_running(&mut running, "main", "codex-generation-01").is_err());
+        assert!(running.is_some());
+        assert!(codex_terminated.load(Ordering::Acquire));
+        assert_eq!(proxy_attempts.load(Ordering::Acquire), 1);
+        assert!(stop_running(&mut running, "main", "codex-generation-01").unwrap());
+        assert!(running.is_none());
+        assert_eq!(proxy_attempts.load(Ordering::Acquire), 2);
     }
 
     #[test]

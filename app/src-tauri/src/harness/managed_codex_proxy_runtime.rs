@@ -1,10 +1,11 @@
+use crate::harness::managed_cli_manifest::{embedded_managed_release, ManagedCliKind};
+use crate::harness::managed_cli_runtime::{inspect_managed_runtime, ManagedCliReadiness};
 use crate::harness::managed_codex_proxy_profile::ManagedCodexProxyProfile;
-use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 const REVIEWED_OPENCODEX_VERSION: &str = "2.36.0";
-const SOURCE_ENTRYPOINT: &str = "src/cli/index.ts";
+const SOURCE_ENTRYPOINT: &str = "node_modules/@bitkyc08/opencodex/src/cli/index.ts";
 const BUN_ENTRYPOINT: &str = "node_modules/@oven/bun-windows-x64/bin/bun.exe";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,67 +33,48 @@ pub enum ManagedCodexProxyRuntimeError {
     Disk,
 }
 
-fn regular_file_within(root: &Path, relative: &str) -> Option<PathBuf> {
-    let canonical_root = fs::canonicalize(root).ok()?;
-    let candidate = root.join(relative);
-    let metadata = fs::symlink_metadata(&candidate).ok()?;
-    if !metadata.is_file() || metadata.file_type().is_symlink() {
-        return None;
-    }
-    let canonical = fs::canonicalize(&candidate).ok()?;
-    canonical.starts_with(canonical_root).then_some(canonical)
-}
-
-fn inspect_runtime_root(
-    root: &Path,
+fn runtime_from_attested_readiness(
+    readiness: ManagedCliReadiness,
 ) -> Result<ReviewedOpenCodexRuntime, ManagedCodexProxyRuntimeError> {
-    let package_path = regular_file_within(root, "package.json")
-        .ok_or(ManagedCodexProxyRuntimeError::RuntimeUnavailable)?;
-    let package: Value = serde_json::from_slice(
-        &fs::read(package_path).map_err(|_| ManagedCodexProxyRuntimeError::RuntimeUnavailable)?,
-    )
-    .map_err(|_| ManagedCodexProxyRuntimeError::RuntimeUnreviewed)?;
-    if package.get("name").and_then(Value::as_str) != Some("@bitkyc08/opencodex")
-        || package.get("version").and_then(Value::as_str) != Some(REVIEWED_OPENCODEX_VERSION)
-    {
-        return Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed);
+    match readiness {
+        ManagedCliReadiness::Missing => Err(ManagedCodexProxyRuntimeError::RuntimeUnavailable),
+        ManagedCliReadiness::Incomplete { .. } | ManagedCliReadiness::Ready { .. } => {
+            Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed)
+        }
+        ManagedCliReadiness::ProbeRequired { launch, .. } => {
+            if launch.arguments.len() != 3
+                || launch.arguments[1] != "ready"
+                || launch.arguments[2] != "--json"
+                || !launch.executable.ends_with(BUN_ENTRYPOINT)
+            {
+                return Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed);
+            }
+            let source_entrypoint = PathBuf::from(&launch.arguments[0]);
+            if !source_entrypoint.ends_with(SOURCE_ENTRYPOINT) {
+                return Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed);
+            }
+            Ok(ReviewedOpenCodexRuntime {
+                bun_executable: launch.executable,
+                source_entrypoint,
+                version: REVIEWED_OPENCODEX_VERSION.to_string(),
+            })
+        }
     }
-    let bun_executable = regular_file_within(root, BUN_ENTRYPOINT)
-        .ok_or(ManagedCodexProxyRuntimeError::RuntimeUnavailable)?;
-    if !bun_executable
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.eq_ignore_ascii_case("bun.exe"))
-    {
-        return Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed);
-    }
-    let source_entrypoint = regular_file_within(root, SOURCE_ENTRYPOINT)
-        .ok_or(ManagedCodexProxyRuntimeError::RuntimeUnavailable)?;
-    Ok(ReviewedOpenCodexRuntime {
-        bun_executable,
-        source_entrypoint,
-        version: REVIEWED_OPENCODEX_VERSION.to_string(),
-    })
 }
 
 pub fn resolve_reviewed_opencodex_runtime(
     managed_base: &Path,
-    roaming_app_data: Option<&Path>,
+    _roaming_app_data: Option<&Path>,
 ) -> Result<ReviewedOpenCodexRuntime, ManagedCodexProxyRuntimeError> {
-    let managed = managed_base
-        .join("opencodex/versions")
-        .join(REVIEWED_OPENCODEX_VERSION);
-    match inspect_runtime_root(&managed) {
-        Ok(runtime) => return Ok(runtime),
-        Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed) => {
-            return Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed)
-        }
-        Err(_) => {}
+    let release = embedded_managed_release(ManagedCliKind::OpenCodex, "windows", "x86_64")
+        .map_err(|_| ManagedCodexProxyRuntimeError::RuntimeUnreviewed)?;
+    if release.version != REVIEWED_OPENCODEX_VERSION {
+        return Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed);
     }
-    let Some(roaming) = roaming_app_data else {
-        return Err(ManagedCodexProxyRuntimeError::RuntimeUnavailable);
-    };
-    inspect_runtime_root(&roaming.join("npm/node_modules").join("@bitkyc08/opencodex"))
+    runtime_from_attested_readiness(inspect_managed_runtime(
+        &managed_base.join("opencodex"),
+        &release,
+    ))
 }
 
 fn ensure_owned_directory(path: &Path) -> Result<(), ManagedCodexProxyRuntimeError> {
@@ -171,11 +153,11 @@ mod tests {
         ))
     }
 
-    fn fake_runtime(root: &Path, version: &str) {
-        fs::create_dir_all(root.join("src/cli")).unwrap();
+    fn metadata_only_runtime(root: &Path, version: &str) {
+        fs::create_dir_all(root.join(SOURCE_ENTRYPOINT).parent().unwrap()).unwrap();
         fs::create_dir_all(root.join("node_modules/@oven/bun-windows-x64/bin")).unwrap();
         fs::write(
-            root.join("package.json"),
+            root.join("node_modules/@bitkyc08/opencodex/package.json"),
             format!(r#"{{"name":"@bitkyc08/opencodex","version":"{version}"}}"#),
         )
         .unwrap();
@@ -184,25 +166,68 @@ mod tests {
     }
 
     #[test]
-    fn exact_managed_runtime_wins_and_wrong_version_fails_closed() {
+    fn metadata_only_or_byte_mutated_managed_runtime_fails_closed() {
         let fixture = temp_root("resolve");
         let managed = fixture
             .join("managed/opencodex/versions")
             .join(REVIEWED_OPENCODEX_VERSION);
-        fake_runtime(&managed, REVIEWED_OPENCODEX_VERSION);
-        let runtime = resolve_reviewed_opencodex_runtime(&fixture.join("managed"), None)
-            .expect("reviewed runtime");
-        assert!(runtime.bun_executable.ends_with(BUN_ENTRYPOINT));
-        fs::write(
-            managed.join("package.json"),
-            r#"{"name":"@bitkyc08/opencodex","version":"99.0.0"}"#,
-        )
-        .unwrap();
+        metadata_only_runtime(&managed, REVIEWED_OPENCODEX_VERSION);
+        assert_eq!(
+            resolve_reviewed_opencodex_runtime(&fixture.join("managed"), None).err(),
+            Some(ManagedCodexProxyRuntimeError::RuntimeUnreviewed)
+        );
+        fs::write(managed.join(BUN_ENTRYPOINT), b"mutated bun").unwrap();
+        assert_eq!(
+            resolve_reviewed_opencodex_runtime(&fixture.join("managed"), None).err(),
+            Some(ManagedCodexProxyRuntimeError::RuntimeUnreviewed)
+        );
+        fs::write(managed.join(BUN_ENTRYPOINT), b"bun").unwrap();
+        fs::write(managed.join(SOURCE_ENTRYPOINT), b"mutated source").unwrap();
         assert_eq!(
             resolve_reviewed_opencodex_runtime(&fixture.join("managed"), None).err(),
             Some(ManagedCodexProxyRuntimeError::RuntimeUnreviewed)
         );
         fs::remove_dir_all(fixture).unwrap();
+    }
+
+    #[test]
+    fn roaming_package_metadata_never_attests_a_runtime() {
+        let fixture = temp_root("roaming-metadata");
+        let roaming = fixture.join("roaming/npm/node_modules/@bitkyc08/opencodex");
+        metadata_only_runtime(&roaming, REVIEWED_OPENCODEX_VERSION);
+
+        assert_eq!(
+            resolve_reviewed_opencodex_runtime(
+                &fixture.join("managed"),
+                Some(&fixture.join("roaming")),
+            )
+            .err(),
+            Some(ManagedCodexProxyRuntimeError::RuntimeUnavailable)
+        );
+        fs::remove_dir_all(fixture).unwrap();
+    }
+
+    #[test]
+    fn installer_attested_probe_plan_maps_to_the_reviewed_runtime() {
+        let root = temp_root("attested-plan");
+        let bun = root.join(BUN_ENTRYPOINT);
+        let source = root.join(SOURCE_ENTRYPOINT);
+        let runtime = runtime_from_attested_readiness(ManagedCliReadiness::ProbeRequired {
+            launch: crate::harness::managed_cli_runtime::ManagedCliLaunch {
+                executable: bun.clone(),
+                arguments: vec![
+                    source.to_string_lossy().into_owned(),
+                    "ready".to_string(),
+                    "--json".to_string(),
+                ],
+            },
+            dependency_lock_sha256: "a".repeat(64),
+        })
+        .expect("attested runtime projection");
+
+        assert_eq!(runtime.bun_executable, bun);
+        assert_eq!(runtime.source_entrypoint, source);
+        assert_eq!(runtime.version, REVIEWED_OPENCODEX_VERSION);
     }
 
     #[test]
