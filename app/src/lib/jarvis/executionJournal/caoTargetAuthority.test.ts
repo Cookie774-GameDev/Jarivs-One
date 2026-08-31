@@ -1352,6 +1352,96 @@ describe('CAO explicit target authority', () => {
     expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
   });
 
+  it('rejects a dependency-returned different run ID before acquisition can claim targets', async () => {
+    const h = harness();
+    h.setRun(run({ id: 'jrun-other' }));
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow(/^cao_run_not_authorized$/);
+    expect(h.registry.claimExact).not.toHaveBeenCalled();
+    expect(h.deps.journal.appendEvent).not.toHaveBeenCalled();
+  });
+
+  it('revokes exact persisted authority when restart recovery receives a different run ID', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.setRun(run({ id: 'jrun-other' }));
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_run_not_authorized$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('reconciles ambiguous cleanup before reporting a recovered different run ID', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.setRun(run({ id: 'jrun-other' }));
+    vi.mocked(h.registry.releaseExact).mockImplementationOnce(async () => {
+      h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: undefined });
+      throw new Error('private mismatched-run cleanup transport payload');
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_run_not_authorized$/);
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('reports registry unavailability when different-run cleanup retains ownership', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.setRun(run({ id: 'jrun-other' }));
+    vi.mocked(h.registry.releaseExact).mockRejectedValueOnce(
+      new Error('private mismatched-run cleanup failure payload'),
+    );
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_registry_unavailable$/);
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
+  it('reports journal unavailability before different-run cleanup can resolve its lease', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.setRun(run({ id: 'jrun-other' }));
+    h.deps.events.listByRun.mockRejectedValueOnce(
+      new Error('private mismatched-run recovery journal payload'),
+    );
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow(/^cao_target_journal_unavailable$/);
+    expect(h.registry.releaseExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
+
   it('reconciles ambiguous cleanup before reporting recovered run scope drift', async () => {
     const h = harness();
     const acquired = await createCaoTargetAuthority(h.deps).acquire({

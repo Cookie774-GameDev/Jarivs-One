@@ -134,6 +134,7 @@ function assertRunIdentity(
   scope: LeaseScope,
 ): asserts run is JarvisRun {
   if (!run) fail('cao_run_missing');
+  if (run.id !== scope.runId) fail('cao_run_not_authorized');
   if (
     run.accountId !== scope.accountId ||
     run.workspaceId !== scope.workspaceId ||
