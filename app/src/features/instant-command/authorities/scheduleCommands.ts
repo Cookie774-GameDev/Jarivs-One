@@ -1,5 +1,10 @@
 import type { InstantResult } from '../types';
 
+const MAX_SCHEDULES = 1_000;
+const MAX_BINDING_LENGTH = 200;
+const MAX_COMMAND_ID_LENGTH = 64;
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/u;
+
 export type VersionedEntity = Readonly<{ id: string; name: string; revision: number }>;
 export type VersionedEntitySelector = Readonly<{
   id?: string;
@@ -15,21 +20,27 @@ export function resolveVersionedEntity<T extends VersionedEntity>(
   | Readonly<{ status: 'missing' }>
   | Readonly<{ status: 'ambiguous'; candidateIds: readonly string[] }>
   | Readonly<{ status: 'stale'; actualRevision: number }> {
+  if (!validEntitySnapshot(entities) || !selectorIsBounded(selector)) {
+    return Object.freeze({ status: 'missing' });
+  }
   let matches: readonly T[] = [];
   if (selector.id) matches = entities.filter((entity) => entity.id === selector.id);
   else if (selector.name) {
     const normalized = selector.name.trim().toLocaleLowerCase();
     matches = entities.filter((entity) => entity.name.trim().toLocaleLowerCase() === normalized);
   }
-  if (matches.length === 0) return { status: 'missing' };
+  if (matches.length === 0) return Object.freeze({ status: 'missing' });
   if (matches.length > 1) {
-    return { status: 'ambiguous', candidateIds: matches.map((entity) => entity.id) };
+    return Object.freeze({
+      status: 'ambiguous',
+      candidateIds: Object.freeze([...new Set(matches.map((entity) => entity.id))].sort()),
+    });
   }
-  const entity = matches[0]!;
+  const entity = Object.freeze({ ...matches[0]! }) as T;
   if (selector.expectedRevision !== undefined && selector.expectedRevision !== entity.revision) {
-    return { status: 'stale', actualRevision: entity.revision };
+    return Object.freeze({ status: 'stale', actualRevision: entity.revision });
   }
-  return { status: 'resolved', entity };
+  return Object.freeze({ status: 'resolved', entity });
 }
 
 type ScheduleMutation = 'pause' | 'resume' | 'enable' | 'disable';
@@ -63,15 +74,58 @@ const MUTATION_BY_ID: Readonly<Record<string, ScheduleMutation>> = Object.freeze
   'schedule.enable': 'enable',
   'schedule.disable': 'disable',
 });
+const ALLOWED_COMMANDS = new Set([
+  'schedule.list',
+  'schedule.open',
+  'schedule.pause',
+  'schedule.resume',
+  'schedule.enable',
+  'schedule.disable',
+  'schedule.run_now',
+]);
+
+function boundedString(value: unknown, maximumLength = MAX_BINDING_LENGTH): value is string {
+  return (
+    typeof value === 'string' &&
+    value.trim().length > 0 &&
+    value.trim().length <= maximumLength &&
+    !CONTROL_CHARACTERS.test(value)
+  );
+}
+
+function validRevision(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function validEntitySnapshot(entities: unknown): entities is readonly VersionedEntity[] {
+  return (
+    Array.isArray(entities) &&
+    entities.length <= MAX_SCHEDULES &&
+    entities.every(
+      (entity) =>
+        entity !== null &&
+        typeof entity === 'object' &&
+        boundedString((entity as VersionedEntity).id) &&
+        boundedString((entity as VersionedEntity).name) &&
+        validRevision((entity as VersionedEntity).revision),
+    )
+  );
+}
 
 function selectorIsBounded(selector: VersionedEntitySelector | undefined): boolean {
   if (!selector || (!selector.id && !selector.name)) return false;
-  return [selector.id, selector.name].every(
-    (value) =>
-      value === undefined ||
-      (value.trim().length > 0 &&
-        value.trim().length <= 200 &&
-        !/[\u0000-\u001f\u007f]/u.test(value)),
+  return (
+    [selector.id, selector.name].every((value) => value === undefined || boundedString(value)) &&
+    (selector.expectedRevision === undefined || validRevision(selector.expectedRevision))
+  );
+}
+
+function validRecurrenceState(value: unknown): value is RecurrenceState {
+  if (!value || typeof value !== 'object') return false;
+  const state = value as Partial<RecurrenceState>;
+  return (
+    (state.recurrenceAnchor === null || boundedString(state.recurrenceAnchor)) &&
+    validRevision(state.occurrenceCount)
   );
 }
 
@@ -90,8 +144,14 @@ export async function executeScheduleCommand<T extends VersionedEntity>(
   port: ScheduleCommandPort<T>,
 ): Promise<InstantResult> {
   try {
+    if (!boundedString(request.id, MAX_COMMAND_ID_LENGTH) || !ALLOWED_COMMANDS.has(request.id)) {
+      return { ok: false, code: 'queue_failed', message: 'Unknown schedule command.' };
+    }
     if (request.id === 'schedule.list') {
       const entities = await port.list();
+      if (!validEntitySnapshot(entities)) {
+        return { ok: false, code: 'queue_failed', message: 'Schedule registry is unavailable.' };
+      }
       return { ok: true, code: 'opened', message: `${entities.length} schedules.` };
     }
     if (!selectorIsBounded(request.selector)) return resolutionFailure('missing');
@@ -116,6 +176,17 @@ export async function executeScheduleCommand<T extends VersionedEntity>(
       const observation = await port.runNow(entity.id, entity.revision, {
         preserveRecurrence: true,
       });
+      if (
+        !observation ||
+        !validRecurrenceState(observation.before) ||
+        !validRecurrenceState(observation.after)
+      ) {
+        return {
+          ok: false,
+          code: 'queue_failed',
+          message: 'Schedule run state is invalid.',
+        };
+      }
       if (
         observation.before.recurrenceAnchor !== observation.after.recurrenceAnchor ||
         observation.before.occurrenceCount !== observation.after.occurrenceCount
