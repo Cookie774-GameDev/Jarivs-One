@@ -2,6 +2,8 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PluginDashboardPanel } from './PluginDashboardPanel';
 
+const { requestOpenMcpManager } = vi.hoisted(() => ({ requestOpenMcpManager: vi.fn() }));
+
 type TestConnection = {
   accountId: string;
   pluginId: string;
@@ -27,7 +29,10 @@ vi.mock('@/features/plugins', () => ({
     id: 'github',
     name: 'GitHub',
     description: 'Repository context.',
-    tools: [{ name: 'repository_context' }],
+    tools: [
+      { name: 'repository_context', description: 'Read repository context.', readOnly: true },
+      { name: 'issue_create', description: 'Create an issue.', readOnly: false },
+    ],
     docsUrl: 'https://docs.github.com',
   }),
   PluginLogo: () => <span aria-hidden="true" />,
@@ -44,11 +49,13 @@ vi.mock('@/stores/auth', () => ({
 }));
 
 vi.mock('@/lib/tauri', () => ({ openExternal: vi.fn() }));
+vi.mock('@/features/plugins/openMcpManager', () => ({ requestOpenMcpManager }));
 
 describe('PluginDashboardPanel', () => {
   beforeEach(() => {
     connection.state = 'not_connected';
     connection.enabled = true;
+    requestOpenMcpManager.mockReset();
   });
 
   it('does not claim agent access for a disconnected saved connection', () => {
@@ -56,6 +63,7 @@ describe('PluginDashboardPanel', () => {
 
     expect(screen.getByText('Agent access')).toBeTruthy();
     expect(screen.getByText('Connection required')).toBeTruthy();
+    expect(screen.getByText('0')).toBeTruthy();
     expect(screen.queryByText('Enabled')).toBeNull();
   });
 
@@ -67,5 +75,29 @@ describe('PluginDashboardPanel', () => {
 
     expect(screen.getByText('Agent access')).toBeTruthy();
     expect(screen.getByText('Enabled')).toBeTruthy();
+    expect(screen.getByText('2')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /in Plugins|agent access/u })).toBeNull();
+  });
+
+  it('routes disconnected and disabled panels to the canonical Plugins authority', () => {
+    const { rerender } = render(<PluginDashboardPanel pluginId="github" />);
+
+    screen.getByRole('button', { name: 'Connect GitHub in Plugins' }).click();
+    expect(requestOpenMcpManager).toHaveBeenCalledOnce();
+
+    connection.state = 'connected';
+    connection.enabled = false;
+    rerender(<PluginDashboardPanel pluginId="github" />);
+    screen.getByRole('button', { name: 'Manage GitHub agent access' }).click();
+    expect(requestOpenMcpManager).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows bounded declared tool identities without implying unavailable access', () => {
+    render(<PluginDashboardPanel pluginId="github" />);
+
+    expect(screen.getByText('repository_context')).toBeTruthy();
+    expect(screen.getByText('issue_create')).toBeTruthy();
+    expect(screen.getByText('Connection required')).toBeTruthy();
+    expect(screen.queryByText('Tool access ready')).toBeNull();
   });
 });
