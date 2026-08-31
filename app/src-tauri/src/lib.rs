@@ -490,6 +490,7 @@ fn run_ordinary(
             }
             // Restore pet window geometry from disk.
             {
+                pets::materialize_detached_pet_hosts(app);
                 let geo = pets::load_geometry(&app.handle());
                 if let Ok(mut g) = app.state::<pets::PetWindowState>().geometry.lock() {
                     *g = geo;
