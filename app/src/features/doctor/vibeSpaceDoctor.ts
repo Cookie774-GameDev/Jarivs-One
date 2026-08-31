@@ -18,6 +18,7 @@ import { productionRlmContextTool } from '@/features/context/contextRlmProductio
 import { getProductionSiyuanRlmPort } from '@/features/context/siyuanRlmProduction';
 import { useDevConsoleStore, type DevLogEntry } from '@/features/dev-console/store';
 import { runDefaultPlaywrightFeaturePackDoctorCheck } from './playwrightFeaturePackBridge';
+import { codexRuntimeManager, type CodexRuntimeState } from '@/lib/harness/codexRuntimeManager';
 
 const OPENCODE_SETTLE_TIMEOUT_MS = 20_000;
 
@@ -39,6 +40,7 @@ export interface VibeSpaceDoctorDependencies {
   readonly getOpenCodeState: () => HarnessRuntimeState;
   readonly getOpenCodeConnection: () => OpenCodeServerConnection | undefined;
   readonly waitForOpenCodeSettled: () => Promise<void>;
+  readonly inspectCodexRuntime: () => Promise<CodexRuntimeState>;
   readonly refreshOpenCodeProvider: () => Promise<VibeSpaceDoctorSubsystemCheck>;
   readonly refreshContextBindings: () => Promise<readonly VibeSpaceDoctorSubsystemCheck[]>;
   readonly checkPlaywrightFeaturePack: () => Promise<VibeSpaceDoctorSubsystemCheck>;
@@ -46,6 +48,38 @@ export interface VibeSpaceDoctorDependencies {
   readonly captureProtectedRouteState: () => string;
   readonly runAdditionalChecks: () => Promise<readonly VibeSpaceDoctorSubsystemCheck[]>;
   readonly now: () => number;
+}
+
+export function summarizeCodexRuntime(state: CodexRuntimeState): VibeSpaceDoctorSubsystemCheck {
+  if (state.kind === 'ready') {
+    return {
+      label: 'Codex tools',
+      ok: true,
+      detail: `Ready · Codex ${state.codexVersion} · OpenCodex ${state.openCodexVersion}`,
+    };
+  }
+  if (state.kind === 'missing') {
+    return {
+      label: 'Codex tools',
+      ok: false,
+      detail: 'Not installed; explicit approval required · codex_runtime_missing',
+    };
+  }
+  if (state.kind === 'incomplete') {
+    return {
+      label: 'Codex tools',
+      ok: false,
+      detail: 'Needs attention · codex_runtime_incomplete',
+    };
+  }
+  if (state.kind === 'failed') {
+    return {
+      label: 'Codex tools',
+      ok: false,
+      detail: 'Check failed safely · codex_runtime_failed',
+    };
+  }
+  return { label: 'Codex tools', ok: false, detail: `Not settled · codex_runtime_${state.kind}` };
 }
 
 const RECENT_HEALTH_WINDOW_MS = 15 * 60 * 1000;
@@ -353,6 +387,11 @@ export async function runVibeSpaceDoctorWithDependencies(
   if (!dependencies.nativeRuntime) {
     openCode = { ok: false, text: 'Native check unavailable in browser preview' };
     runtimeChecks.push({
+      label: 'Codex tools',
+      ok: false,
+      detail: 'Native check unavailable in browser preview',
+    });
+    runtimeChecks.push({
       label: 'RLM / SiYuan',
       ok: false,
       detail: 'Native check unavailable in browser preview',
@@ -363,6 +402,15 @@ export async function runVibeSpaceDoctorWithDependencies(
       detail: 'Native check unavailable in browser preview',
     });
   } else {
+    try {
+      runtimeChecks.push(summarizeCodexRuntime(await dependencies.inspectCodexRuntime()));
+    } catch {
+      runtimeChecks.push({
+        label: 'Codex tools',
+        ok: false,
+        detail: 'Check failed safely · codex_runtime_unavailable',
+      });
+    }
     try {
       await dependencies.refreshOpenCode();
       await dependencies.waitForOpenCodeSettled();
@@ -480,6 +528,10 @@ export function runVibeSpaceDoctor(): Promise<VibeSpaceDoctorReport> {
     getOpenCodeState: () => harnessRuntimeManager.getSnapshot(),
     getOpenCodeConnection: () => harnessRuntimeManager.getConnection(),
     waitForOpenCodeSettled: () => waitForOpenCodeSettled(harnessRuntimeManager),
+    inspectCodexRuntime: async () => {
+      await codexRuntimeManager.refresh();
+      return codexRuntimeManager.getSnapshot();
+    },
     refreshOpenCodeProvider: refreshDefaultOpenCodeProvider,
     refreshContextBindings: refreshDefaultContextBindings,
     checkPlaywrightFeaturePack: runDefaultPlaywrightFeaturePackDoctorCheck,

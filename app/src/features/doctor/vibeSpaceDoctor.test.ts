@@ -5,6 +5,7 @@ import {
   refreshDoctorContextBindings,
   runVibeSpaceDoctorWithDependencies,
   summarizeOpenCodeProviderRecord,
+  summarizeCodexRuntime,
   type VibeSpaceDoctorDependencies,
 } from './vibeSpaceDoctor';
 
@@ -24,6 +25,12 @@ function dependencies(
       generation: 'opencode-server-test',
     }),
     waitForOpenCodeSettled: vi.fn().mockResolvedValue(undefined),
+    inspectCodexRuntime: vi.fn().mockResolvedValue({
+      kind: 'ready',
+      codexVersion: '0.151.0',
+      openCodexVersion: '5.0.0',
+      executableId: 'cli-executable-test',
+    }),
     refreshOpenCodeProvider: vi
       .fn()
       .mockResolvedValue({ label: 'OpenCode provider', ok: true, detail: 'Authenticated' }),
@@ -45,6 +52,18 @@ function dependencies(
 }
 
 describe('VibeSpace slash Doctor', () => {
+  it('reports managed Codex truth read-only and never exposes an install action', async () => {
+    const inspectCodexRuntime = vi.fn().mockResolvedValue({ kind: 'missing' });
+    const report = await runVibeSpaceDoctorWithDependencies(dependencies({ inspectCodexRuntime }));
+
+    expect(inspectCodexRuntime).toHaveBeenCalledOnce();
+    expect(report.ok).toBe(false);
+    expect(report.text).toContain('Codex tools — Not installed; explicit approval required');
+    expect(report.text).not.toMatch(/installed successfully|auto.?install/iu);
+    expect(
+      summarizeCodexRuntime({ kind: 'incomplete', reason: 'private path' }).detail,
+    ).not.toContain('private path');
+  });
   it('includes truthful Playwright external prerequisites without claiming repair', async () => {
     const checkPlaywrightFeaturePack = vi.fn().mockResolvedValue({
       label: 'Playwright acceptance runtime',

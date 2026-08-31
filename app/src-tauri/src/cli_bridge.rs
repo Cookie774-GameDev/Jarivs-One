@@ -156,7 +156,7 @@ impl Drop for ActiveRequestGuard {
 }
 
 impl CliBridgeState {
-    fn register_trusted_executable(
+    pub(crate) fn register_trusted_executable(
         &self,
         canonical_path: PathBuf,
         requested_name: Option<String>,

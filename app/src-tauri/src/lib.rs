@@ -436,6 +436,7 @@ fn run_ordinary(
         .manage(harness::download::OpenCodeDownloadState::default())
         .manage(harness::server::OpenCodeServerState::default())
         .manage(harness::codex_server::CodexAppServerState::default())
+        .manage(harness::managed_codex_install::ManagedCodexInstallState::default())
         .manage(harness::tool_gateway::ToolGatewayState::default())
         .manage(cli_bridge::CliBridgeState::default())
         .manage(kernel_host::KernelHostState::default())
@@ -695,6 +696,9 @@ fn run_ordinary(
             harness::codex_server::codex_app_server_stream,
             harness::codex_server::codex_app_server_write,
             harness::codex_server::codex_app_server_stop,
+            harness::managed_codex_install::managed_codex_runtime_detect,
+            harness::managed_codex_install::managed_codex_runtime_install,
+            harness::managed_codex_install::managed_codex_runtime_install_cancel,
             harness::tool_gateway::tool_gateway_respond,
             command_center_tool::command_center_tool,
             terminal_peer_fabric::terminal_peer_fabric,
@@ -1316,12 +1320,20 @@ wallpaper_master::wallpaper_full_cache_path";
         let ordinary = function_source(source, "fn run_ordinary(", "#[cfg(test)]");
 
         assert!(!visual_test.contains("CodexAppServerState"));
+        assert!(!visual_test.contains("ManagedCodexInstallState"));
         assert!(!visual_test.contains("codex_app_server_start"));
         assert!(ordinary.contains(".manage(harness::codex_server::CodexAppServerState::default())"));
+        assert!(ordinary.contains(
+            ".manage(harness::managed_codex_install::ManagedCodexInstallState::default())"
+        ));
         assert!(ordinary.contains("harness::codex_server::codex_app_server_start,"));
         assert!(ordinary.contains("harness::codex_server::codex_app_server_stream,"));
         assert!(ordinary.contains("harness::codex_server::codex_app_server_write,"));
         assert!(ordinary.contains("harness::codex_server::codex_app_server_stop,"));
+        assert!(ordinary.contains("harness::managed_codex_install::managed_codex_runtime_detect,"));
+        assert!(ordinary.contains("harness::managed_codex_install::managed_codex_runtime_install,"));
+        assert!(ordinary
+            .contains("harness::managed_codex_install::managed_codex_runtime_install_cancel,"));
         assert!(ordinary.contains("harness::codex_server::shutdown_owned_server(app_handle);"));
     }
 
