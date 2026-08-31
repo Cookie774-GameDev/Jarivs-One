@@ -127,4 +127,64 @@ describe('buildLiveTargetSnapshot', () => {
       }),
     ).toEqual([]);
   });
+
+  it.each([
+    null,
+    {},
+    [null],
+    [native('tty-a'), ...Array.from({ length: 1_024 }, (_, index) => native(`tty-${index}`))],
+  ])('fails closed on malformed or unbounded native session registries', (nativeSessions) => {
+    const tree = fromLeaves([
+      { ...newLeaf(), kind: 'leaf', id: 'pane-a', sessionId: 'tty-a', command: 'codex' },
+    ]);
+    expect(
+      buildLiveTargetSnapshot({
+        projectId: 'project-a',
+        tree,
+        transcripts: { 'tty-a': transcript('tty-a', 'pane-a', 'codex') },
+        nativeSessions: nativeSessions as never,
+      }),
+    ).toEqual([]);
+  });
+
+  it('contains corrupt transcript rows and bounded stable identifiers', () => {
+    const tree = fromLeaves([
+      { ...newLeaf(), kind: 'leaf', id: 'pane-a', sessionId: 'tty-a', command: 'codex' },
+    ]);
+    expect(
+      buildLiveTargetSnapshot({
+        projectId: 'project-a',
+        tree,
+        transcripts: { corrupt: null } as never,
+        nativeSessions: [native('tty-a')],
+      }),
+    ).toEqual([]);
+    expect(
+      buildLiveTargetSnapshot({
+        projectId: 'project-a',
+        tree,
+        transcripts: { 'tty-a': transcript('tty-a', 'pane-a', 'codex') },
+        nativeSessions: [{ ...native('tty-a'), processInstanceId: `process-${'x'.repeat(256)}` }],
+      }),
+    ).toEqual([]);
+  });
+
+  it('returns frozen target snapshots detached from mutable native input', () => {
+    const tree = fromLeaves([
+      { ...newLeaf(), kind: 'leaf', id: 'pane-a', sessionId: 'tty-a', command: 'codex' },
+    ]);
+    const nativeSession = native('tty-a');
+    const snapshot = buildLiveTargetSnapshot({
+      projectId: 'project-a',
+      tree,
+      transcripts: { 'tty-a': transcript('tty-a', 'pane-a', 'codex') },
+      nativeSessions: [nativeSession],
+    });
+
+    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(Object.isFrozen(snapshot[0])).toBe(true);
+    expect(Object.isFrozen(snapshot[0]?.processIdentity)).toBe(true);
+    nativeSession.processInstanceId = 'changed-later';
+    expect(snapshot[0]?.processIdentity.processInstanceId).toBe('process-tty-a');
+  });
 });
