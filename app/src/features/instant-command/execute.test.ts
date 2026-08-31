@@ -354,4 +354,35 @@ describe('executeInstantCommandWithReceipt', () => {
     });
     expect(JSON.stringify(receipt)).not.toContain('audit');
   });
+
+  it('returns a truthful bounded confirmation receipt for a confirmation-gated authority', async () => {
+    const h = dependencies();
+    const deps: InstantCommandDependencies = {
+      ...h.deps,
+      executeTerminal: vi.fn(async () => ({
+        ok: false as const,
+        code: 'confirmation_required' as const,
+        message: 'Confirm closing this exact terminal.',
+      })),
+    };
+    const receipt = await executeInstantCommandWithReceipt(
+      {
+        kind: 'catalog',
+        id: 'terminal.close',
+        family: 'terminal',
+        authority: 'terminal.lifecycle',
+        safety: 'confirm',
+        slots: { selector: { sessionId: 'tty-codex' } },
+      },
+      context,
+      deps,
+      new InstantCommandLedger(),
+    );
+
+    expect(receipt).toMatchObject({
+      commandId: 'terminal.close',
+      status: 'needs_confirmation',
+      followUp: { kind: 'confirmation', prompt: 'Confirm closing this exact terminal.' },
+    });
+  });
 });

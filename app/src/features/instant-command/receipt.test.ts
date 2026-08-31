@@ -81,4 +81,39 @@ describe('createInstantCommandReceipt', () => {
       }),
     ).toThrow(/prompt/i);
   });
+
+  it('rejects invalid runtime status and non-integer or unsafe accepted times', () => {
+    const base = {
+      commandId: 'terminal.close',
+      correlationId: 'corr-1',
+      status: 'queued' as const,
+      targetIds: [],
+    };
+    expect(() =>
+      createInstantCommandReceipt({
+        ...base,
+        status: 'success' as typeof base.status,
+        acceptedAtMs: 1,
+      }),
+    ).toThrow(/status/i);
+    expect(() => createInstantCommandReceipt({ ...base, acceptedAtMs: 1.5 })).toThrow(/time/i);
+    expect(() =>
+      createInstantCommandReceipt({ ...base, acceptedAtMs: Number.MAX_SAFE_INTEGER + 1 }),
+    ).toThrow(/time/i);
+  });
+
+  it('canonicalizes target order into an immutable receipt snapshot', () => {
+    const targets = ['pane-b', 'pane-a'];
+    const receipt = createInstantCommandReceipt({
+      commandId: 'terminal.broadcast',
+      correlationId: 'corr-1',
+      status: 'queued',
+      acceptedAtMs: 1,
+      targetIds: targets,
+    });
+
+    targets[0] = 'pane-secret';
+    expect(receipt.targetIds).toEqual(['pane-a', 'pane-b']);
+    expect(Object.isFrozen(receipt.targetIds)).toBe(true);
+  });
 });

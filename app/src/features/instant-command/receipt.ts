@@ -16,13 +16,23 @@ export type InstantCommandReceipt = Readonly<{
 }>;
 
 const SAFE_IDENTIFIER = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,255}$/u;
+const RECEIPT_STATUSES = new Set<InstantCommandReceiptStatus>([
+  'completed',
+  'queued',
+  'needs_confirmation',
+  'needs_clarification',
+  'rejected',
+  'timed_out',
+]);
 
 export function createInstantCommandReceipt(input: InstantCommandReceipt): InstantCommandReceipt {
   if (!SAFE_IDENTIFIER.test(input.commandId)) throw new Error('Invalid command id');
   if (!SAFE_IDENTIFIER.test(input.correlationId)) throw new Error('Invalid correlation id');
-  if (!Number.isFinite(input.acceptedAtMs) || input.acceptedAtMs < 0) {
+  if (!RECEIPT_STATUSES.has(input.status)) throw new Error('Invalid receipt status');
+  if (!Number.isSafeInteger(input.acceptedAtMs) || input.acceptedAtMs < 0) {
     throw new Error('Invalid accepted time');
   }
+  if (!Array.isArray(input.targetIds)) throw new Error('Invalid receipt targets');
   if (input.targetIds.some((target) => !SAFE_IDENTIFIER.test(target))) {
     throw new Error('Invalid target id');
   }
@@ -57,7 +67,7 @@ export function createInstantCommandReceipt(input: InstantCommandReceipt): Insta
     correlationId: input.correlationId,
     status: input.status,
     acceptedAtMs: input.acceptedAtMs,
-    targetIds: Object.freeze([...input.targetIds]),
+    targetIds: Object.freeze([...input.targetIds].sort()),
     ...(followUp ? { followUp } : {}),
   });
 }

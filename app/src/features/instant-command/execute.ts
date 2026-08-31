@@ -279,11 +279,18 @@ function targetIds(command: InstantCommand): readonly string[] {
 
 function resultStatus(result: InstantResult): InstantCommandReceipt['status'] {
   if (result.code === 'queued') return 'queued';
+  if (result.code === 'confirmation_required') return 'needs_confirmation';
   if (result.code === 'target_missing' || result.code === 'target_ambiguous') {
     return 'needs_clarification';
   }
   if (result.ok) return 'completed';
   return 'rejected';
+}
+
+function safeFollowUpPrompt(message: string, fallback: string): string {
+  return message.trim() && message.length <= 200 && !/[\u0000-\u001f\u007f]/u.test(message)
+    ? message
+    : fallback;
 }
 
 function receiptFor(
@@ -300,9 +307,21 @@ function receiptFor(
     status,
     acceptedAtMs,
     targetIds: targets,
-    ...(status === 'needs_clarification'
-      ? { followUp: { kind: 'clarification' as const, prompt: result.message } }
-      : {}),
+    ...(status === 'needs_confirmation'
+      ? {
+          followUp: {
+            kind: 'confirmation' as const,
+            prompt: safeFollowUpPrompt(result.message, 'Confirm this exact Instant Command.'),
+          },
+        }
+      : status === 'needs_clarification'
+        ? {
+            followUp: {
+              kind: 'clarification' as const,
+              prompt: safeFollowUpPrompt(result.message, 'Clarify the exact command target.'),
+            },
+          }
+        : {}),
   });
 }
 
