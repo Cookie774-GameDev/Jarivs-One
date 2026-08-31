@@ -3,6 +3,7 @@ import type {
   JarvisApprovalV1,
   JarvisArtifactV1,
   JarvisCanonicalResultEvidenceV1,
+  CaoTargetLeaseV1,
   JarvisDurableLiveEvidenceV1,
   JarvisEvent,
   JarvisExecutionEvidenceV1,
@@ -2975,6 +2976,12 @@ export function validateJarvisRun(input: unknown): JarvisContractValidationResul
 
 export function validateJarvisEvent(input: unknown): JarvisContractValidationResult<JarvisEvent> {
   return validateContract(input, validateEventShape);
+}
+
+export function validateCaoTargetLease(
+  input: unknown,
+): JarvisContractValidationResult<CaoTargetLeaseV1> {
+  return validateContract(input, validateCaoTargetLeaseShape);
 }
 
 export function validateJarvisPreEffectTransportFailureEvidence(

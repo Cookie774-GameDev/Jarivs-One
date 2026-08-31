@@ -1,4 +1,5 @@
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { validateCaoTargetLease } from './validators';
 import {
   type CompiledJarvisPrompt,
   type CompiledPromptLayer,
@@ -3542,6 +3543,7 @@ describe('CAO target lease journal contract', () => {
   } as const;
 
   it('accepts one closed versioned exact-scope target lease on a journal event', () => {
+    expect(validateCaoTargetLease(targetLease)).toMatchObject({ ok: true });
     expect(
       validateJarvisEvent({
         ...validEvent(),
@@ -3561,6 +3563,9 @@ describe('CAO target lease journal contract', () => {
       { ...targetLease, targets: [{ kind: 'chat', targetId: 'chat-alpha', revision: -1 }] },
     ],
   ])('rejects %s', (_case, caoTargetLease) => {
+    if (_case !== 'cross-run binding') {
+      expect(validateCaoTargetLease(caoTargetLease).ok).toBe(false);
+    }
     expect(
       validateJarvisEvent({
         ...validEvent(),

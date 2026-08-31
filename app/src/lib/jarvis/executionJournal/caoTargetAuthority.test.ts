@@ -177,6 +177,60 @@ describe('CAO explicit target authority', () => {
     );
   });
 
+  it.each([
+    ['unknown schema version', { schemaVersion: 2 }],
+    ['invalid temporal bounds', { acquiredAt: NOW + 6_000 }],
+    [
+      'duplicate target identity',
+      {
+        selectionMode: 'explicit_set',
+        targets: [
+          { kind: 'chat', targetId: 'chat-a', revision: 7 },
+          { kind: 'chat', targetId: 'chat-a', revision: 7 },
+        ],
+      },
+    ],
+  ])('rejects a persisted lease with %s before registry recovery', async (_case, corruption) => {
+    const h = harness();
+    const authority = createCaoTargetAuthority(h.deps);
+    const acquired = await authority.acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    const row = h.rows[0] as unknown as { caoTargetLease: Record<string, unknown> };
+    row.caoTargetLease = { ...row.caoTargetLease, ...corruption };
+    vi.mocked(h.registry.readExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).verify({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow('cao_target_journal_invalid');
+    expect(h.registry.readExact).not.toHaveBeenCalled();
+  });
+
+  it('rolls back a registry claim when ambiguous append recovery finds a corrupt lease', async () => {
+    const h = harness();
+    h.deps.journal.appendEvent.mockImplementationOnce(async (_accountId, runId, event) => {
+      h.rows.push({
+        ...structuredClone(event),
+        runId,
+        seq: 1,
+        caoTargetLease: { ...event.caoTargetLease!, schemaVersion: 2 },
+      } as unknown as JarvisEvent);
+      throw new Error('ambiguous durable append');
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow('cao_target_lease_persistence_failed');
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
   it('requires an explicit set for multiple targets and preserves exact chat/terminal isolation', async () => {
     const h = harness([
       target(),

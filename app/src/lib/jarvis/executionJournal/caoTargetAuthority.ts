@@ -5,6 +5,7 @@ import type {
 } from '@/lib/jarvis/contracts/execution';
 import type { JarvisEventRepository } from '@/lib/db/jarvisRepositories';
 import type { CaoTargetKind, CaoTargetLeaseV1 } from '@/lib/jarvis/contracts/execution';
+import { validateCaoTargetLease } from '@/lib/jarvis/contracts/validators';
 
 export const CAO_TARGET_LEASE_MAX_MS = 60_000 as const;
 const EVENT_PAGE_SIZE = 500;
@@ -206,7 +207,10 @@ async function findLease(
       limit: EVENT_PAGE_SIZE,
     });
     for (const event of page) {
-      const lease = event.caoTargetLease;
+      if (!event.caoTargetLease) continue;
+      const validated = validateCaoTargetLease(event.caoTargetLease);
+      if (!validated.ok) fail('cao_target_journal_invalid');
+      const lease = validated.value;
       if (lease?.leaseId === leaseId) return structuredClone(lease);
     }
     if (page.length < EVENT_PAGE_SIZE) return undefined;
