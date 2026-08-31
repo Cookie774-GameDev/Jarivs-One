@@ -1,8 +1,39 @@
 use crate::harness::managed_cli_manifest::{embedded_managed_release, ManagedCliKind};
-use crate::harness::managed_cli_runtime::{inspect_managed_runtime, ManagedCliReadiness};
+use crate::harness::managed_cli_runtime::{
+    inspect_managed_runtime, opencodex_closure_sha256, ManagedCliReadiness,
+};
 use crate::harness::managed_codex_proxy_profile::ManagedCodexProxyProfile;
-use std::fs;
+use std::fs::{self, File, OpenOptions};
 use std::path::{Path, PathBuf};
+
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
+#[cfg(windows)]
+use std::os::windows::fs::OpenOptionsExt;
+
+#[cfg(windows)]
+use windows::core::{PCWSTR, PWSTR};
+#[cfg(windows)]
+use windows::Win32::Foundation::{LocalFree, HLOCAL};
+#[cfg(windows)]
+use windows::Win32::Security::Authorization::{
+    SetEntriesInAclW, SetNamedSecurityInfoW, DENY_ACCESS, EXPLICIT_ACCESS_W, SE_FILE_OBJECT,
+    TRUSTEE_IS_SID, TRUSTEE_IS_WELL_KNOWN_GROUP, TRUSTEE_W,
+};
+#[cfg(windows)]
+use windows::Win32::Security::{
+    CreateWellKnownSid, GetFileSecurityW, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
+    WinWorldSid, ACL, DACL_SECURITY_INFORMATION, NO_INHERITANCE,
+    PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, SECURITY_MAX_SID_SIZE,
+    SE_DACL_PROTECTED, UNPROTECTED_DACL_SECURITY_INFORMATION,
+};
+#[cfg(windows)]
+use windows::Win32::Storage::FileSystem::{FILE_ADD_FILE, FILE_ADD_SUBDIRECTORY};
+
+#[cfg(windows)]
+const FILE_SHARE_READ_ONLY: u32 = 0x0000_0001;
+#[cfg(windows)]
+const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
 
 const REVIEWED_OPENCODEX_VERSION: &str = "2.36.0";
 const SOURCE_ENTRYPOINT: &str = "node_modules/@bitkyc08/opencodex/src/cli/index.ts";
@@ -13,6 +44,213 @@ pub struct ReviewedOpenCodexRuntime {
     pub bun_executable: PathBuf,
     pub source_entrypoint: PathBuf,
     pub version: String,
+}
+
+#[derive(Debug)]
+pub struct SealedReviewedOpenCodexRuntime {
+    pub runtime: ReviewedOpenCodexRuntime,
+    _closure_files: Vec<File>,
+    _directory_dacls: DirectoryDaclGuard,
+    version_root: PathBuf,
+    expected_closure_sha256: String,
+}
+
+#[cfg(windows)]
+#[derive(Debug)]
+struct SavedDirectoryDacl {
+    path: PathBuf,
+    descriptor: Vec<usize>,
+    protected: bool,
+}
+
+#[cfg(windows)]
+#[derive(Debug)]
+struct DirectoryDaclGuard {
+    saved: Vec<SavedDirectoryDacl>,
+}
+
+#[cfg(not(windows))]
+#[derive(Debug, Default)]
+struct DirectoryDaclGuard;
+
+#[cfg(windows)]
+impl Drop for DirectoryDaclGuard {
+    fn drop(&mut self) {
+        for saved in self.saved.iter().rev() {
+            let mut wide = saved.path.as_os_str().encode_wide().collect::<Vec<_>>();
+            wide.push(0);
+            let descriptor = PSECURITY_DESCRIPTOR(saved.descriptor.as_ptr().cast_mut().cast());
+            let mut present = windows::core::BOOL::default();
+            let mut defaulted = windows::core::BOOL::default();
+            let mut dacl = std::ptr::null_mut();
+            if unsafe {
+                GetSecurityDescriptorDacl(descriptor, &mut present, &mut dacl, &mut defaulted)
+            }
+            .is_err()
+            {
+                continue;
+            }
+            let protection = if saved.protected {
+                PROTECTED_DACL_SECURITY_INFORMATION
+            } else {
+                UNPROTECTED_DACL_SECURITY_INFORMATION
+            };
+            let _ = unsafe {
+                SetNamedSecurityInfoW(
+                    PWSTR(wide.as_mut_ptr()),
+                    SE_FILE_OBJECT,
+                    DACL_SECURITY_INFORMATION | protection,
+                    None,
+                    None,
+                    Some(dacl),
+                    None,
+                )
+            };
+        }
+    }
+}
+
+#[cfg(windows)]
+fn read_directory_dacl(path: &Path) -> Result<SavedDirectoryDacl, ManagedCodexProxyRuntimeError> {
+    let mut wide = path.as_os_str().encode_wide().collect::<Vec<_>>();
+    wide.push(0);
+    let mut needed = 0_u32;
+    let _ = unsafe {
+        GetFileSecurityW(
+            PCWSTR(wide.as_ptr()),
+            DACL_SECURITY_INFORMATION.0,
+            None,
+            0,
+            &mut needed,
+        )
+    };
+    if needed == 0 {
+        return Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed);
+    }
+    let word = std::mem::size_of::<usize>();
+    let mut descriptor = vec![0_usize; (needed as usize + word - 1) / word];
+    if !unsafe {
+        GetFileSecurityW(
+            PCWSTR(wide.as_ptr()),
+            DACL_SECURITY_INFORMATION.0,
+            Some(PSECURITY_DESCRIPTOR(descriptor.as_mut_ptr().cast())),
+            needed,
+            &mut needed,
+        )
+    }
+    .as_bool()
+    {
+        return Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed);
+    }
+    let mut control = 0_u16;
+    let mut revision = 0_u32;
+    unsafe {
+        GetSecurityDescriptorControl(
+            PSECURITY_DESCRIPTOR(descriptor.as_mut_ptr().cast()),
+            &mut control,
+            &mut revision,
+        )
+    }
+    .map_err(|_| ManagedCodexProxyRuntimeError::RuntimeUnreviewed)?;
+    Ok(SavedDirectoryDacl {
+        path: path.to_path_buf(),
+        descriptor,
+        protected: control & SE_DACL_PROTECTED.0 != 0,
+    })
+}
+
+#[cfg(windows)]
+fn deny_directory_entry_creation(
+    saved: &SavedDirectoryDacl,
+) -> Result<(), ManagedCodexProxyRuntimeError> {
+    let descriptor = PSECURITY_DESCRIPTOR(saved.descriptor.as_ptr().cast_mut().cast());
+    let mut present = windows::core::BOOL::default();
+    let mut defaulted = windows::core::BOOL::default();
+    let mut old_dacl = std::ptr::null_mut::<ACL>();
+    unsafe { GetSecurityDescriptorDacl(descriptor, &mut present, &mut old_dacl, &mut defaulted) }
+        .map_err(|_| ManagedCodexProxyRuntimeError::RuntimeUnreviewed)?;
+    if !present.as_bool() || old_dacl.is_null() {
+        return Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed);
+    }
+
+    let mut world = vec![0_u8; SECURITY_MAX_SID_SIZE as usize];
+    let mut world_size = world.len() as u32;
+    unsafe {
+        CreateWellKnownSid(
+            WinWorldSid,
+            None,
+            Some(PSID(world.as_mut_ptr().cast())),
+            &mut world_size,
+        )
+    }
+    .map_err(|_| ManagedCodexProxyRuntimeError::RuntimeUnreviewed)?;
+    let entry = EXPLICIT_ACCESS_W {
+        grfAccessPermissions: FILE_ADD_FILE.0 | FILE_ADD_SUBDIRECTORY.0,
+        grfAccessMode: DENY_ACCESS,
+        grfInheritance: NO_INHERITANCE,
+        Trustee: TRUSTEE_W {
+            pMultipleTrustee: std::ptr::null_mut(),
+            MultipleTrusteeOperation: Default::default(),
+            TrusteeForm: TRUSTEE_IS_SID,
+            TrusteeType: TRUSTEE_IS_WELL_KNOWN_GROUP,
+            ptstrName: PWSTR(world.as_mut_ptr().cast()),
+        },
+    };
+    let mut new_dacl = std::ptr::null_mut::<ACL>();
+    let status = unsafe { SetEntriesInAclW(Some(&[entry]), Some(old_dacl), &mut new_dacl) };
+    if status.0 != 0 || new_dacl.is_null() {
+        return Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed);
+    }
+    let mut wide = saved.path.as_os_str().encode_wide().collect::<Vec<_>>();
+    wide.push(0);
+    let status = unsafe {
+        SetNamedSecurityInfoW(
+            PWSTR(wide.as_mut_ptr()),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            None,
+            None,
+            Some(new_dacl),
+            None,
+        )
+    };
+    unsafe { LocalFree(Some(HLOCAL(new_dacl.cast()))) };
+    if status.0 != 0 {
+        return Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed);
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn seal_directory_dacls(
+    directories: &[PathBuf],
+) -> Result<DirectoryDaclGuard, ManagedCodexProxyRuntimeError> {
+    let mut guard = DirectoryDaclGuard { saved: Vec::new() };
+    for directory in directories {
+        let saved = read_directory_dacl(directory)?;
+        deny_directory_entry_creation(&saved)?;
+        guard.saved.push(saved);
+    }
+    Ok(guard)
+}
+
+#[cfg(not(windows))]
+fn seal_directory_dacls(
+    _directories: &[PathBuf],
+) -> Result<DirectoryDaclGuard, ManagedCodexProxyRuntimeError> {
+    Ok(DirectoryDaclGuard)
+}
+
+impl SealedReviewedOpenCodexRuntime {
+    pub fn revalidate(&self) -> Result<(), ManagedCodexProxyRuntimeError> {
+        if opencodex_closure_sha256(&self.version_root).as_deref()
+            == Some(self.expected_closure_sha256.as_str())
+        {
+            Ok(())
+        } else {
+            Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed)
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,6 +313,117 @@ pub fn resolve_reviewed_opencodex_runtime(
         &managed_base.join("opencodex"),
         &release,
     ))
+}
+
+fn collect_regular_closure_paths(
+    root: &Path,
+    directory: &Path,
+    files: &mut Vec<PathBuf>,
+    directories: &mut Vec<PathBuf>,
+) -> Result<(), ManagedCodexProxyRuntimeError> {
+    directories.push(
+        fs::canonicalize(directory)
+            .map_err(|_| ManagedCodexProxyRuntimeError::RuntimeUnreviewed)?,
+    );
+    for entry in
+        fs::read_dir(directory).map_err(|_| ManagedCodexProxyRuntimeError::RuntimeUnreviewed)?
+    {
+        let entry = entry.map_err(|_| ManagedCodexProxyRuntimeError::RuntimeUnreviewed)?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|_| ManagedCodexProxyRuntimeError::RuntimeUnreviewed)?;
+        if metadata.file_type().is_symlink() {
+            return Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed);
+        }
+        if metadata.is_dir() {
+            collect_regular_closure_paths(root, &path, files, directories)?;
+        } else if metadata.is_file() {
+            let canonical = fs::canonicalize(&path)
+                .map_err(|_| ManagedCodexProxyRuntimeError::RuntimeUnreviewed)?;
+            if !canonical.starts_with(root) {
+                return Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed);
+            }
+            files.push(canonical);
+        } else {
+            return Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed);
+        }
+    }
+    Ok(())
+}
+
+fn seal_closure_files(
+    version_root: &Path,
+) -> Result<(Vec<File>, DirectoryDaclGuard), ManagedCodexProxyRuntimeError> {
+    let canonical_root = fs::canonicalize(version_root)
+        .map_err(|_| ManagedCodexProxyRuntimeError::RuntimeUnreviewed)?;
+    let mut paths = Vec::new();
+    let mut directories = Vec::new();
+    collect_regular_closure_paths(
+        &canonical_root,
+        &canonical_root,
+        &mut paths,
+        &mut directories,
+    )?;
+    paths.sort();
+    directories.sort();
+    let mut sealed = paths
+        .into_iter()
+        .map(|path| {
+            let mut options = OpenOptions::new();
+            options.read(true);
+            #[cfg(windows)]
+            options.share_mode(FILE_SHARE_READ_ONLY);
+            options
+                .open(path)
+                .map_err(|_| ManagedCodexProxyRuntimeError::RuntimeUnreviewed)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    #[cfg(windows)]
+    for directory in &directories {
+        let mut options = OpenOptions::new();
+        options
+            .access_mode(0)
+            .share_mode(FILE_SHARE_READ_ONLY)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS);
+        sealed.push(
+            options
+                .open(directory)
+                .map_err(|_| ManagedCodexProxyRuntimeError::RuntimeUnreviewed)?,
+        );
+    }
+    let directory_dacls = seal_directory_dacls(&directories)?;
+    Ok((sealed, directory_dacls))
+}
+
+pub fn seal_reviewed_opencodex_runtime(
+    managed_base: &Path,
+    roaming_app_data: Option<&Path>,
+) -> Result<SealedReviewedOpenCodexRuntime, ManagedCodexProxyRuntimeError> {
+    let expected_closure_sha256 =
+        embedded_managed_release(ManagedCliKind::OpenCodex, "windows", "x86_64")
+            .map_err(|_| ManagedCodexProxyRuntimeError::RuntimeUnreviewed)?
+            .closure_sha256
+            .ok_or(ManagedCodexProxyRuntimeError::RuntimeUnreviewed)?;
+    let first = resolve_reviewed_opencodex_runtime(managed_base, roaming_app_data)?;
+    let version_root = first
+        .source_entrypoint
+        .ancestors()
+        .find(|path| {
+            path.file_name().and_then(|name| name.to_str()) == Some(REVIEWED_OPENCODEX_VERSION)
+        })
+        .ok_or(ManagedCodexProxyRuntimeError::RuntimeUnreviewed)?;
+    let (closure_files, directory_dacls) = seal_closure_files(version_root)?;
+    let second = resolve_reviewed_opencodex_runtime(managed_base, roaming_app_data)?;
+    if first != second {
+        return Err(ManagedCodexProxyRuntimeError::RuntimeUnreviewed);
+    }
+    Ok(SealedReviewedOpenCodexRuntime {
+        runtime: second,
+        _closure_files: closure_files,
+        _directory_dacls: directory_dacls,
+        version_root: version_root.to_path_buf(),
+        expected_closure_sha256,
+    })
 }
 
 fn ensure_owned_directory(path: &Path) -> Result<(), ManagedCodexProxyRuntimeError> {
@@ -204,6 +553,31 @@ mod tests {
             .err(),
             Some(ManagedCodexProxyRuntimeError::RuntimeUnavailable)
         );
+        fs::remove_dir_all(fixture).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn sealed_closure_denies_dependency_and_receipt_rewrites_until_released() {
+        let fixture = temp_root("sealed-closure");
+        fs::create_dir_all(&fixture).unwrap();
+        let dependency = fixture.join("node_modules/dependency/index.js");
+        let receipt = fixture.join("vibespace-runtime.json");
+        fs::create_dir_all(dependency.parent().unwrap()).unwrap();
+        fs::write(&dependency, b"reviewed").unwrap();
+        fs::write(&receipt, b"receipt").unwrap();
+
+        let seal = seal_closure_files(&fixture).expect("sealed closure");
+        assert!(fs::write(&dependency, b"mutated").is_err());
+        assert!(fs::write(&receipt, b"rewritten receipt").is_err());
+        assert!(fs::write(fixture.join("new-dependency.js"), b"extra").is_err());
+        let swapped = fixture.with_extension("swapped");
+        assert!(fs::rename(&fixture, &swapped).is_err());
+        drop(seal);
+        fs::write(&dependency, b"mutated after release").unwrap();
+        fs::write(fixture.join("new-dependency.js"), b"extra after release").unwrap();
+        fs::rename(&fixture, &swapped).unwrap();
+        fs::rename(&swapped, &fixture).unwrap();
         fs::remove_dir_all(fixture).unwrap();
     }
 

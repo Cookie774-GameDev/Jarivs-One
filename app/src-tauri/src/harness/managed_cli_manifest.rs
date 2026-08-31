@@ -4,7 +4,8 @@ use url::Url;
 
 const CODEX_MANIFEST: &str = include_str!("../../resources/codex-runtime-manifest.json");
 const OPENCODEX_MANIFEST: &str = include_str!("../../resources/opencodex-runtime-manifest.json");
-const MANIFEST_SCHEMA_VERSION: u32 = 1;
+const CODEX_MANIFEST_SCHEMA_VERSION: u32 = 1;
+const OPENCODEX_MANIFEST_SCHEMA_VERSION: u32 = 2;
 const MAX_COMPRESSED_BYTES: u64 = 1_073_741_824;
 const MAX_EXPANDED_BYTES: u64 = 2_147_483_648;
 const MAX_ARCHIVE_ENTRIES: usize = 8_192;
@@ -38,6 +39,8 @@ pub struct ManagedCliRelease {
     pub sha256: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub npm_integrity: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub closure_sha256: Option<String>,
     pub entrypoint: String,
     pub license: String,
     pub maximum_expanded_bytes: u64,
@@ -119,6 +122,7 @@ fn validate_release(release: &ManagedCliRelease) -> Result<(), String> {
             );
             release.package.is_none()
                 && release.npm_integrity.is_none()
+                && release.closure_sha256.is_none()
                 && release.asset == asset
                 && release.entrypoint == "codex-x86_64-pc-windows-msvc.exe"
                 && release.license == "Apache-2.0"
@@ -133,6 +137,11 @@ fn validate_release(release: &ManagedCliRelease) -> Result<(), String> {
                     .npm_integrity
                     .as_deref()
                     .map(is_sha512_integrity)
+                    .unwrap_or(false)
+                && release
+                    .closure_sha256
+                    .as_deref()
+                    .map(is_sha256)
                     .unwrap_or(false)
                 && release.asset == asset
                 && release.entrypoint == "package/bin/ocx.mjs"
@@ -162,7 +171,11 @@ pub fn parse_managed_release_manifest(
 ) -> Result<ManagedCliRelease, String> {
     let manifest: ManagedCliManifest = serde_json::from_str(json)
         .map_err(|_| "Managed CLI runtime manifest is invalid.".to_string())?;
-    if manifest.schema_version != MANIFEST_SCHEMA_VERSION {
+    let expected_schema = match kind {
+        ManagedCliKind::Codex => CODEX_MANIFEST_SCHEMA_VERSION,
+        ManagedCliKind::OpenCodex => OPENCODEX_MANIFEST_SCHEMA_VERSION,
+    };
+    if manifest.schema_version != expected_schema {
         return Err("Managed CLI runtime manifest schema is unsupported.".to_string());
     }
 
@@ -240,6 +253,10 @@ mod tests {
         assert_eq!(
             opencodex.sha256,
             "95f2bab63125a94b5b53d5cc912a225812aed0a17b926cf556d6fc37651be915"
+        );
+        assert_eq!(
+            opencodex.closure_sha256.as_deref(),
+            Some("5beb85ce68247893766641c801390dfbacf1cb77bdab5c2a95ed88f44b52e37c")
         );
     }
 

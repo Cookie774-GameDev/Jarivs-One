@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::{mpsc, Mutex};
+use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
@@ -23,10 +23,142 @@ const MAX_VERSION_OUTPUT_LENGTH: usize = 4_096;
 const VERSION_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const VERSION_PROBE_TIMEOUT_REASON: &str = "OpenCode version probe timed out.";
 const MAX_TRANSIENT_VERSION_PROBE_RETRIES: usize = 1;
-const VERSION_PROBE_PIPE_DRAIN_TIMEOUT: Duration = Duration::from_millis(250);
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+#[cfg(windows)]
+const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+#[cfg(windows)]
+const CREATE_SUSPENDED: u32 = 0x0000_0004;
+
+#[cfg(windows)]
+pub(crate) mod version_probe_job {
+    use super::*;
+    use std::ffi::c_void;
+    use std::mem::size_of;
+    use std::os::windows::io::AsRawHandle;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
+    };
+    use windows::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    use windows::Win32::System::Threading::{OpenThread, ResumeThread, THREAD_SUSPEND_RESUME};
+
+    struct OwnedHandle(HANDLE);
+    impl Drop for OwnedHandle {
+        fn drop(&mut self) {
+            let _ = unsafe { CloseHandle(self.0) };
+        }
+    }
+
+    pub(crate) struct ProbeJob(OwnedHandle);
+    // A job HANDLE has no thread affinity. Ownership remains unique and Drop closes it once.
+    unsafe impl Send for ProbeJob {}
+    impl ProbeJob {
+        pub(crate) fn create() -> Result<Self, String> {
+            let handle = unsafe { CreateJobObjectW(None, PCWSTR::null()) }.map_err(|error| {
+                format!("OpenCode version probe job could not be created: {error}")
+            })?;
+            let job = Self(OwnedHandle(handle));
+            let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            unsafe {
+                SetInformationJobObject(
+                    job.0 .0,
+                    JobObjectExtendedLimitInformation,
+                    (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast::<c_void>(),
+                    size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                )
+            }
+            .map_err(|error| {
+                format!("OpenCode version probe job could not be configured: {error}")
+            })?;
+            Ok(job)
+        }
+
+        pub(crate) fn assign_suspended(&self, child: &Child) -> Result<(), String> {
+            unsafe { AssignProcessToJobObject(self.0 .0, HANDLE(child.as_raw_handle())) }
+                .map_err(|error| format!("OpenCode version probe could not be contained: {error}"))
+        }
+
+        pub(crate) fn resume_suspended(&self, child: &Child) -> Result<(), String> {
+            let snapshot = OwnedHandle(
+                unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) }.map_err(|error| {
+                    format!("OpenCode version probe thread could not be found: {error}")
+                })?,
+            );
+            let mut entry = THREADENTRY32 {
+                dwSize: size_of::<THREADENTRY32>() as u32,
+                ..Default::default()
+            };
+            let mut thread_id = None;
+            if unsafe { Thread32First(snapshot.0, &mut entry) }.is_ok() {
+                loop {
+                    if entry.th32OwnerProcessID == child.id() {
+                        if thread_id.replace(entry.th32ThreadID).is_some() {
+                            return Err(
+                                "OpenCode suspended probe exposed multiple threads.".to_string()
+                            );
+                        }
+                    }
+                    if unsafe { Thread32Next(snapshot.0, &mut entry) }.is_err() {
+                        break;
+                    }
+                }
+            }
+            let thread = OwnedHandle(
+                unsafe {
+                    OpenThread(
+                        THREAD_SUSPEND_RESUME,
+                        false,
+                        thread_id.ok_or_else(|| {
+                            "OpenCode suspended probe thread was unavailable.".to_string()
+                        })?,
+                    )
+                }
+                .map_err(|error| {
+                    format!("OpenCode suspended probe thread could not be opened: {error}")
+                })?,
+            );
+            let previous = unsafe { ResumeThread(thread.0) };
+            if previous != 1 {
+                return Err(
+                    "OpenCode suspended probe could not be resumed exactly once.".to_string(),
+                );
+            }
+            Ok(())
+        }
+
+        pub(crate) fn assign_and_resume(&self, child: &Child) -> Result<(), String> {
+            self.assign_suspended(child)?;
+            self.resume_suspended(child)
+        }
+
+        pub(crate) fn terminate(&self) {
+            let _ = unsafe { TerminateJobObject(self.0 .0, 1) };
+        }
+    }
+
+    pub(crate) fn configure_suspended(command: &mut Command) {
+        command.creation_flags(
+            super::CREATE_NO_WINDOW | super::CREATE_NEW_PROCESS_GROUP | super::CREATE_SUSPENDED,
+        );
+    }
+
+    pub(crate) fn reap_failed_containment(child: &mut Child, job: ProbeJob) {
+        job.terminate();
+        drop(job);
+        // Assignment may have failed before the suspended process entered the job. Killing the
+        // direct child is therefore mandatory before waiting; CREATE_SUSPENDED cannot exit alone.
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -440,15 +572,6 @@ fn read_bounded(mut reader: impl Read, maximum: usize) -> Vec<u8> {
     kept
 }
 
-fn receive_probe_output(
-    receiver: mpsc::Receiver<Vec<u8>>,
-    timeout: Duration,
-) -> Result<Vec<u8>, String> {
-    receiver
-        .recv_timeout(timeout)
-        .map_err(|_| "OpenCode version probe output pipe did not close in time.".to_string())
-}
-
 fn probe_native_version(path: &Path) -> Result<String, String> {
     let mut command = Command::new(path);
     command
@@ -457,7 +580,10 @@ fn probe_native_version(path: &Path) -> Result<String, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     #[cfg(windows)]
-    command.creation_flags(CREATE_NO_WINDOW);
+    command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | CREATE_SUSPENDED);
+
+    #[cfg(windows)]
+    let probe_job = version_probe_job::ProbeJob::create()?;
 
     let mut child = command
         .spawn()
@@ -472,38 +598,50 @@ fn probe_native_version(path: &Path) -> Result<String, String> {
         let _ = child.wait();
         return Err("OpenCode version probe stderr was unavailable.".to_string());
     };
-    let (stdout_sender, stdout_receiver) = mpsc::sync_channel(1);
-    let (stderr_sender, stderr_receiver) = mpsc::sync_channel(1);
-    thread::spawn(move || {
-        let _ = stdout_sender.send(read_bounded(stdout, MAX_VERSION_OUTPUT_LENGTH));
-    });
-    thread::spawn(move || {
-        let _ = stderr_sender.send(read_bounded(stderr, MAX_VERSION_OUTPUT_LENGTH));
-    });
+    #[cfg(windows)]
+    if let Err(error) = probe_job.assign_and_resume(&child) {
+        version_probe_job::reap_failed_containment(&mut child, probe_job);
+        return Err(error);
+    }
+    let stdout_reader = thread::spawn(move || read_bounded(stdout, MAX_VERSION_OUTPUT_LENGTH));
+    let stderr_reader = thread::spawn(move || read_bounded(stderr, MAX_VERSION_OUTPUT_LENGTH));
     let started = Instant::now();
 
     let status = loop {
         match child.try_wait() {
-            Ok(Some(status)) => break status,
+            Ok(Some(status)) => break Ok(status),
             Ok(None) => {}
             Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(format!(
+                break Err(format!(
                     "OpenCode version probe could not be observed: {error}"
                 ));
             }
         }
         if started.elapsed() >= VERSION_PROBE_TIMEOUT {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(VERSION_PROBE_TIMEOUT_REASON.to_string());
+            break Err(VERSION_PROBE_TIMEOUT_REASON.to_string());
         }
         thread::sleep(Duration::from_millis(20));
     };
 
-    let stdout = receive_probe_output(stdout_receiver, VERSION_PROBE_PIPE_DRAIN_TIMEOUT)?;
-    let stderr = receive_probe_output(stderr_receiver, VERSION_PROBE_PIPE_DRAIN_TIMEOUT)?;
+    #[cfg(windows)]
+    {
+        // A successful parent may still have descendants holding inherited pipes. Terminating
+        // and closing the owned job makes both reader joins finite before this function returns.
+        probe_job.terminate();
+        drop(probe_job);
+    }
+    #[cfg(not(windows))]
+    if status.is_err() {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
+    let stdout = stdout_reader
+        .join()
+        .map_err(|_| "OpenCode version probe stdout reader failed.".to_string())?;
+    let stderr = stderr_reader
+        .join()
+        .map_err(|_| "OpenCode version probe stderr reader failed.".to_string())?;
+    let status = status?;
     if !status.success() {
         return Err(format!(
             "OpenCode version probe exited with code {}.",
@@ -710,12 +848,20 @@ mod tests {
         fingerprint_sha256, parse_opencode_version, probe_native_version, CandidateOrigin,
         DiscoveryContext, OpenCodeRuntimeState, OpenCodeRuntimeStatus, RuntimeSource,
     };
+    #[cfg(windows)]
+    use super::{
+        read_bounded, CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW, CREATE_SUSPENDED,
+        MAX_VERSION_OUTPUT_LENGTH,
+    };
     use std::cell::Cell;
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::{Path, PathBuf};
+    #[cfg(windows)]
+    use std::process::{Command, Stdio};
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::mpsc;
+    #[cfg(windows)]
+    use std::thread;
     use std::time::{Duration, Instant};
 
     static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -1013,14 +1159,75 @@ mod tests {
         assert_eq!(fingerprint_reads.get(), 3);
     }
 
+    #[cfg(windows)]
     #[test]
-    fn inherited_probe_pipe_drain_is_deadline_bounded() {
-        let (sender, receiver) = mpsc::sync_channel(1);
-        let _held_sender = sender;
+    fn contained_probe_terminates_descendant_inheriting_both_output_pipes() {
+        use std::os::windows::process::CommandExt;
+
+        let fixture = FixtureRoot::new("probe-descendant");
+        let pid_file = fixture.path().join("descendant.pid");
+        let escaped_pid_file = pid_file.to_string_lossy().replace('\'', "''");
+        let script = format!(
+            "$p=Start-Process -FilePath $env:ComSpec -ArgumentList '/d','/c','ping.exe 127.0.0.1 -t' -NoNewWindow -PassThru; Set-Content -LiteralPath '{escaped_pid_file}' -Value $p.Id; Wait-Process -Id $p.Id"
+        );
+        let mut command = Command::new("powershell.exe");
+        command
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | CREATE_SUSPENDED);
+        let job = super::version_probe_job::ProbeJob::create().unwrap();
+        let mut child = command.spawn().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let stderr = child.stderr.take().unwrap();
+        let stdout_reader = thread::spawn(move || read_bounded(stdout, MAX_VERSION_OUTPUT_LENGTH));
+        let stderr_reader = thread::spawn(move || read_bounded(stderr, MAX_VERSION_OUTPUT_LENGTH));
+        job.assign_and_resume(&child).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !pid_file.exists() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(20));
+        }
+        let descendant_pid = fs::read_to_string(&pid_file).expect("descendant pid");
+        let started = Instant::now();
+        job.terminate();
+        child.wait().unwrap();
+        stdout_reader.join().unwrap();
+        stderr_reader.join().unwrap();
+        assert!(started.elapsed() < Duration::from_secs(2));
+
+        let tasklist = Command::new("tasklist.exe")
+            .args(["/FI", &format!("PID eq {}", descendant_pid.trim()), "/NH"])
+            .output()
+            .unwrap();
+        assert!(!String::from_utf8_lossy(&tasklist.stdout).contains(descendant_pid.trim()));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn failed_job_assignment_path_kills_uncontained_suspended_child_before_wait() {
+        use std::os::windows::process::CommandExt;
+
+        let mut command = Command::new("powershell.exe");
+        command
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Start-Sleep -Seconds 30",
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        command.creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | CREATE_SUSPENDED);
+        let mut child = command.spawn().unwrap();
+        let job = super::version_probe_job::ProbeJob::create().unwrap();
         let started = Instant::now();
 
-        assert!(super::receive_probe_output(receiver, Duration::from_millis(20)).is_err());
-        assert!(started.elapsed() < Duration::from_millis(200));
+        super::version_probe_job::reap_failed_containment(&mut child, job);
+
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(child.try_wait().unwrap().is_some());
     }
 
     #[test]

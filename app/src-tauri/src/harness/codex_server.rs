@@ -4,7 +4,7 @@ use crate::harness::managed_codex_app_server::{
 };
 use crate::harness::managed_codex_proxy_profile::build_managed_codex_proxy_profile;
 use crate::harness::managed_codex_proxy_runtime::{
-    materialize_isolated_profile, resolve_reviewed_opencodex_runtime,
+    materialize_isolated_profile, seal_reviewed_opencodex_runtime, SealedReviewedOpenCodexRuntime,
 };
 use crate::harness::opencode_go_auth::{default_auth_store_path, read_opencode_go_credential};
 use serde::{Deserialize, Serialize};
@@ -239,6 +239,7 @@ impl OwnedCodexProcess for ProductionProcess {
 struct OwnedProcessGuard {
     process: Box<dyn OwnedCodexProcess>,
     stopped: bool,
+    lifetime_guards: Vec<Box<dyn Send>>,
 }
 
 impl OwnedProcessGuard {
@@ -246,7 +247,12 @@ impl OwnedProcessGuard {
         Self {
             process,
             stopped: false,
+            lifetime_guards: Vec::new(),
         }
+    }
+
+    fn hold_for_lifetime(&mut self, guard: Box<dyn Send>) {
+        self.lifetime_guards.push(guard);
     }
 
     fn has_exited(&mut self) -> Result<bool, String> {
@@ -259,7 +265,20 @@ impl OwnedProcessGuard {
         }
         self.process.terminate()?;
         self.stopped = true;
+        self.lifetime_guards.clear();
         Ok(())
+    }
+
+    fn terminate_fail_closed(&mut self) {
+        for _ in 0..SHUTDOWN_STOP_ATTEMPTS {
+            if self.stop().is_ok() {
+                return;
+            }
+        }
+        // The production proxy always owns a kill-on-close Job guard. If direct termination keeps
+        // failing, dropping that guard terminates the complete tree while ownership remains for a
+        // later reap attempt.
+        self.lifetime_guards.clear();
     }
 }
 
@@ -296,6 +315,7 @@ pub struct RunningCodexServer {
     active_stream: Option<ActiveStream>,
     process: OwnedProcessGuard,
     proxy_process: Option<OwnedProcessGuard>,
+    proxy_runtime: Option<SealedReviewedOpenCodexRuntime>,
     stopped: bool,
 }
 
@@ -322,8 +342,28 @@ impl RunningCodexServer {
             active_stream: None,
             process: OwnedProcessGuard::new(process),
             proxy_process: None,
+            proxy_runtime: None,
             stopped: false,
         }
+    }
+
+    fn has_exited_or_lost_integrity(&mut self) -> Result<bool, String> {
+        if self
+            .proxy_runtime
+            .as_ref()
+            .is_some_and(|runtime| runtime.revalidate().is_err())
+        {
+            if let Some(proxy) = self.proxy_process.as_mut() {
+                proxy.terminate_fail_closed();
+            }
+            return Err("OpenCodex managed runtime integrity was lost.".to_string());
+        }
+        if self.process.has_exited()? {
+            return Ok(true);
+        }
+        self.proxy_process
+            .as_mut()
+            .map_or(Ok(false), OwnedProcessGuard::has_exited)
     }
 
     fn stop_owned(&mut self) -> Result<(), String> {
@@ -408,6 +448,21 @@ fn shutdown_running(running: &mut Option<RunningCodexServer>) -> Result<bool, St
     stop_owned_running(running)
 }
 
+const SHUTDOWN_STOP_ATTEMPTS: usize = 3;
+
+fn shutdown_owned_state(state: &CodexAppServerState) {
+    let Ok(mut inner) = state.inner.lock() else {
+        return;
+    };
+    for _ in 0..SHUTDOWN_STOP_ATTEMPTS {
+        match shutdown_running(&mut inner.running) {
+            Ok(_) => return,
+            Err(_) if inner.running.is_some() => continue,
+            Err(_) => return,
+        }
+    }
+}
+
 fn spawn_stdout_reader<R: Read + Send + 'static>(
     mut reader: R,
     mut decoder: CodexAppServerFrameDecoder,
@@ -468,6 +523,7 @@ fn launch_server(
     owner_id: String,
     codex_home: &Path,
     proxy_process: OwnedProcessGuard,
+    proxy_runtime: SealedReviewedOpenCodexRuntime,
 ) -> Result<RunningCodexServer, String> {
     let mut command = Command::new(&launch.executable);
     command
@@ -555,10 +611,12 @@ fn launch_server(
         active_stream: None,
         process,
         proxy_process: Some(proxy_process),
+        proxy_runtime: Some(proxy_runtime),
         stopped: false,
     })
 }
 
+#[cfg(not(windows))]
 fn spawn_owned_child(
     mut command: Command,
     label: &'static str,
@@ -576,6 +634,58 @@ fn spawn_owned_child(
         child: Arc::new(Mutex::new(child)),
         terminated: false,
     })))
+}
+
+#[cfg(windows)]
+fn spawn_owned_child_verified<F>(
+    mut command: Command,
+    label: &'static str,
+    verify_before_resume: F,
+) -> Result<OwnedProcessGuard, String>
+where
+    F: FnOnce() -> Result<(), String>,
+{
+    use crate::harness::runtime::version_probe_job::{
+        configure_suspended, reap_failed_containment, ProbeJob,
+    };
+
+    configure_suspended(&mut command);
+    let job = ProbeJob::create()?;
+    let mut child = command
+        .spawn()
+        .map_err(|_| format!("{label} process could not be started."))?;
+    if let Err(error) = job.assign_suspended(&child) {
+        reap_failed_containment(&mut child, job);
+        return Err(error);
+    }
+    if let Err(error) = verify_before_resume() {
+        reap_failed_containment(&mut child, job);
+        return Err(error);
+    }
+    if let Err(error) = job.resume_suspended(&child) {
+        reap_failed_containment(&mut child, job);
+        return Err(error);
+    }
+
+    let mut guard = OwnedProcessGuard::new(Box::new(ProductionProcess {
+        child: Arc::new(Mutex::new(child)),
+        terminated: false,
+    }));
+    guard.hold_for_lifetime(Box::new(job));
+    Ok(guard)
+}
+
+#[cfg(not(windows))]
+fn spawn_owned_child_verified<F>(
+    command: Command,
+    label: &'static str,
+    verify_before_resume: F,
+) -> Result<OwnedProcessGuard, String>
+where
+    F: FnOnce() -> Result<(), String>,
+{
+    verify_before_resume()?;
+    spawn_owned_child(command, label)
 }
 
 fn run_bounded_ready_probe(mut command: Command) -> bool {
@@ -605,7 +715,7 @@ fn run_bounded_ready_probe(mut command: Command) -> bool {
 fn start_owned_opencodex(
     app: &AppHandle,
     model_id: &str,
-) -> Result<(OwnedProcessGuard, PathBuf), String> {
+) -> Result<(OwnedProcessGuard, PathBuf, SealedReviewedOpenCodexRuntime), String> {
     let endpoint = SocketAddrV4::new(Ipv4Addr::LOCALHOST, OPENCODEX_PORT);
     if TcpStream::connect_timeout(&endpoint.into(), Duration::from_millis(150)).is_ok() {
         return Err("The VibeSpace OpenCodex loopback endpoint is already occupied.".to_string());
@@ -620,22 +730,15 @@ fn start_owned_opencodex(
         .map_err(|_| "The isolated Codex proxy profile could not be prepared.".to_string())?;
     let managed_base = app_data.join("managed-runtime");
     let roaming = std::env::var_os("APPDATA").map(PathBuf::from);
-    let runtime =
-        resolve_reviewed_opencodex_runtime(&managed_base, roaming.as_deref()).map_err(|_| {
+    let sealed_runtime = seal_reviewed_opencodex_runtime(&managed_base, roaming.as_deref())
+        .map_err(|_| {
             "Reviewed OpenCodex 2.36.0 is unavailable; run VibeSpace Doctor.".to_string()
         })?;
     let credential_path = default_auth_store_path()
         .map_err(|_| "The OpenCode credential store is unavailable.".to_string())?;
     let credential = read_opencode_go_credential(&credential_path)
         .map_err(|_| "OpenCode Go is not connected; connect it in OpenCode first.".to_string())?;
-    let launch_runtime = resolve_reviewed_opencodex_runtime(&managed_base, roaming.as_deref())
-        .map_err(|_| {
-            "Reviewed OpenCodex 2.36.0 changed before launch; run VibeSpace Doctor.".to_string()
-        })?;
-    if launch_runtime != runtime {
-        return Err("Reviewed OpenCodex 2.36.0 changed before launch.".to_string());
-    }
-    let runtime = launch_runtime;
+    let runtime = &sealed_runtime.runtime;
 
     let configure = |command: &mut Command| {
         command
@@ -657,10 +760,18 @@ fn start_owned_opencodex(
         .arg("--port")
         .arg(OPENCODEX_PORT.to_string());
     configure(&mut start);
-    let mut proxy = spawn_owned_child(start, "OpenCodex")?;
+    let mut proxy = spawn_owned_child_verified(start, "OpenCodex", || {
+        sealed_runtime
+            .revalidate()
+            .map_err(|_| "OpenCodex managed runtime changed before launch.".to_string())
+    })?;
 
     let deadline = Instant::now() + OPENCODEX_READY_TIMEOUT;
     loop {
+        if sealed_runtime.revalidate().is_err() {
+            let _ = proxy.stop();
+            return Err("OpenCodex managed runtime changed during launch.".to_string());
+        }
         if proxy.has_exited()? {
             return Err("OpenCodex ended before becoming ready.".to_string());
         }
@@ -680,7 +791,7 @@ fn start_owned_opencodex(
         }
         thread::sleep(Duration::from_millis(250));
     }
-    Ok((proxy, paths.codex_home))
+    Ok((proxy, paths.codex_home, sealed_runtime))
 }
 
 fn start_internal(
@@ -695,7 +806,7 @@ fn start_internal(
         .lock()
         .map_err(|_| "Codex app-server state is unavailable.".to_string())?;
     if let Some(running) = inner.running.as_mut() {
-        if !running.process.has_exited()? {
+        if !running.has_exited_or_lost_integrity()? {
             if running.executable_id == request.executable_id
                 && running.model_id == request.model_id
                 && running.caller_label == caller_label
@@ -714,7 +825,7 @@ fn start_internal(
     let launch = resolve_launch_request(&request.executable_id, |executable_id| {
         cli_state.resolve_trusted_executable(executable_id)
     })?;
-    let (proxy_process, codex_home) = start_owned_opencodex(app, &request.model_id)?;
+    let (proxy_process, codex_home, proxy_runtime) = start_owned_opencodex(app, &request.model_id)?;
     let running = launch_server(
         launch,
         request.executable_id,
@@ -723,6 +834,7 @@ fn start_internal(
         request.owner_id,
         &codex_home,
         proxy_process,
+        proxy_runtime,
     )?;
     let generation = running.generation.clone();
     inner.running = Some(running);
@@ -766,7 +878,7 @@ pub fn codex_app_server_stream(
         .ok_or_else(|| "Codex app-server is unavailable.".to_string())?;
     if running.generation != generation
         || running.caller_label != webview.label()
-        || running.process.has_exited()?
+        || running.has_exited_or_lost_integrity()?
     {
         return Err("Codex app-server generation is unavailable.".to_string());
     }
@@ -855,7 +967,7 @@ pub fn codex_app_server_write(
         .ok_or_else(|| "Codex app-server is unavailable.".to_string())?;
     if running.generation != generation
         || running.caller_label != webview.label()
-        || running.process.has_exited()?
+        || running.has_exited_or_lost_integrity()?
     {
         return Err("Codex app-server generation is unavailable.".to_string());
     }
@@ -900,9 +1012,7 @@ pub fn codex_app_server_stop(
 
 pub fn shutdown_owned_server(app: &AppHandle) {
     let state = app.state::<CodexAppServerState>();
-    if let Ok(mut inner) = state.inner.lock() {
-        let _ = shutdown_running(&mut inner.running);
-    };
+    shutdown_owned_state(&state);
 }
 
 #[cfg(test)]
@@ -912,6 +1022,7 @@ mod tests {
         CodexAppServerFrameDecoder, CODEX_APP_SERVER_MAX_FRAME_BYTES,
     };
     use serde_json::json;
+    use std::fs;
     use std::io::{BufReader, Cursor};
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -938,6 +1049,14 @@ mod tests {
     struct RetryableStopProcess {
         attempts: Arc<AtomicUsize>,
         failures_remaining: usize,
+    }
+
+    struct DropSignal(Arc<AtomicBool>);
+
+    impl Drop for DropSignal {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::Release);
+        }
     }
 
     impl OwnedCodexProcess for RetryableStopProcess {
@@ -1162,6 +1281,89 @@ mod tests {
         assert!(shutdown_running(&mut running).unwrap());
         assert!(running.is_none());
         assert_eq!(proxy_attempts.load(Ordering::Acquire), 3);
+    }
+
+    #[test]
+    fn production_shutdown_retries_boundedly_and_reaps_owned_state() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let mut server = running_fixture(Arc::new(AtomicBool::new(false)));
+        server.proxy_process = Some(OwnedProcessGuard::new(Box::new(RetryableStopProcess {
+            attempts: attempts.clone(),
+            failures_remaining: SHUTDOWN_STOP_ATTEMPTS - 1,
+        })));
+        let state = CodexAppServerState::default();
+        state.inner.lock().unwrap().running = Some(server);
+
+        shutdown_owned_state(&state);
+
+        assert!(state.inner.lock().unwrap().running.is_none());
+        assert_eq!(attempts.load(Ordering::Acquire), SHUTDOWN_STOP_ATTEMPTS);
+    }
+
+    #[test]
+    fn production_shutdown_preserves_ownership_after_retry_cap() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let mut server = running_fixture(Arc::new(AtomicBool::new(false)));
+        server.proxy_process = Some(OwnedProcessGuard::new(Box::new(RetryableStopProcess {
+            attempts: attempts.clone(),
+            failures_remaining: SHUTDOWN_STOP_ATTEMPTS,
+        })));
+        let state = CodexAppServerState::default();
+        state.inner.lock().unwrap().running = Some(server);
+
+        shutdown_owned_state(&state);
+
+        assert!(state.inner.lock().unwrap().running.is_some());
+        assert_eq!(attempts.load(Ordering::Acquire), SHUTDOWN_STOP_ATTEMPTS);
+        shutdown_owned_state(&state);
+        assert!(state.inner.lock().unwrap().running.is_none());
+        assert_eq!(attempts.load(Ordering::Acquire), SHUTDOWN_STOP_ATTEMPTS + 1);
+    }
+
+    #[test]
+    fn fail_closed_termination_drops_the_job_guard_after_bounded_stop_failures() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let dropped = Arc::new(AtomicBool::new(false));
+        let mut guard = OwnedProcessGuard::new(Box::new(RetryableStopProcess {
+            attempts: attempts.clone(),
+            failures_remaining: SHUTDOWN_STOP_ATTEMPTS + 1,
+        }));
+        guard.hold_for_lifetime(Box::new(DropSignal(dropped.clone())));
+
+        guard.terminate_fail_closed();
+
+        assert_eq!(attempts.load(Ordering::Acquire), SHUTDOWN_STOP_ATTEMPTS);
+        assert!(dropped.load(Ordering::Acquire));
+        assert!(!guard.stopped);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn failed_final_runtime_verification_never_executes_the_suspended_child() {
+        let root = std::env::temp_dir().join(format!(
+            "vibespace-codex-suspended-verify-{}",
+            nanoid::nanoid!(12)
+        ));
+        fs::create_dir_all(&root).expect("temporary verification root");
+        let marker = root.join("executed.txt");
+        let mut command = Command::new("powershell.exe");
+        command.args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            &format!(
+                "[IO.File]::WriteAllText('{}', 'executed')",
+                marker.display().to_string().replace('\'', "''")
+            ),
+        ]);
+
+        let result = spawn_owned_child_verified(command, "verification fixture", || {
+            Err("injected closure mismatch".to_string())
+        });
+
+        assert_eq!(result.err().as_deref(), Some("injected closure mismatch"));
+        assert!(!marker.exists());
+        fs::remove_dir_all(root).expect("remove temporary verification root");
     }
 
     #[test]

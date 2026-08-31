@@ -81,6 +81,19 @@ pub struct ManagedRuntimeReceipt {
     closure_sha256: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LegacyOpenCodexReceiptV1 {
+    schema_version: u32,
+    kind: ManagedCliKind,
+    version: String,
+    artifact_sha256: String,
+    entrypoint: String,
+    entrypoint_sha256: String,
+    dependency_lock_sha256: String,
+    runtime_executable_sha256: String,
+}
+
 impl ManagedRuntimeReceipt {
     pub fn codex(release: &ManagedCliRelease, entrypoint_sha256: &str) -> Self {
         Self::new(release, entrypoint_sha256, None, None, None)
@@ -182,6 +195,76 @@ fn regular_file_within(version_root: &Path, relative_path: &str) -> Option<PathB
         .then_some(candidate)
 }
 
+pub(crate) fn is_rematerializable_legacy_opencodex(
+    managed_root: &Path,
+    release: &ManagedCliRelease,
+) -> bool {
+    is_rematerializable_legacy_opencodex_version(
+        &managed_root.join("versions").join(&release.version),
+        release,
+    )
+}
+
+pub(crate) fn is_rematerializable_legacy_opencodex_version(
+    version_root: &Path,
+    release: &ManagedCliRelease,
+) -> bool {
+    if release.kind != ManagedCliKind::OpenCodex {
+        return false;
+    }
+    let Ok(root_metadata) = fs::symlink_metadata(version_root) else {
+        return false;
+    };
+    if !root_metadata.is_dir() || root_metadata.file_type().is_symlink() {
+        return false;
+    }
+    let Ok(bytes) = fs::read(version_root.join("vibespace-runtime.json")) else {
+        return false;
+    };
+    let Ok(receipt) = serde_json::from_slice::<LegacyOpenCodexReceiptV1>(&bytes) else {
+        return false;
+    };
+    receipt.schema_version == 1
+        && receipt.kind == release.kind
+        && receipt.version == release.version
+        && receipt.artifact_sha256 == release.sha256
+        && receipt.entrypoint == OPENCODEX_ENTRYPOINT
+        && receipt.entrypoint_sha256 == OPENCODEX_ENTRYPOINT_SHA256
+        && receipt.dependency_lock_sha256 == OPENCODEX_DEPENDENCY_LOCK_SHA256
+        && receipt.runtime_executable_sha256 == OPENCODEX_BUN_EXECUTABLE_SHA256
+        && regular_file_within(version_root, OPENCODEX_ENTRYPOINT)
+            .and_then(|path| file_sha256(&path))
+            .as_deref()
+            == Some(OPENCODEX_ENTRYPOINT_SHA256)
+        && regular_file_within(version_root, OPENCODEX_SOURCE_ENTRYPOINT)
+            .and_then(|path| file_sha256(&path))
+            .as_deref()
+            == Some(OPENCODEX_SOURCE_ENTRYPOINT_SHA256)
+        && regular_file_within(version_root, OPENCODEX_DEPENDENCY_LOCK)
+            .and_then(|path| file_sha256(&path))
+            .as_deref()
+            == Some(OPENCODEX_DEPENDENCY_LOCK_SHA256)
+        && regular_file_within(version_root, OPENCODEX_BUN_EXECUTABLE)
+            .and_then(|path| file_sha256(&path))
+            .as_deref()
+            == Some(OPENCODEX_BUN_EXECUTABLE_SHA256)
+        && OPENCODEX_REQUIRED_FILES
+            .iter()
+            .all(|required| regular_file_within(version_root, required).is_some())
+        && [
+            ("node_modules/bun/package.json", "1.4.0"),
+            ("node_modules/@oven/bun-windows-x64/package.json", "1.4.0"),
+            ("node_modules/@napi-rs/keyring/package.json", "1.3.0"),
+            (
+                "node_modules/@napi-rs/keyring-win32-x64-msvc/package.json",
+                "1.3.0",
+            ),
+            ("node_modules/zod/package.json", "4.4.3"),
+        ]
+        .iter()
+        .all(|(path, version)| package_version(version_root, path).as_deref() == Some(*version))
+}
+
 fn file_sha256(path: &Path) -> Option<String> {
     let bytes = fs::read(path).ok()?;
     Some(format!("{:x}", Sha256::digest(bytes)))
@@ -252,7 +335,9 @@ fn inspect_opencodex_closure(
 ) -> Result<(), &'static str> {
     let closure_sha256 = opencodex_closure_sha256(version_root)
         .ok_or("OpenCodex executable closure is unsafe or unreadable.")?;
-    if Some(closure_sha256.as_str()) != receipt.closure_sha256.as_deref() {
+    if Some(closure_sha256.as_str()) != receipt.closure_sha256.as_deref()
+        || Some(closure_sha256.as_str()) != release.closure_sha256.as_deref()
+    {
         return Err("OpenCodex executable closure checksum is mismatched.");
     }
     if package_version(version_root, OPENCODEX_PACKAGE_JSON).as_deref()
