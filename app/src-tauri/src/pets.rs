@@ -1039,6 +1039,37 @@ fn native_pet_window_visible(win: &WebviewWindow) -> bool {
     unsafe { IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool() }
 }
 
+#[cfg(target_os = "windows")]
+fn hide_pet_window(win: &WebviewWindow) -> Result<(), &'static str> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{IsWindowVisible, ShowWindow, SW_HIDE};
+
+    // Tauri's dispatcher hide may return success before WebView2 applies native
+    // HWND visibility. Keep it as the portable request, then make the Windows
+    // HWND the truthful completion boundary.
+    let _tauri_hide_result = win.hide();
+    let raw = win.hwnd().map_err(|_| "native_handle_unavailable")?;
+    let hwnd = HWND(raw.0 as *mut _);
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_HIDE);
+        if IsWindowVisible(hwnd).as_bool() {
+            Err("hide_failed")
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn hide_pet_window(win: &WebviewWindow) -> Result<(), &'static str> {
+    win.hide().map_err(|_| "hide_failed")?;
+    if native_pet_window_visible(win) {
+        Err("hide_failed")
+    } else {
+        Ok(())
+    }
+}
+
 #[cfg(not(target_os = "windows"))]
 fn native_pet_window_visible(win: &WebviewWindow) -> bool {
     win.is_visible().unwrap_or(false) && !win.is_minimized().unwrap_or(false)
@@ -1321,7 +1352,7 @@ fn schedule_setup_pet_hide(window: WebviewWindow, label: &'static str) -> Result
                 .map(|position| position.x <= -31_000 && position.y <= -31_000)
                 .unwrap_or(false);
             if still_offscreen {
-                if let Err(error) = window.hide() {
+                if let Err(error) = hide_pet_window(&window) {
                     #[cfg(debug_assertions)]
                     eprintln!("[pets] setup {label} hide failed: {error}");
                 }
@@ -1750,7 +1781,7 @@ pub async fn pet_hide_overlay(app: AppHandle) -> Result<(), String> {
     eprintln!("[pets] pet_hide_overlay invoked");
 
     if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
-        let _ = win.hide();
+        hide_pet_window(&win).map_err(str::to_string)?;
     }
     Ok(())
 }
@@ -2319,6 +2350,31 @@ mod tests {
     }
 
     #[test]
+    fn pet_hide_uses_native_visibility_as_its_completion_boundary() {
+        let source = include_str!("pets.rs");
+        let command_start = source
+            .find("pub async fn pet_hide_overlay")
+            .expect("overlay hide command exists");
+        let command_end = source[command_start..]
+            .find("pub async fn pet_is_overlay_visible")
+            .map(|offset| command_start + offset)
+            .expect("overlay hide command is bounded");
+        let command = &source[command_start..command_end];
+
+        assert!(command.contains("hide_pet_window(&win)"));
+        assert!(!command.contains("let _ = win.hide()"));
+
+        let setup_hide_start = source
+            .find("fn schedule_setup_pet_hide")
+            .expect("setup hide scheduler exists");
+        let setup_hide_end = source[setup_hide_start..]
+            .find("pub fn materialize_detached_pet_hosts")
+            .map(|offset| setup_hide_start + offset)
+            .expect("setup hide scheduler is bounded");
+        assert!(source[setup_hide_start..setup_hide_end].contains("hide_pet_window(&window)"));
+    }
+
+    #[test]
     fn detached_pet_windows_build_renderer_attached_native_webview_windows() {
         let source = include_str!("pets.rs");
         let overlay_start = source
@@ -2606,7 +2662,7 @@ mod tests {
         assert!(hide.contains("std::thread::sleep"));
         assert!(hide.contains(".outer_position()"));
         assert!(hide.contains("if still_offscreen"));
-        assert!(hide.contains("window.hide()"));
+        assert!(hide.contains("hide_pet_window(&window)"));
 
         let lib_source = include_str!("lib.rs");
         let setup_start = lib_source.find(".setup(|app|").expect("setup hook exists");

@@ -845,8 +845,17 @@ pub(crate) fn next_recovery_action(
 fn native_recovery_resume_action(
     has_incomplete_recovery: bool,
     time_since_last_action: Option<Duration>,
+    recreate_attempts: u8,
 ) -> Option<RecoveryAction> {
     if !has_incomplete_recovery {
+        return None;
+    }
+    // A retained native lifecycle may be resumed once, but a failed resume has
+    // already incremented the bounded recreate counter. Yield after that
+    // failure so the ordinary policy can restart the app (or fail closed while
+    // terminal sessions make a process restart unsafe) instead of retrying the
+    // same unregister phase forever.
+    if recreate_attempts > 0 {
         return None;
     }
     if time_since_last_action
@@ -2065,6 +2074,7 @@ pub(crate) fn install<R: Runtime>(app: &mut tauri::App<R>) {
                 let action = native_recovery_resume_action(
                     has_incomplete_recovery,
                     time_since_last_action,
+                    recovery.recreate_attempts,
                 )
                 .unwrap_or_else(|| {
                     next_recovery_action_for_reason(
@@ -2932,16 +2942,31 @@ mod tests {
     }
 
     #[test]
-    fn incomplete_native_recovery_retries_its_phase_without_escalating() {
+    fn failed_incomplete_native_recovery_yields_to_bounded_escalation() {
         assert_eq!(
-            native_recovery_resume_action(true, Some(Duration::from_secs(1))),
+            native_recovery_resume_action(true, Some(Duration::from_secs(1)), 0),
             Some(RecoveryAction::None)
         );
         assert_eq!(
-            native_recovery_resume_action(true, Some(Duration::from_secs(21))),
+            native_recovery_resume_action(true, Some(Duration::from_secs(21)), 0),
             Some(RecoveryAction::RecreateWebview)
         );
-        assert_eq!(native_recovery_resume_action(false, None), None);
+        assert_eq!(
+            native_recovery_resume_action(true, Some(Duration::from_secs(21)), 1),
+            None
+        );
+        let escalated = native_recovery_resume_action(true, Some(Duration::from_secs(21)), 1)
+            .unwrap_or_else(|| {
+                next_recovery_action_for_reason(
+                    Some(RecoveryReason::HeartbeatStale),
+                    super::MAX_WEBVIEW_RELOADS,
+                    1,
+                    Some(Duration::from_secs(21)),
+                    true,
+                )
+            });
+        assert_eq!(escalated, RecoveryAction::RestartApplication);
+        assert_eq!(native_recovery_resume_action(false, None, 0), None);
     }
 
     #[test]
