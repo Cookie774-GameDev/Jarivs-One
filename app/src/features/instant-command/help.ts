@@ -31,17 +31,22 @@ export type InstantCommandHelpItem = Readonly<{
   searchText: string;
 }>;
 
+const MAX_HELP_QUERY_LENGTH = 256;
+const EMPTY_HELP_RESULTS = Object.freeze([]) as readonly InstantCommandHelpItem[];
+
 export function buildInstantCommandHelp(
   catalog: readonly CommandDefinition[],
 ): readonly InstantCommandHelpItem[] {
   return Object.freeze(
     catalog.map((definition) => {
       const argumentHint = definition.slotGrammar === 'none' ? '' : '<target or arguments>';
+      const aliases = Object.freeze([...definition.aliases]);
+      const examples = Object.freeze([...definition.examples]);
       return Object.freeze({
         id: definition.id,
         family: definition.family,
-        aliases: definition.aliases,
-        examples: definition.examples,
+        aliases,
+        examples,
         safety: definition.safety,
         availability: definition.availability,
         argumentHint,
@@ -57,9 +62,18 @@ export function searchInstantCommandHelp(
   items: readonly InstantCommandHelpItem[],
   query: string,
 ): readonly InstantCommandHelpItem[] {
+  if (
+    typeof query !== 'string' ||
+    query.length > MAX_HELP_QUERY_LENGTH ||
+    /[\u0000-\u001f\u007f]/u.test(query)
+  ) {
+    return EMPTY_HELP_RESULTS;
+  }
   const terms = query.trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean);
-  if (terms.length === 0) return items;
-  return items.filter((item) => terms.every((term) => item.searchText.includes(term)));
+  if (terms.length === 0) return Object.freeze([...items]);
+  return Object.freeze(
+    items.filter((item) => terms.every((term) => item.searchText.includes(term))),
+  );
 }
 
 function previewSelector(value: unknown): string | null {
@@ -92,21 +106,25 @@ export function previewInstantCommand(
   index: CommandCatalogIndex,
   source: string,
 ): InstantCommandPreview {
-  const matches = index.matchWithOffsets(source);
-  if (matches.length === 0) return Object.freeze({ status: 'unmatched' });
-  if (matches.length !== 1) return Object.freeze({ status: 'ambiguous' });
-  const match = matches[0]!;
-  const parsed = match.definition.parseSlots(match, source);
-  if (parsed.status === 'rejected') {
-    return Object.freeze({ status: 'rejected', reason: parsed.reason });
+  try {
+    const matches = index.matchWithOffsets(source);
+    if (matches.length === 0) return Object.freeze({ status: 'unmatched' });
+    if (matches.length !== 1) return Object.freeze({ status: 'ambiguous' });
+    const match = matches[0]!;
+    const parsed = match.definition.parseSlots(match, source);
+    if (parsed.status === 'rejected') {
+      return Object.freeze({ status: 'rejected', reason: parsed.reason });
+    }
+    return Object.freeze({
+      status: 'ready',
+      id: match.definition.id,
+      action: match.definition.id,
+      target: previewTarget(match.definition, parsed.slots),
+      confirmationRequired: match.definition.safety === 'confirm',
+      approvalRequired: match.definition.safety === 'approval',
+      availability: match.definition.availability,
+    });
+  } catch {
+    return Object.freeze({ status: 'rejected', reason: 'Command preview is unavailable.' });
   }
-  return Object.freeze({
-    status: 'ready',
-    id: match.definition.id,
-    action: match.definition.id,
-    target: previewTarget(match.definition, parsed.slots),
-    confirmationRequired: match.definition.safety === 'confirm',
-    approvalRequired: match.definition.safety === 'approval',
-    availability: match.definition.availability,
-  });
 }

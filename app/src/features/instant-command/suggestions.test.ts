@@ -33,4 +33,15 @@ describe('Instant Command catalog suggestions', () => {
     ]);
     expect(suggestInstantCommands(help, 'team', 2)).toHaveLength(2);
   });
+
+  it('returns deep immutable suggestions and fails closed for invalid limits', () => {
+    const suggestions = suggestInstantCommands(help, '/connect');
+    expect(Object.isFrozen(suggestions)).toBe(true);
+    expect(Object.isFrozen(suggestions[0])).toBe(true);
+    expect(suggestions[0]).toMatchObject({ id: 'connections.open', disabled: false });
+
+    for (const limit of [-1, 1.5, 51, Number.NaN]) {
+      expect(suggestInstantCommands(help, 'terminal', limit)).toEqual([]);
+    }
+  });
 });
