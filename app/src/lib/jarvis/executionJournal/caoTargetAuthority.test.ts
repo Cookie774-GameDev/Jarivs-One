@@ -385,6 +385,7 @@ describe('CAO explicit target authority', () => {
       selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
     });
     h.deps.events.listByRun.mockClear();
+    vi.mocked(h.registry.readExact).mockClear();
     h.deps.runs.getRun.mockRejectedValueOnce(new Error('private database path unavailable'));
 
     await expect(authority.verify({ ...scope, leaseId: acquired.leaseId })).rejects.toThrow(
@@ -879,5 +880,87 @@ describe('CAO explicit target authority', () => {
     await expect(
       createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
     ).rejects.toThrow('cao_target_identity_mismatch');
+  });
+
+  it('rechecks run activity after registry recovery and releases exact ownership on terminal drift', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.deps.runs.getRun
+      .mockResolvedValueOnce(run())
+      .mockResolvedValueOnce(run({ status: 'completed' }));
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow('cao_run_inactive');
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('rechecks expiry after registry recovery and releases authority that expires during I/O', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.deps.now.mockReset();
+    h.deps.now.mockReturnValueOnce(NOW).mockReturnValueOnce(NOW + 5_000);
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).recover({ ...scope, leaseId: acquired.leaseId }),
+    ).rejects.toThrow('cao_target_lease_stale');
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('does not return newly persisted authority after ownership transfers before acknowledgement', async () => {
+    const h = harness();
+    h.deps.journal.appendEvent.mockImplementationOnce(async (_accountId, runId, event) => {
+      const row = { ...structuredClone(event), runId, seq: 1 } as JarvisEvent;
+      h.rows.push(row);
+      h.targets.set('chat:chat-a', { ...target(), ownerLeaseId: 'cao_lease_other' });
+      return structuredClone(row);
+    });
+    vi.mocked(h.registry.releaseExact).mockClear();
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow('cao_target_lease_conflict');
+    expect(h.registry.claimExact).toHaveBeenCalledOnce();
+    expect(h.registry.releaseExact).not.toHaveBeenCalled();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe('cao_lease_other');
+  });
+
+  it('releases only the exact same lease when revision drifts after durable acknowledgement', async () => {
+    const h = harness();
+    h.deps.journal.appendEvent.mockImplementationOnce(async (_accountId, runId, event) => {
+      const row = { ...structuredClone(event), runId, seq: 1 } as JarvisEvent;
+      h.rows.push(row);
+      h.targets.set('chat:chat-a', {
+        ...target({ revision: 8 }),
+        ownerLeaseId: event.caoTargetLease!.leaseId,
+      });
+      return structuredClone(row);
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).acquire({
+        ...scope,
+        leaseMs: 5_000,
+        selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+      }),
+    ).rejects.toThrow('cao_target_revision_stale');
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
   });
 });

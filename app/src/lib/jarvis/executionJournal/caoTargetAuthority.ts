@@ -383,13 +383,39 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     } catch {
       fail('cao_target_registry_unavailable');
     }
-    assertLiveTargets(
-      liveRows,
-      targets,
-      input,
-      lease.leaseId,
-      lease.targets.map(({ revision }) => revision),
-    );
+    try {
+      assertLiveTargets(
+        liveRows,
+        targets,
+        input,
+        lease.leaseId,
+        lease.targets.map(({ revision }) => revision),
+      );
+    } catch (error) {
+      await releaseVerifiedLease(input, lease).catch(() => undefined);
+      throw error;
+    }
+    let currentRun: JarvisRun | undefined;
+    try {
+      currentRun = await dependencies.runs.getRun(input.accountId, input.runId);
+    } catch {
+      fail('cao_run_unavailable');
+    }
+    try {
+      assertRun(currentRun, input);
+    } catch (error) {
+      await releaseVerifiedLease(input, lease);
+      throw error;
+    }
+    const returnAt = dependencies.now();
+    if (!Number.isSafeInteger(returnAt) || returnAt < observedAt) {
+      await releaseVerifiedLease(input, lease);
+      fail('cao_target_clock_invalid');
+    }
+    if (returnAt >= lease.expiresAt) {
+      await releaseVerifiedLease(input, lease);
+      fail('cao_target_lease_stale');
+    }
     return structuredClone(lease);
   }
 
@@ -449,8 +475,9 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
       acquiredAt,
       expiresAt,
     };
+    let appended: JarvisEvent;
     try {
-      const appended = await dependencies.journal.appendEvent(input.accountId, input.runId, {
+      appended = await dependencies.journal.appendEvent(input.accountId, input.runId, {
         idempotencyKey: `cao-target-lease:${leaseId}`,
         type: 'context',
         title: 'CAO target authority acquired',
@@ -460,16 +487,17 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
         createdAt: acquiredAt,
         caoTargetLease: lease,
       });
-      if (!acknowledgesExactLease(appended, input, lease)) {
-        fail('cao_target_journal_invalid');
-      }
-      return structuredClone(lease);
     } catch {
       const committed = await findLease(dependencies.events, input, leaseId).catch(() => undefined);
       if (committed) return verify({ ...input, leaseId });
-      await dependencies.registry.releaseExact(registryRequest).catch(() => undefined);
+      await releaseVerifiedLease({ ...input, leaseId }, lease);
       fail('cao_target_lease_persistence_failed');
     }
+    if (!acknowledgesExactLease(appended, input, lease)) {
+      await releaseVerifiedLease({ ...input, leaseId }, lease);
+      fail('cao_target_lease_persistence_failed');
+    }
+    return verify({ ...input, leaseId });
   }
 
   async function release(input: VerifyInput): Promise<void> {
