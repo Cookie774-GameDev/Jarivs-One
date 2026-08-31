@@ -1229,6 +1229,7 @@ export function Composer({
   const [text, setText] = useState('');
   const textRef = useRef(text);
   textRef.current = text;
+  const handoffDraftEditRevisionRef = useRef(0);
   const [mentionCtx, setMentionCtx] = useState<MentionContext | null>(null);
   const [selectedReferenceKey, setSelectedReferenceKey] = useState<string>('');
   const [slashCtx, setSlashCtx] = useState<SlashContext | null>(null);
@@ -3338,6 +3339,17 @@ export function Composer({
   ): Promise<boolean> => {
     if (harnessBlocked) return false;
     const draftText = overrideText ?? text;
+    const directlySubmittedDraftEditRevision = handoffDraftEditRevisionRef.current;
+    const directlySubmittedVisibleHandoffKey =
+      options.handoffPayload === undefined && pendingHandoff
+        ? composerChatHandoffDeliveryKey(
+            buildComposerChatHandoffPayload({
+              projection: pendingHandoff,
+              instruction: handoffInstruction,
+              draftText,
+            }),
+          )
+        : null;
     const trimmed = draftText.trim();
     const hasConfirmedCommands = confirmedCommands.length > 0;
     const hasConfirmedAgentMentions = confirmedAgentMentions.length > 0;
@@ -3859,12 +3871,18 @@ export function Composer({
             buildComposerChatHandoffPayload({
               projection: pendingHandoffRef.current,
               instruction: handoffInstructionRef.current,
-              draftText: textRef.current,
+              draftText:
+                directlySubmittedVisibleHandoffKey &&
+                handoffDraftEditRevisionRef.current === directlySubmittedDraftEditRevision
+                  ? draftText
+                  : textRef.current,
             }),
           )
         : null;
       const submittedVisibleHandoffKey = handoffPayload
-        ? (options.submittedVisibleHandoffKey ?? submittedHandoffKey)
+        ? (options.submittedVisibleHandoffKey ??
+          directlySubmittedVisibleHandoffKey ??
+          submittedHandoffKey)
         : null;
       if (
         shouldClearComposerHandoff({
@@ -5572,6 +5590,7 @@ export function Composer({
                 rows={1}
                 onChange={(e) => {
                   const nextDraft = e.target.value;
+                  handoffDraftEditRevisionRef.current += 1;
                   setText(nextDraft);
                   if (promptForge.reviewOpen) {
                     promptForge.setUpgradedDraft(nextDraft);

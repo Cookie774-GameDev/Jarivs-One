@@ -512,6 +512,72 @@ describe('Composer chat handoff integration', () => {
     window.removeEventListener('jarvis:send', onSend);
   });
 
+  it('clears a successful rendered handoff after inline draft normalization', async () => {
+    enableTestModel();
+    useUIStore.setState({ activeChatId: 'chat-target' });
+    vi.spyOn(chatRepo, 'getById').mockImplementation(async (id) =>
+      String(id) === 'chat-source' ? sourceChat : targetChat,
+    );
+    vi.spyOn(messageRepo, 'listByChat').mockResolvedValue([message('Normalized draft snapshot')]);
+    const create = vi.spyOn(messageRepo, 'create').mockImplementation(async (input) => ({
+      id: 'persisted-normalized' as Message['id'],
+      chat_id: targetChat.id,
+      role: 'user',
+      parts: input.parts,
+      created_at: 201,
+      updated_at: 201,
+    }));
+    const sent: Array<{ chatId: string; cancellationKey: string; text: string }> = [];
+    const onSend = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ chatId: string; cancellationKey: string; text: string }>
+      ).detail;
+      sent.push(detail);
+      window.dispatchEvent(
+        new CustomEvent('jarvis:run-state', {
+          detail: { ...detail, status: 'running' },
+        }),
+      );
+    };
+    window.addEventListener('jarvis:send', onSend);
+    const payload = JSON.stringify({
+      version: 1,
+      chatId: 'chat-source',
+      workspaceId: 'workspace-1',
+      projectId: 'project-1',
+      title: 'Untrusted display title',
+    });
+    const dataTransfer = {
+      types: [VIBESPACE_CHAT_MIME],
+      files: [],
+      getData: (type: string) => (type === VIBESPACE_CHAT_MIME ? payload : ''),
+    };
+
+    const { container } = render(
+      <TooltipProvider>
+        <Composer chatId="chat-target" />
+      </TooltipProvider>,
+    );
+    const dropZone = container.querySelector('[data-composer-drop-zone="true"]');
+    fireEvent.drop(dropZone!, { dataTransfer });
+    await screen.findByText(/Normalized draft snapshot/);
+    fireEvent.change(screen.getByLabelText('Message'), {
+      target: { value: 'Continue safely after normalization /clearfiles' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(create.mock.calls[0]?.[0].parts)).toContain(
+      'Continue safely after normalization',
+    );
+    expect(JSON.stringify(create.mock.calls[0]?.[0].parts)).not.toContain('/clearfiles');
+    await waitFor(() =>
+      expect(screen.queryByLabelText('Pending handoff from Canonical source title')).toBeNull(),
+    );
+    window.removeEventListener('jarvis:send', onSend);
+  });
+
   it('clears only the exact submitted rendered card after acceptance', async () => {
     enableTestModel();
     useUIStore.setState({ activeChatId: 'chat-target' });
