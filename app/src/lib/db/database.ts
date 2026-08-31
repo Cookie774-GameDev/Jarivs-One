@@ -9,9 +9,9 @@
  * The db is opened lazily; calling `openDb()` is idempotent and safe to call
  * from multiple call sites (initial bootstrap, seed, sync loop).
  *
- * V1 → V13 migrations preserve every existing row. Dexie replays each version's store
+ * V1 → V14 migrations preserve every existing row. Dexie replays each version's store
  * list, creates the newer tables, and leaves every existing row untouched.
- * New installs open directly on V13.
+ * New installs open directly on V14.
  */
 
 import Dexie, { type EntityTable, type Table } from 'dexie';
@@ -43,10 +43,12 @@ import {
   STORES_V11,
   STORES_V12,
   STORES_V13,
+  STORES_V14,
   type BrowserChatBindingRow,
   type BrowserChatImportRow,
   type BrowserChatPermissionProfileRow,
   type BrowserChatSnapshotRow,
+  type CaoTargetClaimRow,
   type CanvasAssetRow,
   type CanvasCameraRow,
   type CanvasDocumentRow,
@@ -181,6 +183,9 @@ export class JarvisDexie extends Dexie {
   status_activity_events!: EntityTable<StatusActivityEventRow, 'id'>;
   status_activity_rollups!: EntityTable<StatusActivityRollupRow, 'id'>;
 
+  // V14 exact CAO target ownership (live target truth remains in chats/terminal_sessions)
+  cao_target_claims!: Table<CaoTargetClaimRow, [string, string]>;
+
   constructor(name = DB_NAME, dependencies?: JarvisDexieDependencies) {
     super(name, dependencies);
     // Replay every additive schema version for existing installations.
@@ -197,6 +202,7 @@ export class JarvisDexie extends Dexie {
     this.version(11).stores(STORES_V11);
     this.version(12).stores(STORES_V12);
     this.version(13).stores(STORES_V13);
+    this.version(14).stores(STORES_V14);
   }
 }
 

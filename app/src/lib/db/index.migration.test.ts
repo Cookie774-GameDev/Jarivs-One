@@ -50,6 +50,7 @@ import {
   STORES_V11,
   STORES_V12,
   STORES_V13,
+  STORES_V14,
   type BrowserChatBindingRow,
   type BrowserChatImportRow,
   type BrowserChatPermissionProfileRow,
@@ -64,6 +65,7 @@ import {
   type CanvasSpatialRow,
   type CanvasTemplateRow,
   type CanvasTombstoneRow,
+  type CaoTargetClaimRow,
   type ContextAssetRow,
   type ContextEmbeddingRow,
   type ContextMigrationBackupRow,
@@ -219,6 +221,12 @@ const EXPECTED_STORES_V13 = {
     'id, accountId, timestamp, category, projectId, providerId, modelId, [accountId+timestamp], [accountId+category+timestamp], [accountId+projectId+timestamp]',
   status_activity_rollups:
     'id, accountId, bucketKind, bucketStart, dimension, dimensionId, &[accountId+bucketKind+bucketStart+dimension+dimensionId], [accountId+bucketKind+bucketStart]',
+} as const;
+
+const EXPECTED_STORES_V14 = {
+  ...EXPECTED_STORES_V13,
+  cao_target_claims:
+    '[kind+targetId], accountId, workspaceId, projectId, runId, leaseId, expiresAt, [runId+leaseId], [accountId+workspaceId+projectId]',
 } as const;
 
 const EXPECTED_STORES_V1_SOURCE = `export const STORES_V1 = {
@@ -638,7 +646,7 @@ afterEach(async () => {
   createdNames.clear();
 });
 
-describe('Jarvis Dexie V13 additive migration', () => {
+describe('Jarvis Dexie V14 additive migration', () => {
   it('keeps the exact V1 through V4 declarations and advances only the active version', () => {
     const schemaSource = readFileSync(join(__dirname, 'schema.ts'), 'utf8');
     expect(STORES_V1).toEqual(EXPECTED_STORES_V1);
@@ -654,11 +662,12 @@ describe('Jarvis Dexie V13 additive migration', () => {
     expect(STORES_V11).toEqual(EXPECTED_STORES_V11);
     expect(STORES_V12).toEqual(EXPECTED_STORES_V12);
     expect(STORES_V13).toEqual(EXPECTED_STORES_V13);
+    expect(STORES_V14).toEqual(EXPECTED_STORES_V14);
     expect(frozenStoreBlock(schemaSource, 'STORES_V1')).toBe(EXPECTED_STORES_V1_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V2')).toBe(EXPECTED_STORES_V2_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V3')).toBe(EXPECTED_STORES_V3_SOURCE);
     expect(frozenStoreBlock(schemaSource, 'STORES_V4')).toBe(EXPECTED_STORES_V4_SOURCE);
-    expect(DB_VERSION).toBe(13);
+    expect(DB_VERSION).toBe(14);
   });
 
   it('opens durable Browser Chat workspace, import, and permission stores on a fresh V12 database', async () => {
@@ -681,12 +690,12 @@ describe('Jarvis Dexie V13 additive migration', () => {
     expect(database.table('browser_chat_permission_profiles').schema.primKey.name).toBe('id');
   });
 
-  it('opens every prior store plus local Status rollups on a fresh V13 database', async () => {
-    const database = createTestJarvisDb(testDbName('jarvis-v13-fresh'));
+  it('opens every prior store plus local Status and CAO claim stores on a fresh V14 database', async () => {
+    const database = createTestJarvisDb(testDbName('jarvis-v14-fresh'));
     await database.open();
 
     expect(database.tables.map((table) => table.name).sort()).toEqual(
-      Object.keys(STORES_V13).sort(),
+      Object.keys(STORES_V14).sort(),
     );
     expect(database.agents.name).toBe('agents');
     expect(database.settings.name).toBe('settings');
@@ -708,6 +717,7 @@ describe('Jarvis Dexie V13 additive migration', () => {
     expect(database.canvas_revisions.name).toBe('canvas_revisions');
     expect(database.canvas_tombstones.name).toBe('canvas_tombstones');
     expect(database.canvas_recovery.name).toBe('canvas_recovery');
+    expect(database.cao_target_claims.name).toBe('cao_target_claims');
 
     expectTypeOf<JarvisDexie['workspaces']>().toEqualTypeOf<EntityTable<Workspace, 'id'>>();
     expectTypeOf<JarvisDexie['projects']>().toEqualTypeOf<EntityTable<Project, 'id'>>();
@@ -771,6 +781,9 @@ describe('Jarvis Dexie V13 additive migration', () => {
     >();
     expectTypeOf<JarvisDexie['jarvis_artifacts']>().toEqualTypeOf<
       EntityTable<JarvisArtifactRow, 'id'>
+    >();
+    expectTypeOf<JarvisDexie['cao_target_claims']>().toEqualTypeOf<
+      Table<CaoTargetClaimRow, [string, string]>
     >();
     expectTypeOf<JarvisDexie['context_maps']>().toEqualTypeOf<
       EntityTable<ContextMapRecordV2, 'id'>
@@ -1389,5 +1402,56 @@ describe('Jarvis Dexie V13 additive migration', () => {
     expect(source).toContain('this.version(11).stores(STORES_V11)');
     expect(source).toContain('this.version(12).stores(STORES_V12)');
     expect(source).toContain('this.version(13).stores(STORES_V13)');
+  });
+
+  it('registers the additive V14 canonical CAO target-claim store in the production database', () => {
+    const schemaSource = readFileSync(join(__dirname, 'schema.ts'), 'utf8');
+    const databaseSource = readFileSync(join(__dirname, 'database.ts'), 'utf8');
+
+    expect(schemaSource).toContain('export const DB_VERSION = 14');
+    expect(schemaSource).toContain('export const STORES_V14 = {');
+    expect(schemaSource).toContain("cao_target_claims: '[kind+targetId]");
+    expect(databaseSource).toContain('cao_target_claims!: Table<CaoTargetClaimRow');
+    expect(databaseSource).toContain('this.version(14).stores(STORES_V14)');
+    expect(databaseSource).not.toContain('.upgrade(');
+  });
+
+  it('preserves V13 rows byte-for-byte while adding an empty CAO claim store', async () => {
+    const name = testDbName('jarvis-v13-to-v14-cao-claims');
+    const legacy = new Dexie(name, TEST_INDEXED_DB);
+    openedDatabases.add(legacy);
+    legacy.version(1).stores(STORES_V1);
+    legacy.version(2).stores(STORES_V2);
+    legacy.version(3).stores(STORES_V3);
+    legacy.version(4).stores(STORES_V4);
+    legacy.version(5).stores(STORES_V5);
+    legacy.version(6).stores(STORES_V6);
+    legacy.version(7).stores(STORES_V7);
+    legacy.version(8).stores(STORES_V8);
+    legacy.version(9).stores(STORES_V9);
+    legacy.version(10).stores(STORES_V10);
+    legacy.version(11).stores(STORES_V11);
+    legacy.version(12).stores(STORES_V12);
+    legacy.version(13).stores(STORES_V13);
+    await legacy.open();
+    const chat = {
+      id: 'chat-before-v14',
+      workspace_id: 'workspace-before-v14',
+      project_id: 'project-before-v14',
+      title: 'Preserved',
+      mode: 'chat',
+      active_agent_ids: [],
+      created_at: 10,
+      updated_at: 11,
+      archived: false,
+      marker: { bytes: ['stay', 14] },
+    };
+    await legacy.table('chats').put(chat);
+    legacy.close();
+
+    const upgraded = createTestJarvisDb(name);
+    await upgraded.open();
+    await expect(upgraded.chats.get('chat-before-v14' as never)).resolves.toEqual(chat);
+    await expect(upgraded.cao_target_claims.toArray()).resolves.toEqual([]);
   });
 });

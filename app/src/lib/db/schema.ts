@@ -217,6 +217,20 @@ export type StatusActivityRollupRow = {
   updatedAt: number;
 };
 
+/** Sole durable ownership row for an explicitly selected CAO chat/terminal target. */
+export type CaoTargetClaimRow = {
+  kind: 'chat' | 'terminal';
+  targetId: string;
+  accountId: string;
+  workspaceId: string;
+  projectId: string;
+  runId: string;
+  leaseId: string;
+  targetRevision: number;
+  claimedAt: number;
+  expiresAt: number;
+};
+
 export type JarvisModelSnapshotRow = {
   connection_id?: string;
   provider_id: string;
@@ -756,8 +770,8 @@ export type BrowserChatPermissionProfileRow = {
 };
 
 export const DB_NAME = 'jarvis-v1';
-/** Current schema version — bumped to 12 for durable Browser Chat permission profiles. */
-export const DB_VERSION = 13;
+/** Current schema version — bumped to 14 for canonical CAO target ownership. */
+export const DB_VERSION = 14;
 
 /**
  * Dexie store schema strings.
@@ -962,6 +976,13 @@ export const STORES_V13 = {
     'id, accountId, bucketKind, bucketStart, dimension, dimensionId, &[accountId+bucketKind+bucketStart+dimension+dimensionId], [accountId+bucketKind+bucketStart]',
 } as const;
 
-export const STORES = STORES_V13;
+/** V14 adds exact, local-only CAO target ownership; chat/terminal rows remain live truth. */
+// prettier-ignore
+export const STORES_V14 = {
+  ...STORES_V13,
+  cao_target_claims: '[kind+targetId], accountId, workspaceId, projectId, runId, leaseId, expiresAt, [runId+leaseId], [accountId+workspaceId+projectId]',
+} as const;
+
+export const STORES = STORES_V14;
 
 export type StoreName = keyof typeof STORES;
