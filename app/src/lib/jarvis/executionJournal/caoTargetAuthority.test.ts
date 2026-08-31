@@ -558,4 +558,108 @@ describe('CAO explicit target authority', () => {
     expect(rollback.registry.releaseExact).toHaveBeenCalledOnce();
     expect(rollback.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
   });
+
+  it('releases exact durable ownership after authority recreation and makes release idempotent', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    const restarted = createCaoTargetAuthority(h.deps);
+
+    await expect(
+      restarted.release({ ...scope, leaseId: acquired.leaseId }),
+    ).resolves.toBeUndefined();
+    await expect(
+      restarted.release({ ...scope, leaseId: acquired.leaseId }),
+    ).resolves.toBeUndefined();
+
+    expect(h.registry.releaseExact).toHaveBeenCalledOnce();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+    await expect(restarted.verify({ ...scope, leaseId: acquired.leaseId })).rejects.toThrow(
+      'cao_target_lease_conflict',
+    );
+  });
+
+  it('reconciles an ambiguously committed release from exact live ownership', async () => {
+    const h = harness();
+    const acquired = await createCaoTargetAuthority(h.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.registry.releaseExact = vi.fn(async (input) => {
+      for (const requested of input.targets) {
+        const key = `${requested.kind}:${requested.targetId}`;
+        const value = h.targets.get(key);
+        if (value && value.ownerLeaseId === input.leaseId) {
+          h.targets.set(key, { ...value, ownerLeaseId: undefined });
+        }
+      }
+      throw new Error('ambiguous registry transport failure');
+    });
+
+    await expect(
+      createCaoTargetAuthority(h.deps).release({ ...scope, leaseId: acquired.leaseId }),
+    ).resolves.toBeUndefined();
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBeUndefined();
+  });
+
+  it('fails closed when release leaves ownership retained or transfers it to another lease', async () => {
+    const retained = harness();
+    const retainedLease = await createCaoTargetAuthority(retained.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    retained.registry.releaseExact = vi.fn(async () => {
+      throw new Error('private registry write failure');
+    });
+    await expect(
+      createCaoTargetAuthority(retained.deps).release({
+        ...scope,
+        leaseId: retainedLease.leaseId,
+      }),
+    ).rejects.toThrow(/^cao_target_registry_unavailable$/);
+    expect(retained.targets.get('chat:chat-a')?.ownerLeaseId).toBe(retainedLease.leaseId);
+
+    const transferred = harness();
+    const transferredLease = await createCaoTargetAuthority(transferred.deps).acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    transferred.targets.set('chat:chat-a', {
+      ...target(),
+      ownerLeaseId: 'cao_lease_other',
+    });
+    vi.mocked(transferred.registry.releaseExact).mockClear();
+    await expect(
+      createCaoTargetAuthority(transferred.deps).release({
+        ...scope,
+        leaseId: transferredLease.leaseId,
+      }),
+    ).rejects.toThrow('cao_target_lease_conflict');
+    expect(transferred.registry.releaseExact).not.toHaveBeenCalled();
+  });
+
+  it('reports registry unavailability when expiry cleanup cannot release retained ownership', async () => {
+    const h = harness();
+    const authority = createCaoTargetAuthority(h.deps);
+    const acquired = await authority.acquire({
+      ...scope,
+      leaseMs: 5_000,
+      selection: { mode: 'explicit_single', targets: [{ kind: 'chat', targetId: 'chat-a' }] },
+    });
+    h.deps.now.mockReturnValue(NOW + 5_000);
+    h.registry.releaseExact = vi.fn(async () => {
+      throw new Error('private registry write failure');
+    });
+
+    await expect(authority.verify({ ...scope, leaseId: acquired.leaseId })).rejects.toThrow(
+      /^cao_target_registry_unavailable$/,
+    );
+    expect(h.targets.get('chat:chat-a')?.ownerLeaseId).toBe(acquired.leaseId);
+  });
 });

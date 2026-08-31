@@ -247,6 +247,54 @@ function exactLeaseScope(lease: CaoTargetLeaseV1, scope: LeaseScope): void {
 }
 
 export function createCaoTargetAuthority(dependencies: Dependencies) {
+  async function readReleaseState(
+    input: VerifyInput,
+    lease: CaoTargetLeaseV1,
+  ): Promise<'owned' | 'released'> {
+    const request = releaseRequest(input, lease);
+    let rows: readonly CaoLiveTarget[];
+    try {
+      rows = await dependencies.registry.readExact(request);
+    } catch {
+      fail('cao_target_registry_unavailable');
+    }
+    if (rows.length !== lease.targets.length) fail('cao_target_missing');
+    let owned = 0;
+    let released = 0;
+    for (let index = 0; index < lease.targets.length; index += 1) {
+      const expected = lease.targets[index];
+      const row = rows[index];
+      if (!expected || !row || row.kind !== expected.kind || row.targetId !== expected.targetId) {
+        fail('cao_target_identity_mismatch');
+      }
+      if (
+        row.accountId !== input.accountId ||
+        row.workspaceId !== input.workspaceId ||
+        row.projectId !== input.projectId
+      ) {
+        fail('cao_target_scope_mismatch');
+      }
+      if (row.ownerLeaseId === lease.leaseId) owned += 1;
+      else if (row.ownerLeaseId === undefined) released += 1;
+      else fail('cao_target_lease_conflict');
+    }
+    if (released === rows.length) return 'released';
+    if (owned === rows.length) return 'owned';
+    fail('cao_target_lease_conflict');
+  }
+
+  async function releaseVerifiedLease(input: VerifyInput, lease: CaoTargetLeaseV1): Promise<void> {
+    if ((await readReleaseState(input, lease)) === 'released') return;
+    try {
+      await dependencies.registry.releaseExact(releaseRequest(input, lease));
+    } catch {
+      // A transport failure can be ambiguous; exact live ownership is authoritative below.
+    }
+    if ((await readReleaseState(input, lease)) !== 'released') {
+      fail('cao_target_registry_unavailable');
+    }
+  }
+
   async function verify(input: VerifyInput): Promise<CaoTargetLeaseV1> {
     assertScope(input);
     if (!validIdentifier(input.leaseId)) fail('cao_target_lease_id_invalid');
@@ -261,7 +309,7 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     if (!lease) fail('cao_target_lease_missing');
     exactLeaseScope(lease, input);
     if (dependencies.now() >= lease.expiresAt) {
-      await dependencies.registry.releaseExact(releaseRequest(input, lease)).catch(() => undefined);
+      await releaseVerifiedLease(input, lease);
       fail('cao_target_lease_stale');
     }
     const targets = lease.targets.map(({ kind, targetId }) => ({ kind, targetId }));
@@ -355,5 +403,14 @@ export function createCaoTargetAuthority(dependencies: Dependencies) {
     }
   }
 
-  return Object.freeze({ acquire, verify, recover: verify });
+  async function release(input: VerifyInput): Promise<void> {
+    assertScope(input);
+    if (!validIdentifier(input.leaseId)) fail('cao_target_lease_id_invalid');
+    const lease = await findLease(dependencies.events, input, input.leaseId);
+    if (!lease) fail('cao_target_lease_missing');
+    exactLeaseScope(lease, input);
+    await releaseVerifiedLease(input, lease);
+  }
+
+  return Object.freeze({ acquire, verify, recover: verify, release });
 }
