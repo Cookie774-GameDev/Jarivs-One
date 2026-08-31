@@ -89,7 +89,7 @@ describe('HarnessReadinessGate', () => {
           <textarea
             aria-label="Draft"
             value={draft}
-            disabled={state.kind !== 'ready'}
+            data-runtime-state={state.kind}
             onChange={(event) => setDraft(event.target.value)}
           />
         </>
@@ -97,21 +97,32 @@ describe('HarnessReadinessGate', () => {
     }
     render(<DraftBoundary />);
     const draft = screen.getByRole('textbox', { name: 'Draft' }) as HTMLTextAreaElement;
-    expect(draft.disabled).toBe(true);
+    expect(draft.disabled).toBe(false);
     expect(draft.value).toBe('keep this draft');
+    fireEvent.change(draft, { target: { value: 'keep this edited draft' } });
+    expect(draft.value).toBe('keep this edited draft');
 
     act(() => runtime.publish({ kind: 'ready', source: 'managed', version: '1.18.16' }));
     expect(draft.disabled).toBe(false);
-    expect(draft.value).toBe('keep this draft');
+    expect(draft.value).toBe('keep this edited draft');
   });
 
-  it('keeps Composer send and input paths guarded by runtime readiness', () => {
+  it('keeps drafting and local slash routing available before the provider readiness gate', () => {
     const source = readFileSync(path.join(process.cwd(), 'src/features/chat/Composer.tsx'), 'utf8');
     expect(source).toContain('const harnessRuntimeState = useHarnessRuntimeState();');
     expect(source).toContain("const harnessBlocked = harnessRuntimeState.kind !== 'ready';");
-    expect(source).toContain('if (harnessBlocked) return false;');
-    expect(source).toContain('disabled={harnessBlocked}');
     expect(source).toContain('<HarnessReadinessGate />');
-    expect(source).toMatch(/const canSend =[\s\S]*!sending &&\s*!harnessBlocked;/);
+    expect(source).not.toContain('disabled={backendRuntimeBlocked}');
+
+    const slashDispatch = source.indexOf(
+      "const slashResult = afterInline.startsWith('/') ? await handleSlashCommand(afterInline) : false;",
+    );
+    const providerReadinessGate = source.indexOf('if (backendRuntimeBlocked) return false;');
+    expect(slashDispatch).toBeGreaterThan(-1);
+    expect(providerReadinessGate).toBeGreaterThan(slashDispatch);
+    expect(source).toContain('const canAttemptSlashWhileBackendBlocked =');
+    expect(source).toMatch(
+      /const canSend =[\s\S]*!sending &&\s*\(!backendRuntimeBlocked \|\| canAttemptSlashWhileBackendBlocked\);/,
+    );
   });
 });

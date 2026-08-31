@@ -3452,7 +3452,6 @@ export function Composer({
       submittedVisibleHandoffKey?: string | null;
     } = {},
   ): Promise<boolean> => {
-    if (backendRuntimeBlocked) return false;
     const draftText = overrideText ?? text;
     const directlySubmittedDraftEditRevision = handoffDraftEditRevisionRef.current;
     const directlySubmittedVisibleHandoffKey =
@@ -3484,13 +3483,6 @@ export function Composer({
       sending
     )
       return false;
-    if (jarvisRunning && !options.bypassQueue && (!overrideText || options.promptForgeApproved)) {
-      // Send button defaults to after-run; Enter passes after-tool explicitly.
-      if (!enqueueCurrentMessage(trimmed, options.flushMode ?? 'after-run')) return false;
-      playUiSound('chat_message_send');
-      return true;
-    }
-
     // Pull utility slash tokens from anywhere in the message (start/middle/end)
     // so "/clearfiles" or "/file readme.md" works even mid-sentence.
     const inline = extractInlineUtilitySlashCommands(trimmed);
@@ -3515,6 +3507,36 @@ export function Composer({
     // When a route slash command has a remainder (e.g. "/terminals close 5 terminals"),
     // handleSlashCommand returns the remainder text so we send it as the message.
     let rawSendText = typeof slashResult === 'string' ? slashResult.trim() : afterInline;
+
+    // Message was only utility slash tokens (e.g. just /clearfiles) — done.
+    if (
+      handledUtilityOnly &&
+      !rawSendText &&
+      confirmedCommands.length === 0 &&
+      confirmedAgentMentions.length === 0 &&
+      confirmedCatalogReferences.length === 0 &&
+      attachedFiles.length === 0 &&
+      attachedImages.length === 0 &&
+      attachedTerminals.length === 0 &&
+      attachedPlugins.length === 0 &&
+      attachedContexts.length === 0 &&
+      !pendingHandoff &&
+      !options.handoffPayload
+    ) {
+      return true;
+    }
+
+    // Drafting and local slash commands remain available while the selected backend is down.
+    // Nothing provider-bound may queue or dispatch until its runtime is ready.
+    if (backendRuntimeBlocked) return false;
+
+    if (jarvisRunning && !options.bypassQueue && (!overrideText || options.promptForgeApproved)) {
+      // Send button defaults to after-run; Enter passes after-tool explicitly.
+      if (!enqueueCurrentMessage(trimmed, options.flushMode ?? 'after-run')) return false;
+      playUiSound('chat_message_send');
+      return true;
+    }
+
     const confirmedReferenceKeysForSend = confirmedCatalogReferences.map(
       (reference) => reference.key,
     );
@@ -3625,23 +3647,6 @@ export function Composer({
       }
     }
 
-    // Message was only utility slash tokens (e.g. just /clearfiles) — done.
-    if (
-      handledUtilityOnly &&
-      !rawSendText &&
-      confirmedCommands.length === 0 &&
-      confirmedAgentMentions.length === 0 &&
-      confirmedCatalogReferences.length === 0 &&
-      attachedFiles.length === 0 &&
-      attachedImages.length === 0 &&
-      attachedTerminals.length === 0 &&
-      attachedPlugins.length === 0 &&
-      attachedContexts.length === 0 &&
-      !pendingHandoff &&
-      !options.handoffPayload
-    ) {
-      return true;
-    }
     const interactionModeForSend = useJarvisInteractionStore.getState().modeForChat(chatId);
     const mentionPrefix = confirmedAgentMentions.map((mention) => mention.label).join(' ');
     const catalogReferencePrefix = confirmedCatalogReferenceTextForSend(confirmedCatalogReferences);
@@ -4854,6 +4859,8 @@ export function Composer({
     return () => window.removeEventListener('keydown', onPromptForgeHotkey);
   }, [promptForge.disabledReason, promptForge.start]);
 
+  const canAttemptSlashWhileBackendBlocked =
+    backendRuntimeBlocked && text.trimStart().startsWith('/');
   const canSend =
     (text.trim().length > 0 ||
       attachedFiles.length > 0 ||
@@ -4866,7 +4873,7 @@ export function Composer({
       confirmedCatalogReferences.length > 0 ||
       pendingHandoff !== null) &&
     !sending &&
-    !backendRuntimeBlocked;
+    (!backendRuntimeBlocked || canAttemptSlashWhileBackendBlocked);
   const kernelSmokeHiveBound = KERNEL_SMOKE_ENABLED && isKernelSmokeBindingActive();
   const kernelSmokeHivePrepared =
     kernelSmokeHiveBound &&
@@ -5761,7 +5768,6 @@ export function Composer({
               <textarea
                 ref={textareaRef}
                 value={text}
-                disabled={backendRuntimeBlocked}
                 rows={1}
                 onChange={(e) => {
                   const nextDraft = e.target.value;
