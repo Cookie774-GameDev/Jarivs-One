@@ -2286,11 +2286,19 @@ fn open_or_focus_pet_panel_blocking(
 /// Minimize panel only — sessions keep running. Restores the pet sprite.
 #[tauri::command]
 pub async fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
-        let _ = win.minimize();
-    }
-    if let Ok(mut open) = app.state::<PetWindowState>().panel_open.lock() {
-        *open = false;
+    record_pet_visibility_intent(&app, PET_MINI_PANEL_LABEL);
+    {
+        let state = app.state::<PetWindowState>();
+        let _lifecycle = state
+            .panel_lifecycle
+            .lock()
+            .map_err(|_| "panel_lifecycle_unavailable".to_string())?;
+        if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
+            let _ = win.minimize();
+        }
+        if let Ok(mut open) = state.panel_open.lock() {
+            *open = false;
+        };
     }
     // Bring pet sprite back
     let _ = pet_show_overlay(app.clone()).await;
@@ -2300,31 +2308,31 @@ pub async fn pet_minimize_panel(app: AppHandle) -> Result<(), String> {
 /// Hide panel without killing sessions (close after user confirms in UI). Restores pet.
 #[tauri::command]
 pub async fn pet_hide_panel(app: AppHandle) -> Result<(), String> {
-    let win = match app.get_webview_window(PET_MINI_PANEL_LABEL) {
-        Some(win) => win,
-        None => {
-            if let Ok(mut open) = app.state::<PetWindowState>().panel_open.lock() {
-                *open = false;
+    record_pet_visibility_intent(&app, PET_MINI_PANEL_LABEL);
+    {
+        let state = app.state::<PetWindowState>();
+        let _lifecycle = state
+            .panel_lifecycle
+            .lock()
+            .map_err(|_| "panel_lifecycle_unavailable".to_string())?;
+        if let Some(win) = app.get_webview_window(PET_MINI_PANEL_LABEL) {
+            // Capture size/pos before hide
+            if let Ok(mut geo) = state.geometry.lock() {
+                if let Ok(pos) = win.outer_position() {
+                    geo.panel_x = Some(pos.x as f64);
+                    geo.panel_y = Some(pos.y as f64);
+                }
+                if let Ok(size) = win.outer_size() {
+                    geo.panel_w = Some(size.width as f64);
+                    geo.panel_h = Some(size.height as f64);
+                }
+                save_geometry(&app, &geo);
             }
-            let _ = pet_show_overlay(app.clone()).await;
-            return Ok(());
+            let _ = win.hide();
         }
-    };
-    // Capture size/pos before hide
-    if let Ok(mut geo) = app.state::<PetWindowState>().geometry.lock() {
-        if let Ok(pos) = win.outer_position() {
-            geo.panel_x = Some(pos.x as f64);
-            geo.panel_y = Some(pos.y as f64);
-        }
-        if let Ok(size) = win.outer_size() {
-            geo.panel_w = Some(size.width as f64);
-            geo.panel_h = Some(size.height as f64);
-        }
-        save_geometry(&app, &geo);
-    }
-    let _ = win.hide();
-    if let Ok(mut open) = app.state::<PetWindowState>().panel_open.lock() {
-        *open = false;
+        if let Ok(mut open) = state.panel_open.lock() {
+            *open = false;
+        };
     }
     let _ = pet_show_overlay(app.clone()).await;
     Ok(())
@@ -3037,6 +3045,67 @@ mod tests {
             .expect("panel restore commands have a bounded source slice");
         assert!(minimize_and_hide.contains("pet_show_overlay(app.clone()).await"));
         assert!(!minimize_and_hide.contains("show_pet_overlay_blocking(app.clone())"));
+    }
+
+    #[test]
+    fn later_panel_hide_intent_serializes_after_an_inflight_open() {
+        let source = include_str!("pets.rs");
+        let minimize_start = source
+            .find("pub async fn pet_minimize_panel")
+            .expect("panel minimize command exists");
+        let hide_start = source
+            .find("pub async fn pet_hide_panel")
+            .expect("panel hide command exists");
+        let visible_start = source
+            .find("pub async fn pet_is_panel_visible")
+            .expect("panel visibility command exists");
+        let minimize = &source[minimize_start..hide_start];
+        let hide = &source[hide_start..visible_start];
+        for command in [minimize, hide] {
+            let intent = command
+                .find("record_pet_visibility_intent(&app, PET_MINI_PANEL_LABEL)")
+                .expect("panel visibility intent is recorded");
+            let lifecycle = command
+                .find(".panel_lifecycle")
+                .expect("panel visibility change uses the panel lifecycle");
+            assert!(intent < lifecycle);
+        }
+
+        use std::sync::{mpsc, Arc};
+        let state = Arc::new(PetWindowState::default());
+        let visible = Arc::new(AtomicBool::new(false));
+        let (open_acquired_tx, open_acquired_rx) = mpsc::channel();
+        let (release_open_tx, release_open_rx) = mpsc::channel();
+        let open_state = state.clone();
+        let open_visible = visible.clone();
+        let open = std::thread::spawn(move || {
+            open_state
+                .panel_visibility_generation
+                .fetch_add(1, Ordering::SeqCst);
+            let _lifecycle = open_state.panel_lifecycle.lock().unwrap();
+            open_acquired_tx.send(()).unwrap();
+            release_open_rx.recv().unwrap();
+            open_visible.store(true, Ordering::SeqCst);
+        });
+        open_acquired_rx.recv().unwrap();
+
+        let (hide_recorded_tx, hide_recorded_rx) = mpsc::channel();
+        let hide_state = state.clone();
+        let hide_visible = visible.clone();
+        let hide = std::thread::spawn(move || {
+            hide_state
+                .panel_visibility_generation
+                .fetch_add(1, Ordering::SeqCst);
+            hide_recorded_tx.send(()).unwrap();
+            let _lifecycle = hide_state.panel_lifecycle.lock().unwrap();
+            hide_visible.store(false, Ordering::SeqCst);
+        });
+        hide_recorded_rx.recv().unwrap();
+        assert_eq!(state.panel_visibility_generation.load(Ordering::SeqCst), 2);
+        release_open_tx.send(()).unwrap();
+        open.join().unwrap();
+        hide.join().unwrap();
+        assert!(!visible.load(Ordering::SeqCst));
     }
 
     #[test]
