@@ -5,6 +5,7 @@ import { validateCaoTargetLease } from '@/lib/jarvis/contracts/validators';
 const OPAQUE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 
 export type CaoScheduledTargetAuthorityErrorCode =
+  | 'cao_learning_execution_input_invalid'
   | 'cao_learning_execution_result_invalid'
   | 'cao_learning_execution_unavailable'
   | 'cao_learning_target_lease_required'
@@ -57,6 +58,30 @@ function requireExplicitAuthority(input: CaoScheduledTargetExecutionInput): void
   }
   if (!Number.isSafeInteger(input.targetRevision) || input.targetRevision < 0) {
     throw new CaoScheduledTargetAuthorityError('cao_learning_target_revision_stale');
+  }
+  const { execution } = input;
+  if (
+    !execution ||
+    ![
+      execution.accountId,
+      execution.workspaceId,
+      execution.projectId,
+      execution.scheduleId,
+      execution.targetId,
+      execution.passId,
+      execution.requestId,
+    ].every((value) => typeof value === 'string' && validId(value)) ||
+    !['scheduled', 'manual_force', 'learning_threshold'].includes(execution.trigger) ||
+    !Number.isSafeInteger(execution.fromSeqExclusive) ||
+    execution.fromSeqExclusive < 0 ||
+    !Number.isSafeInteger(execution.throughSeqInclusive) ||
+    execution.throughSeqInclusive < execution.fromSeqExclusive ||
+    !Number.isSafeInteger(execution.requestedAt) ||
+    execution.requestedAt < 0 ||
+    (execution.scheduledDueAt !== undefined &&
+      (!Number.isSafeInteger(execution.scheduledDueAt) || execution.scheduledDueAt < 0))
+  ) {
+    throw new CaoScheduledTargetAuthorityError('cao_learning_execution_input_invalid');
   }
 }
 
@@ -139,12 +164,18 @@ export function createCaoScheduledTargetExecution(dependencies: Dependencies): R
 
   return {
     async execute(input) {
-      const snapshot = structuredClone(input);
+      let snapshot: CaoScheduledTargetExecutionInput;
+      try {
+        snapshot = structuredClone(input);
+      } catch {
+        throw new CaoScheduledTargetAuthorityError('cao_learning_execution_input_invalid');
+      }
       requireExplicitAuthority(snapshot);
       await verifyExact(snapshot);
+      const workerExecution = Object.freeze(structuredClone(snapshot.execution));
       let recoveredResult: CaoLearningExecutionResult;
       try {
-        recoveredResult = await dependencies.execute(snapshot.execution);
+        recoveredResult = await dependencies.execute(workerExecution);
       } catch {
         throw new CaoScheduledTargetAuthorityError('cao_learning_execution_unavailable');
       }

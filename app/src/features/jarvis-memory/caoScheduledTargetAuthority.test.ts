@@ -262,6 +262,60 @@ describe('createCaoScheduledTargetExecution', () => {
   });
 
   it.each([
+    ['blank account identity', { ...execution, accountId: '' }],
+    ['regressed cursor range', { ...execution, fromSeqExclusive: 10, throughSeqInclusive: 9 }],
+    ['unknown trigger', { ...execution, trigger: 'restart_replay' }],
+    ['invalid scheduled clock', { ...execution, scheduledDueAt: -1 }],
+  ])('rejects recovered execution with %s before authority access', async (_case, recovered) => {
+    const verify = vi.fn();
+    const execute = vi.fn();
+    const scoped = createCaoScheduledTargetExecution({ authority: { verify }, execute });
+
+    await expect(scoped.execute(input({ execution: recovered }))).rejects.toMatchObject({
+      code: 'cao_learning_execution_input_invalid',
+    });
+    expect(verify).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('redacts execution snapshot failures before authority access', async () => {
+    const verify = vi.fn();
+    const execute = vi.fn();
+    const scoped = createCaoScheduledTargetExecution({ authority: { verify }, execute });
+    const uncloneable = input({
+      execution: { ...execution, requestId: () => 'private recovered payload' },
+    });
+
+    const failure = await scoped.execute(uncloneable as never).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ code: 'cao_learning_execution_input_invalid' });
+    expect(String(failure)).not.toContain('private recovered payload');
+    expect(verify).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('keeps the verified execution identity immutable across worker dispatch', async () => {
+    const verify = vi.fn().mockResolvedValue(lease());
+    let observedTargetId = '';
+    const execute = vi.fn(async (workerInput: typeof execution) => {
+      try {
+        workerInput.targetId = 'terminal-mutated';
+      } catch {
+        // The worker must not be able to rewrite the verified authority snapshot.
+      }
+      observedTargetId = workerInput.targetId;
+      return { status: 'completed' as const, receiptId: 'receipt-1' };
+    });
+    const scoped = createCaoScheduledTargetExecution({ authority: { verify }, execute });
+
+    await expect(scoped.execute(input())).resolves.toEqual({
+      status: 'completed',
+      receiptId: 'receipt-1',
+    });
+    expect(observedTargetId).toBe(execution.targetId);
+    expect(verify).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
     ['blank completed receipt', { status: 'completed', receiptId: '' }],
     ['unknown result status', { status: 'recovered', receiptId: 'receipt-1' }],
   ])('rejects a %s before it can become durable completion truth', async (_case, result) => {
