@@ -1908,6 +1908,14 @@ pub(crate) fn consume_recovery_restart<R: Runtime>(app: &tauri::AppHandle<R>) ->
         .unwrap_or(false)
 }
 
+#[cfg(windows)]
+pub(crate) fn install<R: Runtime>(_app: &mut tauri::App<R>) {
+    // Temporary fail-safe: native evidence shows healthy Windows renderers are
+    // currently missing heartbeat acknowledgement, after which recovery
+    // reload/recreate deadlocks the otherwise responsive main IPC bridge.
+}
+
+#[cfg(not(windows))]
 pub(crate) fn install<R: Runtime>(app: &mut tauri::App<R>) {
     let marker_path = recovery_marker_path(app.handle());
     let circuit_path = recovery_circuit_path(app.handle());
@@ -3173,5 +3181,21 @@ mod tests {
                 reason: ProcessFailureReason::Crashed,
             })
         );
+    }
+
+    #[test]
+    fn windows_watchdog_install_is_temporarily_fail_safe() {
+        let source = include_str!("renderer_watchdog.rs");
+        let start = source
+            .find("#[cfg(windows)]\npub(crate) fn install")
+            .expect("Windows watchdog fail-safe exists");
+        let end = source[start..]
+            .find("#[cfg(not(windows))]\npub(crate) fn install")
+            .map(|offset| start + offset)
+            .expect("Windows watchdog fail-safe is bounded");
+        let windows_install = &source[start..end];
+        assert!(!windows_install.contains("std::thread"));
+        assert!(!windows_install.contains("app.listen"));
+        assert!(!windows_install.contains("register_process_failed_handler"));
     }
 }

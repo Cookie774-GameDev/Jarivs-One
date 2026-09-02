@@ -33,6 +33,10 @@ const PET_SETUP_OFFSCREEN_POSITION: (f64, f64) = (-32_000.0, -32_000.0);
 const PET_SETUP_MATERIALIZATION_DELAY_MS: u64 = 1_000;
 const PET_NATIVE_FRAME_STYLE_BITS: isize = 0x00CF_0000;
 const PET_NATIVE_FRAME_EX_STYLE_BITS: isize = 0x0002_0301;
+#[cfg(target_os = "windows")]
+const PET_NATIVE_TITLE_CAPACITY: usize = 64;
+#[cfg(target_os = "windows")]
+const PET_NATIVE_TITLE_TIMEOUT_MS: u32 = 25;
 
 #[cfg(target_os = "windows")]
 const PET_TOPMOST_POS_FLAGS: windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS =
@@ -844,6 +848,14 @@ fn is_pet_label(label: &str) -> bool {
     label == PET_OVERLAY_LABEL || label == PET_MINI_PANEL_LABEL
 }
 
+fn pet_native_title_for_label(label: &str) -> Option<&'static str> {
+    match label {
+        PET_OVERLAY_LABEL => Some("VibeSpace Pet"),
+        PET_MINI_PANEL_LABEL => Some("VibeSpace Pet Panel"),
+        _ => None,
+    }
+}
+
 fn is_pet_native_title(title: &str) -> bool {
     title == "VibeSpace Pet" || title == "VibeSpace Pet Panel"
 }
@@ -1033,31 +1045,99 @@ fn native_show_pet_window(win: &WebviewWindow, _title: &str, _focus: bool) -> bo
 }
 
 #[cfg(target_os = "windows")]
+fn native_pet_hwnds(label: &str) -> Vec<windows::Win32::Foundation::HWND> {
+    use windows::core::BOOL;
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowThreadProcessId, SendMessageTimeoutW, SMTO_ABORTIFHUNG, SMTO_BLOCK,
+        WM_GETTEXT,
+    };
+
+    struct Enumeration {
+        process_id: u32,
+        expected_title: &'static str,
+        windows: Vec<HWND>,
+    }
+
+    unsafe extern "system" fn collect_window(hwnd: HWND, state: LPARAM) -> BOOL {
+        let state = unsafe { &mut *(state.0 as *mut Enumeration) };
+        let mut process_id = 0;
+        unsafe {
+            GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+        }
+        if process_id != state.process_id {
+            return true.into();
+        }
+
+        let mut title = [0_u16; PET_NATIVE_TITLE_CAPACITY];
+        let mut copied = 0_usize;
+        let delivered = unsafe {
+            SendMessageTimeoutW(
+                hwnd,
+                WM_GETTEXT,
+                WPARAM(title.len()),
+                LPARAM(title.as_mut_ptr() as isize),
+                SMTO_ABORTIFHUNG | SMTO_BLOCK,
+                PET_NATIVE_TITLE_TIMEOUT_MS,
+                Some(&mut copied),
+            )
+        };
+        if delivered.0 != 0
+            && copied > 0
+            && copied < title.len()
+            && String::from_utf16_lossy(&title[..copied]) == state.expected_title
+        {
+            state.windows.push(hwnd);
+        }
+        true.into()
+    }
+
+    let Some(expected_title) = pet_native_title_for_label(label) else {
+        return Vec::new();
+    };
+    let mut state = Enumeration {
+        process_id: std::process::id(),
+        expected_title,
+        windows: Vec::new(),
+    };
+    let _ = unsafe {
+        EnumWindows(
+            Some(collect_window),
+            LPARAM((&mut state as *mut Enumeration) as isize),
+        )
+    };
+    state.windows
+}
+
+#[cfg(target_os = "windows")]
 fn native_pet_window_visible(win: &WebviewWindow) -> bool {
-    use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{IsIconic, IsWindowVisible};
-    let Ok(raw) = win.hwnd() else { return false };
-    let hwnd = HWND(raw.0 as *mut _);
-    unsafe { IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool() }
+    native_pet_hwnds(win.label())
+        .into_iter()
+        .any(|hwnd| unsafe { IsWindowVisible(hwnd).as_bool() && !IsIconic(hwnd).as_bool() })
 }
 
 #[cfg(target_os = "windows")]
 fn hide_pet_window(win: &WebviewWindow) -> Result<(), &'static str> {
-    use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{IsWindowVisible, ShowWindow, SW_HIDE};
 
     // This helper can run while the WebView is awaiting its invoke response.
-    // A nested Tauri dispatcher hide can then block the event loop and stall all
-    // native IPC, so Windows uses its already-owned HWND directly.
-    let raw = win.hwnd().map_err(|_| "native_handle_unavailable")?;
-    let hwnd = HWND(raw.0 as *mut _);
-    unsafe {
-        let _ = ShowWindow(hwnd, SW_HIDE);
-        if IsWindowVisible(hwnd).as_bool() {
-            Err("hide_failed")
-        } else {
-            Ok(())
+    // WebviewWindow::hwnd is itself a synchronous Wry window_getter, so resolve
+    // only this process's exact Pet titles and operate on their HWNDs directly.
+    let hwnds = native_pet_hwnds(win.label());
+    for hwnd in hwnds.iter().copied() {
+        unsafe {
+            let _ = ShowWindow(hwnd, SW_HIDE);
         }
+    }
+    if hwnds
+        .iter()
+        .copied()
+        .any(|hwnd| unsafe { IsWindowVisible(hwnd).as_bool() })
+    {
+        Err("hide_failed")
+    } else {
+        Ok(())
     }
 }
 
@@ -1097,40 +1177,17 @@ fn pet_window_should_stay_topmost(win: &WebviewWindow) -> bool {
 
 #[cfg(target_os = "windows")]
 fn native_pin_visible_pet_hwnds() {
-    use windows::core::BOOL;
-    use windows::Win32::Foundation::{HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowLongPtrW, GetWindowTextLengthW, GetWindowTextW,
-        GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetWindowLongPtrW, SetWindowPos,
-        GWL_EXSTYLE, HWND_TOPMOST, WS_EX_TOPMOST,
+        GetWindowLongPtrW, IsIconic, IsWindowVisible, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE,
+        HWND_TOPMOST, WS_EX_TOPMOST,
     };
 
-    struct Enumeration {
-        process_id: u32,
-    }
-
-    unsafe extern "system" fn pin_window(hwnd: HWND, state: LPARAM) -> BOOL {
-        let state = unsafe { &*(state.0 as *const Enumeration) };
-        let mut process_id = 0;
-        unsafe {
-            GetWindowThreadProcessId(hwnd, Some(&mut process_id));
-        }
-        if process_id != state.process_id
-            || !unsafe { IsWindowVisible(hwnd).as_bool() }
-            || unsafe { IsIconic(hwnd).as_bool() }
-        {
-            return true.into();
-        }
-
-        let title_len = unsafe { GetWindowTextLengthW(hwnd) };
-        if title_len <= 0 {
-            return true.into();
-        }
-        let mut title = vec![0_u16; title_len as usize + 1];
-        let copied = unsafe { GetWindowTextW(hwnd, &mut title) };
-        if copied <= 0 || !is_pet_native_title(&String::from_utf16_lossy(&title[..copied as usize]))
-        {
-            return true.into();
+    let hwnds = native_pet_hwnds(PET_OVERLAY_LABEL)
+        .into_iter()
+        .chain(native_pet_hwnds(PET_MINI_PANEL_LABEL));
+    for hwnd in hwnds {
+        if !unsafe { IsWindowVisible(hwnd).as_bool() } || unsafe { IsIconic(hwnd).as_bool() } {
+            continue;
         }
 
         let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
@@ -1144,18 +1201,7 @@ fn native_pin_visible_pet_hwnds() {
         unsafe {
             let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, PET_TOPMOST_POS_FLAGS);
         }
-        true.into()
     }
-
-    let state = Enumeration {
-        process_id: std::process::id(),
-    };
-    let _ = unsafe {
-        EnumWindows(
-            Some(pin_window),
-            LPARAM((&state as *const Enumeration) as isize),
-        )
-    };
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -1402,55 +1448,12 @@ fn schedule_setup_pet_hide(
         .map_err(|error| format!("failed to schedule setup {label} hide: {error}"))
 }
 
-pub fn materialize_detached_pet_hosts(app: &tauri::App) {
-    // Called directly from Tauri's setup hook while `App` still owns the
-    // authoritative event-loop target. Create both renderer-attached
-    // hosts initially visible and offscreen here; WebView2 does not materialize
-    // a native host for a window whose initial visibility is false. Hide each
-    // host after a bounded offscreen materialization interval so command-time
-    // show reuses an authoritative HWND without flashing on the desktop.
-    let handle = app.handle();
-    let state = handle.state::<PetWindowState>();
-    let overlay_setup_generation = state.overlay_visibility_generation.load(Ordering::SeqCst);
-    let panel_setup_generation = state.panel_visibility_generation.load(Ordering::SeqCst);
-    if handle.get_webview_window(PET_OVERLAY_LABEL).is_none() {
-        match build_pet_overlay(app, handle, true, Some(PET_SETUP_OFFSCREEN_POSITION)) {
-            Ok(window) => {
-                if let Err(error) = schedule_setup_pet_hide(
-                    handle.clone(),
-                    window,
-                    PET_OVERLAY_LABEL,
-                    overlay_setup_generation,
-                ) {
-                    #[cfg(debug_assertions)]
-                    eprintln!("[pets] {error}");
-                }
-            }
-            Err(error) => {
-                #[cfg(debug_assertions)]
-                eprintln!("[pets] setup pet-overlay build failed: {error}");
-            }
-        }
-    }
-    if handle.get_webview_window(PET_MINI_PANEL_LABEL).is_none() {
-        match build_pet_panel(app, handle, true, Some(PET_SETUP_OFFSCREEN_POSITION)) {
-            Ok(window) => {
-                if let Err(error) = schedule_setup_pet_hide(
-                    handle.clone(),
-                    window,
-                    PET_MINI_PANEL_LABEL,
-                    panel_setup_generation,
-                ) {
-                    #[cfg(debug_assertions)]
-                    eprintln!("[pets] {error}");
-                }
-            }
-            Err(error) => {
-                #[cfg(debug_assertions)]
-                eprintln!("[pets] setup pet-mini-panel build failed: {error}");
-            }
-        }
-    }
+pub fn materialize_detached_pet_hosts(_app: &tauri::App) {
+    // Fail-safe startup: detached Pet WebViews are created only by their
+    // explicit show/open commands. Eager creation can retain the native event
+    // loop before the main renderer's first IPC handshake, even when Pet is
+    // disabled. Keeping startup lazy makes the main app authoritative while
+    // preserving the existing on-demand Pet creation paths.
 }
 
 fn schedule_pet_overlay_build(app: &AppHandle) -> Result<(), String> {
@@ -2497,6 +2500,19 @@ mod tests {
     #[test]
     fn pet_hide_uses_native_visibility_as_its_completion_boundary() {
         let source = include_str!("pets.rs");
+        let hwnd_lookup_start = source
+            .find("fn native_pet_hwnds")
+            .expect("native Pet HWND lookup exists");
+        let hwnd_lookup_end = source[hwnd_lookup_start..]
+            .find("fn native_pet_window_visible")
+            .map(|offset| hwnd_lookup_start + offset)
+            .expect("native Pet HWND lookup is bounded");
+        let hwnd_lookup = &source[hwnd_lookup_start..hwnd_lookup_end];
+        assert!(hwnd_lookup.contains("SendMessageTimeoutW("));
+        assert!(hwnd_lookup.contains("SMTO_ABORTIFHUNG | SMTO_BLOCK"));
+        assert!(!hwnd_lookup.contains("GetWindowTextLengthW("));
+        assert!(!hwnd_lookup.contains("GetWindowTextW("));
+
         let command_start = source
             .find("pub async fn pet_hide_overlay")
             .expect("overlay hide command exists");
@@ -2518,7 +2534,9 @@ mod tests {
             .map(|offset| windows_helper_start + offset)
             .expect("Windows overlay hide helper is bounded");
         let windows_helper = &source[windows_helper_start..windows_helper_end];
+        assert!(windows_helper.contains("native_pet_hwnds(win.label())"));
         assert!(windows_helper.contains("ShowWindow(hwnd, SW_HIDE)"));
+        assert!(!windows_helper.contains("win.hwnd()"));
         assert!(!windows_helper.contains("win.hide()"));
 
         let setup_hide_start = source
@@ -2814,7 +2832,7 @@ mod tests {
     }
 
     #[test]
-    fn detached_pet_hosts_are_materialized_during_tauri_setup() {
+    fn detached_pet_hosts_are_lazy_during_tauri_setup() {
         let source = include_str!("pets.rs");
         let tests_start = source.find("mod tests {").expect("test module exists");
         let production = &source[..tests_start];
@@ -2836,19 +2854,10 @@ mod tests {
             .map(|offset| materialize_start + offset)
             .expect("setup materializer is bounded");
         let materialize = &production[materialize_start..materialize_end];
-        assert!(materialize
-            .contains("build_pet_overlay(app, handle, true, Some(PET_SETUP_OFFSCREEN_POSITION))"));
-        assert!(materialize
-            .contains("build_pet_panel(app, handle, true, Some(PET_SETUP_OFFSCREEN_POSITION))"));
-        assert_eq!(
-            materialize
-                .matches("if let Err(error) = schedule_setup_pet_hide(")
-                .count(),
-            2
-        );
-        assert!(!materialize.contains(".hide()"));
-        assert!(!materialize.contains("run_on_main_thread"));
-        assert!(!materialize.contains("spawn"));
+        assert!(!materialize.contains("build_pet_overlay("));
+        assert!(!materialize.contains("build_pet_panel("));
+        assert!(!materialize.contains("schedule_setup_pet_hide("));
+        assert!(!materialize.contains("outer_position()"));
 
         let hide_start = production
             .find("fn schedule_setup_pet_hide")
@@ -2983,6 +2992,20 @@ mod tests {
         assert!(!is_pet_native_title("VibeSpace"));
         assert!(!is_pet_native_title("Pet"));
         assert!(!is_pet_native_title(""));
+
+        let source = include_str!("pets.rs");
+        let pin_start = source
+            .find("fn native_pin_visible_pet_hwnds")
+            .expect("native topmost helper exists");
+        let pin_end = source[pin_start..]
+            .find("fn pin_visible_pet_windows")
+            .map(|offset| pin_start + offset)
+            .expect("native topmost helper is bounded");
+        let pin = &source[pin_start..pin_end];
+        assert!(pin.contains("native_pet_hwnds(PET_OVERLAY_LABEL)"));
+        assert!(pin.contains("native_pet_hwnds(PET_MINI_PANEL_LABEL)"));
+        assert!(!pin.contains("GetWindowTextLengthW("));
+        assert!(!pin.contains("GetWindowTextW("));
     }
 
     #[test]

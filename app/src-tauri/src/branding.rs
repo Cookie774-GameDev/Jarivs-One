@@ -52,8 +52,9 @@ fn apply_window_icon_sync(window: &Window) {
             eprintln!("[branding] failed to set window icon: {err}");
         }
     }
-    #[cfg(windows)]
-    branding_windows::apply_hwnd_icons(window);
+    // Windows already receives the embedded executable icon. Do not call the
+    // synchronous Tauri HWND getter from this event-loop callback: Wry routes
+    // that getter back through the same event loop and can deadlock all IPC.
 }
 
 fn refresh_tray_icon(app: &AppHandle) {
@@ -64,11 +65,20 @@ fn refresh_tray_icon(app: &AppHandle) {
     }
 }
 
+#[cfg(not(windows))]
 fn apply_app_branding_sync(app: &AppHandle) {
     if let Some(window) = app.get_window("main") {
         apply_window_icon_sync(&window);
     }
     refresh_tray_icon(app);
+}
+
+#[cfg(windows)]
+fn apply_app_branding_sync(_app: &AppHandle) {
+    // Fail-safe: both Window and TrayIcon mutations are Tauri event-loop
+    // operations. Re-entering them from this event-loop callback can block the
+    // callback forever. Windows keeps its embedded executable and initial tray
+    // icons, so periodic runtime refresh is safely redundant.
 }
 
 fn run_branding_on_main_thread(app: &AppHandle) {
@@ -135,5 +145,31 @@ mod tests {
     #[test]
     fn windows_refreshes_do_not_allocate_new_tauri_icons() {
         assert_eq!(should_apply_tauri_window_icon(), !cfg!(windows));
+    }
+
+    #[test]
+    fn windows_runtime_branding_does_not_reenter_the_tauri_hwnd_getter() {
+        let source = include_str!("branding.rs");
+        let helper_start = source
+            .find("fn apply_window_icon_sync")
+            .expect("window icon helper exists");
+        let helper_end = source[helper_start..]
+            .find("fn refresh_tray_icon")
+            .map(|offset| helper_start + offset)
+            .expect("window icon helper is bounded");
+        let helper = &source[helper_start..helper_end];
+        assert!(!helper.contains("branding_windows::apply_hwnd_icons"));
+        assert!(!helper.contains("window.hwnd()"));
+
+        let windows_refresh_start = source
+            .find("#[cfg(windows)]\nfn apply_app_branding_sync")
+            .expect("Windows runtime branding fail-safe exists");
+        let windows_refresh_end = source[windows_refresh_start..]
+            .find("fn run_branding_on_main_thread")
+            .map(|offset| windows_refresh_start + offset)
+            .expect("Windows runtime branding fail-safe is bounded");
+        let windows_refresh = &source[windows_refresh_start..windows_refresh_end];
+        assert!(!windows_refresh.contains("refresh_tray_icon("));
+        assert!(!windows_refresh.contains("apply_window_icon_sync("));
     }
 }
