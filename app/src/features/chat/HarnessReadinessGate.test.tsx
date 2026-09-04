@@ -20,6 +20,7 @@ function manager(initial: HarnessRuntimeState) {
     getConnection: () => undefined,
     refresh: vi.fn(async () => {}),
     download: vi.fn(async () => {}),
+    repair: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),
     publish(next) {
       snapshot = next;

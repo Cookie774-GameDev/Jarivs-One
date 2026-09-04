@@ -17,6 +17,7 @@ function runtime(): HarnessRuntimeManager {
     getConnection: vi.fn(() => connection),
     refresh: vi.fn(async () => undefined),
     download: vi.fn(async () => undefined),
+    repair: vi.fn(async () => undefined),
     cancel: vi.fn(async () => undefined),
   };
 }
