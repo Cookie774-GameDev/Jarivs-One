@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ProviderConnection } from './types';
+import type { ProviderConnection, ProviderEvent } from './types';
 import { createCodexPersistentAdapter, resolveCodexExecutable } from './codexPersistent';
 
 const connection: ProviderConnection = {
@@ -98,6 +98,41 @@ async function* frames() {
 }
 
 describe('persistent Codex app-server adapter', () => {
+  it('rejects a completion frame delivered after cancellation while awaiting native output', async () => {
+    const controller = new AbortController();
+    async function* cancelledFrames() {
+      for await (const frame of frames()) {
+        if ('method' in frame && frame.method === 'turn/completed') controller.abort();
+        yield frame;
+      }
+    }
+    const stop = vi.fn(async () => true);
+    const adapter = createCodexPersistentAdapter({
+      findExecutable: async () => ({ executableId: 'trusted-codex' }),
+      start: async () => ({ generation: 'cancelled-generation' }),
+      frames: () => ({ stream: cancelledFrames(), ready: Promise.resolve() }),
+      write: vi.fn(async () => undefined),
+      stop,
+    });
+    const events: ProviderEvent[] = [];
+    const consume = async () => {
+      for await (const event of adapter.send!({
+        requestId: 'request_1',
+        connection,
+        chatId: 'chat_1',
+        prompt: 'Read the marker',
+        modelId: 'opencode-go/deepseek-v4-flash-vision-exp',
+        workingDirectory: 'C:\\workspace',
+        interactionMode: 'ask',
+        signal: controller.signal,
+      }))
+        events.push(event);
+    };
+    await expect(consume()).rejects.toMatchObject({ name: 'AbortError' });
+    expect(events.some((event) => event.type === 'done')).toBe(false);
+    expect(stop).toHaveBeenCalledWith('cancelled-generation');
+  });
+
   it('refreshes and prefers the verified managed executable identity on every start', async () => {
     let executableId = 'cli-executable-managed-1';
     const refresh = vi.fn(async () => {

@@ -296,6 +296,7 @@ async function* sendCodexRequest(
     for (let count = 0; count < 65_536; count += 1) {
       if (request.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
       const frame = await nextFrame(reader, 'Codex app-server ended before terminal state.');
+      if (request.signal?.aborted) throw new DOMException('The request was aborted.', 'AbortError');
       const projection = normalizeCodexAppServerMessage(frame, {
         scope: {
           activeGeneration: 1,
