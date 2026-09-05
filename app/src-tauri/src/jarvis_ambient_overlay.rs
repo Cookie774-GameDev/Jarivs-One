@@ -236,7 +236,7 @@ fn ensure_windows(
 }
 
 #[tauri::command]
-pub fn set_jarvis_ambient_snapshot(
+pub async fn set_jarvis_ambient_snapshot(
     window: WebviewWindow,
     app: AppHandle,
     state: State<'_, JarvisAmbientOverlayState>,
@@ -254,11 +254,13 @@ pub fn set_jarvis_ambient_snapshot(
         inner.snapshot = snapshot.clone();
         (inner.snapshot.clone(), inner.ready.clone())
     };
-    ensure_windows(&app, &accepted, &ready)
+    tauri::async_runtime::spawn_blocking(move || ensure_windows(&app, &accepted, &ready))
+        .await
+        .map_err(|_| "jarvis_ambient_reconcile_worker_failed".to_owned())?
 }
 
 #[tauri::command]
-pub fn jarvis_ambient_renderer_ready(
+pub async fn jarvis_ambient_renderer_ready(
     window: WebviewWindow,
     app: AppHandle,
     state: State<'_, JarvisAmbientOverlayState>,
@@ -274,7 +276,10 @@ pub fn jarvis_ambient_renderer_ready(
         inner.ready.insert(window.label().to_owned());
         (inner.snapshot.clone(), inner.ready.clone())
     };
-    ensure_windows(&app, &snapshot, &ready)?;
+    let accepted = snapshot.clone();
+    tauri::async_runtime::spawn_blocking(move || ensure_windows(&app, &accepted, &ready))
+        .await
+        .map_err(|_| "jarvis_ambient_reconcile_worker_failed".to_owned())??;
     Ok(snapshot)
 }
 
@@ -328,5 +333,28 @@ mod tests {
         assert!(!should_reconcile_windows(JarvisAmbientState::Idle, false));
         assert!(should_reconcile_windows(JarvisAmbientState::Idle, true));
         assert!(should_reconcile_windows(JarvisAmbientState::Working, false));
+    }
+
+    #[test]
+    fn ambient_window_reconciliation_yields_the_ipc_handler() {
+        let source = include_str!("jarvis_ambient_overlay.rs");
+        let snapshot_start = source
+            .find("pub async fn set_jarvis_ambient_snapshot")
+            .or_else(|| source.find("pub fn set_jarvis_ambient_snapshot"))
+            .expect("snapshot command exists");
+        let ready_start = source
+            .find("pub async fn jarvis_ambient_renderer_ready")
+            .or_else(|| source.find("pub fn jarvis_ambient_renderer_ready"))
+            .expect("renderer-ready command exists");
+        let tests_start = source.rfind("#[cfg(test)]").expect("tests are bounded");
+
+        let snapshot_command = &source[snapshot_start..ready_start];
+        let ready_command = &source[ready_start..tests_start];
+        assert!(snapshot_command.contains("pub async fn set_jarvis_ambient_snapshot"));
+        assert!(ready_command.contains("pub async fn jarvis_ambient_renderer_ready"));
+        assert!(snapshot_command.contains("tauri::async_runtime::spawn_blocking"));
+        assert!(ready_command.contains("tauri::async_runtime::spawn_blocking"));
+        assert!(!snapshot_command
+            .ends_with("ensure_windows(&app, &accepted, &ready)\n}\n\n#[tauri::command]\n"));
     }
 }

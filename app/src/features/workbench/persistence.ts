@@ -41,6 +41,8 @@ const SECRET_LIKE =
   /(?:sk-[a-z0-9_-]{8,}|gh[pousr]_[a-z0-9_]{8,}|aiza[a-z0-9_-]{12,}|sb_(?:secret|publishable)_[a-z0-9_-]{8,}|bearer\s+[a-z0-9._-]{8,}|(?:api[-_]?key|access[-_]?token|secret|password)\s*[:=])/i;
 const ARTIFACT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/u;
 const ARTIFACT_DIGEST = /^[a-f0-9]{64}$/u;
+const NATIVE_APP_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+const NATIVE_APP_PATH = /^(?:[A-Za-z]:\\|\\\\)[^\0\r\n]*\.exe$/iu;
 
 const finite = (value: unknown, fallback: number, min: number, max: number): number => {
   const parsed = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
@@ -69,6 +71,15 @@ function safeSettings(value: unknown, forTemplate = false): WorkbenchPanelSettin
       settings[key] =
         (key === 'command' || key === 'url') && SECRET_LIKE.test(text) ? '[redacted]' : text;
     }
+  }
+  if (!forTemplate && typeof input.nativeAppId === 'string' && NATIVE_APP_ID.test(input.nativeAppId)) {
+    settings.nativeAppId = input.nativeAppId;
+  }
+  if (!forTemplate && typeof input.nativeAppName === 'string' && input.nativeAppName.trim()) {
+    settings.nativeAppName = input.nativeAppName.trim().slice(0, 120);
+  }
+  if (!forTemplate && typeof input.nativeAppPath === 'string' && NATIVE_APP_PATH.test(input.nativeAppPath)) {
+    settings.nativeAppPath = input.nativeAppPath.slice(0, 2048);
   }
   if (input.previewEnabled === true) settings.previewEnabled = true;
   if (input.previewEnabled === false) settings.previewEnabled = false;
@@ -241,6 +252,9 @@ export function documentToTemplatePanels(panels: WorkbenchPanel[]): WorkbenchTem
     settings: {
       ...panel.settings,
       resourceId: undefined,
+      nativeAppId: undefined,
+      nativeAppName: undefined,
+      nativeAppPath: undefined,
       artifactId: undefined,
       artifactDigest: undefined,
     },

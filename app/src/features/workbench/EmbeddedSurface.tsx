@@ -25,9 +25,6 @@ const HistoryPage = React.lazy(() =>
 const ContextPage = React.lazy(() =>
   import('@/features/context').then((m) => ({ default: m.ContextPage })),
 );
-const ChatGptAdePage = React.lazy(() =>
-  import('@/features/ade').then((m) => ({ default: m.ChatGptAdePage })),
-);
 
 function SurfaceFallback({ label }: { label: string }) {
   return (
@@ -54,10 +51,6 @@ export function EmbeddedSurface({ panel }: { panel: WorkbenchPanel }) {
     case 'agent':
       label = 'Agents';
       node = <AgentManager />;
-      break;
-    case 'ade':
-      label = 'ChatGPT ADE';
-      node = <ChatGptAdePage />;
       break;
     case 'actions':
       label = 'Jarvis actions';
@@ -112,7 +105,6 @@ export function isEmbeddedSurfaceKind(kind: WorkbenchPanel['kind']): boolean {
   return (
     kind === 'kanban' ||
     kind === 'agent' ||
-    kind === 'ade' ||
     kind === 'actions' ||
     kind === 'plugins' ||
     kind === 'plugin' ||

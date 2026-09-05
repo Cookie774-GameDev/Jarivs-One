@@ -6226,6 +6226,83 @@ Then return the compact Q1–Q5 table with the verified exact answer, exact file
     });
   }
 
+  it.each(['codex', 'opencode', 'opencode-native-provider'] as const)(
+    'keeps protected %s turns on the selected backend and stable chat',
+    async (route) => {
+      const backend = route === 'codex' ? 'codex' : 'opencode';
+      if (route === 'opencode-native-provider') configureCaoRuntimeSelection();
+      const protectedJarvis = agent('agent_m102_backend', 'jarvis', 'You are Jarvis.', true);
+      const harness = kernelRuntimeBindings(protectedJarvis);
+      const database = createJarvisDb(uniqueTestDbName('m102-protected-backend'), TEST_INDEXED_DB);
+      await database.open();
+      await database.chats.add({
+        id: harness.chatId,
+        workspace_id: 'workspace_m102' as never,
+        title: 'Runtime continuity',
+        mode: 'chat',
+        active_agent_ids: [protectedJarvis.id],
+        backend_affinity: { version: 1, backend, locked: true, selectedAt: 1, lockedAt: 2 },
+        created_at: 1,
+        updated_at: 1,
+      });
+      mocks.lockChatBackendForDispatch.mockResolvedValue({
+        version: 1,
+        backend,
+        locked: true,
+        selectedAt: 1,
+        lockedAt: 2,
+      });
+      mocks.runAgent.mockImplementation(async (request) => ({
+        text: 'Runtime continuity verified.',
+        usage: { input_tokens: 1, output_tokens: 1, cost_usd: 0 },
+        provider: request.agent.model.provider,
+        model: request.agent.model.model,
+      }));
+      const disposeHost = await installKernelTestHost(database, 'm102-protected-backend');
+      const stop = trackListener(
+        startRuntimeListener(harness.bindings, { jarvisInterlocks: runtimeInterlocks() }),
+      );
+      try {
+        for (let turn = 0; turn < 2; turn++) {
+          window.dispatchEvent(
+            new CustomEvent('jarvis:send', {
+              detail: {
+                chatId: harness.chatId,
+                text: 'Run the kernel gate.',
+                interactionMode: 'ask',
+              },
+            }),
+          );
+          await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(turn + 1), {
+            timeout: 5000,
+          });
+          await stop.whenIdle();
+        }
+        const requests = mocks.runAgent.mock.calls.map(([request]) => request);
+        expect(requests.map((request) => request.chatId)).toEqual([harness.chatId, harness.chatId]);
+        expect(requests[0]!.requestId).not.toBe(requests[1]!.requestId);
+        for (const request of requests) {
+          expect(request.backend).toBe(backend);
+          expect(request.connectionId).toBe(
+            backend === 'codex' || route === 'opencode-native-provider'
+              ? 'openai-codex'
+              : GROQ_API_CONNECTION.id,
+          );
+          expect(request.agent.model.model).toBe(
+            route === 'opencode-native-provider' ? 'gpt-5.6-terra' : 'llama-3.3-70b-versatile',
+          );
+        }
+      } finally {
+        stop();
+        await stop.whenIdle();
+        disposeHost();
+        database.close();
+        await database.delete();
+      }
+    },
+    20000,
+  );
+
   function configureCaoRuntimeSelection() {
     const selection = selectionFromOption('openai', 'gpt-5.6-terra', CODEX_CLI_CONNECTION);
     setDiscoveredConnectionModels(CODEX_CLI_CONNECTION.id, [

@@ -11,13 +11,26 @@ vi.mock('./PetTerminalSurface', () => ({
   PetTerminalSurface: () => <div data-testid="shared-terminal-surface" />,
 }));
 
-vi.mock('./petTauriBridge', () => ({
+const bridge = vi.hoisted(() => ({
   hidePetPanel: vi.fn(async () => undefined),
   minimizePetPanel: vi.fn(async () => undefined),
+}));
+const currentWindow = vi.hoisted(() => ({
+  hide: vi.fn(async () => undefined),
+  minimize: vi.fn(async () => undefined),
+}));
+
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: () => currentWindow,
+}));
+vi.mock('./petTauriBridge', () => ({
+  hidePetPanel: bridge.hidePetPanel,
+  minimizePetPanel: bridge.minimizePetPanel,
 }));
 
 describe('PetMiniPanel responsive shell', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     localStorage.clear();
     usePetPresentationStore.setState({
       chats: {},
@@ -84,6 +97,34 @@ describe('PetMiniPanel responsive shell', () => {
     act(() => vi.advanceTimersByTime(160));
     expect(onMinimize).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the detached panel window directly for minimize instead of a restore-capable command', () => {
+    vi.useFakeTimers();
+    localStorage.setItem('vibespace-pet-panel-open', '1');
+    render(<PetMiniPanel open onClose={vi.fn()} windowMode />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Minimize pet panel' }));
+    act(() => vi.advanceTimersByTime(160));
+
+    expect(currentWindow.minimize).toHaveBeenCalledTimes(1);
+    expect(currentWindow.hide).toHaveBeenCalledTimes(1);
+    expect(bridge.minimizePetPanel).not.toHaveBeenCalled();
+    expect(localStorage.getItem('vibespace-pet-panel-open')).toBeNull();
+  });
+
+  it('uses the detached panel window directly after confirmed close', () => {
+    vi.useFakeTimers();
+    localStorage.setItem('vibespace-pet-panel-open', '1');
+    render(<PetMiniPanel open onClose={vi.fn()} windowMode />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close pet panel' }));
+    fireEvent.click(screen.getByTestId('pet-close-confirm-btn'));
+    act(() => vi.advanceTimersByTime(160));
+
+    expect(currentWindow.hide).toHaveBeenCalledTimes(1);
+    expect(bridge.hidePetPanel).not.toHaveBeenCalled();
+    expect(localStorage.getItem('vibespace-pet-panel-open')).toBeNull();
   });
 
   it('keeps the compact panel focused on only Chat and Terminals', () => {

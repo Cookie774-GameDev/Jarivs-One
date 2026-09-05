@@ -6,9 +6,9 @@
  * Does not alter Glitch animation/drag — only panel open wiring.
  */
 import * as React from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { PetOverlay } from './PetOverlay';
 import {
-  hidePetOverlay,
   openOrFocusPetMiniPanel,
   reassertPetOverlayTopmost,
   setPetPanelOpenFlag,
@@ -18,18 +18,30 @@ import { installPetPresentationStorageSync } from './petPresentationStore';
 import { installPetSettingsStorageSync, usePetSettingsStore } from './petSettingsStore';
 import { applyThemeToDocument, useUIStore } from '@/stores/ui';
 import { createSingleFlightRunner } from '@/stability/singleFlight';
+import { resolvePetOverlayViewport } from './petOverlayViewport';
 
 export interface PetOverlayWindowProps {
   runtimeEffectsEnabled?: boolean;
 }
 
 export function PetOverlayWindow({ runtimeEffectsEnabled = true }: PetOverlayWindowProps = {}) {
+  const enabled = usePetSettingsStore((s) => s.enabled) ?? true;
+  const overlayVisible = usePetSettingsStore((s) => s.overlayVisible) ?? true;
   const reducedMotion = usePetSettingsStore((s) => s.reducedMotion);
   const sleepTimeoutMs = usePetSettingsStore((s) => s.sleepTimeoutMs);
   const idleFunIntervalMs = usePetSettingsStore((s) => s.idleFunIntervalMs);
   const panelMode = usePetSettingsStore((s) => s.panelMode) ?? 'normal';
   const setOverlayVisible = usePetSettingsStore((s) => s.setOverlayVisible);
   const theme = useUIStore((s) => s.theme);
+  const viewport = React.useMemo(
+    () =>
+      resolvePetOverlayViewport(
+        typeof window === 'undefined' ? 144 : window.innerWidth,
+        typeof window === 'undefined' ? 144 : window.innerHeight,
+      ),
+    [],
+  );
+  const shouldRenderPet = !runtimeEffectsEnabled || (enabled && overlayVisible);
 
   React.useEffect(() => {
     applyThemeToDocument(theme);
@@ -52,8 +64,8 @@ export function PetOverlayWindow({ runtimeEffectsEnabled = true }: PetOverlayWin
       root.style.background = 'transparent';
       root.style.backgroundColor = 'transparent';
       root.style.backgroundImage = 'none';
-      root.style.width = '144px';
-      root.style.height = '144px';
+      root.style.width = `${viewport.shellSize}px`;
+      root.style.height = `${viewport.shellSize}px`;
       root.style.margin = '0';
       root.style.padding = '0';
       root.style.overflow = 'hidden';
@@ -74,10 +86,18 @@ export function PetOverlayWindow({ runtimeEffectsEnabled = true }: PetOverlayWin
         delete document.body.dataset.vibespaceView;
       }
     };
-  }, [runtimeEffectsEnabled]);
+  }, [runtimeEffectsEnabled, viewport.shellSize]);
 
   React.useEffect(() => {
-    if (!runtimeEffectsEnabled) return;
+    if (!runtimeEffectsEnabled || (enabled && overlayVisible)) return;
+    setPetPanelOpenFlag(false);
+    void getCurrentWindow()
+      .hide()
+      .catch(() => undefined);
+  }, [enabled, overlayVisible, runtimeEffectsEnabled]);
+
+  React.useEffect(() => {
+    if (!runtimeEffectsEnabled || !enabled || !overlayVisible) return;
     // Keep the pet above browsers / borderless games. OS exclusive-fullscreen
     // can still cover all topmost HWNDs; reassert helps the common cases.
     const recovery = createSingleFlightRunner(async () => {
@@ -103,7 +123,7 @@ export function PetOverlayWindow({ runtimeEffectsEnabled = true }: PetOverlayWin
       window.removeEventListener('pageshow', recoverTopmost);
       document.removeEventListener('visibilitychange', recoverTopmost);
     };
-  }, [runtimeEffectsEnabled]);
+  }, [enabled, overlayVisible, runtimeEffectsEnabled]);
 
   return (
     <div
@@ -112,8 +132,8 @@ export function PetOverlayWindow({ runtimeEffectsEnabled = true }: PetOverlayWin
       data-monochrome-surface="pet-overlay-window"
       className="pet-overlay-root"
       style={{
-        width: 144,
-        height: 144,
+        width: viewport.shellSize,
+        height: viewport.shellSize,
         background: 'transparent',
         backgroundColor: 'transparent',
         backgroundImage: 'none',
@@ -123,17 +143,20 @@ export function PetOverlayWindow({ runtimeEffectsEnabled = true }: PetOverlayWin
       }}
     >
       <PetOverlay
-        enabled
+        enabled={shouldRenderPet}
         reducedMotion={runtimeEffectsEnabled ? reducedMotion : true}
         animationLevelOverride={runtimeEffectsEnabled ? undefined : 'off'}
         tauriWindowMode
+        displaySize={viewport.displaySize}
         sleepTimeoutMs={sleepTimeoutMs}
         idleFunIntervalMs={idleFunIntervalMs}
         onRequestClose={() => {
           if (!runtimeEffectsEnabled) return;
           setOverlayVisible(false);
           setPetPanelOpenFlag(false);
-          void hidePetOverlay().catch(() => undefined);
+          void getCurrentWindow()
+            .hide()
+            .catch(() => undefined);
         }}
         onOpenPanel={() => {
           if (!runtimeEffectsEnabled) return;

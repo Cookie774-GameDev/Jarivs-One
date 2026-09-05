@@ -33,6 +33,7 @@ import {
   usePluginStore,
 } from '@/features/plugins';
 import { HoldExitButton } from './HoldExitButton';
+import { NativeAppPickerDialog } from './NativeAppPickerDialog';
 import { PanelPalette } from './PanelPalette';
 import { TemplatePicker } from './TemplatePicker';
 import { WallpaperHost } from './WallpaperHost';
@@ -41,6 +42,12 @@ import { WorkbenchCanvas } from './WorkbenchCanvas';
 import { WorkbenchContextMenu } from './WorkbenchContextMenu';
 import { ArtifactReferenceResolverProvider } from './ReferencePanel';
 import { useWorkbenchStore } from './store';
+import {
+  listNativeApps,
+  pickNativeAppExecutable,
+  type NativeAppDescriptor,
+} from './nativeApps';
+import { openNativeAppPanel } from './nativeAppPanels';
 import { setWorkbenchNativeWindowTitle } from './window';
 import type { WorkbenchPanelKind } from './types';
 import type { PluginManifest } from '@/features/plugins';
@@ -103,10 +110,33 @@ export function WorkbenchPage() {
   const [nameDraft, setNameDraft] = React.useState(name);
   const [artifactPickerOpen, setArtifactPickerOpen] = React.useState(false);
   const [artifactChoices, setArtifactChoices] = React.useState<readonly ArtifactChoice[]>([]);
+  const [nativeApps, setNativeApps] = React.useState<readonly NativeAppDescriptor[]>([]);
+  const [nativeAppPickerOpen, setNativeAppPickerOpen] = React.useState(false);
+  const [nativeAppCatalogError, setNativeAppCatalogError] = React.useState<string | null>(null);
   const [artifactPickerState, setArtifactPickerState] = React.useState<
     'idle' | 'loading' | 'ready' | 'error'
   >('idle');
   const artifactRequestGeneration = React.useRef(0);
+
+  React.useEffect(() => {
+    let current = true;
+    void listNativeApps()
+      .then((apps) => {
+        if (!current) return;
+        setNativeApps(apps);
+        setNativeAppCatalogError(null);
+      })
+      .catch((cause) => {
+        if (!current) return;
+        setNativeApps([]);
+        setNativeAppCatalogError(
+          cause instanceof Error ? cause.message : 'Native app catalog unavailable.',
+        );
+      });
+    return () => {
+      current = false;
+    };
+  }, []);
 
   React.useEffect(() => {
     artifactRequestGeneration.current += 1;
@@ -214,6 +244,15 @@ export function WorkbenchPage() {
     }
     const id = addPanel(kind, undefined, pluginId ? { pluginId } : undefined);
     if (!id) toast.warning('Could not add panel', 'Panel limit reached.');
+  };
+
+  const openNativeApp = (app: NativeAppDescriptor) => {
+    const id = openNativeAppPanel(app);
+    if (!id) {
+      toast.warning('Could not open app', 'The Workbench panel limit was reached.');
+      return;
+    }
+    flushPersistence();
   };
 
   const toggleSystemFullscreen = async () => {
@@ -378,6 +417,9 @@ export function WorkbenchPage() {
         <PanelPalette
           onAdd={add}
           pinnedPlugins={pinnedPlugins}
+          detectedApps={nativeApps}
+          onOpenNativeApp={openNativeApp}
+          onOpenNativeAppPicker={() => setNativeAppPickerOpen(true)}
           open={paletteOpen}
           onClose={() => setPaletteOpen(false)}
           onOpen={() => setPaletteOpen(true)}
@@ -399,6 +441,14 @@ export function WorkbenchPage() {
           <Minimize2 />
         </Button>
       )}
+      <NativeAppPickerDialog
+        open={nativeAppPickerOpen}
+        apps={nativeApps}
+        error={nativeAppCatalogError}
+        onOpenChange={setNativeAppPickerOpen}
+        onChoose={openNativeApp}
+        onPickExecutable={pickNativeAppExecutable}
+      />
       <TemplatePicker open={templatesOpen} focusSave={saveFocus} onClose={closeTemplates} />
       <WallpaperPicker open={wallpapersOpen} onClose={() => setWallpapersOpen(false)} />
       <Dialog

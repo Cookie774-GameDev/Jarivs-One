@@ -2,10 +2,9 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 describe('NavPane ChatGPT ADE entry', () => {
-  it('registers the truthful first-class ADE navigation target', () => {
+  it('does not expose the removed standalone ADE page', () => {
     const source = readFileSync('src/components/layout/NavPane.tsx', 'utf8');
-
-    expect(source).toContain('label="ChatGPT ADE"');
-    expect(source).toContain('target="ade"');
+    expect(source).not.toContain('label="ChatGPT ADE"');
+    expect(source).not.toContain('target="ade"');
   });
 });

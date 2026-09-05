@@ -46,6 +46,7 @@ import {
   dexieChatBackendPersistence,
   lockChatBackendForDispatch,
 } from './backend/chatBackendPersistence';
+import { resolveChatBackendAffinity } from './backend/chatBackend';
 import {
   runBoundedLocalFinalBossRevision,
   shouldRunLocalFinalBossRevision,
@@ -1597,6 +1598,18 @@ export async function installJarvisKernelRuntimeHost(
       };
     },
     async prepareProvider(providerInput) {
+      // Keep request identity distinct from the durable conversation identity.
+      // The journal lookup is account scoped, including scheduled/recovered turns.
+      const providerRun = await journal.getRun(providerInput.accountId, providerInput.runId);
+      if (!providerRun) throw new Error('kernel_provider_run_unavailable');
+      const providerChatId = providerRun.chatId?.trim() || providerInput.requestId;
+      const providerChat = providerRun.chatId
+        ? await input.db.chats.get(providerRun.chatId as ChatId)
+        : undefined;
+      const providerBackend = resolveChatBackendAffinity(providerChat?.backend_affinity, {
+        hasCommittedUserMessage: true,
+        chatCreatedAt: providerChat?.created_at ?? providerRun.createdAt,
+      }).backend;
       let preparedDisposed = false;
       if (
         providerInput.model.providerId !== String(providerInput.agent.model.provider) ||
@@ -1696,7 +1709,8 @@ export async function installJarvisKernelRuntimeHost(
                 {
                   agent: providerInput.agent,
                   messages: [...providerInput.messages],
-                  chatId: providerInput.requestId,
+                  chatId: providerChatId,
+                  backend: providerBackend,
                   connectionId: providerInput.model.connectionId,
                   accountId: providerInput.accountId,
                   workspaceId: providerInput.workspaceId,
@@ -6279,20 +6293,18 @@ export function startRuntimeListener(
             const selected = chatModelSelection.mode === 'single' ? chatModelSelection : null;
             if (!selected) throw new Error('kernel_single_model_selection_required');
             const capturedAt = Date.now();
-            const selectedConnection =
-              'connectionId' in selected && selected.connectionId
-                ? PROVIDER_CONNECTIONS.find((connection) => connection.id === selected.connectionId)
-                : undefined;
+            const selectedConnectionId =
+              chatBackendAffinity.backend === 'codex' ? 'openai-codex' : selected.connectionId;
+            const selectedConnection = selectedConnectionId
+              ? PROVIDER_CONNECTIONS.find((connection) => connection.id === selectedConnectionId)
+              : undefined;
             const model: JarvisModelSnapshot = {
-              ...('connectionId' in selected && selected.connectionId
-                ? { connectionId: selected.connectionId }
-                : {}),
+              ...(selectedConnectionId ? { connectionId: selectedConnectionId } : {}),
               providerId: String(runnable.model.provider),
               modelId: runnable.model.model,
               connectionMode:
-                'connectionMode' in selected && selected.connectionMode
-                  ? selected.connectionMode
-                  : connectionModeForProvider(String(runnable.model.provider)),
+                selectedConnection?.mode ?? selected.connectionMode ??
+                connectionModeForProvider(String(runnable.model.provider)),
               capabilities: selectedConnection
                 ? { ...selectedConnection.capabilities }
                 : 'capabilities' in selected && selected.capabilities

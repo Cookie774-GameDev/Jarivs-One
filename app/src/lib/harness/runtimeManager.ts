@@ -50,6 +50,7 @@ export interface HarnessRuntimeManager {
   getConnection(): OpenCodeServerConnection | undefined;
   refresh(): Promise<void>;
   download(): Promise<void>;
+  repair(): Promise<void>;
   cancel(): Promise<void>;
 }
 
@@ -184,6 +185,7 @@ export function createHarnessRuntimeManager(
   let downloadFlight:
     | Readonly<{
         activation: number | undefined;
+        force: boolean;
         promise: Promise<void>;
       }>
     | undefined;
@@ -361,6 +363,56 @@ export function createHarnessRuntimeManager(
     return promise;
   };
 
+  const installManaged = (force: boolean): Promise<void> => {
+    if (!native.available()) return refresh();
+    const operationActivation = subscribers.size > 0 ? activation : undefined;
+    if (
+      downloadFlight &&
+      downloadFlight.activation === operationActivation &&
+      (!force || downloadFlight.force)
+    ) {
+      return downloadFlight.promise;
+    }
+    const operation = ++operationGeneration;
+    refreshFlight = undefined;
+    const current = () =>
+      operation === operationGeneration &&
+      (operationActivation === undefined || lifecycleIsCurrent(operationActivation));
+    const promise = (async () => {
+      try {
+        if (!force) {
+          const existing = await native.detect();
+          if (!current()) return;
+          if (existing.status === 'systemCompatible' || existing.status === 'managedCompatible') {
+            await applyDetection(existing, current);
+            return;
+          }
+        }
+        if (!current()) return;
+        clearConnection();
+        publish({ kind: 'downloading', progress: 0 });
+        const installed = await native.install();
+        if (!current()) return;
+        await applyDetection(installed, current);
+      } catch (error) {
+        if (!current()) return;
+        clearConnection();
+        publish({
+          kind: 'failed',
+          recoverable: true,
+          message: boundedCopy(error, 'Harness installation failed.'),
+        });
+      }
+    })();
+    const flight = Object.freeze({ activation: operationActivation, force, promise });
+    downloadFlight = flight;
+    const clearFlight = () => {
+      if (downloadFlight === flight) downloadFlight = undefined;
+    };
+    void promise.then(clearFlight, clearFlight);
+    return promise;
+  };
+
   const activate = async (generation: number) => {
     if (!native.available()) {
       await refresh();
@@ -424,49 +476,8 @@ export function createHarnessRuntimeManager(
     getSnapshot: () => snapshot,
     getConnection: () => connection,
     refresh,
-    download() {
-      if (!native.available()) {
-        return refresh();
-      }
-      const operationActivation = subscribers.size > 0 ? activation : undefined;
-      if (downloadFlight && downloadFlight.activation === operationActivation) {
-        return downloadFlight.promise;
-      }
-      const operation = ++operationGeneration;
-      refreshFlight = undefined;
-      const current = () =>
-        operation === operationGeneration &&
-        (operationActivation === undefined || lifecycleIsCurrent(operationActivation));
-      const promise = (async () => {
-        try {
-          const existing = await native.detect();
-          if (!current()) return;
-          if (existing.status === 'systemCompatible' || existing.status === 'managedCompatible') {
-            await applyDetection(existing, current);
-            return;
-          }
-          publish({ kind: 'downloading', progress: 0 });
-          const installed = await native.install();
-          if (!current()) return;
-          await applyDetection(installed, current);
-        } catch (error) {
-          if (!current()) return;
-          clearConnection();
-          publish({
-            kind: 'failed',
-            recoverable: true,
-            message: boundedCopy(error, 'Harness installation failed.'),
-          });
-        }
-      })();
-      const flight = Object.freeze({ activation: operationActivation, promise });
-      downloadFlight = flight;
-      const clearFlight = () => {
-        if (downloadFlight === flight) downloadFlight = undefined;
-      };
-      void promise.then(clearFlight, clearFlight);
-      return promise;
-    },
+    download: () => installManaged(false),
+    repair: () => installManaged(true),
     async cancel() {
       if (native.available()) {
         try {

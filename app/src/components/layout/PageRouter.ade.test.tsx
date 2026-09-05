@@ -1,23 +1,11 @@
-import * as React from 'react';
-import { act, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { describe, expect, it } from 'vitest';
 
-import { useUIStore } from '@/stores/ui';
-import { PageRouter } from './PageRouter';
-
-describe('PageRouter ChatGPT ADE route', () => {
-  afterEach(() => {
-    act(() => useUIStore.getState().resetUI());
-  });
-
-  it('renders the first-class ADE route with its truthful implementation state', async () => {
-    act(() => useUIStore.getState().setRoute('ade'));
-
-    render(<PageRouter />);
-
-    expect(await screen.findByRole('heading', { name: 'ChatGPT ADE' })).toBeTruthy();
-    expect(screen.getByRole('main').getAttribute('data-ade-implementation-state')).toBe(
-      'not-implemented',
-    );
+describe('PageRouter ChatGPT ADE compatibility route', () => {
+  it('removes the standalone ADE page and delegates old route state to the Workbench redirect', () => {
+    const source = readFileSync('src/components/layout/PageRouter.tsx', 'utf8');
+    expect(source).not.toContain('ChatGptAdePage');
+    expect(source).toContain('ChatGptAdeRedirect');
+    expect(source).toMatch(/ade:s*ChatGptAdeRedirect/u);
   });
 });

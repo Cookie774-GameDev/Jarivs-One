@@ -78,8 +78,10 @@ const AgentsRoute = React.lazy(() =>
   import('@/features/agents').then((m) => ({ default: m.AgentManager })),
 );
 
-const ChatGptAdeRoute = React.lazy(() =>
-  import('@/features/ade/ChatGptAdePage').then((m) => ({ default: m.ChatGptAdePage })),
+const ChatGptAdeRedirect = React.lazy(() =>
+  import('@/features/workbench/ChatGptAdeRedirect').then((m) => ({
+    default: m.ChatGptAdeRedirect,
+  })),
 );
 
 const ModelFoundryRoute = React.lazy(() =>
@@ -221,7 +223,7 @@ const routeMap: Record<Route, React.LazyExoticComponent<React.ComponentType>> = 
   terminal: TerminalsPage,
   kanban: KanbanPage,
   schedule: SchedulePage,
-  ade: ChatGptAdeRoute,
+  ade: ChatGptAdeRedirect,
   agents: AgentsRoute,
   'model-foundry': ModelFoundryRoute,
   'agent-detail': AgentDetailRoute,

@@ -4,6 +4,7 @@ export const WORKBENCH_PANEL_KINDS = [
   'jarvis',
   'agent',
   'ade',
+  'native-app',
   'files',
   'editor',
   'device-preview',
@@ -52,6 +53,12 @@ export interface WorkbenchPanelSettings {
   previewLabel?: string;
   /** Plugin manifest id for a pinned plugin dashboard panel. */
   pluginId?: string;
+  /** Stable native application catalog identity (for example `chatgpt`). */
+  nativeAppId?: string;
+  /** User-visible native app name; never used as an executable command. */
+  nativeAppName?: string;
+  /** Exact user-selected Windows executable path. No arguments are permitted. */
+  nativeAppPath?: string;
   /** Opaque canonical artifact identity used to restore a reference preview. */
   artifactId?: string;
   /** Exact canonical artifact digest required when restoring a reference preview. */
@@ -163,7 +170,8 @@ export const DEFAULT_PANEL_SIZE: Record<WorkbenchPanelKind, { width: number; hei
   browser: { width: 680, height: 440 },
   jarvis: { width: 420, height: 520 },
   agent: { width: 330, height: 300 },
-  ade: { width: 680, height: 600 },
+  ade: { width: 760, height: 640 },
+  'native-app': { width: 760, height: 640 },
   files: { width: 320, height: 480 },
   editor: { width: 620, height: 440 },
   'device-preview': { width: 480, height: 720 },
@@ -185,7 +193,8 @@ export const PANEL_TITLES: Record<WorkbenchPanelKind, string> = {
   browser: 'Browser',
   jarvis: 'Jarvis',
   agent: 'Agent',
-  ade: 'ChatGPT ADE',
+  ade: 'ChatGPT',
+  'native-app': 'App',
   files: 'Project files',
   editor: 'Editor',
   'device-preview': 'Device preview',

@@ -19,6 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import type { WorkbenchPanelKind } from './types';
+import type { NativeAppDescriptor } from './nativeApps';
 import type { PluginManifest } from '@/features/plugins';
 import { PluginLogo } from '@/features/plugins';
 
@@ -31,7 +32,6 @@ const palette: Array<{
   { kind: 'browser', label: 'Browser', icon: Globe2 },
   { kind: 'jarvis', label: 'Jarvis', icon: Bot },
   { kind: 'agent', label: 'Agent', icon: Sparkles },
-  { kind: 'ade', label: 'ChatGPT ADE', icon: AppWindow },
   { kind: 'files', label: 'Files', icon: FileText },
   { kind: 'editor', label: 'Editor', icon: Code2 },
   { kind: 'artifact-reference', label: 'Artifact', icon: FileStack },
@@ -49,6 +49,9 @@ export const WORKBENCH_DRAG_MIME = 'application/x-vibespace-workbench-panel';
 interface PanelPaletteProps {
   onAdd: (kind: WorkbenchPanelKind, pluginId?: string) => void;
   pinnedPlugins?: readonly PluginManifest[];
+  detectedApps?: readonly NativeAppDescriptor[];
+  onOpenNativeApp?: (app: NativeAppDescriptor) => void;
+  onOpenNativeAppPicker?: () => void;
   open?: boolean;
   onClose?: () => void;
   onOpen?: () => void;
@@ -57,6 +60,9 @@ interface PanelPaletteProps {
 export function PanelPalette({
   onAdd,
   pinnedPlugins = [],
+  detectedApps = [],
+  onOpenNativeApp,
+  onOpenNativeAppPicker,
   open = true,
   onClose,
   onOpen,
@@ -83,6 +89,24 @@ export function PanelPalette({
         <p>Panels</p>
       </div>
       <div className="workbench-palette-items">
+        {detectedApps
+          .filter((app) => app.pinned && app.launchable)
+          .map((app) => (
+            <button
+              key={`native:${app.id}`}
+              type="button"
+              aria-label={`Open ${app.name}`}
+              title={app.running ? `${app.name} · running` : app.name}
+              onClick={() => onOpenNativeApp?.(app)}
+            >
+              <AppWindow aria-hidden="true" />
+              <span>{app.name}</span>
+            </button>
+          ))}
+        <button type="button" aria-label="Open app" title="Open app" onClick={onOpenNativeAppPicker}>
+          <AppWindow aria-hidden="true" />
+          <span>Apps</span>
+        </button>
         {palette.map(({ kind, label, icon: Icon }) => (
           <button
             key={kind}

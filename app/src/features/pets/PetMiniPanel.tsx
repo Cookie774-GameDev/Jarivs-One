@@ -3,6 +3,7 @@
  * Resizable + movable. Minimize/close hide the panel and restore the pet sprite.
  */
 import * as React from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { MessageSquare, Terminal, Minus, X, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -184,7 +185,8 @@ export function PetMiniPanel({
       } catch {
         /* ignore */
       }
-      void minimizePetPanel().catch(() => undefined);
+      const minimize = windowMode ? getCurrentWindow().minimize() : minimizePetPanel();
+      void minimize.catch(() => undefined);
       onMinimize?.();
       onClose(); // restores pet sprite via host panelOpen=false
     }, transitionDuration());
@@ -202,7 +204,8 @@ export function PetMiniPanel({
       } catch {
         /* ignore */
       }
-      void hidePetPanel().catch(() => undefined);
+      const hide = windowMode ? getCurrentWindow().hide() : hidePetPanel();
+      void hide.catch(() => undefined);
       onClose();
     }, transitionDuration());
   };

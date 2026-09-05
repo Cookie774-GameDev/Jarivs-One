@@ -199,15 +199,14 @@ export function PetHost({
         await hidePetOverlay().catch(() => undefined);
         return;
       }
-      // A persisted disabled Pet owns neither detached surface. Hide the panel
-      // first because its native close path restores the overlay by design;
-      // hiding the overlay last makes the disabled state the final truth.
+      // A persisted disabled Pet owns neither detached surface. The detached
+      // panel observes the shared settings store and hides its own window;
+      // calling pet_hide_panel here would restore the overlay before hiding it.
       if (!enabled) {
         setPetPanelOpenFlag(false);
         setPanelOpen(false);
         setHideSpriteForPanel(false);
         setUseInlineFallback(false);
-        await hidePetPanel().catch(() => undefined);
         await hidePetOverlay().catch(() => undefined);
         return;
       }

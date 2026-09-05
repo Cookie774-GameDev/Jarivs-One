@@ -467,6 +467,26 @@ describe('harness runtime manager', () => {
     expect(native.cancel).toHaveBeenCalledTimes(1);
   });
 
+  it('force-repairs an unhealthy harness even when detection would still report a compatible runtime', async () => {
+    const native = adapter({
+      serverStatus: vi.fn().mockRejectedValue(new Error('server unhealthy')),
+      detect: vi.fn().mockResolvedValue(readyDetection),
+      install: vi.fn().mockResolvedValue(readyDetection),
+    });
+    const manager = createHarnessRuntimeManager(native);
+
+    await manager.repair();
+
+    expect(native.install).toHaveBeenCalledOnce();
+    expect(native.detect).not.toHaveBeenCalled();
+    expect(native.ensureServer).toHaveBeenCalledWith(readyDetection.executableId);
+    expect(manager.getSnapshot()).toEqual({
+      kind: 'ready',
+      source: 'managed',
+      version: '1.18.16',
+    });
+  });
+
   it('accepts an already compatible runtime on retry without downloading it again', async () => {
     const native = adapter({
       detect: vi.fn().mockResolvedValue({

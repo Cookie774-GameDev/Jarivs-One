@@ -723,7 +723,7 @@ where
     spawn_owned_child(command, label)
 }
 
-fn run_bounded_ready_probe(mut command: Command) -> bool {
+fn run_bounded_ready_probe(mut command: Command, timeout: Duration) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -733,7 +733,7 @@ fn run_bounded_ready_probe(mut command: Command) -> bool {
     let Ok(mut child) = command.spawn() else {
         return false;
     };
-    let deadline = Instant::now() + Duration::from_secs(3);
+    let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {
             Ok(Some(status)) => return status.success(),
@@ -761,9 +761,10 @@ fn start_owned_opencodex(
         .map_err(|_| "VibeSpace app data is unavailable.".to_string())?;
     let profile = build_managed_codex_proxy_profile(Ipv4Addr::LOCALHOST, OPENCODEX_PORT, model_id)
         .map_err(|_| "The managed Codex proxy profile is invalid.".to_string())?;
-    let paths = materialize_isolated_profile(&app_data, &profile)
+    let storage_root = crate::harness::managed_codex_storage::storage_root(&app_data)?;
+    let paths = materialize_isolated_profile(&storage_root, &profile)
         .map_err(|_| "The isolated Codex proxy profile could not be prepared.".to_string())?;
-    let managed_base = app_data.join("managed-runtime");
+    let managed_base = storage_root.join("managed-runtime");
     let roaming = std::env::var_os("APPDATA").map(PathBuf::from);
     let sealed_runtime = seal_reviewed_opencodex_runtime(&managed_base, roaming.as_deref())
         .map_err(|_| {
@@ -801,30 +802,27 @@ fn start_owned_opencodex(
             .map_err(|_| "OpenCodex managed runtime changed before launch.".to_string())
     })?;
 
-    let deadline = Instant::now() + OPENCODEX_READY_TIMEOUT;
-    loop {
-        if sealed_runtime.revalidate().is_err() {
-            let _ = proxy.stop();
-            return Err("OpenCodex managed runtime changed during launch.".to_string());
-        }
-        if proxy.has_exited()? {
-            return Err("OpenCodex ended before becoming ready.".to_string());
-        }
-        let mut ready = Command::new(&runtime.bun_executable);
-        ready
-            .arg(&runtime.source_entrypoint)
-            .arg("ready")
-            .arg("--json");
-        configure(&mut ready);
-        let ready = run_bounded_ready_probe(ready);
-        if ready {
-            break;
-        }
-        if Instant::now() >= deadline {
-            let _ = proxy.stop();
-            return Err("OpenCodex did not prove readiness within 30 seconds.".to_string());
-        }
-        thread::sleep(Duration::from_millis(250));
+    // The reviewed CLI owns one identity-checked readiness wait. Repeated
+    // three-second cold launches can expire before Bun loads on Windows.
+    let mut ready = Command::new(&runtime.bun_executable);
+    ready
+        .arg(&runtime.source_entrypoint)
+        .arg("ready")
+        .arg("--json")
+        .arg("--wait")
+        .arg("--timeout")
+        .arg(OPENCODEX_READY_TIMEOUT.as_secs().to_string());
+    configure(&mut ready);
+    if !run_bounded_ready_probe(ready, OPENCODEX_READY_TIMEOUT + Duration::from_secs(15)) {
+        let _ = proxy.stop();
+        return Err("OpenCodex did not prove readiness within the bounded startup wait.".to_string());
+    }
+    if sealed_runtime.revalidate().is_err() {
+        let _ = proxy.stop();
+        return Err("OpenCodex managed runtime changed during launch.".to_string());
+    }
+    if proxy.has_exited()? {
+        return Err("OpenCodex ended before becoming ready.".to_string());
     }
     Ok((proxy, paths.codex_home, sealed_runtime))
 }
@@ -1053,6 +1051,29 @@ pub fn shutdown_owned_server(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn readiness_probe_allows_cold_start_and_reaps_timeout() {
+        let make_probe = |script: &str| {
+            let mut command = Command::new("powershell.exe");
+            command.args(["-NoProfile", "-NonInteractive", "-Command", script]);
+            command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+            command
+        };
+        assert!(run_bounded_ready_probe(
+            make_probe("[System.Threading.Thread]::Sleep(3500); exit 0"),
+            Duration::from_secs(15),
+        ));
+        assert!(!run_bounded_ready_probe(make_probe("exit 7"), Duration::from_secs(15)));
+        let started = Instant::now();
+        assert!(!run_bounded_ready_probe(
+            make_probe("[System.Threading.Thread]::Sleep(30000)"),
+            Duration::from_millis(100),
+        ));
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
     use crate::harness::managed_codex_app_server::{
         CodexAppServerFrameDecoder, CODEX_APP_SERVER_MAX_FRAME_BYTES,
     };

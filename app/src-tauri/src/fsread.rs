@@ -644,8 +644,7 @@ pub fn fs_read_image_base64(path: String, root: Option<String>) -> Result<FsImag
     })
 }
 
-#[tauri::command]
-pub fn fs_list_dir(
+fn fs_list_dir_blocking(
     path: String,
     root: Option<String>,
     strict_project_boundary: Option<bool>,
@@ -704,6 +703,21 @@ pub fn fs_list_dir(
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     Ok(out)
+}
+
+/// Responsive directory listing. Keep filesystem metadata work off Tauri's
+/// async command executor so one slow folder cannot stall unrelated native calls.
+#[tauri::command]
+pub async fn fs_list_dir(
+    path: String,
+    root: Option<String>,
+    strict_project_boundary: Option<bool>,
+) -> Result<Vec<FsEntry>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        fs_list_dir_blocking(path, root, strict_project_boundary)
+    })
+    .await
+    .map_err(|error| format!("runtime_failure:fs_list_dir:{error}"))?
 }
 
 /// Lists several directories against one already-opened strict root capability.
@@ -1559,7 +1573,7 @@ mod tests {
     fn strict_list_preserves_root_not_found_and_root_not_dir_errors() {
         let missing = test_root("strict-missing-root");
         assert_eq!(
-            fs_list_dir(
+            fs_list_dir_blocking(
                 missing.to_string_lossy().to_string(),
                 Some(missing.to_string_lossy().to_string()),
                 Some(true),
@@ -1571,7 +1585,7 @@ mod tests {
         let root_file = test_root("strict-root-file");
         std::fs::write(&root_file, b"not a directory").unwrap();
         assert_eq!(
-            fs_list_dir(
+            fs_list_dir_blocking(
                 root_file.to_string_lossy().to_string(),
                 Some(root_file.to_string_lossy().to_string()),
                 Some(true),
@@ -1793,7 +1807,7 @@ mod tests {
             ),
             Err("symlink_blocked".to_string())
         );
-        let listed = fs_list_dir(
+        let listed = fs_list_dir_blocking(
             root.to_string_lossy().to_string(),
             Some(root.to_string_lossy().to_string()),
             Some(true),
@@ -1835,7 +1849,7 @@ mod tests {
             ),
             Err("symlink_blocked".to_string())
         );
-        let listed = fs_list_dir(
+        let listed = fs_list_dir_blocking(
             root.to_string_lossy().to_string(),
             Some(root.to_string_lossy().to_string()),
             Some(true),

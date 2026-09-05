@@ -6,6 +6,7 @@ import { EditorPanel } from './EditorPanel';
 import { EmbeddedSurface, isEmbeddedSurfaceKind } from './EmbeddedSurface';
 import { FilesPanel } from './FilesPanel';
 import { JarvisPanel } from './JarvisPanel';
+import { NativeAppPanel } from './NativeAppPanel';
 import { NotesPanel } from './NotesPanel';
 import type {
   WorkbenchArtifactReferenceResolver,
@@ -232,6 +233,10 @@ interface ReferencePanelProps {
 }
 
 export function ReferencePanel({ panel, onUpdate }: ReferencePanelProps) {
+  if (panel.kind === 'native-app' || panel.kind === 'ade') {
+    return <NativeAppPanel panel={panel} onUpdate={onUpdate} />;
+  }
+
   if (panel.kind === 'artifact-reference') {
     return <ArtifactReferencePanel panel={panel} onUpdate={onUpdate} />;
   }

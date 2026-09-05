@@ -111,10 +111,10 @@ enum InstallEvent {
 }
 
 fn managed_base(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path()
-        .app_data_dir()
-        .map(|path| path.join("managed-runtime"))
-        .map_err(|_| "VibeSpace managed runtime storage is unavailable.".to_string())
+    let app_data = app.path().app_data_dir()
+        .map_err(|_| "VibeSpace managed runtime storage is unavailable.".to_string())?;
+    crate::harness::managed_codex_storage::storage_root(&app_data)
+        .map(|root| root.join("managed-runtime"))
 }
 
 fn inspect_and_register(
@@ -162,11 +162,16 @@ fn emit(app: &AppHandle, event: InstallEvent) {
 }
 
 #[tauri::command]
-pub fn managed_codex_runtime_detect(
+pub async fn managed_codex_runtime_detect(
     app: AppHandle,
-    cli: State<'_, CliBridgeState>,
 ) -> Result<ManagedCodexRuntimeDetection, String> {
-    inspect_and_register(&managed_base(&app)?, &cli)
+    let worker_app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let cli = worker_app.state::<CliBridgeState>();
+        inspect_and_register(&managed_base(&worker_app)?, &cli)
+    })
+    .await
+    .map_err(|_| "Managed Codex detection worker failed.".to_string())?
 }
 
 #[tauri::command]
@@ -278,6 +283,24 @@ mod tests {
         InstallComponent, InstallEvent, ManagedCodexInstallState, ManagedCodexRuntimeDetection,
     };
     use std::sync::atomic::Ordering;
+
+    #[test]
+    fn managed_detection_yields_the_ipc_handler_while_probing() {
+        let source = include_str!("managed_codex_install.rs");
+        let tests_start = source.find("#[cfg(test)]").expect("tests are bounded");
+        let production = &source[..tests_start];
+        let detect_start = production
+            .find("pub async fn managed_codex_runtime_detect")
+            .or_else(|| production.find("pub fn managed_codex_runtime_detect"))
+            .expect("managed detection command exists");
+        let install_start = production
+            .find("pub async fn managed_codex_runtime_install")
+            .expect("managed install command exists");
+        let command = &production[detect_start..install_start];
+
+        assert!(command.contains("pub async fn managed_codex_runtime_detect"));
+        assert!(command.contains("tauri::async_runtime::spawn_blocking"));
+    }
 
     #[test]
     fn install_state_is_single_flight_and_cancellable() {

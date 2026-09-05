@@ -3,12 +3,13 @@
  * Boots local auth/DB (AuthGate) then mounts the real mini-panel surfaces.
  */
 import * as React from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { AuthGate } from '@/features/auth/AuthGate';
 import { PetMiniPanel } from './PetMiniPanel';
 import { applyThemeToDocument, useUIStore } from '@/stores/ui';
 import { installPetPresentationStorageSync } from './petPresentationStore';
 import { installPetSettingsStorageSync, usePetSettingsStore } from './petSettingsStore';
-import { hidePetOverlay, hidePetPanel, reassertPetOverlayTopmost } from './petTauriBridge';
+import { reassertPetOverlayTopmost } from './petTauriBridge';
 
 export interface PetMiniPanelWindowProps {
   runtimeEffectsEnabled?: boolean;
@@ -17,7 +18,7 @@ export interface PetMiniPanelWindowProps {
 export function PetMiniPanelWindow({ runtimeEffectsEnabled = true }: PetMiniPanelWindowProps = {}) {
   const [open, setOpen] = React.useState(true);
   const theme = useUIStore((s) => s.theme);
-  const enabled = usePetSettingsStore((s) => s.enabled);
+  const enabled = usePetSettingsStore((s) => s.enabled) ?? true;
 
   React.useEffect(() => {
     applyThemeToDocument(theme);
@@ -28,12 +29,11 @@ export function PetMiniPanelWindow({ runtimeEffectsEnabled = true }: PetMiniPane
     const uninstallPresentation = installPetPresentationStorageSync();
     const uninstallSettings = installPetSettingsStorageSync();
     if (!enabled) {
-      // The panel hide path restores the overlay, so preserve disabled truth by
-      // always applying the overlay hide after the panel has finished hiding.
-      void (async () => {
-        await hidePetPanel().catch(() => undefined);
-        await hidePetOverlay().catch(() => undefined);
-      })();
+      // This detached WebView owns the panel window. Hide it directly so a
+      // disabled boot never enters the native panel path that restores the Pet.
+      void getCurrentWindow()
+        .hide()
+        .catch(() => undefined);
       return () => {
         uninstallPresentation();
         uninstallSettings();
@@ -51,9 +51,10 @@ export function PetMiniPanelWindow({ runtimeEffectsEnabled = true }: PetMiniPane
     };
   }, [enabled, runtimeEffectsEnabled]);
 
-  const panel = (
-    <PetMiniPanel open={open} windowMode onClose={() => setOpen(false)} animLabel="idlePrimary" />
-  );
+  const panel =
+    !runtimeEffectsEnabled || enabled ? (
+      <PetMiniPanel open={open} windowMode onClose={() => setOpen(false)} animLabel="idlePrimary" />
+    ) : null;
 
   return (
     <div

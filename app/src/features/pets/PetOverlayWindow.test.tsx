@@ -8,18 +8,21 @@ const overlayBridge = vi.hoisted(() => ({
 }));
 
 const petSettings = vi.hoisted(() => ({
+  enabled: true,
+  overlayVisible: true,
   setOverlayVisible: vi.fn(),
 }));
 
+const currentWindow = vi.hoisted(() => ({
+  hide: vi.fn(async () => undefined),
+}));
+
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: () => currentWindow,
+}));
+
 vi.mock('./PetOverlay', () => ({
-  PetOverlay: ({ onRequestClose }: { onRequestClose?: () => void }) => (
-    <>
-      <canvas data-pet-pixi-canvas="true" />
-      <button type="button" onClick={onRequestClose}>
-        Close Pet
-      </button>
-    </>
-  ),
+  PetOverlay: () => <canvas data-pet-pixi-canvas="true" />,
 }));
 
 vi.mock('./petTauriBridge', () => ({
@@ -43,6 +46,8 @@ vi.mock('./petSettingsStore', () => ({
   installPetSettingsStorageSync: vi.fn(() => () => undefined),
   usePetSettingsStore: (sel: (s: Record<string, unknown>) => unknown) =>
     sel({
+      enabled: petSettings.enabled,
+      overlayVisible: petSettings.overlayVisible,
       reducedMotion: false,
       sleepTimeoutMs: 300_000,
       idleFunIntervalMs: 60_000,
@@ -58,6 +63,8 @@ vi.mock('@/stores/ui', () => ({
 describe('PetOverlayWindow transparency shell', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    petSettings.enabled = true;
+    petSettings.overlayVisible = true;
   });
 
   it('persists an intentional hide when Close is selected in the detached overlay', async () => {
@@ -69,7 +76,22 @@ describe('PetOverlayWindow transparency shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close Pet' }));
 
     expect(petSettings.setOverlayVisible).toHaveBeenCalledWith(false);
-    await waitFor(() => expect(overlayBridge.hidePetOverlay).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(currentWindow.hide).toHaveBeenCalledTimes(1));
+    expect(overlayBridge.hidePetOverlay).not.toHaveBeenCalled();
+    root.remove();
+  });
+
+  it('self-hides and skips topmost recovery when persisted Pet settings are disabled', async () => {
+    petSettings.enabled = false;
+    petSettings.overlayVisible = false;
+    const root = document.createElement('div');
+    root.id = 'root';
+    document.body.appendChild(root);
+
+    render(<PetOverlayWindow />, { container: root });
+
+    await waitFor(() => expect(currentWindow.hide).toHaveBeenCalledTimes(1));
+    expect(overlayBridge.reassertPetOverlayTopmost).not.toHaveBeenCalled();
     root.remove();
   });
 

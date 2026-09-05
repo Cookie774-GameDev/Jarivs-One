@@ -36,10 +36,116 @@ const plugins = [
   },
 ] as const;
 
+const connectedGithub = {
+  github: {
+    accountId: 'account-alpha',
+    pluginId: 'github',
+    state: 'connected',
+    enabled: true,
+    enabledProjectIds: ['project-alpha'],
+    configuredFields: ['token'],
+    updatedAt: 100,
+  },
+} as const;
+
 describe('buildAccountReferenceCatalog', () => {
+  it('lists only exact-scope connected plugins and usable connected external MCPs', () => {
+    const catalog = buildAccountReferenceCatalog({
+      accountId: 'account-alpha',
+      projectId: 'project-alpha',
+      artifactScope: { accountId: 'account-alpha', artifacts: [] },
+      agents,
+      plugins: [
+        ...plugins,
+        { id: 'linear', name: 'Linear', category: 'Productivity' },
+        { id: 'slack', name: 'Slack', category: 'Communication' },
+        { id: 'notion', name: 'Notion', category: 'Productivity' },
+        { id: 'trello', name: 'Trello', category: 'Productivity' },
+      ],
+      pluginConnections: {
+        ...connectedGithub,
+        linear: {
+          accountId: 'account-beta',
+          pluginId: 'linear',
+          state: 'connected',
+          enabled: true,
+          enabledProjectIds: ['project-alpha'],
+        },
+        slack: {
+          accountId: 'account-alpha',
+          pluginId: 'slack',
+          state: 'connected',
+          enabled: false,
+          enabledProjectIds: ['project-alpha'],
+        },
+        notion: {
+          accountId: 'account-alpha',
+          pluginId: 'notion',
+          state: 'connected',
+          enabled: true,
+          enabledProjectIds: ['another-project'],
+        },
+        trello: {
+          accountId: 'account-alpha',
+          pluginId: 'trello',
+          state: 'not_connected',
+          enabled: true,
+          enabledProjectIds: ['project-alpha'],
+        },
+      },
+      mcps: [
+        {
+          id: 'filesystem',
+          kind: 'external_mcp',
+          state: 'running',
+          healthy: true,
+          exposedTools: ['read_file', 'list_directory'],
+        },
+        {
+          id: 'stopped',
+          kind: 'external_mcp',
+          state: 'stopped',
+          healthy: false,
+          exposedTools: ['search'],
+        },
+        {
+          id: 'private-tools',
+          kind: 'external_mcp',
+          state: 'running',
+          healthy: true,
+          exposedTools: [],
+        },
+        {
+          id: 'vibespace-local',
+          kind: 'local_mcp_lite',
+          state: 'running',
+          healthy: true,
+          exposedTools: ['local_tool'],
+        },
+      ],
+    });
+
+    expect(catalog.map((entry) => entry.key)).toEqual([
+      'cao:jarvis-cao',
+      'agent:agent_builder',
+      'mcp:filesystem',
+      'plugin:github',
+    ]);
+    expect(catalog.find((entry) => entry.key === 'mcp:filesystem')).toEqual({
+      key: 'mcp:filesystem',
+      kind: 'mcp',
+      entityId: 'filesystem',
+      mention: '@mcp:filesystem',
+      label: 'filesystem',
+      description: '2 tools available',
+      metadata: 'Connected MCP',
+    });
+  });
+
   it('builds CAO, agent, plugin, and opaque artifact references without backing data', () => {
     const catalog = buildAccountReferenceCatalog({
       accountId: 'account-alpha',
+      projectId: 'project-alpha',
       artifactScope: {
         accountId: 'account-alpha',
         artifacts: [
@@ -58,6 +164,8 @@ describe('buildAccountReferenceCatalog', () => {
       },
       agents,
       plugins,
+      pluginConnections: connectedGithub,
+      mcps: [],
     });
 
     expect(catalog).toEqual([
@@ -105,9 +213,12 @@ describe('buildAccountReferenceCatalog', () => {
   it('fails artifact discovery closed on an account-scope mismatch while preserving agents and plugins', () => {
     const catalog = buildAccountReferenceCatalog({
       accountId: 'account-alpha',
+      projectId: 'project-alpha',
       artifactScope: { accountId: 'account-beta', artifacts: [artifact()] },
       agents,
       plugins,
+      pluginConnections: connectedGithub,
+      mcps: [],
     });
 
     expect(catalog.map(({ kind, entityId }) => ({ kind, entityId }))).toEqual([
@@ -120,12 +231,15 @@ describe('buildAccountReferenceCatalog', () => {
   it('omits quarantined and invalid artifacts without dropping safe entities', () => {
     const catalog = buildAccountReferenceCatalog({
       accountId: 'account-alpha',
+      projectId: 'project-alpha',
       artifactScope: {
         accountId: 'account-alpha',
         artifacts: [artifact({ state: 'quarantined' }), artifact({ attemptNumber: 0 })],
       },
       agents,
       plugins,
+      pluginConnections: connectedGithub,
+      mcps: [],
     });
 
     expect(catalog.map((entry) => entry.kind)).toEqual(['cao', 'agent', 'plugin']);
@@ -134,6 +248,7 @@ describe('buildAccountReferenceCatalog', () => {
   it('keeps mixed mentions and keys unique while reserving first-party aliases', () => {
     const catalog = buildAccountReferenceCatalog({
       accountId: 'account-alpha',
+      projectId: 'project-alpha',
       artifactScope: {
         accountId: 'account-alpha',
         artifacts: [artifact(), artifact()],
@@ -148,6 +263,17 @@ describe('buildAccountReferenceCatalog', () => {
         { id: 'builder', name: 'Ambiguous builder plugin' },
         { id: 'github', name: 'Duplicate GitHub' },
       ],
+      pluginConnections: {
+        ...connectedGithub,
+        builder: {
+          accountId: 'account-alpha',
+          pluginId: 'builder',
+          state: 'connected',
+          enabled: true,
+          enabledProjectIds: ['project-alpha'],
+        },
+      },
+      mcps: [],
     });
 
     expect(catalog.map((entry) => entry.key)).toEqual([
@@ -163,9 +289,12 @@ describe('buildAccountReferenceCatalog', () => {
   it('omits unsafe entity tokens and display fields from the mixed catalog', () => {
     const catalog = buildAccountReferenceCatalog({
       accountId: 'account-alpha',
+      projectId: 'project-alpha',
       artifactScope: { accountId: 'account-alpha', artifacts: [] },
       agents: [{ id: 'agent_bad', slug: 'bad slug', name: 'Unsafe\u0000agent' }],
       plugins: [{ id: 'bad plugin', name: 'Unsafe plugin' }],
+      pluginConnections: {},
+      mcps: [],
     });
 
     expect(catalog.map((entry) => entry.kind)).toEqual(['cao']);
@@ -176,9 +305,12 @@ describe('filterReferenceCatalog', () => {
   it('finds each entity kind by its stable mention or display metadata', () => {
     const catalog = buildAccountReferenceCatalog({
       accountId: 'account-alpha',
+      projectId: 'project-alpha',
       artifactScope: { accountId: 'account-alpha', artifacts: [artifact()] },
       agents,
       plugins,
+      pluginConnections: connectedGithub,
+      mcps: [],
     });
 
     expect(filterReferenceCatalog(catalog, 'build').map((entry) => entry.key)).toEqual([

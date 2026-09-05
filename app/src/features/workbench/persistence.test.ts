@@ -52,6 +52,23 @@ describe('Workbench persistence', () => {
     expect(window.localStorage.getItem(WORKBENCH_STORAGE_KEY)).not.toContain('executionIdentity');
   });
 
+  it('persists validated native app identity but strips launch targets from reusable templates', () => {
+    const document = createDefaultWorkbenchDocument();
+    document.panels.push({
+      id: 'native-app-1', kind: 'native-app', title: 'Demo', x: 40, y: 40,
+      width: 760, height: 640, z: 8, minimized: false, status: 'idle',
+      settings: { nativeAppId: 'custom', nativeAppName: 'Demo', nativeAppPath: 'C:\\Tools\\Demo.exe' },
+    });
+    expect(saveWorkbenchDocument(document, window.localStorage).ok).toBe(true);
+    const restored = loadWorkbenchDocument(window.localStorage).document.panels.at(-1)!;
+    expect(restored.settings).toMatchObject({
+      nativeAppId: 'custom', nativeAppName: 'Demo', nativeAppPath: 'C:\\Tools\\Demo.exe',
+    });
+    expect(documentToTemplatePanels([restored])[0]?.settings).toMatchObject({
+      nativeAppId: undefined, nativeAppName: undefined, nativeAppPath: undefined,
+    });
+  });
+
   it('persists only an opaque artifact identity and exact digest for reload revalidation', () => {
     const document = createDefaultWorkbenchDocument();
     document.panels.push({

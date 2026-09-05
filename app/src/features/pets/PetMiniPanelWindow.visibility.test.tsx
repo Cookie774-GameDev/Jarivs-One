@@ -7,7 +7,13 @@ const bridge = vi.hoisted(() => ({
   reassertPetOverlayTopmost: vi.fn(async () => undefined),
 }));
 const settings = vi.hoisted(() => ({ enabled: false }));
+const currentWindow = vi.hoisted(() => ({
+  hide: vi.fn(async () => undefined),
+}));
 
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: () => currentWindow,
+}));
 vi.mock('@/features/auth/AuthGate', () => ({
   AuthGate: ({ children }: { children: unknown }) => children,
 }));
@@ -38,18 +44,16 @@ describe('PetMiniPanelWindow disabled startup visibility', () => {
     settings.enabled = false;
   });
 
-  it('hides the panel before the overlay and skips topmost recovery when Pet is disabled', async () => {
+  it('directly hides its own panel window without entering the restore-capable native command', async () => {
     render(<PetMiniPanelWindow />);
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(bridge.hidePetPanel).toHaveBeenCalledTimes(1);
-    expect(bridge.hidePetOverlay).toHaveBeenCalledTimes(1);
-    expect(bridge.hidePetPanel.mock.invocationCallOrder[0]).toBeLessThan(
-      bridge.hidePetOverlay.mock.invocationCallOrder[0],
-    );
+    expect(currentWindow.hide).toHaveBeenCalledTimes(1);
+    expect(bridge.hidePetPanel).not.toHaveBeenCalled();
+    expect(bridge.hidePetOverlay).not.toHaveBeenCalled();
     expect(bridge.reassertPetOverlayTopmost).not.toHaveBeenCalled();
   });
 });

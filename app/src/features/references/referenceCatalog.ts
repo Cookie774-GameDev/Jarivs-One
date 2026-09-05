@@ -2,7 +2,7 @@ import type { JarvisArtifactV1 } from '@/lib/jarvis/contracts/execution';
 import { projectJarvisArtifactReference } from '@/features/jarvis-command-center/artifactAccess';
 import { CAO_NATIVE_IDENTITY } from '@/features/cao/bootstrap';
 
-export type ReferenceCatalogKind = 'cao' | 'agent' | 'plugin' | 'artifact';
+export type ReferenceCatalogKind = 'cao' | 'agent' | 'mcp' | 'plugin' | 'artifact';
 
 export type ReferenceCatalogEntry = Readonly<{
   key: `${ReferenceCatalogKind}:${string}`;
@@ -29,6 +29,22 @@ type ReferencePlugin = Readonly<{
   category?: string;
 }>;
 
+type ReferencePluginConnection = Readonly<{
+  accountId: string;
+  pluginId: string;
+  state: string;
+  enabled: boolean;
+  enabledProjectIds: readonly string[];
+}>;
+
+type ReferenceMcp = Readonly<{
+  id: string;
+  kind: string;
+  state: string;
+  healthy: boolean;
+  exposedTools: readonly string[];
+}>;
+
 const REFERENCE_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u;
 
 function stableDisplayText(value: string | undefined, maximum = 512): value is string {
@@ -47,13 +63,37 @@ function normalizedMention(value: string): string {
 
 export type AccountReferenceCatalogInput = Readonly<{
   accountId: string;
+  projectId?: string | null;
   artifactScope: Readonly<{
     accountId: string;
     artifacts: readonly JarvisArtifactV1[];
   }>;
   agents: readonly ReferenceAgent[];
   plugins: readonly ReferencePlugin[];
+  pluginConnections: Readonly<Record<string, ReferencePluginConnection | undefined>>;
+  mcps: readonly ReferenceMcp[];
 }>;
+
+function pluginConnectedForScope(
+  input: AccountReferenceCatalogInput,
+  pluginId: string,
+): boolean {
+  const connection = input.pluginConnections[pluginId];
+  if (
+    !connection ||
+    !input.accountId ||
+    connection.accountId !== input.accountId ||
+    connection.pluginId !== pluginId ||
+    connection.state !== 'connected' ||
+    !connection.enabled
+  ) {
+    return false;
+  }
+  return (
+    connection.enabledProjectIds.includes('*') ||
+    Boolean(input.projectId && connection.enabledProjectIds.includes(input.projectId))
+  );
+}
 
 function artifactDescription(
   kind: JarvisArtifactV1['kind'],
@@ -108,12 +148,34 @@ export function buildAccountReferenceCatalog(
     });
   }
 
+  for (const mcp of input.mcps) {
+    if (
+      !REFERENCE_TOKEN.test(mcp.id) ||
+      mcp.kind !== 'external_mcp' ||
+      mcp.state !== 'running' ||
+      !mcp.healthy ||
+      mcp.exposedTools.length === 0
+    ) {
+      continue;
+    }
+    append({
+      key: `mcp:${mcp.id}`,
+      kind: 'mcp',
+      entityId: mcp.id,
+      mention: `@mcp:${mcp.id}`,
+      label: mcp.id,
+      description: `${mcp.exposedTools.length} ${mcp.exposedTools.length === 1 ? 'tool' : 'tools'} available`,
+      metadata: 'Connected MCP',
+    });
+  }
+
   for (const plugin of input.plugins) {
     if (
       !REFERENCE_TOKEN.test(plugin.id) ||
       !stableDisplayText(plugin.name) ||
       (plugin.description !== undefined && !stableDisplayText(plugin.description, 2_048)) ||
-      (plugin.category !== undefined && !stableDisplayText(plugin.category))
+      (plugin.category !== undefined && !stableDisplayText(plugin.category)) ||
+      !pluginConnectedForScope(input, plugin.id)
     ) {
       continue;
     }

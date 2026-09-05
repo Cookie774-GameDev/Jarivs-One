@@ -16,6 +16,7 @@ function dependencies(
     nativeRuntime: true,
     runStorage: vi.fn().mockResolvedValue({ code: 'healthy', attempts: 1 }),
     refreshOpenCode: vi.fn().mockResolvedValue(undefined),
+    repairOpenCode: vi.fn().mockResolvedValue(undefined),
     getOpenCodeState: vi
       .fn()
       .mockReturnValue({ kind: 'ready', source: 'system', version: '1.18.21' }),
@@ -26,6 +27,12 @@ function dependencies(
     }),
     waitForOpenCodeSettled: vi.fn().mockResolvedValue(undefined),
     inspectCodexRuntime: vi.fn().mockResolvedValue({
+      kind: 'ready',
+      codexVersion: '0.151.0',
+      openCodexVersion: '5.0.0',
+      executableId: 'cli-executable-test',
+    }),
+    repairCodexRuntime: vi.fn().mockResolvedValue({
       kind: 'ready',
       codexVersion: '0.151.0',
       openCodexVersion: '5.0.0',
@@ -52,14 +59,23 @@ function dependencies(
 }
 
 describe('VibeSpace slash Doctor', () => {
-  it('reports managed Codex truth read-only and never exposes an install action', async () => {
+  it('repairs a diagnosed missing managed Codex harness with the pinned installer', async () => {
     const inspectCodexRuntime = vi.fn().mockResolvedValue({ kind: 'missing' });
-    const report = await runVibeSpaceDoctorWithDependencies(dependencies({ inspectCodexRuntime }));
+    const repairCodexRuntime = vi.fn().mockResolvedValue({
+      kind: 'ready',
+      codexVersion: '0.151.0',
+      openCodexVersion: '5.0.0',
+      executableId: 'cli-executable-repaired',
+    });
+    const report = await runVibeSpaceDoctorWithDependencies(
+      dependencies({ inspectCodexRuntime, repairCodexRuntime }),
+    );
 
     expect(inspectCodexRuntime).toHaveBeenCalledOnce();
-    expect(report.ok).toBe(false);
-    expect(report.text).toContain('Codex tools — Not installed; explicit approval required');
-    expect(report.text).not.toMatch(/installed successfully|auto.?install/iu);
+    expect(repairCodexRuntime).toHaveBeenCalledOnce();
+    expect(report.ok).toBe(true);
+    expect(report.text).toContain('Codex tools — Ready · Codex 0.151.0 · OpenCodex 5.0.0');
+    expect(report.text).not.toContain('explicit approval required');
     expect(
       summarizeCodexRuntime({ kind: 'incomplete', reason: 'private path' }).detail,
     ).not.toContain('private path');
@@ -135,6 +151,30 @@ describe('VibeSpace slash Doctor', () => {
     expect(report.text).toContain('SiYuan — Read-only transport probe passed');
     expect(report.text).toContain('Route controls — Unchanged');
     expect(report.text).toContain('Completed in 350 ms');
+  });
+
+  it('force-repairs OpenCode only after refresh diagnoses the harness as unhealthy', async () => {
+    const repairOpenCode = vi.fn().mockResolvedValue(undefined);
+    const getOpenCodeState = vi
+      .fn()
+      .mockReturnValueOnce({ kind: 'download_required' })
+      .mockReturnValue({ kind: 'ready', source: 'managed', version: '1.18.16' });
+    const report = await runVibeSpaceDoctorWithDependencies(
+      dependencies({
+        getOpenCodeState,
+        getOpenCodeConnection: vi.fn().mockReturnValue({
+          source: 'managed',
+          version: '1.18.16',
+          generation: 'opencode-server-repaired',
+        }),
+        repairOpenCode,
+      }),
+    );
+
+    expect(repairOpenCode).toHaveBeenCalledOnce();
+    expect(getOpenCodeState).toHaveBeenCalledTimes(2);
+    expect(report.ok).toBe(true);
+    expect(report.text).toContain('OpenCode — Ready · managed 1.18.16');
   });
 
   it('reports provider auth failure without downloading, changing credentials, or claiming repair', async () => {

@@ -37,10 +37,12 @@ export interface VibeSpaceDoctorDependencies {
   readonly nativeRuntime: boolean;
   readonly runStorage: () => Promise<StorageDoctorResult>;
   readonly refreshOpenCode: () => Promise<void>;
+  readonly repairOpenCode: () => Promise<void>;
   readonly getOpenCodeState: () => HarnessRuntimeState;
   readonly getOpenCodeConnection: () => OpenCodeServerConnection | undefined;
   readonly waitForOpenCodeSettled: () => Promise<void>;
   readonly inspectCodexRuntime: () => Promise<CodexRuntimeState>;
+  readonly repairCodexRuntime: () => Promise<CodexRuntimeState>;
   readonly refreshOpenCodeProvider: () => Promise<VibeSpaceDoctorSubsystemCheck>;
   readonly refreshContextBindings: () => Promise<readonly VibeSpaceDoctorSubsystemCheck[]>;
   readonly checkPlaywrightFeaturePack: () => Promise<VibeSpaceDoctorSubsystemCheck>;
@@ -62,7 +64,7 @@ export function summarizeCodexRuntime(state: CodexRuntimeState): VibeSpaceDoctor
     return {
       label: 'Codex tools',
       ok: false,
-      detail: 'Not installed; explicit approval required · codex_runtime_missing',
+      detail: 'Needs repair · codex_runtime_missing',
     };
   }
   if (state.kind === 'incomplete') {
@@ -402,21 +404,41 @@ export async function runVibeSpaceDoctorWithDependencies(
       detail: 'Native check unavailable in browser preview',
     });
   } else {
+    let codexState: CodexRuntimeState | undefined;
     try {
-      runtimeChecks.push(summarizeCodexRuntime(await dependencies.inspectCodexRuntime()));
+      codexState = await dependencies.inspectCodexRuntime();
     } catch {
-      runtimeChecks.push({
-        label: 'Codex tools',
-        ok: false,
-        detail: 'Check failed safely · codex_runtime_unavailable',
-      });
+      codexState = undefined;
     }
+    if (!codexState || codexState.kind !== 'ready') {
+      try {
+        codexState = await dependencies.repairCodexRuntime();
+      } catch {
+        codexState = undefined;
+      }
+    }
+    runtimeChecks.push(
+      codexState
+        ? summarizeCodexRuntime(codexState)
+        : {
+            label: 'Codex tools',
+            ok: false,
+            detail: 'Repair failed safely · codex_runtime_repair_failed',
+          },
+    );
     try {
       await dependencies.refreshOpenCode();
       await dependencies.waitForOpenCodeSettled();
-      const state = dependencies.getOpenCodeState();
-      const connection = dependencies.getOpenCodeConnection();
+      let state = dependencies.getOpenCodeState();
+      let connection = dependencies.getOpenCodeConnection();
       openCode = openCodeSummary(state, connection);
+      if (!openCode.ok) {
+        await dependencies.repairOpenCode();
+        await dependencies.waitForOpenCodeSettled();
+        state = dependencies.getOpenCodeState();
+        connection = dependencies.getOpenCodeConnection();
+        openCode = openCodeSummary(state, connection);
+      }
       if (openCode.ok) {
         try {
           runtimeChecks.push(await dependencies.refreshOpenCodeProvider());
@@ -525,11 +547,16 @@ export function runVibeSpaceDoctor(): Promise<VibeSpaceDoctorReport> {
     nativeRuntime: isTauri,
     runStorage: () => runStorageDoctor({ force: true }),
     refreshOpenCode: () => harnessRuntimeManager.refresh(),
+    repairOpenCode: () => harnessRuntimeManager.repair(),
     getOpenCodeState: () => harnessRuntimeManager.getSnapshot(),
     getOpenCodeConnection: () => harnessRuntimeManager.getConnection(),
     waitForOpenCodeSettled: () => waitForOpenCodeSettled(harnessRuntimeManager),
     inspectCodexRuntime: async () => {
       await codexRuntimeManager.refresh();
+      return codexRuntimeManager.getSnapshot();
+    },
+    repairCodexRuntime: async () => {
+      await codexRuntimeManager.install();
       return codexRuntimeManager.getSnapshot();
     },
     refreshOpenCodeProvider: refreshDefaultOpenCodeProvider,

@@ -30,6 +30,15 @@ const entries: readonly ReferenceCatalogEntry[] = [
     description: 'Builds the selected change',
   },
   {
+    key: 'mcp:filesystem',
+    kind: 'mcp',
+    entityId: 'filesystem',
+    mention: '@mcp:filesystem',
+    label: 'filesystem',
+    description: '2 tools available',
+    metadata: 'Connected MCP',
+  },
+  {
     key: 'plugin:github',
     kind: 'plugin',
     entityId: 'github',
@@ -49,6 +58,21 @@ const entries: readonly ReferenceCatalogEntry[] = [
 ];
 
 describe('MentionTypeahead', () => {
+  it('separates agents, MCPs, plugins, and references with distinct kind icons', () => {
+    const { container } = render(
+      <MentionTypeahead entries={entries} selectedKey="agent:agent_builder" query="" onSelect={() => {}} />,
+    );
+
+    expect(screen.getByRole('group', { name: 'Agents' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'MCPs' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Plugins' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'References' })).toBeTruthy();
+    expect(container.querySelector('[data-reference-kind="agent"] svg')).toBeTruthy();
+    expect(container.querySelector('[data-reference-kind="mcp"] svg')).toBeTruthy();
+    expect(container.querySelector('[data-reference-kind="plugin"] svg')).toBeTruthy();
+    expect(container.querySelector('[data-reference-kind="artifact"] svg')).toBeTruthy();
+  });
+
   it('renders mixed safe references and selects the exact opaque artifact entry', () => {
     const onSelect = vi.fn();
     render(
@@ -61,13 +85,14 @@ describe('MentionTypeahead', () => {
     );
 
     expect(screen.getByText('@builder')).toBeTruthy();
+    expect(screen.getByText('@mcp:filesystem')).toBeTruthy();
     expect(screen.getByText('@github')).toBeTruthy();
     expect(screen.getByText('@artifact:jart_launch-report')).toBeTruthy();
     expect(screen.getByText('Launch report')).toBeTruthy();
     expect(screen.queryByText(/path|credential|content/i)).toBeNull();
 
     fireEvent.click(screen.getByText('@artifact:jart_launch-report'));
-    expect(onSelect).toHaveBeenCalledWith(entries[2]);
+    expect(onSelect).toHaveBeenCalledWith(entries.at(-1));
   });
 
   it('keeps the empty state truthful for a mixed reference query', () => {

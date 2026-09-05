@@ -126,11 +126,11 @@ describe('PetHost native overlay recovery', () => {
       await Promise.resolve();
     });
 
-    expect(bridge.hidePetPanel).toHaveBeenCalledTimes(1);
+    // A disabled boot must not enter pet_hide_panel: that native command restores
+    // the overlay before hiding the panel and can strand a disabled Pet visible
+    // if the restore path stalls. The panel WebView owns its own direct hide.
+    expect(bridge.hidePetPanel).not.toHaveBeenCalled();
     expect(bridge.hidePetOverlay).toHaveBeenCalledTimes(1);
-    expect(bridge.hidePetPanel.mock.invocationCallOrder[0]).toBeLessThan(
-      bridge.hidePetOverlay.mock.invocationCallOrder[0],
-    );
     expect(bridge.showPetOverlay).not.toHaveBeenCalled();
   });
 

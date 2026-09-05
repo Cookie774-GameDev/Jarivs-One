@@ -3,6 +3,7 @@ import { Copy, GripHorizontal, Minus, X } from 'lucide-react';
 import { BrowserPanel } from './BrowserPanel';
 import { ReferencePanel } from './ReferencePanel';
 import { TerminalPanel } from './TerminalPanel';
+import { detachNativeAppSurface } from './nativeApps';
 import type { WorkbenchPanel as WorkbenchPanelModel } from './types';
 
 interface WorkbenchPanelProps {
@@ -28,6 +29,7 @@ function WorkbenchPanelComponent({
   onDuplicate,
   onClose,
 }: WorkbenchPanelProps) {
+  const [closing, setClosing] = React.useState(false);
   const [draft, setDraft] = React.useState({
     x: panel.x,
     y: panel.y,
@@ -74,6 +76,20 @@ function WorkbenchPanelComponent({
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up, { once: true });
+  };
+
+  const closePanel = async () => {
+    if (closing) return;
+    if (panel.kind !== 'native-app' && panel.kind !== 'ade') {
+      onClose();
+      return;
+    }
+    setClosing(true);
+    try {
+      await detachNativeAppSurface(panel.id);
+    } finally {
+      onClose();
+    }
   };
 
   const beginResize = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -152,7 +168,12 @@ function WorkbenchPanelComponent({
         >
           <Minus />
         </button>
-        <button type="button" aria-label={`Close ${panel.title}`} onClick={onClose}>
+        <button
+          type="button"
+          aria-label={`Close ${panel.title}`}
+          disabled={closing}
+          onClick={() => void closePanel()}
+        >
           <X />
         </button>
       </header>
@@ -186,7 +207,15 @@ function workbenchPanelPropsEqual(
 ): boolean {
   // Native browser surfaces reconcile their OS-level bounds after each canvas
   // layout commit, including translation-only camera movement.
-  if (previous.panel.kind === 'browser' || next.panel.kind === 'browser') return false;
+  if (
+    previous.panel.kind === 'browser' ||
+    next.panel.kind === 'browser' ||
+    previous.panel.kind === 'native-app' ||
+    next.panel.kind === 'native-app' ||
+    previous.panel.kind === 'ade' ||
+    next.panel.kind === 'ade'
+  )
+    return false;
   return (
     previous.panel === next.panel &&
     previous.selected === next.selected &&

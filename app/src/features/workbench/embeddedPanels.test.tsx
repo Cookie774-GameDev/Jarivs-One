@@ -2,15 +2,12 @@ import * as React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ReferencePanel } from './ReferencePanel';
-import { EmbeddedSurface, isEmbeddedSurfaceKind } from './EmbeddedSurface';
-import { PanelPalette } from './PanelPalette';
+import { isEmbeddedSurfaceKind } from './EmbeddedSurface';
 import type { WorkbenchPanel } from './types';
 
-vi.mock('@/features/ade', () => ({
-  ChatGptAdePage: () => (
-    <div data-testid="chatgpt-ade-page" data-ade-implementation-state="read-capable">
-      ChatGPT ADE authenticated authority
-    </div>
+vi.mock('./NativeAppPanel', () => ({
+  NativeAppPanel: ({ panel }: { panel: WorkbenchPanel }) => (
+    <div data-testid="workbench-native-app-panel">{panel.settings.nativeAppId ?? panel.kind}</div>
   ),
 }));
 
@@ -60,20 +57,12 @@ function panel(
 }
 
 describe('Workbench embedded panels', () => {
-  it('offers and renders the truthful ChatGPT ADE surface as an embedded panel', async () => {
-    const onAdd = vi.fn();
-    render(<PanelPalette onAdd={onAdd} />);
-
-    screen.getByRole('button', { name: 'Add ChatGPT ADE' }).click();
-    expect(onAdd).toHaveBeenCalledWith('ade');
-    expect(isEmbeddedSurfaceKind('ade')).toBe(true);
-
-    render(<EmbeddedSurface panel={panel('ade')} />);
-    expect(await screen.findByTestId('chatgpt-ade-page')).toBeTruthy();
-    expect(
-      screen.getByTestId('chatgpt-ade-page').getAttribute('data-ade-implementation-state'),
-    ).toBe('read-capable');
-    expect(screen.getByTestId('workbench-embedded-ade')).toBeTruthy();
+  it('routes legacy ADE panels to the real native app host instead of an internal page', () => {
+    expect(isEmbeddedSurfaceKind('ade')).toBe(false);
+    render(<ReferencePanel panel={panel('ade')} onUpdate={() => undefined} />);
+    expect(screen.getByTestId('workbench-native-app-panel').textContent).toContain('ade');
+    expect(screen.queryByTestId('chatgpt-ade-page')).toBeNull();
+    expect(screen.queryByTestId('workbench-embedded-ade')).toBeNull();
   });
 
   it('renders real files surface instead of route-redirect placeholder copy', () => {

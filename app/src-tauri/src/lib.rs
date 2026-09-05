@@ -217,8 +217,8 @@ fn should_hide_main_for_intro(intro_show_succeeded: bool) -> bool {
     intro_show_succeeded
 }
 
-fn tray_show_should_reveal_main(intro_window_present: bool) -> bool {
-    !intro_window_present
+fn tray_show_should_reveal_main(intro_window_present: bool, intro_window_visible: bool) -> bool {
+    !intro_window_present || !intro_window_visible
 }
 
 fn schedule_cold_start_intro_fail_open(app: &tauri::AppHandle) {
@@ -401,6 +401,15 @@ fn run_monochrome_visual_test(
         .run(|_app_handle, _event| {});
 }
 
+const DEV_MULTI_INSTANCE_ENV: &str = "VIBESPACE_DEV_MULTI_INSTANCE";
+
+fn should_install_single_instance_plugin(
+    debug_build: bool,
+    override_value: Option<&std::ffi::OsStr>,
+) -> bool {
+    !debug_build || override_value != Some(std::ffi::OsStr::new("1"))
+}
+
 /// Ordinary production path. Preserves all existing plugin, setup, command,
 /// and lifecycle behavior exactly as before the runtime-profile split.
 fn run_ordinary(
@@ -409,11 +418,21 @@ fn run_ordinary(
 ) {
     branding::init_platform_branding();
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+    let builder = tauri::Builder::default();
+    let builder = if should_install_single_instance_plugin(
+        cfg!(debug_assertions),
+        std::env::var_os(DEV_MULTI_INSTANCE_ENV).as_deref(),
+    ) {
+        builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             println!("[single-instance] Reusing existing Jarvis service instance");
             show_main_window(app, "second-instance");
         }))
+    } else {
+        eprintln!("[single-instance] debug multi-instance override enabled");
+        builder
+    };
+
+    builder
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -526,7 +545,11 @@ fn run_ordinary(
                     "show" => {
                         let intro = app.get_webview_window("cold-start-intro");
                         let intro_present = intro.is_some();
-                        if tray_show_should_reveal_main(intro_present) {
+                        let intro_visible = intro
+                            .as_ref()
+                            .and_then(|window| window.is_visible().ok())
+                            .unwrap_or(false);
+                        if tray_show_should_reveal_main(intro_present, intro_visible) {
                             show_main_window(app, "tray-show");
                         } else if let Some(window) = intro {
                             println!(
@@ -907,6 +930,27 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     #[test]
+    fn local_multi_instance_override_is_exact_and_debug_only() {
+        use std::ffi::OsStr;
+
+        assert!(should_install_single_instance_plugin(true, None));
+        assert!(!should_install_single_instance_plugin(
+            true,
+            Some(OsStr::new("1"))
+        ));
+        for invalid in ["", "0", "2", "true"] {
+            assert!(should_install_single_instance_plugin(
+                true,
+                Some(OsStr::new(invalid))
+            ));
+        }
+        assert!(should_install_single_instance_plugin(
+            false,
+            Some(OsStr::new("1"))
+        ));
+    }
+
+    #[test]
     fn cold_start_intro_fail_open_reveals_any_hidden_main_at_the_native_deadline() {
         assert!(should_force_intro_handoff(false, true));
         assert!(!should_force_intro_handoff(true, true));
@@ -926,9 +970,10 @@ mod tests {
     }
 
     #[test]
-    fn tray_show_does_not_abort_while_the_intro_window_still_exists() {
-        assert!(!tray_show_should_reveal_main(true));
-        assert!(tray_show_should_reveal_main(false));
+    fn tray_show_reveals_main_when_the_intro_handle_is_stale_or_hidden() {
+        assert!(!tray_show_should_reveal_main(true, true));
+        assert!(tray_show_should_reveal_main(true, false));
+        assert!(tray_show_should_reveal_main(false, false));
     }
 
     const ORDINARY_HANDLER_AUTHORITY: &str = "\

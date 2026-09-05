@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicIsize, AtomicU64, Ordering},
     Mutex,
 };
 use tauri::{
@@ -33,11 +33,6 @@ const PET_SETUP_OFFSCREEN_POSITION: (f64, f64) = (-32_000.0, -32_000.0);
 const PET_SETUP_MATERIALIZATION_DELAY_MS: u64 = 1_000;
 const PET_NATIVE_FRAME_STYLE_BITS: isize = 0x00CF_0000;
 const PET_NATIVE_FRAME_EX_STYLE_BITS: isize = 0x0002_0301;
-#[cfg(target_os = "windows")]
-const PET_NATIVE_TITLE_CAPACITY: usize = 64;
-#[cfg(target_os = "windows")]
-const PET_NATIVE_TITLE_TIMEOUT_MS: u32 = 25;
-
 #[cfg(target_os = "windows")]
 const PET_TOPMOST_POS_FLAGS: windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS =
     windows::Win32::UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS(
@@ -319,6 +314,16 @@ pub struct PetWindowState {
     pub overlay_visibility_generation: AtomicU64,
     pub panel_visibility_generation: AtomicU64,
     pub topmost_watchdog_started: AtomicBool,
+    pub overlay_native_hwnd: AtomicIsize,
+    pub panel_native_hwnd: AtomicIsize,
+}
+
+fn pet_native_hwnd_slot<'a>(state: &'a PetWindowState, label: &str) -> Option<&'a AtomicIsize> {
+    match label {
+        PET_OVERLAY_LABEL => Some(&state.overlay_native_hwnd),
+        PET_MINI_PANEL_LABEL => Some(&state.panel_native_hwnd),
+        _ => None,
+    }
 }
 
 /// The acknowledged outcome of asking the native runtime to show the detached
@@ -966,10 +971,21 @@ fn configure_pet_surface_on_main_thread(
     focus: bool,
 ) -> bool {
     let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+    let app_for_main = app.clone();
+    let label = win.label().to_owned();
     let win = win.clone();
     if app
         .run_on_main_thread(move || {
-            let ready = native_configure_pet_window(&win, title, x, y, width, height, focus);
+            let ready = native_configure_pet_window(&win, title, x, y, width, height, focus)
+                .map(|raw| {
+                    if let Some(slot) =
+                        pet_native_hwnd_slot(&app_for_main.state::<PetWindowState>(), &label)
+                    {
+                        slot.store(raw, Ordering::SeqCst);
+                    }
+                    true
+                })
+                .unwrap_or(false);
             let _ = sender.send(ready);
         })
         .is_err()
@@ -1013,14 +1029,14 @@ fn native_configure_pet_window(
     width: i32,
     height: i32,
     focus: bool,
-) -> bool {
+) -> Option<isize> {
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
         IsWindowVisible, SetForegroundWindow, SetWindowPos, SetWindowTextW, HWND_TOPMOST,
         SWP_NOACTIVATE, SWP_SHOWWINDOW,
     };
-    let Ok(raw) = win.hwnd() else { return false };
+    let Ok(raw) = win.hwnd() else { return None };
     let hwnd = HWND(raw.0 as *mut _);
     let title: Vec<u16> = title.encode_utf16().chain(Some(0)).collect();
     let flags = if focus {
@@ -1035,7 +1051,11 @@ fn native_configure_pet_window(
         if focus {
             let _ = SetForegroundWindow(hwnd);
         }
-        positioned.is_ok() && IsWindowVisible(hwnd).as_bool()
+        if positioned.is_ok() && IsWindowVisible(hwnd).as_bool() {
+            Some(raw.0 as isize)
+        } else {
+            None
+        }
     }
 }
 
@@ -1046,67 +1066,35 @@ fn native_show_pet_window(win: &WebviewWindow, _title: &str, _focus: bool) -> bo
 
 #[cfg(target_os = "windows")]
 fn native_pet_hwnds(label: &str) -> Vec<windows::Win32::Foundation::HWND> {
-    use windows::core::BOOL;
-    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
-    use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowThreadProcessId, SendMessageTimeoutW, SMTO_ABORTIFHUNG, SMTO_BLOCK,
-        WM_GETTEXT,
-    };
-
-    struct Enumeration {
-        process_id: u32,
-        expected_title: &'static str,
-        windows: Vec<HWND>,
-    }
-
-    unsafe extern "system" fn collect_window(hwnd: HWND, state: LPARAM) -> BOOL {
-        let state = unsafe { &mut *(state.0 as *mut Enumeration) };
-        let mut process_id = 0;
-        unsafe {
-            GetWindowThreadProcessId(hwnd, Some(&mut process_id));
-        }
-        if process_id != state.process_id {
-            return true.into();
-        }
-
-        let mut title = [0_u16; PET_NATIVE_TITLE_CAPACITY];
-        let mut copied = 0_usize;
-        let delivered = unsafe {
-            SendMessageTimeoutW(
-                hwnd,
-                WM_GETTEXT,
-                WPARAM(title.len()),
-                LPARAM(title.as_mut_ptr() as isize),
-                SMTO_ABORTIFHUNG | SMTO_BLOCK,
-                PET_NATIVE_TITLE_TIMEOUT_MS,
-                Some(&mut copied),
-            )
-        };
-        if delivered.0 != 0
-            && copied > 0
-            && copied < title.len()
-            && String::from_utf16_lossy(&title[..copied]) == state.expected_title
-        {
-            state.windows.push(hwnd);
-        }
-        true.into()
-    }
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowExW, GetWindowThreadProcessId};
 
     let Some(expected_title) = pet_native_title_for_label(label) else {
         return Vec::new();
     };
-    let mut state = Enumeration {
-        process_id: std::process::id(),
-        expected_title,
-        windows: Vec::new(),
-    };
-    let _ = unsafe {
-        EnumWindows(
-            Some(collect_window),
-            LPARAM((&mut state as *mut Enumeration) as isize),
-        )
-    };
-    state.windows
+    let title = expected_title
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let mut windows = Vec::new();
+    let mut after: Option<HWND> = None;
+    loop {
+        let Ok(hwnd) =
+            (unsafe { FindWindowExW(None, after, PCWSTR::null(), PCWSTR(title.as_ptr())) })
+        else {
+            break;
+        };
+        let mut process_id = 0;
+        unsafe {
+            GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+        }
+        if process_id == std::process::id() {
+            windows.push(hwnd);
+        }
+        after = Some(hwnd);
+    }
+    windows
 }
 
 #[cfg(target_os = "windows")]
@@ -1118,13 +1106,13 @@ fn native_pet_window_visible(win: &WebviewWindow) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn hide_pet_window(win: &WebviewWindow) -> Result<(), &'static str> {
+fn hide_pet_windows_by_label(label: &str) -> Result<(), &'static str> {
     use windows::Win32::UI::WindowsAndMessaging::{IsWindowVisible, ShowWindow, SW_HIDE};
 
     // This helper can run while the WebView is awaiting its invoke response.
     // WebviewWindow::hwnd is itself a synchronous Wry window_getter, so resolve
     // only this process's exact Pet titles and operate on their HWNDs directly.
-    let hwnds = native_pet_hwnds(win.label());
+    let hwnds = native_pet_hwnds(label);
     for hwnd in hwnds.iter().copied() {
         unsafe {
             let _ = ShowWindow(hwnd, SW_HIDE);
@@ -1139,6 +1127,45 @@ fn hide_pet_window(win: &WebviewWindow) -> Result<(), &'static str> {
     } else {
         Ok(())
     }
+}
+
+#[cfg(target_os = "windows")]
+fn hide_pet_window_by_state(app: &AppHandle, label: &str) -> Result<(), &'static str> {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowThreadProcessId, IsWindow, IsWindowVisible, ShowWindow, SW_HIDE,
+    };
+
+    let state = app.state::<PetWindowState>();
+    let Some(slot) = pet_native_hwnd_slot(&state, label) else {
+        return Ok(());
+    };
+    let raw = slot.load(Ordering::SeqCst);
+    if raw == 0 {
+        return Ok(());
+    }
+    let hwnd = HWND(raw as *mut _);
+    let mut process_id = 0;
+    unsafe {
+        GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+    }
+    if !unsafe { IsWindow(Some(hwnd)).as_bool() } || process_id != std::process::id() {
+        slot.store(0, Ordering::SeqCst);
+        return Ok(());
+    }
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_HIDE);
+    }
+    if unsafe { IsWindowVisible(hwnd).as_bool() } {
+        Err("hide_failed")
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn hide_pet_window(win: &WebviewWindow) -> Result<(), &'static str> {
+    hide_pet_windows_by_label(win.label())
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -1352,6 +1379,10 @@ fn retire_pet_registration(app: &AppHandle, label: &str) -> Result<(), String> {
         window
             .destroy()
             .map_err(|error| format!("failed to retire partial {label} window: {error}"))?;
+    }
+
+    if let Some(slot) = pet_native_hwnd_slot(&app.state::<PetWindowState>(), label) {
+        slot.store(0, Ordering::SeqCst);
     }
 
     if wait_for_pet_label_release(app, label) {
@@ -1844,12 +1875,17 @@ fn show_existing_pet_overlay(
     }
 }
 
+#[cfg(not(target_os = "windows"))]
+fn hide_pet_overlay_window(app: &AppHandle) -> Result<(), &'static str> {
+    if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
+        hide_pet_window(&win)?;
+    }
+    Ok(())
+}
+
 /// Hide the pet overlay without destroying the webview (no duplicate on re-show).
 #[tauri::command]
 pub async fn pet_hide_overlay(app: AppHandle) -> Result<(), String> {
-    #[cfg(debug_assertions)]
-    eprintln!("[pets] pet_hide_overlay invoked");
-
     let intent_generation = record_pet_visibility_intent(&app, PET_OVERLAY_LABEL);
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<PetWindowState>();
@@ -1860,9 +1896,10 @@ pub async fn pet_hide_overlay(app: AppHandle) -> Result<(), String> {
         if !pet_visibility_intent_is_current(&state, PET_OVERLAY_LABEL, intent_generation) {
             return Ok(());
         }
-        if let Some(win) = app.get_webview_window(PET_OVERLAY_LABEL) {
-            hide_pet_window(&win).map_err(str::to_string)?;
-        }
+        #[cfg(target_os = "windows")]
+        hide_pet_window_by_state(&app, PET_OVERLAY_LABEL).map_err(str::to_string)?;
+        #[cfg(not(target_os = "windows"))]
+        hide_pet_overlay_window(&app).map_err(str::to_string)?;
         Ok(())
     })
     .await
@@ -2508,10 +2545,11 @@ mod tests {
             .map(|offset| hwnd_lookup_start + offset)
             .expect("native Pet HWND lookup is bounded");
         let hwnd_lookup = &source[hwnd_lookup_start..hwnd_lookup_end];
-        assert!(hwnd_lookup.contains("SendMessageTimeoutW("));
-        assert!(hwnd_lookup.contains("SMTO_ABORTIFHUNG | SMTO_BLOCK"));
-        assert!(!hwnd_lookup.contains("GetWindowTextLengthW("));
-        assert!(!hwnd_lookup.contains("GetWindowTextW("));
+        assert!(hwnd_lookup.contains("FindWindowExW("));
+        assert!(hwnd_lookup.contains("GetWindowThreadProcessId("));
+        assert!(!hwnd_lookup.contains("EnumWindows("));
+        assert!(!hwnd_lookup.contains("SendMessageTimeoutW("));
+        assert!(!hwnd_lookup.contains("WM_GETTEXT"));
 
         let command_start = source
             .find("pub async fn pet_hide_overlay")
@@ -2522,22 +2560,37 @@ mod tests {
             .expect("overlay hide command is bounded");
         let command = &source[command_start..command_end];
 
-        assert!(command.contains("hide_pet_window(&win)"));
+        assert!(command.contains("hide_pet_window_by_state(&app, PET_OVERLAY_LABEL)"));
+        assert!(command.contains("hide_pet_overlay_window(&app)"));
+        assert!(!command.contains("app.get_webview_window"));
         assert!(!command.contains("let _ = win.hide()"));
         assert!(command.contains("spawn_blocking"));
 
         let windows_helper_start = source
-            .find("#[cfg(target_os = \"windows\")]\nfn hide_pet_window")
+            .find("#[cfg(target_os = \"windows\")]\nfn hide_pet_windows_by_label")
             .expect("Windows overlay hide helper exists");
         let windows_helper_end = source[windows_helper_start..]
             .find("#[cfg(not(target_os = \"windows\"))]\nfn hide_pet_window")
             .map(|offset| windows_helper_start + offset)
             .expect("Windows overlay hide helper is bounded");
         let windows_helper = &source[windows_helper_start..windows_helper_end];
-        assert!(windows_helper.contains("native_pet_hwnds(win.label())"));
+        assert!(windows_helper.contains("native_pet_hwnds(label)"));
         assert!(windows_helper.contains("ShowWindow(hwnd, SW_HIDE)"));
         assert!(!windows_helper.contains("win.hwnd()"));
         assert!(!windows_helper.contains("win.hide()"));
+
+        let state_hide_start = source
+            .find("fn hide_pet_window_by_state")
+            .expect("state-backed Windows hide helper exists");
+        let state_hide_end = source[state_hide_start..]
+            .find("#[cfg(target_os = \"windows\")]\nfn hide_pet_window")
+            .map(|offset| state_hide_start + offset)
+            .expect("state-backed hide helper is bounded");
+        let state_hide = &source[state_hide_start..state_hide_end];
+        assert!(state_hide.contains("pet_native_hwnd_slot"));
+        assert!(state_hide.contains("ShowWindow(hwnd, SW_HIDE)"));
+        assert!(!state_hide.contains("native_pet_hwnds("));
+        assert!(!state_hide.contains("get_webview_window"));
 
         let setup_hide_start = source
             .find("fn schedule_setup_pet_hide")
@@ -2947,6 +3000,17 @@ mod tests {
     #[test]
     fn stale_panel_rebuild_is_reported_as_new_native_window() {
         let source = include_str!("pets.rs");
+        let retire_start = source
+            .find("fn retire_pet_registration")
+            .expect("Pet retirement helper exists");
+        let retire_end = source[retire_start..]
+            .find("fn acquire_pet_overlay")
+            .map(|offset| retire_start + offset)
+            .expect("Pet retirement helper is bounded");
+        let retire = &source[retire_start..retire_end];
+        assert!(retire.contains("pet_native_hwnd_slot"));
+        assert!(retire.contains("slot.store(0, Ordering::SeqCst)"));
+
         let acquire_start = source
             .find("fn get_or_create_pet_panel")
             .expect("panel acquisition helper exists");
@@ -3834,6 +3898,8 @@ pub fn init_pet_state(app: &AppHandle) -> PetWindowState {
         overlay_visibility_generation: AtomicU64::new(0),
         panel_visibility_generation: AtomicU64::new(0),
         topmost_watchdog_started: AtomicBool::new(false),
+        overlay_native_hwnd: AtomicIsize::new(0),
+        panel_native_hwnd: AtomicIsize::new(0),
     }
 }
 

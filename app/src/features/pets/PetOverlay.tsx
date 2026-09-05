@@ -64,7 +64,7 @@ import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/ui';
 import { installPetContextMenuDismissal } from './petContextMenuDismissal';
 
-const DISPLAY = 128;
+const DEFAULT_DISPLAY_SIZE = 128;
 const DEBUG_ANIMS: PetAnimId[] = [
   'welcome',
   'idlePrimary',
@@ -87,6 +87,7 @@ export interface PetOverlayProps {
   onRequestClose?: () => void;
   onAnimChange?: (anim: string) => void;
   tauriWindowMode?: boolean;
+  displaySize?: number;
   sleepTimeoutMs?: number;
   idleFunIntervalMs?: number;
   positionLocked?: boolean;
@@ -104,11 +105,15 @@ export function PetOverlay({
   onRequestClose,
   onAnimChange,
   tauriWindowMode = false,
+  displaySize: displaySizeProp = DEFAULT_DISPLAY_SIZE,
   sleepTimeoutMs,
   idleFunIntervalMs,
   positionLocked: positionLockedProp,
   edgeSnapping: edgeSnappingProp,
 }: PetOverlayProps) {
+  const displaySize = Number.isFinite(displaySizeProp)
+    ? Math.max(1, Math.min(DEFAULT_DISPLAY_SIZE, Math.round(displaySizeProp)))
+    : DEFAULT_DISPLAY_SIZE;
   const hostRef = React.useRef<HTMLDivElement>(null);
   const contextMenuRef = React.useRef<HTMLDivElement>(null);
   const playerRef = React.useRef(new PixiAtlasPlayer());
@@ -271,7 +276,7 @@ export function PetOverlay({
       try {
         if (!initOnce.current) {
           await player.init(host, {
-            displaySize: DISPLAY,
+            displaySize: displaySize,
             resolution: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
             backgroundAlpha: 0,
           });
@@ -340,7 +345,7 @@ export function PetOverlay({
         }
       }
     },
-    [motionPolicy.animationsEnabled, reducedMotion, setState],
+    [displaySize, motionPolicy.animationsEnabled, reducedMotion, setState],
   );
 
   const playAnimRef = React.useRef(playAnim);
@@ -849,12 +854,12 @@ export function PetOverlay({
         typeof window !== 'undefined' ? window.screen.availWidth || window.innerWidth : 1920;
       const sh =
         typeof window !== 'undefined' ? window.screen.availHeight || window.innerHeight : 1080;
-      const clamped = clampPetPosition(rawX, rawY, DISPLAY, sw, sh, 0);
+      const clamped = clampPetPosition(rawX, rawY, displaySize, sw, sh, 0);
       void setPetOverlayPosition(clamped.x, clamped.y);
     } else {
       const sw = typeof window !== 'undefined' ? window.innerWidth : 1920;
       const sh = typeof window !== 'undefined' ? window.innerHeight : 1080;
-      const clamped = clampPetPosition(d.originLeft + dx, d.originTop + dy, DISPLAY, sw, sh, 0);
+      const clamped = clampPetPosition(d.originLeft + dx, d.originTop + dy, displaySize, sw, sh, 0);
       setPos({ left: clamped.x, top: clamped.y });
     }
     // Position updates immediately; locomotion state applies once per rAF.
@@ -880,15 +885,15 @@ export function PetOverlay({
           const candidates = [
             { left: 0, top: current.top, distance: current.left },
             {
-              left: Math.max(0, sw - DISPLAY),
+              left: Math.max(0, sw - displaySize),
               top: current.top,
-              distance: Math.abs(sw - DISPLAY - current.left),
+              distance: Math.abs(sw - displaySize - current.left),
             },
             { left: current.left, top: 0, distance: current.top },
             {
               left: current.left,
-              top: Math.max(0, sh - DISPLAY),
-              distance: Math.abs(sh - DISPLAY - current.top),
+              top: Math.max(0, sh - displaySize),
+              distance: Math.abs(sh - displaySize - current.top),
             },
           ];
           const nearest = candidates.reduce((best, candidate) =>
@@ -942,8 +947,8 @@ export function PetOverlay({
         style={
           tauriWindowMode
             ? {
-                width: DISPLAY,
-                height: DISPLAY,
+                width: displaySize,
+                height: displaySize,
                 background: 'transparent',
                 backgroundColor: 'transparent',
                 margin: 'auto',
@@ -951,8 +956,8 @@ export function PetOverlay({
             : {
                 left: pos.left,
                 top: pos.top,
-                width: DISPLAY,
-                height: DISPLAY,
+                width: displaySize,
+                height: displaySize,
                 background: 'transparent',
                 backgroundColor: 'transparent',
                 boxShadow: 'none',
@@ -972,7 +977,11 @@ export function PetOverlay({
         data-pet-reaction={runtimeReaction}
         data-pet-show-diag={showDiagnostics ? 'true' : 'false'}
         data-pet-renderer={
-          pixiFallback ? 'static-fallback' : motionPolicy.animationsEnabled ? 'pixi' : 'static-image'
+          pixiFallback
+            ? 'static-fallback'
+            : motionPolicy.animationsEnabled
+              ? 'pixi'
+              : 'static-image'
         }
         onPointerDown={onPointerDown}
         onPointerEnter={onPointerEnter}
@@ -987,8 +996,8 @@ export function PetOverlay({
         <div
           className="pet-canvas-container relative block w-full h-full"
           style={{
-            width: DISPLAY,
-            height: DISPLAY,
+            width: displaySize,
+            height: displaySize,
             background: 'transparent',
             backgroundColor: 'transparent',
             backgroundImage: 'none',

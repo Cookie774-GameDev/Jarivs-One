@@ -19,6 +19,7 @@ import { PluginLogo } from '@/features/plugins/PluginLogo';
 import { selectPluginConnectionsForAccount, usePluginStore } from '@/features/plugins/store';
 import type { PluginConnection } from '@/features/plugins/types';
 import { requestOpenMcpManager } from '@/features/plugins/openMcpManager';
+import { jarvisMcpServerManager } from '@/lib/mcp/serverManager';
 import {
   Button,
   Hint,
@@ -893,7 +894,7 @@ export interface ConfirmedAgentMention {
 
 export interface ConfirmedCatalogReference {
   key: string;
-  kind: 'cao' | 'plugin' | 'artifact';
+  kind: 'cao' | 'mcp' | 'plugin' | 'artifact';
   entityId: string;
   mention: string;
   label: string;
@@ -1586,7 +1587,7 @@ export function Composer({
   const consoleThemePickerActive = optionPickerCtx?.cmd.cmd === 'theme';
   const anyThemePickerActive = themePickerActive || consoleThemePickerActive;
   const pluginConnections = usePluginStore((s) =>
-    pluginPickerActive
+    pluginPickerActive || mentionDiscoveryOpen
       ? selectPluginConnectionsForAccount(s, pluginAccountId)
       : COMPOSER_IDLE_PLUGIN_CONNECTIONS,
   );
@@ -1753,14 +1754,9 @@ export function Composer({
             : '') ??
           '';
         if (!modelId) return;
-        const connection =
-          affinity.backend === 'codex'
-            ? {
-                ...CODEX_CLI_CONNECTION,
-                providerId: chat.connection.providerId,
-                modelId,
-              }
-            : chat.connection;
+        // The upstream model selection stays separate from its coding backend.
+        // Dispatch binds the Codex transport without changing picker authority.
+        const connection = chat.connection;
         const restored = selectionFromOption(
           chat.connection.providerId as ProviderId,
           modelId,
@@ -2093,11 +2089,21 @@ export function Composer({
     () =>
       buildAccountReferenceCatalog({
         accountId: pluginAccountId,
+        projectId,
         artifactScope: artifactReferenceScope,
         agents: Object.values(agents),
         plugins: PLUGIN_CATALOG,
+        pluginConnections,
+        mcps: mentionDiscoveryOpen ? jarvisMcpServerManager.discover() : [],
       }),
-    [agents, artifactReferenceScope, pluginAccountId],
+    [
+      agents,
+      artifactReferenceScope,
+      mentionDiscoveryOpen,
+      pluginAccountId,
+      pluginConnections,
+      projectId,
+    ],
   );
   const filteredReferenceEntries = useMemo(
     () =>
@@ -4861,17 +4867,19 @@ export function Composer({
 
   const canAttemptSlashWhileBackendBlocked =
     backendRuntimeBlocked && text.trimStart().startsWith('/');
+  const hasDraft =
+    text.trim().length > 0 ||
+    attachedFiles.length > 0 ||
+    attachedImages.length > 0 ||
+    attachedTerminals.length > 0 ||
+    attachedPlugins.length > 0 ||
+    attachedContexts.length > 0 ||
+    confirmedCommands.length > 0 ||
+    confirmedAgentMentions.length > 0 ||
+    confirmedCatalogReferences.length > 0 ||
+    pendingHandoff !== null;
   const canSend =
-    (text.trim().length > 0 ||
-      attachedFiles.length > 0 ||
-      attachedImages.length > 0 ||
-      attachedTerminals.length > 0 ||
-      attachedPlugins.length > 0 ||
-      attachedContexts.length > 0 ||
-      confirmedCommands.length > 0 ||
-      confirmedAgentMentions.length > 0 ||
-      confirmedCatalogReferences.length > 0 ||
-      pendingHandoff !== null) &&
+    hasDraft &&
     !sending &&
     (!backendRuntimeBlocked || canAttemptSlashWhileBackendBlocked);
   const kernelSmokeHiveBound = KERNEL_SMOKE_ENABLED && isKernelSmokeBindingActive();
@@ -5867,7 +5875,13 @@ export function Composer({
                     {confirmedCatalogReferences.map((reference) => (
                       <InputToken
                         key={reference.key}
-                        type={reference.kind === 'plugin' ? 'plugin' : 'file'}
+                        type={
+                          reference.kind === 'plugin'
+                            ? 'plugin'
+                            : reference.kind === 'mcp'
+                              ? 'contextmap'
+                              : 'file'
+                        }
                         label={reference.mention}
                         onRemove={() =>
                           setConfirmedCatalogReferences((current) =>
@@ -5976,6 +5990,26 @@ export function Composer({
                     'flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
                   )}
                 >
+                  {chatBackendAffinity && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 shrink-0 gap-1 px-1.5 text-metadata text-muted-foreground"
+                      aria-label="Choose coding runtime"
+                      onClick={() => {
+                        const command = findSlashCommandDef('cli');
+                        if (!command) return;
+                        setSlashCtx(null);
+                        setSelectedOptionId(chatBackendAffinity.backend);
+                        setOptionPickerCtx({ cmd: command, query: '' });
+                        requestAnimationFrame(() => textareaRef.current?.focus());
+                      }}
+                    >
+                      {chatBackendAffinity.backend === 'codex' ? 'Codex' : 'OpenCode'}
+                      <ChevronDown className="h-3 w-3" aria-hidden="true" />
+                    </Button>
+                  )}
                   <ModelPicker
                     selection={chatModelSelection}
                     modelCtx={modelCtx}
@@ -6143,7 +6177,7 @@ export function Composer({
                         <Square />
                       </Button>
                     </Hint>
-                  ) : stoppedRequest ? (
+                  ) : stoppedRequest && !hasDraft ? (
                     <Hint label="Resume current request">
                       <Button
                         type="button"

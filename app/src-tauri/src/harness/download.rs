@@ -147,6 +147,69 @@ impl Drop for CleanupPath {
     }
 }
 
+struct RepairBackup {
+    original: PathBuf,
+    backup: PathBuf,
+    armed: bool,
+}
+
+impl RepairBackup {
+    fn move_aside(original: &Path) -> Result<Self, DownloadFailure> {
+        let parent = original.parent().ok_or_else(|| {
+            failure(
+                DownloadFailureKind::Disk,
+                "Managed harness repair destination is invalid.",
+            )
+        })?;
+        let backup = parent.join(format!(".repair-backup-{}", nanoid::nanoid!(20)));
+        fs::rename(original, &backup).map_err(|_| {
+            failure(
+                DownloadFailureKind::Disk,
+                "Existing managed harness could not be preserved for repair.",
+            )
+        })?;
+        Ok(Self {
+            original: original.to_path_buf(),
+            backup,
+            armed: true,
+        })
+    }
+
+    fn commit(mut self) {
+        self.armed = false;
+    }
+
+    fn rollback(&mut self) {
+        let failed = self
+            .original
+            .parent()
+            .map(|parent| parent.join(format!(".failed-repair-{}", nanoid::nanoid!(20))));
+        let moved_replacement = if fs::symlink_metadata(&self.original).is_ok() {
+            failed
+                .as_ref()
+                .is_some_and(|failed| fs::rename(&self.original, failed).is_ok())
+        } else {
+            true
+        };
+        if !moved_replacement {
+            return;
+        }
+        if fs::rename(&self.backup, &self.original).is_ok() {
+            self.armed = false;
+        } else if let Some(failed) = failed {
+            let _ = fs::rename(failed, &self.original);
+        }
+    }
+}
+
+impl Drop for RepairBackup {
+    fn drop(&mut self) {
+        if self.armed {
+            self.rollback();
+        }
+    }
+}
+
 fn failure(kind: DownloadFailureKind, message: &'static str) -> DownloadFailure {
     DownloadFailure { kind, message }
 }
@@ -622,9 +685,14 @@ pub fn install_verified_archive(
         )
     })?;
     let version_root = managed_root.join(&release.version);
-    if let Some(installed) = existing_runtime(&version_root, release)? {
-        write_active_manifest(managed_root, release)?;
-        return Ok(installed);
+    // A missing archive means this is only an idempotent activation of an already
+    // verified runtime. A present archive is a force-repair payload and must be
+    // allowed to replace the same pinned version instead of trusting old bytes.
+    if fs::symlink_metadata(archive_path).is_err() {
+        if let Some(installed) = existing_runtime(&version_root, release)? {
+            write_active_manifest(managed_root, release)?;
+            return Ok(installed);
+        }
     }
 
     let staging_root = managed_root.join(format!(".staging-{}", nanoid::nanoid!(20)));
@@ -669,6 +737,11 @@ pub fn install_verified_archive(
     })?;
     drop(manifest_file);
 
+    let repair_backup = if fs::symlink_metadata(&version_root).is_ok() {
+        Some(RepairBackup::move_aside(&version_root)?)
+    } else {
+        None
+    };
     fs::rename(&staging_root, &version_root).map_err(|_| {
         failure(
             DownloadFailureKind::Disk,
@@ -677,12 +750,16 @@ pub fn install_verified_archive(
     })?;
     staging_cleanup.disarm();
     write_active_manifest(managed_root, release)?;
-    existing_runtime(&version_root, release)?.ok_or_else(|| {
+    let installed = existing_runtime(&version_root, release)?.ok_or_else(|| {
         failure(
             DownloadFailureKind::Archive,
             "Managed harness verification failed after installation.",
         )
-    })
+    })?;
+    if let Some(backup) = repair_backup {
+        backup.commit();
+    }
+    Ok(installed)
 }
 
 fn managed_root(app: &AppHandle) -> Result<PathBuf, DownloadFailure> {
@@ -1364,6 +1441,39 @@ mod tests {
             .file_name()
             .to_string_lossy()
             .starts_with('.')));
+    }
+
+    #[test]
+    fn atomic_install_force_repairs_same_version_and_preserves_the_previous_runtime() {
+        let fixture = FixtureRoot::new("install-force-repair");
+        let archive = fixture.path().join("runtime.zip");
+        let managed = fixture.path().join("managed");
+        let release = release(1_024, 8);
+        write_zip(&archive, &[("opencode.exe", b"native bytes", 0o100755)]);
+        install_verified_archive(&managed, &archive, &release, &AtomicBool::new(false))
+            .expect("initial install");
+        fs::write(managed.join("1.18.16/opencode.exe"), b"corrupt bytes").unwrap();
+
+        let installed =
+            install_verified_archive(&managed, &archive, &release, &AtomicBool::new(false))
+                .expect("force repair");
+
+        assert_eq!(fs::read(installed.executable).unwrap(), b"native bytes");
+        let backups = fs::read_dir(&managed)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".repair-backup-")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(
+            fs::read(backups[0].path().join("opencode.exe")).unwrap(),
+            b"corrupt bytes"
+        );
     }
 
     #[test]

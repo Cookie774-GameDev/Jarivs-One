@@ -78,6 +78,35 @@ import {
 
 /** Max UTF-8 sample for side-pane text preview (keeps WebView light). */
 const EXPLORER_TEXT_PREVIEW_BYTES = 12 * 1024;
+/** Native directory reads should never strand the picker on an endless spinner. */
+const EXPLORER_DIRECTORY_LOAD_TIMEOUT_MS = 4_000;
+/** Places are helpful chrome, but they must not block the first useful file listing. */
+const EXPLORER_PLACES_START_TIMEOUT_MS = 800;
+
+function resolveWithin<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    let finished = false;
+    const timer = globalThis.setTimeout(() => {
+      if (finished) return;
+      finished = true;
+      resolve(null);
+    }, timeoutMs);
+    void promise.then(
+      (value) => {
+        if (finished) return;
+        finished = true;
+        globalThis.clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        if (finished) return;
+        finished = true;
+        globalThis.clearTimeout(timer);
+        resolve(null);
+      },
+    );
+  });
+}
 
 function imageDataUrl(mimeType: string | undefined, data: string): string {
   const mime = (mimeType && mimeType.trim()) || 'image/png';
@@ -205,6 +234,7 @@ function FileExplorerDialog({
     'image' | 'video' | 'text' | 'none' | 'too_large' | 'loading' | 'error'
   >('none');
   const [viewMode, setViewMode] = React.useState<'list' | 'grid'>('grid');
+  const loadRequestRef = React.useRef(0);
 
   // Mini Jarvis search — module store (survives close/reopen; does not touch main Chat)
   const [searchState, setSearchState] = React.useState(() => getExplorerSearchState());
@@ -275,6 +305,7 @@ function FileExplorerDialog({
   const loadDir = React.useCallback(
     async (path: string) => {
       if (!runtimeEffectsEnabled) return;
+      const requestId = ++loadRequestRef.current;
       const clean = path.trim();
       if (!clean) {
         setError('Enter an absolute folder path.');
@@ -287,8 +318,18 @@ function FileExplorerDialog({
       setError(null);
       // Do NOT clear mini-Jarvis hits here — search is independent and must survive
       // folder navigation + dialog close/reopen.
-      const listed = await listDirectory(clean, constrainedRoot ? { root: constrainedRoot } : {});
+      const listed = await resolveWithin(
+        listDirectory(clean, constrainedRoot ? { root: constrainedRoot } : {}),
+        EXPLORER_DIRECTORY_LOAD_TIMEOUT_MS,
+      );
+      if (requestId !== loadRequestRef.current) return;
       setLoading(false);
+      if (!listed) {
+        setEntries([]);
+        setError('This folder is taking too long to load. Try Refresh or enter another path.');
+        setStatusLine('');
+        return;
+      }
       if (!listed.ok) {
         setEntries([]);
         setError(describeFsError(listed.error));
@@ -323,16 +364,25 @@ function FileExplorerDialog({
   React.useEffect(() => {
     if (!runtimeEffectsEnabled) return;
     let cancelled = false;
+    const explicitStart =
+      (session.initialPath && session.initialPath.trim()) || constrainedRoot || '';
+    const placesPromise = resolveWithin(resolveExplorerPlaces(), EXPLORER_PLACES_START_TIMEOUT_MS);
+
+    // A known initial/root path is the useful content: start it immediately instead of
+    // serially waiting on every optional OS quick-access path first.
+    if (explicitStart) void loadDir(explicitStart);
+
     void (async () => {
-      const nextPlaces = await resolveExplorerPlaces();
+      const nextPlaces = (await placesPromise) ?? [];
       if (cancelled) return;
       setPlaces(nextPlaces);
+      if (explicitStart) return;
+
+      const isWindows = typeof navigator !== 'undefined' && /win/i.test(navigator.userAgent);
+      const fallbackHome = isWindows ? 'C:\\Users' : isTauri ? '/' : '/home';
       const home =
-        nextPlaces.find((p) => p.id === 'home')?.path ??
-        nextPlaces[0]?.path ??
-        (isTauri ? '' : 'C:\\Users');
-      const start = (session.initialPath && session.initialPath.trim()) || constrainedRoot || home;
-      if (start) await loadDir(start);
+        nextPlaces.find((p) => p.id === 'home')?.path ?? nextPlaces[0]?.path ?? fallbackHome;
+      if (home) await loadDir(home);
       else {
         setLoading(false);
         setError('Could not resolve a starting folder.');
@@ -340,6 +390,7 @@ function FileExplorerDialog({
     })();
     return () => {
       cancelled = true;
+      loadRequestRef.current += 1;
     };
   }, [session.initialPath, constrainedRoot, loadDir, runtimeEffectsEnabled]);
 
