@@ -2497,3 +2497,11 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 
 ## 2026-09-07 — codex-copper-20260907-r1 / cinematic-product-world
 - Active. Isolated fresh checkout; base d08c7340e27cb3af509db4a9c81bfb2d1b6aaba2; branch codex/cinematic-product-world-20260907, upstream origin/main, no integration state. Exact file scope in own live owner.txt. Historical main-site claims do not overlap this isolated branch. No subagents or production deployment. Next: baseline tests, generated references, implementation.
+
+## 2026-09-07 — codex-copper-20260907-r1 / cinematic-product-world / implementation checkpoint
+- Branch codex/cinematic-product-world-20260907; prior milestone 46153ea; base d08c7340e27cb3af509db4a9c81bfb2d1b6aaba2.
+- Owned changes: site/index.html, site/css/cinematic.css, site/js/cinematic-{app,scenes,voice,state}.mjs, site/concepts/**, site/vendor/**, site/tests/cinematic*, evidence/cinematic-product-world/**, this append-only ledger.
+- Built all three motion studies and full Copper Core: shared lazy WebGL, HTML workspace assembly, route preservation, approval simulation, mic/sample cleanup, source map, local layers, pricing comparison, chapter navigation and fallbacks. Generated reference milestone remains independently recoverable.
+- Verification: five state tests and eight Access/link contracts pass; browser suite 24/24 passed with axe checks at 360,390,768,1280,1440. Follow-up software-renderer quality adjustment under measurement; repository checks still in progress. Diff whitespace check passes.
+- Preserved baseline failures: legacy origami/appearance source assertions (already failing before changes). Fixed four baseline Access/a11y/link failures. No app or infrastructure edits. No production publication.
+- Next: final performance, required app/build checks, evidence gallery and draft PR. Own locks remain active.
