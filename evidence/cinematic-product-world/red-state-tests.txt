@@ -1,0 +1,128 @@
+✖ changing route keeps the exact conversation and rejects unknown routes (3.1853ms)
+✖ a workflow cannot advance past approval without an explicit approve event (0.7161ms)
+✖ decline is terminal until reset and cannot be approved later (0.6194ms)
+✖ plan summary includes Access once and computes shared pool maxima only for eligible tiers (0.5425ms)
+✖ map controls clamp zoom and pan to reachable bounds (1.8838ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 0
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 424.3562
+
+✖ failing tests:
+
+test at site\tests\cinematic-state.test.mjs:7:1
+✖ changing route keeps the exact conversation and rejects unknown routes (3.1853ms)
+  AssertionError [ERR_ASSERTION]: model routing is not implemented
+  + actual - expected
+  
+  + 'undefined'
+  - 'function'
+  
+      at TestContext.<anonymous> (file:///C:/Users/viper/VibeSpaceOs/VibeSpace-IDEAS!/VibeSpace-Webstie/Cinematic-Product-World-20260907/site/tests/cinematic-state.test.mjs:8:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.start (node:internal/test_runner/test:1177:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'undefined',
+    expected: 'function',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at site\tests\cinematic-state.test.mjs:16:1
+✖ a workflow cannot advance past approval without an explicit approve event (0.7161ms)
+  AssertionError [ERR_ASSERTION]: workflow is not implemented
+  + actual - expected
+  
+  + 'undefined'
+  - 'function'
+  
+      at TestContext.<anonymous> (file:///C:/Users/viper/VibeSpaceOs/VibeSpace-IDEAS!/VibeSpace-Webstie/Cinematic-Product-World-20260907/site/tests/cinematic-state.test.mjs:17:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:897:18)
+      at Test.postRun (node:internal/test_runner/test:1447:19)
+      at Test.run (node:internal/test_runner/test:1372:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'undefined',
+    expected: 'function',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at site\tests\cinematic-state.test.mjs:25:1
+✖ decline is terminal until reset and cannot be approved later (0.6194ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'undefined'
+  - 'function'
+  
+      at TestContext.<anonymous> (file:///C:/Users/viper/VibeSpaceOs/VibeSpace-IDEAS!/VibeSpace-Webstie/Cinematic-Product-World-20260907/site/tests/cinematic-state.test.mjs:26:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:897:18)
+      at Test.postRun (node:internal/test_runner/test:1447:19)
+      at Test.run (node:internal/test_runner/test:1372:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'undefined',
+    expected: 'function',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at site\tests\cinematic-state.test.mjs:33:1
+✖ plan summary includes Access once and computes shared pool maxima only for eligible tiers (0.5425ms)
+  AssertionError [ERR_ASSERTION]: pricing summary is not implemented
+  + actual - expected
+  
+  + 'undefined'
+  - 'function'
+  
+      at TestContext.<anonymous> (file:///C:/Users/viper/VibeSpaceOs/VibeSpace-IDEAS!/VibeSpace-Webstie/Cinematic-Product-World-20260907/site/tests/cinematic-state.test.mjs:34:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:897:18)
+      at Test.postRun (node:internal/test_runner/test:1447:19)
+      at Test.run (node:internal/test_runner/test:1372:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'undefined',
+    expected: 'function',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at site\tests\cinematic-state.test.mjs:41:1
+✖ map controls clamp zoom and pan to reachable bounds (1.8838ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'undefined'
+  - 'function'
+  
+      at TestContext.<anonymous> (file:///C:/Users/viper/VibeSpaceOs/VibeSpace-IDEAS!/VibeSpace-Webstie/Cinematic-Product-World-20260907/site/tests/cinematic-state.test.mjs:42:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:897:18)
+      at Test.postRun (node:internal/test_runner/test:1447:19)
+      at Test.run (node:internal/test_runner/test:1372:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'undefined',
+    expected: 'function',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

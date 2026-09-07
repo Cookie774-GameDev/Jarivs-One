@@ -2494,3 +2494,6 @@ _Maintained by all four agents. Last seeded: 2026-06-16 â€” v0.1.43 (`36fdb
 - Evidence artifact: `evidence/plan-usage-perks-rev21/AUDIT.md`; screenshots `desktop-1440x900.png` and `mobile-390x844.png`.
 - Exact artifact SHA-256: `site/index.html` `A5AE64C14A8273B9023E40417540306B48FDA572432F44054ADD274E08B3C949`; runtime `window.__cinematicRecovery.revision=rev21-plan-usage-perks`.
 - Next: commit and push `origin/main`, verify public bytes, run live checks against `?rev=<sha>`, then close task-owned lock.
+
+## 2026-09-07 — codex-copper-20260907-r1 / cinematic-product-world
+- Active. Isolated fresh checkout; base d08c7340e27cb3af509db4a9c81bfb2d1b6aaba2; branch codex/cinematic-product-world-20260907, upstream origin/main, no integration state. Exact file scope in own live owner.txt. Historical main-site claims do not overlap this isolated branch. No subagents or production deployment. Next: baseline tests, generated references, implementation.
