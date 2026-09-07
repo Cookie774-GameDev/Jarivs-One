@@ -1,0 +1,29 @@
+{
+  "conditions": "Chromium headless on Windows; localhost Python static server; cold browser cache; 40 ms latency, 10 Mbps download, 5 Mbps upload; no CPU throttling. Synthetic lab results, not production field data.",
+  "browser": "149.0.7827.55",
+  "cpu": "AMD Ryzen 5 7235HS                             ",
+  "logicalCpus": 8,
+  "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+  "runs": [
+    {
+      "lcp": 460,
+      "cls": 0.0005416336059570312,
+      "transfer": 934776
+    },
+    {
+      "lcp": 404,
+      "cls": 0.0005248473485310873,
+      "transfer": 934776
+    },
+    {
+      "lcp": 460,
+      "cls": 0.0005248473485310873,
+      "transfer": 934776
+    }
+  ],
+  "smooth": {
+    "frames": 77,
+    "medianInterval": 33.399999999999636,
+    "p95Interval": 50.099999999999454
+  }
+}

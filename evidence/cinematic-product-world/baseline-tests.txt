@@ -1,0 +1,1073 @@
+✖ decision pages state the Access price, trial, and separate plan charge (6.0042ms)
+✔ pricing distinguishes app access from optional feature tiers (1.7882ms)
+✔ billing result pages never infer entitlement from the page URL (0.7598ms)
+✔ account guidance uses the desktop billing surface without a fake web login (0.575ms)
+✔ terms, privacy, and cancellation copy is bounded and transparent (1.6152ms)
+✖ download onboarding explains account, trial, and optional-plan boundaries (5.4567ms)
+✖ owned pages provide source-level accessibility basics (2.1497ms)
+✖ local links from owned pages resolve to files or same-page fragments (11.4396ms)
+✔ preserves all six approved source images byte-for-byte (77.1425ms)
+✔ uses the oso95 portable scrub engine mechanics (15.7371ms)
+✔ defines six internal anchors but only five visible scene numbers (19.3242ms)
+✔ declares the complete real-media pipeline as ready with all clips (260.8543ms)
+✖ enables the cinematic path once real media exists (13.8287ms)
+✖ renders five semantic fallback scenes using six exact images (23.1597ms)
+✖ loads the engine before the VibeSpace configuration (43.2403ms)
+✔ does not replace scrubbing with observer, scroll snap, or image-transform JS (4.8486ms)
+✖ offers exactly Default and VibeSpace website appearances (34.6802ms)
+✖ loads an isolated VibeSpace appearance layer without replacing scroll-world (38.3479ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 9
+ℹ fail 9
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1032.3608
+
+✖ failing tests:
+
+test at site\tests\access-pricing.test.mjs:33:1
+✖ decision pages state the Access price, trial, and separate plan charge (6.0042ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /VibeSpace Access: \$20\/month after the introductory 30-day access trial\./. Input:
+  
+  "VibeSpace — The workspace for the messy middle 00 CORE Skip / Esc Skip to the issue V VibeSpace Issue 00 Cover Index Index GitHub App Soon Procedural V sculpture / pointer-reactive light VibeSpace / Issue 00 × 00 Cover The workspace for the messy middle. 01 One Space The tabs stop multiplying. 02 Many Minds Choose the mind. Keep the thread. 03 Agents at Work Brief once. Work in parallel. 04 Ten Terminals Ten terminals. One approval. 05 Speak to the Work Jarvis voice and Ctrl+Space dictation. 06 Context Has Edges Project scope with visible relationships. 07 One Operating Loop Select. Isolate. Trace. 08 Local by Design Your keys stay yours. 09 Built Open Open at the core. 10 One Place to Work Not nine tools. One place to work. Ask the VibeSpace Guide Deterministic local answers / no AI or network request × What is VibeSpace? How do models work? What is Agent Council? Why ten terminals? Is Jarvis the product? Where do keys stay? Where do I download? Guide / Overview One connected workspace. VibeSpace is the local-first desktop AI workspace. Jarvis is the built-in assistant inside it. Models, agents, terminals, context, voice, tasks, skills, actions, and memory stay connected to the work. Open One Space → VibeSpace / Luxury AI Editorial / 00 Issue 00 / Cover Vibe / Space The workspace for the messy middle. Models, agents, terminals, voice, tasks, and memory in one local-first desktop workspace. Explore the issue ↘ App coming soon ↓ VibeSpace is the product. Jarvis is the built-in assistant. Local first Bring your own keys Open-source core Issue 01 / Integration Issue 01 / One Space The tabs stop multiplying. VibeSpace brings the moving parts of AI work into one desktop frame. A conversation can hold project context, hand work to agents, open terminal output, save a task, and keep the useful result nearby. Chat threads Agents roles Terminals PTY Voice Jarvis Tasks actions Memory context Fragmented One workspace 68% unified / one connected frame A stylized VibeSpace interface combining chat, project context, and terminal output in one desktop window. VibeSpace / Project Atlas VS / 01 CHAT AGENTS TERMINALS CONTEXT TASKS VOICE Map the smallest safe release path for the demo. Context attached. I’ll route research, build, and review as separate roles. Keep every command visible before it runs. Ask VibeSpace… ⌘ ↵ Context / 8 items Agent Council / ready Task / release pass Memory / project scoped SCOUT › inspected project context BUILDER › proposed a minimal diff REVIEWER › waiting for approval CHAT / persistent thread AGENT / reviewer ready TASK / release check VOICE / Jarvis paused Issue 02 / Models Issue 02 / Many Minds Choose the mind. Keep the thread. A 21+ provider BYOK model hub keeps model choice inside the same conversation. Ollama adds local, keyless routing. Hive can pass one prompt through sequential refinement instead of asking one model to do everything. BYOK contact sheet Choose the route. Keep the conversation. Drag / arrows / focus 01 / BYOK Reason Route a difficult planning pass to the model you choose. 02 / BYOK Build Keep coding work in the same project thread. 03 / BYOK Review Change the model without losing the conversation around it. 04 / LOCAL Offline Ollama routes supported local models without an API key. 05 / FAST Draft Pick speed when the work needs momentum, not ceremony. 06 / LONG Context Attach project scope and keep the relevant material visible. 07 / HIVE Refine Pass a response through sequential model stages. 08 / YOU Direct Your keys, your routing choice, one persistent workspace. Draft Model A maps the first useful answer. → Critique Model B finds gaps, risk, and missing context. → Refine Model C produces one cleaner result in the thread. Provider labels represent routing choices, not endorsements. Adapter availability can vary by release. Issue 03 / Collaboration Issue 03 / Agents at Work Brief once. Work in parallel. Custom agents and subagents give work a visible cast. Council mode broadcasts a prompt, lets focused roles explore in parallel, and synthesizes the useful parts into one answer. A / 01 Jarvis Routes the brief. Demo task: attach the release context, then send the right slice to each role. A / 02 Researcher Finds evidence. Demo task: inspect the public docs and list only supported product claims. A / 03 Builder Maps the diff. Demo task: propose the smallest implementation that preserves current architecture. A / 04 Reviewer Tests the edges. Demo task: look for regressions, unsafe assumptions, and missing checks. A / 05 Memory Keeper Scopes context. Demo task: save the final decision to this project, not every future project. A / 06 Action Extractor Names the next move. Demo task: turn the synthesis into clear, reviewable tasks. 01 / Broadcast One brief → 02 / Parallel Focused work → 03 / Synthesis One result Issue 04 / PTY 10 Issue 04 / Ten Terminals Ten terminals. One approval. A ten-pane PTY grid keeps Scout, Builder, Reviewer, OpenCode, Claude Code, Codex, and shell workflows visible. Multi-terminal orchestration remains behind a clear approval gate. 01 / Scout ready $ inspect context --safe project scope loaded 8 items indexed no command executed 02 / Builder queued $ plan minimal-diff architecture preserved 3 files proposed awaiting gate 03 / Reviewer ready $ review plan risk: low missing: visual pass status: hold 04 / OpenCode idle workspace attached role briefing ready shell untouched 05 / Claude Code idle context available no prompt dispatched approval required 06 / Codex idle task lane empty branch unchanged waiting 07 / Tests ready viewport matrix set keyboard path set motion mode set 08 / Security ready claims checked private data: none links staged 09 / Shell idle manual lane no command history 10 / Synthesis hold inputs collected final output blocked review the plan Approval gate Interface simulation only. Review a fictional plan before the panes change state. No command is executed. Review plan Fictional plan: let Scout summarize context, Builder draft a minimal change, Reviewer inspect the result, and Synthesis report back. This demo only changes text on this page. Cancel demo Approve demo Issue 05 / Voice Issue 05 / Speak to the Work Speak to the work. Keep your hands on the work. Jarvis is the assistant inside VibeSpace. Local Kokoro voice supports on-device speech output. Hands-free and push-to-talk modes keep the assistant close, while Ctrl+Space dictation can write inside VibeSpace or into other desktop apps where operating-system permissions allow. Voice Local Kokoro output, with visible listening and paused states. Dictation Ctrl+Space is focus-aware inside the app and can paste into the focused desktop app when permitted. Actions Scheduled Jarvis Actions keep prompts and their saved output connected to the workspace. A live browser speech-to-text workspace with a speaking versus typing speed comparison, microphone energy, transcript, and accessible controls. Average typing 40 words / minute VS Average speaking 150 words / minute YOU / LIVE TRANSCRIPT Ready Your finalized speech will appear here. Start listening Pause Clear Copy transcript Browser speech recognition is free to this page but may use your browser vendor's speech service. No paid transcription API or VibeSpace server is used. Issue 06 / Context Issue 06 / Memory Has a Place Context should have edges. Context is selected, not inhaled. Files, conversations, and decisions become a visible project boundary, so every agent can show what it read—and what stayed outside the assignment. Project item / a scoped source Chat or agent / an active consumer Filament / an attached relationship Text equivalent: Project brief connects to interface notes and release criteria. The active chat reads the brief. Researcher reads the interface notes. Reviewer reads the release criteria. The final decision is stored as project-scoped memory. A constellation of project sources, chats, agents, and memory connected by thin filaments. Project file / Markdown Project brief Select a moving node to inspect its type, relationship, and scoped contents. Connected to the current project and visible only where attached. Open workspace view ← − 100% + ○ → Product surfaces / live optics Open the workspace from inside the story. 01 / Chat + context MOVE / CLICK 02 / Tasks + decisions MOVE / CLICK 03 / Tools + routes MOVE / CLICK Issue 07 / Operating Loop Issue 07 / Command. Supervise. Return. Jarvis sees the whole operation. One real task becomes a visible route: attach context, assign terminals and agents, stop at approval, then return the evidence to the same thread. V Jarvis CAO Control / Autonomy / Evidence 01 / Intent Real task User-owned objective 02 / Memory Context Files / thread / scope 03 / Runtime Terminal swarm Visible command lanes 04 / Workforce VibeSpace agents Island / council / roles 05 / Boundary Approval gate Permission stays human 06 / Return Evidence Audit / result / blocker Jarvis CAO / Node 01 State the real task. Ask for the work you would actually do—not synthetic busywork. This website only demonstrates the route. Visible lane Human approval Auditable return State / deterministic preview External effect / none Output / visible evidence Play route Next step Reset Approval boundary / On Step 01 of 06. Request is visible. Text equivalent: Request → Context → Route → Work → Approval → Evidence. External or destructive effects stop at the visible approval boundary. PR31 / Draft preview Jarvis CAO supervises the work you meant. Schedule a scoped task, keep agent progress visible while you are away, recover after sleep or resume, and return an auditable result. Jarvis never silently approves a permission or invents busywork. 01 Schedule the actual task Example: verify the release candidate and prepare evidence by morning. 02 Supervise bounded agents Agent Island, sticky routing, provider identity, and current status stay visible. 03 Stop at approval Permissions and external effects remain explicit. No autom"... 8297 more characters
+  
+      at TestContext.<anonymous> (file:///C:/Users/viper/VibeSpaceOs/VibeSpace-IDEAS!/VibeSpace-Webstie/Cinematic-Product-World-20260907/site/tests/access-pricing.test.mjs:38:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.start (node:internal/test_runner/test:1177:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: "VibeSpace — The workspace for the messy middle 00 CORE Skip / Esc Skip to the issue V VibeSpace Issue 00 Cover Index Index GitHub App Soon Procedural V sculpture / pointer-reactive light VibeSpace / Issue 00 × 00 Cover The workspace for the messy middle. 01 One Space The tabs stop multiplying. 02 Many Minds Choose the mind. Keep the thread. 03 Agents at Work Brief once. Work in parallel. 04 Ten Terminals Ten terminals. One approval. 05 Speak to the Work Jarvis voice and Ctrl+Space dictation. 06 Context Has Edges Project scope with visible relationships. 07 One Operating Loop Select. Isolate. Trace. 08 Local by Design Your keys stay yours. 09 Built Open Open at the core. 10 One Place to Work Not nine tools. One place to work. Ask the VibeSpace Guide Deterministic local answers / no AI or network request × What is VibeSpace? How do models work? What is Agent Council? Why ten terminals? Is Jarvis the product? Where do keys stay? Where do I download? Guide / Overview One connected workspace. VibeSpace is the local-first desktop AI workspace. Jarvis is the built-in assistant inside it. Models, agents, terminals, context, voice, tasks, skills, actions, and memory stay connected to the work. Open One Space → VibeSpace / Luxury AI Editorial / 00 Issue 00 / Cover Vibe / Space The workspace for the messy middle. Models, agents, terminals, voice, tasks, and memory in one local-first desktop workspace. Explore the issue ↘ App coming soon ↓ VibeSpace is the product. Jarvis is the built-in assistant. Local first Bring your own keys Open-source core Issue 01 / Integration Issue 01 / One Space The tabs stop multiplying. VibeSpace brings the moving parts of AI work into one desktop frame. A conversation can hold project context, hand work to agents, open terminal output, save a task, and keep the useful result nearby. Chat threads Agents roles Terminals PTY Voice Jarvis Tasks actions Memory context Fragmented One workspace 68% unified / one connected frame A stylized VibeSpace interface combining chat, project context, and terminal output in one desktop window. VibeSpace / Project Atlas VS / 01 CHAT AGENTS TERMINALS CONTEXT TASKS VOICE Map the smallest safe release path for the demo. Context attached. I’ll route research, build, and review as separate roles. Keep every command visible before it runs. Ask VibeSpace… ⌘ ↵ Context / 8 items Agent Council / ready Task / release pass Memory / project scoped SCOUT › inspected project context BUILDER › proposed a minimal diff REVIEWER › waiting for approval CHAT / persistent thread AGENT / reviewer ready TASK / release check VOICE / Jarvis paused Issue 02 / Models Issue 02 / Many Minds Choose the mind. Keep the thread. A 21+ provider BYOK model hub keeps model choice inside the same conversation. Ollama adds local, keyless routing. Hive can pass one prompt through sequential refinement instead of asking one model to do everything. BYOK contact sheet Choose the route. Keep the conversation. Drag / arrows / focus 01 / BYOK Reason Route a difficult planning pass to the model you choose. 02 / BYOK Build Keep coding work in the same project thread. 03 / BYOK Review Change the model without losing the conversation around it. 04 / LOCAL Offline Ollama routes supported local models without an API key. 05 / FAST Draft Pick speed when the work needs momentum, not ceremony. 06 / LONG Context Attach project scope and keep the relevant material visible. 07 / HIVE Refine Pass a response through sequential model stages. 08 / YOU Direct Your keys, your routing choice, one persistent workspace. Draft Model A maps the first useful answer. → Critique Model B finds gaps, risk, and missing context. → Refine Model C produces one cleaner result in the thread. Provider labels represent routing choices, not endorsements. Adapter availability can vary by release. Issue 03 / Collaboration Issue 03 / Agents at Work Brief once. Work in parallel. Custom agents and subagents give work a visible cast. Council mode broadcasts a prompt, lets focused roles explore in parallel, and synthesizes the useful parts into one answer. A / 01 Jarvis Routes the brief. Demo task: attach the release context, then send the right slice to each role. A / 02 Researcher Finds evidence. Demo task: inspect the public docs and list only supported product claims. A / 03 Builder Maps the diff. Demo task: propose the smallest implementation that preserves current architecture. A / 04 Reviewer Tests the edges. Demo task: look for regressions, unsafe assumptions, and missing checks. A / 05 Memory Keeper Scopes context. Demo task: save the final decision to this project, not every future project. A / 06 Action Extractor Names the next move. Demo task: turn the synthesis into clear, reviewable tasks. 01 / Broadcast One brief → 02 / Parallel Focused work → 03 / Synthesis One result Issue 04 / PTY 10 Issue 04 / Ten Terminals Ten terminals. One approval. A ten-pane PTY grid keeps Scout, Builder, Reviewer, OpenCode, Claude Code, Codex, and shell workflows visible. Multi-terminal orchestration remains behind a clear approval gate. 01 / Scout ready $ inspect context --safe project scope loaded 8 items indexed no command executed 02 / Builder queued $ plan minimal-diff architecture preserved 3 files proposed awaiting gate 03 / Reviewer ready $ review plan risk: low missing: visual pass status: hold 04 / OpenCode idle workspace attached role briefing ready shell untouched 05 / Claude Code idle context available no prompt dispatched approval required 06 / Codex idle task lane empty branch unchanged waiting 07 / Tests ready viewport matrix set keyboard path set motion mode set 08 / Security ready claims checked private data: none links staged 09 / Shell idle manual lane no command history 10 / Synthesis hold inputs collected final output blocked review the plan Approval gate Interface simulation only. Review a fictional plan before the panes change state. No command is executed. Review plan Fictional plan: let Scout summarize context, Builder draft a minimal change, Reviewer inspect the result, and Synthesis report back. This demo only changes text on this page. Cancel demo Approve demo Issue 05 / Voice Issue 05 / Speak to the Work Speak to the work. Keep your hands on the work. Jarvis is the assistant inside VibeSpace. Local Kokoro voice supports on-device speech output. Hands-free and push-to-talk modes keep the assistant close, while Ctrl+Space dictation can write inside VibeSpace or into other desktop apps where operating-system permissions allow. Voice Local Kokoro output, with visible listening and paused states. Dictation Ctrl+Space is focus-aware inside the app and can paste into the focused desktop app when permitted. Actions Scheduled Jarvis Actions keep prompts and their saved output connected to the workspace. A live browser speech-to-text workspace with a speaking versus typing speed comparison, microphone energy, transcript, and accessible controls. Average typing 40 words / minute VS Average speaking 150 words / minute YOU / LIVE TRANSCRIPT Ready Your finalized speech will appear here. Start listening Pause Clear Copy transcript Browser speech recognition is free to this page but may use your browser vendor's speech service. No paid transcription API or VibeSpace server is used. Issue 06 / Context Issue 06 / Memory Has a Place Context should have edges. Context is selected, not inhaled. Files, conversations, and decisions become a visible project boundary, so every agent can show what it read—and what stayed outside the assignment. Project item / a scoped source Chat or agent / an active consumer Filament / an attached relationship Text equivalent: Project brief connects to interface notes and release criteria. The active chat reads the brief. Researcher reads the interface notes. Reviewer reads the release criteria. The final decision is stored as project-scoped memory. A constellation of project sources, chats, agents, and memory connected by thin filaments. Project file / Markdown Project brief Select a moving node to inspect its type, relationship, and scoped contents. Connected to the current project and visible only where attached. Open workspace view ← − 100% + ○ → Product surfaces / live optics Open the workspace from inside the story. 01 / Chat + context MOVE / CLICK 02 / Tasks + decisions MOVE / CLICK 03 / Tools + routes MOVE / CLICK Issue 07 / Operating Loop Issue 07 / Command. Supervise. Return. Jarvis sees the whole operation. One real task becomes a visible route: attach context, assign terminals and agents, stop at approval, then return the evidence to the same thread. V Jarvis CAO Control / Autonomy / Evidence 01 / Intent Real task User-owned objective 02 / Memory Context Files / thread / scope 03 / Runtime Terminal swarm Visible command lanes 04 / Workforce VibeSpace agents Island / council / roles 05 / Boundary Approval gate Permission stays human 06 / Return Evidence Audit / result / blocker Jarvis CAO / Node 01 State the real task. Ask for the work you would actually do—not synthetic busywork. This website only demonstrates the route. Visible lane Human approval Auditable return State / deterministic preview External effect / none Output / visible evidence Play route Next step Reset Approval boundary / On Step 01 of 06. Request is visible. Text equivalent: Request → Context → Route → Work → Approval → Evidence. External or destructive effects stop at the visible approval boundary. PR31 / Draft preview Jarvis CAO supervises the work you meant. Schedule a scoped task, keep agent progress visible while you are away, recover after sleep or resume, and return an auditable result. Jarvis never silently approves a permission or invents busywork. 01 Schedule the actual task Example: verify the release candidate and prepare evidence by morning. 02 Supervise bounded agents Agent Island, sticky routing, provider identity, and current status stay visible. 03 Stop at approval Permissions and external effects remain explicit. No autom"... 8297 more characters,
+    expected: /VibeSpace Access: \$20\/month after the introductory 30-day access trial\./,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at site\tests\access-pricing.test.mjs:83:1
+✖ download onboarding explains account, trial, and optional-plan boundaries (5.4567ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Create or verify your account/i. Input:
+  
+  "VibeSpace — The workspace for the messy middle 00 CORE Skip / Esc Skip to the issue V VibeSpace Issue 00 Cover Index Index GitHub App Soon Procedural V sculpture / pointer-reactive light VibeSpace / Issue 00 × 00 Cover The workspace for the messy middle. 01 One Space The tabs stop multiplying. 02 Many Minds Choose the mind. Keep the thread. 03 Agents at Work Brief once. Work in parallel. 04 Ten Terminals Ten terminals. One approval. 05 Speak to the Work Jarvis voice and Ctrl+Space dictation. 06 Context Has Edges Project scope with visible relationships. 07 One Operating Loop Select. Isolate. Trace. 08 Local by Design Your keys stay yours. 09 Built Open Open at the core. 10 One Place to Work Not nine tools. One place to work. Ask the VibeSpace Guide Deterministic local answers / no AI or network request × What is VibeSpace? How do models work? What is Agent Council? Why ten terminals? Is Jarvis the product? Where do keys stay? Where do I download? Guide / Overview One connected workspace. VibeSpace is the local-first desktop AI workspace. Jarvis is the built-in assistant inside it. Models, agents, terminals, context, voice, tasks, skills, actions, and memory stay connected to the work. Open One Space → VibeSpace / Luxury AI Editorial / 00 Issue 00 / Cover Vibe / Space The workspace for the messy middle. Models, agents, terminals, voice, tasks, and memory in one local-first desktop workspace. Explore the issue ↘ App coming soon ↓ VibeSpace is the product. Jarvis is the built-in assistant. Local first Bring your own keys Open-source core Issue 01 / Integration Issue 01 / One Space The tabs stop multiplying. VibeSpace brings the moving parts of AI work into one desktop frame. A conversation can hold project context, hand work to agents, open terminal output, save a task, and keep the useful result nearby. Chat threads Agents roles Terminals PTY Voice Jarvis Tasks actions Memory context Fragmented One workspace 68% unified / one connected frame A stylized VibeSpace interface combining chat, project context, and terminal output in one desktop window. VibeSpace / Project Atlas VS / 01 CHAT AGENTS TERMINALS CONTEXT TASKS VOICE Map the smallest safe release path for the demo. Context attached. I’ll route research, build, and review as separate roles. Keep every command visible before it runs. Ask VibeSpace… ⌘ ↵ Context / 8 items Agent Council / ready Task / release pass Memory / project scoped SCOUT › inspected project context BUILDER › proposed a minimal diff REVIEWER › waiting for approval CHAT / persistent thread AGENT / reviewer ready TASK / release check VOICE / Jarvis paused Issue 02 / Models Issue 02 / Many Minds Choose the mind. Keep the thread. A 21+ provider BYOK model hub keeps model choice inside the same conversation. Ollama adds local, keyless routing. Hive can pass one prompt through sequential refinement instead of asking one model to do everything. BYOK contact sheet Choose the route. Keep the conversation. Drag / arrows / focus 01 / BYOK Reason Route a difficult planning pass to the model you choose. 02 / BYOK Build Keep coding work in the same project thread. 03 / BYOK Review Change the model without losing the conversation around it. 04 / LOCAL Offline Ollama routes supported local models without an API key. 05 / FAST Draft Pick speed when the work needs momentum, not ceremony. 06 / LONG Context Attach project scope and keep the relevant material visible. 07 / HIVE Refine Pass a response through sequential model stages. 08 / YOU Direct Your keys, your routing choice, one persistent workspace. Draft Model A maps the first useful answer. → Critique Model B finds gaps, risk, and missing context. → Refine Model C produces one cleaner result in the thread. Provider labels represent routing choices, not endorsements. Adapter availability can vary by release. Issue 03 / Collaboration Issue 03 / Agents at Work Brief once. Work in parallel. Custom agents and subagents give work a visible cast. Council mode broadcasts a prompt, lets focused roles explore in parallel, and synthesizes the useful parts into one answer. A / 01 Jarvis Routes the brief. Demo task: attach the release context, then send the right slice to each role. A / 02 Researcher Finds evidence. Demo task: inspect the public docs and list only supported product claims. A / 03 Builder Maps the diff. Demo task: propose the smallest implementation that preserves current architecture. A / 04 Reviewer Tests the edges. Demo task: look for regressions, unsafe assumptions, and missing checks. A / 05 Memory Keeper Scopes context. Demo task: save the final decision to this project, not every future project. A / 06 Action Extractor Names the next move. Demo task: turn the synthesis into clear, reviewable tasks. 01 / Broadcast One brief → 02 / Parallel Focused work → 03 / Synthesis One result Issue 04 / PTY 10 Issue 04 / Ten Terminals Ten terminals. One approval. A ten-pane PTY grid keeps Scout, Builder, Reviewer, OpenCode, Claude Code, Codex, and shell workflows visible. Multi-terminal orchestration remains behind a clear approval gate. 01 / Scout ready $ inspect context --safe project scope loaded 8 items indexed no command executed 02 / Builder queued $ plan minimal-diff architecture preserved 3 files proposed awaiting gate 03 / Reviewer ready $ review plan risk: low missing: visual pass status: hold 04 / OpenCode idle workspace attached role briefing ready shell untouched 05 / Claude Code idle context available no prompt dispatched approval required 06 / Codex idle task lane empty branch unchanged waiting 07 / Tests ready viewport matrix set keyboard path set motion mode set 08 / Security ready claims checked private data: none links staged 09 / Shell idle manual lane no command history 10 / Synthesis hold inputs collected final output blocked review the plan Approval gate Interface simulation only. Review a fictional plan before the panes change state. No command is executed. Review plan Fictional plan: let Scout summarize context, Builder draft a minimal change, Reviewer inspect the result, and Synthesis report back. This demo only changes text on this page. Cancel demo Approve demo Issue 05 / Voice Issue 05 / Speak to the Work Speak to the work. Keep your hands on the work. Jarvis is the assistant inside VibeSpace. Local Kokoro voice supports on-device speech output. Hands-free and push-to-talk modes keep the assistant close, while Ctrl+Space dictation can write inside VibeSpace or into other desktop apps where operating-system permissions allow. Voice Local Kokoro output, with visible listening and paused states. Dictation Ctrl+Space is focus-aware inside the app and can paste into the focused desktop app when permitted. Actions Scheduled Jarvis Actions keep prompts and their saved output connected to the workspace. A live browser speech-to-text workspace with a speaking versus typing speed comparison, microphone energy, transcript, and accessible controls. Average typing 40 words / minute VS Average speaking 150 words / minute YOU / LIVE TRANSCRIPT Ready Your finalized speech will appear here. Start listening Pause Clear Copy transcript Browser speech recognition is free to this page but may use your browser vendor's speech service. No paid transcription API or VibeSpace server is used. Issue 06 / Context Issue 06 / Memory Has a Place Context should have edges. Context is selected, not inhaled. Files, conversations, and decisions become a visible project boundary, so every agent can show what it read—and what stayed outside the assignment. Project item / a scoped source Chat or agent / an active consumer Filament / an attached relationship Text equivalent: Project brief connects to interface notes and release criteria. The active chat reads the brief. Researcher reads the interface notes. Reviewer reads the release criteria. The final decision is stored as project-scoped memory. A constellation of project sources, chats, agents, and memory connected by thin filaments. Project file / Markdown Project brief Select a moving node to inspect its type, relationship, and scoped contents. Connected to the current project and visible only where attached. Open workspace view ← − 100% + ○ → Product surfaces / live optics Open the workspace from inside the story. 01 / Chat + context MOVE / CLICK 02 / Tasks + decisions MOVE / CLICK 03 / Tools + routes MOVE / CLICK Issue 07 / Operating Loop Issue 07 / Command. Supervise. Return. Jarvis sees the whole operation. One real task becomes a visible route: attach context, assign terminals and agents, stop at approval, then return the evidence to the same thread. V Jarvis CAO Control / Autonomy / Evidence 01 / Intent Real task User-owned objective 02 / Memory Context Files / thread / scope 03 / Runtime Terminal swarm Visible command lanes 04 / Workforce VibeSpace agents Island / council / roles 05 / Boundary Approval gate Permission stays human 06 / Return Evidence Audit / result / blocker Jarvis CAO / Node 01 State the real task. Ask for the work you would actually do—not synthetic busywork. This website only demonstrates the route. Visible lane Human approval Auditable return State / deterministic preview External effect / none Output / visible evidence Play route Next step Reset Approval boundary / On Step 01 of 06. Request is visible. Text equivalent: Request → Context → Route → Work → Approval → Evidence. External or destructive effects stop at the visible approval boundary. PR31 / Draft preview Jarvis CAO supervises the work you meant. Schedule a scoped task, keep agent progress visible while you are away, recover after sleep or resume, and return an auditable result. Jarvis never silently approves a permission or invents busywork. 01 Schedule the actual task Example: verify the release candidate and prepare evidence by morning. 02 Supervise bounded agents Agent Island, sticky routing, provider identity, and current status stay visible. 03 Stop at approval Permissions and external effects remain explicit. No autom"... 8297 more characters
+  
+      at TestContext.<anonymous> (file:///C:/Users/viper/VibeSpaceOs/VibeSpace-IDEAS!/VibeSpace-Webstie/Cinematic-Product-World-20260907/site/tests/access-pricing.test.mjs:85:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:897:18)
+      at Test.postRun (node:internal/test_runner/test:1447:19)
+      at Test.run (node:internal/test_runner/test:1372:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: "VibeSpace — The workspace for the messy middle 00 CORE Skip / Esc Skip to the issue V VibeSpace Issue 00 Cover Index Index GitHub App Soon Procedural V sculpture / pointer-reactive light VibeSpace / Issue 00 × 00 Cover The workspace for the messy middle. 01 One Space The tabs stop multiplying. 02 Many Minds Choose the mind. Keep the thread. 03 Agents at Work Brief once. Work in parallel. 04 Ten Terminals Ten terminals. One approval. 05 Speak to the Work Jarvis voice and Ctrl+Space dictation. 06 Context Has Edges Project scope with visible relationships. 07 One Operating Loop Select. Isolate. Trace. 08 Local by Design Your keys stay yours. 09 Built Open Open at the core. 10 One Place to Work Not nine tools. One place to work. Ask the VibeSpace Guide Deterministic local answers / no AI or network request × What is VibeSpace? How do models work? What is Agent Council? Why ten terminals? Is Jarvis the product? Where do keys stay? Where do I download? Guide / Overview One connected workspace. VibeSpace is the local-first desktop AI workspace. Jarvis is the built-in assistant inside it. Models, agents, terminals, context, voice, tasks, skills, actions, and memory stay connected to the work. Open One Space → VibeSpace / Luxury AI Editorial / 00 Issue 00 / Cover Vibe / Space The workspace for the messy middle. Models, agents, terminals, voice, tasks, and memory in one local-first desktop workspace. Explore the issue ↘ App coming soon ↓ VibeSpace is the product. Jarvis is the built-in assistant. Local first Bring your own keys Open-source core Issue 01 / Integration Issue 01 / One Space The tabs stop multiplying. VibeSpace brings the moving parts of AI work into one desktop frame. A conversation can hold project context, hand work to agents, open terminal output, save a task, and keep the useful result nearby. Chat threads Agents roles Terminals PTY Voice Jarvis Tasks actions Memory context Fragmented One workspace 68% unified / one connected frame A stylized VibeSpace interface combining chat, project context, and terminal output in one desktop window. VibeSpace / Project Atlas VS / 01 CHAT AGENTS TERMINALS CONTEXT TASKS VOICE Map the smallest safe release path for the demo. Context attached. I’ll route research, build, and review as separate roles. Keep every command visible before it runs. Ask VibeSpace… ⌘ ↵ Context / 8 items Agent Council / ready Task / release pass Memory / project scoped SCOUT › inspected project context BUILDER › proposed a minimal diff REVIEWER › waiting for approval CHAT / persistent thread AGENT / reviewer ready TASK / release check VOICE / Jarvis paused Issue 02 / Models Issue 02 / Many Minds Choose the mind. Keep the thread. A 21+ provider BYOK model hub keeps model choice inside the same conversation. Ollama adds local, keyless routing. Hive can pass one prompt through sequential refinement instead of asking one model to do everything. BYOK contact sheet Choose the route. Keep the conversation. Drag / arrows / focus 01 / BYOK Reason Route a difficult planning pass to the model you choose. 02 / BYOK Build Keep coding work in the same project thread. 03 / BYOK Review Change the model without losing the conversation around it. 04 / LOCAL Offline Ollama routes supported local models without an API key. 05 / FAST Draft Pick speed when the work needs momentum, not ceremony. 06 / LONG Context Attach project scope and keep the relevant material visible. 07 / HIVE Refine Pass a response through sequential model stages. 08 / YOU Direct Your keys, your routing choice, one persistent workspace. Draft Model A maps the first useful answer. → Critique Model B finds gaps, risk, and missing context. → Refine Model C produces one cleaner result in the thread. Provider labels represent routing choices, not endorsements. Adapter availability can vary by release. Issue 03 / Collaboration Issue 03 / Agents at Work Brief once. Work in parallel. Custom agents and subagents give work a visible cast. Council mode broadcasts a prompt, lets focused roles explore in parallel, and synthesizes the useful parts into one answer. A / 01 Jarvis Routes the brief. Demo task: attach the release context, then send the right slice to each role. A / 02 Researcher Finds evidence. Demo task: inspect the public docs and list only supported product claims. A / 03 Builder Maps the diff. Demo task: propose the smallest implementation that preserves current architecture. A / 04 Reviewer Tests the edges. Demo task: look for regressions, unsafe assumptions, and missing checks. A / 05 Memory Keeper Scopes context. Demo task: save the final decision to this project, not every future project. A / 06 Action Extractor Names the next move. Demo task: turn the synthesis into clear, reviewable tasks. 01 / Broadcast One brief → 02 / Parallel Focused work → 03 / Synthesis One result Issue 04 / PTY 10 Issue 04 / Ten Terminals Ten terminals. One approval. A ten-pane PTY grid keeps Scout, Builder, Reviewer, OpenCode, Claude Code, Codex, and shell workflows visible. Multi-terminal orchestration remains behind a clear approval gate. 01 / Scout ready $ inspect context --safe project scope loaded 8 items indexed no command executed 02 / Builder queued $ plan minimal-diff architecture preserved 3 files proposed awaiting gate 03 / Reviewer ready $ review plan risk: low missing: visual pass status: hold 04 / OpenCode idle workspace attached role briefing ready shell untouched 05 / Claude Code idle context available no prompt dispatched approval required 06 / Codex idle task lane empty branch unchanged waiting 07 / Tests ready viewport matrix set keyboard path set motion mode set 08 / Security ready claims checked private data: none links staged 09 / Shell idle manual lane no command history 10 / Synthesis hold inputs collected final output blocked review the plan Approval gate Interface simulation only. Review a fictional plan before the panes change state. No command is executed. Review plan Fictional plan: let Scout summarize context, Builder draft a minimal change, Reviewer inspect the result, and Synthesis report back. This demo only changes text on this page. Cancel demo Approve demo Issue 05 / Voice Issue 05 / Speak to the Work Speak to the work. Keep your hands on the work. Jarvis is the assistant inside VibeSpace. Local Kokoro voice supports on-device speech output. Hands-free and push-to-talk modes keep the assistant close, while Ctrl+Space dictation can write inside VibeSpace or into other desktop apps where operating-system permissions allow. Voice Local Kokoro output, with visible listening and paused states. Dictation Ctrl+Space is focus-aware inside the app and can paste into the focused desktop app when permitted. Actions Scheduled Jarvis Actions keep prompts and their saved output connected to the workspace. A live browser speech-to-text workspace with a speaking versus typing speed comparison, microphone energy, transcript, and accessible controls. Average typing 40 words / minute VS Average speaking 150 words / minute YOU / LIVE TRANSCRIPT Ready Your finalized speech will appear here. Start listening Pause Clear Copy transcript Browser speech recognition is free to this page but may use your browser vendor's speech service. No paid transcription API or VibeSpace server is used. Issue 06 / Context Issue 06 / Memory Has a Place Context should have edges. Context is selected, not inhaled. Files, conversations, and decisions become a visible project boundary, so every agent can show what it read—and what stayed outside the assignment. Project item / a scoped source Chat or agent / an active consumer Filament / an attached relationship Text equivalent: Project brief connects to interface notes and release criteria. The active chat reads the brief. Researcher reads the interface notes. Reviewer reads the release criteria. The final decision is stored as project-scoped memory. A constellation of project sources, chats, agents, and memory connected by thin filaments. Project file / Markdown Project brief Select a moving node to inspect its type, relationship, and scoped contents. Connected to the current project and visible only where attached. Open workspace view ← − 100% + ○ → Product surfaces / live optics Open the workspace from inside the story. 01 / Chat + context MOVE / CLICK 02 / Tasks + decisions MOVE / CLICK 03 / Tools + routes MOVE / CLICK Issue 07 / Operating Loop Issue 07 / Command. Supervise. Return. Jarvis sees the whole operation. One real task becomes a visible route: attach context, assign terminals and agents, stop at approval, then return the evidence to the same thread. V Jarvis CAO Control / Autonomy / Evidence 01 / Intent Real task User-owned objective 02 / Memory Context Files / thread / scope 03 / Runtime Terminal swarm Visible command lanes 04 / Workforce VibeSpace agents Island / council / roles 05 / Boundary Approval gate Permission stays human 06 / Return Evidence Audit / result / blocker Jarvis CAO / Node 01 State the real task. Ask for the work you would actually do—not synthetic busywork. This website only demonstrates the route. Visible lane Human approval Auditable return State / deterministic preview External effect / none Output / visible evidence Play route Next step Reset Approval boundary / On Step 01 of 06. Request is visible. Text equivalent: Request → Context → Route → Work → Approval → Evidence. External or destructive effects stop at the visible approval boundary. PR31 / Draft preview Jarvis CAO supervises the work you meant. Schedule a scoped task, keep agent progress visible while you are away, recover after sleep or resume, and return an auditable result. Jarvis never silently approves a permission or invents busywork. 01 Schedule the actual task Example: verify the release candidate and prepare evidence by morning. 02 Supervise bounded agents Agent Island, sticky routing, provider identity, and current status stay visible. 03 Stop at approval Permissions and external effects remain explicit. No autom"... 8297 more characters,
+    expected: /Create or verify your account/i,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at site\tests\access-pricing.test.mjs:90:1
+✖ owned pages provide source-level accessibility basics (2.1497ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /<html lang="en">/. Input:
+  
+  '<!doctype html>\n' +
+    '<html lang="en" class="no-js">\n' +
+    '<head>\n' +
+    '  <meta charset="utf-8">\n' +
+    '  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n' +
+    '  <meta name="color-scheme" content="dark light">\n' +
+    '  <meta name="theme-color" content="#0b0b0a">\n' +
+    '  <meta name="description" content="VibeSpace is a local-first desktop AI workspace for models, agents, terminals, voice, tasks, and memory.">\n' +
+    '  <meta name="robots" content="index,follow">\n' +
+    '  <meta property="og:title" content="VibeSpace — The workspace for the messy middle">\n' +
+    '  <meta property="og:description" content="Models, agents, terminals, voice, tasks, and memory in one local-first desktop workspace.">\n' +
+    '  <meta property="og:type" content="website">\n' +
+    '  <meta property="og:url" content="https://vibespaceos.com/">\n' +
+    '  <link rel="canonical" href="https://vibespaceos.com/">\n' +
+    '  <meta name="twitter:card" content="summary_large_image">\n' +
+    '  <title>VibeSpace — The workspace for the messy middle</title>\n' +
+    `  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0b0a'/%3E%3Cpath d='M12 14h11l9 23 9-23h11L32 54z' fill='%23e7865d'/%3E%3C/svg%3E">\n` +
+    "  <script>document.documentElement.classList.remove('no-js');document.documentElement.classList.add('js');</script>\n" +
+    '  <style>\n' +
+    '    :root {\n' +
+    '      --ink: #0b0b0a;\n' +
+    '      --graphite: #151514;\n' +
+    '      --graphite-2: #22211f;\n' +
+    '      --bone: #eee9dc;\n' +
+    '      --ivory: #f7f2e6;\n' +
+    '      --sand: #c9b99f;\n' +
+    '      --amber: #e7865d;\n' +
+    '      --amber-deep: #c85f3f;\n' +
+    '      --coral: #efa08b;\n' +
+    '      --signal: #9dcc8b;\n' +
+    '      --muted-dark: #8e8b83;\n' +
+    '      --muted-light: #5d5a54;\n' +
+    '      --line-dark: rgba(247, 242, 230, .18);\n' +
+    '      --line-light: rgba(11, 11, 10, .18);\n' +
+    '      --display: "Arial Narrow", "Aptos Narrow", "Helvetica Neue", Arial, sans-serif;\n' +
+    '      --body: "Helvetica Neue", "Segoe UI", Arial, sans-serif;\n' +
+    '      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;\n' +
+    '      --nav-h: 68px;\n' +
+    '      --gutter: clamp(20px, 4vw, 72px);\n' +
+    '      --content: 1680px;\n' +
+    '      --ease: cubic-bezier(.2, .78, .18, 1);\n' +
+    '      --fast: 180ms;\n' +
+    '      --med: 620ms;\n' +
+    '      --slow: 1200ms;\n' +
+    '      --shadow: 0 22px 80px rgba(0, 0, 0, .22);\n' +
+    '    }\n' +
+    '\n' +
+    '    *, *::before, *::after { box-sizing: border-box; }\n' +
+    '    html { scroll-behavior: smooth; background: var(--ink); }\n' +
+    '    body {\n' +
+    '      margin: 0;\n' +
+    '      min-width: 280px;\n' +
+    '      overflow-x: clip;\n' +
+    '      background: var(--ink);\n' +
+    '      color: var(--bone);\n' +
+    '      font-family: var(--body);\n' +
+    '      -webkit-font-smoothing: antialiased;\n' +
+    '      text-rendering: geometricPrecision;\n' +
+    '    }\n' +
+    '    body.index-open { overflow: hidden; }\n' +
+    '    img, svg, canvas { display: block; max-width: 100%; }\n' +
+    '    button, input, select, textarea { font: inherit; }\n' +
+    '    button, a { -webkit-tap-highlight-color: transparent; }\n' +
+    '    a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: .22em; }\n' +
+    '    button { color: inherit; }\n' +
+    '    ::selection { background: var(--amber); color: var(--ink); }\n' +
+    '    :focus-visible {\n' +
+    '      outline: 2px solid var(--amber);\n' +
+    '      outline-offset: 4px;\n' +
+    '      border-radius: 2px;\n' +
+    '    }\n' +
+    '\n' +
+    '    .skip-link {\n' +
+    '      position: fixed;\n' +
+    '      z-index: 1000;\n' +
+    '      left: 16px;\n' +
+    '      top: 12px;\n' +
+    '      transform: translateY(-160%);\n' +
+    '      padding: 10px 14px;\n' +
+    '      background: var(--ivory);\n' +
+    '      color: var(--ink);\n' +
+    '      font-family: var(--mono);\n' +
+    '      font-size: 12px;\n' +
+    '      text-transform: uppercase;\n' +
+    '      letter-spacing: .08em;\n' +
+    '      transition: transform var(--fast) ease;\n' +
+    '    }\n' +
+    '    .skip-link:focus { transform: translateY(0); }\n' +
+    '\n' +
+    '    .visually-hidden {\n' +
+    '      position: absolute !important;\n' +
+    '      width: 1px !important;\n' +
+    '      height: 1px !important;\n' +
+    '      padding: 0 !important;\n' +
+    '      margin: -1px !important;\n' +
+    '      overflow: hidden !important;\n' +
+    '      clip: rect(0, 0, 0, 0) !important;\n' +
+    '      white-space: nowrap !important;\n' +
+    '      border: 0 !important;\n' +
+    '    }\n' +
+    '\n' +
+    '    .site-nav {\n' +
+    '      position: fixed;\n' +
+    '      z-index: 50;\n' +
+    '      inset: 0 0 auto 0;\n' +
+    '      height: var(--nav-h);\n' +
+    '      display: grid;\n' +
+    '      grid-template-columns: minmax(150px, 1fr) auto auto;\n' +
+    '      align-items: center;\n' +
+    '      gap: 18px;\n' +
+    '      padding: 0 max(18px, env(safe-area-inset-right)) 0 max(18px, env(safe-area-inset-left));\n' +
+    '      border-bottom: 1px solid rgba(247, 242, 230, .12);\n' +
+    '      background: color-mix(in srgb, var(--ink) 84%, transparent);\n' +
+    '      backdrop-filter: blur(16px) saturate(120%);\n' +
+    '      transition: background var(--med) var(--ease), color var(--med) var(--ease), border-color var(--med) var(--ease);\n' +
+    '    }\n' +
+    '    .site-nav.on-light {\n' +
+    '      color: var(--ink);\n' +
+    '      border-color: rgba(11, 11, 10, .13);\n' +
+    '      background: color-mix(in srgb, var(--ivory) 88%, transparent);\n' +
+    '    }\n' +
+    '    .brand {\n' +
+    '      display: inline-flex;\n' +
+    '      align-items: center;\n' +
+    '      gap: 10px;\n' +
+    '      width: max-content;\n' +
+    '      text-decoration: none;\n' +
+    '      font-family: var(--display);\n' +
+    '      font-weight: 800;\n' +
+    '      letter-spacing: -.025em;\n' +
+    '    }\n' +
+    '    .brand-mark {\n' +
+    '      width: 24px;\n' +
+    '      height: 24px;\n' +
+    '      display: grid;\n' +
+    '      place-items: center;\n' +
+    '      border: 1px solid currentColor;\n' +
+    '      clip-path: polygon(0 0, 100% 0, 50% 100%);\n' +
+    '      font-size: 9px;\n' +
+    '      line-height: 1;\n' +
+    '      padding-bottom: 7px;\n' +
+    '    }\n' +
+    '    .nav-status {\n' +
+    '      display: flex;\n' +
+    '      align-items: center;\n' +
+    '      gap: 12px;\n' +
+    '      font-family: var(--mono);\n' +
+    '      font-size: 10px;\n' +
+    '      letter-spacing: .12em;\n' +
+    '      text-transform: uppercase;\n' +
+    '      white-space: nowrap;\n' +
+    '    }\n' +
+    '    .nav-status strong { color: var(--amber); font-weight: 700; }\n' +
+    '    .nav-actions { display: flex; align-items: center; gap: 8px; }\n' +
+    '    .nav-link,\n' +
+    '    .nav-button {\n' +
+    '      min-height: 36px;\n' +
+    '      display: inline-flex;\n' +
+    '      align-items: center;\n' +
+    '      justify-content: center;\n' +
+    '      padding: 0 12px;\n' +
+    '      border: 1px solid currentColor;\n' +
+    '      background: transparent;\n' +
+    '      color: inherit;\n' +
+    '      text-decoration: none;\n' +
+    '      font-family: var(--mono);\n' +
+    '      font-size: 10px;\n' +
+    '      letter-spacing: .08em;\n' +
+    '      text-transform: uppercase;\n' +
+    '      cursor: pointer;\n' +
+    '      transition: transform var(--fast) ease, background var(--fast) ease, color var(--fast) ease;\n' +
+    '    }\n' +
+    '    .nav-link:hover,\n' +
+    '    .nav-button:hover { transform: translateY(-2px); }\n' +
+    '    .nav-link.primary { background: var(--amber); color: var(--ink); border-color: var(--amber); }\n' +
+    '    .site-nav.on-light .nav-link.primary { color: var(--ink); }\n' +
+    '    .no-js .js-only { display: none !important; }\n' +
+    '    .js .no-js-only { display: none !important; }\n' +
+    '\n' +
+    '    #webgl-stage {\n' +
+    '      position: fixed;\n' +
+    '      z-index: 2;\n' +
+    '      inset: 0;\n' +
+    '      pointer-events: none;\n' +
+    '      overflow: hidden;\n' +
+    '      opacity: 0;\n' +
+    '      transition: opacity 900ms ease;\n' +
+    '    }\n' +
+    '    .webgl-ready #webgl-stage { opacity: 1; }\n' +
+    '    #webgl-stage canvas { width: 100%; height: 100%; }\n' +
+    '    .webgl-caption {\n' +
+    '      position: fixed;\n' +
+    '      z-index: 3;\n' +
+    '      right: 28px;\n' +
+    '      bottom: 26px;\n' +
+    '      max-width: 260px;\n' +
+    '      color: rgba(247, 242, 230, .68);\n' +
+    '      font-family: var(--mono);\n' +
+    '      font-size: 9px;\n' +
+    '      line-height: 1.55;\n' +
+    '      letter-spacing: .08em;\n' +
+    '      text-transform: uppercase;\n' +
+    '      pointer-events: none;\n' +
+    '      transition: opacity var(--med) ease, color var(--med) ease;\n' +
+    '    }\n' +
+    '    .site-nav.on-light ~ .webgl-caption { color: rgba(11, 11, 10, .58); }\n' +
+    '    body[data-scene="cover"] .webgl-caption { top: calc(var(--nav-h) + 18px); bottom: auto; text-align: right; }\n' +
+    '\n' +
+    '    .scrub-rail {\n' +
+    '      position: fixed;\n' +
+    '      z-index: 40;\n' +
+    '      right: 16px;\n' +
+    '      top: 50%;\n' +
+    '      transform: translateY(-50%);\n' +
+    '      display: grid;\n' +
+    '      gap: 7px;\n' +
+    '      padding: 12px 8px;\n' +
+    '      border: 1px solid rgba(247, 242, 230, .13);\n' +
+    '      background: rgba(11, 11, 10, .52);\n' +
+    '      backdrop-filter: blur(12px);\n' +
+    '    }\n' +
+    '    .scrub-rail a {\n' +
+    '      position: relative;\n' +
+    '      width: 8px;\n' +
+    '      height: 8px;\n' +
+    '      border: 1px solid rgba(247, 242, 230, .5);\n' +
+    '      border-radius: 50%;\n' +
+    '      text-decoration: none;\n' +
+    '      transition: transform var(--fast) ease, background var(--fast) ease;\n' +
+    '    }\n' +
+    '    .scrub-rail a::before {\n' +
+    '      content: attr(data-label);\n' +
+    '      position: absolute;\n' +
+    '      right: 16px;\n' +
+    '      top: 50%;\n' +
+    '      transform: translateY(-50%) translateX(6px);\n' +
+    '      width: max-content;\n' +
+    '      padding: 5px 7px;\n' +
+    '      opacity: 0;\n' +
+    '      pointer-events: none;\n' +
+    '      background: var(--ink);\n' +
+    '      color: var(--bone);\n' +
+    '      border: 1px solid rgba(247, 242, 230, .18);\n' +
+    '      font-family: var(--mono);\n' +
+    '      font-size: 9px;\n' +
+    '      letter-spacing: .08em;\n' +
+    '      text-transform: uppercase;\n' +
+    '      transition: opacity var(--fast) ease, transform var(--fast) ease;\n' +
+    '    }\n' +
+    '    .scrub-rail a:hover::before,\n' +
+    '    .scrub-rail a:focus-visible::before { opacity: 1; transform: translateY(-50%) translateX(0); }\n' +
+    '    .scrub-rail a[aria-current="true"] { background: var(--amber); border-color: var(--amber); transform: scale(1.35); }\n' +
+    '\n' +
+    '    main { position: relative; z-index: 1; }\n' +
+    '    .issue {\n' +
+    '      position: relative;\n' +
+    '      isolation: isolate;\n' +
+    '      min-height: 100svh;\n' +
+    '      scroll-margin-top: var(--nav-h);\n' +
+    '      overflow: clip;\n' +
+    '      background: var(--ink);\n' +
+    '      color: var(--bone);\n' +
+    '    }\n' +
+    '    .issue.light { background: var(--ivory); color: var(--ink); }\n' +
+    '    .issue.coral { background: var(--coral); color: var(--ink); }\n' +
+    '    .issue::before {\n' +
+    '      content: "";\n' +
+    '      position: absolute;\n' +
+    '      z-index: 0;\n' +
+    '      inset: 0;\n' +
+    '      pointer-events: none;\n' +
+    '      background:\n' +
+    '        linear-gradient(90deg, transparent 0 calc(50% - .5px), currentColor calc(50% - .5px) calc(50% + .5px), transparent calc(50% + .5px)),\n' +
+    '        linear-gradient(currentColor, currentColor);\n' +
+    '      background-size: 100% 100%, 1px 100%;\n' +
+    '      background-position: 0 0, var(--gutter) 0;\n' +
+    '      background-repeat: no-repeat;\n' +
+    '      opacity: .035;\n' +
+    '    }\n' +
+    '    .issue-inner {\n' +
+    '      position: relative;\n' +
+    '      z-index: 4;\n' +
+    '      width: min(100%, var(--content));\n' +
+    '      min-height: 100svh;\n' +
+    '      margin: 0 auto;\n' +
+    '      padding: calc(var(--nav-h) + clamp(46px, 7vw, 112px)) var(--gutter) clamp(72px, 9vw, 150px);\n' +
+    '    }\n' +
+    '    .issue-inner > *,\n' +
+    '    .many-head > *,\n' +
+    '    .agents-head > *,\n' +
+    '    .terminal-head > *,\n' +
+    '    .final-grid > *,\n' +
+    '    .cover-meta > * { min-width: 0;'... 629245 more characters
+  
+      at TestContext.<anonymous> (file:///C:/Users/viper/VibeSpaceOs/VibeSpace-IDEAS!/VibeSpace-Webstie/Cinematic-Product-World-20260907/site/tests/access-pricing.test.mjs:92:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:897:18)
+      at Test.postRun (node:internal/test_runner/test:1447:19)
+      at Test.run (node:internal/test_runner/test:1372:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: `<!doctype html>\n<html lang="en" class="no-js">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n  <meta name="color-scheme" content="dark light">\n  <meta name="theme-color" content="#0b0b0a">\n  <meta name="description" content="VibeSpace is a local-first desktop AI workspace for models, agents, terminals, voice, tasks, and memory.">\n  <meta name="robots" content="index,follow">\n  <meta property="og:title" content="VibeSpace — The workspace for the messy middle">\n  <meta property="og:description" content="Models, agents, terminals, voice, tasks, and memory in one local-first desktop workspace.">\n  <meta property="og:type" content="website">\n  <meta property="og:url" content="https://vibespaceos.com/">\n  <link rel="canonical" href="https://vibespaceos.com/">\n  <meta name="twitter:card" content="summary_large_image">\n  <title>VibeSpace — The workspace for the messy middle</title>\n  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0b0a'/%3E%3Cpath d='M12 14h11l9 23 9-23h11L32 54z' fill='%23e7865d'/%3E%3C/svg%3E">\n  <script>document.documentElement.classList.remove('no-js');document.documentElement.classList.add('js');</script>\n  <style>\n    :root {\n      --ink: #0b0b0a;\n      --graphite: #151514;\n      --graphite-2: #22211f;\n      --bone: #eee9dc;\n      --ivory: #f7f2e6;\n      --sand: #c9b99f;\n      --amber: #e7865d;\n      --amber-deep: #c85f3f;\n      --coral: #efa08b;\n      --signal: #9dcc8b;\n      --muted-dark: #8e8b83;\n      --muted-light: #5d5a54;\n      --line-dark: rgba(247, 242, 230, .18);\n      --line-light: rgba(11, 11, 10, .18);\n      --display: "Arial Narrow", "Aptos Narrow", "Helvetica Neue", Arial, sans-serif;\n      --body: "Helvetica Neue", "Segoe UI", Arial, sans-serif;\n      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;\n      --nav-h: 68px;\n      --gutter: clamp(20px, 4vw, 72px);\n      --content: 1680px;\n      --ease: cubic-bezier(.2, .78, .18, 1);\n      --fast: 180ms;\n      --med: 620ms;\n      --slow: 1200ms;\n      --shadow: 0 22px 80px rgba(0, 0, 0, .22);\n    }\n\n    *, *::before, *::after { box-sizing: border-box; }\n    html { scroll-behavior: smooth; background: var(--ink); }\n    body {\n      margin: 0;\n      min-width: 280px;\n      overflow-x: clip;\n      background: var(--ink);\n      color: var(--bone);\n      font-family: var(--body);\n      -webkit-font-smoothing: antialiased;\n      text-rendering: geometricPrecision;\n    }\n    body.index-open { overflow: hidden; }\n    img, svg, canvas { display: block; max-width: 100%; }\n    button, input, select, textarea { font: inherit; }\n    button, a { -webkit-tap-highlight-color: transparent; }\n    a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: .22em; }\n    button { color: inherit; }\n    ::selection { background: var(--amber); color: var(--ink); }\n    :focus-visible {\n      outline: 2px solid var(--amber);\n      outline-offset: 4px;\n      border-radius: 2px;\n    }\n\n    .skip-link {\n      position: fixed;\n      z-index: 1000;\n      left: 16px;\n      top: 12px;\n      transform: translateY(-160%);\n      padding: 10px 14px;\n      background: var(--ivory);\n      color: var(--ink);\n      font-family: var(--mono);\n      font-size: 12px;\n      text-transform: uppercase;\n      letter-spacing: .08em;\n      transition: transform var(--fast) ease;\n    }\n    .skip-link:focus { transform: translateY(0); }\n\n    .visually-hidden {\n      position: absolute !important;\n      width: 1px !important;\n      height: 1px !important;\n      padding: 0 !important;\n      margin: -1px !important;\n      overflow: hidden !important;\n      clip: rect(0, 0, 0, 0) !important;\n      white-space: nowrap !important;\n      border: 0 !important;\n    }\n\n    .site-nav {\n      position: fixed;\n      z-index: 50;\n      inset: 0 0 auto 0;\n      height: var(--nav-h);\n      display: grid;\n      grid-template-columns: minmax(150px, 1fr) auto auto;\n      align-items: center;\n      gap: 18px;\n      padding: 0 max(18px, env(safe-area-inset-right)) 0 max(18px, env(safe-area-inset-left));\n      border-bottom: 1px solid rgba(247, 242, 230, .12);\n      background: color-mix(in srgb, var(--ink) 84%, transparent);\n      backdrop-filter: blur(16px) saturate(120%);\n      transition: background var(--med) var(--ease), color var(--med) var(--ease), border-color var(--med) var(--ease);\n    }\n    .site-nav.on-light {\n      color: var(--ink);\n      border-color: rgba(11, 11, 10, .13);\n      background: color-mix(in srgb, var(--ivory) 88%, transparent);\n    }\n    .brand {\n      display: inline-flex;\n      align-items: center;\n      gap: 10px;\n      width: max-content;\n      text-decoration: none;\n      font-family: var(--display);\n      font-weight: 800;\n      letter-spacing: -.025em;\n    }\n    .brand-mark {\n      width: 24px;\n      height: 24px;\n      display: grid;\n      place-items: center;\n      border: 1px solid currentColor;\n      clip-path: polygon(0 0, 100% 0, 50% 100%);\n      font-size: 9px;\n      line-height: 1;\n      padding-bottom: 7px;\n    }\n    .nav-status {\n      display: flex;\n      align-items: center;\n      gap: 12px;\n      font-family: var(--mono);\n      font-size: 10px;\n      letter-spacing: .12em;\n      text-transform: uppercase;\n      white-space: nowrap;\n    }\n    .nav-status strong { color: var(--amber); font-weight: 700; }\n    .nav-actions { display: flex; align-items: center; gap: 8px; }\n    .nav-link,\n    .nav-button {\n      min-height: 36px;\n      display: inline-flex;\n      align-items: center;\n      justify-content: center;\n      padding: 0 12px;\n      border: 1px solid currentColor;\n      background: transparent;\n      color: inherit;\n      text-decoration: none;\n      font-family: var(--mono);\n      font-size: 10px;\n      letter-spacing: .08em;\n      text-transform: uppercase;\n      cursor: pointer;\n      transition: transform var(--fast) ease, background var(--fast) ease, color var(--fast) ease;\n    }\n    .nav-link:hover,\n    .nav-button:hover { transform: translateY(-2px); }\n    .nav-link.primary { background: var(--amber); color: var(--ink); border-color: var(--amber); }\n    .site-nav.on-light .nav-link.primary { color: var(--ink); }\n    .no-js .js-only { display: none !important; }\n    .js .no-js-only { display: none !important; }\n\n    #webgl-stage {\n      position: fixed;\n      z-index: 2;\n      inset: 0;\n      pointer-events: none;\n      overflow: hidden;\n      opacity: 0;\n      transition: opacity 900ms ease;\n    }\n    .webgl-ready #webgl-stage { opacity: 1; }\n    #webgl-stage canvas { width: 100%; height: 100%; }\n    .webgl-caption {\n      position: fixed;\n      z-index: 3;\n      right: 28px;\n      bottom: 26px;\n      max-width: 260px;\n      color: rgba(247, 242, 230, .68);\n      font-family: var(--mono);\n      font-size: 9px;\n      line-height: 1.55;\n      letter-spacing: .08em;\n      text-transform: uppercase;\n      pointer-events: none;\n      transition: opacity var(--med) ease, color var(--med) ease;\n    }\n    .site-nav.on-light ~ .webgl-caption { color: rgba(11, 11, 10, .58); }\n    body[data-scene="cover"] .webgl-caption { top: calc(var(--nav-h) + 18px); bottom: auto; text-align: right; }\n\n    .scrub-rail {\n      position: fixed;\n      z-index: 40;\n      right: 16px;\n      top: 50%;\n      transform: translateY(-50%);\n      display: grid;\n      gap: 7px;\n      padding: 12px 8px;\n      border: 1px solid rgba(247, 242, 230, .13);\n      background: rgba(11, 11, 10, .52);\n      backdrop-filter: blur(12px);\n    }\n    .scrub-rail a {\n      position: relative;\n      width: 8px;\n      height: 8px;\n      border: 1px solid rgba(247, 242, 230, .5);\n      border-radius: 50%;\n      text-decoration: none;\n      transition: transform var(--fast) ease, background var(--fast) ease;\n    }\n    .scrub-rail a::before {\n      content: attr(data-label);\n      position: absolute;\n      right: 16px;\n      top: 50%;\n      transform: translateY(-50%) translateX(6px);\n      width: max-content;\n      padding: 5px 7px;\n      opacity: 0;\n      pointer-events: none;\n      background: var(--ink);\n      color: var(--bone);\n      border: 1px solid rgba(247, 242, 230, .18);\n      font-family: var(--mono);\n      font-size: 9px;\n      letter-spacing: .08em;\n      text-transform: uppercase;\n      transition: opacity var(--fast) ease, transform var(--fast) ease;\n    }\n    .scrub-rail a:hover::before,\n    .scrub-rail a:focus-visible::before { opacity: 1; transform: translateY(-50%) translateX(0); }\n    .scrub-rail a[aria-current="true"] { background: var(--amber); border-color: var(--amber); transform: scale(1.35); }\n\n    main { position: relative; z-index: 1; }\n    .issue {\n      position: relative;\n      isolation: isolate;\n      min-height: 100svh;\n      scroll-margin-top: var(--nav-h);\n      overflow: clip;\n      background: var(--ink);\n      color: var(--bone);\n    }\n    .issue.light { background: var(--ivory); color: var(--ink); }\n    .issue.coral { background: var(--coral); color: var(--ink); }\n    .issue::before {\n      content: "";\n      position: absolute;\n      z-index: 0;\n      inset: 0;\n      pointer-events: none;\n      background:\n        linear-gradient(90deg, transparent 0 calc(50% - .5px), currentColor calc(50% - .5px) calc(50% + .5px), transparent calc(50% + .5px)),\n        linear-gradient(currentColor, currentColor);\n      background-size: 100% 100%, 1px 100%;\n      background-position: 0 0, var(--gutter) 0;\n      background-repeat: no-repeat;\n      opacity: .035;\n    }\n    .issue-inner {\n      position: relative;\n      z-index: 4;\n      width: min(100%, var(--content));\n      min-height: 100svh;\n      margin: 0 auto;\n      padding: calc(var(--nav-h) + clamp(46px, 7vw, 112px)) var(--gutter) clamp(72px, 9vw, 150px);\n    }\n    .issue-inner > *,\n    .many-head > *,\n    .agents-head > *,\n    .terminal-head > *,\n    .final-grid > *,\n    .cover-meta > * { min-width: 0;`... 629245 more characters,
+    expected: /<html lang="en">/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at site\tests\access-pricing.test.mjs:105:1
+✖ local links from owned pages resolve to files or same-page fragments (11.4396ms)
+  AssertionError [ERR_ASSERTION]: access/index.html: missing target fragment /#pricing
+      at TestContext.<anonymous> (file:///C:/Users/viper/VibeSpaceOs/VibeSpace-IDEAS!/VibeSpace-Webstie/Cinematic-Product-World-20260907/site/tests/access-pricing.test.mjs:130:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1306:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:897:18)
+      at Test.postRun (node:internal/test_runner/test:1447:19)
+      at Test.run (node:internal/test_runner/test:1372:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: `<!doctype html>\n<html lang="en" class="no-js">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n  <meta name="color-scheme" content="dark light">\n  <meta name="theme-color" content="#0b0b0a">\n  <meta name="description" content="VibeSpace is a local-first desktop AI workspace for models, agents, terminals, voice, tasks, and memory.">\n  <meta name="robots" content="index,follow">\n  <meta property="og:title" content="VibeSpace — The workspace for the messy middle">\n  <meta property="og:description" content="Models, agents, terminals, voice, tasks, and memory in one local-first desktop workspace.">\n  <meta property="og:type" content="website">\n  <meta property="og:url" content="https://vibespaceos.com/">\n  <link rel="canonical" href="https://vibespaceos.com/">\n  <meta name="twitter:card" content="summary_large_image">\n  <title>VibeSpace — The workspace for the messy middle</title>\n  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0b0a'/%3E%3Cpath d='M12 14h11l9 23 9-23h11L32 54z' fill='%23e7865d'/%3E%3C/svg%3E">\n  <script>document.documentElement.classList.remove('no-js');document.documentElement.classList.add('js');</script>\n  <style>\n    :root {\n      --ink: #0b0b0a;\n      --graphite: #151514;\n      --graphite-2: #22211f;\n      --bone: #eee9dc;\n      --ivory: #f7f2e6;\n      --sand: #c9b99f;\n      --amber: #e7865d;\n      --amber-deep: #c85f3f;\n      --coral: #efa08b;\n      --signal: #9dcc8b;\n      --muted-dark: #8e8b83;\n      --muted-light: #5d5a54;\n      --line-dark: rgba(247, 242, 230, .18);\n      --line-light: rgba(11, 11, 10, .18);\n      --display: "Arial Narrow", "Aptos Narrow", "Helvetica Neue", Arial, sans-serif;\n      --body: "Helvetica Neue", "Segoe UI", Arial, sans-serif;\n      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;\n      --nav-h: 68px;\n      --gutter: clamp(20px, 4vw, 72px);\n      --content: 1680px;\n      --ease: cubic-bezier(.2, .78, .18, 1);\n      --fast: 180ms;\n      --med: 620ms;\n      --slow: 1200ms;\n      --shadow: 0 22px 80px rgba(0, 0, 0, .22);\n    }\n\n    *, *::before, *::after { box-sizing: border-box; }\n    html { scroll-behavior: smooth; background: var(--ink); }\n    body {\n      margin: 0;\n      min-width: 280px;\n      overflow-x: clip;\n      background: var(--ink);\n      color: var(--bone);\n      font-family: var(--body);\n      -webkit-font-smoothing: antialiased;\n      text-rendering: geometricPrecision;\n    }\n    body.index-open { overflow: hidden; }\n    img, svg, canvas { display: block; max-width: 100%; }\n    button, input, select, textarea { font: inherit; }\n    button, a { -webkit-tap-highlight-color: transparent; }\n    a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: .22em; }\n    button { color: inherit; }\n    ::selection { background: var(--amber); color: var(--ink); }\n    :focus-visible {\n      outline: 2px solid var(--amber);\n      outline-offset: 4px;\n      border-radius: 2px;\n    }\n\n    .skip-link {\n      position: fixed;\n      z-index: 1000;\n      left: 16px;\n      top: 12px;\n      transform: translateY(-160%);\n      padding: 10px 14px;\n      background: var(--ivory);\n      color: var(--ink);\n      font-family: var(--mono);\n      font-size: 12px;\n      text-transform: uppercase;\n      letter-spacing: .08em;\n      transition: transform var(--fast) ease;\n    }\n    .skip-link:focus { transform: translateY(0); }\n\n    .visually-hidden {\n      position: absolute !important;\n      width: 1px !important;\n      height: 1px !important;\n      padding: 0 !important;\n      margin: -1px !important;\n      overflow: hidden !important;\n      clip: rect(0, 0, 0, 0) !important;\n      white-space: nowrap !important;\n      border: 0 !important;\n    }\n\n    .site-nav {\n      position: fixed;\n      z-index: 50;\n      inset: 0 0 auto 0;\n      height: var(--nav-h);\n      display: grid;\n      grid-template-columns: minmax(150px, 1fr) auto auto;\n      align-items: center;\n      gap: 18px;\n      padding: 0 max(18px, env(safe-area-inset-right)) 0 max(18px, env(safe-area-inset-left));\n      border-bottom: 1px solid rgba(247, 242, 230, .12);\n      background: color-mix(in srgb, var(--ink) 84%, transparent);\n      backdrop-filter: blur(16px) saturate(120%);\n      transition: background var(--med) var(--ease), color var(--med) var(--ease), border-color var(--med) var(--ease);\n    }\n    .site-nav.on-light {\n      color: var(--ink);\n      border-color: rgba(11, 11, 10, .13);\n      background: color-mix(in srgb, var(--ivory) 88%, transparent);\n    }\n    .brand {\n      display: inline-flex;\n      align-items: center;\n      gap: 10px;\n      width: max-content;\n      text-decoration: none;\n      font-family: var(--display);\n      font-weight: 800;\n      letter-spacing: -.025em;\n    }\n    .brand-mark {\n      width: 24px;\n      height: 24px;\n      display: grid;\n      place-items: center;\n      border: 1px solid currentColor;\n      clip-path: polygon(0 0, 100% 0, 50% 100%);\n      font-size: 9px;\n      line-height: 1;\n      padding-bottom: 7px;\n    }\n    .nav-status {\n      display: flex;\n      align-items: center;\n      gap: 12px;\n      font-family: var(--mono);\n      font-size: 10px;\n      letter-spacing: .12em;\n      text-transform: uppercase;\n      white-space: nowrap;\n    }\n    .nav-status strong { color: var(--amber); font-weight: 700; }\n    .nav-actions { display: flex; align-items: center; gap: 8px; }\n    .nav-link,\n    .nav-button {\n      min-height: 36px;\n      display: inline-flex;\n      align-items: center;\n      justify-content: center;\n      padding: 0 12px;\n      border: 1px solid currentColor;\n      background: transparent;\n      color: inherit;\n      text-decoration: none;\n      font-family: var(--mono);\n      font-size: 10px;\n      letter-spacing: .08em;\n      text-transform: uppercase;\n      cursor: pointer;\n      transition: transform var(--fast) ease, background var(--fast) ease, color var(--fast) ease;\n    }\n    .nav-link:hover,\n    .nav-button:hover { transform: translateY(-2px); }\n    .nav-link.primary { background: var(--amber); color: var(--ink); border-color: var(--amber); }\n    .site-nav.on-light .nav-link.primary { color: var(--ink); }\n    .no-js .js-only { display: none !important; }\n    .js .no-js-only { display: none !important; }\n\n    #webgl-stage {\n      position: fixed;\n      z-index: 2;\n      inset: 0;\n      pointer-events: none;\n      overflow: hidden;\n      opacity: 0;\n      transition: opacity 900ms ease;\n    }\n    .webgl-ready #webgl-stage { opacity: 1; }\n    #webgl-stage canvas { width: 100%; height: 100%; }\n    .webgl-caption {\n      position: fixed;\n      z-index: 3;\n      right: 28px;\n      bottom: 26px;\n      max-width: 260px;\n      color: rgba(247, 242, 230, .68);\n      font-family: var(--mono);\n      font-size: 9px;\n      line-height: 1.55;\n      letter-spacing: .08em;\n      text-transform: uppercase;\n      pointer-events: none;\n      transition: opacity var(--med) ease, color var(--med) ease;\n    }\n    .site-nav.on-light ~ .webgl-caption { color: rgba(11, 11, 10, .58); }\n    body[data-scene="cover"] .webgl-caption { top: calc(var(--nav-h) + 18px); bottom: auto; text-align: right; }\n\n    .scrub-rail {\n      position: fixed;\n      z-index: 40;\n      right: 16px;\n      top: 50%;\n      transform: translateY(-50%);\n      display: grid;\n      gap: 7px;\n      padding: 12px 8px;\n      border: 1px solid rgba(247, 242, 230, .13);\n      background: rgba(11, 11, 10, .52);\n      backdrop-filter: blur(12px);\n    }\n    .scrub-rail a {\n      position: relative;\n      width: 8px;\n      height: 8px;\n      border: 1px solid rgba(247, 242, 230, .5);\n      border-radius: 50%;\n      text-decoration: none;\n      transition: transform var(--fast) ease, background var(--fast) ease;\n    }\n    .scrub-rail a::before {\n      content: attr(data-label);\n      position: absolute;\n      right: 16px;\n      top: 50%;\n      transform: translateY(-50%) translateX(6px);\n      width: max-content;\n      padding: 5px 7px;\n      opacity: 0;\n      pointer-events: none;\n      background: var(--ink);\n      color: var(--bone);\n      border: 1px solid rgba(247, 242, 230, .18);\n      font-family: var(--mono);\n      font-size: 9px;\n      letter-spacing: .08em;\n      text-transform: uppercase;\n      transition: opacity var(--fast) ease, transform var(--fast) ease;\n    }\n    .scrub-rail a:hover::before,\n    .scrub-rail a:focus-visible::before { opacity: 1; transform: translateY(-50%) translateX(0); }\n    .scrub-rail a[aria-current="true"] { background: var(--amber); border-color: var(--amber); transform: scale(1.35); }\n\n    main { position: relative; z-index: 1; }\n    .issue {\n      position: relative;\n      isolation: isolate;\n      min-height: 100svh;\n      scroll-margin-top: var(--nav-h);\n      overflow: clip;\n      background: var(--ink);\n      color: var(--bone);\n    }\n    .issue.light { background: var(--ivory); color: var(--ink); }\n    .issue.coral { background: var(--coral); color: var(--ink); }\n    .issue::before {\n      content: "";\n      position: absolute;\n      z-index: 0;\n      inset: 0;\n      pointer-events: none;\n      background:\n        linear-gradient(90deg, transparent 0 calc(50% - .5px), currentColor calc(50% - .5px) calc(50% + .5px), transparent calc(50% + .5px)),\n        linear-gradient(currentColor, currentColor);\n      background-size: 100% 100%, 1px 100%;\n      background-position: 0 0, var(--gutter) 0;\n      background-repeat: no-repeat;\n      opacity: .035;\n    }\n    .issue-inner {\n      position: relative;\n      z-index: 4;\n      width: min(100%, var(--content));\n      min-height: 100svh;\n      margin: 0 auto;\n      padding: calc(var(--nav-h) + clamp(46px, 7vw, 112px)) var(--gutter) clamp(72px, 9vw, 150px);\n    }\n    .issue-inner > *,\n    .many-head > *,\n    .agents-head > *,\n    .terminal-head > *,\n    .final-grid > *,\n    .cover-meta > * { min-width: 0;`... 629245 more characters,
+    expected: /\sid=["']pricing["']/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at site\tests\origami-scroll-world.test.mjs:70:1
+✖ enables the cinematic path once real media exists (13.8287ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /id="vibespaceOrigamiWorld" data-cinematic-ready="true"/. Input:
+  
+  '<!doctype html>\n' +
+    '<html lang="en" class="no-js">\n' +
+    '<head>\n' +
+    '  <meta charset="utf-8">\n' +
+    '  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n' +
+    '  <meta name="color-scheme" content="dark light">\n' +
+    '  <meta name="theme-color" content="#0b0b0a">\n' +
+    '  <meta name="description" content="VibeSpace is a local-first desktop AI workspace for models, agents, terminals, voice, tasks, and memory.">\n' +
+    '  <meta name="robots" content="index,follow">\n' +
+    '  <meta property="og:title" content="VibeSpace — The workspace for the messy middle">\n' +
+    '  <meta property="og:description" content="Models, agents, terminals, voice, tasks, and memory in one local-first desktop workspace.">\n' +
+    '  <meta property="og:type" content="website">\n' +
+    '  <meta property="og:url" content="https://vibespaceos.com/">\n' +
+    '  <link rel="canonical" href="https://vibespaceos.com/">\n' +
+    '  <meta name="twitter:card" content="summary_large_image">\n' +
+    '  <title>VibeSpace — The workspace for the messy middle</title>\n' +
+    `  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0b0a'/%3E%3Cpath d='M12 14h11l9 23 9-23h11L32 54z' fill='%23e7865d'/%3E%3C/svg%3E">\n` +
+    "  <script>document.documentElement.classList.remove('no-js');document.documentElement.classList.add('js');</script>\n" +
+    '  <style>\n' +
+    '    :root {\n' +
+    '      --ink: #0b0b0a;\n' +
+    '      --graphite: #151514;\n' +
+    '      --graphite-2: #22211f;\n' +
+    '      --bone: #eee9dc;\n' +
+    '      --ivory: #f7f2e6;\n' +
+    '      --sand: #c9b99f;\n' +
+    '      --amber: #e7865d;\n' +
+    '      --amber-deep: #c85f3f;\n' +
+    '      --coral: #efa08b;\n' +
+    '      --signal: #9dcc8b;\n' +
+    '      --muted-dark: #8e8b83;\n' +
+    '      --muted-light: #5d5a54;\n' +
+    '      --line-dark: rgba(247, 242, 230, .18);\n' +
+    '      --line-light: rgba(11, 11, 10, .18);\n' +
+    '      --display: "Arial Narrow", "Aptos Narrow", "Helvetica Neue", Arial, sans-serif;\n' +
+    '      --body: "Helvetica Neue", "Segoe UI", Arial, sans-serif;\n' +
+    '      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;\n' +
+    '      --nav-h: 68px;\n' +
+    '      --gutter: clamp(20px, 4vw, 72px);\n' +
+    '      --content: 1680px;\n' +
+    '      --ease: cubic-bezier(.2, .78, .18, 1);\n' +
+    '      --fast: 180ms;\n' +
+    '      --med: 620ms;\n' +
+    '      --slow: 1200ms;\n' +
+    '      --shadow: 0 22px 80px rgba(0, 0, 0, .22);\n' +
+    '    }\n' +
+    '\n' +
+    '    *, *::before, *::after { box-sizing: border-box; }\n' +
+    '    html { scroll-behavior: smooth; background: var(--ink); }\n' +
+    '    body {\n' +
+    '      margin: 0;\n' +
+    '      min-width: 280px;\n' +
+    '      overflow-x: clip;\n' +
+    '      background: var(--ink);\n' +
+    '      color: var(--bone);\n' +
+    '      font-family: var(--body);\n' +
+    '      -webkit-font-smoothing: antialiased;\n' +
+    '      text-rendering: geometricPrecision;\n' +
+    '    }\n' +
+    '    body.index-open { overflow: hidden; }\n' +
+    '    img, svg, canvas { display: block; max-width: 100%; }\n' +
+    '    button, input, select, textarea { font: inherit; }\n' +
+    '    button, a { -webkit-tap-highlight-color: transparent; }\n' +
+    '    a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: .22em; }\n' +
+    '    button { color: inherit; }\n' +
+    '    ::selection { background: var(--amber); color: var(--ink); }\n' +
+    '    :focus-visible {\n' +
+    '      outline: 2px solid var(--amber);\n' +
+    '      outline-offset: 4px;\n' +
+    '      border-radius: 2px;\n' +
+    '    }\n' +
+    '\n' +
+    '    .skip-link {\n' +
+    '      position: fixed;\n' +
+    '      z-index: 1000;\n' +
+    '      left: 16px;\n' +
+    '      top: 12px;\n' +
+    '      transform: translateY(-160%);\n' +
+    '      padding: 10px 14px;\n' +
+    '      background: var(--ivory);\n' +
+    '      color: var(--ink);\n' +
+    '      font-family: var(--mono);\n' +
+    '      font-size: 12px;\n' +
+    '      text-transform: uppercase;\n' +
+    '      letter-spacing: .08em;\n' +
+    '      transition: transform var(--fast) ease;\n' +
+    '    }\n' +
+    '    .skip-link:focus { transform: translateY(0); }\n' +
+    '\n' +
+    '    .visually-hidden {\n' +
+    '      position: absolute !important;\n' +
+    '      width: 1px !important;\n' +
+    '      height: 1px !important;\n' +
+    '      padding: 0 !important;\n' +
+    '      margin: -1px !important;\n' +
+    '      overflow: hidden !important;\n' +
+    '      clip: rect(0, 0, 0, 0) !important;\n' +
+    '      white-space: nowrap !important;\n' +
+    '      border: 0 !important;\n' +
+    '    }\n' +
+    '\n' +
+    '    .site-nav {\n' +
+    '      position: fixed;\n' +
+    '      z-index: 50;\n' +
+    '      inset: 0 0 auto 0;\n' +
+    '      height: var(--nav-h);\n' +
+    '      display: grid;\n' +
+    '      grid-template-columns: minmax(150px, 1fr) auto auto;\n' +
+    '      align-items: center;\n' +
+    '      gap: 18px;\n' +
+    '      padding: 0 max(18px, env(safe-area-inset-right)) 0 max(18px, env(safe-area-inset-left));\n' +
+    '      border-bottom: 1px solid rgba(247, 242, 230, .12);\n' +
+    '      background: color-mix(in srgb, var(--ink) 84%, transparent);\n' +
+    '      backdrop-filter: blur(16px) saturate(120%);\n' +
+    '      transition: background var(--med) var(--ease), color var(--med) var(--ease), border-color var(--med) var(--ease);\n' +
+    '    }\n' +
+    '    .site-nav.on-light {\n' +
+    '      color: var(--ink);\n' +
+    '      border-color: rgba(11, 11, 10, .13);\n' +
+    '      background: color-mix(in srgb, var(--ivory) 88%, transparent);\n' +
+    '    }\n' +
+    '    .brand {\n' +
+    '      display: inline-flex;\n' +
+    '      align-items: center;\n' +
+    '      gap: 10px;\n' +
+    '      width: max-content;\n' +
+    '      text-decoration: none;\n' +
+    '      font-family: var(--display);\n' +
+    '      font-weight: 800;\n' +
+    '      letter-spacing: -.025em;\n' +
+    '    }\n' +
+    '    .brand-mark {\n' +
+    '      width: 24px;\n' +
+    '      height: 24px;\n' +
+    '      display: grid;\n' +
+    '      place-items: center;\n' +
+    '      border: 1px solid currentColor;\n' +
+    '      clip-path: polygon(0 0, 100% 0, 50% 100%);\n' +
+    '      font-size: 9px;\n' +
+    '      line-height: 1;\n' +
+    '      padding-bottom: 7px;\n' +
+    '    }\n' +
+    '    .nav-status {\n' +
+    '      display: flex;\n' +
+    '      align-items: center;\n' +
+    '      gap: 12px;\n' +
+    '      font-family: var(--mono);\n' +
+    '      font-size: 10px;\n' +
+    '      letter-spacing: .12em;\n' +
+    '      text-transform: uppercase;\n' +
+    '      white-space: nowrap;\n' +
+    '    }\n' +
+    '    .nav-status strong { color: var(--amber); font-weight: 700; }\n' +
+    '    .nav-actions { display: flex; align-items: center; gap: 8px; }\n' +
+    '    .nav-link,\n' +
+    '    .nav-button {\n' +
+    '      min-height: 36px;\n' +
+    '      display: inline-flex;\n' +
+    '      align-items: center;\n' +
+    '      justify-content: center;\n' +
+    '      padding: 0 12px;\n' +
+    '      border: 1px solid currentColor;\n' +
+    '      background: transparent;\n' +
+    '      color: inherit;\n' +
+    '      text-decoration: none;\n' +
+    '      font-family: var(--mono);\n' +
+    '      font-size: 10px;\n' +
+    '      letter-spacing: .08em;\n' +
+    '      text-transform: uppercase;\n' +
+    '      cursor: pointer;\n' +
+    '      transition: transform var(--fast) ease, background var(--fast) ease, color var(--fast) ease;\n' +
+    '    }\n' +
+    '    .nav-link:hover,\n' +
+    '    .nav-button:hover { transform: translateY(-2px); }\n' +
+    '    .nav-link.primary { background: var(--amber); color: var(--ink); border-color: var(--amber); }\n' +
+    '    .site-nav.on-light .nav-link.primary { color: var(--ink); }\n' +
+    '    .no-js .js-only { display: none !important; }\n' +
+    '    .js .no-js-only { display: none !important; }\n' +
+    '\n' +
+    '    #webgl-stage {\n' +
+    '      position: fixed;\n' +
+    '      z-index: 2;\n' +
+    '      inset: 0;\n' +
+    '      pointer-events: none;\n' +
+    '      overflow: hidden;\n' +
+    '      opacity: 0;\n' +
+    '      transition: opacity 900ms ease;\n' +
+    '    }\n' +
+    '    .webgl-ready #webgl-stage { opacity: 1; }\n' +
+    '    #webgl-stage canvas { width: 100%; height: 100%; }\n' +
+    '    .webgl-caption {\n' +
+    '      position: fixed;\n' +
+    '      z-index: 3;\n' +
+    '      right: 28px;\n' +
+    '      bottom: 26px;\n' +
+    '      max-width: 260px;\n' +
+    '      color: rgba(247, 242, 230, .68);\n' +
+    '      font-family: var(--mono);\n' +
+    '      font-size: 9px;\n' +
+    '      line-height: 1.55;\n' +
+    '      letter-spacing: .08em;\n' +
+    '      text-transform: uppercase;\n' +
+    '      pointer-events: none;\n' +
+    '      transition: opacity var(--med) ease, color var(--med) ease;\n' +
+    '    }\n' +
+    '    .site-nav.on-light ~ .webgl-caption { color: rgba(11, 11, 10, .58); }\n' +
+    '    body[data-scene="cover"] .webgl-caption { top: calc(var(--nav-h) + 18px); bottom: auto; text-align: right; }\n' +
+    '\n' +
+    '    .scrub-rail {\n' +
+    '      position: fixed;\n' +
+    '      z-index: 40;\n' +
+    '      right: 16px;\n' +
+    '      top: 50%;\n' +
+    '      transform: translateY(-50%);\n' +
+    '      display: grid;\n' +
+    '      gap: 7px;\n' +
+    '      padding: 12px 8px;\n' +
+    '      border: 1px solid rgba(247, 242, 230, .13);\n' +
+    '      background: rgba(11, 11, 10, .52);\n' +
+    '      backdrop-filter: blur(12px);\n' +
+    '    }\n' +
+    '    .scrub-rail a {\n' +
+    '      position: relative;\n' +
+    '      width: 8px;\n' +
+    '      height: 8px;\n' +
+    '      border: 1px solid rgba(247, 242, 230, .5);\n' +
+    '      border-radius: 50%;\n' +
+    '      text-decoration: none;\n' +
+    '      transition: transform var(--fast) ease, background var(--fast) ease;\n' +
+    '    }\n' +
+    '    .scrub-rail a::before {\n' +
+    '      content: attr(data-label);\n' +
+    '      position: absolute;\n' +
+    '      right: 16px;\n' +
+    '      top: 50%;\n' +
+    '      transform: translateY(-50%) translateX(6px);\n' +
+    '      width: max-content;\n' +
+    '      padding: 5px 7px;\n' +
+    '      opacity: 0;\n' +
+    '      pointer-events: none;\n' +
+    '      background: var(--ink);\n' +
+    '      color: var(--bone);\n' +
+    '      border: 1px solid rgba(247, 242, 230, .18);\n' +
+    '      font-family: var(--mono);\n' +
+    '      font-size: 9px;\n' +
+    '      letter-spacing: .08em;\n' +
+    '      text-transform: uppercase;\n' +
+    '      transition: opacity var(--fast) ease, transform var(--fast) ease;\n' +
+    '    }\n' +
+    '    .scrub-rail a:hover::before,\n' +
+    '    .scrub-rail a:focus-visible::before { opacity: 1; transform: translateY(-50%) translateX(0); }\n' +
+    '    .scrub-rail a[aria-current="true"] { background: var(--amber); border-color: var(--amber); transform: scale(1.35); }\n' +
+    '\n' +
+    '    main { position: relative; z-index: 1; }\n' +
+    '    .issue {\n' +
+    '      position: relative;\n' +
+    '      isolation: isolate;\n' +
+    '      min-height: 100svh;\n' +
+    '      scroll-margin-top: var(--nav-h);\n' +
+    '      overflow: clip;\n' +
+    '      background: var(--ink);\n' +
+    '      color: var(--bone);\n' +
+    '    }\n' +
+    '    .issue.light { background: var(--ivory); color: var(--ink); }\n' +
+    '    .issue.coral { background: var(--coral); color: var(--ink); }\n' +
+    '    .issue::before {\n' +
+    '      content: "";\n' +
+    '      position: absolute;\n' +
+    '      z-index: 0;\n' +
+    '      inset: 0;\n' +
+    '      pointer-events: none;\n' +
+    '      background:\n' +
+    '        linear-gradient(90deg, transparent 0 calc(50% - .5px), currentColor calc(50% - .5px) calc(50% + .5px), transparent calc(50% + .5px)),\n' +
+    '        linear-gradient(currentColor, currentColor);\n' +
+    '      background-size: 100% 100%, 1px 100%;\n' +
+    '      background-position: 0 0, var(--gutter) 0;\n' +
+    '      background-repeat: no-repeat;\n' +
+    '      opacity: .035;\n' +
+    '    }\n' +
+    '    .issue-inner {\n' +
+    '      position: relative;\n' +
+    '      z-index: 4;\n' +
+    '      width: min(100%, var(--content));\n' +
+    '      min-height: 100svh;\n' +
+    '      margin: 0 auto;\n' +
+    '      padding: calc(var(--nav-h) + clamp(46px, 7vw, 112px)) var(--gutter) clamp(72px, 9vw, 150px);\n' +
+    '    }\n' +
+    '    .issue-inner > *,\n' +
+    '    .many-head > *,\n' +
+    '    .agents-head > *,\n' +
+    '    .terminal-head > *,\n' +
+    '    .final-grid > *,\n' +
+    '    .cover-meta > * { min-width: 0;'... 629245 more characters
+  
+      at TestContext.<anonymous> (file:///C:/Users/viper/VibeSpaceOs/VibeSpace-IDEAS!/VibeSpace-Webstie/Cinematic-Product-World-20260907/site/tests/origami-scroll-world.test.mjs:73:10)
+      at async Test.run (node:internal/test_runner/test:1313:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: `<!doctype html>\n<html lang="en" class="no-js">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n  <meta name="color-scheme" content="dark light">\n  <meta name="theme-color" content="#0b0b0a">\n  <meta name="description" content="VibeSpace is a local-first desktop AI workspace for models, agents, terminals, voice, tasks, and memory.">\n  <meta name="robots" content="index,follow">\n  <meta property="og:title" content="VibeSpace — The workspace for the messy middle">\n  <meta property="og:description" content="Models, agents, terminals, voice, tasks, and memory in one local-first desktop workspace.">\n  <meta property="og:type" content="website">\n  <meta property="og:url" content="https://vibespaceos.com/">\n  <link rel="canonical" href="https://vibespaceos.com/">\n  <meta name="twitter:card" content="summary_large_image">\n  <title>VibeSpace — The workspace for the messy middle</title>\n  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0b0a'/%3E%3Cpath d='M12 14h11l9 23 9-23h11L32 54z' fill='%23e7865d'/%3E%3C/svg%3E">\n  <script>document.documentElement.classList.remove('no-js');document.documentElement.classList.add('js');</script>\n  <style>\n    :root {\n      --ink: #0b0b0a;\n      --graphite: #151514;\n      --graphite-2: #22211f;\n      --bone: #eee9dc;\n      --ivory: #f7f2e6;\n      --sand: #c9b99f;\n      --amber: #e7865d;\n      --amber-deep: #c85f3f;\n      --coral: #efa08b;\n      --signal: #9dcc8b;\n      --muted-dark: #8e8b83;\n      --muted-light: #5d5a54;\n      --line-dark: rgba(247, 242, 230, .18);\n      --line-light: rgba(11, 11, 10, .18);\n      --display: "Arial Narrow", "Aptos Narrow", "Helvetica Neue", Arial, sans-serif;\n      --body: "Helvetica Neue", "Segoe UI", Arial, sans-serif;\n      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;\n      --nav-h: 68px;\n      --gutter: clamp(20px, 4vw, 72px);\n      --content: 1680px;\n      --ease: cubic-bezier(.2, .78, .18, 1);\n      --fast: 180ms;\n      --med: 620ms;\n      --slow: 1200ms;\n      --shadow: 0 22px 80px rgba(0, 0, 0, .22);\n    }\n\n    *, *::before, *::after { box-sizing: border-box; }\n    html { scroll-behavior: smooth; background: var(--ink); }\n    body {\n      margin: 0;\n      min-width: 280px;\n      overflow-x: clip;\n      background: var(--ink);\n      color: var(--bone);\n      font-family: var(--body);\n      -webkit-font-smoothing: antialiased;\n      text-rendering: geometricPrecision;\n    }\n    body.index-open { overflow: hidden; }\n    img, svg, canvas { display: block; max-width: 100%; }\n    button, input, select, textarea { font: inherit; }\n    button, a { -webkit-tap-highlight-color: transparent; }\n    a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: .22em; }\n    button { color: inherit; }\n    ::selection { background: var(--amber); color: var(--ink); }\n    :focus-visible {\n      outline: 2px solid var(--amber);\n      outline-offset: 4px;\n      border-radius: 2px;\n    }\n\n    .skip-link {\n      position: fixed;\n      z-index: 1000;\n      left: 16px;\n      top: 12px;\n      transform: translateY(-160%);\n      padding: 10px 14px;\n      background: var(--ivory);\n      color: var(--ink);\n      font-family: var(--mono);\n      font-size: 12px;\n      text-transform: uppercase;\n      letter-spacing: .08em;\n      transition: transform var(--fast) ease;\n    }\n    .skip-link:focus { transform: translateY(0); }\n\n    .visually-hidden {\n      position: absolute !important;\n      width: 1px !important;\n      height: 1px !important;\n      padding: 0 !important;\n      margin: -1px !important;\n      overflow: hidden !important;\n      clip: rect(0, 0, 0, 0) !important;\n      white-space: nowrap !important;\n      border: 0 !important;\n    }\n\n    .site-nav {\n      position: fixed;\n      z-index: 50;\n      inset: 0 0 auto 0;\n      height: var(--nav-h);\n      display: grid;\n      grid-template-columns: minmax(150px, 1fr) auto auto;\n      align-items: center;\n      gap: 18px;\n      padding: 0 max(18px, env(safe-area-inset-right)) 0 max(18px, env(safe-area-inset-left));\n      border-bottom: 1px solid rgba(247, 242, 230, .12);\n      background: color-mix(in srgb, var(--ink) 84%, transparent);\n      backdrop-filter: blur(16px) saturate(120%);\n      transition: background var(--med) var(--ease), color var(--med) var(--ease), border-color var(--med) var(--ease);\n    }\n    .site-nav.on-light {\n      color: var(--ink);\n      border-color: rgba(11, 11, 10, .13);\n      background: color-mix(in srgb, var(--ivory) 88%, transparent);\n    }\n    .brand {\n      display: inline-flex;\n      align-items: center;\n      gap: 10px;\n      width: max-content;\n      text-decoration: none;\n      font-family: var(--display);\n      font-weight: 800;\n      letter-spacing: -.025em;\n    }\n    .brand-mark {\n      width: 24px;\n      height: 24px;\n      display: grid;\n      place-items: center;\n      border: 1px solid currentColor;\n      clip-path: polygon(0 0, 100% 0, 50% 100%);\n      font-size: 9px;\n      line-height: 1;\n      padding-bottom: 7px;\n    }\n    .nav-status {\n      display: flex;\n      align-items: center;\n      gap: 12px;\n      font-family: var(--mono);\n      font-size: 10px;\n      letter-spacing: .12em;\n      text-transform: uppercase;\n      white-space: nowrap;\n    }\n    .nav-status strong { color: var(--amber); font-weight: 700; }\n    .nav-actions { display: flex; align-items: center; gap: 8px; }\n    .nav-link,\n    .nav-button {\n      min-height: 36px;\n      display: inline-flex;\n      align-items: center;\n      justify-content: center;\n      padding: 0 12px;\n      border: 1px solid currentColor;\n      background: transparent;\n      color: inherit;\n      text-decoration: none;\n      font-family: var(--mono);\n      font-size: 10px;\n      letter-spacing: .08em;\n      text-transform: uppercase;\n      cursor: pointer;\n      transition: transform var(--fast) ease, background var(--fast) ease, color var(--fast) ease;\n    }\n    .nav-link:hover,\n    .nav-button:hover { transform: translateY(-2px); }\n    .nav-link.primary { background: var(--amber); color: var(--ink); border-color: var(--amber); }\n    .site-nav.on-light .nav-link.primary { color: var(--ink); }\n    .no-js .js-only { display: none !important; }\n    .js .no-js-only { display: none !important; }\n\n    #webgl-stage {\n      position: fixed;\n      z-index: 2;\n      inset: 0;\n      pointer-events: none;\n      overflow: hidden;\n      opacity: 0;\n      transition: opacity 900ms ease;\n    }\n    .webgl-ready #webgl-stage { opacity: 1; }\n    #webgl-stage canvas { width: 100%; height: 100%; }\n    .webgl-caption {\n      position: fixed;\n      z-index: 3;\n      right: 28px;\n      bottom: 26px;\n      max-width: 260px;\n      color: rgba(247, 242, 230, .68);\n      font-family: var(--mono);\n      font-size: 9px;\n      line-height: 1.55;\n      letter-spacing: .08em;\n      text-transform: uppercase;\n      pointer-events: none;\n      transition: opacity var(--med) ease, color var(--med) ease;\n    }\n    .site-nav.on-light ~ .webgl-caption { color: rgba(11, 11, 10, .58); }\n    body[data-scene="cover"] .webgl-caption { top: calc(var(--nav-h) + 18px); bottom: auto; text-align: right; }\n\n    .scrub-rail {\n      position: fixed;\n      z-index: 40;\n      right: 16px;\n      top: 50%;\n      transform: translateY(-50%);\n      display: grid;\n      gap: 7px;\n      padding: 12px 8px;\n      border: 1px solid rgba(247, 242, 230, .13);\n      background: rgba(11, 11, 10, .52);\n      backdrop-filter: blur(12px);\n    }\n    .scrub-rail a {\n      position: relative;\n      width: 8px;\n      height: 8px;\n      border: 1px solid rgba(247, 242, 230, .5);\n      border-radius: 50%;\n      text-decoration: none;\n      transition: transform var(--fast) ease, background var(--fast) ease;\n    }\n    .scrub-rail a::before {\n      content: attr(data-label);\n      position: absolute;\n      right: 16px;\n      top: 50%;\n      transform: translateY(-50%) translateX(6px);\n      width: max-content;\n      padding: 5px 7px;\n      opacity: 0;\n      pointer-events: none;\n      background: var(--ink);\n      color: var(--bone);\n      border: 1px solid rgba(247, 242, 230, .18);\n      font-family: var(--mono);\n      font-size: 9px;\n      letter-spacing: .08em;\n      text-transform: uppercase;\n      transition: opacity var(--fast) ease, transform var(--fast) ease;\n    }\n    .scrub-rail a:hover::before,\n    .scrub-rail a:focus-visible::before { opacity: 1; transform: translateY(-50%) translateX(0); }\n    .scrub-rail a[aria-current="true"] { background: var(--amber); border-color: var(--amber); transform: scale(1.35); }\n\n    main { position: relative; z-index: 1; }\n    .issue {\n      position: relative;\n      isolation: isolate;\n      min-height: 100svh;\n      scroll-margin-top: var(--nav-h);\n      overflow: clip;\n      background: var(--ink);\n      color: var(--bone);\n    }\n    .issue.light { background: var(--ivory); color: var(--ink); }\n    .issue.coral { background: var(--coral); color: var(--ink); }\n    .issue::before {\n      content: "";\n      position: absolute;\n      z-index: 0;\n      inset: 0;\n      pointer-events: none;\n      background:\n        linear-gradient(90deg, transparent 0 calc(50% - .5px), currentColor calc(50% - .5px) calc(50% + .5px), transparent calc(50% + .5px)),\n        linear-gradient(currentColor, currentColor);\n      background-size: 100% 100%, 1px 100%;\n      background-position: 0 0, var(--gutter) 0;\n      background-repeat: no-repeat;\n      opacity: .035;\n    }\n    .issue-inner {\n      position: relative;\n      z-index: 4;\n      width: min(100%, var(--content));\n      min-height: 100svh;\n      margin: 0 auto;\n      padding: calc(var(--nav-h) + clamp(46px, 7vw, 112px)) var(--gutter) clamp(72px, 9vw, 150px);\n    }\n    .issue-inner > *,\n    .many-head > *,\n    .agents-head > *,\n    .terminal-head > *,\n    .final-grid > *,\n    .cover-meta > * { min-width: 0;`... 629245 more characters,
+    expected: /id="vibespaceOrigamiWorld" data-cinematic-ready="true"/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at site\tests\origami-scroll-world.test.mjs:80:1
+✖ renders five semantic fallback scenes using six exact images (23.1597ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 5
+  
+      at TestContext.<anonymous> (file:///C:/Users/viper/VibeSpaceOs/VibeSpace-IDEAS!/VibeSpace-Webstie/Cinematic-Product-World-20260907/site/tests/origami-scroll-world.test.mjs:83:10)
+      at async Test.run (node:internal/test_runner/test:1313:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 5,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at site\tests\origami-scroll-world.test.mjs:89:1
+✖ loads the engine before the VibeSpace configuration (43.2403ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(html.indexOf('js/scroll-world-engine.js') < html.indexOf('js/origami-scroll-world.js'))
+  
+      at TestContext.<anonymous> (file:///C:/Users/viper/VibeSpaceOs/VibeSpace-IDEAS!/VibeSpace-Webstie/Cinematic-Product-World-20260907/site/tests/origami-scroll-world.test.mjs:91:10)
+      at async Test.run (node:internal/test_runner/test:1313:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at site\tests\site-appearance.test.mjs:11:1
+✖ offers exactly Default and VibeSpace website appearances (34.6802ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+  + []
+  - [
+  -   'default',
+  -   'vibespace'
+  - ]
+  
+      at TestContext.<anonymous> (file:///C:/Users/viper/VibeSpaceOs/VibeSpace-IDEAS!/VibeSpace-Webstie/Cinematic-Product-World-20260907/site/tests/site-appearance.test.mjs:15:10)
+      at async Test.run (node:internal/test_runner/test:1313:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [],
+    expected: [ 'default', 'vibespace' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at site\tests\site-appearance.test.mjs:21:1
+✖ loads an isolated VibeSpace appearance layer without replacing scroll-world (38.3479ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /css\/site-appearance\.css/. Input:
+  
+  '<!doctype html>\n' +
+    '<html lang="en" class="no-js">\n' +
+    '<head>\n' +
+    '  <meta charset="utf-8">\n' +
+    '  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n' +
+    '  <meta name="color-scheme" content="dark light">\n' +
+    '  <meta name="theme-color" content="#0b0b0a">\n' +
+    '  <meta name="description" content="VibeSpace is a local-first desktop AI workspace for models, agents, terminals, voice, tasks, and memory.">\n' +
+    '  <meta name="robots" content="index,follow">\n' +
+    '  <meta property="og:title" content="VibeSpace — The workspace for the messy middle">\n' +
+    '  <meta property="og:description" content="Models, agents, terminals, voice, tasks, and memory in one local-first desktop workspace.">\n' +
+    '  <meta property="og:type" content="website">\n' +
+    '  <meta property="og:url" content="https://vibespaceos.com/">\n' +
+    '  <link rel="canonical" href="https://vibespaceos.com/">\n' +
+    '  <meta name="twitter:card" content="summary_large_image">\n' +
+    '  <title>VibeSpace — The workspace for the messy middle</title>\n' +
+    `  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0b0a'/%3E%3Cpath d='M12 14h11l9 23 9-23h11L32 54z' fill='%23e7865d'/%3E%3C/svg%3E">\n` +
+    "  <script>document.documentElement.classList.remove('no-js');document.documentElement.classList.add('js');</script>\n" +
+    '  <style>\n' +
+    '    :root {\n' +
+    '      --ink: #0b0b0a;\n' +
+    '      --graphite: #151514;\n' +
+    '      --graphite-2: #22211f;\n' +
+    '      --bone: #eee9dc;\n' +
+    '      --ivory: #f7f2e6;\n' +
+    '      --sand: #c9b99f;\n' +
+    '      --amber: #e7865d;\n' +
+    '      --amber-deep: #c85f3f;\n' +
+    '      --coral: #efa08b;\n' +
+    '      --signal: #9dcc8b;\n' +
+    '      --muted-dark: #8e8b83;\n' +
+    '      --muted-light: #5d5a54;\n' +
+    '      --line-dark: rgba(247, 242, 230, .18);\n' +
+    '      --line-light: rgba(11, 11, 10, .18);\n' +
+    '      --display: "Arial Narrow", "Aptos Narrow", "Helvetica Neue", Arial, sans-serif;\n' +
+    '      --body: "Helvetica Neue", "Segoe UI", Arial, sans-serif;\n' +
+    '      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;\n' +
+    '      --nav-h: 68px;\n' +
+    '      --gutter: clamp(20px, 4vw, 72px);\n' +
+    '      --content: 1680px;\n' +
+    '      --ease: cubic-bezier(.2, .78, .18, 1);\n' +
+    '      --fast: 180ms;\n' +
+    '      --med: 620ms;\n' +
+    '      --slow: 1200ms;\n' +
+    '      --shadow: 0 22px 80px rgba(0, 0, 0, .22);\n' +
+    '    }\n' +
+    '\n' +
+    '    *, *::before, *::after { box-sizing: border-box; }\n' +
+    '    html { scroll-behavior: smooth; background: var(--ink); }\n' +
+    '    body {\n' +
+    '      margin: 0;\n' +
+    '      min-width: 280px;\n' +
+    '      overflow-x: clip;\n' +
+    '      background: var(--ink);\n' +
+    '      color: var(--bone);\n' +
+    '      font-family: var(--body);\n' +
+    '      -webkit-font-smoothing: antialiased;\n' +
+    '      text-rendering: geometricPrecision;\n' +
+    '    }\n' +
+    '    body.index-open { overflow: hidden; }\n' +
+    '    img, svg, canvas { display: block; max-width: 100%; }\n' +
+    '    button, input, select, textarea { font: inherit; }\n' +
+    '    button, a { -webkit-tap-highlight-color: transparent; }\n' +
+    '    a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: .22em; }\n' +
+    '    button { color: inherit; }\n' +
+    '    ::selection { background: var(--amber); color: var(--ink); }\n' +
+    '    :focus-visible {\n' +
+    '      outline: 2px solid var(--amber);\n' +
+    '      outline-offset: 4px;\n' +
+    '      border-radius: 2px;\n' +
+    '    }\n' +
+    '\n' +
+    '    .skip-link {\n' +
+    '      position: fixed;\n' +
+    '      z-index: 1000;\n' +
+    '      left: 16px;\n' +
+    '      top: 12px;\n' +
+    '      transform: translateY(-160%);\n' +
+    '      padding: 10px 14px;\n' +
+    '      background: var(--ivory);\n' +
+    '      color: var(--ink);\n' +
+    '      font-family: var(--mono);\n' +
+    '      font-size: 12px;\n' +
+    '      text-transform: uppercase;\n' +
+    '      letter-spacing: .08em;\n' +
+    '      transition: transform var(--fast) ease;\n' +
+    '    }\n' +
+    '    .skip-link:focus { transform: translateY(0); }\n' +
+    '\n' +
+    '    .visually-hidden {\n' +
+    '      position: absolute !important;\n' +
+    '      width: 1px !important;\n' +
+    '      height: 1px !important;\n' +
+    '      padding: 0 !important;\n' +
+    '      margin: -1px !important;\n' +
+    '      overflow: hidden !important;\n' +
+    '      clip: rect(0, 0, 0, 0) !important;\n' +
+    '      white-space: nowrap !important;\n' +
+    '      border: 0 !important;\n' +
+    '    }\n' +
+    '\n' +
+    '    .site-nav {\n' +
+    '      position: fixed;\n' +
+    '      z-index: 50;\n' +
+    '      inset: 0 0 auto 0;\n' +
+    '      height: var(--nav-h);\n' +
+    '      display: grid;\n' +
+    '      grid-template-columns: minmax(150px, 1fr) auto auto;\n' +
+    '      align-items: center;\n' +
+    '      gap: 18px;\n' +
+    '      padding: 0 max(18px, env(safe-area-inset-right)) 0 max(18px, env(safe-area-inset-left));\n' +
+    '      border-bottom: 1px solid rgba(247, 242, 230, .12);\n' +
+    '      background: color-mix(in srgb, var(--ink) 84%, transparent);\n' +
+    '      backdrop-filter: blur(16px) saturate(120%);\n' +
+    '      transition: background var(--med) var(--ease), color var(--med) var(--ease), border-color var(--med) var(--ease);\n' +
+    '    }\n' +
+    '    .site-nav.on-light {\n' +
+    '      color: var(--ink);\n' +
+    '      border-color: rgba(11, 11, 10, .13);\n' +
+    '      background: color-mix(in srgb, var(--ivory) 88%, transparent);\n' +
+    '    }\n' +
+    '    .brand {\n' +
+    '      display: inline-flex;\n' +
+    '      align-items: center;\n' +
+    '      gap: 10px;\n' +
+    '      width: max-content;\n' +
+    '      text-decoration: none;\n' +
+    '      font-family: var(--display);\n' +
+    '      font-weight: 800;\n' +
+    '      letter-spacing: -.025em;\n' +
+    '    }\n' +
+    '    .brand-mark {\n' +
+    '      width: 24px;\n' +
+    '      height: 24px;\n' +
+    '      display: grid;\n' +
+    '      place-items: center;\n' +
+    '      border: 1px solid currentColor;\n' +
+    '      clip-path: polygon(0 0, 100% 0, 50% 100%);\n' +
+    '      font-size: 9px;\n' +
+    '      line-height: 1;\n' +
+    '      padding-bottom: 7px;\n' +
+    '    }\n' +
+    '    .nav-status {\n' +
+    '      display: flex;\n' +
+    '      align-items: center;\n' +
+    '      gap: 12px;\n' +
+    '      font-family: var(--mono);\n' +
+    '      font-size: 10px;\n' +
+    '      letter-spacing: .12em;\n' +
+    '      text-transform: uppercase;\n' +
+    '      white-space: nowrap;\n' +
+    '    }\n' +
+    '    .nav-status strong { color: var(--amber); font-weight: 700; }\n' +
+    '    .nav-actions { display: flex; align-items: center; gap: 8px; }\n' +
+    '    .nav-link,\n' +
+    '    .nav-button {\n' +
+    '      min-height: 36px;\n' +
+    '      display: inline-flex;\n' +
+    '      align-items: center;\n' +
+    '      justify-content: center;\n' +
+    '      padding: 0 12px;\n' +
+    '      border: 1px solid currentColor;\n' +
+    '      background: transparent;\n' +
+    '      color: inherit;\n' +
+    '      text-decoration: none;\n' +
+    '      font-family: var(--mono);\n' +
+    '      font-size: 10px;\n' +
+    '      letter-spacing: .08em;\n' +
+    '      text-transform: uppercase;\n' +
+    '      cursor: pointer;\n' +
+    '      transition: transform var(--fast) ease, background var(--fast) ease, color var(--fast) ease;\n' +
+    '    }\n' +
+    '    .nav-link:hover,\n' +
+    '    .nav-button:hover { transform: translateY(-2px); }\n' +
+    '    .nav-link.primary { background: var(--amber); color: var(--ink); border-color: var(--amber); }\n' +
+    '    .site-nav.on-light .nav-link.primary { color: var(--ink); }\n' +
+    '    .no-js .js-only { display: none !important; }\n' +
+    '    .js .no-js-only { display: none !important; }\n' +
+    '\n' +
+    '    #webgl-stage {\n' +
+    '      position: fixed;\n' +
+    '      z-index: 2;\n' +
+    '      inset: 0;\n' +
+    '      pointer-events: none;\n' +
+    '      overflow: hidden;\n' +
+    '      opacity: 0;\n' +
+    '      transition: opacity 900ms ease;\n' +
+    '    }\n' +
+    '    .webgl-ready #webgl-stage { opacity: 1; }\n' +
+    '    #webgl-stage canvas { width: 100%; height: 100%; }\n' +
+    '    .webgl-caption {\n' +
+    '      position: fixed;\n' +
+    '      z-index: 3;\n' +
+    '      right: 28px;\n' +
+    '      bottom: 26px;\n' +
+    '      max-width: 260px;\n' +
+    '      color: rgba(247, 242, 230, .68);\n' +
+    '      font-family: var(--mono);\n' +
+    '      font-size: 9px;\n' +
+    '      line-height: 1.55;\n' +
+    '      letter-spacing: .08em;\n' +
+    '      text-transform: uppercase;\n' +
+    '      pointer-events: none;\n' +
+    '      transition: opacity var(--med) ease, color var(--med) ease;\n' +
+    '    }\n' +
+    '    .site-nav.on-light ~ .webgl-caption { color: rgba(11, 11, 10, .58); }\n' +
+    '    body[data-scene="cover"] .webgl-caption { top: calc(var(--nav-h) + 18px); bottom: auto; text-align: right; }\n' +
+    '\n' +
+    '    .scrub-rail {\n' +
+    '      position: fixed;\n' +
+    '      z-index: 40;\n' +
+    '      right: 16px;\n' +
+    '      top: 50%;\n' +
+    '      transform: translateY(-50%);\n' +
+    '      display: grid;\n' +
+    '      gap: 7px;\n' +
+    '      padding: 12px 8px;\n' +
+    '      border: 1px solid rgba(247, 242, 230, .13);\n' +
+    '      background: rgba(11, 11, 10, .52);\n' +
+    '      backdrop-filter: blur(12px);\n' +
+    '    }\n' +
+    '    .scrub-rail a {\n' +
+    '      position: relative;\n' +
+    '      width: 8px;\n' +
+    '      height: 8px;\n' +
+    '      border: 1px solid rgba(247, 242, 230, .5);\n' +
+    '      border-radius: 50%;\n' +
+    '      text-decoration: none;\n' +
+    '      transition: transform var(--fast) ease, background var(--fast) ease;\n' +
+    '    }\n' +
+    '    .scrub-rail a::before {\n' +
+    '      content: attr(data-label);\n' +
+    '      position: absolute;\n' +
+    '      right: 16px;\n' +
+    '      top: 50%;\n' +
+    '      transform: translateY(-50%) translateX(6px);\n' +
+    '      width: max-content;\n' +
+    '      padding: 5px 7px;\n' +
+    '      opacity: 0;\n' +
+    '      pointer-events: none;\n' +
+    '      background: var(--ink);\n' +
+    '      color: var(--bone);\n' +
+    '      border: 1px solid rgba(247, 242, 230, .18);\n' +
+    '      font-family: var(--mono);\n' +
+    '      font-size: 9px;\n' +
+    '      letter-spacing: .08em;\n' +
+    '      text-transform: uppercase;\n' +
+    '      transition: opacity var(--fast) ease, transform var(--fast) ease;\n' +
+    '    }\n' +
+    '    .scrub-rail a:hover::before,\n' +
+    '    .scrub-rail a:focus-visible::before { opacity: 1; transform: translateY(-50%) translateX(0); }\n' +
+    '    .scrub-rail a[aria-current="true"] { background: var(--amber); border-color: var(--amber); transform: scale(1.35); }\n' +
+    '\n' +
+    '    main { position: relative; z-index: 1; }\n' +
+    '    .issue {\n' +
+    '      position: relative;\n' +
+    '      isolation: isolate;\n' +
+    '      min-height: 100svh;\n' +
+    '      scroll-margin-top: var(--nav-h);\n' +
+    '      overflow: clip;\n' +
+    '      background: var(--ink);\n' +
+    '      color: var(--bone);\n' +
+    '    }\n' +
+    '    .issue.light { background: var(--ivory); color: var(--ink); }\n' +
+    '    .issue.coral { background: var(--coral); color: var(--ink); }\n' +
+    '    .issue::before {\n' +
+    '      content: "";\n' +
+    '      position: absolute;\n' +
+    '      z-index: 0;\n' +
+    '      inset: 0;\n' +
+    '      pointer-events: none;\n' +
+    '      background:\n' +
+    '        linear-gradient(90deg, transparent 0 calc(50% - .5px), currentColor calc(50% - .5px) calc(50% + .5px), transparent calc(50% + .5px)),\n' +
+    '        linear-gradient(currentColor, currentColor);\n' +
+    '      background-size: 100% 100%, 1px 100%;\n' +
+    '      background-position: 0 0, var(--gutter) 0;\n' +
+    '      background-repeat: no-repeat;\n' +
+    '      opacity: .035;\n' +
+    '    }\n' +
+    '    .issue-inner {\n' +
+    '      position: relative;\n' +
+    '      z-index: 4;\n' +
+    '      width: min(100%, var(--content));\n' +
+    '      min-height: 100svh;\n' +
+    '      margin: 0 auto;\n' +
+    '      padding: calc(var(--nav-h) + clamp(46px, 7vw, 112px)) var(--gutter) clamp(72px, 9vw, 150px);\n' +
+    '    }\n' +
+    '    .issue-inner > *,\n' +
+    '    .many-head > *,\n' +
+    '    .agents-head > *,\n' +
+    '    .terminal-head > *,\n' +
+    '    .final-grid > *,\n' +
+    '    .cover-meta > * { min-width: 0;'... 629245 more characters
+  
+      at TestContext.<anonymous> (file:///C:/Users/viper/VibeSpaceOs/VibeSpace-IDEAS!/VibeSpace-Webstie/Cinematic-Product-World-20260907/site/tests/site-appearance.test.mjs:32:10)
+      at async Test.run (node:internal/test_runner/test:1313:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:897:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: `<!doctype html>\n<html lang="en" class="no-js">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n  <meta name="color-scheme" content="dark light">\n  <meta name="theme-color" content="#0b0b0a">\n  <meta name="description" content="VibeSpace is a local-first desktop AI workspace for models, agents, terminals, voice, tasks, and memory.">\n  <meta name="robots" content="index,follow">\n  <meta property="og:title" content="VibeSpace — The workspace for the messy middle">\n  <meta property="og:description" content="Models, agents, terminals, voice, tasks, and memory in one local-first desktop workspace.">\n  <meta property="og:type" content="website">\n  <meta property="og:url" content="https://vibespaceos.com/">\n  <link rel="canonical" href="https://vibespaceos.com/">\n  <meta name="twitter:card" content="summary_large_image">\n  <title>VibeSpace — The workspace for the messy middle</title>\n  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0b0a'/%3E%3Cpath d='M12 14h11l9 23 9-23h11L32 54z' fill='%23e7865d'/%3E%3C/svg%3E">\n  <script>document.documentElement.classList.remove('no-js');document.documentElement.classList.add('js');</script>\n  <style>\n    :root {\n      --ink: #0b0b0a;\n      --graphite: #151514;\n      --graphite-2: #22211f;\n      --bone: #eee9dc;\n      --ivory: #f7f2e6;\n      --sand: #c9b99f;\n      --amber: #e7865d;\n      --amber-deep: #c85f3f;\n      --coral: #efa08b;\n      --signal: #9dcc8b;\n      --muted-dark: #8e8b83;\n      --muted-light: #5d5a54;\n      --line-dark: rgba(247, 242, 230, .18);\n      --line-light: rgba(11, 11, 10, .18);\n      --display: "Arial Narrow", "Aptos Narrow", "Helvetica Neue", Arial, sans-serif;\n      --body: "Helvetica Neue", "Segoe UI", Arial, sans-serif;\n      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;\n      --nav-h: 68px;\n      --gutter: clamp(20px, 4vw, 72px);\n      --content: 1680px;\n      --ease: cubic-bezier(.2, .78, .18, 1);\n      --fast: 180ms;\n      --med: 620ms;\n      --slow: 1200ms;\n      --shadow: 0 22px 80px rgba(0, 0, 0, .22);\n    }\n\n    *, *::before, *::after { box-sizing: border-box; }\n    html { scroll-behavior: smooth; background: var(--ink); }\n    body {\n      margin: 0;\n      min-width: 280px;\n      overflow-x: clip;\n      background: var(--ink);\n      color: var(--bone);\n      font-family: var(--body);\n      -webkit-font-smoothing: antialiased;\n      text-rendering: geometricPrecision;\n    }\n    body.index-open { overflow: hidden; }\n    img, svg, canvas { display: block; max-width: 100%; }\n    button, input, select, textarea { font: inherit; }\n    button, a { -webkit-tap-highlight-color: transparent; }\n    a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: .22em; }\n    button { color: inherit; }\n    ::selection { background: var(--amber); color: var(--ink); }\n    :focus-visible {\n      outline: 2px solid var(--amber);\n      outline-offset: 4px;\n      border-radius: 2px;\n    }\n\n    .skip-link {\n      position: fixed;\n      z-index: 1000;\n      left: 16px;\n      top: 12px;\n      transform: translateY(-160%);\n      padding: 10px 14px;\n      background: var(--ivory);\n      color: var(--ink);\n      font-family: var(--mono);\n      font-size: 12px;\n      text-transform: uppercase;\n      letter-spacing: .08em;\n      transition: transform var(--fast) ease;\n    }\n    .skip-link:focus { transform: translateY(0); }\n\n    .visually-hidden {\n      position: absolute !important;\n      width: 1px !important;\n      height: 1px !important;\n      padding: 0 !important;\n      margin: -1px !important;\n      overflow: hidden !important;\n      clip: rect(0, 0, 0, 0) !important;\n      white-space: nowrap !important;\n      border: 0 !important;\n    }\n\n    .site-nav {\n      position: fixed;\n      z-index: 50;\n      inset: 0 0 auto 0;\n      height: var(--nav-h);\n      display: grid;\n      grid-template-columns: minmax(150px, 1fr) auto auto;\n      align-items: center;\n      gap: 18px;\n      padding: 0 max(18px, env(safe-area-inset-right)) 0 max(18px, env(safe-area-inset-left));\n      border-bottom: 1px solid rgba(247, 242, 230, .12);\n      background: color-mix(in srgb, var(--ink) 84%, transparent);\n      backdrop-filter: blur(16px) saturate(120%);\n      transition: background var(--med) var(--ease), color var(--med) var(--ease), border-color var(--med) var(--ease);\n    }\n    .site-nav.on-light {\n      color: var(--ink);\n      border-color: rgba(11, 11, 10, .13);\n      background: color-mix(in srgb, var(--ivory) 88%, transparent);\n    }\n    .brand {\n      display: inline-flex;\n      align-items: center;\n      gap: 10px;\n      width: max-content;\n      text-decoration: none;\n      font-family: var(--display);\n      font-weight: 800;\n      letter-spacing: -.025em;\n    }\n    .brand-mark {\n      width: 24px;\n      height: 24px;\n      display: grid;\n      place-items: center;\n      border: 1px solid currentColor;\n      clip-path: polygon(0 0, 100% 0, 50% 100%);\n      font-size: 9px;\n      line-height: 1;\n      padding-bottom: 7px;\n    }\n    .nav-status {\n      display: flex;\n      align-items: center;\n      gap: 12px;\n      font-family: var(--mono);\n      font-size: 10px;\n      letter-spacing: .12em;\n      text-transform: uppercase;\n      white-space: nowrap;\n    }\n    .nav-status strong { color: var(--amber); font-weight: 700; }\n    .nav-actions { display: flex; align-items: center; gap: 8px; }\n    .nav-link,\n    .nav-button {\n      min-height: 36px;\n      display: inline-flex;\n      align-items: center;\n      justify-content: center;\n      padding: 0 12px;\n      border: 1px solid currentColor;\n      background: transparent;\n      color: inherit;\n      text-decoration: none;\n      font-family: var(--mono);\n      font-size: 10px;\n      letter-spacing: .08em;\n      text-transform: uppercase;\n      cursor: pointer;\n      transition: transform var(--fast) ease, background var(--fast) ease, color var(--fast) ease;\n    }\n    .nav-link:hover,\n    .nav-button:hover { transform: translateY(-2px); }\n    .nav-link.primary { background: var(--amber); color: var(--ink); border-color: var(--amber); }\n    .site-nav.on-light .nav-link.primary { color: var(--ink); }\n    .no-js .js-only { display: none !important; }\n    .js .no-js-only { display: none !important; }\n\n    #webgl-stage {\n      position: fixed;\n      z-index: 2;\n      inset: 0;\n      pointer-events: none;\n      overflow: hidden;\n      opacity: 0;\n      transition: opacity 900ms ease;\n    }\n    .webgl-ready #webgl-stage { opacity: 1; }\n    #webgl-stage canvas { width: 100%; height: 100%; }\n    .webgl-caption {\n      position: fixed;\n      z-index: 3;\n      right: 28px;\n      bottom: 26px;\n      max-width: 260px;\n      color: rgba(247, 242, 230, .68);\n      font-family: var(--mono);\n      font-size: 9px;\n      line-height: 1.55;\n      letter-spacing: .08em;\n      text-transform: uppercase;\n      pointer-events: none;\n      transition: opacity var(--med) ease, color var(--med) ease;\n    }\n    .site-nav.on-light ~ .webgl-caption { color: rgba(11, 11, 10, .58); }\n    body[data-scene="cover"] .webgl-caption { top: calc(var(--nav-h) + 18px); bottom: auto; text-align: right; }\n\n    .scrub-rail {\n      position: fixed;\n      z-index: 40;\n      right: 16px;\n      top: 50%;\n      transform: translateY(-50%);\n      display: grid;\n      gap: 7px;\n      padding: 12px 8px;\n      border: 1px solid rgba(247, 242, 230, .13);\n      background: rgba(11, 11, 10, .52);\n      backdrop-filter: blur(12px);\n    }\n    .scrub-rail a {\n      position: relative;\n      width: 8px;\n      height: 8px;\n      border: 1px solid rgba(247, 242, 230, .5);\n      border-radius: 50%;\n      text-decoration: none;\n      transition: transform var(--fast) ease, background var(--fast) ease;\n    }\n    .scrub-rail a::before {\n      content: attr(data-label);\n      position: absolute;\n      right: 16px;\n      top: 50%;\n      transform: translateY(-50%) translateX(6px);\n      width: max-content;\n      padding: 5px 7px;\n      opacity: 0;\n      pointer-events: none;\n      background: var(--ink);\n      color: var(--bone);\n      border: 1px solid rgba(247, 242, 230, .18);\n      font-family: var(--mono);\n      font-size: 9px;\n      letter-spacing: .08em;\n      text-transform: uppercase;\n      transition: opacity var(--fast) ease, transform var(--fast) ease;\n    }\n    .scrub-rail a:hover::before,\n    .scrub-rail a:focus-visible::before { opacity: 1; transform: translateY(-50%) translateX(0); }\n    .scrub-rail a[aria-current="true"] { background: var(--amber); border-color: var(--amber); transform: scale(1.35); }\n\n    main { position: relative; z-index: 1; }\n    .issue {\n      position: relative;\n      isolation: isolate;\n      min-height: 100svh;\n      scroll-margin-top: var(--nav-h);\n      overflow: clip;\n      background: var(--ink);\n      color: var(--bone);\n    }\n    .issue.light { background: var(--ivory); color: var(--ink); }\n    .issue.coral { background: var(--coral); color: var(--ink); }\n    .issue::before {\n      content: "";\n      position: absolute;\n      z-index: 0;\n      inset: 0;\n      pointer-events: none;\n      background:\n        linear-gradient(90deg, transparent 0 calc(50% - .5px), currentColor calc(50% - .5px) calc(50% + .5px), transparent calc(50% + .5px)),\n        linear-gradient(currentColor, currentColor);\n      background-size: 100% 100%, 1px 100%;\n      background-position: 0 0, var(--gutter) 0;\n      background-repeat: no-repeat;\n      opacity: .035;\n    }\n    .issue-inner {\n      position: relative;\n      z-index: 4;\n      width: min(100%, var(--content));\n      min-height: 100svh;\n      margin: 0 auto;\n      padding: calc(var(--nav-h) + clamp(46px, 7vw, 112px)) var(--gutter) clamp(72px, 9vw, 150px);\n    }\n    .issue-inner > *,\n    .many-head > *,\n    .agents-head > *,\n    .terminal-head > *,\n    .final-grid > *,\n    .cover-meta > * { min-width: 0;`... 629245 more characters,
+    expected: /css\/site-appearance\.css/,
+    operator: 'match',
+    diff: 'simple'
+  }

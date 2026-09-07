@@ -1,0 +1,32 @@
+PASS hero is immediate on a small laptop
+PASS route changes preserve attached conversation and reveal Hive sequence
+PASS approval cannot be skipped; decline and reset work
+PASS map, layers and all five prices respond
+PASS sample needs no microphone, pause cancels, clear restores
+PASS actual app image dialog closes with Escape and restores focus
+PASS all public chapter anchors are preserved
+PASS chapter jump and browser back
+FAIL reduced motion and keyboard keep content usable Expected values to be strictly equal:
++ actual - expected
+
++ 'wordmark'
+- 'skip-link'
+
+PASS layout, forward/reverse scrolling and accessibility at 360
+PASS layout, forward/reverse scrolling and accessibility at 390
+PASS layout, forward/reverse scrolling and accessibility at 768
+PASS layout, forward/reverse scrolling and accessibility at 1280
+PASS layout, forward/reverse scrolling and accessibility at 1440
+PASS touch menu closes after selection
+PASS WebGL and vendor failures retain functional demos
+PASS microphone denial and unsupported recognition explain the fallback
+PASS late microphone permission is stopped after pause
+PASS failed app screenshot has a readable fallback
+PASS decorative rendering pauses away from spatial chapters
+PASS copper preserved desktop and mobile study
+PASS ivory preserved desktop and mobile study
+PASS signal preserved desktop and mobile study
+PASS actual WebGL refusal keeps the sculptural fallback
+PASS no JavaScript retains product, prices and chapter navigation
+PASS motion and sound toggles have explicit off states
+PASS no uncaught browser errors

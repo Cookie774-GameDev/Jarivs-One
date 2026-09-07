@@ -1,0 +1,111 @@
+[
+  {
+    "name": "hero is immediate on a small laptop",
+    "pass": true
+  },
+  {
+    "name": "route changes preserve attached conversation and reveal Hive sequence",
+    "pass": true
+  },
+  {
+    "name": "approval cannot be skipped; decline and reset work",
+    "pass": true
+  },
+  {
+    "name": "map, layers and all five prices respond",
+    "pass": true
+  },
+  {
+    "name": "sample needs no microphone, pause cancels, clear restores",
+    "pass": true
+  },
+  {
+    "name": "actual app image dialog closes with Escape and restores focus",
+    "pass": true
+  },
+  {
+    "name": "all public chapter anchors are preserved",
+    "pass": true
+  },
+  {
+    "name": "chapter jump and browser back",
+    "pass": true
+  },
+  {
+    "name": "reduced motion and keyboard keep content usable",
+    "pass": false,
+    "error": "Expected values to be strictly equal:\n+ actual - expected\n\n+ 'wordmark'\n- 'skip-link'\n"
+  },
+  {
+    "name": "layout, forward/reverse scrolling and accessibility at 360",
+    "pass": true
+  },
+  {
+    "name": "layout, forward/reverse scrolling and accessibility at 390",
+    "pass": true
+  },
+  {
+    "name": "layout, forward/reverse scrolling and accessibility at 768",
+    "pass": true
+  },
+  {
+    "name": "layout, forward/reverse scrolling and accessibility at 1280",
+    "pass": true
+  },
+  {
+    "name": "layout, forward/reverse scrolling and accessibility at 1440",
+    "pass": true
+  },
+  {
+    "name": "touch menu closes after selection",
+    "pass": true
+  },
+  {
+    "name": "WebGL and vendor failures retain functional demos",
+    "pass": true
+  },
+  {
+    "name": "microphone denial and unsupported recognition explain the fallback",
+    "pass": true
+  },
+  {
+    "name": "late microphone permission is stopped after pause",
+    "pass": true
+  },
+  {
+    "name": "failed app screenshot has a readable fallback",
+    "pass": true
+  },
+  {
+    "name": "decorative rendering pauses away from spatial chapters",
+    "pass": true
+  },
+  {
+    "name": "copper preserved desktop and mobile study",
+    "pass": true
+  },
+  {
+    "name": "ivory preserved desktop and mobile study",
+    "pass": true
+  },
+  {
+    "name": "signal preserved desktop and mobile study",
+    "pass": true
+  },
+  {
+    "name": "actual WebGL refusal keeps the sculptural fallback",
+    "pass": true
+  },
+  {
+    "name": "no JavaScript retains product, prices and chapter navigation",
+    "pass": true
+  },
+  {
+    "name": "motion and sound toggles have explicit off states",
+    "pass": true
+  },
+  {
+    "name": "no uncaught browser errors",
+    "pass": true
+  }
+]

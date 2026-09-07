@@ -32,14 +32,32 @@ test('decline is terminal until reset and cannot be approved later', () => {
 
 test('plan summary includes Access once and computes shared pool maxima only for eligible tiers', () => {
   assert.equal(typeof state.planSummary, 'function', 'pricing summary is not implemented');
-  assert.deepEqual(state.planSummary('spark'), { name:'Spark', total:20, addon:0, credits:1000, minutes:0, sms:0, sync:false, publishing:false });
-  assert.deepEqual(state.planSummary('nova'), { name:'Nova', total:70, addon:50, credits:27500, minutes:275, sms:2750, sync:true, publishing:true });
+  assert.deepEqual(state.planSummary('spark'), {
+    name: 'Spark',
+    total: 20,
+    addon: 0,
+    credits: 1000,
+    minutes: 0,
+    sms: 0,
+    sync: false,
+    publishing: false,
+  });
+  assert.deepEqual(state.planSummary('nova'), {
+    name: 'Nova',
+    total: 70,
+    addon: 50,
+    credits: 27500,
+    minutes: 275,
+    sms: 2750,
+    sync: true,
+    publishing: true,
+  });
   assert.equal(state.planSummary('supernova').total, 220);
   assert.equal(state.planSummary('invalid'), null);
 });
 
 test('map controls clamp zoom and pan to reachable bounds', () => {
   assert.equal(typeof state.clampMap, 'function');
-  assert.deepEqual(state.clampMap({x:999,y:-999,zoom:9}),{x:120,y:-80,zoom:1.5});
-  assert.deepEqual(state.clampMap({x:0,y:0,zoom:0}),{x:0,y:0,zoom:0.75});
+  assert.deepEqual(state.clampMap({ x: 999, y: -999, zoom: 9 }), { x: 120, y: -80, zoom: 1.5 });
+  assert.deepEqual(state.clampMap({ x: 0, y: 0, zoom: 0 }), { x: 0, y: 0, zoom: 0.75 });
 });

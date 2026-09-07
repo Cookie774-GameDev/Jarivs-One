@@ -4,6 +4,8 @@ import json
 ROOT = Path(__file__).resolve().parents[2]
 SITE = ROOT / 'site'
 def write(path, content):
+    if path == 'concepts/index.html':
+        content = content.replace('<section class="comparison-notes">', '<p><a class="button primary" href="review.html">Compare rendered screenshots and test evidence ↗</a></p><section class="comparison-notes">')
     if path == 'index.html':
         content = content.replace('id="plans" aria-labelledby="plans-title">', 'id="plans" aria-labelledby="plans-title"><span id="pricing" aria-hidden="true"></span><span id="download" aria-hidden="true"></span>')
         chapters = [('cover','Cover'),('one-space','Workspace'),('many-minds','Models'),('agents-at-work','Agents'),('ten-terminals','Terminals'),('speak-to-work','Voice'),('memory','Context'),('local-design','Local control'),('plans','Plans'),('finale','Next steps')]

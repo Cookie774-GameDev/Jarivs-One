@@ -1,0 +1,32 @@
+[
+  {
+    "theme": "copper",
+    "width": 390,
+    "violations": []
+  },
+  {
+    "theme": "copper",
+    "width": 1440,
+    "violations": []
+  },
+  {
+    "theme": "ivory",
+    "width": 390,
+    "violations": []
+  },
+  {
+    "theme": "ivory",
+    "width": 1440,
+    "violations": []
+  },
+  {
+    "theme": "signal",
+    "width": 390,
+    "violations": []
+  },
+  {
+    "theme": "signal",
+    "width": 1440,
+    "violations": []
+  }
+]
